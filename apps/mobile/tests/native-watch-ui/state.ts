@@ -5,12 +5,19 @@ import { createEvmWatchAccount } from '../../src/core/watchOnlyAuthority';
 export const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 export const SECOND = '0x1111111111111111111111111111111111111111';
 export const events: string[] = [];
-export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, readFailures: 0, writes: 0 };
+export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, importAttempts: 0, imports: 0, readFailures: 0, writes: 0 };
 let pendingUnlock: (() => void) | null = null;
 let pendingSign: (() => void) | null = null;
+let pendingImport: (() => void) | null = null;
 let pendingKeyRead: (() => void) | null = null;
 export const PUBLIC_TEST_KEY = `0x${"1".repeat(64)}`;
 export let delayKeyRead = false;
+export let delayImport = false;
+export let importFailure: 'AUTH_THROTTLED' | null = null;
+export function setImportFailure(value: typeof importFailure) { importFailure = value; }
+export function setDelayImport(value: boolean) { delayImport = value; }
+export async function importGate() { if (delayImport) await new Promise<void>((resolve) => { pendingImport = resolve; }); }
+export function releaseImport() { delayImport = false; pendingImport?.(); pendingImport = null; }
 export let keyFailure: 'AUTH_THROTTLED' | null = null;
 export function setKeyFailure(value: typeof keyFailure) { keyFailure = value; }
 export let delayUnlock = false;

@@ -1,3 +1,4 @@
+import type { NativeImportView } from '../custody/importedAccounts.ts';
 import type { NativeAccountView } from '../custody/accounts.ts';
 import type { NativeCustodyAuthority } from '../custody/authority.ts';
 import type { SeedBackupFlow } from '../custody/seedBackup.ts';
@@ -10,6 +11,6 @@ export function createNativeCustodyAuthority(): NativeCustodyAuthority {
   throw new Error('Native custody is unavailable on web');
 }
 
-export function createNativeWalletControllers(): { authority: NativeCustodyAuthority; backup: SeedBackupFlow; keyExport: HdKeyExportFlow; accounts: NativeAccountView; activity: NativeActivity; transfers: NativeTransferView; tokens: NativeTokenView; disposeTokens(): void; disposeTransfers(): void } {
+export function createNativeWalletControllers(): { authority: NativeCustodyAuthority; backup: SeedBackupFlow; keyExport: HdKeyExportFlow; imports: NativeImportView; accounts: NativeAccountView; activity: NativeActivity; transfers: NativeTransferView; tokens: NativeTokenView; disposeTokens(): void; disposeTransfers(): void } {
   throw new Error('Native custody is unavailable on web');
 }

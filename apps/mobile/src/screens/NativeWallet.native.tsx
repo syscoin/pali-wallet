@@ -1,3 +1,4 @@
+import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { createNativeWalletControllers } from '../platform/nativeFactory';
@@ -8,6 +9,9 @@ import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '
 import { NativePortfolio } from './NativePortfolio';
 import { NativeSend } from './NativeSend';
 import { NativeSecurity } from './NativeSecurity';
+import { NativeImport } from './NativeImport';
+import type { NativeImportView } from '../custody/importedAccounts';
+import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
@@ -20,7 +24,7 @@ import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'activity' | 'security';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'activity' | 'security' | 'import-key';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -62,6 +66,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
   const [keyExportView, setKeyExportView] = useState<Controllers['keyExport'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
+  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; token: number; imports: NativeImportView } | null>(null);
+  const importRequest = useRef({ token: 0, active: false });
+  const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
@@ -83,6 +90,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }, []);
   const revoke = useCallback(() => {
     epoch.current++;
+    importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendToken(null); setStage('choose'); setError('');
   }, [clearSecrets]);
@@ -161,6 +169,26 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     });
   };
 
+  const openImport = () => {
+    const local = controllers.current;
+    const context = local?.authority.getSnapshot();
+    const current = local?.authority.getCatalogue();
+    if (!local?.imports || !context?.account || context.phase !== 'ready' || !current) return;
+    const token = ++importRequest.current.token;
+    importRequest.current.active = false; setImportActiveToken(null);
+    local.keyExport.cancel(); local.backup.cancel(); setError('');
+    const scoped: NativeImportView = Object.freeze({
+      submit: (...args: Parameters<NativeImportView['submit']>) => local.imports.submit(...args),
+      cancel: () => {
+        const now = local.authority.getSnapshot();
+        if (controllers.current === local && importRequest.current.token === token && importRequest.current.active &&
+            now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
+      },
+    });
+    setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision,
+      networkLabel: EVM_NETWORK_DEFINITIONS.find((network) => network.id === context.account!.network)!.name, token, imports: scoped });
+    setStage('import-key');
+  };
   const locked = snapshot.phase === 'locked';
   const unavailable = snapshot.phase === 'unavailable' || !!error && !protectedScreen;
   const title = locked ? 'Welcome back' : snapshot.phase === 'ready' && stage === 'choose' ? 'Your wallet' :
@@ -174,7 +202,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     bridge.current?.onSelectWatch(selection);
   };
   if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
-    return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? { kind: 'hd', id: catalogue.active.accountId } : null}
+    return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={() => setStage('choose')} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)
@@ -183,14 +211,28 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+    return <NativeAccounts controller={accountView} onImport={openImport} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+  if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
+      (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
+    return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
+      networkLabel={importScope.networkLabel}
+      onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
+      onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
+      onBack={() => { setImportScope(null); setStage('manage-hd'); }}
+      onImported={() => {
+        const local = controllers.current, now = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
+        if (mounted.current && importRequest.current.token === importScope.token && now?.phase === 'ready' &&
+            now.revision === importScope.contextRevision + 1 && current?.accounts.some((account) => account.id === current.active.accountId && account.type === 'Imported')) {
+          setImportScope(null); setStage('choose');
+        }
+      }} />;
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={() => setStage('choose')} />;
   if (stage === 'activity' && activityView && snapshot.phase === 'ready')
     return <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView)
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
-      keyExport={keyExportView} accountId={catalogue.active.accountId} accountLabel={accountLabel} address={snapshot.account.address}
+      keyExport={keyExportView} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
       onBack={() => setStage('choose')} onLock={revoke} onViewRecovery={() => setStage('backup-auth')}
       captureFailureHandler={() => {
         const local = controllers.current;
@@ -261,7 +303,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
   </>;
   else if (snapshot.phase === 'backup-required' || stage === 'backup-auth' || stage === 'words' || stage === 'challenge') body = <>
-    <Text style={styles.muted}>A written recovery phrase is the only way to restore this wallet if you lose your phone.</Text>
+    <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts if you lose your phone. Imported accounts need their original private keys backed up separately.</Text>
     <SecretInput label="Confirm your password" value={password} onChange={setPassword} disabled={busy} />
     <Button title="Show recovery phrase" disabled={busy || !password} onPress={() => {
       const entered = password; setPassword('');

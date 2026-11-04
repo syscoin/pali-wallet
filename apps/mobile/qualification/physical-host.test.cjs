@@ -1,3 +1,4 @@
+const { importedEvidence } = require('./imported-report-fixture.cjs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -58,6 +59,7 @@ function report(phase, scenario, runId) {
     nativeBridgeExercised: true,
     sdkVersion: '2.0.0',
     nativeSigningVerified: true,
+    ...importedEvidence(phase),
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true,
     selectedAccountId: 'hd:60:1',
     selectedAccountIndex: 1,
@@ -1026,4 +1028,19 @@ test('physical report checks preserve exact HD/ERC20/NEVM evidence and refuse an
       expected
     )
   );
+});
+
+test('physical imported evidence rejects missing claims and cross-restart key/chain changes', () => {
+  const runId = '0'.repeat(32), created = report('create', 'import', runId), restored = report('restart', 'import', runId);
+  const expected = { runId, sourceRevision: SOURCE, bundleIdentifier: PHYSICAL_BUNDLES.import, phase: 'create', scenario: 'import' };
+  assert.equal(decodePhysicalReport(JSON.stringify(created), expected).nativeImportedVerified, true);
+  for (const key of Object.keys(importedEvidence())) {
+    const missing = { ...created }; delete missing[key];
+    assert.throws(() => decodePhysicalReport(JSON.stringify(missing), expected));
+  }
+  for (const change of [{ importedKeyRevealVerified: false }, { importedAccountId: 'imported:60:0' },
+    { importedAddress: created.address }, { importedInjectedBroadcasts: 0 }, { importedChainIds: ['1', '5700'] }])
+    assert.throws(() => decodePhysicalReport(JSON.stringify({ ...created, ...change }), expected));
+  assert.doesNotThrow(() => assertPhysicalRestart(created, restored));
+  assert.throws(() => assertPhysicalRestart(created, { ...restored, importedTransferHashes: ['0x' + 'f'.repeat(64), ...restored.importedTransferHashes.slice(1)] }));
 });

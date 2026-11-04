@@ -405,7 +405,7 @@ function QualificationApp() {
           );
           expect(authority.getSnapshot().phase === 'ready');
         }
-        const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.index === 0);
+        const rootAccount = authority.getCatalogue()?.accounts.find((account) => account.id === 'hd:60:0');
         expect(rootAccount && /^0x[0-9a-fA-F]{40}$/.test(rootAccount.address));
         if (parameters.scenario === 'import') expect(rootAccount?.address === EXPECTED_ADDRESS);
         const { qualifyNativeHdAccounts } = await import('./hd-accounts.ts');
@@ -434,6 +434,10 @@ function QualificationApp() {
         const { qualifyNativeHdKeyReveal } = await import('./hd-key-reveal.ts');
         const keyRevealEvidence = await qualifyNativeHdKeyReveal({
           authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD, expectedAddress: address, check,
+        });
+        const { qualifyNativeImportedEvm } = await import('./imported-evm.ts');
+        const importedEvidence = await qualifyNativeImportedEvm({
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD, check,
         });
         await check('synchronous lock and wrong password refusal', async () => {
           authority!.lock();
@@ -509,6 +513,7 @@ function QualificationApp() {
           ...nevmEvidence,
           ...zksysEvidence,
           ...keyRevealEvidence,
+          ...importedEvidence,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };

@@ -11,7 +11,7 @@ import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { HdKeyExportFlow, type HdKeyExportScope } from '../src/custody/hdKeyExport.ts';
 import { keccak256, SigningKey } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
-import { HDNodeWallet } from 'ethers/wallet';
+import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { getNativeNetwork, NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 
@@ -43,6 +43,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
         if (!records.has(key) || JSON.stringify(records.get(key)) !== JSON.stringify(expected)) return false;
         if (Object.entries(removals).some(([name, before]) => JSON.stringify(records.get(name)) !== JSON.stringify(before))) return false;
         records.set(key, structuredClone(value));
+        await recordHook?.('cas', key);
         for (const name of Object.keys(removals)) records.delete(name);
         if (failCasAcknowledgement) { failCasAcknowledgement = false; throw Error('Lost CAS acknowledgement'); }
         return true;
@@ -462,6 +463,8 @@ async function raceSdk() {
   let exportResult: string | undefined;
   let exportError = false;
   let exports = 0;
+  let imports = 0;
+  let unlocks = 0;
   const hold = async (phase: string) => {
     if (gate?.phase !== phase) return;
     const current = gate; current.entered.resolve(); await current.released.promise;
@@ -473,6 +476,13 @@ async function raceSdk() {
       this.createFirstAccount = async (...args) => { const result = hydrate(...args); await hold('hydration'); return result; };
       const sign = this.signPreparedEvmTransaction.bind(this);
       this.signPreparedEvmTransaction = (...args) => { signingHook?.(); return sign(...args); };
+      const importKey = this.importAccount.bind(this);
+      this.importAccount = async (...args) => {
+        imports++; await hold('import-before'); const result = await importKey(...args); await hold('import-after'); return result;
+      };
+      const encrypt = this.encryptPrivateRecord.bind(this), decrypt = this.decryptPrivateRecord.bind(this);
+      this.encryptPrivateRecord = async (...args) => { const result = await encrypt(...args); await hold('encrypt-after'); return result; };
+      this.decryptPrivateRecord = async (...args) => { const result = await decrypt(...args); await hold('decrypt-after'); return result; };
       const exportKey = this.getPrivateKeyByAccountId.bind(this);
       this.getPrivateKeyByAccountId = async (...args) => {
         exports++;
@@ -484,12 +494,14 @@ async function raceSdk() {
         return result;
       };
     }
-    async unlock(password: string) { const result = super.unlock(password); await hold('password'); return result; }
+    async unlock(password: string) { unlocks++; const result = super.unlock(password); await hold('password'); return result; }
   }
   return {
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: RaceKeyring }),
     onSign(hook?: () => void) { signingHook = hook; },
     get exports() { return exports; },
+    get imports() { return imports; },
+    get unlocks() { return unlocks; },
     setExportResult(value?: string) { exportResult = value; },
     failExport() { exportError = true; },
     hold(phase: string) {
@@ -1404,4 +1416,176 @@ test('HD key flow is unavailable before backup, while locked, and on the web hos
     assert.throws(() => web.createNativeWalletControllers(), /unavailable on web/);
     assert.throws(() => web.createNativeCustodyAuthority(), /unavailable on web/);
   } finally { flow.dispose(); await authority.dispose(); disk.restoreNetwork(); }
+});
+
+const IMPORTED_TEST_KEY = '0x' + '1'.padStart(64, '0');
+const importedAddress = (key = IMPORTED_TEST_KEY) => new Wallet(key).address;
+async function importTestKey(f: Awaited<ReturnType<typeof readyAccounts>>, key = IMPORTED_TEST_KEY, label = 'Imported test') {
+  await f.authority.importEvmAccount({ privateKey: key, expectedAddress: importedAddress(key), label }, PASSWORD,
+    f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+}
+
+test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export at a nonzero host ordinal', async () => {
+  const f = await readyAccounts();
+  try {
+    const pair = JSON.stringify([f.disk.records.get('vault'), f.disk.records.get('vault-keys')]);
+    await importTestKey(f);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:0');
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
+    await importTestKey(f);
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:1');
+    assert.equal(f.authority.getSnapshot().account!.address, importedAddress());
+    assert.equal(JSON.stringify([f.disk.records.get('vault'), f.disk.records.get('vault-keys')]), pair);
+    const saved = JSON.stringify([...f.disk.records]);
+    assert.equal(saved.includes(IMPORTED_TEST_KEY), false); assert.equal(saved.includes('xprv'), false);
+    assert.equal(saved.includes('ciphertext'), true);
+    assert.equal(JSON.stringify(f.authority.getCatalogue()).includes('ciphertext'), false);
+    for (const network of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
+      await f.authority.selectNetwork(network, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      const tx = { type: 2 as const, from: importedAddress(), to: ADDRESS, chainId: getNativeNetwork(network).chainId,
+        nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' };
+      const signed = await f.runtime.transfers!.sign(tx, PASSWORD, () => undefined);
+      assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress());
+      await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(signed.rawTransaction);
+    }
+    const flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+    assert.equal((await flow.begin(PASSWORD)).privateKey, IMPORTED_TEST_KEY); flow.dispose();
+    await f.authority.dispose();
+    let reopenedRuntime!: KeyringRuntime;
+    const reopened = new NativeCustodyAuthority({ async open() { reopenedRuntime = await f.disk.factory.open() as KeyringRuntime; return reopenedRuntime; } });
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    assert.equal(reopened.getSnapshot().account!.address, importedAddress());
+    const recovery = await (await reopenedRuntime.transfers!.journal(() => undefined)).load();
+    assert.equal(recovery!.phase, 'signed'); assert.equal(Transaction.from(recovery!.rawTransaction).chainId, 57057n);
+    assert.equal(reopened.getSnapshot().backup, 'confirmed');
+    await reopened.dispose();
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('imported admission rejects duplicates and malformed private form inputs without changing authority', async () => {
+  const f = await readyAccounts();
+  try {
+    const hdKey = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey;
+    const before = f.authority.getSnapshot().revision;
+    await assert.rejects(importTestKey(f, hdKey), /DUPLICATE_ACCOUNT/);
+    assert.equal(f.authority.getSnapshot().revision, before);
+    await importTestKey(f);
+    const stored = JSON.stringify([...f.disk.records]);
+    await assert.rejects(importTestKey(f, IMPORTED_TEST_KEY.toUpperCase().replace('0X', '0x')), /DUPLICATE_ACCOUNT/);
+    assert.equal(JSON.stringify([...f.disk.records]), stored);
+    let reads = 0;
+    const getter = { privateKey: IMPORTED_TEST_KEY, expectedAddress: importedAddress(), label: 'Bad' };
+    Object.defineProperty(getter, 'privateKey', { enumerable: true, get() { reads++; return IMPORTED_TEST_KEY; } });
+    for (const request of [getter, { ...getter, privateKey: PHRASE }, { ...getter, privateKey: '0x' + '0'.repeat(64) },
+      { ...getter, expectedAddress: ADDRESS }, { ...getter, accountType: 'HDAccount' }]) {
+      await assert.rejects(f.authority.importEvmAccount(request, PASSWORD, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
+    }
+    assert.equal(reads, 4, 'only test spreads read the accessor; the runtime snapshot never does');
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+    assert.equal(JSON.stringify([...f.disk.records]), stored);
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+for (const phase of ['password', 'import-after', 'encrypt-after']) {
+  test(`imported admission serializes privileged work and cancels at ${phase}`, async () => {
+    const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), hold = sdk.hold(phase);
+    try {
+      const before = JSON.stringify([...f.disk.records]);
+      const pending = importTestKey(f); void pending.catch(() => undefined); await hold.entered;
+      const otherKey = '0x' + '2'.padStart(64, '0');
+      await assert.rejects(f.authority.importEvmAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' },
+        PASSWORD, f.authority.getSnapshot().revision, 0), /BUSY/);
+      await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /BUSY/);
+      await assert.rejects(f.runtime.transfers!.authorize(PASSWORD, () => undefined), /BUSY/);
+      await assert.rejects(f.authority.manageAccounts({ kind: 'select', id: 'hd:60:0' }, f.authority.getSnapshot().revision, 0), /BUSY/);
+      f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
+      assert.equal(JSON.stringify([...f.disk.records]), before);
+      await f.authority.unlock(PASSWORD); assert.equal(f.authority.getCatalogue()!.accounts.length, 1);
+    } finally { hold.release(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+  });
+}
+
+test('imported credential rejection shares persistent throttle after lifecycle cancellation', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), hold = sdk.hold('password');
+  try {
+    const pending = f.authority.importEvmAccount({ privateKey: IMPORTED_TEST_KEY, label: 'Import', expectedAddress: importedAddress() },
+      'wrong', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision); void pending.catch(() => undefined);
+    await hold.entered; f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
+    assert.equal(f.disk.failureWrites, 1); assert.equal(sdk.imports, 0);
+    for (let i = 0; i < 4; i++) await assert.rejects(f.authority.unlock('wrong'), /INVALID_CREDENTIAL/);
+    await assert.rejects(f.authority.unlock(PASSWORD), /AUTH_THROTTLED/); assert.equal(f.disk.failureWrites, 5);
+  } finally { hold.release(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('imported hydration does not add password KDFs and cannot complete after revocation', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  try {
+    await importTestKey(f); await importTestKey(f, '0x' + '2'.padStart(64, '0'));
+    f.authority.lock(); const before = sdk.unlocks;
+    await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 1);
+    assert.equal(sdk.exports, 0, 'rehydration uses AEAD instead of password-confirmed key export per account');
+    f.authority.lock(); const hold = sdk.hold('decrypt-after');
+    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await hold.entered;
+    f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
+    assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.runtime.catalogue.getSnapshot(), null);
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('lost imported commit acknowledgement preserves the key and requires a fresh runtime', async () => {
+  const f = await readyAccounts();
+  try {
+    f.disk.loseCasAcknowledgement(); await assert.rejects(importTestKey(f), /UNAVAILABLE/);
+    assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+    await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
+    const row = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as any;
+    assert.equal(row.importedAccounts.length, 1); assert.equal(JSON.stringify(row).includes(IMPORTED_TEST_KEY), false);
+    await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
+    const reopened = new NativeCustodyAuthority(f.disk.factory);
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    assert.equal(reopened.getSnapshot().account!.address, importedAddress());
+    assert.equal(reopened.getCatalogue()!.active.accountId, 'imported:60:0');
+    assert.deepEqual(f.disk.records.get(WALLET_CATALOGUE_KEY), row); await reopened.dispose();
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('a corrupt imported envelope prevents partial unlock and preserves every saved record', async () => {
+  const f = await readyAccounts();
+  try {
+    await importTestKey(f); f.authority.lock();
+    const original = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as any;
+    for (const field of ['ciphertext', 'profileId', 'recordId', 'domain']) {
+      const row = structuredClone(original), e = row.importedAccounts[0].envelope;
+      e[field] = field === 'ciphertext' ? (e[field][0] === 'A' ? 'B' : 'A') + e[field].slice(1) : 'wrong';
+      f.disk.records.set(WALLET_CATALOGUE_KEY, row); const before = JSON.stringify([...f.disk.records]);
+      await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED/);
+      assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.authority.getCatalogue(), null);
+      assert.equal(JSON.stringify([...f.disk.records]), before);
+    }
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('imported removal checks every chain, archives terminal rows, and never consumes an HD journal', async () => {
+  const f = await readyAccounts();
+  try {
+    const rawFor = async (address: string, chainId: string) => f.runtime.transfers!.sign({ type: 2, from: address,
+      to: ADDRESS, chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+    const hd = await rawFor(ADDRESS, '1'); await (await f.runtime.transfers!.journal(() => undefined)).saveSigned(hd.rawTransaction);
+    const hdRow = structuredClone(f.disk.records.get('native-evm-transfer-v1'));
+    await importTestKey(f);
+    const first = await rawFor(importedAddress(), '1'); let journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(first.rawTransaction); await journal.transition(first.hash, 'nonce-consumed');
+    await f.authority.selectNetwork('syscoin-nevm-testnet', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    const second = await rawFor(importedAddress(), '5700'); journal = await f.runtime.transfers!.journal(() => undefined);
+    await journal.saveSigned(second.rawTransaction);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await assert.rejects(f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD }), /PENDING_TRANSFER/);
+    await f.authority.unlock(PASSWORD); await f.execute({ kind: 'select', id: 'imported:60:0' });
+    journal = await f.runtime.transfers!.journal(() => undefined); await journal.transition(second.hash, 'nonce-consumed');
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
+    assert.equal(f.disk.records.has('native-evm-transfer-v1:imported:60:0'), false);
+    assert.deepEqual(f.disk.records.get('native-evm-transfer-v1'), hdRow);
+    assert.equal(JSON.stringify([...f.disk.records]).includes(first.hash), true, 'terminal imported history is retained');
+  } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });

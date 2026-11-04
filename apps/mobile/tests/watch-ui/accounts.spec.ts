@@ -95,7 +95,7 @@ for (const change of ['select', 'create', 'shared-select', 'stale-create'] as co
       await expect(page.getByText('Account 1 · Ethereum', { exact: true })).toBeVisible();
       await page.getByRole('button', { name: 'Accounts', exact: true }).click();
     }
-    await page.getByRole('button', { name: 'Manage recovery phrase accounts', exact: true }).click();
+    await page.getByRole('button', { name: 'Manage wallet accounts', exact: true }).click();
     if (change === 'select' || change === 'shared-select') {
       await page.getByRole('button', { name: `Select Account ${change === 'select' ? '1' : '2'}`, exact: true }).click();
     } else {
@@ -144,7 +144,7 @@ test('backup-required authentication consumes the hint before backup completion 
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.events().filter((event) => event === 'backup:confirmed').length)).toBe(1);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Manage recovery phrase accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Manage wallet accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Add account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Savings');
   await page.getByRole('textbox', { name: 'Confirm wallet password', exact: true }).fill('public-password');

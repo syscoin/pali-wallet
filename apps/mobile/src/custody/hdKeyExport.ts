@@ -1,10 +1,11 @@
+import { parseNativeAccountId } from './accountIdentity.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import { getNativeNetwork, type EvmNetworkId } from './networkContext.ts';
 import { CustodyRuntimeError } from './types.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 
-/** A public expectation, never permission to choose a different SDK account. */
+/** Selected EVM key expectation (legacy type name); never caller-granted SDK authority. */
 export type HdKeyExportScope = Readonly<{
   authorityRevision: number;
   catalogueRevision: number;
@@ -36,7 +37,7 @@ export function snapshotHdKeyExportScope(input: HdKeyExportScope): HdKeyExportSc
         !Number.isSafeInteger(value.authorityRevision) || value.authorityRevision < 0 ||
         !Number.isSafeInteger(value.catalogueRevision) || value.catalogueRevision < 0 ||
         !Number.isSafeInteger(value.index) || value.index < 0 || value.index > 4095 ||
-        value.accountId !== `hd:60:${value.index}` || typeof value.address !== 'string' ||
+        parseNativeAccountId(value.accountId).index !== value.index || typeof value.address !== 'string' ||
         normalizePublicAddress(value.address, 'ethereum') !== value.address ||
         typeof value.networkId !== 'string' || typeof value.registrationHash !== 'string' ||
         getNativeNetwork(value.networkId).registrationHash !== value.registrationHash)
@@ -50,7 +51,7 @@ function capture(authority: NativeCustodyAuthority): HdKeyExportScope {
   const catalogue = authority.getCatalogue();
   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
   if (state.phase !== 'ready' || state.backup !== 'confirmed' || !state.account || !catalogue || !selected ||
-      selected.type !== 'HDAccount' || selected.slip44 !== 60 || state.account.address !== selected.address ||
+      selected.type !== parseNativeAccountId(selected.id).type || selected.slip44 !== 60 || state.account.address !== selected.address ||
       state.account.network !== catalogue.active.networkId) throw new Error('NOT_READY');
   return snapshotHdKeyExportScope({ authorityRevision: state.revision, catalogueRevision: catalogue.revision,
     accountId: selected.id, index: selected.index, address: selected.address,

@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeAccountRequest, NativeAccountView } from '../custody/accounts';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
-type Form = { kind: 'create' | 'rename' | 'remove' | 'restore'; id?: string; index?: number; label: string; address?: string; catalogueRevision: number; contextRevision: number };
+type Form = { accountType?: 'HDAccount' | 'Imported'; kind: 'create' | 'rename' | 'remove' | 'restore'; id?: string; index?: number; label: string; address?: string; catalogueRevision: number; contextRevision: number };
 function failure(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
   if (code === 'BUSY') return 'Wait for the current wallet operation to finish.';
@@ -19,19 +19,20 @@ function failure(error: unknown): string {
 }
 
 /** Real native account UI; the controller alone owns derivation and persistence. */
-export function NativeAccounts({ controller, onBack }: { controller: NativeAccountView; onBack(): void }) {
+export function NativeAccounts({ controller, onBack, onImport }: { controller: NativeAccountView; onBack(): void; onImport?(): void }) {
   const [form, setForm] = useState<Form | null>(null);
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [removeAcknowledged, setRemoveAcknowledged] = useState(false);
   const [removedPage, setRemovedPage] = useState(0);
   const working = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
   const latestBack = useRef(onBack);
   useLayoutEffect(() => { latestBack.current = onBack; }, [onBack]);
   const subscribe = useCallback((listener: () => void) => controller.subscribe(() => {
-    setPassword(''); setForm(null); setName(''); listener();
+    setPassword(''); setForm(null); setName(''); setRemoveAcknowledged(false); listener();
   }), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
   const close = useCallback(() => {
@@ -45,7 +46,7 @@ export function NativeAccounts({ controller, onBack }: { controller: NativeAccou
   }, [controller, close]);
   const open = (value: Omit<Form, 'catalogueRevision' | 'contextRevision'>) => {
     if (!snapshot || working.current) return;
-    setError(''); setPassword(''); setName(value.label);
+    setError(''); setPassword(''); setName(value.label); setRemoveAcknowledged(false);
     setForm({ ...value, catalogueRevision: snapshot.revision, contextRevision: controller.getContextRevision() });
   };
   const run = async (request: NativeAccountRequest, contextRevision: number, catalogueRevision: number) => {
@@ -63,7 +64,7 @@ export function NativeAccounts({ controller, onBack }: { controller: NativeAccou
     }
   };
   const submit = () => {
-    if (!form || busy) return;
+    if (!form || busy || form.kind === 'remove' && form.accountType === 'Imported' && !removeAcknowledged) return;
     let entered = password;
     const request: NativeAccountRequest = form.kind === 'create' ? { kind: 'create', label: name.trim(), password: entered }
       : form.kind === 'restore' ? { kind: 'restore', index: form.index!, label: name.trim(), password: entered }
@@ -82,27 +83,33 @@ export function NativeAccounts({ controller, onBack }: { controller: NativeAccou
   const title = !form ? 'Accounts' : form.kind === 'create' ? 'Add an account' : form.kind === 'restore' ? 'Restore an account' : form.kind === 'remove' ? 'Remove account' : 'Rename account';
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}><KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen footer={form ? <Button title={form.kind === 'create' ? 'Create account' : form.kind === 'restore' ? 'Restore account' : form.kind === 'remove' ? 'Remove from this device' : 'Save name'}
-      disabled={busy || (form.kind !== 'remove' && !name.trim()) || !!needsPassword && !password} onPress={submit} /> : undefined}>
-      <Header title={title} subtitle="Ethereum · Recovery phrase accounts" onBack={() => { if (form && !busy) { setForm(null); setPassword(''); setError(''); } else close(); }} />
+      disabled={busy || (form.kind !== 'remove' && !name.trim()) || !!needsPassword && !password || form.kind === 'remove' && form.accountType === 'Imported' && !removeAcknowledged} onPress={submit} /> : undefined}>
+      <Header title={title} subtitle="EVM · Wallet accounts" onBack={() => { if (form && !busy) { setForm(null); setPassword(''); setError(''); } else close(); }} />
       {busy ? <Notice title="Saving account change…" body="Keep Pali open while your wallet completes this request." /> : !snapshot ? <Notice title="Wallet locked" body="Unlock your wallet to manage its accounts." /> : form ? <>
         {!!form.address && <Card style={s.identity}><Text style={s.name}>{form.label}</Text><Text selectable style={s.address}>{form.address}</Text></Card>}
-        {form.kind === 'remove' ? <Notice title="Your funds stay at this address" body="Removing an account hides it on this device. You can restore this recovery-phrase account from Removed accounts. This does not move funds or cancel transactions." tone="amber" /> : <>
+        {form.kind === 'remove' ? <>
+          <Notice title="Your funds stay at this address" body={form.accountType === 'Imported' ? 'Removing this account removes its saved key from this wallet. Your recovery phrase cannot restore it. Keep the original key backed up separately. This does not move funds or cancel transactions.' : 'Removing an account hides it on this device. You can restore this recovery-phrase account from Removed accounts. This does not move funds or cancel transactions.'} tone="amber" />
+          {form.accountType === 'Imported' && <Pressable accessibilityRole="checkbox" accessibilityLabel="I have the original private key backed up" accessibilityState={{ checked: removeAcknowledged }} aria-checked={removeAcknowledged} onPress={() => setRemoveAcknowledged((value) => !value)} style={s.acknowledgement}><Text>{removeAcknowledged ? '✓' : '□'} I have the original private key backed up.</Text></Pressable>}
+        </> : <>
           {field('Account name', name, setName)}
           {form.kind !== 'rename' && <Notice title={form.kind === 'restore' ? 'Return to the same address' : 'One recovery phrase, another address'} body={form.kind === 'restore' ? 'Pali will restore the original account address.' : 'This account is derived from your existing recovery phrase. Keep that phrase backed up offline.'} />}
         </>}
         {needsPassword && field('Confirm wallet password', password, setPassword, true)}
       </> : <>
-        <Text style={styles.muted}>Choose the account you want to use. Each account has its own Ethereum address.</Text>
+        <Text style={styles.muted}>Choose the account you want to use. Recovery phrase accounts and imported-key accounts have separate backups.</Text>
         {snapshot.accounts.map((account) => <Card key={account.id} style={s.account}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Select ${account.label}`} disabled={busy}
             onPress={() => { if (account.id !== snapshot.active.accountId) void run({ kind: 'select', id: account.id }, controller.getContextRevision(), snapshot.revision); }}>
             <View style={s.row}><Text style={s.name}>{account.label}</Text>{account.id === snapshot.active.accountId && <Text style={s.selected}>Selected</Text>}</View>
+            <Text style={s.kind}>{account.type === 'Imported' ? 'Imported key · Separate backup' : 'Recovery phrase account'}</Text>
             <Text selectable style={s.address}>{account.address}</Text>
           </Pressable>
           <View style={s.actions}><Button title="Rename" variant="quiet" onPress={() => open({ kind: 'rename', id: account.id, label: account.label, address: account.address })} />
-            {account.index !== 0 && account.id !== snapshot.active.accountId && <Button title="Remove" variant="quiet" onPress={() => open({ kind: 'remove', id: account.id, label: account.label, address: account.address })} />}</View>
+            {(account.type !== 'HDAccount' || account.index !== 0) && account.id !== snapshot.active.accountId && <Button title="Remove" variant="quiet" onPress={() => open({ kind: 'remove', id: account.id, label: account.label, address: account.address, accountType: account.type })} />}</View>
         </Card>)}
-        <Button title="Add account" onPress={() => open({ kind: 'create', label: '' })} />
+        <Button title="Add account" disabled={snapshot.accounts.length >= 20} onPress={() => open({ kind: 'create', label: '' })} />
+        {onImport && <Button title="Import private key" variant="secondary" disabled={snapshot.accounts.length >= 20} onPress={onImport} />}
+        {snapshot.accounts.length >= 20 && <Notice title="Account limit reached" body="You can keep up to 20 wallet accounts on this device. Remove an unused account before adding another." />}
         {snapshot.removed.length > 0 && <><Text style={s.section}>Removed accounts</Text><Text style={styles.muted}>Restore an earlier account without changing your recovery phrase.</Text>
           <Text style={styles.muted}>{`Page ${page + 1} of ${removedPages} · ${snapshot.removed.length} removed accounts`}</Text>
           {snapshot.removed.slice(page * 20, (page + 1) * 20).map((account) => <Button key={account.id} title={`Restore Account ${account.index + 1}`} variant="secondary" onPress={() => open({ kind: 'restore', index: account.index, label: `Account ${account.index + 1}` })} />)}
@@ -121,6 +128,7 @@ const s = StyleSheet.create({
   account: { padding: 18, gap: 8 }, identity: { padding: 18, gap: 12 },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
   name: { fontSize: 17, fontWeight: '600', flexShrink: 1 }, selected: { color: colors.green, fontSize: 12 },
+  kind: { color: colors.muted, fontSize: 12, lineHeight: 20, marginTop: 6 }, acknowledgement: { paddingVertical: 12 },
   address: { fontSize: 13, lineHeight: 22, color: colors.muted, marginTop: 10 },
   actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 }, section: { fontSize: 20, fontWeight: '600' },
   error: { color: colors.red, fontSize: 14, lineHeight: 21 }, buildLabel: { color: colors.muted, fontSize: 11, textAlign: 'center' },

@@ -5,6 +5,7 @@ import { HdKeyExportFlow } from '../../src/custody/hdKeyExport';
 import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
+import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
 import { NativeTransferJournal } from '../../src/custody/transferJournal';
 import { NativeActivity } from '../../src/activity/nativeActivity';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
@@ -13,7 +14,7 @@ import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCata
 import type { CustodyRuntime } from '../../src/custody/types';
 import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
-import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure } from './state';
+import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
@@ -26,12 +27,17 @@ let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalog
   accounts: [
     { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
     ...(needsInitialBackup ? [] : [{ id: 'hd:60:1', type: 'HDAccount' as const, index: 1, slip44: 60 as const, label: 'Account 2', address: SECOND }]),
+    ...(new URLSearchParams(window.location.search).has('account-limit') ? Array.from({ length: 18 }, (_, index) => ({
+      id: `hd:60:${index + 2}`, type: 'HDAccount' as const, index: index + 2, slip44: 60 as const, label: `Account ${index + 3}`, address: `0x${(index + 100).toString(16).padStart(40, '0')}`,
+    })) : []),
   ],
 });
 export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
+let nextImportedIndex = 0;
+const importedKeys = new Map<string, string>();
 const stored: Record<string, unknown> = {};
 const store: KeyringStoragePort = {
   async get(key) { return stored[key] === undefined ? undefined : structuredClone(stored[key]); },
@@ -46,26 +52,55 @@ export function createNativeWalletControllers() {
       supported: () => true,
       getSnapshot: () => catalogue,
       reserve(request, expectedRevision) {
-        if (expectedRevision !== catalogue.revision) throw Error('CANCELLED');
+        if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
         return {
           cancel() {},
           async execute(guard) {
             guard();
-            let account: NativeWalletCatalogueSnapshot['accounts'][number] | undefined;
+            let active = catalogue.active.accountId;
+            let items = [...catalogue.accounts];
             if (request.kind === 'create') {
-              if (request.password !== 'public-password' || catalogue.accounts.length > 2) throw Error('Invalid synthetic account creation');
-              // Public fixture only: exercise real account-management UI without deriving a key.
-              const index = catalogue.accounts.length;
-              account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label, address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
-              catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account] });
-            } else if (request.kind === 'select') {
-              account = catalogue.accounts.find((candidate) => candidate.id === request.id);
-            } else throw Error('This fixture only selects or creates HD accounts');
-            if (!account) throw Error('Unknown fixture HD account');
-            catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: account.id } });
+              if (request.password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              const index = Math.max(...items.filter((a) => a.type === 'HDAccount').map((a) => a.index)) + 1;
+              const account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label,
+                address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
+              items.push(account); active = account.id;
+            } else {
+              const account = items.find((candidate) => candidate.id === ('id' in request ? request.id : ''));
+              if (!account) throw new KeyringRuntimeError('INVALID_INPUT');
+              if (request.kind === 'select') active = account.id;
+              else if (request.kind === 'rename') items = items.map((item) => item.id === account.id ? { ...item, label: request.label } : item);
+              else if (request.kind === 'remove') {
+                if (request.password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                if (account.id === active || account.type === 'HDAccount' && account.index === 0) throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
+                items = items.filter((item) => item.id !== account.id); importedKeys.delete(account.id);
+              } else throw new KeyringRuntimeError('INVALID_INPUT');
+            }
+            catalogue = Object.freeze({ ...catalogue, accounts: items, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: active } });
             guard();
           },
         };
+      },
+    },
+    imports: {
+      reserve(input, password, expectedRevision) {
+        if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
+        const key = normalizeImportedKey(input.privateKey), identity = importedKeyIdentity(key, nextImportedIndex);
+        if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
+        if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
+        if (catalogue.accounts.length >= 20) throw new KeyringRuntimeError('ACCOUNT_LIMIT');
+        return { cancel() {}, async execute(guard) {
+          guard(); audit.importAttempts++; events.push('import:start');
+          await importGate();
+          if (importFailure) throw new KeyringRuntimeError(importFailure);
+          if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+          guard();
+          importedKeys.set(identity.id, key); nextImportedIndex++;
+          const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: 60 as const, label: input.label, address: identity.address };
+          catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account], revision: catalogue.revision + 1,
+            active: { ...catalogue.active, accountId: account.id } });
+          audit.imports++; events.push('import:committed'); guard();
+        } };
       },
     },
     session: {
@@ -93,7 +128,7 @@ export function createNativeWalletControllers() {
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
-    async journal(guard) { guard(); return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: ADDRESS, chainId: '1' }, guard); },
+    async journal(guard) { guard(); const account = catalogue.accounts.find((item) => item.id === catalogue.active.accountId)!; return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: account.address, chainId: '1' }, guard, Date.now, account.index, undefined, undefined, account.type); },
     async authorize(_password, guard) { guard(); },
     async sign(_transaction, _password, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
@@ -124,7 +159,7 @@ export function createNativeWalletControllers() {
   const backup = new SeedBackupFlow(authority, () => backupRuntime);
   backup.onClear(() => events.push('backup:cancel'));
   const keyRuntime: KeyringRuntime['keyExport'] = {
-    async readSelected(_scope, password, guard) {
+    async readSelected(scope, password, guard) {
       guard();
       if (!sessionUnlocked) throw Error('Locked fixture session');
       audit.keyAttempts++;
@@ -135,12 +170,13 @@ export function createNativeWalletControllers() {
       if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
       guard();
       events.push('key:finish');
-      return PUBLIC_TEST_KEY;
+      return importedKeys.get(scope.accountId) ?? PUBLIC_TEST_KEY;
     },
   };
   const keyExport = new HdKeyExportFlow(authority, () => keyRuntime);
   keyExport.onClear(() => events.push('key:cancel'));
-  return { authority, keyExport, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+  const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
+  return { authority, keyExport, imports, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {
@@ -160,3 +196,5 @@ export const fixtureFetch: typeof fetch = async (_url, init) => {
   }
   return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'Content-Type': 'application/json' } });
 };
+
+export function fixtureCatalogue() { return catalogue; }

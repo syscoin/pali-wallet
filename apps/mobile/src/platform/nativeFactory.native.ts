@@ -6,6 +6,7 @@ import { HdKeyExportFlow } from '../custody/hdKeyExport.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
 import { NativeTokens } from '../portfolio/nativeTokens.ts';
 import { NativeActivity } from '../activity/nativeActivity.ts';
+import type { NativeImportView } from '../custody/importedAccounts.ts';
 import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
@@ -45,6 +46,10 @@ export function createNativeWalletControllers() {
     execute: (...args: Parameters<NativeAccountView['execute']>) => authority.manageAccounts(...args),
     cancel: () => authority.cancelAccountOperation(),
   });
-  return { authority, backup, keyExport, accounts, activity, transfers: transfers.view, tokens: tokens.view,
+  const imports: NativeImportView = Object.freeze({
+    submit: (...args: Parameters<NativeImportView['submit']>) => authority.importEvmAccount(...args),
+    cancel: () => authority.cancelAccountOperation(),
+  });
+  return { authority, backup, keyExport, imports, accounts, activity, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

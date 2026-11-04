@@ -7,6 +7,7 @@ import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from 
 type Props = {
   keyExport: HdKeyExportFlow;
   accountId: string;
+  accountType: 'HDAccount' | 'Imported';
   accountLabel: string;
   address: string;
   onViewRecovery(): void;
@@ -16,7 +17,7 @@ type Props = {
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, accountId, accountLabel, address, onViewRecovery, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, accountId, accountType, accountLabel, address, onViewRecovery, onLock, onBack, captureFailureHandler }: Props) {
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -85,14 +86,14 @@ export function NativeSecurity({ keyExport, accountId, accountLabel, address, on
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen><Header title={mode === 'key' ? 'Account private key' : mode === 'recovery' ? 'Recovery guide' : 'Security & backups'} subtitle="Development build · Use a test wallet" onBack={back} />
         {mode === 'hub' ? <>
-          <Notice title="Recovery phrase backed up" body="Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline." />
+          <Notice title={accountType === 'Imported' ? 'Imported key needs a separate backup' : 'Recovery phrase backed up'} body={accountType === 'Imported' ? 'Your recovery phrase cannot restore this account. Keep its original private key backed up separately.' : 'Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.'} />
           <Card><Row title="View recovery phrase" subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
             <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />
             <Row title="Recovery guide" subtitle="Understand what your backups restore" icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           <Button title="Lock wallet" variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>Keep your recovery phrase offline</Text>
-          <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. A private key restores only its one EVM account; it is not a complete wallet backup.</Text>
+          <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. Imported accounts need their original private keys backed up separately. A private key restores only its one EVM account; it is not a complete wallet backup.</Text>
           <Text style={styles.muted}>If you lose this device or forget its password, use your recovery phrase when setting up Pali on a new device. This screen cannot reset your password or replace an existing wallet.</Text>
           <Notice title="Keep secrets to yourself" body="Pali support will never ask for recovery words, private keys or your password. Never enter them into a website or send them to anyone." tone="amber" />
         </> : <>

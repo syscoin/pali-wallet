@@ -1,3 +1,4 @@
+const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
 const {
@@ -26,6 +27,7 @@ const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
 const FIELDS = new Set([
+  ...IMPORTED_REPORT_FIELDS,
   'version',
   'status',
   'phase',
@@ -113,6 +115,7 @@ function decodeNativeReport(
     !isNevmQualificationReport(report) ||
     !isZksysQualificationReport(report) ||
     !isHdKeyRevealQualificationReport(report) ||
+    !isImportedQualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined &&
       !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(
@@ -137,6 +140,7 @@ function assertFullNativeReport(report) {
     report.nativeBridgeExercised !== true ||
     report.nativeSigningVerified !== true ||
     !isHdKeyRevealQualificationReport(report) ||
+    !isImportedQualificationReport(report) ||
     report.sdkVersion !== '2.0.0' ||
     !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
     report.mnemonicEntropyVerified !==
@@ -236,7 +240,8 @@ function assertPhysicalRestart(created, restored) {
     !matchesErc20RestartEvidence(created, restored) ||
     !matchesNevmRestartEvidence(created, restored) ||
     !matchesZksysRestartEvidence(created, restored) ||
-    !matchesHdKeyRevealRestartEvidence(created, restored)
+    !matchesHdKeyRevealRestartEvidence(created, restored) ||
+    !matchesImportedRestartEvidence(created, restored)
   )
     throw Error('Physical cold restart identity mismatch');
 }
