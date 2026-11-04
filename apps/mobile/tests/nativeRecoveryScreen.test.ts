@@ -5,6 +5,7 @@ import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createIdleComponentFixture } from './idleComponentFixture.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 
@@ -61,7 +62,9 @@ function setup(phase = 'entry') {
     ...Object.fromEntries(['ActivityIndicator', 'KeyboardAvoidingView', 'Pressable', 'Text', 'TextInput', 'View'].map((name) => [name, name])),
   };
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Icon', 'Notice', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
+  const idle = createIdleComponentFixture(hook, native);
   const loaded = evaluate(readFileSync(new NodeURL('../src/screens/NativeRecovery.tsx', import.meta.url), 'utf8'), {
+    './IdleActivityBoundary': idle.components,
     react: hook, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
   });
   const snapshot: Snapshot = { phase, inventory, error: '', fieldErrors: {} };
@@ -79,7 +82,7 @@ function setup(phase = 'entry') {
     return { ...el, children: el.children.flat(Infinity).map(expand), props: { ...el.props, ...(el.props.footer ? { footer: expand(el.props.footer) } : {}) } };
   };
   const render = () => { cursor = 0; const result = (loaded.NativeRecovery as (props: object) => Element)({ flow }); layouts.splice(0).forEach((run) => run()); return expand(result) as Element; };
-  return { render, snapshot, calls, back, hook, native, ui, component: loaded.NativeRecovery,
+  return { render, snapshot, calls, back, hook, native, ui, idle, component: loaded.NativeRecovery,
     renderOwner(component: (props: object) => Element, props: object) { cursor = 0; const result = component(props); layouts.splice(0).forEach((run) => run()); return result; },
     renderFlow(value: unknown) { cursor = 0; const result = (loaded.NativeRecovery as (props: object) => Element)({ flow: value }); layouts.splice(0).forEach((run) => run()); return expand(result) as Element; },
     admission(value: boolean) { admitted = value; },
@@ -96,7 +99,7 @@ function all(tree: unknown): Element[] {
 const text = (tree: unknown): string => all(tree).flatMap((node) => node.children.filter((child) => typeof child === 'string' || typeof child === 'number')).join(' ');
 function field(tree: Element, label: string) { const node = all(tree).find((e) => e.type === 'TextInput' && e.props.accessibilityLabel === label); assert.ok(node); return node; }
 function button(tree: Element, title: string) { const node = all(tree).find((e) => e.type === 'Button' && e.props.title === title); assert.ok(node); return node; }
-function press(node: Element) { (node.props.onPress as () => void)(); }
+function press(node: Element) { (node.props.onPress as (event: object) => void)({ nativeEvent: {} }); }
 
 test('actual recovery component keeps bounded private input with native autofill/correction disabled', () => {
   const f = setup(); const tree = f.render();
@@ -191,6 +194,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
   Object.assign(dependencies, {
+    '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
     react: root.hook, 'react-native': leaf.native, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
