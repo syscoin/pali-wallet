@@ -9,6 +9,8 @@ import { formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
 import { NativePortfolioController } from '../portfolio/nativePortfolio';
+import type { NativeTokenView } from '../portfolio/nativeTokens';
+import { NativeTokens } from './NativeTokens';
 import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySource } from '../portfolio/nativePortfolio';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 
@@ -22,28 +24,32 @@ type Props = {
   accountLabel?: string;
   onManageAccounts?(): void;
   onManageNetworks?(): void;
+  tokenView?: NativeTokenView;
 };
 type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSend, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks }: Props) {
+export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSend, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, tokenView }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader(), [reader]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSend={onSend} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} />;
+  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSend={onSend} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} tokenView={tokenView} />;
 }
 
-function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSend, accountLabel, onManageAccounts, onManageNetworks }: {
+function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSend, accountLabel, onManageAccounts, onManageNetworks, tokenView }: {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot;
-  onExit(): void; onLock(): void; onViewRecovery(): void; onSend?(): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void;
+  onExit(): void; onLock(): void; onViewRecovery(): void; onSend?(): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void; tokenView?: NativeTokenView;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
+  const [tokenTitle, setTokenTitle] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | null>(null);
   const lifecycle = useRef({ alive: false, epoch: 0, busy: false });
+  const tokenBack = useRef<(() => boolean) | null>(null);
+  const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const account = snapshot.account;
   const network = getNetwork(account?.network ?? 'ethereum');
   const networkName = network.name;
@@ -70,7 +76,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
     return () => back.remove();
   }, [receiving, invalidateActions]);
 
-  const back = () => { if (receiving) { setReceiveScope(null); invalidateActions(); } else onExit(); };
+  const back = () => { if (receiving) { setReceiveScope(null); invalidateActions(); } else if (!tokenBack.current?.()) onExit(); };
   const publicAction = async (kind: 'copy' | 'share') => {
     const current = account;
     if (!current || !model.isCurrent(current) || lifecycle.current.busy) return;
@@ -108,7 +114,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen footer={actions}>
-      <Header title={receiving ? `Receive ${symbol}` : 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
+      <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
         <View style={s.identity}><Coin id={network.id} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${networkName} address ${account.address}`} testID="native-receive-qr">
@@ -117,6 +123,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         <Text selectable style={s.receiveAddress} accessibilityLabel={`${networkName} address ${account.address}`} testID="native-receive-address">{account.address}</Text>
         <Notice title="Check the network" body={`Use ${networkName}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
       </> : <>
+        {!tokenTitle && <>
         <View style={s.hero}>
           <Coin id={network.id} size={46} />
           <Text style={s.label}>{networkName.toUpperCase()} BALANCE</Text>
@@ -135,7 +142,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         <Text style={s.privacy}>Refreshing shares this public address with the {networkName} RPC provider.</Text>
         <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
-        <Card style={s.tools}>{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title="View recovery phrase" subtitle="Confirm your password to continue" icon="shield" onPress={onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>
+        </>}
+        {tokenView && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle} onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
+        {!tokenTitle && <Card style={s.tools}>{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title="View recovery phrase" subtitle="Confirm your password to continue" icon="shield" onPress={onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
       </>}
       {currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>}
       <Text style={s.buildLabel}>Development build · Use a test wallet</Text>

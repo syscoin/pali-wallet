@@ -1,6 +1,7 @@
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
+import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -151,7 +152,7 @@ window.__nativeAccountsFixture = {
 
 function Fixture() {
   const failure = useSyncExternalStore(accountController.subscribe, () => accountFailure, () => accountFailure);
-  return <SafeAreaProvider>{new URLSearchParams(window.location.search).has('network-portfolio') ? <NativeNetworkPortfolioFixture /> : new URLSearchParams(window.location.search).has('networks') ? <NetworkPickerFixture /> : new URLSearchParams(window.location.search).has('accounts')
+  return <SafeAreaProvider>{new URLSearchParams(window.location.search).has('token-portfolio') ? <NativeTokenPortfolioFixture /> : new URLSearchParams(window.location.search).has('network-portfolio') ? <NativeNetworkPortfolioFixture /> : new URLSearchParams(window.location.search).has('networks') ? <NetworkPickerFixture /> : new URLSearchParams(window.location.search).has('accounts')
     ? failure ? <><Text>Wallet locked</Text><NativeCustodyFeedback error={failure} /></> : <NativeAccounts controller={accountController} onBack={() => undefined} />
     : <NativeSend controller={controller} onBack={() => undefined} />}</SafeAreaProvider>;
 }
