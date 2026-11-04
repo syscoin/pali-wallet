@@ -436,7 +436,8 @@ export function createKeyringRuntimeFactory(
               const fingerprint = await storage.getWalletFingerprint();
               current(captured); checkGuard(assertCurrent);
               const address = normalizePublicAddress(state.accounts.HDAccount[state.activeAccount.id]!.address, 'ethereum');
-              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, state.activeAccount.id, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard));
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, state.activeAccount.id, network, (record, guard) => activityHistory.archiveTerminal(record, guard));
             },
             authorize: (password, assertCurrent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
@@ -456,6 +457,8 @@ export function createKeyringRuntimeFactory(
               try {
                 intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
                 assertTransferIntentEnvelope(transaction, intent);
+                if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId).chainId)
+                  throw new KeyringRuntimeError('INVALID_INPUT');
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
@@ -465,9 +468,12 @@ export function createKeyringRuntimeFactory(
               await hydrate(captured);
               current(captured); checkGuard(assertCurrent);
               assertTransferIntentEnvelope(transaction, intent);
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+              if (!nativeSigningEnabled(network.id) || transaction.chainId !== network.chainId)
+                throw new KeyringRuntimeError('INVALID_INPUT');
               const signed = keyring.signPreparedEvmTransaction({
                 account: { id: state.activeAccount.id, type: 'HDAccount', expectedAddress: transaction.from },
-                network: { kind: 'ethereum', chainId: '1', slip44: 60, url: RPC_ENDPOINTS.ethereum! },
+                network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
                 transaction,
               }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });
               current(captured); checkGuard(assertCurrent);

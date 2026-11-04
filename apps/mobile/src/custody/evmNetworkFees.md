@@ -6,8 +6,9 @@ Its caller supplies a synchronous revision guard; every asynchronous boundary
 checks the guard, and request groups abort on failure. Input fields are detached
 and validated before the first await. Ethereum receipt recovery uses the canonical receipt adapter through
 `NativeTransferRpc.receipt`; its public result shape is unchanged. Preparation,
-fee review, confirmation signing and broadcast are unchanged. Fee adapters remain
-unwired into `NativeTransfers`. No additional network can send.
+fee review, confirmation signing and broadcast use the separate host-owned send
+capabilities. The native-coin path now also supports fixed NEVM testnet 5700;
+ERC20 remains Ethereum-only. L2 fee adapters remain unwired into `NativeTransfers`.
 
 ## Fees and consent
 
@@ -41,15 +42,17 @@ values must not be mixed with these timestamps.
 | Network | Fee query | Receipt observation / remaining send gate |
 | --- | --- | --- |
 | Ethereum | EIP-1559 execution only | Recovery checks canonical receipt block, finalized height and consumed nonce before making the saved transaction terminal. |
-| NEVM 57 / 5700 | Execution-only candidate | Finalized-tag response is labelled `nevm-depth-observation`; never terminal-eligible here. Explicit confirmation policy and native qualification remain. |
+| NEVM 57 | Execution-only candidate | Finalized-tag response is labelled `nevm-depth-observation`; never terminal-eligible here. Sending remains disabled. |
+| NEVM Testnet 5700 | Execution-only native send | Explicit 12-confirmation depth policy; canonical receipt/head/anchor and consumed nonce are required. This is not protocol finality. Live/native qualification remains pending. |
 | Arbitrum One | Supplied gas limit includes publication cost; verify `eth_estimateGas` fits it, add no separate L1 surcharge | Settlement unqualified; matching node fee/finality and native qualification remain. |
 | Base | Source-pinned Jovian GPO: `getL1FeeUpperBound(unsignedByteLength)` and `getOperatorFee(gasLimit)` | Both extras are estimates; settlement and native qualification remain. |
 | Rollux | Source-pinned legacy GPO: `getL1Fee(canonicalUnsignedBytes)` | No modern OP method probing/fallback. L1 remains uncapped; node charging, settlement and native qualification remain. |
 | zkTanenbaum | Unqualified; fee/receipt reads reject before RPC | Pubdata billing and finality semantics remain unresolved. |
 
 `feeSourceQualified` describes the fee model or oracle source correspondence,
-not full sending qualification. Every profile exposes `newSendEnabled: false`.
-Existing Ethereum signing gates remain the separate unchanged runtime policy.
+not full sending qualification. Only the NEVM testnet profile exposes new-send
+eligibility. Registry-owned host capabilities allow native coins on Ethereum and
+NEVM testnet, and ERC20 only on Ethereum; a caller-supplied profile never grants it.
 
 ## Oracle identity
 
@@ -97,7 +100,7 @@ typed byte-limit error permits a separate finalized-block/nonce observation,
 with numeric-block nonce lookup, canonical hash recheck and a final chain check.
 An unconsumed nonce or unavailable evidence remains an error, never an absent
 receipt that could offer retry. Only Ethereum can mark this observation terminal;
-NEVM stays observation-only and unqualified settlement profiles refuse it.
+NEVM mainnet stays observation-only and unqualified settlement profiles refuse it.
 Malformed admitted bodies, recognized RPC errors and transport failures do not
 select this path. The receipt budget remains 16 KiB.
 The existing public receipt shape maps these observations to confirmed/reverted
@@ -108,6 +111,16 @@ malformed/profile-mismatch observations map to `INVALID_RESPONSE`.
 NEVM tags are depth lookbacks in the matched Geth source, with observed 11/12
 block lags; they are not independent ChainLock proof. Other settlement profiles
 remain unqualified and cannot return terminal eligibility.
+
+The NEVM testnet send path does not use `finalized`. It samples head H, reads the
+canonical numeric anchor H-11, and reads the sender nonce at that same anchor.
+A matching receipt is depth-confirmed only when H-receiptHeight+1 >= 12 and the
+anchor nonce consumed the saved nonce. The receipt is repeated, both receipt
+block and anchor/head hashes are checked, and chain identity is checked again.
+An oversized body stays opaque; a missing receipt with a consumed anchor nonce
+retires only that nonce with outcome unavailable. An absent unconsumed receipt
+can offer an explicit retry of the existing signed bytes, never a new transfer.
+UI and reports keep depth confirmation separate from Ethereum finality.
 
 Ordinary responses retain a 16 KiB limit. Bytecode has a separate 32 KiB response
 limit, and block responses have a 512 KiB limit because even header-oriented

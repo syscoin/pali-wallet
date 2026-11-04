@@ -27,7 +27,8 @@ test('switching away from Receive discards its scope and labels testnet funds ex
   await page.evaluate(() => window.__nativeNetworkPortfolio.select('syscoin-nevm-testnet'));
   await expect(page.getByTestId('native-receive-qr')).toHaveCount(0);
   await expect(page.getByText('Account 1 · Syscoin NEVM Testnet · Test network', { exact: true })).toBeVisible();
-  await expect(page.getByText('Test network · Balance and receive only', { exact: true })).toBeVisible();
+  await expect(page.getByText('Test network · Balance and receive only', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Syscoin NEVM Testnet balance 1.234 TSYS');
   await page.getByTestId('native-portfolio-receive').click();
   await expect(page.getByText('Use Syscoin NEVM Testnet (test network) for this address.', { exact: false })).toBeVisible();

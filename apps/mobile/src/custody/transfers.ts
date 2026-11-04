@@ -9,6 +9,7 @@ import {
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from './transferRpc.ts';
+import { getNativeSendContext, erc20SigningEnabled, type NativeSendContext } from './networkContext.ts';
 import {
   parseTokenAmount,
   type Erc20Metadata,
@@ -22,6 +23,7 @@ import {
 } from './transferIntent.ts';
 
 export type NativeTransferReview = Readonly<{
+  context: NativeSendContext;
   id: string;
   from: string;
   recipient: string;
@@ -36,6 +38,7 @@ export type NativeTransferReview = Readonly<{
   intent?: Erc20TransferIntent;
 }>;
 export type NativeTransferSnapshot = Readonly<{
+  context?: NativeSendContext | null;
   phase:
     | 'idle'
     | 'preparing'
@@ -156,7 +159,8 @@ export class NativeTransfers {
   private readonly unsubscribe: () => void;
   private readonly source: Source;
   private readonly runtime: () => NativeTransferRuntime | undefined;
-  private readonly rpc: NativeTransferRpc;
+  private readonly rpc?: NativeTransferRpc;
+  private readonly rpcs = new Map<string, NativeTransferRpc>();
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly now: () => number;
   constructor(
@@ -170,13 +174,13 @@ export class NativeTransfers {
   ) {
     this.source = source;
     this.runtime = runtime;
-    this.rpc = options.rpc ?? new NativeTransferRpc();
+    this.rpc = options.rpc;
     this.randomBytes =
       options.randomBytes ??
       ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
     this.now = options.now ?? (() => performance.now());
     const identity = (state: CustodySnapshot) =>
-      `${state.phase}:${state.revision}:${state.account?.address ?? ''}`;
+      `${state.phase}:${state.revision}:${state.account?.network ?? ''}:${state.account?.address ?? ''}`;
     this.sourceIdentity = identity(source.getSnapshot());
     this.unsubscribe = source.subscribe((state) => {
       const next = identity(state);
@@ -265,6 +269,8 @@ export class NativeTransfers {
       runtime: NativeTransferRuntime;
       signal: AbortSignal;
       address: string;
+      context: NativeSendContext;
+      rpc: NativeTransferRpc;
     }) => Promise<void>
   ): Promise<void> {
     if (this.disposed)
@@ -275,13 +281,18 @@ export class NativeTransfers {
     if (
       captured.phase !== 'ready' ||
       !captured.account ||
-      captured.account.network !== 'ethereum' ||
       !runtime
     )
       return Promise.reject(new NativeTransferError('NOT_READY'));
+    let context: NativeSendContext;
+    try { context = getNativeSendContext(captured.account.network); }
+    catch { return Promise.reject(new NativeTransferError('NOT_READY')); }
+    let rpc = this.rpc ?? this.rpcs.get(context.networkId);
+    if (!rpc) { rpc = new NativeTransferRpc({ networkId: context.networkId }); this.rpcs.set(context.networkId, rpc); }
+    if (rpc.context !== context) return Promise.reject(new NativeTransferError('NOT_READY'));
     const address = normalizePublicAddress(
       captured.account.address,
-      'ethereum'
+      context.networkId
     );
     const generation = this.generation;
     const controller = new AbortController();
@@ -296,6 +307,7 @@ export class NativeTransfers {
         current.phase !== 'ready' ||
         current.revision !== captured.revision ||
         current.account?.address !== captured.account?.address ||
+        current.account?.network !== context.networkId ||
         this.runtime() !== runtime
       )
         throw new NativeTransferError('CANCELLED');
@@ -308,6 +320,8 @@ export class NativeTransfers {
           runtime,
           signal: controller.signal,
           address,
+          context,
+          rpc,
         });
       })
       .catch((error: unknown) => {
@@ -343,8 +357,8 @@ export class NativeTransfers {
               error.code === 'INSUFFICIENT_TOKEN_BALANCE'
                 ? 'Not enough tokens for this transfer.'
                 : this.snapshot.intent
-                ? 'Not enough ETH for the maximum network fee.'
-                : 'Not enough ETH for the amount and maximum network fee.',
+                ? `Not enough ${context.symbol} for the maximum network fee.`
+                : `Not enough ${context.symbol} for the amount and maximum network fee.`,
           });
           throw new NativeTransferError(
             error.code as 'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_TOKEN_BALANCE'
@@ -401,10 +415,12 @@ export class NativeTransfers {
   private showReview(
     transaction: PreparedEvmTransaction,
     existing: TransferJournalEntry | null,
-    inputIntent?: Erc20TransferIntent
+    inputIntent?: Erc20TransferIntent,
+    context = getNativeSendContext(this.source.getSnapshot().account!.network)
   ) {
     const intent = existing?.intent ?? inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
+    if (transaction.chainId !== context.chainId || intent && !erc20SigningEnabled(context.networkId)) throw new NativeTransferError('FAILED');
     const entropy = this.randomBytes(16);
     if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
       throw new NativeTransferError('FAILED');
@@ -419,6 +435,7 @@ export class NativeTransfers {
     ).toString();
     const publicReview: NativeTransferReview = Object.freeze({
       id,
+      context,
       from: transaction.from,
       recipient: intent?.recipient ?? transaction.to,
       amountUnits: intent?.amountUnits ?? transaction.value,
@@ -463,10 +480,11 @@ export class NativeTransfers {
     } catch {
       return Promise.reject(new NativeTransferError('INVALID_INPUT'));
     }
-    return this.perform(async ({ assertCurrent, runtime, signal, address }) => {
+    return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
       this.review = null;
       this.publish({
         phase: 'preparing',
+        context,
         review: null,
         hash: null,
         message: null,
@@ -486,9 +504,9 @@ export class NativeTransfers {
         });
         throw new NativeTransferError('PENDING_TRANSFER');
       }
-      const quote = await this.rpc.prepare(address, to, units, signal);
+      const quote = await rpc.prepare(address, to, units, signal);
       assertCurrent();
-      this.showReview(quote.transaction, null);
+      this.showReview(quote.transaction, null, undefined, context);
     });
   }
   prepareToken(
@@ -503,10 +521,12 @@ export class NativeTransfers {
     } catch {
       return Promise.reject(new NativeTransferError('INVALID_INPUT'));
     }
-    return this.perform(async ({ assertCurrent, runtime, signal, address }) => {
+    return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
+      if (!erc20SigningEnabled(context.networkId)) throw new NativeTransferError('NOT_READY');
       this.review = null;
       this.publish({
         phase: 'preparing',
+        context,
         review: null,
         hash: null,
         message: null,
@@ -545,9 +565,9 @@ export class NativeTransfers {
       if (intent.token.contractAddress !== contract)
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
-      const quote = await this.rpc.prepareToken(address, intent, signal);
+      const quote = await rpc.prepareToken(address, intent, signal);
       assertCurrent();
-      this.showReview(quote.transaction, null, intent);
+      this.showReview(quote.transaction, null, intent, context);
     });
   }
   confirm(reviewId: string, password: string): Promise<void> {
@@ -564,7 +584,8 @@ export class NativeTransfers {
     this.review = null;
     if (this.expiry !== null) clearTimeout(this.expiry);
     this.expiry = null;
-    return this.perform(async ({ assertCurrent, runtime, signal, address }) => {
+    return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
+      if (approved.public.context !== context) throw new NativeTransferError('EXPIRED');
       let startedSubmission = false;
       const guard = () => {
         assertCurrent();
@@ -594,8 +615,8 @@ export class NativeTransfers {
         entry = stored;
       } else {
         const latest = approved.public.intent
-          ? await this.rpc.prepareToken(address, approved.public.intent, signal)
-          : await this.rpc.prepare(
+          ? await rpc.prepareToken(address, approved.public.intent, signal)
+          : await rpc.prepare(
               address,
               approved.transaction.to,
               approved.transaction.value,
@@ -652,7 +673,7 @@ export class NativeTransfers {
         message: null,
       });
       try {
-        await this.rpc.broadcast(
+        await rpc.broadcast(
           entry.rawTransaction,
           entry.hash,
           signal,
@@ -721,7 +742,7 @@ export class NativeTransfers {
     const common = {
       from: tx.from!,
       to: tx.to!,
-      chainId: '1',
+      chainId: tx.chainId.toString(),
       nonce: tx.nonce.toString(),
       value: tx.value.toString(),
       gasLimit: tx.gasLimit.toString(),
@@ -739,7 +760,11 @@ export class NativeTransfers {
           }
     );
   }
-  private terminalMessage(phase: string, intent?: Erc20TransferIntent): string {
+  private terminalMessage(phase: string, intent?: Erc20TransferIntent, context?: NativeSendContext): string {
+    if (context?.settlement.kind === 'nevm-depth-12' && phase === 'confirmed')
+      return 'Depth confirmed after 12 confirmations. This is a confirmation-depth observation, not protocol finality.';
+    if (context?.settlement.kind === 'nevm-depth-12' && phase === 'reverted')
+      return 'Transfer reverted and depth confirmed after 12 confirmations. Network fees may still apply.';
     if (phase === 'confirmed')
       return intent
         ? 'Transaction confirmed. Check the token balance for the received amount; token contracts may deduct fees or apply other rules.'
@@ -773,9 +798,9 @@ export class NativeTransfers {
       this.queuedRecovery = { generation, retry: offerRetry, promise: queued };
       return queued;
     }
-    return this.perform(async ({ assertCurrent, runtime, signal }) => {
+    return this.perform(async ({ assertCurrent, runtime, signal, context, rpc }) => {
       this.review = null;
-      this.publish({ phase: 'preparing', review: null, message: null });
+      this.publish({ phase: 'preparing', context, review: null, message: null });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
       const entry = await journal.load();
@@ -789,32 +814,32 @@ export class NativeTransfers {
         this.publish({
           phase: entry.phase,
           hash: entry.hash,
-          message: this.terminalMessage(entry.phase, entry.intent),
+          message: this.terminalMessage(entry.phase, entry.intent, context),
         });
         return;
       }
       this.publish({ hash: entry.hash });
       const tx = this.transaction(entry);
-      const receipt = await this.rpc.receipt(
+      const receipt = await rpc.receipt(
         { hash: entry.hash, from: tx.from, to: tx.to, nonce: tx.nonce },
         signal
       );
       assertCurrent();
-      if (receipt?.finalized) {
+      if (receipt && (receipt.terminalEligible ?? receipt.finalized)) {
         await journal.transition(entry.hash, receipt.status);
         assertCurrent();
         this.publish({
           phase: receipt.status,
           hash: entry.hash,
-          message: this.terminalMessage(receipt.status, entry.intent),
+          message: this.terminalMessage(receipt.status, entry.intent, context),
         });
-      } else if (!receipt && offerRetry) this.showReview(tx, entry);
+      } else if (!receipt && offerRetry) this.showReview(tx, entry, undefined, context);
       else
         this.publish({
           phase: receipt ? 'pending' : 'unknown',
           hash: entry.hash,
           message: receipt
-            ? 'Included in a block. Waiting for finality.'
+            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.' : 'Included in a block. Waiting for finality.'
             : 'Submission is unconfirmed. Do not create another transfer for this nonce.',
         });
     });

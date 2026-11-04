@@ -14,10 +14,10 @@ import {
 } from './transferIntent.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { EvmTransferReadError } from './evmFeeContracts.ts';
+import { getNativeSendContext, erc20SigningEnabled, type EvmNetworkId } from './networkContext.ts';
 import {
   boundedResponseText,
   parseRpcQuantity,
-  RPC_ENDPOINTS,
 } from '../platformRpc.ts';
 
 export type NativeTransferQuote = Readonly<{
@@ -25,7 +25,7 @@ export type NativeTransferQuote = Readonly<{
     type: 2;
     from: string;
     to: string;
-    chainId: '1';
+    chainId: string;
     nonce: string;
     value: string;
     gasLimit: string;
@@ -45,8 +45,9 @@ export type NativeTransferReceipt = Readonly<
       blockHash: string;
       blockNumber: string;
       finalized: boolean;
+      terminalEligible?: boolean;
     }
-  | { status: 'nonce-consumed'; finalized: true }
+  | { status: 'nonce-consumed'; finalized: boolean; terminalEligible?: boolean }
 >;
 export class NativeTransferRpcError extends Error {
   readonly code:
@@ -103,11 +104,14 @@ function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
 
 /** Only the native transfer authority receives this network capability. */
 export class NativeTransferRpc {
+  readonly context;
   private readonly fetcher: FetchLike;
   private readonly timeoutMs: number;
   private readonly receiptRpc: EvmTransferReadRpc;
   private sequence = 0;
-  constructor(options: { fetch?: FetchLike; timeoutMs?: number } = {}) {
+  constructor(options: { networkId?: EvmNetworkId; fetch?: FetchLike; timeoutMs?: number } = {}) {
+    this.context = getNativeSendContext(options.networkId ?? 'ethereum');
+    Object.defineProperty(this, 'context', { value: this.context, writable: false, configurable: false });
     this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
     this.timeoutMs = options.timeoutMs ?? 12000;
     if (
@@ -116,7 +120,7 @@ export class NativeTransferRpc {
       this.timeoutMs > 30000
     )
       throw new Error('Invalid transfer RPC timeout');
-    this.receiptRpc = new EvmTransferReadRpc('ethereum', {
+    this.receiptRpc = new EvmTransferReadRpc(this.context.networkId, {
       fetch: this.fetcher,
       timeoutMs: this.timeoutMs,
     });
@@ -158,7 +162,7 @@ export class NativeTransferRpc {
     const id = ++this.sequence;
     if (!Number.isSafeInteger(id)) return invalid();
     const response = await abortable(
-      this.fetcher(RPC_ENDPOINTS.ethereum!, {
+      this.fetcher(this.context.rpcUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -205,7 +209,7 @@ export class NativeTransferRpc {
     return body.result;
   }
   private async checkChain(signal: AbortSignal): Promise<void> {
-    if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== 1n)
+    if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== BigInt(this.context.chainId))
       return invalid();
   }
   prepare(
@@ -214,8 +218,8 @@ export class NativeTransferRpc {
     valueUnits: string,
     signal: AbortSignal
   ): Promise<NativeTransferQuote> {
-    const sender = normalizePublicAddress(from, 'ethereum');
-    const recipient = normalizePublicAddress(to, 'ethereum');
+    const sender = normalizePublicAddress(from, this.context.networkId);
+    const recipient = normalizePublicAddress(to, this.context.networkId);
     const value = assertBaseUnits(valueUnits);
     if (value <= 0n || /^0x0{40}$/i.test(recipient))
       throw new NativeTransferRpcError('INVALID_RESPONSE');
@@ -275,7 +279,7 @@ export class NativeTransferRpc {
           type: 2,
           from: sender,
           to: recipient,
-          chainId: '1',
+          chainId: this.context.chainId,
           nonce: nonce.toString(),
           value: value.toString(),
           gasLimit: gas.toString(),
@@ -294,6 +298,7 @@ export class NativeTransferRpc {
     input: Erc20TransferIntent,
     signal: AbortSignal
   ): Promise<NativeTransferQuote> {
+    if (!erc20SigningEnabled(this.context.networkId)) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     const sender = normalizePublicAddress(from, 'ethereum');
     const intent = snapshotErc20TransferIntent(input);
     const data = encodeErc20Transfer(intent.recipient, intent.amountUnits);
@@ -460,7 +465,7 @@ export class NativeTransferRpc {
       const tx = Transaction.from(rawTransaction);
       if (
         !tx.isSigned() ||
-        tx.chainId !== 1n ||
+        tx.chainId !== BigInt(this.context.chainId) ||
         (tx.type !== 0 && tx.type !== 2) ||
         !tx.to
       )
@@ -474,6 +479,7 @@ export class NativeTransferRpc {
         },
         intent
       );
+      if (intent && !erc20SigningEnabled(this.context.networkId)) return invalid();
     } catch {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
@@ -505,7 +511,8 @@ export class NativeTransferRpc {
           if (!observation.settlement.terminalEligible) return invalid();
           return Object.freeze({
             status: 'nonce-consumed' as const,
-            finalized: true as const,
+            finalized: observation.settlement.kind === 'ethereum-finalized',
+            ...(this.context.networkId === 'ethereum' ? {} : { terminalEligible: true }),
           });
         }
         return Object.freeze({
@@ -515,7 +522,8 @@ export class NativeTransferRpc {
               : ('reverted' as const),
           blockHash: observation.block.hash,
           blockNumber: observation.block.number,
-          finalized: observation.settlement.terminalEligible,
+          finalized: observation.settlement.kind === 'ethereum-finalized' && observation.settlement.terminalEligible,
+          ...(this.context.networkId === 'ethereum' ? {} : { terminalEligible: observation.settlement.terminalEligible }),
         });
       })
       .catch((error: unknown) => {

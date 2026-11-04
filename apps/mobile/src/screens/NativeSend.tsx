@@ -23,6 +23,10 @@ import {
 } from '../../../../source/shared/erc20';
 import type { NativeTransferView } from '../custody/transfers';
 import {
+  getNativeSendContext,
+  type NativeSendContext,
+} from '../custody/networkContext';
+import {
   Button,
   Card,
   Coin,
@@ -34,16 +38,18 @@ import {
   Text,
 } from '../ui';
 
-const failure = (error: unknown, token = false) => {
+const failure = (error: unknown, context: NativeSendContext, token = false) => {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_INPUT')
-    return 'Enter an Ethereum address and an amount greater than zero.';
+    return `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
+      context.name
+    } address and an amount greater than zero.`;
   if (code === 'EXPIRED')
     return 'Network conditions changed or this review expired. Review the transfer again.';
   if (code === 'INSUFFICIENT_BALANCE')
     return token
-      ? 'Not enough ETH for the maximum network fee.'
-      : 'Not enough ETH for the amount and maximum network fee.';
+      ? `Not enough ${context.symbol} for the maximum network fee.`
+      : `Not enough ${context.symbol} for the amount and maximum network fee.`;
   if (code === 'INSUFFICIENT_TOKEN_BALANCE')
     return 'Not enough tokens for this transfer.';
   if (code === 'TOKEN_CHANGED')
@@ -62,11 +68,13 @@ export function NativeSend({
   onBack,
   accountLabel = 'Account 1',
   token,
+  context = getNativeSendContext('ethereum'),
 }: {
   controller: NativeTransferView;
   onBack(): void;
   accountLabel?: string;
   token?: Erc20Metadata;
+  context?: NativeSendContext;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -90,6 +98,12 @@ export function NativeSend({
   }, [onBack]);
   const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const review = snapshot.review;
+  const capturedContext = review?.context ?? snapshot.context ?? context;
+  const networkLabel = `${capturedContext.name}${
+    capturedContext.testnet ? ' · Test network' : ''
+  }`;
+  const depthConfirmed = capturedContext.settlement.kind === 'nevm-depth-12';
+  const networkArticle = capturedContext.networkId === 'ethereum' ? 'an' : 'a';
   const reviewedToken = review?.intent?.token;
   const outcomeToken = snapshot.intent?.token;
   const amountText = review
@@ -99,7 +113,9 @@ export function NativeSend({
     : '';
   const tokenIdentity = (asset: Erc20Metadata) => (
     <Card style={s.summary}>
-      <Text style={s.label}>TOKEN CONTRACT · ETHEREUM</Text>
+      <Text style={s.label}>
+        TOKEN CONTRACT · {capturedContext.name.toUpperCase()}
+      </Text>
       <Text selectable style={s.address} testID="native-send-token-contract">
         {asset.contractAddress}
       </Text>
@@ -142,7 +158,7 @@ export function NativeSend({
       await operation();
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch)
-        setError(failure(cause, !!token || !!snapshot.intent));
+        setError(failure(cause, capturedContext, !!token || !!snapshot.intent));
     }
   };
   useEffect(() => {
@@ -242,16 +258,25 @@ export function NativeSend({
                 ? 'Transfer status'
                 : token
                 ? `Send ${token.symbol}`
-                : 'Send ETH'
+                : `Send ${capturedContext.symbol}`
             }
-            subtitle={`${accountLabel} · Ethereum`}
+            subtitle={`${accountLabel} · ${networkLabel}`}
             onBack={close}
           />
+          {capturedContext.testnet && (
+            <Notice
+              title="Test network"
+              body={`Use test funds only. This transfer is on ${capturedContext.name} (chain ${capturedContext.chainId}).`}
+              tone="amber"
+            />
+          )}
           {review ? (
             <>
               <View style={s.hero}>
                 <Coin
-                  id={reviewedToken ? 'custom-token' : 'ethereum'}
+                  id={
+                    reviewedToken ? 'custom-token' : capturedContext.networkId
+                  }
                   size={46}
                 />
                 <Text
@@ -261,7 +286,8 @@ export function NativeSend({
                   {amountText}
                 </Text>
                 <Text style={styles.muted}>
-                  {reviewedToken?.symbol ?? 'ETH'} · Ethereum
+                  {reviewedToken?.symbol ?? capturedContext.symbol} ·{' '}
+                  {networkLabel}
                 </Text>
               </View>
               {reviewedToken && tokenIdentity(reviewedToken)}
@@ -277,7 +303,8 @@ export function NativeSend({
                 <View style={s.separator} />
                 <Text style={s.label}>MAXIMUM NETWORK FEE</Text>
                 <Text testID="native-send-fee">
-                  {formatBaseUnits(review.maximumFeeUnits, 18)} ETH
+                  {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
+                  {capturedContext.symbol}
                 </Text>
                 <Text style={s.hint}>
                   The final network fee may be lower. It cannot exceed this
@@ -287,7 +314,10 @@ export function NativeSend({
                   <>
                     <View style={s.separator} />
                     <Text style={s.label}>MAXIMUM TOTAL</Text>
-                    <Text>{formatBaseUnits(review.totalUnits, 18)} ETH</Text>
+                    <Text>
+                      {formatBaseUnits(review.totalUnits, 18)}{' '}
+                      {capturedContext.symbol}
+                    </Text>
                   </>
                 )}
               </Card>
@@ -296,6 +326,12 @@ export function NativeSend({
                   title="Token transfer"
                   body="The token amount and ETH network fee are separate. Token contracts may deduct fees or apply other rules, so the received amount can differ."
                   tone="amber"
+                />
+              )}
+              {depthConfirmed && (
+                <Notice
+                  title="12-confirmation depth policy"
+                  body="Pali marks this transfer depth confirmed after 12 confirmations. Depth confirmation is not protocol finality."
                 />
               )}
               {review.retry && (
@@ -326,16 +362,20 @@ export function NativeSend({
             <>
               <View style={s.hero}>
                 <Coin
-                  id={outcomeToken ? 'custom-token' : 'ethereum'}
+                  id={outcomeToken ? 'custom-token' : capturedContext.networkId}
                   size={46}
                 />
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
-                    ? outcomeToken
+                    ? depthConfirmed
+                      ? 'Depth confirmed'
+                      : outcomeToken
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
-                    ? 'Transfer reverted'
+                    ? depthConfirmed
+                      ? 'Reverted · depth confirmed'
+                      : 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
@@ -348,7 +388,7 @@ export function NativeSend({
                 title={
                   snapshot.phase === 'unknown'
                     ? 'Keep this transaction'
-                    : 'Ethereum transaction'
+                    : `${capturedContext.name} transaction`
                 }
                 body={
                   snapshot.message ??
@@ -400,10 +440,15 @@ export function NativeSend({
             </>
           ) : (
             <>
-              {input('Ethereum address', recipient, setRecipient, { max: 128 })}
+              {input(
+                `${capturedContext.name} address`,
+                recipient,
+                setRecipient,
+                { max: 128 }
+              )}
               {token && tokenIdentity(token)}
               {input(
-                token ? `Amount in ${token.symbol}` : 'Amount in ETH',
+                `Amount in ${token?.symbol ?? capturedContext.symbol}`,
                 amount,
                 setAmount,
                 {
@@ -412,16 +457,16 @@ export function NativeSend({
                 }
               )}
               <Notice
-                title="Ethereum network"
+                title={`${capturedContext.name} network`}
                 body={
                   token
                     ? 'Send this token only on Ethereum. Check its full contract address. The token amount and ETH network fee are shown separately before you confirm.'
-                    : 'Use an Ethereum address. The amount and maximum network fee are shown before you confirm.'
+                    : `Use ${networkArticle} ${capturedContext.name} address. The amount and maximum ${capturedContext.symbol} network fee are shown before you confirm.`
                 }
               />
               <Text style={s.hint}>
-                Preparing a transfer shares its addresses and amount with the
-                Ethereum RPC provider.
+                Preparing a transfer shares its addresses and amount with the{' '}
+                {capturedContext.name} RPC provider.
               </Text>
             </>
           )}

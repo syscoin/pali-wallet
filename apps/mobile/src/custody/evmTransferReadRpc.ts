@@ -29,7 +29,7 @@ const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockBy
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & { assertCurrent(): void };
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null }>;
 type ReceiptRequest = Readonly<{ hash: string; from: string; to: string; nonce: string }>;
-type Settlement = Readonly<{ kind: 'ethereum-finalized' | 'nevm-depth-observation' | 'unqualified'; observedHeight: string | null; terminalEligible: boolean }>;
+type Settlement = Readonly<{ kind: 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'unqualified'; observedHeight: string | null; terminalEligible: boolean }>;
 export type EvmReceiptObservation = Readonly<
   | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock; settlement: Settlement }
   | { status: 'nonce-consumed'; settlement: Settlement }
@@ -230,6 +230,55 @@ export class EvmTransferReadRpc {
       kind, observedHeight: finalized.number, terminalEligible: kind === 'ethereum-finalized',
     }) });
   }
+  /** Fixed testnet policy: canonical depth is an observation, never protocol finality. */
+  private async depthReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation | null> {
+    const head = block(await read('eth_getBlockByNumber', ['latest', false]));
+    read.assertCurrent();
+    const height = BigInt(head.number);
+    const anchor = height >= 11n
+      ? block(await read('eth_getBlockByNumber', [hex(height - 11n), false])) : null;
+    read.assertCurrent();
+    if (anchor && BigInt(anchor.number) !== height - 11n) rejectRead('PROFILE_CHANGED');
+    let raw: unknown, opaque = false;
+    try { raw = await read('eth_getTransactionReceipt', [expected.hash]); }
+    catch (error) { if (!(error instanceof ResponseSizeLimitError)) throw error; opaque = true; }
+    read.assertCurrent();
+    const consumed = anchor !== null && quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(anchor.number))])) > BigInt(expected.nonce);
+    read.assertCurrent();
+    let receipt = !opaque && raw !== null ? this.checkedReceipt(raw, expected) : null;
+    if (receipt) {
+      if (BigInt(receipt.block.number) > height) rejectRead('PROFILE_CHANGED');
+      await this.canonical(read, receipt.block);
+      read.assertCurrent();
+    }
+    const eligible = !!receipt && !!anchor && consumed && BigInt(receipt.block.number) <= BigInt(anchor.number);
+    if (eligible) {
+      try {
+        const repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
+        if (repeated.block.number !== receipt!.block.number || repeated.block.hash !== receipt!.block.hash || repeated.outcome !== receipt!.outcome)
+          rejectRead('PROFILE_CHANGED');
+        await this.canonical(read, repeated.block);
+      } catch (error) {
+        if (!(error instanceof ResponseSizeLimitError)) throw error;
+        opaque = true; receipt = null;
+      }
+      read.assertCurrent();
+    }
+    if (anchor) await this.canonical(read, anchor);
+    await this.canonical(read, head);
+    await this.checkChain(read);
+    read.assertCurrent();
+    const settlement = (terminalEligible: boolean): Settlement => Object.freeze({
+      kind: 'nevm-depth-12', observedHeight: anchor?.number ?? null, terminalEligible,
+    });
+    if (!receipt) {
+      if (consumed) return Object.freeze({ status: 'nonce-consumed', settlement: settlement(true) });
+      if (opaque) return rejectRead('UNAVAILABLE');
+      return null;
+    }
+    return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true,
+      block: receipt.block, settlement: settlement(eligible) });
+  }
   receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
     let expected: ReceiptRequest;
     try {
@@ -243,6 +292,7 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       read.assertCurrent();
+      if (this.profile.settlement === 'nevm-depth-12') return this.depthReceipt(read, expected);
       let raw: unknown;
       try {
         raw = await read('eth_getTransactionReceipt', [expected.hash]);

@@ -56,8 +56,8 @@ test('refresh retains exact envelope for reduced estimates but rejects increases
   assert.throws(() => assertFeeRefreshApproved({ ...approved }, quote('rollux', [extra('99')]), 100), { code: 'REVIEW_REQUIRED' });
 });
 
-test('profile registry leaves every new chain send-disabled and states unqualified receipt semantics', () => {
-  for (const network of NATIVE_NETWORKS) assert.equal(getEvmTransferProfile(network.id).newSendEnabled, false);
+test('profile registry enables only fixed NEVM testnet and states other unqualified receipt semantics', () => {
+  for (const network of NATIVE_NETWORKS) assert.equal(getEvmTransferProfile(network.id).newSendEnabled, network.id === 'syscoin-nevm-testnet');
   assert.equal(getEvmTransferProfile('arbitrum').feeModel, 'nitro-inclusive-gas');
   assert.equal(getEvmTransferProfile('arbitrum').settlement, 'unqualified');
   assert.equal(getEvmTransferProfile('syscoin-nevm').settlement, 'nevm-depth-observation');
