@@ -9,11 +9,12 @@ import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { HdKeyExportFlow, type HdKeyExportScope } from '../src/custody/hdKeyExport.ts';
-import { keccak256, SigningKey } from 'ethers/crypto';
+import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
-import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { type NativeAccountRecord, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Only a public test password 1!';
@@ -39,20 +40,41 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
   const originalFetch = globalThis.fetch;
   const fingerprint = () => createHash('sha256')
     .update(JSON.stringify([records.get('vault'), records.get('vault-keys')])).digest('hex');
+  const snapshot = (): import('../src/storage/types.ts').RecoveryStorageSnapshot => ({
+    identity: identity ?? (records.has('vault') ? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'} : null),
+    state: records.has('vault') ? {presence:'existing',backup:confirmation===fingerprint()?'confirmed':'unconfirmed'} : {presence:'empty',backup:'unconfirmed'},
+    records:[...records].map(([key,value])=>({key,value:JSON.stringify(value)})),metadata:[],notes:[],
+    signedRecords:[...signedBundles].map(([profileId,value])=>({profileId,value,walletBindingId:identity!.walletBindingId})),
+  });
+  const plans = new WeakMap<object, { before: ReturnType<typeof snapshot>; after: ReturnType<typeof snapshot> }>();
   const open = async (): Promise<OpenWalletStorage> => { let signedUnavailable=false; return ({
     signedRecords: {
       async read(profileId) { if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); await recordHook?.('get','pali-evm-signed-v1:'+profileId); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); return signedBundles.get(profileId); },
       async compareAndSet(profileId, expected, next, guard) { guard(); if(signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED'); if (!identity?.root || identity.root.profileId !== profileId) throw Error('profile mismatch'); if (signedBundles.get(profileId) !== expected) return false; signedBundles.set(profileId,next); await recordHook?.('create','pali-evm-signed-v1:'+profileId); if(failAcknowledgement || failCasAcknowledgement){failAcknowledgement=false;failCasAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');} return true; },
     },
     recovery: {
+      async fingerprintPair(pair) { return createHash('sha256').update(JSON.stringify([pair.vault,pair.keys])).digest('hex'); },
+      async prepareCreation(before, pair, root) {
+        assert.equal(before.state.presence,'empty'); assert(sameRecoverySnapshot(before,snapshot()));
+        const nextRecords = new Map(records); nextRecords.set('vault',pair.vault); nextRecords.set('vault-keys',pair.keys); nextRecords.set(WALLET_CATALOGUE_KEY,pair.accountRecords);
+        const binding = createHash('sha256').update(JSON.stringify([pair.vault,pair.keys])).digest('hex');
+        const after: ReturnType<typeof snapshot> = { identity:{walletBindingId:binding,pairFingerprint:binding,root:structuredClone(root),verification:'requires-unlock'},
+          state:{presence:'existing',backup:'unconfirmed'},records:[...nextRecords].map(([key,value])=>({key,value:JSON.stringify(value)})),metadata:[],notes:[],signedRecords:[] };
+        const plan = {}; plans.set(plan,{before:structuredClone(before),after}); return plan as import('../src/storage/types.ts').RecoveryWritePlan;
+      },
+      plannedSnapshot(plan) { return structuredClone(plans.get(plan)!.after); },
+      async commitReplacement(plan, guard) {
+        const held=plans.get(plan as object); assert(held); plans.delete(plan as object); guard();
+        assert(sameRecoverySnapshot(held.before,snapshot()));
+        records.clear(); for(const row of held.after.records)records.set(row.key,JSON.parse(row.value)); identity=structuredClone(held.after.identity);
+        await recordHook?.('create',WALLET_CATALOGUE_KEY);
+        if(failAcknowledgement){failAcknowledgement=false;signedUnavailable=true;throw Error('simulated lost commit acknowledgment');}
+        if(failCatalogueAcknowledgement){failCatalogueAcknowledgement=false;signedUnavailable=true;throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');}
+        guard();
+      },
       async readIdentity() { if (!records.has('vault')) return null; if (identity && identity.pairFingerprint !== fingerprint()) throw Error('pair changed'); return identity ?? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock'}; },
       async bindIdentity(expected, root, guard) { guard(); assert.equal(expected,fingerprint()); if (identity) assert.deepEqual(identity.root,root); else identity={walletBindingId:expected,pairFingerprint:expected,root,verification:'requires-unlock'}; },
-      async readSnapshot() { return {
-        identity: identity ?? (records.has('vault') ? {walletBindingId:fingerprint(),pairFingerprint:fingerprint(),root:null,verification:'requires-unlock' as const} : null),
-        state: records.has('vault') ? {presence:'existing' as const,backup:confirmation===fingerprint()?'confirmed' as const:'unconfirmed' as const} : {presence:'empty' as const,backup:'unconfirmed' as const},
-        records:[...records].map(([key,value])=>({key,value:JSON.stringify(value)})),metadata:[],notes:[],
-        signedRecords:[...signedBundles].map(([profileId,value])=>({profileId,value,walletBindingId:identity!.walletBindingId})),
-      }; },
+      async readSnapshot() { return snapshot(); },
       async recordFailureForPair(pair) { assert.equal(pair,fingerprint()); failures++; failureWrites++; },
     },
     keyringStorage: {
@@ -83,6 +105,7 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
       async recordSuccess() { failures = 0; successWrites++; },
     },
     async readState() {
+      if (signedUnavailable) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
       const vault = records.has('vault');
       const keys = records.has('vault-keys');
       if (vault !== keys) throw new Error('partial fixture vault');
@@ -172,18 +195,21 @@ test('real published software SDK imports, locks and cold-reopens at production 
   } finally { disk.restoreNetwork(); }
 });
 
-test('a committed vault with lost acknowledgment is reopened instead of overwritten', async () => {
+test('a committed wallet with lost acknowledgment is quarantined and reopened intact', async () => {
   const disk = memoryDisk();
-  const authority = new NativeCustodyAuthority(disk.factory);
+  let authority = new NativeCustodyAuthority(disk.factory);
   await authority.initialize();
   disk.loseNextAcknowledgement();
-  await assert.rejects(authority.importPhrase(PHRASE, PASSWORD), /OPERATION_FAILED/);
-  assert.equal(authority.getSnapshot().phase, 'locked');
+  await assert.rejects(authority.importPhrase(PHRASE, PASSWORD), /UNAVAILABLE/);
+  assert.equal(authority.getSnapshot().phase, 'unavailable');
   const committed = JSON.stringify([...disk.records]);
   await assert.rejects(authority.create(PASSWORD), /NOT_READY/);
+  await assert.rejects(authority.dispose(), /CLEANUP_FAILED/);
+  authority = new NativeCustodyAuthority(disk.factory);
+  await authority.initialize();
   await authority.unlock(PASSWORD);
   assert.equal(authority.getSnapshot().account?.address, ADDRESS);
-  assert.equal(JSON.stringify([...disk.records].filter(([key]) => key !== WALLET_CATALOGUE_KEY)), committed);
+  assert.equal(JSON.stringify([...disk.records]), committed);
   assert.equal(disk.records.has(WALLET_CATALOGUE_KEY), true);
   await authority.dispose();
 });
@@ -260,7 +286,7 @@ test('lifecycle cancellation still records each explicit wrong-password failure 
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD);
     await runtime.session.lock();
-    const hydrated = controlled.hydrations;
+    const hydrated = controlled.hydrations, initialUnlocks = controlled.unlockCalls;
     for (let attempt = 1; attempt <= 5; attempt++) {
       const hold = controlled.hold();
       const pending = runtime.session.unlock('wrong password');
@@ -274,7 +300,7 @@ test('lifecycle cancellation still records each explicit wrong-password failure 
       assert.equal(controlled.hydrations, hydrated);
     }
     await assert.rejects(runtime.session.unlock(PASSWORD), /AUTH_THROTTLED/);
-    assert.equal(controlled.unlockCalls, 5, 'backoff rejects before another SDK KDF');
+    assert.equal(controlled.unlockCalls - initialUnlocks, 5, 'backoff rejects before another SDK KDF');
     await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
@@ -335,34 +361,31 @@ test('native transfers reuse the unlocked shared SDK session without password ch
 });
 
 
-test('legacy first-ETH wallet migrates only after SDK authentication and cold-reopens its catalogue', async () => {
+test('an incomplete canonical account record is refused unchanged before account authentication', async () => {
   const disk = memoryDisk(); disk.denyNetwork();
   let runtime = await disk.factory.open() as KeyringRuntime;
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD);
-    const first = runtime.catalogue.getSnapshot();
+    const first = runtime.catalogue.getSnapshot(), record = structuredClone(disk.records.get(WALLET_CATALOGUE_KEY));
     assert.equal(first?.accounts[0]?.address, ADDRESS);
     assert.equal('publicKey' in first!.accounts[0]!, false);
     await runtime.storage.close();
-    assert.equal(runtime.catalogue.getSnapshot(), null);
-    // A wallet created by the preceding native release contains only its vault.
     disk.records.delete(WALLET_CATALOGUE_KEY);
-    const priorVault = disk.records.get('vault');
-    const priorKeys = structuredClone(disk.records.get('vault-keys'));
+    const incomplete = JSON.stringify([...disk.records]);
     runtime = await disk.factory.open() as KeyringRuntime;
+    await assert.rejects(runtime.session.unlock('wrong password'), /OPERATION_FAILED/);
+    await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
+    assert.equal(disk.failureWrites, 0, 'invalid record admission precedes any password check');
     assert.equal(runtime.catalogue.getSnapshot(), null);
-    assert.equal((await runtime.session.unlock('wrong password')).authenticated, false);
-    assert.equal(disk.records.has(WALLET_CATALOGUE_KEY), false);
-    assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
-    assert.deepEqual(runtime.catalogue.getSnapshot(), first);
-    const catalogue = structuredClone(disk.records.get(WALLET_CATALOGUE_KEY));
-    assert.equal(disk.records.get('vault'), priorVault);
-    assert.deepEqual(disk.records.get('vault-keys'), priorKeys);
+    assert.equal(JSON.stringify([...disk.records]), incomplete);
+    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
     await runtime.storage.close();
+    disk.records.set(WALLET_CATALOGUE_KEY, record);
+    const restored = JSON.stringify([...disk.records]);
     runtime = await disk.factory.open() as KeyringRuntime;
     assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
-    assert.deepEqual(disk.records.get(WALLET_CATALOGUE_KEY), catalogue);
     assert.deepEqual(runtime.catalogue.getSnapshot(), first);
+    assert.equal(JSON.stringify([...disk.records]), restored);
     await runtime.session.lock();
     assert.equal(runtime.catalogue.getSnapshot(), null);
     await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
@@ -375,10 +398,8 @@ test('catalogue identity corruption retires the authenticated SDK session withou
   try {
     await runtime.session.importWallet(PHRASE, PASSWORD);
     await runtime.storage.close();
-    const record = structuredClone(disk.records.get(WALLET_CATALOGUE_KEY)) as {
-      accounts: { address: string }[];
-    };
-    record.accounts[0]!.address = '0x1111111111111111111111111111111111111111';
+    const record = structuredClone(disk.records.get(WALLET_CATALOGUE_KEY)) as NativeAccountRecord;
+    record.groups[0]!.accounts.HDAccount[0]!.address = '0x1111111111111111111111111111111111111111';
     disk.records.set(WALLET_CATALOGUE_KEY, record);
     runtime = await disk.factory.open() as KeyringRuntime;
     await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
@@ -426,7 +447,7 @@ async function readyAccounts(loadSdk?: KeyringRuntimeDependencies['loadSdk']) {
   return { disk, authority, get runtime() { return runtime; }, execute };
 }
 
-test('real SDK HD accounts reuse deleted indices and preserve explicit restore', async () => {
+test('real SDK HD accounts reuse deleted indices and preserve full records across reopen', async () => {
   const f = await readyAccounts();
   try {
     assert.equal(f.authority.supportsAccountManagement(), true);
@@ -438,14 +459,14 @@ test('real SDK HD accounts reuse deleted indices and preserve explicit restore',
     assert.equal(f.authority.getCatalogue()!.accounts.find((a) => a.index === 1)!.label, 'Long term');
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
-    assert.deepEqual(f.authority.getCatalogue()!.removed, [{ id: second.id, index: 1 }]);
+    assert.equal(f.authority.getCatalogue()!.accounts.some(account => account.id === second.id), false);
     await f.execute({ kind: 'create', label: 'New account', password: PASSWORD });
     assert.equal(f.authority.getCatalogue()!.accounts.at(-1)!.index, 1);
     assert.equal(f.authority.getSnapshot().account?.address, second.address);
-    assert.deepEqual(f.authority.getCatalogue()!.removed, []);
+    assert.equal('removed' in f.authority.getCatalogue()!, false);
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
-    await f.execute({ kind: 'restore', index: 1, label: 'Restored savings', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'Recreated savings', password: PASSWORD });
     assert.equal(f.authority.getSnapshot().account?.address, second.address);
     const signed = await f.runtime.transfers!.sign({ type: 2, from: second.address,
       to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
@@ -778,7 +799,7 @@ test('known ineligible account requests preserve the ready authority and its rev
       { kind: 'remove' as const, id: 'hd:60:99', password: PASSWORD },
       { kind: 'select' as const, id: 'hd:60:99' },
       { kind: 'rename' as const, id: 'hd:60:99', label: 'Missing' },
-      { kind: 'restore' as const, index: 99, label: 'Missing', password: PASSWORD },
+      { kind: 'select' as const, id: 'hd:60:9007199254740992' },
     ];
     let publications = 0;
     const stop = f.authority.subscribe(() => { publications++; });
@@ -794,39 +815,29 @@ test('known ineligible account requests preserve the ready authority and its rev
 });
 
 
-test('runtime count preflight rejects while an allocation boundary with reusable gaps remains usable', async () => {
+test('runtime supports more than twenty complete SDK accounts and reuses the first vacant slot', async () => {
   const f = await readyAccounts();
   try {
-    const original = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as Record<string, any>;
-    const accounts = Array.from({ length: 20 }, (_, index) => {
-      const key = HDNodeWallet.fromPhrase(PHRASE, undefined, `m/44'/60'/0'/0/${index}`);
-      return { id: `hd:60:${index}`, index, type: 'HDAccount', slip44: 60, address: key.address, publicKey: SigningKey.computePublicKey(key.publicKey, original.accounts[0].publicKey.length === 68).toLowerCase(), label: `Account ${index + 1}` };
-    });
-    f.authority.lock();
-    f.disk.records.set(WALLET_CATALOGUE_KEY, { ...original, accounts, nextIndex: 20 });
-    await f.authority.unlock(PASSWORD);
-    for (const shape of ['count', 'highwater']) {
-      if (shape === 'highwater') {
-        f.authority.lock();
-        f.disk.records.set(WALLET_CATALOGUE_KEY, { ...original, nextIndex: 4096, retiredIndices: Array.from({ length: 4095 }, (_, i) => i + 1) });
-        await f.authority.unlock(PASSWORD);
-      }
-      const before = f.authority.getSnapshot(), writes = f.disk.successWrites;
-      if (shape === 'count') {
-        await assert.rejects(f.execute({ kind: 'create', label: 'Limit', password: PASSWORD }), /ACCOUNT_LIMIT/);
-        assert.equal(f.authority.getSnapshot(), before);
-        assert.equal(f.disk.successWrites, writes);
-      } else {
-        await f.execute({ kind: 'create', label: 'Reused gap', password: PASSWORD });
-        assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
-        assert.equal(f.authority.getCatalogue()!.removed.length, 4094);
-        const saved = f.disk.records.get(WALLET_CATALOGUE_KEY) as { nextIndex: number };
-        assert.equal(saved.nextIndex, 4096);
-      }
-    }
+    for (let index = 1; index <= 21; index++)
+      await f.execute({ kind: 'create', label: `Account ${index + 1}`, password: PASSWORD });
+    assert.equal(f.authority.getCatalogue()!.accounts.length, 22);
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as NativeAccountRecord;
+    const retained = before.groups[0]!.accounts.HDAccount[21]!;
+    assert.ok(retained.xprv);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'Reused gap', password: PASSWORD });
+    assert.equal(f.authority.getCatalogue()!.active.accountId, 'hd:60:1');
+    assert.equal(f.authority.getCatalogue()!.accounts.length, 22);
+    const saved = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.deepEqual(saved.groups[0]!.accounts.HDAccount[21], retained);
+    assert.equal('nextIndex' in saved, false);
+    const wire = JSON.stringify([...f.disk.records]);
+    f.authority.lock(); await f.authority.unlock(PASSWORD);
+    assert.equal(f.authority.getCatalogue()!.accounts.length, 22);
+    assert.equal(JSON.stringify([...f.disk.records]), wire);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
-
 
 test('all EVM contexts preserve SDK HD addresses and all valid EVM registrations use prepared signing', async () => {
   const f = await readyAccounts();
@@ -1118,7 +1129,7 @@ test('account removal checks every chain and keeps all sender-owned signed bytes
     const retained=f.disk.signedValue(); await f.execute({kind:'select',id:'hd:60:0'});
     await f.execute({kind:'remove',id:'hd:60:1',password:PASSWORD});
     assert.equal(f.disk.signedValue(),retained); assert.equal(JSON.parse(retained!).entries.length,2);
-    await f.execute({kind:'restore',index:1,label:'Restored',password:PASSWORD});
+    await f.execute({kind:'create',label:'Recreated',password:PASSWORD});
     assert.equal(f.authority.getSnapshot().account!.address,address);
     assert.equal((await (await f.runtime.transfers!.journal(()=>undefined)).load())!.rawTransaction,other.rawTransaction);
     await f.authority.selectNetwork('ethereum',f.authority.getSnapshot().revision,f.authority.getCatalogue()!.revision);
@@ -1296,7 +1307,7 @@ function selectedKeyScope(f: Awaited<ReturnType<typeof readyAccounts>>): HdKeyEx
     registrationHash: getNativeNetwork(c.active.networkId).registrationHash });
 }
 
-test('HD key reveal uses real SDK across registered networks and restored nonzero indices', async () => {
+test('HD key reveal uses real SDK across registered networks and recreated nonzero indices', async () => {
   const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
   try {
     const key0 = HDNodeWallet.fromPhrase(PHRASE, undefined, "m/44'/60'/0'/0/0").privateKey;
@@ -1315,7 +1326,7 @@ test('HD key reveal uses real SDK across registered networks and restored nonzer
     assert.equal(shown.privateKey, key1.privateKey); assert.equal(shown.address, key1.address);
     await f.execute({ kind: 'select', id: 'hd:60:0' }); assert.equal(flow.isCurrent(shown.id), false);
     await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
-    await f.execute({ kind: 'restore', index: 1, label: 'Restored second', password: PASSWORD });
+    await f.execute({ kind: 'create', label: 'Recreated second', password: PASSWORD });
     assert.equal((await flow.begin(PASSWORD)).privateKey, key1.privateKey);
   } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
@@ -1370,10 +1381,17 @@ test('HD key reveal shares unlock throttle and counts wrong authentication after
   } finally { hold.release(); flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-for (const phase of ['password', 'hydration', 'export-before', 'export-after']) {
+for (const phase of ['password', 'record-read', 'export-before', 'export-after']) {
   test(`HD key reveal revokes at ${phase} and serializes other privileged operations`, async () => {
     const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
-    const hold = sdk.hold(phase);
+    const entered = deferredAccount(), released = deferredAccount();
+    const hold = phase === 'record-read' ? {
+      entered: entered.promise,
+      release() { f.disk.onRecord(); released.resolve(); },
+    } : sdk.hold(phase);
+    if (phase === 'record-read') f.disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === WALLET_CATALOGUE_KEY) { entered.resolve(); await released.promise; }
+    });
     try {
       const pending = flow.begin(PASSWORD); void pending.catch(() => undefined); await hold.entered;
       await assert.rejects(flow.begin(PASSWORD), /BUSY/);
@@ -1508,7 +1526,7 @@ test('installed SDK imported accounts persist AEAD, cold-reopen and sign/export 
     assert.equal(f.authority.getSnapshot().account!.address, importedAddress());
     assert.equal(JSON.stringify([f.disk.records.get('vault'), f.disk.records.get('vault-keys')]), pair);
     const saved = JSON.stringify([...f.disk.records]);
-    assert.equal(saved.includes(IMPORTED_TEST_KEY), false); assert.equal(saved.includes('xprv'), false);
+    assert.equal(saved.includes(IMPORTED_TEST_KEY), false); assert.equal(saved.includes('xprv'), true, 'full private SDK records retain encrypted xprv');
     assert.equal(saved.includes('ciphertext'), true);
     assert.equal(JSON.stringify(f.authority.getCatalogue()).includes('ciphertext'), false);
     for (const network of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'] as const) {
@@ -1540,14 +1558,15 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
     const secondKey = '0x' + '2'.padStart(64, '0'), replacementKey = '0x' + '3'.padStart(64, '0');
     await importTestKey(f);
     await importTestKey(f, secondKey, 'Retained one');
-    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as { importedAccounts: { index: number }[] };
-    const retained = before.importedAccounts.find(account => account.index === 1);
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as NativeAccountRecord;
+    const retained = before.groups[0]!.accounts.Imported[1], retainedRecovery = before.recovery.find(entry => entry.identity.id === 1);
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: 'imported:60:0', password: PASSWORD });
     await importTestKey(f, replacementKey, 'Reused zero');
-    const stored = f.disk.records.get(WALLET_CATALOGUE_KEY) as { importedAccounts: { index: number }[] };
-    assert.deepEqual(stored.importedAccounts.map(account => account.index), [0, 1]);
-    assert.deepEqual(stored.importedAccounts[1], retained);
+    const stored = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.deepEqual(Object.keys(stored.groups[0]!.accounts.Imported), ['0', '1']);
+    assert.deepEqual(stored.groups[0]!.accounts.Imported[1], retained);
+    assert.deepEqual(stored.recovery.find(entry => entry.identity.id === 1), retainedRecovery);
     assert.equal(f.authority.getCatalogue()!.active.accountId, 'imported:60:0');
     await f.authority.dispose();
     let runtime!: KeyringRuntime;
@@ -1559,10 +1578,10 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
       const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
       try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
       const signed = await runtime.transfers!.sign({ type: 2, from: importedAddress(key), to: ADDRESS,
-        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
     }
-    assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as { importedAccounts: unknown[] }).importedAccounts[1], retained);
+    assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord).groups[0]!.accounts.Imported[1], retained);
   } finally { await reopened?.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
@@ -1621,16 +1640,21 @@ test('imported credential rejection shares persistent throttle after lifecycle c
   } finally { hold.release(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 
-test('imported hydration does not add password KDFs and cannot complete after revocation', async () => {
+test('full imported account restoration performs one unlock and stops at a revoked record read', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     await importTestKey(f); await importTestKey(f, '0x' + '2'.padStart(64, '0'));
     f.authority.lock(); const before = sdk.unlocks;
     await f.authority.unlock(PASSWORD); assert.equal(sdk.unlocks - before, 1);
-    assert.equal(sdk.exports, 0, 'rehydration uses AEAD instead of password-confirmed key export per account');
-    f.authority.lock(); const hold = sdk.hold('decrypt-after');
-    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await hold.entered;
-    f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
+    assert.equal(sdk.exports, 0, 'complete encrypted SDK maps avoid per-account key exports');
+    const importedBefore = sdk.imports;
+    f.authority.lock(); const entered = deferredAccount(), release = deferredAccount();
+    f.disk.onRecord(async (kind, key) => {
+      if (kind === 'get' && key === WALLET_CATALOGUE_KEY) { entered.resolve(); await release.promise; }
+    });
+    const pending = f.authority.unlock(PASSWORD); void pending.catch(() => undefined); await entered.promise;
+    f.authority.lock(); f.disk.onRecord(); release.resolve(); await assert.rejects(pending, /CANCELLED/);
+    assert.equal(sdk.imports, importedBefore, 'restore never reimports saved scalars');
     assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.runtime.catalogue.getSnapshot(), null);
   } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
@@ -1642,7 +1666,7 @@ test('lost imported commit acknowledgement preserves the key and requires a fres
     assert.equal(f.authority.getSnapshot().phase, 'unavailable');
     await assert.rejects(f.authority.unlock(PASSWORD), /NOT_READY/);
     const row = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as any;
-    assert.equal(row.importedAccounts.length, 1); assert.equal(JSON.stringify(row).includes(IMPORTED_TEST_KEY), false);
+    assert.equal(Object.keys(row.groups[0].accounts.Imported).length, 1); assert.equal(JSON.stringify(row).includes(IMPORTED_TEST_KEY), false);
     await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
     const reopened = new NativeCustodyAuthority(f.disk.factory);
     await reopened.initialize(); await reopened.unlock(PASSWORD);
@@ -1652,14 +1676,14 @@ test('lost imported commit acknowledgement preserves the key and requires a fres
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-test('a corrupt imported envelope prevents partial unlock and preserves every saved record', async () => {
+test('invalid imported recovery identity prevents partial unlock and preserves every saved record', async () => {
   const f = await readyAccounts();
   try {
     await importTestKey(f); f.authority.lock();
     const original = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as any;
-    for (const field of ['ciphertext', 'profileId', 'recordId', 'domain']) {
-      const row = structuredClone(original), e = row.importedAccounts[0].recovery.envelope;
-      e[field] = field === 'ciphertext' ? (e[field][0] === 'A' ? 'B' : 'A') + e[field].slice(1) : 'wrong';
+    for (const field of ['profileId', 'recordId', 'domain']) {
+      const row = structuredClone(original), e = row.recovery[0].envelope;
+      e[field] = 'wrong';
       f.disk.records.set(WALLET_CATALOGUE_KEY, row); const before = JSON.stringify([...f.disk.records]);
       await assert.rejects(f.authority.unlock(PASSWORD), /OPERATION_FAILED/);
       assert.equal(f.authority.getSnapshot().account, null); assert.equal(f.authority.getCatalogue(), null);
@@ -1807,7 +1831,7 @@ test('creation and import reject weak passwords before the SDK creates a seed va
 });
 
 
-test('delete-nonlatest then add uses the same SDK allocator as extension and preserves imported/retired scope', async () => {
+test('delete-nonlatest then add uses the same SDK allocator as extension and preserves imported records', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     await f.execute({ kind: 'create', label: 'First extra', password: PASSWORD });
@@ -1820,17 +1844,19 @@ test('delete-nonlatest then add uses the same SDK allocator as extension and pre
     await importTestKey(f, '0x' + '2'.padStart(64, '0'), 'Retained imported');
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
-    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as Record<string, unknown>;
+    const before = structuredClone(f.disk.records.get(WALLET_CATALOGUE_KEY)) as NativeAccountRecord;
     await f.execute({ kind: 'create', label: 'Gap replacement', password: PASSWORD });
     const snapshot = f.authority.getCatalogue()!;
     assert.equal(sdk.allocations, 3);
     assert.equal(snapshot.active.accountId, 'hd:60:1');
     assert.equal(snapshot.accounts.find((account) => account.id === first.id)?.address, first.address);
     assert.deepEqual(snapshot.accounts.find((account) => account.id === retained.id), retained);
-    assert.deepEqual(snapshot.removed, []);
-    const after = f.disk.records.get(WALLET_CATALOGUE_KEY) as Record<string, unknown>;
+    assert.equal('removed' in snapshot, false);
+    const after = f.disk.records.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.deepEqual(after.groups[0]!.accounts.Imported, before.groups[0]!.accounts.Imported);
+    assert.deepEqual(after.recovery, before.recovery);
     for (const key of ['nextIndex', 'importedAccounts', 'retiredImportedIndices', 'nextImportedIndex'])
-      assert.deepEqual(after[key], before[key], key);
+      assert.equal(key in after, false, key);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -1848,7 +1874,7 @@ for (const phase of ['create-before', 'create-after']) test(`lock during SDK all
   } finally { hold.release(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
-for (const id of [0, 1.5, 4096]) test(`invalid SDK-allocated id ${id} cannot replace an account or alter its catalogue`, async () => {
+for (const id of [0, 1.5, Number.MAX_SAFE_INTEGER + 1]) test(`invalid SDK-allocated id ${id} cannot replace an account or alter its catalogue`, async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
   try {
     sdk.setAllocationPatch({ id });

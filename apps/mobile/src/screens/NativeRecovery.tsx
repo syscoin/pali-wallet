@@ -159,7 +159,6 @@ function Inventory({ inventory, details, toggle }: { inventory: RecoveryInventor
     ['Tokens and saved activity', `${counts.tokenEntries} tokens · ${counts.historySummaries} saved summaries`],
   ] as const;
   const more = [
-    ['Retired seed-derived account records', counts.retiredHdAccounts], ['Retired imported account records', counts.retiredImportedAccounts],
     ['Cached transactions', counts.cachedTransactions], ['Activity preferences', counts.activityPreferences],
   ] as const;
   return <>
@@ -176,7 +175,7 @@ function Inventory({ inventory, details, toggle }: { inventory: RecoveryInventor
     </View>)}</Card>}
     <Text style={styles.muted}>Existing recovery phrase backup: {inventory.backup === 'confirmed' ? 'confirmed' : inventory.backup === 'unconfirmed' ? 'not confirmed' : 'unknown'}. Recovery does not change this saved status.</Text>
     <Notice title="Imported keys still need separate backups" body="Imported-key records already saved on this device will be kept. The recovery phrase alone cannot recreate imported accounts on a new or lost device. Keep their original keys backed up separately." tone="amber" />
-    <Text style={styles.muted}>Private notes are not supported by this recovery.</Text>
+    <Text style={styles.muted}>{inventory.privateNotes === 'requires-matching-phrase-verification' ? 'Saved private notes will be verified and kept. Keep a separate backup for a new or lost device.' : 'No private notes are saved on this device.'}</Text>
   </>;
 }
 

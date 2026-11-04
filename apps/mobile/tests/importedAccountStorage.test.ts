@@ -6,16 +6,17 @@ import path from 'node:path';
 import { SigningKey } from 'ethers/crypto';
 import { computeAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
-import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type StoredImportedAccount } from '../src/custody/walletCatalogue.ts';
+import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
 import { signedRecordTestSession } from './signedRecordTestSession.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
-import { importedKeyIdentity, normalizeImportedKey } from '../src/custody/importedAccounts.ts';
+import { normalizeImportedKey } from '../src/custody/importedAccounts.ts';
 import { importAccountWithRecovery, readImportedRecoverySecret, snapshotImportedRecoveryEntry, type ImportedRecoveryCrypto } from '../../../source/wallet/importedAccountRecovery.ts';
+import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import { parseNativeAccountId } from '../src/custody/accountIdentity.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
-import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
+import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'PUBLIC imported account fixture password';
@@ -49,30 +50,20 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-imported-store-'));
   const file = path.join(directory, 'wallet.sqlite');
   let storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, true);
-  await storage.keyringStorage.createManyIfAbsent(validPair());
-  const root = { ...identity, walletFingerprint: await storage.getWalletFingerprint() };
-  const stage = await makeCrypto();
-  const readImport = async (record: StoredImportedAccount) => {
-    const key = await openSecret(stage.keyring, record.recovery, { kind: 'ethereum', slip44: 60, id: record.index, address: record.address, xpub: record.publicKey });
-    const actual = importedKeyIdentity(key, record.index);
-    return { address: actual.address, publicKey: actual.publicKey };
-  };
-  const open = async () => {
-    const model = new NativeWalletCatalogue(storage.keyringStorage);
-    await model.reconcile(root, current, undefined, readImport);
-    return model;
-  };
-  return { root, readImport, open, stage, get storage() { return storage; },
-    async reopen() { await storage.close().catch(() => undefined); storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, false); },
-    async close() { await stage.keyring.destroy(); await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
+  const stage=await createAccountRecordTestFixture();
+  await storage.keyringStorage.createManyIfAbsent(stage.pair);
+  const root={...stage.identity,walletFingerprint:await storage.getWalletFingerprint()};
+  await storage.keyringStorage.set(WALLET_CATALOGUE_KEY,stage.record(root.walletFingerprint));
+  const open=async()=>{const model=new NativeWalletCatalogue(storage.keyringStorage);await model.reconcile(root,current);return model;};
+  return {root,open,stage,get storage(){return storage;},
+    async reopen(){await storage.close().catch(()=>undefined);storage=await SqliteWalletStorage.open(nodeConnection(file).connection,digest,INSTALLATION,false);},
+    async close(){await stage.close();await storage.close().catch(()=>undefined);await rm(directory,{recursive:true,force:true});}};
 }
 async function importMutation(f: Awaited<ReturnType<typeof fixture>>, index = 0, key = KEY) {
-  const result = await seal(f.stage.keyring, key);
-  assert.equal(result.account.id, index);
-  f.stage.state.accounts.Imported[index] = result.account;
-  return { kind: 'import' as const, id: `imported:60:${index}`, index,
-    address: result.account.address, publicKey: result.account.xpub.toLowerCase(),
-    label: `Imported ${index + 1}`, recovery: result.recovery };
+  f.stage.useRecord(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord);
+  const result=await f.stage.imported(key,`Imported ${index+1}`);assert.equal(result.account.id,index);
+  f.stage.state.accounts.Imported[index]=result.account;
+  return {kind:'import' as const,id:`imported:60:${index}`,account:result.account,recovery:result.recovery};
 }
 
 // SDK methods are run only with public synthetic fixtures; no application keys are read.
@@ -88,7 +79,7 @@ test('shared SDK AEAD binds the canonical imported copy to profile and public id
   ]) await assert.rejects(openSecret(sdk, changed));
   await assert.rejects(openSecret(sdk, entry, { ...entry.identity, address: identity.address }));
   for (const key of ['0x' + '0'.repeat(64), '0x' + 'f'.repeat(64), 'xprv-secret', PHRASE, '1', '0x1234']) assert.throws(() => normalizeImportedKey(key));
-  for (const id of ['hd:60:4096', 'imported:60:-1', 'imported:60:01', 'Imported:60:0']) assert.throws(() => parseNativeAccountId(id));
+  for (const id of ['hd:60:9007199254740992', 'imported:60:-1', 'imported:60:01', 'Imported:60:0']) assert.throws(() => parseNativeAccountId(id));
   let read = false;
   const bad = { ...entry, envelope: { ...entry.envelope } }; Object.defineProperty(bad.envelope, 'ciphertext', { enumerable: true, get() { read = true; return ''; } });
   assert.throws(() => snapshotImportedRecoveryEntry(bad)); assert.equal(read, false);
@@ -105,13 +96,13 @@ test('single-row imported storage reopens, preserves the SDK pair and hides ever
     for (const forbidden of ['envelope', 'ciphertext', 'profileId', 'nonce', KEY]) assert.equal(publicJson.includes(forbidden), false);
     assert.equal(shown.accounts[1]!.type, 'Imported'); assert.equal(shown.active.accountId, 'imported:60:0');
     const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
-    assert.equal(JSON.stringify(stored).includes(KEY), false); assert.equal(JSON.stringify(stored).includes('xprv'), false);
+    assert.equal(JSON.stringify(stored).includes(KEY), false); assert.equal(JSON.stringify(stored).includes('xprv'), true);
     await f.reopen();
     const reopened = await f.open();
-    assert.deepEqual(await reopened.reconcile(f.root, current, undefined, f.readImport), shown);
+    assert.deepEqual(await reopened.reconcile(f.root, current), shown);
     await reopened.mutate(shown.revision, { kind: 'rename', id: 'hd:60:0', label: 'Renamed HD' }, current);
     const changed = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    assert.deepEqual(changed.importedAccounts, (stored as any).importedAccounts);
+    assert.deepEqual(changed.groups[0].accounts.Imported, (stored as any).groups[0].accounts.Imported);
     assert.equal(await f.storage.getWalletFingerprint(), f.root.walletFingerprint);
     assert.deepEqual(await f.storage.keyringStorage.get('vault'), pair);
   } finally { await f.close(); }
@@ -122,7 +113,7 @@ test('incomplete imported-account catalogue shapes are rejected without filling 
   try {
     await f.open();
     const canonical = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    for (const field of ['importedAccounts', 'nextImportedIndex', 'retiredImportedIndices']) {
+    for (const field of ['groups', 'recovery', 'active']) {
       const incomplete = { ...canonical }; delete incomplete[field];
       await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, incomplete);
       await assert.rejects(f.open());
@@ -141,7 +132,7 @@ for (const point of ['before-commit', 'lost-ack'] as const) {
       enabled = true; await assert.rejects(model.mutate(0, input, current)); assert.equal(model.requiresReopen, true);
       await assert.rejects(model.mutate(0, input, current), /REOPEN_REQUIRED/);
       await f.reopen(); const reopened = await f.open();
-      const state = await reopened.reconcile(f.root, current, undefined, f.readImport);
+      const state = await reopened.reconcile(f.root, current);
       assert.equal(state.accounts.length, point === 'lost-ack' ? 2 : 1);
       assert.equal(await f.storage.getWalletFingerprint(), f.root.walletFingerprint);
     } finally { await f.close(); }
@@ -155,14 +146,14 @@ test('imported identity removal is atomic and the shared SDK can reuse the remov
     let state = await model.mutate(0, input, current);
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
     state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
-    assert.equal(model.nextImportedIndex, 1);
+    assert.deepEqual(Object.keys(model.privateRecords.groups[0]!.accounts.Imported),[]);
     delete f.stage.state.accounts.Imported[0];
     const next = await importMutation(f, 0), { id: _nextId, ...nextInput } = next;
     const final = await model.mutate(state.revision, nextInput, current);
     assert.equal(final.active.accountId, 'imported:60:0');
     const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    assert.deepEqual(stored.retiredImportedIndices, []); assert.equal(stored.importedAccounts.length, 1);
-    assert.equal(stored.importedAccounts[0].id, 'imported:60:0');
+    assert(!Object.hasOwn(stored,'retiredImportedIndices')); assert.equal(Object.keys(stored.groups[0].accounts.Imported).length,1);
+    assert.equal(stored.groups[0].accounts.Imported[0].id,0);
   } finally { await f.close(); }
 });
 
@@ -175,23 +166,23 @@ test('SDK gap reuse keeps imported zero before a retained imported one across st
     const secondKey = '0x' + '2'.padStart(64, '0');
     const second = await importMutation(f, 1, secondKey), { id: _secondId, ...secondInput } = second;
     state = await model.mutate(state.revision, secondInput, current);
-    const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { importedAccounts: StoredImportedAccount[] };
-    const retained = before.importedAccounts[1];
+    const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    const retained = before.groups[0]!.accounts.Imported[1];
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0', journal: null }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
     delete f.stage.state.accounts.Imported[0];
     const replacementKey = '0x' + '3'.padStart(64, '0');
     const replacement = await importMutation(f, 0, replacementKey), { id: _replacementId, ...replacementInput } = replacement;
     state = await model.mutate(state.revision, replacementInput, current);
-    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { importedAccounts: StoredImportedAccount[]; nextImportedIndex: number; retiredImportedIndices: number[] };
-    assert.deepEqual(stored.importedAccounts.map(account => account.index), [0, 1]);
-    assert.deepEqual(stored.importedAccounts[1], retained);
-    assert.equal(stored.nextImportedIndex, 2); assert.deepEqual(stored.retiredImportedIndices, []);
+    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.deepEqual(Object.values(stored.groups[0]!.accounts.Imported).map(account=>account.id),[0,1]);
+    assert.deepEqual(stored.groups[0]!.accounts.Imported[1],retained);
+    assert(!Object.hasOwn(stored,'nextImportedIndex')); assert(!Object.hasOwn(stored,'retiredImportedIndices'));
     await f.reopen();
     const reopened = await f.open();
-    assert.deepEqual(await reopened.reconcile(f.root, current, undefined, f.readImport), state);
-    assert.equal(await openSecret(f.stage.keyring, stored.importedAccounts[0]!.recovery), replacementKey);
-    assert.equal(await openSecret(f.stage.keyring, stored.importedAccounts[1]!.recovery), secondKey);
+    assert.deepEqual(await reopened.reconcile(f.root, current), state);
+    assert.equal(await openSecret(f.stage.keyring, stored.recovery.find(entry=>entry.identity.id===0)!), replacementKey);
+    assert.equal(await openSecret(f.stage.keyring, stored.recovery.find(entry=>entry.identity.id===1)!), secondKey);
   } finally { await f.close(); }
 });
 
@@ -199,7 +190,7 @@ test('HD and Imported aliases share one sender-owned pending record with immutab
   const f = await fixture();
   try {
     const session = signedRecordTestSession(current);
-    await f.storage.recovery.bindIdentity(f.root.walletFingerprint, { ...identity, profileId: await session.keyring.getPrivateRecordProfileId() }, current);
+    await f.storage.recovery.bindIdentity(f.root.walletFingerprint, { ...f.stage.identity, profileId: await session.keyring.getPrivateRecordProfileId() }, current);
     const records = new EvmSignedRecords(f.storage.signedRecords, () => 1);
     const signer = new Wallet(KEY), network = getNativeNetwork('ethereum');
     const hd = createNativeSignedRecordView(records, session, f.root.walletFingerprint, { index: 0, type: 'HDAccount', address: signer.address }, network);
@@ -243,35 +234,23 @@ test('shared imported reader clears malformed plaintext and rejects asynchronous
   await assert.rejects(importAccountWithRecovery(sdk, { secret: KEY, network: { kind: 'ethereum', slip44: 60 } }, (() => Promise.resolve()) as any), /IMPORTED_RECOVERY_INVALID/);
 });
 
-test('combined native capacity and malformed imported records never discard existing entries', async () => {
-  const f = await fixture();
-  try {
-    const model = await f.open(); let state = await model.reconcile(f.root, current);
-    const imported = await importMutation(f), { id: _id, ...input } = imported;
-    state = await model.mutate(state.revision, input, current);
-    for (let index = 1; index < 19; index++) {
-      const key = '0x' + (index + 100).toString(16).padStart(64, '0');
-      state = await model.mutate(state.revision, { kind: 'create', index, address: computeAddress(key),
-        publicKey: SigningKey.computePublicKey(key, true), label: `HD ${index}` }, current);
-    }
-    assert.equal(state.accounts.length, 20);
-    const second = await importMutation(f, 1, '0x' + '2'.padStart(64, '0')), { id: _id2, ...secondInput } = second;
-    const saved = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
-    await assert.rejects(model.mutate(state.revision, secondInput, current), /CATALOGUE_LIMIT/);
-    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), saved);
-    const original = saved as any;
-    for (const corrupted of [
-      { ...original, importedAccounts: [{ ...original.importedAccounts[0], type: 'HDAccount' }] },
-      { ...original, importedAccounts: [{ ...original.importedAccounts[0], id: 'hd:60:0' }] },
-      { ...original, importedAccounts: [{ ...original.importedAccounts[0], address: f.root.address }] },
-      { ...original, nextImportedIndex: 0 },
-      { ...original, importedAccounts: [] },
-    ]) {
-      await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, corrupted);
-      await assert.rejects(f.open());
-      assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), corrupted);
-    }
-  } finally { await f.close(); }
+test('complete account maps retain imported recovery above the former twenty-account UI limit',async()=>{
+ const f=await fixture();try{
+  const model=await f.open();let state=await model.reconcile(f.root,current);
+  const {id:_id,...input}=await importMutation(f);state=await model.mutate(state.revision,input,current);
+  for(let index=1;index<=20;index++)state=await model.mutate(state.revision,{kind:'create',account:await f.stage.derive(index)},current);
+  const {id:_other,...second}=await importMutation(f,1,'0x'+'2'.padStart(64,'0'));state=await model.mutate(state.revision,second,current);
+  assert.equal(state.accounts.length,23);
+  const original=await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+  for(const change of ['identity','missing-recovery','missing-key'] as const){
+   const corrupted=structuredClone(original);
+   if(change==='identity')corrupted.groups[0]!.accounts.Imported[0]!.address=f.root.address;
+   if(change==='missing-recovery')(corrupted as any).recovery=[];
+   if(change==='missing-key')corrupted.groups[0]!.accounts.Imported[0]!.xprv='';
+   await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY,corrupted);await assert.rejects(f.open());
+   assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY),corrupted);
+  }
+ }finally{await f.close();}
 });
 
 test('shared reader snapshots identity before awaits and rejects accessors', async () => {
@@ -294,21 +273,15 @@ test('shared reader snapshots identity before awaits and rejects accessors', asy
   assert.equal(getters, 0); assert.equal(calls, 1);
 });
 
-test('an exhausted historical import counter still admits the SDK returned free slot', async () => {
-  const f = await fixture();
-  try {
-    await f.open();
-    const record = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    record.nextImportedIndex = 4096;
-    record.retiredImportedIndices = Array.from({ length: 4096 }, (_, i) => i);
-    await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY, record);
-    const model = await f.open();
-    const { id: _id, ...input } = await importMutation(f);
-    const result = await model.mutate(record.revision, input, current);
-    assert.equal(result.active.accountId, 'imported:60:0');
-    const saved = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
-    assert.equal(saved.nextImportedIndex, 4096);
-    assert.equal(saved.retiredImportedIndices.length, 4095);
-    assert.equal(saved.retiredImportedIndices.includes(0), false);
-  } finally { await f.close(); }
+test('obsolete counter fields are rejected without changing canonical SDK slot reuse',async()=>{
+ const f=await fixture();try{
+  const original=await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+  const unsupported={...original,nextImportedIndex:4096,retiredImportedIndices:[0]};
+  await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY,unsupported);await assert.rejects(f.open());
+  assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY),unsupported);
+  await f.storage.keyringStorage.set(WALLET_CATALOGUE_KEY,original);
+  const model=await f.open(),{id:_id,...input}=await importMutation(f);
+  const result=await model.mutate(original.revision,input,current);assert.equal(result.active.accountId,'imported:60:0');
+  assert(!Object.hasOwn(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as object,'nextImportedIndex'));
+ }finally{await f.close();}
 });

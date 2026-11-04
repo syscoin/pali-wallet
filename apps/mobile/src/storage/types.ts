@@ -90,11 +90,27 @@ export interface OpenWalletStorage {
   }>;
   /** Private recovery host ports. Optional capabilities make older synthetic hosts fail closed. */
   readonly recovery?: Readonly<{
+    /** Exact existing pair fingerprint without writing staged creation data. */
+    fingerprintPair?(
+      candidate: Readonly<{ vault: unknown; keys: unknown }>
+    ): Promise<string>;
+    /** Initial installation of pair, full records and root as one transaction. */
+    prepareCreation?(
+      snapshot: RecoveryStorageSnapshot,
+      candidate: Readonly<{
+        vault: unknown;
+        keys: unknown;
+        accountRecords: unknown;
+      }>,
+      root: RecoveryRoot
+    ): Promise<RecoveryWritePlan>;
     readIdentity(): Promise<WalletIdentityRead | null>;
     readSnapshot(): Promise<RecoveryStorageSnapshot>;
     /** Called only after the SDK authenticates the root/profile for this exact pair. */
     bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
-    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
+    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown;
+        accountRecords?: unknown;
+      }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
     plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
     commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;
     /** Known credential failure still counts after UI cancellation, but never for another pair. */

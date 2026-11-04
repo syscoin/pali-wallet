@@ -160,10 +160,9 @@ const accountAddress = (index: number) =>
 let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   Object.freeze<NativeWalletCatalogueSnapshot>({
     revision: 0,
-    removed: [],
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
     networks: NATIVE_NETWORKS,
-    accounts: [0, 1].map((index) => ({
+    accounts: Array.from({length: new URLSearchParams(window.location.search).has('many-accounts') ? 1000 : 2}, (_, index) => ({
       id: `hd:60:${index}`,
       type: 'HDAccount' as const,
       index,
@@ -174,7 +173,6 @@ let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   });
 let accountContext = 0;
 let accountFailure: CustodyErrorCode | null = null;
-let nextIndex = 2;
 const accountListeners = new Set<() => void>();
 const accountRequests: NativeAccountRequest[] = [];
 const accountController: NativeAccountView = {
@@ -210,11 +208,9 @@ const accountController: NativeAccountView = {
     accountSnapshot = null;
     for (const listener of accountListeners) listener();
     await Promise.resolve();
-    let accounts = [...old.accounts],
-      removed = [...old.removed],
-      active = old.active;
-    if (request.kind === 'create' || request.kind === 'restore') {
-      const index = request.kind === 'create' ? nextIndex++ : request.index;
+    let accounts = [...old.accounts], active = old.active;
+    if (request.kind === 'create') {
+      let index = 0; const occupied = new Set(accounts.map((row) => row.index)); while (occupied.has(index)) index++;
       accounts.push({
         id: `hd:60:${index}`,
         index,
@@ -223,7 +219,6 @@ const accountController: NativeAccountView = {
         address: accountAddress(index),
         label: request.label,
       });
-      removed = removed.filter((item) => item.index !== index);
       active = { accountId: `hd:60:${index}`, networkId: 'ethereum' };
     } else if (request.kind === 'select')
       active = { accountId: request.id, networkId: 'ethereum' };
@@ -234,15 +229,12 @@ const accountController: NativeAccountView = {
           : account
       );
     else if (request.kind === 'remove') {
-      const account = accounts.find((item) => item.id === request.id)!;
-      removed.push({ id: account.id, index: account.index });
       accounts = accounts.filter((item) => item.id !== request.id);
     }
     accountSnapshot = Object.freeze({
       ...old,
       revision: old.revision + 1,
       accounts,
-      removed,
       active,
     });
     for (const listener of accountListeners) listener();
@@ -253,6 +245,7 @@ declare global {
     __nativeAccountsFixture: {
       requests(): readonly NativeAccountRequest[];
       contextRevision(): number;
+      count(): number;
       revise(): void;
     };
   }
@@ -260,6 +253,7 @@ declare global {
 window.__nativeAccountsFixture = {
   requests: () => accountRequests,
   contextRevision: () => accountContext,
+  count: () => accountSnapshot?.accounts.length ?? 0,
   revise() {
     if (accountSnapshot)
       accountSnapshot = Object.freeze({

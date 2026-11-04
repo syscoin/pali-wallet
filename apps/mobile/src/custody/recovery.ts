@@ -1,16 +1,13 @@
+import { decodeAccountRecord } from '../storage/accountRecordKey.ts';
 import { isNativeNewPassword } from './password.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
-import { decodeStorageValue } from '../storage/json.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan } from '../storage/types.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { inspectRecoveryInventory } from './recoveryInventory.ts';
-import { recoveryVerificationRecords, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
-import { importedKeyIdentity } from './importedAccounts.ts';
-import { readImportedRecoverySecret } from '../../../../source/wallet/importedAccountRecovery.ts';
-import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords.ts';
-import { getNativeNetwork } from './networkContext.ts';
-import { computeAddress } from 'ethers/transaction';
-import { getAddress } from 'ethers/address';
+import { recoveryVerificationRecords,
+  replaceRecoveredAccountRecords,
+  WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
+import { stageAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
 
 type Sdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 export type RecoveryErrorCode = 'BUSY' | 'NOT_READY' | 'INVALID_INPUT' | 'WRONG_PHRASE' | 'INVALID_SAVED_DATA' | 'AUTH_THROTTLED' | 'CANCELLED' | 'STATE_CHANGED' | 'UNAVAILABLE' | 'REOPEN_REQUIRED';
@@ -34,7 +31,17 @@ const fail = (code: RecoveryErrorCode): never => { throw new RecoveryError(code)
 const translated = (error: unknown): RecoveryError => error instanceof RecoveryError ? error :
   new RecoveryError(error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED' ? 'AUTH_THROTTLED' :
     error instanceof WalletStorageError && error.code === 'STORAGE_CHANGED' ? 'STATE_CHANGED' :
-    error instanceof WalletStorageError && error.code === 'STORAGE_REOPEN_REQUIRED' ? 'REOPEN_REQUIRED' : 'UNAVAILABLE');
+    error instanceof WalletStorageError && error.code === 'STORAGE_REOPEN_REQUIRED' ? 'REOPEN_REQUIRED'
+          : error instanceof Error &&
+            error.message === 'WALLET_RECOVERY_PHRASE_INVALID'
+          ? 'INVALID_INPUT'
+          : error instanceof Error &&
+            [
+              'WALLET_RECOVERY_DATA_INVALID',
+              'IMPORTED_RECOVERY_INVALID',
+            ].includes(error.message)
+          ? 'INVALID_SAVED_DATA'
+          : 'UNAVAILABLE');
 
 /** Backend only. A proof contains no data and is accepted only by its creating instance. */
 export class NativeRecoveryCoordinator {
@@ -123,90 +130,69 @@ export class NativeRecoveryCoordinator {
         if (!before.identity || inspectRecoveryInventory(before).status !== 'needs-matching-phrase-verification') return fail('INVALID_SAVED_DATA');
         await storage.authGuard.checkAllowed(); check();
         const sdk = await (this.dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js')); check();
-        const values = new Map<string, unknown>();
-        const allowed = (key: string) => { check(); if (!['vault', 'vault-keys'].includes(key)) fail('UNAVAILABLE'); };
-        const stageStorage = {
-          async get(key: string) { allowed(key); return values.get(key); },
-          async set() { return fail('UNAVAILABLE'); }, async deleteItem() { return fail('UNAVAILABLE'); },
-          async createManyIfAbsent(items: Record<string, unknown>) {
-            check(); if (Object.keys(items).sort().join(',') !== 'vault,vault-keys' || values.size) return fail('UNAVAILABLE');
-            for (const [key, value] of Object.entries(items)) { allowed(key); values.set(key, value); }
-            return true;
-          },
-        };
-        const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost(stageStorage)); this.stage = keyring;
-        const state = { activeAccount: { id: 0, type: sdk.KeyringAccountType.HDAccount },
-          // The public offline derivation API checks exact nonempty network context; no provider is created.
-          activeNetwork: { kind: sdk.INetworkType.Ethereum, chainId: 1, slip44: 60, currency: 'ETH', label: 'Ethereum', url: getNativeNetwork('ethereum').rpcUrl },
-          accounts: { HDAccount: {}, Imported: {}, Ledger: {}, Trezor: {}, SmartAccount: {} } };
-        keyring.setVaultStateGetter(() => state);
-        if (![12, 24].includes(normalized.split(' ').length) || !keyring.isSeedValid(normalized)) return fail('INVALID_INPUT');
-        await keyring.initializeSession(normalized, password); check();
         const catalogueValue = before.records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value;
-        const records = recoveryVerificationRecords(decodeStorageValue(catalogueValue), before.identity.walletBindingId);
-        const first = await keyring.createFirstAccount();
-        if (!first || first.id !== 0 || first.isImported || first.isLedgerWallet || first.isTrezorWallet || first.isSmartAccount ||
-            typeof first.address !== 'string' || typeof first.xpub !== 'string' ||
-            !/^0x(?:(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/.test(first.xpub)) return fail('UNAVAILABLE');
-        try { if (getAddress(first.address) !== first.address || computeAddress(first.xpub) !== first.address) return fail('UNAVAILABLE'); }
-        catch { return fail('UNAVAILABLE'); }
-        const expectedRoot = records.hd.find((account) => account.index === 0)!;
-        // A definitive wrong root is charged even if its UI request was just cancelled.
-        if (first.address !== expectedRoot.address || first.xpub.toLowerCase() !== expectedRoot.publicKey) {
-          await port.recordFailureForPair(before.identity.pairFingerprint); check(); return fail('WRONG_PHRASE');
+        const records = recoveryVerificationRecords(decodeAccountRecord(catalogueValue), before.identity.walletBindingId);
+        const expectedRoot = records.groups.find((group) => group.activeNetwork.slip44 === 60
+        )!.accounts.HDAccount[0]!;
+        const staged = await stageAccountRecovery(
+          {
+            groups: records.groups,
+            imported: records.recovery,
+            phrase: normalized,
+            password,
+          },
+          {
+            assertCurrent: check,
+            loadSdk: async () => sdk,
+            captureSession: (keyring) => {
+              this.stage = keyring;
+              return () => {
+                if (this.stage === keyring) this.stage = null;
+              };
+            },
+            verifyRoot: async (actual) => {
+              if (
+                actual.address !== expectedRoot.address ||
+                actual.publicKey !== expectedRoot.xpub.toLowerCase()
+              ) {
+          await port.recordFailureForPair!(before.identity!.pairFingerprint); check(); return fail('WRONG_PHRASE');
         }
-        check();
-        const profileId = await keyring.getPrivateRecordProfileId(); check();
-        if (typeof profileId !== 'string' || !/^0x[0-9a-f]{64}$/.test(profileId)) return fail('UNAVAILABLE');
-        const root = { address: first.address, publicKey: first.xpub.toLowerCase(), profileId };
-        if (before.identity.root && JSON.stringify(before.identity.root) !== JSON.stringify(root)) return fail('INVALID_SAVED_DATA');
-        const verifiedHd = new Map<number, string>([[0, first.address]]);
-        const derive = async (index: number) => {
-          if (!verifiedHd.has(index)) {
-            const account = await keyring.deriveEvmHdRuntimeAccount({ index }, { assertCurrent: check }); check();
-            verifiedHd.set(index, account.address);
-            const saved = records.hd.find((item) => item.index === index);
-            if (saved && (saved.address !== account.address || saved.publicKey !== account.xpub.toLowerCase())) return fail('INVALID_SAVED_DATA');
-          }
-          return verifiedHd.get(index)!;
-        };
-        for (const account of records.hd) { await derive(account.index); check(); }
-        for (const account of records.imported) {
-          if (account.recovery.envelope.profileId !== profileId) return fail('INVALID_SAVED_DATA');
-          try {
-            const { secret } = await readImportedRecoverySecret(keyring, account.recovery,
-              { kind: 'ethereum', slip44: 60, id: account.index, address: account.address, xpub: account.publicKey }, check); check();
-            const actual = importedKeyIdentity(secret, account.index);
-            if (actual.address !== account.address || actual.publicKey !== account.publicKey) return fail('INVALID_SAVED_DATA');
-          }
-          catch { check(); return fail('INVALID_SAVED_DATA'); }
-        }
-        if (before.signedRecords.length) {
-          const row = before.signedRecords[0]!;
-          if (row.walletBindingId !== before.identity.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
-          // Authenticate the exact captured ciphertext under the matching seed. Historical
-          // signatures remain inert records even when their original account was removed.
-          const saved = new EvmSignedRecords({
-            async read(expectedProfile) { check(); if (expectedProfile !== profileId) return fail('INVALID_SAVED_DATA'); return row.value; },
-            async compareAndSet() { return fail('UNAVAILABLE'); },
-          });
-          try { await saved.validate({ keyring, assertCurrent: check }); check(); }
+              if (before.identity!.root && JSON.stringify(before.identity!.root) !== JSON.stringify(actual)) return fail('INVALID_SAVED_DATA');
+          },
+            validateRetained: async ({ keyring, profileId }) => {
+              if (before.signedRecords.length) {
+          const { EvmSignedRecords } = await import(
+                  '../../../../source/wallet/evmSignedRecords.ts'
+                );
+                check();
+          try { await new EvmSignedRecords(storage!.signedRecords).validate({ keyring, assertCurrent: check }); check(); }
           catch { check(); return fail('INVALID_SAVED_DATA'); }
         }
         if (before.notes.length) {
-          // Shared canonical reader authenticates every root/shard and validates all
-          // retained notes and inert journals. No status reads, writes or jobs exist here.
-          const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
+                const { readPrivateVaultBundle } = await import('../../../../source/wallet/privateVaultInspection.ts'); check();
           for (const row of before.notes) {
-            if (row.walletBindingId !== before.identity.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
+            if (row.walletBindingId !== before.identity!.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
             try { await readPrivateVaultBundle(JSON.parse(row.value), { keyring, generation, assertCurrent: check }); check(); }
             catch { check(); return fail('INVALID_SAVED_DATA'); }
           }
         }
-        const pair = { vault: values.get('vault'), keys: values.get('vault-keys') };
-        const plan = await port.prepareReplacement(before, pair, root); check();
+            },
+          }
+        );
+        check();
+        const root = {
+          address: expectedRoot.address,
+          publicKey: expectedRoot.xpub.toLowerCase(),
+          profileId: staged.profileId,
+        };
+        const accountRecords = replaceRecoveredAccountRecords(
+          decodeAccountRecord(catalogueValue),
+          before.identity.walletBindingId,
+          staged.groups
+        );
+        const plan = await port.prepareReplacement(before,
+          { ...staged.pair, accountRecords }, root); check();
         const after = port.plannedSnapshot(plan);
-        await keyring.lockWallet(); this.stage = null; values.clear(); check();
         const proof = Object.freeze({}) as RecoveryProof;
         const ready: Ready = { proof, storage, plan, before, after, generation, deadline, guard: assertCurrent };
         const remaining = Math.max(1, deadline - this.now());

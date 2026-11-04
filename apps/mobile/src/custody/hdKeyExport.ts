@@ -36,7 +36,7 @@ export function snapshotHdKeyExportScope(input: HdKeyExportScope): HdKeyExportSc
         Object.keys(value).length !== fields.length || Object.keys(value).some((key) => !fields.includes(key)) ||
         !Number.isSafeInteger(value.authorityRevision) || value.authorityRevision < 0 ||
         !Number.isSafeInteger(value.catalogueRevision) || value.catalogueRevision < 0 ||
-        !Number.isSafeInteger(value.index) || value.index < 0 || value.index > 4095 ||
+        !Number.isSafeInteger(value.index) || value.index < 0 ||
         parseNativeAccountId(value.accountId).index !== value.index || typeof value.address !== 'string' ||
         normalizePublicAddress(value.address, 'ethereum') !== value.address ||
         typeof value.networkId !== 'string' || typeof value.registrationHash !== 'string' ||

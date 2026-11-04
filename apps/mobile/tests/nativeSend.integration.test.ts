@@ -153,7 +153,7 @@ async function cancellationFixture() {
   let signatures = 0;
   let authentications = 0;
   let hydrations = 0;
-  let sdkInstance!: InstanceType<typeof sdk.SoftwareKeyring>;
+  const sdkInstances: InstanceType<typeof sdk.SoftwareKeyring>[] = [];
   let journalGate: { phase: 'signed' | 'submitted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
   let gate: {
     stage: 'storage-read' | 'requote';
@@ -172,7 +172,7 @@ async function cancellationFixture() {
   class ControlledKeyring extends sdk.SoftwareKeyring {
     constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
       super(host);
-      sdkInstance = this;
+      sdkInstances.push(this);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         hydrations++;
@@ -326,7 +326,7 @@ async function cancellationFixture() {
     get signatures() { return signatures; },
     get authentications() { return authentications; },
     get hydrations() { return hydrations; },
-    get sdkUnlocked() { return sdkInstance.isUnlocked(); },
+    get sdkUnlocked() { return sdkInstances.some((instance) => instance.isUnlocked()); },
     holdJournal(phase: 'signed' | 'submitted') {
       let entered!: () => void;
       let resume!: () => void;

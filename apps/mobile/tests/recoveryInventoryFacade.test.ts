@@ -7,14 +7,13 @@ import ts from 'typescript';
 import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import { CustodyOperationError, NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
-import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
-import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
+import { encodeAccountRecord } from '../src/storage/accountRecordKey.ts';
+import { createAccountRecordTestFixture } from './accountRecordTestFixture.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory, CustodyStoredState } from '../src/custody/types.ts';
 import type { KeyringRuntimeDependencies } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../src/storage/types.ts';
 
-const ADDRESS = '0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf';
-const PUBLIC_KEY = '0x0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798';
 const BINDING = 'ab'.repeat(32);
 const PRIVATE_ERROR = 'fixture private storage failure that must never enter a DTO';
 const deferred = <T>() => {
@@ -25,28 +24,27 @@ const deferred = <T>() => {
 const cancelled = (error: unknown) => error instanceof CustodyOperationError &&
   error.code === 'CANCELLED' && error.message === 'CANCELLED' && !('cause' in error);
 
-function savedSnapshot(): RecoveryStorageSnapshot {
+function savedSnapshot(record: NativeAccountRecord, root: { address: string; publicKey: string; profileId: string }): RecoveryStorageSnapshot {
   return {
-    identity: { walletBindingId: BINDING, pairFingerprint: BINDING, root: null, verification: 'requires-unlock' },
+    identity: { walletBindingId: BINDING, pairFingerprint: BINDING, root, verification: 'requires-unlock' },
     state: { presence: 'existing', backup: 'confirmed' }, metadata: [], notes: [], signedRecords: [],
-    records: [{ key: WALLET_CATALOGUE_KEY, value: JSON.stringify({
-      version: 1, revision: 0, walletFingerprint: BINDING, nextIndex: 1, retiredIndices: [],
-      nextImportedIndex: 0, retiredImportedIndices: [], importedAccounts: [],
-      accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60,
-        address: ADDRESS, publicKey: PUBLIC_KEY, label: 'Private account label' }],
-      networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' },
-    }) }],
+    records: [{ key: WALLET_CATALOGUE_KEY, value: encodeAccountRecord(record) }],
   };
 }
 
 /** Execute the real factory, authority and inventory parser; replace only native/SDK ports. */
 async function fixture(existing = true) {
+  const keys = await createAccountRecordTestFixture();
+  const record = keys.record(BINDING), root = { ...keys.identity, profileId: keys.staged.profileId };
+  record.groups[0]!.accounts.HDAccount[0]!.label = 'Private account label';
+  await keys.close();
+  const snapshot = () => savedSnapshot(record, root);
   const security = createSecurityTestFixture(); await security.securityPreferences.load();
   security.custodyIdle.begin({}, () => undefined);
   const counts = { opens: 0, snapshotReads: 0, stateReads: 0, closes: 0, retirements: 0, writes: 0 };
   const stored: CustodyStoredState = existing
     ? { presence: 'existing', backup: 'confirmed' } : { presence: 'empty', backup: 'unconfirmed' };
-  let snapshotRead = async () => savedSnapshot();
+  let snapshotRead = async () => snapshot();
   const storage = {
     keyringStorage: { set() { counts.writes++; assert.fail('inventory must not write'); } },
     recovery: {
@@ -62,7 +60,7 @@ async function fixture(existing = true) {
     },
     session: {
       async lock() {}, async unlock() { return { authenticated: true }; },
-      async readEthereumAddress() { return ADDRESS; },
+      async readEthereumAddress() { return root.address; },
       async createWallet() { assert.fail('unexpected create'); },
       async importWallet() { assert.fail('unexpected import'); },
     },
@@ -103,7 +101,7 @@ async function fixture(existing = true) {
     assert.ok(Object.hasOwn(dependencies, name), `unexpected import ${name}`);
     return dependencies[name];
   } });
-  return { factory: module.exports, counts,
+  return { factory: module.exports, counts, root, snapshot,
     setSnapshotRead(read: () => Promise<RecoveryStorageSnapshot>) { snapshotRead = read; } };
 }
 
@@ -122,7 +120,7 @@ test('locked inventory facade reads the original handle, returns only public cou
     assert.equal(inventory.backup, 'confirmed');
     assert.equal(Object.isFrozen(inventory), true);
     assert.equal(Object.isFrozen(inventory.counts), true);
-    for (const secret of [BINDING, ADDRESS, PUBLIC_KEY, 'Private account label', 'records', 'ciphertext'])
+    for (const secret of [BINDING, f.root.address, f.root.publicKey, 'Private account label', 'records', 'ciphertext'])
       assert.equal(JSON.stringify(inventory).includes(secret), false);
     assert.equal(f.counts.snapshotReads, i);
     assert.equal(f.counts.opens, 1);
@@ -162,12 +160,12 @@ for (const change of ['lock', 'unlock-relock', 'dispose', 'recovery-retirement']
       controllers.authority.lock();
     } else if (change === 'dispose') await controllers.authority.dispose();
     else await controllers.authority.retireForRecovery();
-    gate.resolve(savedSnapshot());
+    gate.resolve(f.snapshot());
     await assert.rejects(reading, cancelled);
     assert.equal(f.counts.opens, 1); assert.equal(f.counts.snapshotReads, 1);
     if (change === 'lock' || change === 'unlock-relock') {
       assert.equal(controllers.authority.getSnapshot().phase, 'locked');
-      f.setSnapshotRead(async () => savedSnapshot());
+      f.setSnapshotRead(async () => f.snapshot());
       assert.equal((await controllers.readRecoveryInventory()).counts?.hdAccounts, 1);
     } else await assert.rejects(controllers.readRecoveryInventory(), cancelled);
     await controllers.authority.dispose();

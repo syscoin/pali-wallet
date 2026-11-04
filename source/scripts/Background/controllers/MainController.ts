@@ -561,9 +561,7 @@ class MainController {
     }
   }
 
-  private async resetWalletStateExclusive(options?: {
-    resetNetworks?: boolean;
-  }) {
+  private async retireWalletRuntime() {
     this.fiatQuoteGeneration += 1;
     this.advanceWalletSession();
     this.walletStateGeneration += 1;
@@ -579,8 +577,6 @@ class MainController {
     void withdrawals
       ?.then((controller) => controller.close())
       .catch(() => undefined);
-    const { resetNetworks = false } = options || {};
-
     // Clear all timers first to prevent any background operations
     this.clearAllTimers();
     // Receipt jobs have their own queue and in-flight freshness markers. Stop
@@ -632,8 +628,6 @@ class MainController {
     vaultCache.clearCache();
     await cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
-    await clearSLHDSAPublicPrecomputeCache();
-    await clearSLHDSAXmssTreeCache();
 
     // Clear all in-memory caches and session data
     if (this.transactionsManager) {
@@ -642,6 +636,15 @@ class MainController {
     clearProviderCache();
     clearFetchBackendAccountCache();
     clearRpcCaches();
+  }
+
+  private async resetWalletStateExclusive(options?: {
+    resetNetworks?: boolean;
+  }) {
+    await this.retireWalletRuntime();
+    await clearSLHDSAPublicPrecomputeCache();
+    await clearSLHDSAXmssTreeCache();
+    const { resetNetworks = false } = options || {};
 
     await walletPersistenceMutex.runExclusive(async () => {
       // Clear all vault-related storage completely
@@ -4005,6 +4008,24 @@ class MainController {
       );
     } finally {
       this.isCreatingWallet = false;
+    }
+  }
+
+  private async activateRecoveredWallet(
+    password: string,
+    assertCurrent: () => void
+  ): Promise<void> {
+    assertCurrent();
+    const keyring = this.getActiveKeyring();
+    const result = await keyring.unlock(password);
+    assertCurrent();
+    if (
+      keyring !== this.getActiveKeyring() ||
+      result?.canLogin !== true ||
+      result.needsAccountCreation
+    ) {
+      await keyring.lockWallet();
+      throw new Error('Recovered wallet authentication failed');
     }
   }
 
