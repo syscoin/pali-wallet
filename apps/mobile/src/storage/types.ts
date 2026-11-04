@@ -51,6 +51,21 @@ export type WalletStoredState = Readonly<
   | { presence: 'existing'; backup: 'unconfirmed' | 'confirmed' }
 >;
 
+/** Read metadata only. The root/profile must still be authenticated by the SDK. */
+export type WalletIdentityRead = Readonly<{
+  walletBindingId: string;
+  pairFingerprint: string;
+  root: Readonly<{ address: string; publicKey: string; profileId: string }> | null;
+  verification: 'requires-unlock';
+}>;
+/** Private, byte-preserving host snapshot; never a screen or public account DTO. */
+export type RecoveryStorageSnapshot = Readonly<{
+  identity: WalletIdentityRead | null;
+  state: WalletStoredState;
+  records: readonly Readonly<{ key: string; value: string }>[];
+  metadata: readonly Readonly<{ key: string; value: string }>[];
+}>;
+
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly authGuard: Readonly<{
@@ -58,7 +73,13 @@ export interface OpenWalletStorage {
     recordFailure(): Promise<void>;
     recordSuccess(): Promise<void>;
   }>;
+  /** Optional on synthetic hosts. Native storage provides read-only inventory ports. */
+  readonly recovery?: Readonly<{
+    readIdentity(): Promise<WalletIdentityRead | null>;
+    readSnapshot(): Promise<RecoveryStorageSnapshot>;
+  }>;
   readState(): Promise<WalletStoredState>;
+  /** Digest of the current encrypted pair, not the stable data binding. */
   getWalletFingerprint(): Promise<string>;
   /** Caller must first verify a fresh, epoch-bound recovery-phrase challenge. */
   confirmBackup(expectedFingerprint: string): Promise<void>;

@@ -169,6 +169,7 @@ export async function openWalletStorage(
     return Object.freeze({
       keyringStorage: owned.keyringStorage,
       authGuard: owned.authGuard,
+      recovery: owned.recovery,
       readState: () => owned.readState(),
       getWalletFingerprint: () => owned.getWalletFingerprint(),
       confirmBackup: (fingerprint: string) => owned.confirmBackup(fingerprint),

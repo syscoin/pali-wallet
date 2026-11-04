@@ -6,7 +6,7 @@ import type { KeyringStoragePort } from '../storage/types.ts';
 import { getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
 import type { LocalActivityRecord, TerminalActivityRecord } from '../activity/types.ts';
-import { nativeAccountId, type NativeAccountType } from './accountIdentity.ts';
+import { nativeAccountId, parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 
 const STORAGE_KEY = 'native-evm-transfer-v1';
 const MAX_RAW_CHARACTERS = 4096;
@@ -142,6 +142,17 @@ function hostEntry(entry: ContainerEntry, scope: TransferJournalScope): Transfer
   return Object.freeze({ version: 1, scope: Object.freeze({ ...scope, chainId: entry.registration.chainId }), phase: entry.phase,
     rawTransaction: entry.rawTransaction, hash: entry.hash, nonce: entry.nonce, createdAt: entry.createdAt,
     ...(entry.intent ? { intent: entry.intent } : {}) });
+}
+/** Read every chain sibling without migrating, broadcasting or exposing signed bytes. */
+export function inspectRecoveryJournal(key: string, value: unknown, walletFingerprint: string) {
+  const account = key === STORAGE_KEY ? parseNativeAccountId('hd:60:0') : parseNativeAccountId(key.slice(STORAGE_KEY.length + 1));
+  if (nativeTransferJournalKey(account.index, account.type) !== key) return corrupt();
+  const raw = clone(value) as { version?: unknown; scope?: { address?: unknown }; account?: { address?: unknown } } | null;
+  const address = raw?.version === 1 ? raw.scope?.address : raw?.account?.address;
+  const scope = scopeSnapshot({ walletFingerprint, address: address as string, chainId: '1' });
+  const parsed = decode(value, scope, account.index, account.type).value;
+  return Object.freeze({ ...account, address: scope.address, transactions: parsed.entries.length,
+    pending: parsed.entries.filter((entry) => !terminal(entry.phase)).length });
 }
 /** Exact whole-row snapshot, never a selected-chain projection, for atomic cleanup. */
 export function terminalJournalForRemoval(value: JournalRemovalSnapshot, scope: TransferJournalScope, accountIndex = 0, type: NativeAccountType = 'HDAccount'): JournalRemovalSnapshot {

@@ -235,6 +235,15 @@ function fresh(fingerprint: string): Document {
     views: [],
   };
 }
+/** Validate the complete saved document without packing, pruning or persisting it. */
+export function inspectRecoveryHistory(value: unknown, walletFingerprint: string) {
+  if (new TextEncoder().encode(encodeStorageValue(value)).length > BYTE_LIMIT) return invalid();
+  const record = decode(value, walletFingerprint);
+  return Object.freeze({ summaries: record.archived.length,
+    cachedTransactions: record.cached.reduce((count, group) => count + group.candidates.length, 0),
+    preferences: record.views.length,
+    accounts: Object.freeze(record.archived.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
+}
 function packed(input: Document, protect?: string): Document {
   const next = {
     ...input,

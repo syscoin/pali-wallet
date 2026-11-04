@@ -5,19 +5,23 @@ import {
   validateStorageKey,
 } from './json.ts';
 import { WalletStorageError } from './types.ts';
+import { readWalletIdentity } from './walletIdentity.ts';
 import type {
   KeyringStoragePort,
   OpenWalletStorage,
   SqlConnection,
   StorageDigest,
   WalletStoredState,
+  WalletIdentityRead,
+  RecoveryStorageSnapshot,
 } from './types.ts';
 
 const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 65536))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const boundedColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
-const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth')`;
+const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
+const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns} FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns} FROM wallet_metadata ORDER BY source, key LIMIT 69`;
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
@@ -29,7 +33,7 @@ type StoredRow = {
   storage_bytes: unknown;
 };
 type PairRow = StoredRow & { source: string; key: string };
-type Pair = { vault?: string; keys?: string; backup?: string; auth?: string };
+type Pair = { vault?: string; keys?: string; backup?: string; auth?: string; identity?: string };
 type AuthRecord = {
   version: 1;
   failures: number;
@@ -68,7 +72,7 @@ function admittedRow(
 
 function validatePair(pair: Pair): 'empty' | 'existing' {
   if (pair.vault === undefined && pair.keys === undefined) {
-    if (pair.backup !== undefined || pair.auth !== undefined) throw failure();
+    if (pair.backup !== undefined || pair.auth !== undefined || pair.identity !== undefined) throw failure();
     return 'empty';
   }
   if (pair.vault === undefined || pair.keys === undefined) throw failure();
@@ -108,6 +112,7 @@ function validatePair(pair: Pair): 'empty' | 'existing' {
 export class SqliteWalletStorage implements OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly authGuard: OpenWalletStorage['authGuard'];
+  readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   private tail: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
   private poisoned = false;
@@ -116,6 +121,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private readonly digest: StorageDigest;
   private readonly now: () => number;
   private readonly monotonicMilliseconds: () => number;
+  private readonly installationId: string;
   private lastMonotonic: number | null = null;
   private authenticationWindow: { raw: string | undefined; notBefore: number } | null = null;
 
@@ -123,12 +129,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     db: SqlConnection,
     digest: StorageDigest,
     now: () => number,
-    monotonicMilliseconds: () => number
+    monotonicMilliseconds: () => number,
+    installationId: string
   ) {
     this.db = db;
     this.digest = digest;
     this.now = now;
     this.monotonicMilliseconds = monotonicMilliseconds;
+    this.installationId = installationId;
     this.keyringStorage = Object.freeze({
       get: (key: string) => this.get(key),
       set: (key: string, value: unknown) => this.set(key, value),
@@ -143,6 +151,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       recordFailure: () => this.recordAuthentication(false),
       recordSuccess: () => this.recordAuthentication(true),
     });
+    this.recovery = Object.freeze({ readIdentity: () => this.readIdentity(), readSnapshot: () => this.readSnapshot() });
   }
 
   static async open(
@@ -155,7 +164,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   ): Promise<SqliteWalletStorage> {
     if (!/^[0-9a-f]{32}$/.test(installationId) || typeof digest !== 'function')
       throw failure();
-    const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds);
+    const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds, installationId);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
         "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 3"
@@ -187,7 +196,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       );
       if (installation?.value !== installationId) throw failure();
       const metadata = await db.getFirstAsync<{ count: number }>(
-        "SELECT COUNT(*) AS count FROM wallet_metadata WHERE key NOT IN ('installation', 'backup', 'auth')"
+        "SELECT COUNT(*) AS count FROM wallet_metadata WHERE key NOT IN ('installation', 'backup', 'auth', 'identity')"
       );
       const count = await db.getFirstAsync<{ count: number }>(
         'SELECT COUNT(*) AS count FROM keyring_records'
@@ -383,7 +392,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       STORAGE_LIMITS.valueBytes,
       1024,
     ]);
-    if (rows.length > 4) throw failure();
+    if (rows.length > 5) throw failure();
     const result: Pair = {};
     for (const row of rows) {
       const raw = admittedRow(
@@ -396,8 +405,10 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       else if (row.source === 'meta' && row.key === 'backup')
         result.backup = raw;
       else if (row.source === 'meta' && row.key === 'auth') result.auth = raw;
+      else if (row.source === 'meta' && row.key === 'identity') result.identity = raw;
       else throw failure();
     }
+    if (result.identity !== undefined) readWalletIdentity(await this.fingerprint(result), result.identity);
     return result;
   }
 
@@ -417,23 +428,62 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     }
   }
 
+  private async storedState(pair: Pair): Promise<WalletStoredState> {
+    if (validatePair(pair) === 'empty')
+      return Object.freeze({ presence: 'empty', backup: 'unconfirmed' });
+    if (pair.identity !== undefined) readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    const auth = this.authenticationRecord(pair.auth);
+    this.authenticationNotBefore(pair.auth, auth, this.monotonicTimestamp());
+    if (pair.backup === undefined)
+      return Object.freeze({ presence: 'existing', backup: 'unconfirmed' });
+    const backup = decodeStorageValue(pair.backup);
+    if (
+      !exact(backup, ['version', 'fingerprint']) ||
+      backup.version !== 1 ||
+      backup.fingerprint !== (await this.fingerprint(pair))
+    )
+      throw failure();
+    return Object.freeze({ presence: 'existing', backup: 'confirmed' });
+  }
+
   readState(): Promise<WalletStoredState> {
+    return this.queued(async () => this.storedState(await this.pair()));
+  }
+
+  private readIdentity(): Promise<WalletIdentityRead | null> {
     return this.queued(async () => {
       const pair = await this.pair();
-      if (validatePair(pair) === 'empty')
-        return Object.freeze({ presence: 'empty', backup: 'unconfirmed' });
-      const auth = this.authenticationRecord(pair.auth);
-      this.authenticationNotBefore(pair.auth, auth, this.monotonicTimestamp());
-      if (pair.backup === undefined)
-        return Object.freeze({ presence: 'existing', backup: 'unconfirmed' });
-      const backup = decodeStorageValue(pair.backup);
-      if (
-        !exact(backup, ['version', 'fingerprint']) ||
-        backup.version !== 1 ||
-        backup.fingerprint !== (await this.fingerprint(pair))
-      )
-        throw failure();
-      return Object.freeze({ presence: 'existing', backup: 'confirmed' });
+      return validatePair(pair) === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    });
+  }
+
+  /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */
+  private readSnapshot(): Promise<RecoveryStorageSnapshot> {
+    return this.queued(async () => {
+      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [STORAGE_LIMITS.valueBytes, 1024]);
+      if (rows.length > STORAGE_LIMITS.records + 4) throw failure();
+      const records: { key: string; value: string }[] = [], metadata: { key: string; value: string }[] = [];
+      const seen = new Set<string>(), pair: Pair = {};
+      for (const row of rows) {
+        if (!['record', 'meta'].includes(row.source)) throw failure();
+        validateStorageKey(row.key);
+        const id = `${row.source}:${row.key}`;
+        if (seen.has(id)) throw failure();
+        seen.add(id);
+        const value = admittedRow(row, row.source === 'meta' ? 1024 : STORAGE_LIMITS.valueBytes);
+        if (row.source === 'meta' && !['installation', 'backup', 'auth', 'identity'].includes(row.key)) throw failure();
+        (row.source === 'record' ? records : metadata).push(Object.freeze({ key: row.key, value }));
+        if (row.source === 'record' && row.key === 'vault') pair.vault = value;
+        if (row.source === 'record' && row.key === 'vault-keys') pair.keys = value;
+        if (row.source === 'meta' && row.key === 'backup') pair.backup = value;
+        if (row.source === 'meta' && row.key === 'auth') pair.auth = value;
+        if (row.source === 'meta' && row.key === 'identity') pair.identity = value;
+      }
+      if (records.length > STORAGE_LIMITS.records || metadata.length > 4 ||
+          !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
+      const state = await this.storedState(pair);
+      const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
+      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata) });
     });
   }
 

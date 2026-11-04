@@ -88,7 +88,7 @@ function scope(value: unknown): NativeTokenScope {
     return fail('INVALID');
   return Object.freeze(v as NativeTokenScope);
 }
-function decode(value: unknown, expected: NativeTokenScope): RecordValue {
+function decode(value: unknown, expected: Pick<NativeTokenScope, 'walletFingerprint'>): RecordValue {
   const v = object(copy(value), [
     'version',
     'walletFingerprint',
@@ -155,6 +155,12 @@ function decode(value: unknown, expected: NativeTokenScope): RecordValue {
     revision: v.revision as number,
     entries: Object.freeze(entries),
   });
+}
+/** Complete structural inventory, including retired-account entries; no write or read RPC. */
+export function inspectRecoveryTokens(value: unknown, walletFingerprint: string) {
+  const record = decode(value, { walletFingerprint });
+  return Object.freeze({ tokens: record.entries.length,
+    accounts: Object.freeze(record.entries.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
 }
 const identity = (e: Entry) =>
   `${e.accountId}:${e.address}:${e.network}:${e.chainId}:${

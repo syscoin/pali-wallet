@@ -175,6 +175,18 @@ function projection(record: CatalogueRecord): NativeWalletCatalogueSnapshot {
       ...record.importedAccounts.map(({ publicKey: _publicKey, envelope: _envelope, ...account }) => Object.freeze(account))]),
     networks: record.networks, active: record.active });
 }
+/** Structural inventory only; no derivation, decryption, migration or ownership grant. */
+export function inspectRecoveryCatalogue(value: unknown, walletFingerprint: string) {
+  const raw = snapshot(value) as { accounts?: unknown } | null;
+  if (!raw || !Array.isArray(raw.accounts)) return invalid();
+  const first = raw.accounts.find((account) => account && typeof account === 'object' && account.index === 0);
+  if (!first) return invalid();
+  const root = publicIdentity({ address: first.address, publicKey: first.publicKey });
+  const record = decode(value, { walletFingerprint, ...root }, true);
+  return Object.freeze({ root, accounts: projection(record).accounts,
+    retiredIndices: record.retiredIndices, retiredImportedIndices: record.retiredImportedIndices,
+    importedProfiles: Object.freeze(record.importedAccounts.map((account) => account.envelope.profileId)) });
+}
 function guardFor(assertCurrent: () => void): () => void {
   return () => {
     const result: unknown = assertCurrent();

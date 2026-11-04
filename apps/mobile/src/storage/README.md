@@ -38,3 +38,20 @@ Operational errors must never be counted as wrong passwords.
 Node tests exercise real SQLite transactions and SDK values. They do not establish
 SQLCipher encryption, native keychain/file policy, power-loss durability or actual
 iOS/Android behavior. Those require device qualification of the final binary.
+
+## Recovery inventory reads
+
+The internal `OpenWalletStorage.recovery` port reads one bounded, coherent snapshot
+of all record and metadata rows. It does not mutate, migrate, decrypt or authorize
+anything. `readIdentity` distinguishes a stable data binding from the current
+encrypted-pair digest; legacy stores use that digest as their initial binding,
+without an eager metadata write. Optional identity metadata must match the exact
+current pair and still requires SDK root/profile authentication after unlock.
+`getWalletFingerprint`, backup receipts and authentication retain their existing
+encrypted-pair semantics.
+
+`custody/recoveryInventory.ts` validates every known domain using its existing
+parser and exposes only counts, categories and status. Unknown or invalid records
+refuse eligibility and remain untouched. A successful inventory result means
+`needs-matching-phrase-verification`, never safe, recovered or authorized. Password
+reset, private decryption and atomic replacement are not implemented by this port.
