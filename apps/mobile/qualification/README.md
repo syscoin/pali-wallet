@@ -148,11 +148,48 @@ Record exact source, dependency, binary, signing/device and OS identities.
 Simulator build/crypto/refusal evidence cannot satisfy that release gate.
 
 Cold iOS simulator boot readiness has a separate ten-minute command budget;
-ordinary commands, including binary database/screenshot reads, retain a
+ordinary app commands, including binary database/screenshot reads, retain a
 three-minute limit. Application report deadlines remain five minutes. Failures
 produce a bounded platform failure artifact with the original command, status,
 error/timeout classification and diagnostic tails after best-effort cleanup.
 Binary database output is never included in that artifact.
+
+Android setup bounds each connection/root command to 30 seconds and the UID
+probe to 10 seconds. One exact `adb root` closed-transport error may proceed to
+reconnection, but app installation requires an explicit UID 0 readback. The
+original root error is retained in `android-root-readiness.json`; nonroot,
+nontransient errors and failed reconnection stop the run. No app action is retried.
+Before each iOS app launch, a separate 30-second readiness deadline requires the
+exact newly created simulator UUID to be available under the selected runtime,
+Booted, and running SpringBoard. Missing, ambiguous or malformed inventory,
+truncated service inventory, or an already-running qualification app stops the
+run. Only readiness probes repeat; the app launch does not.
+`ios-<scenario>-<phase>-readiness.json` records that proof or its failed stage.
+`ios-<scenario>-stages.json` records running/completed/failed setup, launch and
+report stages with bounded elapsed times and no command output.
+Measured readiness overruns remain visible, with explicit deadline and duration
+truncation flags. Once creation returns a validated owned UUID, cleanup still
+runs if persisting that stage fails; unvalidated identities are never cleaned.
+
+An iOS launch failure records up to two ten-second diagnostic probes before
+deleting the owned simulator. The log query covers the full launch wait plus a
+minute of margin, rounded up to minutes and capped at 15 minutes. Version 3 of
+`ios-<scenario>-<phase>-launch.json` contains only service flags, log-category
+counts and explicit window/truncation/parse-confidence flags, not raw messages.
+If the log query fails, it also records its exit status, allowlisted error code
+and signal, requested timeout, and bounded elapsed time. Unknown codes/signals
+become `other`; command output and exception text are omitted.
+Counts marked complete apply only to the queried system processes and messages
+containing the qualification package marker; they do not prove an absence of
+other errors. After a failed first launch, `ios-<scenario>-create-launch-reports.json`
+records whether existing startup/create reports could be read. Each regular-file
+read is limited to 100,001 bytes; reports over 100,000 bytes are rejected. Opening
+is nonblocking, symlinks are refused, and nonregular files are closed without reading. The
+separate diagnostic-only artifact is limited to 8 KiB and retains only validated
+status, phase, check count, and fixed crypto/storage checkpoints. A reported
+success cannot qualify the failed launch. The launch is never repeated or treated as successful by these
+diagnostics. These runner changes are not evidence that an earlier launch stall
+has been fixed; a new exact-head artifact run remains required.
 
 ## Signed physical-iPhone harness
 

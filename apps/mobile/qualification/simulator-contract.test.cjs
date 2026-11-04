@@ -98,7 +98,11 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true,
       identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('public-device');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
+    if (args.includes('devices')) return ok(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+      { udid: '11111111-2222-3333-4444-555555555555', isAvailable: true, state: 'Booted' },
+    ] } }));
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
     if (args.includes('get_app_container')) return ok('/public-container');
     return ok();
   };

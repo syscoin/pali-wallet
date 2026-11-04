@@ -95,7 +95,7 @@ test('the real runner writes the original boot failure artifact after cleanup al
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('public-device');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
     if (args.includes('boot')) return ok('');
     if (args.includes('bootstatus')) return { status: null, signal: 'SIGTERM', error: Object.assign(Error('boot deadline'), { code: 'ETIMEDOUT' }), stderr: 'public boot still pending' };
     return { status: 9, stderr: 'cleanup failure must not replace boot deadline' };
@@ -116,7 +116,7 @@ test('the real runner writes the original boot failure artifact after cleanup al
   assert(artifact);
   const report = JSON.parse(artifact.data);
   assert.equal(report.failure.command, 'xcrun');
-  assert.deepEqual(report.failure.args, ['simctl', 'bootstatus', 'public-device', '-b']);
+  assert.deepEqual(report.failure.args, ['simctl', 'bootstatus', '11111111-2222-3333-4444-555555555555', '-b']);
   assert.equal(report.failure.timeoutMs, 600000);
   assert.equal(report.failure.timedOut, true);
   assert.equal(report.failure.stderrTail, 'public boot still pending');
@@ -154,6 +154,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
     const ok = (stdout) => ({ status: 0, stdout });
     if (command.endsWith('/aapt') && args[0] === 'dump') return ok("package: name='com.paliwallet.qualification'\nlaunchable-activity: name='com.paliwallet.qualification.MainActivity'");
     if (command.endsWith('/aapt')) return ok([...['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)), 'assets/index.android.bundle'].join('\n'));
+    if (args[0] === 'shell' && args[1] === 'id') return ok('0');
     if (args.includes('screencap')) return ok(Buffer.from('public PNG fixture'));
     if (args.includes('cat')) {
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
@@ -212,7 +213,8 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
   assert.equal(report.failure.stdoutBytes, Buffer.byteLength('PRIVATE_DATABASE_BYTES'));
   assert(!artifact.data.includes('PRIVATE_DATABASE_BYTES'));
   assert(!artifact.data.includes('cleanup write failure'));
-  assert(calls.every((call) => call.options.timeout === 180000));
+  assert.deepEqual(calls.filter((call) => call.args[0] === 'wait-for-device' || call.args[0] === 'root' || call.args[1] === 'id').map((call) => call.options.timeout), [30000, 30000, 30000, 10000]);
+  assert(calls.filter((call) => call.args[0] !== 'wait-for-device' && call.args[0] !== 'root' && call.args[1] !== 'id').every((call) => call.options.timeout === 180000));
 });
 
 test('the real iOS runner launches the isolated app directly with its public argument', async () => {
@@ -225,7 +227,11 @@ test('the real iOS runner launches the isolated app directly with its public arg
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
-    if (args.includes('create')) return ok('public-device');
+    if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
+    if (args.includes('devices')) return ok(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
+      { udid: '11111111-2222-3333-4444-555555555555', isAvailable: true, state: 'Booted' },
+    ] } }));
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
     if (args.includes('get_app_container')) return ok('/public-container');
     if (args.includes('launch')) return { status: 7, stderr: 'stop fixture after observing launch arguments' };
     return ok('');
@@ -240,7 +246,7 @@ test('the real iOS runner launches the isolated app directly with its public arg
     process: { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1' }, argv: ['node', 'runner', 'ios', '/public-app'] },
     console: { error() {}, log() {} }, setTimeout,
   });
-  assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', 'public-device', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
+  assert.deepEqual(Array.from(calls.find((call) => call.args.includes('launch')).args), ['simctl', 'launch', '11111111-2222-3333-4444-555555555555', 'com.paliwallet.qualification', '-PaliQualificationURL', 'pali-wallet-qualification://run?phase=create&scenario=import']);
   assert(!calls.some((call) => call.args.includes('openurl')));
 });
 
@@ -442,6 +448,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
       if (args.includes('start')) phase = args[args.indexOf('-d') + 1].includes('phase=restart') ? 'restart' : 'create';
       if (args.includes('force-stop')) phase = 'stopped';
       if (args.includes('pidof')) return phase === 'stopped' ? '' : phase === 'create' ? '100' : '101';
+      if (args[0] === 'shell' && args[1] === 'id') return '0';
       if (args.includes('getprop')) return '35';
       return '';
     };
@@ -454,6 +461,7 @@ test('the actual Android runner requires ERC20 and NEVM restart evidence in addi
     const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
       process: { env: { ANDROID_HOME: '/public-sdk' } },
       fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
+      prepareAndroidRoot: require('./native-readiness.cjs').prepareAndroidRoot,
       path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',
       waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
       androidProcessRunning: () => true,
