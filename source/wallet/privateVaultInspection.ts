@@ -1,4 +1,4 @@
-import { keccak256 } from 'ethers';
+import { keccak256 } from 'ethers/crypto';
 
 import { identifyClassicNote } from '../utils/privacy/note.ts';
 

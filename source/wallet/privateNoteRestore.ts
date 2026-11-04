@@ -1,4 +1,5 @@
-import { keccak256, toUtf8Bytes } from 'ethers';
+import { keccak256 } from 'ethers/crypto';
+import { toUtf8Bytes } from 'ethers/utils';
 
 import {
   mergeNoteBackupHistories,
