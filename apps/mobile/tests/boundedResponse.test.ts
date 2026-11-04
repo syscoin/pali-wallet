@@ -148,3 +148,30 @@ test('cancelled bounded reads are never classified as size overflows', async () 
   waiting.abort();
   await assert.rejects(pending, { name: 'AbortError' });
 });
+
+test('synchronous shared budget receives exact byte counts only and retains UTF-8 semantics', async () => {
+  for (const response of [new Response('é水'), nativeText('é水')]) {
+    const calls: unknown[][] = [];
+    assert.equal(await boundedResponseText(response, signal(), 100, (...args) => { calls.push(args); }), 'é水');
+    assert.equal(calls.flat().reduce<number>((sum, bytes) => sum + Number(bytes), 0), 5);
+    assert.ok(calls.every((args) => args.length === 1 && Number.isSafeInteger(args[0])));
+  }
+});
+
+test('shared budget failure and callback cancellation retain their primary errors and cancel streams', async () => {
+  for (const kind of ['limit', 'abort'] as const) {
+    let reads = 0, cancels = 0;
+    const controller = new AbortController(), error = new ResponseSizeLimitError();
+    const response = { headers: new Headers(), body: { getReader: () => ({ async read() { reads++; return { done: false, value: new Uint8Array(3) }; }, cancel() { cancels++; throw Error('secondary'); } }) } } as unknown as Response;
+    await assert.rejects(boundedResponseText(response, controller.signal, 100, () => { if (kind === 'limit') throw error; controller.abort(); }), kind === 'limit' ? (actual: unknown) => actual === error : { name: 'AbortError' });
+    assert.equal(reads, 1); assert.equal(cancels, 1);
+  }
+});
+
+test('async, thenable and nonfunction budgets are rejected without unhandled rejections', async () => {
+  for (const callback of [() => Promise.reject(Error('async')), () => ({ then(_resolve: unknown, reject: (e: Error) => void) { reject(Error('thenable')); } }), () => 0]) {
+    await assert.rejects(boundedResponseText(new Response('x'), signal(), 10, callback as unknown as (bytes: number) => void), /synchronously/);
+  }
+  await assert.rejects(boundedResponseText(new Response('x'), signal(), 10, 1 as unknown as (bytes: number) => void), /Invalid byte budget/);
+  await new Promise((resolve) => setImmediate(resolve));
+});

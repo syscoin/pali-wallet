@@ -60,12 +60,25 @@ export function utf8ByteLength(value: string): number {
   return length;
 }
 
+/** consumeBytes is a synchronous shared budget hook; it receives counts only. */
 export async function boundedResponseText(
   response: Response,
   signal: AbortSignal,
-  maxBytes = MAX_RESPONSE_BYTES
+  maxBytes = MAX_RESPONSE_BYTES,
+  consumeBytes?: (bytes: number) => void
 ): Promise<string> {
   checkAborted(signal);
+  if (consumeBytes !== undefined && typeof consumeBytes !== 'function') throw new Error('Invalid byte budget');
+  const charge = (bytes: number) => {
+    if (!consumeBytes) return;
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('Invalid byte count');
+    const returned: unknown = consumeBytes(bytes);
+    if (returned !== undefined) {
+      if (returned && (typeof returned === 'object' || typeof returned === 'function')) void Promise.resolve(returned).catch(() => undefined);
+      throw new Error('Byte budget must return synchronously');
+    }
+    checkAborted(signal);
+  };
   if (
     !Number.isSafeInteger(maxBytes) ||
     maxBytes < 1 ||
@@ -96,6 +109,7 @@ export async function boundedResponseText(
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
         if (bytes > maxBytes) throw new ResponseSizeLimitError();
+        charge(chunk.value.byteLength);
         result += decoder.decode(chunk.value, { stream: true });
       }
       result += decoder.decode();
@@ -112,6 +126,7 @@ export async function boundedResponseText(
   if (text.length > maxBytes || utf8ByteLength(text) > maxBytes) {
     throw new ResponseSizeLimitError();
   }
+  charge(utf8ByteLength(text));
   return text;
 }
 
