@@ -1,7 +1,8 @@
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
 import { registerRootComponent } from 'expo';
-import { AppState, Platform, Share } from 'react-native';
+import { AppState, Linking, Platform, Share } from 'react-native';
+import { activityFetch, activityFixture } from './utxoActivityFixture';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue } from './nativeFactory';
 import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
@@ -16,11 +17,14 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
   listeners.get(event)!.add(listener);
   return { remove() { listeners.get(event)!.delete(listener); } };
 }) as typeof AppState.addEventListener;
-globalThis.fetch = fixtureFetch;
+globalThis.fetch = async (input, init) => await activityFetch(input) ?? fixtureFetch(input, init);
+const originalOpen = Linking.openURL;
+Linking.openURL = async (url) => { if (url.startsWith('https://blockbook.btc.zelcore.io/tx/') || url.startsWith('https://explorer-blockbook.syscoin.org/tx/')) { activityFixture.open(url); return; } return originalOpen(url); };
 Share.share = async (content) => { publicShares.push(content.message ?? ''); return { action: Share.sharedAction, activityType: undefined }; };
 declare global {
   interface Window {
     __watchFixture: {
+      activity: typeof activityFixture;
       audit(): typeof audit;
       events(): string[];
       shares(): string[];
@@ -54,6 +58,7 @@ declare global {
   }
 }
 window.__watchFixture = {
+  activity: activityFixture,
   audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },

@@ -192,7 +192,7 @@ test('same-address native to watch switch revokes native owner before public tab
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
 });
 
-test('fixed Bitcoin watch Activity remains unavailable and its Wallet scope survives tab changes', async ({ page }) => {
+test('fixed Bitcoin watch Activity requires consent and its Wallet scope survives tab changes', async ({ page }) => {
   await page.goto('/?empty=1');
   await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
   await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
@@ -203,7 +203,8 @@ test('fixed Bitcoin watch Activity remains unavailable and its Wallet scope surv
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity unavailable for watch accounts', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.activity.calls())).toEqual([]);
   await chooseTab(page, 'Wallet');
   await expect(page.getByText('Bitcoin · Fixed for this address', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Bitcoin confirmed balance 1.23456789 BTC', { exact: true })).toBeVisible();

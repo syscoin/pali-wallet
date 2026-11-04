@@ -7,6 +7,11 @@ import { RealTools } from './RealTools';
 import { RealSettings } from './RealSettings';
 import { WatchAccountPortfolio } from './WatchAccountPortfolio';
 import { useRealShell } from './useRealShell';
+import { WatchActivity } from './WatchActivity';
+import { createUtxoActivityReader } from '../core/utxoActivity';
+import { walletFetch } from '../platform/http';
+
+const activityReader = createUtxoActivityReader({ fetch: walletFetch });
 
 /** Owns public navigation only; the existing App-owned authority remains authoritative. */
 export function WatchSession({ authority, onAccounts, onExit }: {
@@ -33,7 +38,9 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const openAccounts = () => { if (AppState.currentState === 'active' && currentScope()) onAccounts(); };
   let content: React.ReactNode;
   if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={onExit} navigation={shell.navigation} />;
-  else if (shell.tab === 'activity') content = <UnavailableActivity accountLabel={`${label} · ${network.name}`} watchOnly onBack={() => shell.select('wallet')} />;
+  else if (shell.tab === 'activity') content = network.id === 'bitcoin' || network.id === 'syscoin'
+    ? <WatchActivity authority={authority} reader={activityReader} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
+    : <UnavailableActivity accountLabel={`${label} · ${network.name}`} watchOnly onBack={() => shell.select('wallet')} />;
   else if (shell.tab === 'tools') content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts} onBack={() => shell.select('wallet')} />;
   else content = <RealSettings accountLabel={label} watchOnly onLock={onExit} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;

@@ -42,6 +42,8 @@ export function readAccounts(): readonly PublicAccount[] {
   if (failRead) { audit.readFailures++; throw Error('Synthetic read failure'); }
   const raw = localStorage.getItem(KEY);
   if (raw) return JSON.parse(raw);
+  const activityNetwork = new URLSearchParams(window.location.search).get('utxo-activity');
+  if (activityNetwork === 'bitcoin' || activityNetwork === 'syscoin') return [{ id: 'public_1', name: 'Activity watch', addresses: { [activityNetwork]: activityNetwork === 'bitcoin' ? 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' : 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58' } }];
   return new URLSearchParams(window.location.search).has('empty') ? [] : [createEvmWatchAccount('public_1', 'Shared address watch', ADDRESS)];
 }
 export function writeAccounts(accounts: readonly PublicAccount[]) {
