@@ -20,6 +20,7 @@ const { qualificationMode, assertSimulatorTarget } = require('./simulator-contra
 const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
 const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
+const { captureIosLaunchReports } = require('./ios-launch-reports.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
   throw Error('Run only against isolated qualification devices');
@@ -219,8 +220,18 @@ async function ios() {
       };
       await stage('readiness-create', () => prepareIosSimulator(run, device, runtime.identifier,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
-      await stage('launch-create', () => launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
-        (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      await stage('launch-create', () => {
+        try {
+          return launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+            (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
+        } catch (error) {
+          try {
+            captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
+              path.join(output, `ios-${scenario}-create-launch-reports.json`), `${JSON.stringify(evidence, null, 2)}\n`));
+          } catch { /* Report collection cannot replace the original launch failure. */ }
+          throw error;
+        }
+      });
       const created = await stage('report-create', () => waitReport(
         () => read('create'),
         'create',

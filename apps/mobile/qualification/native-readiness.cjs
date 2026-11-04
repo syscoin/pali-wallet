@@ -1,10 +1,25 @@
 const { describeQualificationFailure } = require('./command-runner.cjs');
 const { performance } = require('node:perf_hooks');
+const { constants: { signals } } = require('node:os');
 const { inspectIosServices } = require('./ios-runner-diagnostics.cjs');
 
 const CONNECTION_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 const PACKAGE = 'com.paliwallet.qualification';
+const QUERY_ERROR_CODES = new Set(['EACCES', 'EAGAIN', 'EBADF', 'ECONNRESET', 'EFAULT', 'EINTR', 'EINVAL', 'EIO', 'EISDIR', 'EMFILE', 'ENFILE', 'ENOBUFS', 'ENOENT', 'ENOMEM', 'ENOTCONN', 'ENOTDIR', 'EPERM', 'EPIPE', 'ETIMEDOUT']);
+
+/** Fixed host failure fields only: never error text, arguments, or process output. */
+function iosLogQueryFailure(error, elapsed) {
+  const failure = describeQualificationFailure(error);
+  const typed = failure.kind === 'command';
+  return Object.freeze({ kind: typed ? 'command' : 'unclassified',
+    status: typed && Number.isSafeInteger(failure.status) ? failure.status : null,
+    errorCode: typed && failure.errorCode !== null ? QUERY_ERROR_CODES.has(failure.errorCode) ? failure.errorCode : 'other' : null,
+    signal: typed && failure.signal !== null ? Object.hasOwn(signals, failure.signal) ? failure.signal : 'other' : null,
+    timedOut: typed ? failure.timedOut === true : null, timeoutMs: PROBE_TIMEOUT_MS,
+    elapsedMs: Number.isFinite(elapsed) && elapsed >= 0 ? Math.min(600000, elapsed) : null,
+    elapsedTruncated: Number.isFinite(elapsed) && elapsed > 600000 });
+}
 
 function closedRootTransport(error) {
   const failure = describeQualificationFailure(error);
@@ -86,9 +101,13 @@ function launchIos(run, device, link, record, now = () => performance.now()) {
     const validClock = Number.isFinite(untilQuery) && untilQuery >= duration && duration >= 0;
     const lookbackMinutes = validClock ? Math.min(15, Math.max(1, Math.ceil((untilQuery + 60000) / 60000))) : 15;
     const fullAttemptRequested = validClock && lookbackMinutes * 60000 >= untilQuery + 60000;
+    let logQueryFailure;
+    const queryStarted = now();
     try { logs = run('xcrun', ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', `${lookbackMinutes}m`,
-      '--predicate', 'process == "SpringBoard" OR process == "runningboardd" OR process == "launchd"'], true, PROBE_TIMEOUT_MS); } catch { /* diagnostic only */ }
-    try { record(Object.freeze({ version: 2, stage: 'launch', elapsedMs, lookbackMinutes,
+      '--predicate', 'process == "SpringBoard" OR process == "runningboardd" OR process == "launchd"'], false, PROBE_TIMEOUT_MS); }
+    catch (queryError) { logQueryFailure = iosLogQueryFailure(queryError, now() - queryStarted); }
+    try { record(Object.freeze({ version: 3, stage: 'launch', elapsedMs, lookbackMinutes,
+      ...(logQueryFailure ? { logQueryFailure } : {}),
       ...summarizeIosLaunch(services, logs, fullAttemptRequested) })); }
     catch { /* preserve the original launch failure */ }
     throw error;
