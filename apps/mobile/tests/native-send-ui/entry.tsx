@@ -2,6 +2,7 @@
 import React, { useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { NativeCustodyFeedback } from '../../src/screens/NativeCustodyFeedback';
 import type { CustodyErrorCode } from '../../src/custody/types';
 import { Text } from '../../src/ui';
@@ -89,7 +90,7 @@ window.__nativeSendFixture = {
 const accountAddress = (index: number) => '0x' + (index + 1).toString(16).padStart(40, '0');
 let accountSnapshot: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({
   revision: 0, removed: [], active: { accountId: 'hd:60:0', networkId: 'ethereum' },
-  networks: [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60, rpcUrl: 'https://fixture.invalid', symbol: 'ETH', decimals: 18 }],
+  networks: NATIVE_NETWORKS,
   accounts: [0, 1].map((index) => ({ id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, address: accountAddress(index), label: `Account ${index + 1}` })),
 });
 let accountContext = 0;

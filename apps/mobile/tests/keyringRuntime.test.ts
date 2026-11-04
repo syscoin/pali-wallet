@@ -11,6 +11,7 @@ import { SeedBackupFlow } from '../src/custody/seedBackup.ts';
 import { keccak256, SigningKey } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet } from 'ethers/wallet';
+import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -690,4 +691,91 @@ test('runtime count and highwater preflight reject before authentication or auth
       assert.equal(f.disk.successWrites, writes);
     }
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('all EVM contexts preserve SDK HD addresses while non-Ethereum signing stays unavailable', async () => {
+  const f = await readyAccounts();
+  try {
+    await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+    const address = f.authority.getSnapshot().account!.address;
+    const select = (id: string) => f.authority.selectNetwork(id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    for (const network of NATIVE_NETWORKS) {
+      await select(network.id);
+      assert.equal(f.authority.getSnapshot().account!.network, network.id);
+      assert.equal(f.authority.getSnapshot().account!.address, address);
+      if (network.id !== 'ethereum') {
+        const state = f.authority.getSnapshot();
+        await assert.rejects(f.runtime.transfers!.authorize(PASSWORD, () => undefined), /NOT_READY/);
+        await assert.rejects(f.runtime.transfers!.journal(() => undefined), /NOT_READY/);
+        await assert.rejects(f.runtime.transfers!.sign({ type: 2, from: address, to: ADDRESS, chainId: network.chainId, nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined), /NOT_READY/);
+        assert.equal(f.authority.getSnapshot(), state);
+      }
+    }
+    await select('syscoin-nevm');
+    await f.execute({ kind: 'create', label: 'New on NEVM context', password: PASSWORD });
+    const derived = f.authority.getSnapshot().account!.address;
+    assert.equal(f.authority.getCatalogue()!.active.networkId, 'syscoin-nevm');
+    await select('ethereum');
+    assert.equal(f.authority.getSnapshot().account!.address, derived);
+    await select('rollux');
+    await f.authority.dispose();
+    const reopened = new NativeCustodyAuthority(f.disk.factory);
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    assert.equal(reopened.getSnapshot().account!.network, 'rollux');
+    assert.equal(reopened.getSnapshot().account!.address, derived);
+    await reopened.dispose();
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('network selection rejects unknown identity and active SDK work before changing authority', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  try {
+    const before = f.authority.getSnapshot();
+    await assert.rejects(f.execute({ kind: 'select-network', id: 'base' } as any), /INVALID_INPUT/);
+    assert.equal(f.authority.getSnapshot(), before);
+    await assert.rejects(f.authority.selectNetwork('unknown', before.revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
+    assert.equal(f.authority.getSnapshot(), before);
+    const hold = sdk.hold('password');
+    const pending = f.runtime.backup.readPhrase(PASSWORD);
+    await hold.entered;
+    await assert.rejects(f.authority.selectNetwork('base', before.revision, f.authority.getCatalogue()!.revision), /BUSY/);
+    assert.equal(f.authority.getSnapshot(), before);
+    hold.release(); await pending;
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('lost network-context CAS acknowledgement quarantines and cold reopens its committed selection', async () => {
+  const f = await readyAccounts();
+  try {
+    f.disk.loseCasAcknowledgement();
+    await assert.rejects(f.authority.selectNetwork('arbitrum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /UNAVAILABLE/);
+    await assert.rejects(f.authority.dispose(), /CLEANUP_FAILED/);
+    const reopened = new NativeCustodyAuthority(f.disk.factory);
+    await reopened.initialize(); await reopened.unlock(PASSWORD);
+    assert.equal(reopened.getSnapshot().account!.network, 'arbitrum');
+    assert.equal(reopened.getSnapshot().account!.address, ADDRESS);
+    await reopened.dispose();
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+
+test('network A-B-A cancels held Ethereum journal work without touching its pending identity', async () => {
+  const f = await readyAccounts(), network = localTransferRpc();
+  const transfers = new NativeTransfers(f.authority, () => f.runtime.transfers, { rpc: network.rpc });
+  const entered = deferredAccount(), release = deferredAccount();
+  try {
+    const review = await prepareAccountTransfer(transfers);
+    f.disk.onRecord(async (kind, key) => { if (kind === 'create' && key === 'native-evm-transfer-v1') { f.disk.onRecord(); entered.resolve(); await release.promise; } });
+    const pending = transfers.confirm(review, PASSWORD); void pending.catch(() => undefined);
+    await entered.promise;
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await assert.rejects(f.runtime.transfers!.journal(() => undefined), /NOT_READY/);
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    release.resolve(); await assert.rejects(pending, /CANCELLED/);
+    const entry = await (await f.runtime.transfers!.journal(() => undefined)).load();
+    assert.equal(entry!.phase, 'signed');
+    assert.equal(Transaction.from(entry!.rawTransaction).from, ADDRESS);
+    assert.equal(network.broadcasts.length, 0);
+  } finally { release.resolve(); f.disk.onRecord(); transfers.dispose(); await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });

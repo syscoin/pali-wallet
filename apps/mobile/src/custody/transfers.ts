@@ -234,7 +234,7 @@ export class NativeTransfers {
     if (this.active) return Promise.reject(new NativeTransferError('BUSY'));
     const captured = this.source.getSnapshot();
     const runtime = this.runtime();
-    if (captured.phase !== 'ready' || !captured.account || !runtime)
+    if (captured.phase !== 'ready' || !captured.account || captured.account.network !== 'ethereum' || !runtime)
       return Promise.reject(new NativeTransferError('NOT_READY'));
     const address = normalizePublicAddress(
       captured.account.address,

@@ -1,0 +1,89 @@
+{
+  "1": {
+    "chainId": 1,
+    "url": "https://ethereum-rpc.publicnode.com",
+    "label": "Ethereum Mainnet",
+    "default": true,
+    "currency": "eth",
+    "explorer": "https://etherscan.io",
+    "apiUrl": "https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api",
+    "kind": "ethereum",
+    "slip44": 60,
+    "coingeckoId": "ethereum",
+    "coingeckoPlatformId": "ethereum"
+  },
+  "57": {
+    "chainId": 57,
+    "url": "https://rpc.syscoin.org",
+    "label": "Syscoin NEVM",
+    "default": true,
+    "currency": "sys",
+    "kind": "ethereum",
+    "slip44": 60,
+    "apiUrl": "https://explorer.syscoin.org/api",
+    "explorer": "https://explorer.syscoin.org",
+    "coingeckoId": "syscoin",
+    "coingeckoPlatformId": "syscoin-nevm"
+  },
+  "570": {
+    "chainId": 570,
+    "currency": "sys",
+    "default": true,
+    "label": "Rollux",
+    "url": "https://rpc.rollux.com",
+    "apiUrl": "https://explorer.rollux.com/api",
+    "explorer": "https://explorer.rollux.com",
+    "kind": "ethereum",
+    "slip44": 60,
+    "coingeckoId": "syscoin",
+    "coingeckoPlatformId": "rollux"
+  },
+  "5700": {
+    "chainId": 5700,
+    "url": "https://rpc.tanenbaum.io",
+    "label": "Syscoin NEVM Testnet",
+    "default": false,
+    "currency": "tsys",
+    "kind": "ethereum",
+    "slip44": 60,
+    "apiUrl": "https://explorer.tanenbaum.io/api",
+    "explorer": "https://explorer.tanenbaum.io/",
+    "coingeckoId": "syscoin"
+  },
+  "8453": {
+    "chainId": 8453,
+    "currency": "eth",
+    "default": true,
+    "label": "Base",
+    "url": "https://mainnet.base.org",
+    "explorer": "https://basescan.org",
+    "kind": "ethereum",
+    "slip44": 60,
+    "coingeckoId": "ethereum",
+    "coingeckoPlatformId": "base"
+  },
+  "42161": {
+    "chainId": 42161,
+    "currency": "eth",
+    "default": true,
+    "label": "Arbitrum One",
+    "url": "https://arb1.arbitrum.io/rpc",
+    "explorer": "https://arbiscan.io",
+    "kind": "ethereum",
+    "slip44": 60,
+    "coingeckoId": "ethereum",
+    "coingeckoPlatformId": "arbitrum-one"
+  },
+  "57057": {
+    "chainId": 57057,
+    "url": "https://rpc-zk.tanenbaum.io",
+    "label": "zkTanenbaum",
+    "default": true,
+    "currency": "tsys",
+    "kind": "ethereum",
+    "slip44": 60,
+    "apiUrl": "https://explorer-zk.tanenbaum.io/api",
+    "explorer": "https://explorer-zk.tanenbaum.io",
+    "coingeckoId": "syscoin"
+  }
+}

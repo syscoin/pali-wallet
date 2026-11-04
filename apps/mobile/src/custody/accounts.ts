@@ -25,3 +25,12 @@ export interface NativeAccountView {
   execute(request: NativeAccountRequest, contextRevision: number, catalogueRevision: number): Promise<void>;
   cancel(): void;
 }
+
+/** Runtime-only stage-1 network selection; UI integration follows separately. */
+export interface NativeNetworkRuntime {
+  reserve(id: string, expectedCatalogueRevision: number): {
+    execute(assertCurrent: () => void): Promise<void>;
+    cancel(): void;
+  };
+  getSelectedId(): import('./networkContext.ts').EvmNetworkId | null;
+}

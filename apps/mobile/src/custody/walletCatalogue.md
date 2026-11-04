@@ -1,14 +1,15 @@
 # Native wallet catalogue and HD account contract
 
 `native-wallet-catalogue-v1` is a bounded record in the existing SQLCipher
-`keyring_records` table. Version 1 is unreleased: this is its canonical format,
-not a compatibility decoder for intermediate development schemas. Absence on an
-existing wallet is the only automatic migration case. Unknown or corrupt
-records fail closed and are never replaced.
+`keyring_records` table. Value version 2 adds the shared EVM registry and durable
+network selection. Committed version 1 has an explicit authenticated CAS
+migration; this is independent of external note-backup formats. Absence creates
+a new catalogue only after authentication. Unknown or corrupt records fail
+closed and are never replaced. See [network context](networkContext.md).
 
 The record contains the encrypted-vault fingerprint, monotonic `nextIndex`,
-retired indices, revision, active account/network references, the fixed Ethereum
-registration, and public address/public key/label for each live HD account.
+retired indices, revision, active account/network references, exact bundled EVM
+registrations and their hashes, and public address/public key/label for each live HD account.
 Account IDs are `hd:60:<index>`. The public projection omits public keys and the
 wallet fingerprint. Recovery words, private keys, encrypted private-key fields,
 passwords, and sessions never enter the catalogue. The database remains private
@@ -21,7 +22,8 @@ bounded compressed/uncompressed secp256k1 shape and compute the same address.
 Only internal runtime records retain the SDK's password-encrypted xprv; the host
 strips it before persistence or UI projection. Hydration installs these derived
 runtime records and the committed selected index before any signing request.
-There is no new signing implementation, arbitrary path, import or network API.
+There is no new signing implementation, arbitrary path or key import. Runtime
+network selection is separate from the staged Ethereum-only transfer capability.
 
 Creation, restoration and removal require fresh SDK password authentication;
 selection and rename require the current unlocked session. Synchronous runtime

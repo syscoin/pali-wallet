@@ -66,14 +66,36 @@ export class NativeCustodyAuthority {
   cancelAccountOperation(): void { if (this.accountOperation) this.lock(); }
 
   manageAccounts(request: NativeAccountRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    return this.manageContext((runtime) => {
+      if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
+      return runtime.accounts.reserve(request, expectedCatalogueRevision);
+    }, expectedRevision);
+  }
+
+  /** Stage-1 host capability; network UI and non-Ethereum send are separate work. */
+  selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    return this.manageContext((runtime) => {
+      if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
+      return runtime.networks.reserve(id, expectedCatalogueRevision);
+    }, expectedRevision);
+  }
+
+  private selectedNetwork(runtime: CustodyRuntime) {
+    if (!runtime.networks) return 'ethereum' as const;
+    const id = runtime.networks.getSelectedId();
+    if (!id) throw new CustodyRuntimeError('NOT_READY');
+    return id;
+  }
+
+  private manageContext(reserve: (runtime: CustodyRuntime) => { execute(assertCurrent: () => void): Promise<void>; cancel(): void }, expectedRevision: number): Promise<void> {
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
-    if (!this.runtime?.accounts || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (!this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
     if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
     const runtime = this.runtime;
     let reservation: ReturnType<NonNullable<CustodyRuntime['accounts']>['reserve']>;
     try {
       // Runtime admission happens before observers can attempt competing work.
-      reservation = runtime.accounts!.reserve(request, expectedCatalogueRevision);
+      reservation = reserve(runtime);
     } catch (cause) {
       const code = cause instanceof CustodyRuntimeError ? cause.code : 'INVALID_INPUT';
       return Promise.reject(new CustodyOperationError(code));
@@ -94,7 +116,7 @@ export class NativeCustodyAuthority {
         await this.readState(true); current();
         const address = normalizePublicAddress(await runtime.session.readEthereumAddress(), 'ethereum');
         current();
-        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network: 'ethereum', address }), error: null });
+        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network: this.selectedNetwork(runtime), address }), error: null });
         current();
       } catch (cause) {
         reservation.cancel();
@@ -374,7 +396,7 @@ export class NativeCustodyAuthority {
         assertCurrent();
         this.publish({
           phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required',
-          account: Object.freeze({ network: 'ethereum', address }),
+          account: Object.freeze({ network: this.selectedNetwork(runtime), address }),
           error: null,
         });
         assertCurrent();

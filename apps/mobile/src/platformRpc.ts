@@ -1,17 +1,13 @@
+import { EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 import { normalizePublicAddress } from './core/addresses.ts';
 import { getNetwork } from './core/networks.ts';
 import type { NetworkId } from './core/types.ts';
 import type { BalanceReader } from './core/watchOnlyAuthority.ts';
 
-// Copied from source/utils/constants.ts at extension source 4470e54e.
-// Kept as a narrow table to avoid loading extension state and browser globals.
-export const RPC_ENDPOINTS: Readonly<Partial<Record<NetworkId, string>>> =
-  Object.freeze({
-    'syscoin-nevm': 'https://rpc.syscoin.org',
-    ethereum: 'https://ethereum-rpc.publicnode.com',
-    base: 'https://mainnet.base.org',
-    arbitrum: 'https://arb1.arbitrum.io/rpc',
-  });
+// Pure shared registrations; this import cannot load extension state/browser APIs.
+export const RPC_ENDPOINTS: Readonly<Partial<Record<NetworkId, string>>> = Object.freeze(
+  Object.fromEntries(EVM_NETWORK_DEFINITIONS.map(({ id, network }) => [id, network.url]))
+);
 
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const ABSOLUTE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;

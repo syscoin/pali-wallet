@@ -1,4 +1,5 @@
-import type { NativeAccountRuntime } from './accounts.ts';
+import type { EvmNetworkId } from './networkContext.ts';
+import type { NativeNetworkRuntime, NativeAccountRuntime } from './accounts.ts';
 /** Public state only. Neither SDK state nor recovery material belongs here. */
 export type CustodySnapshot = Readonly<{
   phase:
@@ -13,7 +14,7 @@ export type CustodySnapshot = Readonly<{
   revision: number;
   presence: 'unknown' | 'empty' | 'existing';
   backup: 'unknown' | 'unconfirmed' | 'confirmed';
-  account: Readonly<{ network: 'ethereum'; address: string }> | null;
+  account: Readonly<{ network: EvmNetworkId; address: string }> | null;
   error: CustodyErrorCode | null;
 }>;
 
@@ -55,6 +56,7 @@ export type CustodyStoredState =
  */
 export interface CustodyRuntime {
   readonly accounts?: NativeAccountRuntime;
+  readonly networks?: NativeNetworkRuntime;
   readonly session: {
     createWallet(password: string): Promise<void>;
     importWallet(phrase: string, password: string): Promise<void>;

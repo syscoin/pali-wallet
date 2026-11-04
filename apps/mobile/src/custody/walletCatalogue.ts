@@ -1,7 +1,7 @@
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
 import { nativeTransferJournalKey, terminalJournalForRemoval, type TransferJournalEntry } from './transferJournal.ts';
-import { RPC_ENDPOINTS } from '../platformRpc.ts';
+import { NATIVE_NETWORKS, getNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 
@@ -23,11 +23,8 @@ export type NativeWalletCatalogueSnapshot = Readonly<{
   revision: number;
   removed: readonly Readonly<{ id: string; index: number }>[];
   accounts: readonly NativeCatalogueAccount[];
-  networks: readonly Readonly<{
-    id: 'ethereum'; kind: 'evm'; chainId: '1'; slip44: 60;
-    rpcUrl: string; symbol: 'ETH'; decimals: 18;
-  }>[];
-  active: Readonly<{ accountId: string; networkId: 'ethereum' }>;
+  networks: readonly NativeNetworkRegistration[];
+  active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
 /** Supplied only after SDK authentication and account derivation. */
 export type NativeWalletCatalogueIdentity = Readonly<{
@@ -36,13 +33,14 @@ export type NativeWalletCatalogueIdentity = Readonly<{
 export type DerivedCatalogueIdentity = Readonly<{ address: string; publicKey: string }>;
 type CatalogueAccount = NativeCatalogueAccount & { readonly publicKey: string };
 type CatalogueRecord = Omit<NativeWalletCatalogueSnapshot, 'accounts' | 'removed'> & Readonly<{
-  version: 1; walletFingerprint: string; nextIndex: number;
+  version: 2; walletFingerprint: string; nextIndex: number;
   retiredIndices: readonly number[]; accounts: readonly CatalogueAccount[];
 }>;
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; index: number; address: string; publicKey: string; label: string }>
   | Readonly<{ kind: 'restore'; index: number; address: string; publicKey: string; label: string }>
   | Readonly<{ kind: 'select'; id: string }>
+  | Readonly<{ kind: 'select-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string; journal: TransferJournalEntry | null }>;
 
@@ -83,22 +81,22 @@ function label(value: unknown): string {
 }
 function fresh(expected: NativeWalletCatalogueIdentity): CatalogueRecord {
   return Object.freeze({
-    version: 1, revision: 0, walletFingerprint: expected.walletFingerprint,
+    version: 2, revision: 0, walletFingerprint: expected.walletFingerprint,
     nextIndex: 1, retiredIndices: Object.freeze([]),
     accounts: Object.freeze([Object.freeze({ id: accountId(0), type: 'HDAccount', index: 0, slip44: 60,
       address: expected.address, publicKey: expected.publicKey, label: 'Account 1' })]),
-    networks: Object.freeze([Object.freeze({ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60,
-      rpcUrl: RPC_ENDPOINTS.ethereum!, symbol: 'ETH', decimals: 18 })]),
+    networks: NATIVE_NETWORKS,
     active: Object.freeze({ accountId: accountId(0), networkId: 'ethereum' }),
   });
 }
-function decode(value: unknown, expected: NativeWalletCatalogueIdentity): CatalogueRecord {
+function decode(value: unknown, expected: NativeWalletCatalogueIdentity, allowLegacy = false): CatalogueRecord {
   const raw = object(snapshot(value), ['version', 'revision', 'walletFingerprint', 'nextIndex', 'retiredIndices', 'accounts', 'networks', 'active']);
-  if (raw.version !== 1 || raw.walletFingerprint !== expected.walletFingerprint ||
+  const legacy = allowLegacy && raw.version === 1;
+  if ((!legacy && raw.version !== 2) || raw.walletFingerprint !== expected.walletFingerprint ||
       !Number.isSafeInteger(raw.revision) || (raw.revision as number) < 0 ||
       !Number.isSafeInteger(raw.nextIndex) || (raw.nextIndex as number) < 1 || (raw.nextIndex as number) > MAX_HD_ACCOUNT_INDEX + 1 ||
       !Array.isArray(raw.accounts) || raw.accounts.length < 1 || raw.accounts.length > MAX_HD_ACCOUNTS ||
-      !Array.isArray(raw.retiredIndices) || !Array.isArray(raw.networks) || raw.networks.length !== 1) return invalid();
+      !Array.isArray(raw.retiredIndices) || !Array.isArray(raw.networks) || raw.networks.length !== (legacy ? 1 : NATIVE_NETWORKS.length)) return invalid();
   const used = new Set<number>();
   const addresses = new Set<string>();
   const accounts: CatalogueAccount[] = raw.accounts.map((value) => {
@@ -118,14 +116,24 @@ function decode(value: unknown, expected: NativeWalletCatalogueIdentity): Catalo
   if (used.size !== raw.nextIndex || !accounts.some((a) => a.index === 0 && a.address === expected.address && a.publicKey === expected.publicKey) ||
       accounts.some((a, i) => i > 0 && accounts[i - 1]!.index >= a.index) ||
       retired.some((n, i) => i > 0 && retired[i - 1]! >= n)) return invalid();
-  const network = object(raw.networks[0], ['id', 'kind', 'chainId', 'slip44', 'rpcUrl', 'symbol', 'decimals']);
+  if (legacy) {
+    const network = object(raw.networks[0], ['id', 'kind', 'chainId', 'slip44', 'rpcUrl', 'symbol', 'decimals']);
+    // Historical v1 registration is immutable; current defaults cannot rewrite it.
+    if (network.id !== 'ethereum' || network.kind !== 'evm' || network.chainId !== '1' || network.slip44 !== 60 ||
+        network.rpcUrl !== 'https://ethereum-rpc.publicnode.com' || network.symbol !== 'ETH' || network.decimals !== 18) return invalid();
+  } else {
+    for (const [index, expectedNetwork] of NATIVE_NETWORKS.entries()) {
+      const network = object(raw.networks[index], Object.keys(expectedNetwork));
+      if (Object.entries(expectedNetwork).some(([key, value]) => network[key] !== value)) return invalid();
+    }
+  }
   const active = object(raw.active, ['accountId', 'networkId']);
-  if (network.id !== 'ethereum' || network.kind !== 'evm' || network.chainId !== '1' || network.slip44 !== 60 ||
-      network.rpcUrl !== RPC_ENDPOINTS.ethereum || network.symbol !== 'ETH' || network.decimals !== 18 ||
-      active.networkId !== 'ethereum' || !accounts.some((a) => a.id === active.accountId)) return invalid();
-  return Object.freeze({ ...fresh(expected), revision: raw.revision as number, nextIndex: raw.nextIndex as number,
+  if (typeof active.networkId !== 'string' || (legacy && active.networkId !== 'ethereum') ||
+      !NATIVE_NETWORKS.some((network) => network.id === active.networkId) || !accounts.some((a) => a.id === active.accountId) ||
+      (legacy && raw.revision === Number.MAX_SAFE_INTEGER)) return invalid();
+  return Object.freeze({ ...fresh(expected), revision: (raw.revision as number) + (legacy ? 1 : 0), nextIndex: raw.nextIndex as number,
     retiredIndices: Object.freeze(retired), accounts: Object.freeze(accounts),
-    active: Object.freeze({ accountId: active.accountId as string, networkId: 'ethereum' }) });
+    active: Object.freeze({ accountId: active.accountId as string, networkId: active.networkId as EvmNetworkId }) });
 }
 function projection(record: CatalogueRecord): NativeWalletCatalogueSnapshot {
   return Object.freeze({ revision: record.revision,
@@ -143,7 +151,7 @@ function guardFor(assertCurrent: () => void): () => void {
   };
 }
 
-/** Version 1 is unreleased; only exact current-schema records or absence are admitted. */
+/** Current v2 and explicit historical v1 migration; unknown/corrupt records fail closed. */
 export class NativeWalletCatalogue {
   private busy = false;
   private uncertain = false;
@@ -174,12 +182,22 @@ export class NativeWalletCatalogue {
           raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
           if (raw === undefined) return invalid();
         }
-        const record = decode(raw, expected);
+        const legacy = (snapshot(raw) as { version?: unknown }).version === 1;
+        const record = decode(raw, expected, true);
         for (const account of record.accounts) {
           if (account.index === 0) continue;
           if (!derive) return invalid();
           const actual = publicIdentity(snapshot(await derive(account.index))); guard();
           if (actual.address !== account.address || actual.publicKey !== account.publicKey) return invalid();
+        }
+        if (legacy) {
+          guard(); writing = true;
+          const committed = await this.storage.compareAndSet(WALLET_CATALOGUE_KEY, raw, record);
+          if (typeof committed !== 'boolean') return invalid();
+          if (!committed) { writing = false; return changed(); }
+          guard();
+          raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
+          if (encodeStorageValue(raw) !== encodeStorageValue(record)) return invalid();
         }
         this.root = expected; this.record = record; this.stored = snapshot(raw);
         return projection(record);
@@ -211,14 +229,18 @@ export class NativeWalletCatalogue {
         const key = publicIdentity({ address: mutation.address, publicKey: mutation.publicKey });
         accounts.push(Object.freeze({ id: accountId(mutation.index), type: 'HDAccount', index: mutation.index, slip44: 60, ...key, label: label(mutation.label) }));
         accounts.sort((a, b) => a.index - b.index);
-        active = Object.freeze({ accountId: accountId(mutation.index), networkId: 'ethereum' });
+        active = Object.freeze({ accountId: accountId(mutation.index), networkId: record.active.networkId });
         if (mutation.kind === 'create') nextIndex++;
         else retiredIndices = Object.freeze(retiredIndices.filter((index) => index !== mutation.index));
+      } else if (mutation.kind === 'select-network') {
+        object(mutation, ['kind', 'id']);
+        getNativeNetwork(mutation.id);
+        active = Object.freeze({ accountId: record.active.accountId, networkId: mutation.id });
       } else {
         object(mutation, mutation.kind === 'rename' ? ['kind', 'id', 'label'] : mutation.kind === 'remove' ? ['kind', 'id', 'journal'] : ['kind', 'id']);
         const account = accounts.find((a) => a.id === mutation.id);
         if (!account) return changed();
-        if (mutation.kind === 'select') active = Object.freeze({ accountId: account.id, networkId: 'ethereum' });
+        if (mutation.kind === 'select') active = Object.freeze({ accountId: account.id, networkId: record.active.networkId });
         else if (mutation.kind === 'rename') accounts = accounts.map((a) => a.id === account.id ? Object.freeze({ ...a, label: label(mutation.label) }) : a);
         else if (mutation.kind === 'remove') {
           if (account.index === 0 || account.id === active.accountId || accounts.length <= 1) throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
