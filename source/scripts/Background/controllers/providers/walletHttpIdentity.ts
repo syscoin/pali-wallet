@@ -71,18 +71,19 @@ export function createWalletHttpIdentity(
   let installed = new Set<string>();
   let pending: Promise<void> = Promise.resolve();
   let desiredKey: string | undefined;
-  let pendingUpdates = 0;
-  let installedValid = true;
+  const pendingTargets = new Set<ReadonlySet<string>>();
+  let lastAttemptFailed = false;
   const synchronize = (explicitRetry = false): Promise<void> => {
     const origins = [...new Set([...configured, ...temporary.keys()])].sort();
     const key = origins.join('\n');
     if (
       key === desiredKey &&
-      !(explicitRetry && pendingUpdates === 0 && !installedValid)
+      !(explicitRetry && pendingTargets.size === 0 && lastAttemptFailed)
     )
       return pending;
     desiredKey = key;
-    pendingUpdates++;
+    const targets = new Set(origins);
+    pendingTargets.add(targets);
     pending = pending
       .catch(() => undefined)
       .then(async () => {
@@ -144,14 +145,14 @@ export function createWalletHttpIdentity(
           addRules: rules,
         });
         installed = new Set(origins);
-        installedValid = true;
+        lastAttemptFailed = false;
       })
       .catch((error) => {
-        installedValid = false;
+        lastAttemptFailed = true;
         throw error;
       })
       .finally(() => {
-        pendingUpdates--;
+        pendingTargets.delete(targets);
       });
     // Ordinary requests never retry installation. An explicit probe may retry once.
     void pending.catch(() => undefined);
@@ -163,23 +164,31 @@ export function createWalletHttpIdentity(
       return (
         configured.has(origin) ||
         rejectedOrigins.has(origin) ||
-        temporary.has(origin)
+        temporary.has(origin) ||
+        installed.has(origin) ||
+        [...pendingTargets].some((targets) => targets.has(origin))
       );
     } catch {
       return false;
     }
   };
-  const isReady = (url: string): boolean =>
-    !configurationError &&
-    isBackend(url) &&
-    pendingUpdates === 0 &&
-    installedValid &&
-    installed.has(walletBackendOrigin(url));
+  const isReady = (url: string): boolean => {
+    if (configurationError || !isBackend(url)) return false;
+    const origin = walletBackendOrigin(url);
+    // Atomic updates retain an installed origin only if every queued target
+    // set contains it. A queued removal/re-add must wait through its gap.
+    if (!installed.has(origin)) return false;
+    for (const targets of pendingTargets)
+      if (!targets.has(origin)) return false;
+    return true;
+  };
   const prepare = async (url: string): Promise<boolean> => {
     if (!isBackend(url)) return false;
     if (configurationError) throw configurationError;
+    if (isReady(url)) return true;
     await pending;
     if (configurationError) throw configurationError;
+    if (!isBackend(url)) return false;
     if (!isReady(url))
       throw new Error('Wallet HTTP identification is unavailable');
     return true;
@@ -217,15 +226,14 @@ export function createWalletHttpIdentity(
     async withBackend<T>(url: string, operation: () => Promise<T>): Promise<T> {
       if (configurationError) throw configurationError;
       const origin = walletBackendOrigin(url);
-      if (configured.has(origin)) {
-        await synchronize(true);
-        await prepare(url);
-        return operation();
-      }
       temporary.set(origin, (temporary.get(origin) ?? 0) + 1);
       try {
-        await synchronize(true);
-        await prepare(url);
+        if (!isReady(url)) {
+          await synchronize(true);
+          if (!(await prepare(url)))
+            throw new Error('Wallet HTTP identification is unavailable');
+        }
+        if (configurationError) throw configurationError;
         return await operation();
       } finally {
         const count = temporary.get(origin)! - 1;
