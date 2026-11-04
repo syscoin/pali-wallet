@@ -37,7 +37,7 @@ test('new storage creates the complete canonical schema directly and reopens wit
   const f = await fixture(); try {
     const before = f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), metadata = f.db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all();
     assert.equal(f.db.prepare('PRAGMA user_version').get()!.user_version, 1);
-    assert.deepEqual(f.db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view','trigger','index') AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name), ['keyring_records', 'private_note_records', 'wallet_metadata']);
+    assert.deepEqual(f.db.prepare("SELECT name FROM sqlite_master WHERE type IN ('table','view','trigger','index') AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((row) => row.name), ['evm_signed_records', 'keyring_records', 'private_note_records', 'wallet_metadata']);
     const snap = await f.storage.recovery.readSnapshot(); await f.reopen();
     assert.deepEqual(f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
     assert.deepEqual(f.db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all(), metadata);
@@ -120,7 +120,7 @@ for (const phase of ['before-create', 'after-commit'] as const) test(`canonical 
   try {
     await assert.rejects(SqliteWalletStorage.open(connection.connection, digest, INSTALLATION, true)); assert.equal(fault, true);
     assert.equal(connection.database.prepare('PRAGMA user_version').get()!.user_version, phase === 'before-create' ? 0 : 1);
-    assert.equal(connection.database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").get()!.count, phase === 'before-create' ? 0 : 3);
+    assert.equal(connection.database.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").get()!.count, phase === 'before-create' ? 0 : 4);
   } finally { await connection.connection.closeAsync(); }
   const reopened = nodeConnection(file);
   try {

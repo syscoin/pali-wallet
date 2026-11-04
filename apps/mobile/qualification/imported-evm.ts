@@ -1,3 +1,4 @@
+import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
@@ -47,14 +48,13 @@ function expect(value: unknown): asserts value { if (!value) throw Error('QUALIF
 /** Actual native authority/SDK/storage with an injected, bounded offline RPC. No live transaction path. */
 export async function qualifyNativeImportedEvm(options: Readonly<{
   phase: 'create' | 'restart'; authority: NativeCustodyAuthority; runtime: KeyringRuntime;
-  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>; password: string;
+  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>; password: string;
   check: <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 }>): Promise<ImportedQualificationEvidence> {
   const { phase, authority, runtime, storage, password, check } = options;
-  const [{ NativeTransfers }, { NativeTransferRpc }, { nativeTransferJournalKey }, { encodeStorageValue },
+  const [{ NativeTransfers }, { NativeTransferRpc },
     { getNativeNetwork }, { importedKeyIdentity }, { HdKeyExportFlow }, { Transaction }] = await Promise.all([
-    import('../src/custody/transfers.ts'), import('../src/custody/transferRpc.ts'), import('../src/custody/transferJournal.ts'),
-    import('../src/storage/json.ts'), import('../src/custody/networkContext.ts'), import('../src/custody/importedAccounts.ts'),
+    import('../src/custody/transfers.ts'), import('../src/custody/transferRpc.ts'), import('../src/custody/networkContext.ts'), import('../src/custody/importedAccounts.ts'),
     import('../src/custody/hdKeyExport.ts'), import('ethers/transaction'),
   ]);
   expect(phase === 'create' || phase === 'restart');
@@ -64,12 +64,10 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   expect(hd1 && catalogue().active.accountId === hd1.id && state().phase === 'ready' && state().account?.network === 'ethereum');
   const fingerprint = await storage.getWalletFingerprint();
   const pair = JSON.stringify([await storage.keyringStorage.get('vault'), await storage.keyringStorage.get('vault-keys')]);
-  const older: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    expect(catalogue().accounts.some((a) => a.id === `hd:60:${i}` && a.type === 'HDAccount'));
-    const row = await storage.keyringStorage.get(nativeTransferJournalKey(i)); expect(row !== undefined);
-    older.push(encodeStorageValue(row));
-  }
+  const olderAddresses = Array.from({length: 5}, (_, i) => {
+    const account = catalogue().accounts.find(a => a.id === `hd:60:${i}` && a.type === 'HDAccount'); expect(account); return account.address;
+  });
+  const older = retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, olderAddresses);
   const manage = (id: string) => authority.manageAccounts({ kind: 'select', id }, state().revision, catalogue().revision);
   if (phase === 'create') {
     await check('native imported key allocation and retirement', async () => {
@@ -96,6 +94,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const registration = getNativeNetwork(network);
     let expectedRaw: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
+      submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
       // The report counts unlocked-session admission; retry never reauthenticates.
@@ -121,7 +120,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
       else if (body.method === 'eth_getTransactionReceipt') result = null;
       else if (body.method === 'eth_sendRawTransaction') {
         const saved = await (await transfer.journal(guard)).load(); guard();
-        expect(saved?.phase === 'attempted' && p.length === 1 && p[0] === saved.rawTransaction);
+        expect(saved?.phase === 'signed' && p.length === 1 && p[0] === saved.rawTransaction);
         const tx = Transaction.from(saved.rawTransaction);
         expect(tx.from === ADDRESS && tx.chainId.toString() === CHAINS[i] && tx.to === hd1.address && tx.nonce === 0 &&
           tx.value === BigInt(111 * (i + 1)) && tx.type === 2 && tx.data === '0x');
@@ -139,7 +138,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
       await check(`native imported ${registration.chainId} ${phase === 'create' ? 'sign and persist' : 'exact-byte restart retry'}`, async () => {
         if (phase === 'create') await controller.prepare(hd1.address, `0.000000000000000${111 * (i + 1)}`);
         else {
-          const saved = await (await transfer.journal(guard)).load(); expect(saved?.phase === 'attempted'); expectedRaw = saved.rawTransaction;
+          const saved = await (await transfer.journal(guard)).load(); expect(saved?.phase === 'signed'); expectedRaw = saved.rawTransaction;
           await controller.recover(true);
         }
         guard(); const review = controller.getSnapshot().review;
@@ -147,7 +146,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         await controller.confirm(review.id); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
-        expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'attempted' : 'submitted'));
+        expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'signed' : 'submitted'));
         hashes.push(saved.hash);
       });
     } finally { controller.dispose(); }
@@ -160,12 +159,12 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
       flow.cancel(); expect(!flow.isCurrent(id));
     } finally { flow.dispose(); }
   });
-  for (let i = 0; i < 5; i++) expect(encodeStorageValue(await storage.keyringStorage.get(nativeTransferJournalKey(i))) === older[i]);
-  const container = await storage.keyringStorage.get(nativeTransferJournalKey(1, 'Imported')) as import('../src/custody/transferJournal.ts').TransferJournalContainer;
-  expect(container.version === 1 && container.account.type === 'Imported' && container.account.id === 'imported:60:1' &&
-    container.account.index === 1 && container.account.address === ADDRESS && container.entries.length === 3 &&
-    container.entries.every((entry, i) => entry.registration.chainId === CHAINS[i] && entry.hash === hashes[i] &&
-      entry.phase === (phase === 'create' ? 'attempted' : 'submitted')));
+  const container = await readSignedRecordEvidence(storage);
+  expect(retainedSignedEntries(container.entries, olderAddresses) === older);
+  const retained = container.entries.filter(entry => entry.from === ADDRESS.toLowerCase());
+  expect(container.version === 1 && retained.length === 3 && retained.every((entry, i) =>
+    entry.signer.type === 'Imported' && entry.signer.id === 1 && entry.chainId === CHAINS[i] &&
+    entry.hash === hashes[i] && entry.phase === (phase === 'create' ? 'signed' : 'submitted')));
   expect(await storage.getWalletFingerprint() === fingerprint &&
     JSON.stringify([await storage.keyringStorage.get('vault'), await storage.keyringStorage.get('vault-keys')]) === pair);
   await authority.selectNetwork('ethereum', state().revision, catalogue().revision); await manage(hd1.id);

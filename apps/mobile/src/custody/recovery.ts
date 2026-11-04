@@ -6,7 +6,7 @@ import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { inspectRecoveryInventory } from './recoveryInventory.ts';
 import { recoveryVerificationRecords, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
 import { decryptImportedKey } from './importedAccounts.ts';
-import { inspectRecoveryJournal } from './transferJournal.ts';
+import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords.ts';
 import { getNativeNetwork } from './networkContext.ts';
 import { computeAddress } from 'ethers/transaction';
 import { getAddress } from 'ethers/address';
@@ -170,19 +170,23 @@ export class NativeRecoveryCoordinator {
           return verifiedHd.get(index)!;
         };
         for (const account of records.hd) { await derive(account.index); check(); }
-        const imported = new Map<string, string>();
         for (const account of records.imported) {
           if (account.envelope.profileId !== profileId) return fail('INVALID_SAVED_DATA');
           try { await decryptImportedKey(keyring, before.identity.walletBindingId,
             { id: account.id, index: account.index, address: account.address, publicKey: account.publicKey }, account.envelope, check); check(); }
           catch { check(); return fail('INVALID_SAVED_DATA'); }
-          imported.set(account.id, account.address);
         }
-        for (const row of before.records.filter((row) => row.key.startsWith('native-evm-transfer-v1'))) {
-          const journal = inspectRecoveryJournal(row.key, decodeStorageValue(row.value), before.identity.walletBindingId);
-          if (journal.type === 'HDAccount') { if (await derive(journal.index) !== journal.address) return fail('INVALID_SAVED_DATA'); }
-          else if (imported.has(journal.id) ? imported.get(journal.id) !== journal.address : journal.pending > 0) return fail('INVALID_SAVED_DATA');
-          check();
+        if (before.signedRecords.length) {
+          const row = before.signedRecords[0]!;
+          if (row.walletBindingId !== before.identity.walletBindingId || row.profileId !== profileId) return fail('INVALID_SAVED_DATA');
+          // Authenticate the exact captured ciphertext under the matching seed. Historical
+          // signatures remain inert records even when their original account was removed.
+          const saved = new EvmSignedRecords({
+            async read(expectedProfile) { check(); if (expectedProfile !== profileId) return fail('INVALID_SAVED_DATA'); return row.value; },
+            async compareAndSet() { return fail('UNAVAILABLE'); },
+          });
+          try { await saved.validate({ keyring, assertCurrent: check }); check(); }
+          catch { check(); return fail('INVALID_SAVED_DATA'); }
         }
         if (before.notes.length) {
           // Shared canonical reader authenticates every root/shard and validates all

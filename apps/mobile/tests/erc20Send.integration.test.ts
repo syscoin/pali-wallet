@@ -130,16 +130,12 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               }
             : null;
         else if (b.method === 'eth_sendRawTransaction') {
-          const stored = (await storage!.keyringStorage.get(
-            'native-evm-transfer-v1'
-          )) as any;
-          const entry = stored.entries.find(
-            (entry: any) => entry.registration.chainId === '1'
-          );
+          const entry = await (await runtime!.transfers!.journal(() => undefined)).load();
+          assert.ok(entry);
           assert.equal(entry.rawTransaction, b.params[0]);
-          assert.equal(entry.intent.amountUnits, '123');
-          assert.equal(entry.intent.token.decimals, 2);
-          assert.ok(['attempted', 'submitted'].includes(entry.phase));
+          assert.equal(entry.intent!.amountUnits, '123');
+          assert.equal(entry.intent!.token.decimals, 2);
+          assert.ok(['signed', 'submitted'].includes(entry.phase));
           sent.push(b.params[0]);
           if (values.loseResponse)
             throw Error('Lost acknowledgement after acceptance');
@@ -235,18 +231,18 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await transfers!.recover(true);
     assert.equal(transfers!.getSnapshot().review!.intent!.token.decimals, 2);
     assert.equal(transfers!.getSnapshot().review!.intent!.amountUnits, '123');
-    const saved = (await storage!.keyringStorage.get(
-      'native-evm-transfer-v1'
-    )) as any;
-    const tampered = structuredClone(saved);
-    tampered.entries[0].intent.token.decimals = 3;
-    await storage!.keyringStorage.set('native-evm-transfer-v1', tampered);
-    await assert.rejects(
-      transfers!.confirm(transfers!.getSnapshot().review!.id),
-      { code: 'EXPIRED' }
-    );
+    const identity = await storage!.recovery!.readIdentity();
+    const profile = identity!.root!.profileId;
+    const saved = (await storage!.signedRecords.read(profile))!;
+    const tampered = JSON.parse(saved);
+    tampered.entries[0].metadata.intent.token.decimals = 3;
+    const changed = JSON.stringify(tampered);
+    assert.equal(await storage!.signedRecords.compareAndSet(profile,saved,changed,()=>undefined),true);
+    await assert.rejects(transfers!.confirm(transfers!.getSnapshot().review!.id));
     assert.equal(sent.length, 1);
-    await storage!.keyringStorage.set('native-evm-transfer-v1', saved);
+    assert.equal(await storage!.signedRecords.read(profile),changed);
+    assert.equal(await storage!.signedRecords.compareAndSet(profile,changed,saved,()=>undefined),true);
+    if(authority!.getSnapshot().phase!=='ready')await authority!.unlock(PASSWORD);
     await transfers!.recover(true);
     values.loseResponse = false;
     await transfers!.confirm(transfers!.getSnapshot().review!.id);

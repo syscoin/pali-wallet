@@ -61,7 +61,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
-  local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState } = {}) {
+  locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState } = {}) {
   const state = source();
   let cached = options.cached ?? [];
   let cachedOwner = OWNER;
@@ -71,7 +71,7 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
     async load(check) {
       check(); const address = state.getSnapshot().account?.address ?? OWNER;
       const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, 'ethereum');
-      return { scope, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, local: options.local ?? null };
+      return { scope, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: options.locals ?? (options.local ? [options.local] : []) };
     },
     async saveCache(scope, rows, check) { check(); cacheWrites.push({ scope, rows }); cached = [...rows]; cachedOwner = scope.address; },
     async saveView(scope, view, check) { check(); viewWrites.push({ scope, view }); },
@@ -396,4 +396,18 @@ test('locking while an explorer page is pending clears the view and rejects its 
     assert.equal(f.controller.getSnapshot().status, 'locked'); assert.deepEqual(f.controller.getSnapshot().rows, []);
     assert.equal(f.cacheWrites.length, 0);
   } finally { disconnect(); }
+});
+
+
+test('multiple retained local sends survive offline refresh and deduplicate indexed hashes', async () => {
+  const base=fixture(), first=base.local(1),second=base.local(2,'submitted');
+  let offline=true;
+  const explorer=new FakeExplorer(({feed})=>{if(offline)throw Error('offline');return feed==='txlist'?[candidate(1),candidate(2)]:[];});
+  const f=fixture({explorer,locals:[first,second]});
+  await f.controller.refresh();
+  assert.deepEqual(new Set(f.controller.getSnapshot().rows.map(row=>row.hash)),new Set([first.hash,second.hash]));
+  offline=false;await f.controller.refresh();
+  await until(()=>f.controller.getSnapshot().rows.every(row=>!!row.observation));
+  assert.equal(f.controller.getSnapshot().rows.length,2);
+  assert.equal(f.controller.getSnapshot().rows.every(row=>!!row.local),true);
 });

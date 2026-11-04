@@ -16,11 +16,10 @@ import {
   type KeyringRuntime,
 } from '../src/custody/keyringRuntime.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
-import {
-  nativeTransferJournalKey,
-  type TransferJournalContainer,
-} from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence, retainedSignedEntries } from '../qualification/signed-record-evidence.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
+import { readWalletIdentity } from '../src/storage/walletIdentity.ts';
+import { encodeStorageValue } from '../src/storage/json.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -118,6 +117,8 @@ test('NEVM report requires complete bounded evidence and exact restart identity'
 
 function memoryDisk() {
   const records = new Map<string, unknown>();
+  const signedBundles = new Map<string, string>();
+  let identityMetadata: string | undefined;
   let confirmation: string | undefined;
   let storage!: OpenWalletStorage;
   let runtime!: KeyringRuntime;
@@ -131,6 +132,33 @@ function memoryDisk() {
     },
     async openStorage() {
       storage = {
+        recovery: {
+          async readIdentity() { return readWalletIdentity(fingerprint(), identityMetadata); },
+          async readSnapshot() {
+            const identity = readWalletIdentity(fingerprint(), identityMetadata);
+            return Object.freeze({ identity, state: await storage.readState(), metadata: [], notes: [],
+              records: Object.freeze([...records].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => Object.freeze({ key, value: encodeStorageValue(value) }))),
+              signedRecords: Object.freeze([...signedBundles].map(([profileId, value]) => Object.freeze({ profileId, walletBindingId: identity.walletBindingId, value }))),
+            });
+          },
+          async bindIdentity(expected, root, assertCurrent) {
+            assert.equal(assertCurrent(), undefined);
+            assert.equal(fingerprint(), expected);
+            const current = readWalletIdentity(expected, identityMetadata);
+            if (current.root) assert.deepEqual(current.root, root);
+            const next = JSON.stringify({ version: 1, walletBindingId: current.walletBindingId, pairFingerprint: expected, root });
+            readWalletIdentity(expected, next);
+            identityMetadata = next;
+          },
+        },
+        signedRecords: {
+          async read(profileId) { return signedBundles.get(profileId); },
+          async compareAndSet(profileId, expected, next, assertCurrent) {
+            assert.equal(assertCurrent(), undefined);
+            if (signedBundles.get(profileId) !== expected) return false;
+            signedBundles.set(profileId, next); return true;
+          },
+        },
         keyringStorage: {
           async get(key) {
             return records.has(key)
@@ -194,7 +222,7 @@ function memoryDisk() {
     },
   });
   return {
-    records,
+    records, signedBundles,
     get runtime() {
       return runtime;
     },
@@ -228,10 +256,11 @@ for (const scenario of ['import', 'generate'] as const) {
         checks.push(name);
         return operation();
       };
-      const rows = () =>
-        [0, 1, 2].map((index) =>
-          JSON.stringify(disk.records.get(nativeTransferJournalKey(index)))
-        );
+      const rows = async () => {
+        const evidence = await readSignedRecordEvidence(disk.storage);
+        const addresses = authority.getCatalogue()!.accounts.filter(entry => entry.index < 3).map(entry => entry.address);
+        return retainedSignedEntries(evidence.entries, addresses);
+      };
       try {
         await authority.initialize();
         if (scenario === 'import')
@@ -269,7 +298,7 @@ for (const scenario of ['import', 'generate'] as const) {
           expectedThirdAddress: derived[1],
           check,
         });
-        const older = rows();
+        const older = await rows();
         const fingerprint = await disk.storage.getWalletFingerprint();
         let signatures = 0;
         const realTransfer = disk.runtime.transfers!;
@@ -312,32 +341,33 @@ for (const scenario of ['import', 'generate'] as const) {
         });
         assert.equal(signatures, 2);
         assert.equal(created.nevmAddress, derived[2]);
-        assert.deepEqual(rows(), older);
+        assert.deepEqual(await rows(), older);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
-        const container = structuredClone(
-          disk.records.get(nativeTransferJournalKey(3))
-        ) as TransferJournalContainer;
-        assert.equal(container.version, 1);
-        assert.equal(container.entries.length, 2);
+        const bundle = await readSignedRecordEvidence(disk.storage);
+        const container = bundle.entries.filter(entry => entry.from === created.nevmAddress.toLowerCase());
+        assert.equal(bundle.version, 1);
+        assert.equal(container.length, 2);
+        const signedBytes: string[] = [];
+        await authority.manageAccounts({ kind: 'select', id: 'hd:60:3' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         for (const [index, network, value] of [
-          [0, 'ethereum', 456n],
-          [1, 'syscoin-nevm-testnet', 789n],
+          [0, 'ethereum', 456n], [1, 'syscoin-nevm-testnet', 789n],
         ] as const) {
-          const entry = container.entries[index]!;
-          assert.deepEqual(entry.registration, { ...getNativeNetwork(network) });
-          assert.equal(entry.phase, 'attempted');
-          assert.equal(entry.nonce, 0);
-          const signed = Transaction.from(entry.rawTransaction);
-          assert(signed.isSigned());
-          assert.equal(signed.from, created.nevmAddress);
+          await authority.selectNetwork(network, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+          const entry = container[index]!;
+          assert.equal(entry.chainId, getNativeNetwork(network).chainId);
+          assert.equal(entry.phase, 'attempted'); assert.equal(entry.nonce, 0);
+          const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
+          assert.equal(saved!.hash, entry.hash); signedBytes.push(saved!.rawTransaction);
+          const signed = Transaction.from(saved!.rawTransaction);
+          assert(signed.isSigned()); assert.equal(signed.from, created.nevmAddress);
           assert.equal(signed.chainId, network === 'ethereum' ? 1n : 5700n);
-          assert.equal(signed.value, value);
-          assert.equal(signed.nonce, 0);
-          assert.equal(signed.gasLimit, 21000n);
-          assert.equal(signed.maxFeePerGas, 3n);
-          assert.equal(signed.maxPriorityFeePerGas, 1n);
+          assert.equal(signed.value, value); assert.equal(signed.nonce, 0); assert.equal(signed.gasLimit, 21000n);
+          assert.equal(signed.maxFeePerGas, 3n); assert.equal(signed.maxPriorityFeePerGas, 1n);
+          assert(!bundle.raw!.includes(saved!.rawTransaction));
         }
+        await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+        await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const createdReport = {
           status: 'passed',
           phase: 'create',
@@ -353,7 +383,7 @@ for (const scenario of ['import', 'generate'] as const) {
         assert(!JSON.stringify(createdReport).includes(PASSWORD));
         assert(
           !JSON.stringify(createdReport).includes(
-            container.entries[0]!.rawTransaction
+            signedBytes[0]!
           )
         );
         await authority.dispose();
@@ -393,11 +423,8 @@ for (const scenario of ['import', 'generate'] as const) {
             ...restored,
           })
         );
-        assert.deepEqual(
-          disk.records.get(nativeTransferJournalKey(3)),
-          container
-        );
-        assert.deepEqual(rows(), older);
+        assert.equal((await readSignedRecordEvidence(disk.storage)).raw, bundle.raw);
+        assert.deepEqual(await rows(), older);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
         assert.equal(await disk.storage.getWalletFingerprint(), fingerprint);
@@ -407,6 +434,7 @@ for (const scenario of ['import', 'generate'] as const) {
         );
         if (scenario === 'import') {
           const restoreSelection = async () => {
+            if (authority.getSnapshot().phase === 'locked') await authority.unlock(PASSWORD);
             if (authority.getSnapshot().account?.network !== 'ethereum')
               await authority.selectNetwork(
                 'ethereum',
@@ -419,33 +447,16 @@ for (const scenario of ['import', 'generate'] as const) {
               authority.getCatalogue()!.revision
             );
           };
-          for (const corrupt of [
-            { ...container, entries: container.entries.slice(0, 1) },
-            {
-              ...container,
-              entries: [
-                container.entries[0],
-                {
-                  ...container.entries[1],
-                  registration: {
-                    ...container.entries[1]!.registration,
-                    rpcUrl: 'https://wrong.invalid',
-                  },
-                },
-              ],
-            },
-            {
-              ...container,
-              entries: [
-                container.entries[0],
-                {
-                  ...container.entries[1],
-                  rawTransaction: container.entries[0]!.rawTransaction,
-                },
-              ],
-            },
-          ]) {
-            disk.records.set(nativeTransferJournalKey(3), corrupt);
+          const original = JSON.parse(bundle.raw!);
+          const target = original.entries.findIndex((entry: { hash: string }) => entry.hash === container[1]!.hash);
+          const corruptions = [
+            { ...original, entries: original.entries.filter((_: unknown, index: number) => index !== target) },
+            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...container[1], chunks: original.entries[target].chunks, chainId: '999' } : entry) },
+            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...original.entries[target], chunks: original.entries[0].chunks } : entry) },
+          ];
+          const profile = (await disk.storage.recovery!.readIdentity())!.root!.profileId;
+          for (const corrupt of corruptions) {
+            disk.signedBundles.set(profile, JSON.stringify(corrupt));
             await assert.rejects(
               qualifyNativeNevmTransfer({
                 phase: 'restart',
@@ -457,12 +468,9 @@ for (const scenario of ['import', 'generate'] as const) {
                 check,
               })
             );
-            disk.records.set(
-              nativeTransferJournalKey(3),
-              structuredClone(container)
-            );
+            disk.signedBundles.set(profile, bundle.raw!);
             await restoreSelection();
-            assert.deepEqual(rows(), older);
+            assert.deepEqual(await rows(), older);
           }
         }
         assert.equal(networkCalls, 0);

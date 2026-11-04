@@ -243,3 +243,13 @@ test('Back waits for asynchronous position persistence before unmounting', async
     page.getByText('Activity', { exact: true }).first()
   ).toBeVisible();
 });
+
+
+test('generic contract creation keeps activity readable without inventing a recipient', async ({page}) => {
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.goto('/?contract-creation');
+  await page.getByRole('button').filter({hasText:'0x0000000000…00000001'}).click();
+  await expect(page.getByText('Not verified or contract creation',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Copy recipient address',exact:true})).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

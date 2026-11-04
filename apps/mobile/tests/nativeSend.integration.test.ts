@@ -13,7 +13,8 @@ import {
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import type { TransferJournalEntry } from '../src/custody/transferJournal.ts';
+import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
@@ -78,12 +79,14 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
         else if (b.method === 'eth_getTransactionReceipt') result = null;
         else if (b.method === 'eth_getBlockByNumber') result = { number: b.params[0] === 'latest' ? '0x20' : b.params[0], hash: '0x' + 'f'.repeat(64), baseFeePerGas: '0x1', gasLimit: '0x1c9c380' };
         else if (b.method === 'eth_sendRawTransaction') {
-          const persisted = (await storage!.keyringStorage.get(
-            'native-evm-transfer-v1'
-          )) as { entries: { registration: { chainId: string }; phase: string; rawTransaction: string }[] };
-          const entry = persisted.entries.find((value) => value.registration.chainId === '1');
-          assert(entry && ['attempted', 'submitted'].includes(entry.phase));
+          const identity = await storage!.recovery.readIdentity();
+          assert(identity?.root);
+          const persisted = await storage!.signedRecords.read(identity.root.profileId);
+          assert(persisted && inspectEvmSignedBundle(persisted, identity.root.profileId).transactions === 1);
+          const entry = await (await runtime!.transfers!.journal(() => undefined)).load();
+          assert(entry && ['signed', 'submitted'].includes(entry.phase));
           assert.equal(entry.rawTransaction, b.params[0]);
+          assert(!persisted.includes(b.params[0]), 'physical bundle keeps wire bytes encrypted');
           submitted.push(b.params[0]);
           if (loseResponse)
             throw Error('Lost response after network acceptance');
@@ -151,7 +154,7 @@ async function cancellationFixture() {
   let authentications = 0;
   let hydrations = 0;
   let sdkInstance!: InstanceType<typeof sdk.SoftwareKeyring>;
-  let journalGate: { phase: 'signed' | 'attempted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
+  let journalGate: { phase: 'signed' | 'submitted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
   let gate: {
     stage: 'storage-read' | 'requote';
     entered(): void;
@@ -196,19 +199,24 @@ async function cancellationFixture() {
       assert.ok(globalThis.crypto.subtle);
     },
     async openStorage() {
+      let native!: ReturnType<typeof nodeConnection>;
+      native = nodeConnection(file, { after: async (kind, sql) => {
+        if (kind === 'all' && sql.includes('FROM evm_signed_records')) await pause('storage-read');
+        const current = journalGate;
+        if (!current) return;
+        if (kind === 'run' && sql.startsWith('INSERT INTO evm_signed_records')) {
+          const row = native.database.prepare('SELECT value FROM evm_signed_records').get() as { value: string };
+          const value = JSON.parse(row.value) as { entries: { phase: string }[] };
+          current.written = value.entries.some((entry) => entry.phase === current.phase);
+        }
+        if (current.written && kind === 'exec' && sql === 'COMMIT') {
+          current.entered();
+          await current.release;
+          throw Error('Lost signed-bundle commit acknowledgement');
+        }
+      } });
       storage = await SqliteWalletStorage.open(
-        nodeConnection(file, { after: async (kind, sql) => {
-          if (kind === 'get' && sql.includes('keyring_records')) await pause('storage-read');
-          const current = journalGate;
-          if (!current) return;
-          if (kind === 'run' && sql.startsWith(current.phase === 'signed'
-            ? 'INSERT INTO keyring_records' : 'UPDATE keyring_records')) current.written = true;
-          if (current.written && kind === 'exec' && sql === 'COMMIT') {
-            current.entered();
-            await current.release;
-            throw Error('Lost journal commit acknowledgement');
-          }
-        } }).connection,
+        native.connection,
         digest,
         INSTALLATION,
         true
@@ -317,7 +325,7 @@ async function cancellationFixture() {
     get authentications() { return authentications; },
     get hydrations() { return hydrations; },
     get sdkUnlocked() { return sdkInstance.isUnlocked(); },
-    holdJournal(phase: 'signed' | 'attempted') {
+    holdJournal(phase: 'signed' | 'submitted') {
       let entered!: () => void;
       let resume!: () => void;
       const started = new Promise<void>((resolve) => { entered = resolve; });
@@ -330,8 +338,9 @@ async function cancellationFixture() {
       const { DatabaseSync } = await import('node:sqlite');
       const observer = new DatabaseSync(file, { readOnly: true });
       try {
-        const row = observer.prepare('SELECT value FROM keyring_records WHERE key = ?').get('native-evm-transfer-v1') as { value: string } | undefined;
-        return row ? JSON.parse(row.value) : undefined;
+        const row = observer.prepare('SELECT value FROM evm_signed_records').get() as { value: string } | undefined;
+        if (row) inspectEvmSignedBundle(row.value);
+        return row?.value;
       } finally { observer.close(); }
     },
     loseResponse() { loseResponse = true; },
@@ -360,7 +369,7 @@ async function cancellationFixture() {
       });
     },
     async readJournal() {
-      return storage.keyringStorage.get('native-evm-transfer-v1');
+      return (await (await runtime.transfers!.journal(() => undefined)).load()) ?? undefined;
     },
     async close() {
       transfers.dispose();
@@ -386,7 +395,7 @@ for (const retry of [false, true]) {
         const initialSignatures = f.signatures;
         const initialBroadcasts = f.broadcasts.length;
         const credentials = [f.authentications, f.hydrations];
-        const journal = await f.readJournal();
+        const journal = await f.readDurableJournal();
         hold = f.hold(retry ? 'storage-read' : 'requote');
         pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id);
         const rejected = assert.rejects(pending, { code: 'CANCELLED' });
@@ -400,7 +409,7 @@ for (const retry of [false, true]) {
         assert.equal(f.sdkUnlocked, cancellation !== 'lock');
         assert.equal(f.signatures, initialSignatures);
         assert.equal(f.broadcasts.length, initialBroadcasts);
-        assert.deepEqual(await f.readJournal(), journal);
+        assert.equal(await f.readDurableJournal(), journal);
         assert.deepEqual([f.authentications, f.hydrations], credentials);
         if (cancellation === 'lock') await f.authority.unlock(PASSWORD);
         if (cancellation === 'dispose') f.replaceTransfers();
@@ -432,7 +441,7 @@ test('background lock during final fee check invalidates review without signing 
     assert.equal(f.sdkUnlocked, false);
     assert.equal(f.authority.getSnapshot().phase, 'locked');
     assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 0);
-    assert.equal(await f.readJournal(), undefined);
+    assert.equal(await f.readDurableJournal(), undefined);
     assert.deepEqual([f.authentications, f.hydrations], credentials);
   } finally { hold?.finish(); await f.close(); }
 });
@@ -451,9 +460,12 @@ for (const repeated of [false, true]) {
         await f.transfers.recover();
         assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
       }
-      const retained = (await f.readJournal()) as TransferJournalContainer;
-      assert.equal(retained.entries.length, 1);
-      assert.equal(retained.entries[0]!.phase, repeated ? 'confirmed' : 'submitted');
+      const retained = (await f.readJournal()) as TransferJournalEntry;
+      assert(retained);
+      assert.equal(retained.phase, repeated ? 'confirmed' : 'submitted');
+      const retainedBytes = await f.readDurableJournal();
+      assert(retainedBytes);
+      const retainedRevision = inspectEvmSignedBundle(retainedBytes).revision;
       for (const consumed of [false, true]) {
         f.recovery.consumed = consumed;
         const before = f.requests.length;
@@ -461,6 +473,7 @@ for (const repeated of [false, true]) {
         assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
         assert.equal(f.transfers.getSnapshot().review, null);
         assert.deepEqual(await f.readJournal(), retained);
+        assert.equal(await f.readDurableJournal(), retainedBytes);
         assert.equal(f.requests.slice(before).some((call) => call.method === 'eth_getTransactionCount'), false,
           'an oversized receipt does not admit a nonce fallback');
         assert.equal(f.signatures, 1);
@@ -474,13 +487,11 @@ for (const repeated of [false, true]) {
       await f.transfers.recover();
       assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
       assert.equal(f.transfers.getSnapshot().review, null);
-      const after = (await f.readJournal()) as TransferJournalContainer;
-      assert.deepEqual(after, {
-        ...retained, revision: retained.revision + 1,
-        entries: retained.entries.map((entry) => ({ ...entry, phase: 'nonce-consumed' })),
-      });
+      const after = (await f.readJournal()) as TransferJournalEntry;
+      assert.deepEqual(after, { ...retained, phase: 'nonce-consumed' });
+      assert.equal(inspectEvmSignedBundle((await f.readDurableJournal())!).revision, retainedRevision + 1);
       assert.match(f.transfers.getSnapshot().message!, /result is unavailable/i);
-      assert.equal(after.entries[0]!.rawTransaction, retained.entries[0]!.rawTransaction);
+      assert.equal(after.rawTransaction, retained.rawTransaction);
       await f.transfers.prepare(RECIPIENT, '0.002');
       assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
       await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
@@ -491,7 +502,7 @@ for (const repeated of [false, true]) {
   });
 }
 
-for (const phase of ['signed', 'attempted'] as const) {
+for (const phase of ['signed', 'submitted'] as const) {
   test(`cancelled post-sign ${phase} acknowledgement still quarantines the current authority`, async () => {
     const f = await cancellationFixture();
     let hold: ReturnType<typeof f.holdJournal> | undefined;
@@ -506,7 +517,8 @@ for (const phase of ['signed', 'attempted'] as const) {
       assert.equal(f.sdkUnlocked, true);
       const before = f.authority.getSnapshot();
       const retained = await f.readDurableJournal();
-      assert.equal(retained.entries[0].phase, phase);
+      assert(retained);
+      assert.equal(JSON.parse(retained).entries[0].phase, phase);
       f.transfers.cancel();
       assert.equal(f.authority.getSnapshot(), before, 'Back after signing does not itself lock custody');
       hold.finish();
@@ -516,7 +528,7 @@ for (const phase of ['signed', 'attempted'] as const) {
       assert.equal(f.authority.getSnapshot().account, null);
       assert.equal(f.sdkUnlocked, false, 'the actual SDK session is retired');
       await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
-      assert.equal(f.broadcasts.length, 0);
+      assert.equal(f.broadcasts.length, phase === 'signed' ? 0 : 1);
       assert.deepEqual(await f.readDurableJournal(), retained);
       await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);
     } finally {
@@ -559,10 +571,10 @@ for (const phase of ['signed', 'attempted'] as const) {
       assert.equal(replacement.authority.getSnapshot(), before);
       assert.equal(replacement.sdkUnlocked, true);
       assert.equal(await replacement.runtime.session.readEthereumAddress(), before.account!.address);
-      assert.equal(await replacement.readJournal(), undefined);
+      assert.equal(await replacement.readDurableJournal(), undefined);
       assert.deepEqual(await old.readDurableJournal(), retained);
       assert.equal(old.sdkUnlocked, false);
-      assert.equal(old.broadcasts.length, 0);
+      assert.equal(old.broadcasts.length, phase === 'signed' ? 0 : 1);
     } finally {
       hold?.finish();
       await pending?.catch(() => undefined);
@@ -580,8 +592,8 @@ for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as con
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
       await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
-      const entry = saved.entries[0]!;
+      const saved = await f.readJournal() as TransferJournalEntry;
+      const entry = saved;
       const tx = Transaction.from(entry.rawTransaction);
       f.setRecovery({ receipt: { transactionHash: entry.hash, from: tx.from, to: RECIPIENT, status,
         blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', canonicalHash: '0x' + '2'.repeat(64) });
@@ -598,15 +610,15 @@ for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as con
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
       await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
-      const entry = saved.entries[0]!;
+      const saved = await f.readJournal() as TransferJournalEntry;
+      const entry = saved;
       f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status,
         blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', canonicalHash: '0x' + '1'.repeat(64) });
       await f.transfers.recover();
       assert.equal(f.transfers.getSnapshot().phase, phase);
-      const next = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
-      assert.equal(next.entries[0]!.phase, phase);
-      assert.equal(next.entries[0]!.rawTransaction, entry.rawTransaction);
+      const next = await f.readJournal() as TransferJournalEntry;
+      assert.equal(next.phase, phase);
+      assert.equal(next.rawTransaction, entry.rawTransaction);
       assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
     } finally { await f.close(); }
   });
@@ -617,13 +629,13 @@ test('missing receipt with a consumed nonce records only nonce-consumed', async 
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-    const before = await f.readJournal() as { entries: { rawTransaction: string }[] };
+    const before = await f.readJournal() as TransferJournalEntry;
     f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: '0x' + '1'.repeat(64) });
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
-    const after = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
-    assert.equal(after.entries[0]!.phase, 'nonce-consumed');
-    assert.equal(after.entries[0]!.rawTransaction, before.entries[0]!.rawTransaction);
+    const after = await f.readJournal() as TransferJournalEntry;
+    assert.equal(after.phase, 'nonce-consumed');
+    assert.equal(after.rawTransaction, before.rawTransaction);
   } finally { await f.close(); }
 });
 
@@ -632,16 +644,16 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-    const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
-    const entry = saved.entries[0]!;
+    const saved = await f.readJournal() as TransferJournalEntry;
+    const entry = saved;
     f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status: '0x1',
       blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x0', canonicalHash: '0x' + '1'.repeat(64) });
     const before = f.requests.length;
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
-    const after = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
-    assert.equal(after.entries[0]!.phase, 'confirmed');
-    assert.equal(after.entries[0]!.rawTransaction, entry.rawTransaction);
+    const after = await f.readJournal() as TransferJournalEntry;
+    assert.equal(after.phase, 'confirmed');
+    assert.equal(after.rawTransaction, entry.rawTransaction);
     assert.equal(f.requests.slice(before).some((request) => request.method === 'eth_getTransactionCount'), false);
     assert.equal(f.requests.slice(before).some((request) => request.params.includes('finalized') || request.params.includes('safe')), false);
     assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);

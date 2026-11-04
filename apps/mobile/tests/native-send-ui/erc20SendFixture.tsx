@@ -1,4 +1,4 @@
-import { getNativeSendContext } from '../../src/custody/networkContext';
+import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networkContext';
 // Synthetic public wallet only. Production never imports this fixture.
 import React, { useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
@@ -6,13 +6,14 @@ import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../../src/custody/types';
-import type { KeyringStoragePort } from '../../src/storage/types';
 import {
   NativeTransfers,
   type NativeTransferRuntime,
 } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
-import { NativeTransferJournal } from '../../src/custody/transferJournal';
+import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords';
+import { createNativeSignedRecordView } from '../../src/custody/sharedSignedRecords';
+import { signedRecordTestSession } from '../signedRecordTestSession';
 import { assertTransferIntentEnvelope } from '../../src/custody/transferIntent';
 import { NativeSend } from '../../src/screens/NativeSend';
 import { Text } from '../../src/ui';
@@ -59,35 +60,13 @@ const source = {
   },
 };
 const key = (value: string) => `pali-erc20-send-ui:${value}`;
-const storage: KeyringStoragePort = {
-  async get(name) {
-    const value = localStorage.getItem(key(name));
-    return value === null ? undefined : JSON.parse(value);
+const signedRecords = new EvmSignedRecords({
+  async read() { return localStorage.getItem(key('signed-records')) ?? undefined; },
+  async compareAndSet(_profile, expected, value, guard) {
+    guard(); if ((localStorage.getItem(key('signed-records')) ?? undefined) !== expected) return false;
+    localStorage.setItem(key('signed-records'), value); return true;
   },
-  async set(name, value) {
-    localStorage.setItem(key(name), JSON.stringify(value));
-  },
-  async deleteItem() {
-    throw Error('Fixture must preserve its pending journal');
-  },
-  async createManyIfAbsent(values) {
-    if (
-      Object.keys(values).some(
-        (name) => localStorage.getItem(key(name)) !== null
-      )
-    )
-      return false;
-    for (const [name, value] of Object.entries(values))
-      localStorage.setItem(key(name), JSON.stringify(value));
-    return true;
-  },
-  async compareAndSet(name, expected, value) {
-    if (localStorage.getItem(key(name)) !== JSON.stringify(expected))
-      return false;
-    localStorage.setItem(key(name), JSON.stringify(value));
-    return true;
-  },
-};
+});
 const broadcasts: string[] = [];
 const rpcMethods: string[] = [];
 let signatures = 0;
@@ -137,10 +116,7 @@ const rpc = new NativeTransferRpc({
           : request.params[0]
       );
     else if (request.method === 'eth_getTransactionReceipt') {
-      const value = (await storage.get('native-evm-transfer-v1')) as
-        | { entries?: { rawTransaction: string; hash: string }[] }
-        | undefined;
-      const entry = value?.entries?.[0];
+      const entry = await (await runtime.journal(() => undefined)).load();
       const tx = entry ? Transaction.from(entry.rawTransaction) : undefined;
       result =
         finalized && entry && tx
@@ -155,17 +131,9 @@ const rpc = new NativeTransferRpc({
           : null;
     } else if (request.method === 'eth_sendRawTransaction') {
       const raw = request.params[0];
-      const value = (await storage.get('native-evm-transfer-v1')) as
-        | { entries?: { rawTransaction: string; phase: string }[] }
-        | undefined;
-      if (
-        !value?.entries?.some(
-          (entry) =>
-            entry.rawTransaction === raw &&
-            ['attempted', 'submitted'].includes(entry.phase)
-        )
-      )
-        throw Error('Journal must precede broadcast');
+      const entry = await (await runtime.journal(() => undefined)).load();
+      if (!entry || entry.rawTransaction !== raw || !['signed', 'submitted'].includes(entry.phase))
+        throw Error('Signed record must precede broadcast');
       broadcasts.push(raw);
       if (loseResponse) {
         loseResponse = false;
@@ -180,6 +148,9 @@ const rpc = new NativeTransferRpc({
   },
 });
 const runtime: NativeTransferRuntime = {
+  async submit(rawTransaction, _hash, guard, broadcast, intent) {
+    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard(); await broadcast();
+  },
   async token(contract, guard) {
     guard();
     if (contract !== token.contractAddress) throw Error('Unknown token');
@@ -187,15 +158,8 @@ const runtime: NativeTransferRuntime = {
   },
   async journal(guard) {
     guard();
-    return new NativeTransferJournal(
-      storage,
-      {
-        walletFingerprint: 'f'.repeat(64),
-        address: wallet.address,
-        chainId: '1',
-      },
-      guard
-    );
+    return createNativeSignedRecordView(signedRecords, signedRecordTestSession(guard), 'f'.repeat(64),
+      { index: 0, type: 'HDAccount', address: wallet.address }, getNativeNetwork('ethereum'));
   },
   assertUnlocked(guard) {
     guard();
@@ -249,7 +213,7 @@ window.__erc20SendFixture = {
   unlockChecks: () => unlockChecks,
   broadcasts: () => [...broadcasts],
   rpcMethods: () => [...rpcMethods],
-  journal: () => localStorage.getItem(key('native-evm-transfer-v1')),
+  journal: () => localStorage.getItem(key('signed-records')),
   finalized: () => {
     finalized = true;
   },

@@ -2,6 +2,7 @@ import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { webcrypto } from 'crypto';
 import { HDNodeWallet } from 'ethers';
 
+import { EVM_SIGNED_RECORD_PREFIX } from '../../../wallet/evmSignedRecords';
 import {
   handleListeners,
   resetListenersFlag,
@@ -73,7 +74,8 @@ const owned = (key: string) =>
   key === 'state' ||
   key.startsWith('state-') ||
   key === 'sysweb3-vault' ||
-  key.startsWith('sysweb3-vault-');
+  key.startsWith('sysweb3-vault-') ||
+  key.startsWith(EVM_SIGNED_RECORD_PREFIX);
 
 let records: Record<string, any>;
 let writes: Record<string, any>[];
@@ -562,13 +564,18 @@ describe('wallet recovery persistence boundaries', () => {
   it.each([57, 60])(
     'preserves healthy rollback data with active slip44 %s through close and reload',
     async (slip44) => {
-      const before = await establishOriginal(slip44);
+      await establishOriginal(slip44);
+      const retainedKey = EVM_SIGNED_RECORD_PREFIX + '0x' + '11'.repeat(32);
+      const retainedBytes = '{"retained":"encrypted signed transaction"}';
+      records[retainedKey] = retainedBytes;
+      const before = clone(records);
       const host = makeHost();
       const ticket = await beginWalletRecovery(host, context);
       await expect(submit(host, ticket)).rejects.toThrow(
         'Your previous wallet was restored'
       );
       expectOriginalSnapshot(before);
+      expect(records[retainedKey]).toBe(retainedBytes);
       expect(records[JOURNAL]).toBeUndefined();
       expect(host.recoveryJournalPending).toBe(false);
       expect(walletPersistenceGate.blocked).toBe(false);

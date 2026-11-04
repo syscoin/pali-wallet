@@ -8,13 +8,11 @@ import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/t
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
-import { NativeTransferJournal } from '../../src/custody/transferJournal';
 import { NativeActivity } from '../../src/activity/nativeActivity';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime } from '../../src/custody/types';
-import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
@@ -43,14 +41,6 @@ let sessionUnlocked = false;
 let fixturePassword = 'public-password';
 let nextImportedIndex = 0;
 const importedKeys = new Map<string, string>();
-const stored: Record<string, unknown> = {};
-const store: KeyringStoragePort = {
-  async get(key) { return stored[key] === undefined ? undefined : structuredClone(stored[key]); },
-  async set(key, value) { stored[key] = structuredClone(value); },
-  async deleteItem() { throw Error('Fixture never deletes a journal'); },
-  async createManyIfAbsent(values) { if (Object.keys(values).some((key) => key in stored)) return false; Object.assign(stored, structuredClone(values)); return true; },
-  async compareAndSet(key, expected, value) { if (JSON.stringify(stored[key]) !== JSON.stringify(expected)) return false; stored[key] = structuredClone(value); return true; },
-};
 export function createNativeWalletControllers() {
   const runtime: CustodyRuntime = {
     security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
@@ -146,7 +136,10 @@ export function createNativeWalletControllers() {
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
-    async journal(guard) { guard(); const account = catalogue.accounts.find((item) => item.id === catalogue.active.accountId)!; return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: account.address, chainId: '1' }, guard, Date.now, account.index, undefined, undefined, account.type); },
+    async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
+    async journal(guard) { guard(); return { async load() { guard(); return null; },
+      async saveSigned() { throw Error('Fixture does not submit signatures'); },
+      async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },
     async sign(_transaction, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
@@ -197,8 +190,7 @@ export function createNativeWalletControllers() {
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     async readRecoveryInventory(): Promise<RecoveryInventory> {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
-        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retiredHdAccounts: 0, retiredImportedAccounts: 0,
-          journalRecords: 0, pendingTransactions: 0, terminalTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
+        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retiredHdAccounts: 0, retiredImportedAccounts: 0, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
     },
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

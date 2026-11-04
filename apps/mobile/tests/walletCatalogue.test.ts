@@ -1,4 +1,4 @@
-import { createNativeNetwork } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeNetwork } from '../src/custody/networkContext.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { computeAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
-import { NativeTransferJournal, nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
+import { signedRecordTestSession } from './signedRecordTestSession.ts';
 import { SigningKey } from 'ethers/crypto';
 import { NativeActivityHistory } from '../src/activity/historyStore.ts';
 
@@ -35,6 +37,17 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     },
     async cleanup() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
+}
+
+async function signedStore(f: Awaited<ReturnType<typeof fixture>>) {
+  const session = signedRecordTestSession(current);
+  await f.storage.recovery.bindIdentity(f.identity.walletFingerprint, {
+    address: ADDRESS, publicKey: PUBLIC_KEY.toLowerCase(),
+    profileId: await session.keyring.getPrivateRecordProfileId(),
+  }, current);
+  const records = new EvmSignedRecords(f.storage.signedRecords, () => 1);
+  return { records, session, view: (address: string, index: number, network = getNativeNetwork('ethereum')) =>
+    createNativeSignedRecordView(records, session, f.identity.walletFingerprint, { index, type: 'HDAccount', address }, network) };
 }
 
 test('new wallet catalogue creation is durable, idempotent and exposes no key or fingerprint', async () => {
@@ -182,17 +195,17 @@ test('SDK-created HD gaps consume existing bookkeeping and explicit restore rema
     let state = await catalogue.reconcile(f.identity, current);
     state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Savings' }, current);
     assert.equal(state.active.accountId, 'hd:60:1');
-    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current), /CATALOGUE_NOT_REMOVABLE/);
+    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current), /CATALOGUE_NOT_REMOVABLE/);
     state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:0', journal: null }, current), /CATALOGUE_NOT_REMOVABLE/);
-    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current);
+    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:0' }, current), /CATALOGUE_NOT_REMOVABLE/);
+    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current);
     assert.deepEqual(state.removed, [{ id: 'hd:60:1', index: 1 }]);
     assert.equal(catalogue.nextIndex, 2);
     state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Gap replacement' }, current);
     assert.equal(catalogue.nextIndex, 2);
     assert.deepEqual(state.removed, []);
     state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current);
+    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current);
     state = await catalogue.mutate(state.revision, { kind: 'restore', index: 1, ...derived(1), label: 'Restored savings' }, current);
     assert.equal(catalogue.nextIndex, 2);
     assert.equal(state.active.accountId, 'hd:60:1');
@@ -249,52 +262,80 @@ test('indeterminate CAS outcome quarantines a catalogue until a fresh instance r
   } finally { await f.cleanup(); }
 });
 
-test('terminal-only removal keeps storage bounded through more than 64 HD account lifecycles', async () => {
+test('signed raw records survive 70 account removals and cold reopen', async () => {
   const f = await fixture();
   try {
+    const store = await signedStore(f);
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
     let state = await catalogue.reconcile(f.identity, current);
+    const expected: { address: string; hash: string; raw: string }[] = [];
     for (let index = 1; index <= 70; index++) {
       state = await catalogue.mutate(state.revision, { kind: 'create', index, ...derived(index), label: `Account ${index + 1}` }, current);
       const signer = new Wallet('0x' + (index + 2).toString(16).padStart(64, '0'));
-      const history = new NativeActivityHistory(f.storage.keyringStorage);
-      const journal = new NativeTransferJournal(f.storage.keyringStorage, { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' }, current, () => 1, index, undefined, (record, guard) => history.archiveTerminal(record, guard));
-      const signed = await journal.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }));
+      const view = store.view(signer.address, index);
+      const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+      const signed = await view.saveSigned(raw);
+      await view.transition(signed.hash, 'attempted');
+      await view.transition(signed.hash, 'confirmed');
       state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-      await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: await f.storage.keyringStorage.get(nativeTransferJournalKey(index)) as any }, current), /PENDING_TRANSFER/);
-      await journal.transition(signed.hash, 'attempted');
-      await journal.transition(signed.hash, 'confirmed');
-      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: await journal.removalSnapshot() }, current);
-      assert.equal(await f.storage.keyringStorage.get(nativeTransferJournalKey(index)), undefined);
+      state = await catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}` }, current);
+      assert.equal((await store.records.readExact(store.session, '1', signer.address, signed.hash))!.rawTransaction, raw);
+      expected.push({ address: signer.address, hash: signed.hash, raw });
     }
     assert.equal(state.accounts.length, 1);
     assert.equal(state.removed.length, 70);
-    assert.equal(catalogue.nextIndex, 71);
-    // A real cold reopen still admits all tombstones and can recover an early address.
+    assert.equal(await store.records.validate(store.session), 70);
+    const profile = await store.session.keyring.getPrivateRecordProfileId();
+    const encoded = await f.storage.signedRecords.read(profile);
+    assert.equal(encoded!.includes(expected[0]!.raw), false, 'raw wire bytes remain encrypted at rest');
     await f.reopen();
+    assert.equal(await f.storage.signedRecords.read(profile), encoded);
     const reopened = new NativeWalletCatalogue(f.storage.keyringStorage);
     state = await reopened.reconcile(f.identity, current, async (index) => derived(index));
+    const retained = new EvmSignedRecords(f.storage.signedRecords);
+    assert.equal(await retained.validate(store.session), 70);
+    for (const item of expected) {
+      const row = await retained.readExact(store.session, '1', item.address, item.hash);
+      assert.equal(row!.rawTransaction, item.raw);
+      assert.equal(row!.phase, 'confirmed');
+    }
     state = await reopened.mutate(state.revision, { kind: 'restore', index: 1, ...derived(1), label: 'Restored' }, current);
     assert.equal(state.accounts.find((account) => account.index === 1)?.address, derived(1).address);
-    assert.equal(reopened.nextIndex, 71);
+    assert.equal(await retained.validate(store.session), 70);
   } finally { await f.cleanup(); }
 });
 
-test('a journal appearing after the absence check prevents account removal atomically', async () => {
+test('a losing catalogue CAS preserves the winning account edit and retained signed record', async () => {
   const f = await fixture();
   try {
+    const store = await signedStore(f);
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
     let state = await catalogue.reconcile(f.identity, current);
     state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Savings' }, current);
     state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
-    await f.storage.keyringStorage.set(nativeTransferJournalKey(1), { phase: 'unexpected pending journal' });
-    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: null }, current), /CATALOGUE_CONTEXT_CHANGED/);
-    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), stored);
-    assert.deepEqual(await f.storage.keyringStorage.get(nativeTransferJournalKey(1)), { phase: 'unexpected pending journal' });
+    const signer = new Wallet('0x' + '3'.padStart(64, '0'));
+    const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
+    const signed = await store.view(signer.address, 1).saveSigned(raw);
+    const profile = await store.session.keyring.getPrivateRecordProfileId();
+    const before = await f.storage.signedRecords.read(profile);
+    const winner = new NativeWalletCatalogue(f.storage.keyringStorage);
+    await winner.reconcile(f.identity, current, async (index) => derived(index));
+    let raced = false;
+    const port = { ...f.storage.keyringStorage,
+      async compareAndSet(...args: Parameters<typeof f.storage.keyringStorage.compareAndSet>) {
+        if (!raced) { raced = true; await winner.mutate(state.revision, { kind: 'rename', id: 'hd:60:0', label: 'Concurrent label' }, current); }
+        return f.storage.keyringStorage.compareAndSet(...args);
+      } };
+    const loser = new NativeWalletCatalogue(port);
+    await loser.reconcile(f.identity, current, async (index) => derived(index));
+    await assert.rejects(loser.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current), /CATALOGUE_CONTEXT_CHANGED/);
+    const saved = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any;
+    assert.equal(saved.accounts.length, 2);
+    assert.equal(saved.accounts[0].label, 'Concurrent label');
+    assert.equal(await f.storage.signedRecords.read(profile), before);
+    assert.equal((await store.records.readExact(store.session, '1', signer.address, signed.hash))!.rawTransaction, raw);
   } finally { await f.cleanup(); }
 });
-
 
 test('active-account and monotonic highwater limits fail explicitly without truncating restore history', async () => {
   const f = await fixture();
@@ -372,59 +413,80 @@ test('network selection preserves HD identity and counters while stale writers c
 });
 
 
-test('a new pending chain after terminal-container validation prevents account cleanup', async () => {
+test('catalogue removal retains signed records from every chain without owning the runtime pending guard', async () => {
   const f = await fixture();
   try {
+    const store = await signedStore(f);
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
     let state = await catalogue.reconcile(f.identity, current);
     state = await catalogue.mutate(state.revision, { kind: 'create', index: 1, ...derived(1), label: 'Savings' }, current);
     state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
     const signer = new Wallet('0x' + '3'.padStart(64, '0'));
-    const scope = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
-    const history = new NativeActivityHistory(f.storage.keyringStorage);
-    const ethereum = new NativeTransferJournal(f.storage.keyringStorage, scope, current, () => 1, 1, undefined, (record, guard) => history.archiveTerminal(record, guard));
-    const first = await ethereum.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 }));
-    await ethereum.transition(first.hash, 'nonce-consumed');
-    const terminal = await ethereum.removalSnapshot();
-    const base = new NativeTransferJournal(f.storage.keyringStorage, { ...scope, chainId: '8453' }, current, () => 1, 1);
-    await base.saveSigned(await signer.signTransaction({ type: 2, chainId: 8453, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 }));
-    await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1', journal: terminal }, current), /CATALOGUE_CONTEXT_CHANGED/);
-    assert.equal((await base.load())!.phase, 'signed');
-    assert.equal((await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as any).accounts.length, 2);
+    const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
+    const first = await store.view(signer.address, 1).saveSigned(raw);
+    await store.records.updatePhase(store.session, '1', signer.address, first.hash, 'nonce-consumed');
+    const baseRaw = await signer.signTransaction({ type: 2, chainId: 8453, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
+    const second = await store.view(signer.address, 1, getNativeNetwork('base')).saveSigned(baseRaw);
+    const profile = await store.session.keyring.getPrivateRecordProfileId();
+    const encoded = await f.storage.signedRecords.read(profile);
+    state = await catalogue.mutate(state.revision, { kind: 'remove', id: 'hd:60:1' }, current);
+    assert.equal(state.accounts.length, 1);
+    assert.equal(await f.storage.signedRecords.read(profile), encoded);
+    assert.equal((await store.records.readExact(store.session, '1', signer.address, first.hash))!.rawTransaction, raw);
+    assert.equal((await store.records.readExact(store.session, '8453', signer.address, second.hash))!.rawTransaction, baseRaw);
+    assert.equal((await store.records.readExact(store.session, '8453', signer.address, second.hash))!.phase, 'signed');
   } finally { await f.cleanup(); }
 });
 
-test('explicit same-chain RPC/name edits preserve journal bytes, tokens and archived history', async () => {
+test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and archived history', async () => {
   const f = await fixture();
   try {
-    const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
     const { NativeTokenRegistry } = await import('../src/portfolio/tokenRegistry.ts');
     const { createActivityScope } = await import('../src/activity/types.ts');
+    const store = await signedStore(f);
     const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
     let state = await catalogue.reconcile(f.identity, current);
     const before = getNativeNetwork('ethereum', state.networks);
     const signer = new Wallet('0x' + '1'.padStart(64, '0'));
     const owner = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
     const history = new NativeActivityHistory(f.storage.keyringStorage);
-    const journal = new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 1, 0, before, (record, guard) => history.archiveTerminal(record, guard));
-    const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 1n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
-    const pending = await journal.saveSigned(raw); await journal.transition(pending.hash, 'attempted');
+    const originalView = store.view(signer.address, 0, before);
+    const previousRaw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 2n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+    const previous = await originalView.saveSigned(previousRaw);
+    await originalView.transition(previous.hash, 'confirmed');
+    const previousActivity = (await originalView.activities()).records[0];
+    assert.ok(previousActivity?.recipient);
+    await history.archiveTerminal({ ...previousActivity, recipient: previousActivity.recipient, phase: 'confirmed' }, current);
+    const previousHistory = await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, before), current);
+    const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 1, to: '0x1111111111111111111111111111111111111111', value: 1n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+    const pending = await originalView.saveSigned(raw); await originalView.transition(pending.hash, 'attempted');
+    const original = await store.records.readExact(store.session, '1', signer.address, pending.hash);
     const tokens = new NativeTokenRegistry(f.storage.keyringStorage);
     const scope = { ...owner, accountId: 'hd:60:0', network: before.id, registrationHash: before.registrationHash };
     const token = { contractAddress: '0x2222222222222222222222222222222222222222', name: 'Token', symbol: 'T', decimals: 6 };
     await tokens.add(scope, 0, token, current);
+    const profile = await store.session.keyring.getPrivateRecordProfileId();
+    const encoded = await f.storage.signedRecords.read(profile);
     const edited = createNativeNetwork({ ...before, name: 'Ethereum custom provider', rpcUrl: 'https://other.example/rpc' });
     state = await catalogue.mutate(state.revision, { kind: 'save-network', registration: edited }, current);
-    const changed = new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 2, 0, edited, (record, guard) => history.archiveTerminal(record, guard));
+    const changed = store.view(signer.address, 0, edited);
     assert.equal((await changed.load())!.rawTransaction, raw);
+    assert.equal(await f.storage.signedRecords.read(profile), encoded);
+    assert.deepEqual(await store.records.readExact(store.session, '1', signer.address, pending.hash), original);
+    assert.deepEqual(original!.signer, { id: 0, type: 'HDAccount' });
+    assert.equal(original!.chainId, '1'); assert.equal(original!.from, signer.address.toLowerCase());
     assert.deepEqual((await tokens.load({ ...scope, registrationHash: edited.registrationHash }, current)).items, [token]);
+    assert.deepEqual(await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, edited), current), previousHistory);
     await changed.transition(pending.hash, 'confirmed');
-    await changed.removalSnapshot();
-    assert.equal((await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, edited), current)).archived[0]!.hash, pending.hash);
-    const row = await f.storage.keyringStorage.get(nativeTransferJournalKey(0)) as any;
-    assert.equal(JSON.stringify(row.entries[0].registration), JSON.stringify(before), 'original provider provenance stays immutable');
+    const activity = (await changed.activities()).records.at(-1);
+    assert.ok(activity?.recipient); assert.equal(activity.phase, 'confirmed');
+    await history.archiveTerminal({ ...activity, recipient: activity.recipient, phase: 'confirmed' }, current);
+    assert.deepEqual(new Set((await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, edited), current)).archived.map((row) => row.hash)), new Set([previous.hash, pending.hash]));
     await f.reopen();
     await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
-    assert.equal((await new NativeTransferJournal(f.storage.keyringStorage, owner, current, () => 3, 0, edited).load())!.rawTransaction, raw);
+    const retained = new EvmSignedRecords(f.storage.signedRecords);
+    const reopened = createNativeSignedRecordView(retained, store.session, f.identity.walletFingerprint, { index: 0, type: 'HDAccount', address: signer.address }, edited);
+    assert.equal((await reopened.load())!.rawTransaction, raw);
+    assert.deepEqual((await retained.readExact(store.session, '1', signer.address, pending.hash))!.signer, original!.signer);
   } finally { await f.cleanup(); }
 });

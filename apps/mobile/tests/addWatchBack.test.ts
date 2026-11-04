@@ -1,3 +1,4 @@
+import * as sharedHistory from '../../../source/shared/evmHistory.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -113,7 +114,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
       const idle = createIdleComponentFixture(render.api, native);
-      const dependencies = { './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      const dependencies = { '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },

@@ -5,6 +5,7 @@ import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
   ActivityError,
+  LOCAL_ACTIVITY_LIMIT,
   DEFAULT_ACTIVITY_VIEW,
   localScopeKey,
   type ActivityCandidate,
@@ -170,7 +171,7 @@ function decode(value: unknown, fingerprint: string): Document {
     (data.revision as number) < 0 ||
     typeof data.truncated !== 'boolean' ||
     !Array.isArray(data.archived) ||
-    data.archived.length > 48 ||
+    data.archived.length > LOCAL_ACTIVITY_LIMIT ||
     !Array.isArray(data.cached) ||
     data.cached.length > 24 ||
     !Array.isArray(data.views) ||
@@ -251,7 +252,7 @@ function packed(input: Document, protect?: string): Document {
     cached: [...input.cached],
     views: [...input.views],
   };
-  while (next.archived.length > 48) {
+  while (next.archived.length > LOCAL_ACTIVITY_LIMIT) {
     next.archived.shift();
     next.truncated = true;
   }

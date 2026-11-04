@@ -5,7 +5,7 @@ import type { RecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import type { RecoveryProof } from '../src/custody/recovery.ts';
 
 const phrase = Array(12).fill('publicfixture').join(' '), password = 'Public fixture password 1!';
-const counts = { hdAccounts: 2, importedKeys: 1, retiredHdAccounts: 1, retiredImportedAccounts: 1, journalRecords: 3, pendingTransactions: 1, terminalTransactions: 2, tokenEntries: 1, historySummaries: 4, cachedTransactions: 5, activityPreferences: 1 };
+const counts = { hdAccounts: 2, importedKeys: 1, retiredHdAccounts: 1, retiredImportedAccounts: 1, retainedSignedTransactions: 3, tokenEntries: 1, historySummaries: 4, cachedTransactions: 5, activityPreferences: 1 };
 const inventory: RecoveryInventory = Object.freeze({ status: 'needs-matching-phrase-verification', reason: null, backup: 'confirmed', counts: Object.freeze(counts), privateNotes: 'not-supported' });
 const proof = Object.freeze({}) as RecoveryProof;
 const tick = () => new Promise<void>((resolve) => setImmediate(resolve));

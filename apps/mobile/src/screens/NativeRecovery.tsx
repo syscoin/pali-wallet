@@ -155,12 +155,11 @@ function Inventory({ inventory, details, toggle }: { inventory: RecoveryInventor
   const counts = inventory.counts!;
   const rows = [
     ['Seed-derived accounts', counts.hdAccounts], ['Imported keys saved on this device', counts.importedKeys],
-    ['Pending transaction records', counts.pendingTransactions],
+    ['Saved transactions', counts.retainedSignedTransactions],
     ['Tokens and saved activity', `${counts.tokenEntries} tokens · ${counts.historySummaries} saved summaries`],
   ] as const;
   const more = [
     ['Retired seed-derived account records', counts.retiredHdAccounts], ['Retired imported account records', counts.retiredImportedAccounts],
-    ['Journal records', counts.journalRecords], ['Terminal transaction records', counts.terminalTransactions],
     ['Cached transactions', counts.cachedTransactions], ['Activity preferences', counts.activityPreferences],
   ] as const;
   return <>

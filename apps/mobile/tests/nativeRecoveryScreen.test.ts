@@ -15,7 +15,7 @@ type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void }
 type Snapshot = { phase: string; inventory: unknown; error: string; fieldErrors: Record<string, string> };
 const inventory = { status: 'needs-matching-phrase-verification', reason: null, backup: 'unconfirmed', privateNotes: 'not-supported', counts: {
   hdAccounts: 3, importedKeys: 2, retiredHdAccounts: 4, retiredImportedAccounts: 1,
-  journalRecords: 5, pendingTransactions: 1, terminalTransactions: 4, tokenEntries: 6,
+  retainedSignedTransactions: 5, tokenEntries: 6,
   historySummaries: 7, cachedTransactions: 8, activityPreferences: 9,
 } };
 function evaluate(source: string, dependencies: Record<string, unknown>, flow = false) {
@@ -162,7 +162,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`real Android
 test('inventory shows exact public counts and preserves backup/not-supported distinctions', () => {
   const f = setup('scope'); let tree = f.render();
   assert.match(text(tree), /Seed-derived accounts 3/); assert.match(text(tree), /Imported keys saved on this device 2/);
-  assert.match(text(tree), /Pending transaction records 1/); assert.match(text(tree), /6 tokens · 7 saved summaries/);
+  assert.match(text(tree), /Saved transactions 5/); assert.match(text(tree), /6 tokens · 7 saved summaries/);
   assert.match(text(tree), /not confirmed/); assert.match(text(tree), /Private notes are not supported/);
   const details = all(tree).find((e) => e.props.accessibilityLabel === 'Saved-data details')!; press(details); tree = f.render();
   assert.match(text(tree), /Retired seed-derived account records 4/); assert.match(text(tree), /Cached transactions 8/);

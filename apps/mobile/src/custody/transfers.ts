@@ -5,7 +5,6 @@ import { normalizePublicAddress } from '../core/addresses.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { CustodySnapshot } from './types.ts';
 import {
-  NativeTransferJournal,
   TransferJournalError,
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
@@ -58,12 +57,18 @@ export type NativeTransferSnapshot = Readonly<{
   message: string | null;
   intent: Erc20TransferIntent | null;
 }>;
+export interface NativeTransferJournalHandle {
+  load(): Promise<TransferJournalEntry | null>;
+  saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
+  transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
+}
 export interface NativeTransferRuntime {
   token?(
     contractAddress: string,
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
-  journal(assertCurrent: () => void): Promise<NativeTransferJournal>;
+  journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
+  submit(rawTransaction: string, hash: string, assertCurrent: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
@@ -609,7 +614,8 @@ export class NativeTransfers {
         review: approved.public,
         message: null,
       });
-      let entry: TransferJournalEntry;
+      let rawTransaction: string;
+      let transactionHash: string;
       if (approved.existing) {
         const stored = await journal.load();
         guard();
@@ -621,7 +627,7 @@ export class NativeTransfers {
           throw new NativeTransferError('EXPIRED');
         runtime.assertUnlocked(guard);
         guard();
-        entry = stored;
+        rawTransaction = stored.rawTransaction; transactionHash = stored.hash;
       } else {
         const latest = await rpc.requote(approved.transaction, signal, approved.public.intent);
         guard();
@@ -654,38 +660,34 @@ export class NativeTransfers {
         );
         guard();
         this.verifySigned(approved.transaction, signed);
-        entry = await journal.saveSigned(
-          signed.rawTransaction,
-          approved.public.intent
-        );
-        assertCurrent();
-        this.publish({ hash: entry.hash });
-        guard();
-        if (entry.hash !== signed.hash) throw new NativeTransferError('FAILED');
+        rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
+        this.publish({ hash: transactionHash }); guard();
       }
-      if (entry.phase === 'signed')
-        entry = await journal.transition(entry.hash, 'attempted');
       guard();
-      startedSubmission = true;
       this.publish({
         phase: 'submitting',
-        hash: entry.hash,
+        hash: transactionHash,
         review: approved.public,
         message: null,
       });
       try {
-        await rpc.broadcast(
-          entry.rawTransaction,
-          entry.hash,
-          signal,
-          entry.intent
-        );
+        await runtime.submit(rawTransaction, transactionHash, guard,
+          () => {
+            guard();
+            startedSubmission = true;
+            return rpc.broadcast(rawTransaction, transactionHash, signal, approved.public.intent);
+          },
+          approved.public.intent);
       } catch (error) {
+        // Durable uncertainty must reach the captured authority even if the
+        // storage adapter simultaneously revoked the session.
+        if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
         assertCurrent();
+        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) throw error;
         this.publish({
           phase: 'unknown',
           review: null,
-          hash: entry.hash,
+          hash: transactionHash,
           message:
             error instanceof NativeTransferRpcError
               ? 'Submission could not be confirmed. Check this transaction before sending again.'
@@ -694,13 +696,12 @@ export class NativeTransfers {
         return;
       }
       assertCurrent();
-      if (entry.phase !== 'submitted')
-        await journal.transition(entry.hash, 'submitted');
+      await journal.transition(transactionHash, 'submitted');
       assertCurrent();
       this.publish({
         phase: 'pending',
         review: null,
-        hash: entry.hash,
+        hash: transactionHash,
         message: 'Submitted. Waiting for network confirmation.',
       });
     });

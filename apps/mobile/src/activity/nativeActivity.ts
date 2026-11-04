@@ -23,7 +23,7 @@ export interface NativeActivityRuntime {
   load(guard: () => void): Promise<{
     scope: ActivityScope;
     saved: ActivityHistorySnapshot;
-    local: LocalActivityRecord | null;
+    locals: readonly LocalActivityRecord[];
   }>;
   saveCache(
     scope: ActivityScope,
@@ -195,11 +195,11 @@ export class NativeActivity {
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
-      const { scope, saved, local } = await runtime.load(guard);
+      const { scope, saved, locals } = await runtime.load(guard);
       guard();
       this.scope = scope;
       for (const record of saved.archived) this.locals.set(record.hash, record);
-      if (local) this.locals.set(local.hash, local);
+      for (const local of locals) this.locals.set(local.hash, local);
       for (const record of saved.candidates)
         this.candidates.set(record.hash, record);
       this.publish({

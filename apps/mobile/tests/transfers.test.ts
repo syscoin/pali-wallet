@@ -5,10 +5,12 @@ import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
-import { NativeTransferJournal, type TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
+import { signedRecordTestSession, historicalSignedBundle } from './signedRecordTestSession.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
-import type { KeyringStoragePort } from '../src/storage/types.ts';
+import type { Erc20TransferIntent } from '../src/custody/transferIntent.ts';
 const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
@@ -58,32 +60,21 @@ function fixture() {
       for (const listener of listeners) listener(state);
     },
   };
-  const store: KeyringStoragePort = {
-    async compareAndSet(key, expected, value) {
-      if (!(key in records) || JSON.stringify(records[key]) !== JSON.stringify(expected)) return false;
+  const signedRecords = new EvmSignedRecords({
+    async read(profile) { return records[profile] as string | undefined; },
+    async compareAndSet(profile, expected, value, check) {
+      check(); if (records[profile] !== expected) return false;
       if (failWrite) throw Error('Storage unavailable');
-      records[key] = structuredClone(value); return true;
+      records[profile] = value; return true;
     },
-    async get(key) {
-      return records[key] === undefined
-        ? undefined
-        : structuredClone(records[key]);
-    },
-    async set(key, value) {
-      if (failWrite) throw Error('Storage unavailable');
-      records[key] = structuredClone(value);
-    },
-    async createManyIfAbsent(values) {
-      if (failWrite) throw Error('Storage unavailable');
-      if (Object.keys(values).some((key) => key in records)) return false;
-      Object.assign(records, structuredClone(values));
-      return true;
-    },
-    async deleteItem() {
-      throw Error('Must not erase a pending transfer');
-    },
-  };
+  });
   const runtime = {
+    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent) {
+      const journal = await runtime.journal(guard);
+      try { await journal.saveSigned(rawTransaction,intent); guard(); }
+      catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
+      await broadcast();
+    },
     async token(contractAddress: string, guard: () => void) {
       guard();
       assert.equal(contractAddress, token.contractAddress);
@@ -91,15 +82,8 @@ function fixture() {
     },
     async journal(guard: () => void) {
       guard();
-      return new NativeTransferJournal(
-        store,
-        {
-          walletFingerprint: '1'.repeat(64),
-          address: wallet.address,
-          chainId: '1',
-        },
-        guard
-      );
+      return { ...createNativeSignedRecordView(signedRecords, signedRecordTestSession(guard), '1'.repeat(64),
+        { index: 0, type: 'HDAccount', address: wallet.address }, getNativeNetwork('ethereum')) };
     },
     assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
@@ -148,8 +132,8 @@ function fixture() {
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (body.method === 'eth_estimateGas') result = '0x5208';
       else if (body.method === 'eth_sendRawTransaction') {
-        const record = (Object.values(records)[0] as { entries: { phase: string }[] }).entries[0]!;
-        assert(['attempted', 'submitted'].includes(record.phase));
+        const record = (JSON.parse(Object.values(records)[0] as string) as { entries: { phase: string }[] }).entries[0]!;
+        assert(['signed', 'submitted'].includes(record.phase));
         broadcasts.push(body.params[0]);
         if (dropped) throw Error('Acknowledgment lost');
         result = keccak256(body.params[0]);
@@ -452,7 +436,7 @@ test('finalized receipt releases the journal and records the result', async () =
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
     assert.equal(
-      (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!.phase,
+      (JSON.parse(Object.values(f.records)[0] as string) as { entries: { phase: string }[] }).entries[0]!.phase,
       'confirmed'
     );
   } finally {
@@ -470,8 +454,7 @@ test('a reentrant observer can lock before submission without leaking signed byt
       code: 'CANCELLED',
     });
     assert.equal(f.broadcasts.length, 0);
-    const entry = (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!;
-    assert.equal(entry.phase, 'attempted');
+    assert.deepEqual(f.records, {});
     assert.equal(f.transfers.getSnapshot().hash, null);
   } finally {
     f.close();
@@ -583,9 +566,9 @@ test('unexpected post-broadcast journal failure stays truthful after locking cle
     assert.equal(state.hash, null);
     assert.match(state.message ?? '', /check Activity for an existing transaction/);
     assert.doesNotMatch(state.message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
-    const row = Object.values(f.records)[0] as { entries: { rawTransaction: string; phase: string }[] };
-    assert.equal(row.entries[0]!.rawTransaction, f.broadcasts[0]);
-    assert.equal(row.entries[0]!.phase, 'attempted');
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved!.rawTransaction, f.broadcasts[0]);
+    assert.equal(saved!.phase, 'signed');
   } finally { f.close(); }
 });
 
@@ -707,11 +690,8 @@ for (const type of [0, 2] as const) test(`current-format type ${type} terminal b
   try {
     const signed = await wallet.signTransaction({ type, chainId: 1, nonce: 0, to, value: 1n, gasLimit: 17000000n,
       ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
-    const saved: TransferJournalContainer = { version: 1, revision: 0, walletFingerprint: '1'.repeat(64),
-      account: { id: 'hd:60:0', index: 0, type: 'HDAccount', slip44: 60, address: wallet.address },
-      entries: [{ registration: getNativeNetwork('ethereum'), phase: 'confirmed', rawTransaction: signed,
-        hash: keccak256(signed), nonce: 0, createdAt: 1000 }] };
-    f.records['native-evm-transfer-v1'] = saved;
+    const session = signedRecordTestSession();
+    f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, signed);
     const before = JSON.stringify(f.records);
     f.finalize(); await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');

@@ -1,3 +1,4 @@
+import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';

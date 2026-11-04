@@ -4,12 +4,12 @@ import type { OpenWalletStorage, RecoveryStorageSnapshot } from '../storage/type
 import { ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../activity/historyStore.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY, inspectRecoveryTokens } from '../portfolio/tokenRegistry.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
-import { inspectRecoveryJournal } from './transferJournal.ts';
 import { parseNativeAccountId } from './accountIdentity.ts';
+import { inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 
 export type RecoveryInventoryCounts = Readonly<{
   hdAccounts: number; importedKeys: number; retiredHdAccounts: number; retiredImportedAccounts: number;
-  journalRecords: number; pendingTransactions: number; terminalTransactions: number;
+  retainedSignedTransactions: number;
   tokenEntries: number; historySummaries: number; cachedTransactions: number; activityPreferences: number;
 }>;
 /** Public inventory only. This is neither a recovery ticket nor an authorization. */
@@ -24,7 +24,15 @@ const result = (status: RecoveryInventory['status'], reason: RecoveryInventory['
   backup: RecoveryInventory['backup'], counts: RecoveryInventoryCounts | null, hasNotes = false): RecoveryInventory =>
   Object.freeze({ status, reason, backup, counts: counts && Object.freeze(counts), privateNotes: hasNotes ? 'requires-matching-phrase-verification' : 'not-supported' });
 const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0, retiredHdAccounts: 0, retiredImportedAccounts: 0,
-  journalRecords: 0, pendingTransactions: 0, terminalTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 });
+  retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 });
+
+/** Canonical native record domains. Runtime and recovery share this admission check. */
+export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records']): void {
+  for (const { key } of records) {
+    if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY].includes(key))
+      throw new Error('NATIVE_STORAGE_UNSUPPORTED_RECORD');
+  }
+}
 
 /** Consumes only an internal, bounded storage snapshot. Never derives/decrypts or writes. */
 export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): RecoveryInventory {
@@ -33,11 +41,10 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
     if (snapshot.records.length > STORAGE_LIMITS.records) throw new Error();
     const records = new Map(snapshot.records.map(({ key, value }) => [key, value]));
     if (records.size !== snapshot.records.length) throw new Error();
-    for (const key of records.keys()) if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY].includes(key) &&
-      !/^native-evm-transfer-v1(?::(?:hd|imported):60:(?:0|[1-9][0-9]{0,3}))?$/.test(key))
-      return result('unavailable', 'unsupported-record', backup, null);
+    try { assertNativeRecordDomains(snapshot.records); }
+    catch { return result('unavailable', 'unsupported-record', backup, null); }
     if (snapshot.state.presence === 'empty') {
-      if (snapshot.identity || records.size || snapshot.notes.length) throw new Error();
+      if (snapshot.identity || records.size || snapshot.notes.length || snapshot.signedRecords.length) throw new Error();
       return result('empty', null, backup, zero());
     }
     if (!snapshot.identity) throw new Error();
@@ -52,6 +59,11 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
     const counts = { ...zero(), hdAccounts: catalogue.accounts.filter((account) => account.type === 'HDAccount').length,
       importedKeys: catalogue.accounts.filter((account) => account.type === 'Imported').length,
       retiredHdAccounts: catalogue.retiredIndices.length, retiredImportedAccounts: catalogue.retiredImportedIndices.length };
+    if (!Array.isArray(snapshot.signedRecords) || snapshot.signedRecords.length > 1) throw new Error();
+    for (const row of snapshot.signedRecords) {
+      if (!root || row.walletBindingId !== binding || row.profileId !== root.profileId) throw new Error();
+      counts.retainedSignedTransactions += inspectEvmSignedBundle(row.value, root.profileId).transactions;
+    }
     const accountReference = (id: string, address: string) => {
       const parsed = parseNativeAccountId(id), active = catalogue.accounts.find((account) => account.id === id);
       if (active ? active.address !== address : !(parsed.type === 'HDAccount' ? catalogue.retiredIndices : catalogue.retiredImportedIndices).includes(parsed.index)) throw new Error();
@@ -62,11 +74,6 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
         const diagnostic = decodeStorageValue(value);
         if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic) || Object.keys(diagnostic).join(',') !== 'hasUtf8Error' ||
             typeof (diagnostic as { hasUtf8Error: unknown }).hasUtf8Error !== 'boolean') throw new Error();
-      } else if (key.startsWith('native-evm-transfer-v1')) {
-        const journal = inspectRecoveryJournal(key, decodeStorageValue(value), binding);
-        accountReference(journal.id, journal.address);
-        counts.journalRecords++; counts.pendingTransactions += journal.pending;
-        counts.terminalTransactions += journal.transactions - journal.pending;
       } else if (key === NATIVE_TOKEN_REGISTRY_KEY) {
         const tokens = inspectRecoveryTokens(decodeStorageValue(value), binding);
         tokens.accounts.forEach((account) => accountReference(account.id, account.address));

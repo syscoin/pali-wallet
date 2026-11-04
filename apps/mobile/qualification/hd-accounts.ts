@@ -2,7 +2,7 @@ import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence } from './signed-record-evidence.ts';
 
 type Check = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 export type HdQualificationEvidence = Readonly<{
@@ -44,7 +44,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   phase: 'create' | 'restart';
   authority: NativeCustodyAuthority;
   runtime: KeyringRuntime;
-  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+  storage: Pick<OpenWalletStorage, 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
   password: string;
   expectedSecondAddress?: string;
   expectedRestartAddress?: string | null;
@@ -56,8 +56,6 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   );
   const { CustodyOperationError } = await import('../src/custody/authority.ts');
   const { Transaction } = await import('ethers/transaction');
-  const { nativeTransferJournalKey } = await import('../src/custody/transferJournal.ts');
-  const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
   const transfer = runtime.transfers;
   requireEvidence(transfer && authority.supportsAccountManagement());
   const catalogue = () => {
@@ -97,20 +95,17 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       signed.chainId === 1n && signed.nonce === 0 && signed.value === 123n &&
       signed.gasLimit === 21000n && signed.to === '0x1111111111111111111111111111111111111111' &&
       signed.data === '0x' && signed.maxFeePerGas === 3n && signed.maxPriorityFeePerGas === 1n);
-    // Inspect the real encrypted store through its private fixture handle.
-    // The host DTO above intentionally remains version 1; the persisted row
-    // must be the version-2 account/registration container on both launches.
-    const row = await storage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer | undefined;
+    // Inspect the canonical encrypted profile bundle as well as the authenticated
+    // exact-byte view. Historical records for other senders remain in the bundle.
+    const identity = await storage.recovery?.readIdentity();
+    const row = await readSignedRecordEvidence(storage);
     const fingerprint = await storage.getWalletFingerprint();
     guard();
-    const registration = getNativeNetwork('ethereum');
-    requireEvidence(row?.version === 1 && Number.isSafeInteger(row.revision) && row.revision >= 1 &&
-      row.walletFingerprint === fingerprint && row.account.id === `hd:60:${index}` && row.account.index === index &&
-      row.account.type === 'HDAccount' && row.account.slip44 === 60 && row.account.address === address &&
-      row.entries.length === 1 && row.entries[0]?.phase === 'attempted' && row.entries[0].hash === stored.hash &&
-      row.entries[0].rawTransaction === stored.rawTransaction &&
-      Object.entries(registration).every(([name, value]) =>
-        row.entries[0]?.registration[name as keyof typeof registration] === value));
+    const entry = row.entries.find((value) => value.hash === stored.hash);
+    requireEvidence(row.version === 1 && row.entries.length >= 1 &&
+      identity?.pairFingerprint === fingerprint && identity.walletBindingId === stored.scope.walletFingerprint &&
+      entry?.phase === 'attempted' && entry.chainId === '1' && entry.from === address.toLowerCase() && entry.nonce === 0 &&
+      entry.signer.id === index && entry.signer.type === 'HDAccount' && !row.raw?.includes(stored.rawTransaction));
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {

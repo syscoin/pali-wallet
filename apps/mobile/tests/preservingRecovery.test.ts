@@ -5,6 +5,7 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
@@ -13,7 +14,6 @@ import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { encodeStorageValue } from '../src/storage/json.ts';
-import { NativeTransferJournal, nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
 import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
@@ -21,6 +21,7 @@ import { createActivityScope } from '../src/activity/types.ts';
 import { NATIVE_TOKEN_REGISTRY_KEY } from '../src/portfolio/tokenRegistry.ts';
 import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/privateVaultInspection.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -56,6 +57,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   let failurePause: ReturnType<typeof latch> | undefined;
   let closeFailure = false;
   let runtime!: KeyringRuntime;
+  let liveKeyring!: InstanceType<typeof sdk.SoftwareKeyring>;
   let store!: SqliteWalletStorage;
   const open = async (): Promise<OpenWalletStorage> => {
     assert.equal(leased, false, 'old authority must release its database lease'); leased = true; opens++;
@@ -71,11 +73,17 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
       await local.recovery.recordFailureForPair!(fingerprint);
     } };
     let closed = false;
-    return { keyringStorage: local.keyringStorage, authGuard: local.authGuard, recovery,
+    return { keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, authGuard: local.authGuard, recovery,
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: open, loadSdk: loadRuntimeSdk });
+  const factory = createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: open, loadSdk: async () => {
+    const module = await (loadRuntimeSdk?.() ?? sdk);
+    class ObservedKeyring extends module.SoftwareKeyring {
+      constructor(host: ConstructorParameters<typeof module.SoftwareKeyring>[0]) { super(host); liveKeyring = this; }
+    }
+    return { ...module, SoftwareKeyring: ObservedKeyring };
+  } });
   const newOwner = async () => {
     const authority = new NativeCustodyAuthority({ async open() { runtime = await factory.open() as KeyringRuntime; return runtime; } });
     await authority.initialize(); return authority;
@@ -88,14 +96,15 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
     const db = new DatabaseSync(file, { readOnly: true });
     try { return { records: db.prepare('SELECT * FROM keyring_records ORDER BY key').all() as { key: string; value: string }[],
       metadata: db.prepare('SELECT * FROM wallet_metadata ORDER BY key').all() as { key: string; value: string }[],
-      notes: db.prepare('SELECT * FROM private_note_records ORDER BY profile_id').all() }; }
+      notes: db.prepare('SELECT * FROM private_note_records ORDER BY profile_id').all(),
+      signedRecords: db.prepare('SELECT * FROM evm_signed_records ORDER BY profile_id').all() }; }
     finally { db.close(); }
   };
   const write = (key: string, value: unknown) => {
     const db = new DatabaseSync(file);
     try { db.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
   };
-  return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } }, get owner() { return owner; }, get runtime() { return runtime; }, get store() { return store; }, open, read, write, coordinator,
+  return { notes(profile: string, value: unknown, binding: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO private_note_records VALUES (?, ?, ?)').run(profile, binding, JSON.stringify(value)); } finally { db.close(); } }, get owner() { return owner; }, get runtime() { return runtime; }, get keyring() { return liveKeyring; }, get store() { return store; }, open, read, write, coordinator,
     remove(key: string) { const db = new DatabaseSync(file); try { db.prepare('DELETE FROM keyring_records WHERE key = ?').run(key); } finally { db.close(); } },
     meta(key: string, value: unknown) {
       const db = new DatabaseSync(file);
@@ -108,7 +117,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
     async reopen() { await owner.dispose(); owner = await newOwner(); return owner; },
     async close() { hook = undefined; afterHook = undefined; await owner.dispose().catch(() => undefined); if (leased) await store.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
 }
-function retained(state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>) { return state.records.filter((row) => !['vault', 'vault-keys'].includes(row.key)); }
+function retained(state: ReturnType<Awaited<ReturnType<typeof fixture>>['read']>) { return { records: state.records.filter((row) => !['vault', 'vault-keys'].includes(row.key)), notes: state.notes, signedRecords: state.signedRecords }; }
 
 test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated password changes', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
@@ -127,9 +136,13 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
       views: [{ sourceId: activityScope.sourceId, view: { filter: 'sent', showZero: false, anchor: null, offset: 7 } }] });
     for (const id of ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet']) {
       const network = getNativeNetwork(id);
-      const journal = new NativeTransferJournal(f.store.keyringStorage, { walletFingerprint: fingerprint, address: sourceWallet.address, chainId: network.chainId }, () => undefined, () => 1000, 0, network);
       const raw = await sourceWallet.signTransaction({ type: 2, chainId: Number(network.chainId), nonce: 0, to: importedWallet.address, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
-      await journal.saveSigned(raw);
+      const transaction = Transaction.from(raw);
+      await new EvmSignedRecords(f.store.signedRecords, () => 1000).append({ keyring: f.keyring, assertCurrent() {} }, {
+        rawTransaction: raw, hash: transaction.hash!, from: sourceWallet.address, chainId: network.chainId, nonce: 0, type: 2,
+        context: { account: { id: 0, type: 'HDAccount', address: sourceWallet.address }, operation: 'send',
+          network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl } },
+      });
     }
     const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.status, 'needs-matching-phrase-verification', JSON.stringify({ inventory, keys: f.read().records.map((r) => r.key) }));
@@ -160,6 +173,33 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     await f.reopen(); await f.owner.unlock(`${NEXT} again`);
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { await recovery?.dispose(); await f.close(); }
+});
+
+for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`recovery refuses ${mutation} in a structurally valid signed bundle without replacing any bytes`, async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    const store = new EvmSignedRecords(f.store.signedRecords, () => 1000);
+    for (const nonce of [0, 1]) {
+      const rawTransaction = await sourceWallet.signTransaction({ type: 2, chainId: 1, nonce, to: importedWallet.address,
+        value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
+      const transaction = Transaction.from(rawTransaction);
+      await store.append({ keyring: f.keyring, assertCurrent() {} }, {
+        rawTransaction, hash: transaction.hash!, from: sourceWallet.address, chainId: '1', nonce, type: 2,
+        context: { account: { id: 0, type: 'HDAccount', address: sourceWallet.address }, operation: 'send',
+          network: { kind: 'ethereum', chainId: 1, slip44: 60, url: getNativeNetwork('ethereum').rpcUrl } },
+      });
+    }
+    const profileId = await f.keyring.getPrivateRecordProfileId();
+    const beforeRaw = (await f.store.signedRecords.read(profileId))!;
+    const changed = JSON.parse(beforeRaw);
+    if (mutation === 'root-ciphertext') changed.root.ciphertext = (changed.root.ciphertext[0] === 'A' ? 'B' : 'A') + changed.root.ciphertext.slice(1);
+    else changed.entries = changed.entries.slice(1);
+    assert.equal(await f.store.signedRecords.compareAndSet(profileId, beforeRaw, JSON.stringify(changed), () => undefined), true);
+    assert.equal((await readRecoveryInventory(f.store)).status, 'needs-matching-phrase-verification');
+    const before = f.read(); f.owner.lock(); recovery = f.coordinator();
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.deepEqual(f.read(), before);
   } finally { await recovery?.dispose(); await f.close(); }
 });
 
@@ -239,17 +279,45 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
   } finally { await recovery.dispose(); await f.close(); }
 });
 
-test('a pending retired imported journal without its private envelope blocks preservation', async () => {
+test('retired imported signed bytes survive recovery without resurrecting an account or granting replay', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
     const before = f.read(), catalogue = JSON.parse(before.records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value);
     catalogue.nextImportedIndex = 1; catalogue.retiredImportedIndices = [0]; f.write(WALLET_CATALOGUE_KEY, catalogue);
-    const network = getNativeNetwork('ethereum'), fingerprint = await f.store.getWalletFingerprint();
+    const network = getNativeNetwork('ethereum');
     const raw = await importedWallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: sourceWallet.address, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
-    const journal = new NativeTransferJournal(f.store.keyringStorage, { walletFingerprint: fingerprint, address: importedWallet.address, chainId: '1' }, () => undefined, () => 1000, 0, network, undefined, 'Imported');
-    await journal.saveSigned(raw); f.owner.lock(); recovery = f.coordinator(); const state = f.read();
-    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' }); assert.deepEqual(f.read(), state);
-    assert.ok(state.records.find((row) => row.key === nativeTransferJournalKey(0, 'Imported')));
+    const transaction = Transaction.from(raw);
+    const records = new EvmSignedRecords(f.store.signedRecords, () => 1000);
+    await records.append({ keyring: f.keyring, assertCurrent() {} }, {
+      rawTransaction: raw, hash: transaction.hash!, from: importedWallet.address, chainId: '1', nonce: 0, type: 2,
+      context: { account: { id: 0, type: 'Imported', address: importedWallet.address }, operation: 'send',
+        network: { kind: 'ethereum', chainId: 1, slip44: 60, url: network.rpcUrl } },
+    });
+    f.owner.lock(); recovery = f.coordinator(); const state = f.read();
+    const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    assert.deepEqual(f.read(), state, 'verification does not rewrite the retained bundle');
+    await recovery.commit(proof);
+    assert.deepEqual(f.read().signedRecords, state.signedRecords);
+    assert.equal(state.signedRecords.length, 1);
+    await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getCatalogue()!.accounts.some((account) => account.type === 'Imported'), false);
+    const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
+    assert.equal(restored?.rawTransaction, raw);
+    let broadcasts = 0;
+    await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined, async () => { broadcasts++; }));
+    assert.equal(broadcasts, 0, 'historical attribution does not select or authorize a missing account');
+  } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('a live imported account missing its recovery envelope still blocks preserving recovery', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Live imported' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    const catalogue = JSON.parse(f.read().records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value);
+    delete catalogue.importedAccounts[0].envelope; f.write(WALLET_CATALOGUE_KEY, catalogue);
+    f.owner.lock(); recovery = f.coordinator(); const before = f.read();
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.deepEqual(f.read(), before);
   } finally { await recovery?.dispose(); await f.close(); }
 });
 
@@ -525,7 +593,7 @@ test('cancellation before the first snapshot cannot let an old helper adopt a ne
   let next: NativeRecoveryCoordinator | undefined, cancelled = false;
   try {
     f.setAfter((_kind, sql) => {
-      if (!cancelled && sql.includes('ORDER BY source, key LIMIT 70')) { cancelled = true; old.cancel(); }
+      if (!cancelled && sql.includes('ORDER BY source, key')) { cancelled = true; old.cancel(); }
     });
     await assert.rejects(old.prepare(PHRASE, NEXT, () => undefined), { code: 'CANCELLED' });
     f.setAfter(); assert.equal(cancelled, true);

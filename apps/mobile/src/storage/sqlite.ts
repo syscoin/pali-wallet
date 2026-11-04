@@ -1,4 +1,5 @@
 import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
+import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 import {
   decodeStorageValue,
   encodeStorageValue,
@@ -19,24 +20,35 @@ import type {
   RecoveryWritePlan,
   RecoveryRoot,
   NoteDomainRow,
+  SignedRecordDomainRow,
 } from './types.ts';
 
 const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 65536))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
+const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
 const boundedColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 // Refuse multiple profiles before any ciphertext crosses the SQL connection.
 const boundedNoteColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM private_note_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedSignedColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM evm_signed_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
 const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
-const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY source, key LIMIT 70`;
+const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records UNION ALL SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY source, key LIMIT 71`;
 
 const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
+const SIGNED_ROWS = `SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY profile_id LIMIT 2`;
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
     ? error
     : new WalletStorageError('STORAGE_UNAVAILABLE');
+const storageGuard = (assertCurrent: () => void) => () => {
+  const result: unknown = assertCurrent();
+  if (result !== undefined) {
+    if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+    throw new WalletStorageError('STORAGE_CHANGED');
+  }
+};
 type StoredRow = {
   value: unknown;
   storage_type: unknown;
@@ -123,6 +135,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly authGuard: OpenWalletStorage['authGuard'];
   readonly notes: NonNullable<OpenWalletStorage['notes']>;
+  readonly signedRecords: OpenWalletStorage['signedRecords'];
   readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   private tail: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
@@ -160,12 +173,23 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         this.compareAndSet(key, expected, value, removeIfEqual),
     });
     this.notes = Object.freeze({ read: () => this.queued(() => this.readNotes()) });
+    this.signedRecords = Object.freeze({
+      read: (profileId: string) => this.queued(async () => {
+        const identity = await this.signedIdentity(profileId);
+        const rows = await this.readSignedRows();
+        this.inspectSignedRows(rows, identity);
+        return rows[0]?.value;
+      }),
+      compareAndSet: (profileId: string, expected: string | undefined, next: string, assertCurrent: () => void) =>
+        this.compareAndSetSigned(profileId, expected, next, assertCurrent),
+    });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
       recordFailure: () => this.recordAuthentication(false),
       recordSuccess: () => this.recordAuthentication(true),
     });
     this.recovery = Object.freeze({ readIdentity: () => this.readIdentity(), readSnapshot: () => this.readSnapshot(),
+      bindIdentity: (expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void) => this.bindIdentity(expectedPairFingerprint, root, assertCurrent),
       prepareReplacement: (snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown }>, root: RecoveryRoot) => this.prepareReplacement(snapshot, pair, root),
       plannedSnapshot: (plan: RecoveryWritePlan) => { const value = this.recoveryWrites.get(plan); if (!value) throw new WalletStorageError('STORAGE_CHANGED'); return value.after; },
       commitReplacement: (plan: unknown, guard: () => void) => this.commitReplacement(plan, guard),
@@ -185,7 +209,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds, installationId);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
-        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 4"
+        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 5"
       );
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
@@ -195,14 +219,16 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           await db.execAsync(TABLE);
           await db.execAsync(META);
           await db.execAsync(NOTES);
+          await db.execAsync(SIGNED);
           await db.runAsync(
             'INSERT INTO wallet_metadata (key, value) VALUES (?, ?)',
             ['installation', installationId]
           );
           await db.execAsync('PRAGMA user_version = 1');
         });
-      } else if (version?.user_version !== 1 || tables.length !== 3 || tables[0]?.name !== 'keyring_records' || tables[0].sql !== TABLE ||
-        tables[1]?.name !== 'private_note_records' || tables[1].sql !== NOTES || tables[2]?.name !== 'wallet_metadata' || tables[2].sql !== META) throw failure();
+      } else if (version?.user_version !== 1 || tables.length !== 4 || tables[0]?.name !== 'evm_signed_records' || tables[0].sql !== SIGNED ||
+        tables[1]?.name !== 'keyring_records' || tables[1].sql !== TABLE || tables[2]?.name !== 'private_note_records' || tables[2].sql !== NOTES ||
+        tables[3]?.name !== 'wallet_metadata' || tables[3].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
       );
@@ -226,6 +252,13 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       await storage.readState();
       // Reject malformed or orphaned note rows before handing an owner to a runtime.
       await storage.notes.read();
+      const signed = await storage.readSignedRows();
+      if (signed.length) {
+        const pair = await storage.pair();
+        if (validatePair(pair) !== 'existing') throw failure();
+        const identity = readWalletIdentity(await storage.fingerprint(pair), pair.identity);
+        storage.inspectSignedRows(signed, identity);
+      }
       return storage;
     } catch (error) {
       throw safeError(error);
@@ -474,6 +507,104 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     });
   }
 
+  private bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void> {
+    if (typeof assertCurrent !== 'function' || typeof expectedPairFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(expectedPairFingerprint))
+      return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    const check = storageGuard(assertCurrent);
+    // Use the existing identity decoder to admit a detached canonical root.
+    const checkedRoot = readWalletIdentity(expectedPairFingerprint, encodeStorageValue({ version: 1,
+      walletBindingId: expectedPairFingerprint, pairFingerprint: expectedPairFingerprint, root })).root!;
+    return this.queued(async () => {
+      let expectedRaw: string | undefined;
+      await this.transaction(async () => {
+        check();
+        const pair = await this.pair(); check();
+        if (validatePair(pair) !== 'existing' || await this.fingerprint(pair) !== expectedPairFingerprint)
+          throw new WalletStorageError('STORAGE_CHANGED');
+        check();
+        const identity = readWalletIdentity(expectedPairFingerprint, pair.identity);
+        if (identity.root && JSON.stringify(identity.root) !== JSON.stringify(checkedRoot))
+          throw new WalletStorageError('STORAGE_CHANGED');
+        expectedRaw = encodeStorageValue({ version: 1, walletBindingId: identity.walletBindingId,
+          pairFingerprint: expectedPairFingerprint, root: checkedRoot });
+        if (pair.identity !== expectedRaw) await this.db.runAsync(
+          'INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['identity', expectedRaw]);
+        check();
+      }, check).catch((error) => this.signedFailure(error));
+      check();
+      try {
+        const after = await this.pair();
+        if (after.identity !== expectedRaw || await this.fingerprint(after) !== expectedPairFingerprint) throw failure();
+      } catch (error) { this.poisoned = true; this.signedFailure(error); }
+      check();
+    });
+  }
+
+  private signedFailure(error: unknown): never {
+    if (this.poisoned) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+    throw error;
+  }
+
+  private async signedIdentity(profileId: string): Promise<WalletIdentityRead> {
+    const pair = await this.pair();
+    if (validatePair(pair) !== 'existing') throw new WalletStorageError('STORAGE_CHANGED');
+    const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    if (!identity.root || identity.root.profileId !== profileId) throw new WalletStorageError('STORAGE_CHANGED');
+    return identity;
+  }
+
+  private async readSignedRows(): Promise<readonly SignedRecordDomainRow[]> {
+    const rows = await this.db.getAllAsync<PairRow>(SIGNED_ROWS, [EVM_SIGNED_RECORD_LIMITS.bytes]);
+    if (rows.length > 1) throw failure();
+    return Object.freeze(rows.map((row) => {
+      if (typeof row.key !== 'string' || typeof row.wallet_binding !== 'string') throw failure();
+      return Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding,
+        value: admittedRow(row, EVM_SIGNED_RECORD_LIMITS.bytes) });
+    }));
+  }
+
+  private inspectSignedRows(rows: readonly SignedRecordDomainRow[], identity: WalletIdentityRead | null): void {
+    if (rows.length > 1) throw failure();
+    for (const row of rows) {
+      if (!identity?.root || row.profileId !== identity.root.profileId || row.walletBindingId !== identity.walletBindingId) throw failure();
+      try { inspectEvmSignedBundle(row.value, row.profileId); } catch { throw failure(); }
+    }
+  }
+
+  private compareAndSetSigned(profileId: string, expected: string | undefined, next: string, assertCurrent: () => void): Promise<boolean> {
+    if (typeof assertCurrent !== 'function') return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    const check = storageGuard(assertCurrent);
+    check();
+    try {
+      if (expected !== undefined) inspectEvmSignedBundle(expected, profileId);
+      inspectEvmSignedBundle(next, profileId);
+    } catch { return Promise.reject(failure()); }
+    return this.queued(async () => {
+      let binding: string | undefined;
+      const committed = await this.transaction(async () => {
+        check();
+        const identity = await this.signedIdentity(profileId); check();
+        binding = identity.walletBindingId;
+        const before = await this.readSignedRows(); check();
+        this.inspectSignedRows(before, identity);
+        if (before[0]?.value !== expected) return false;
+        await this.db.runAsync('INSERT INTO evm_signed_records (profile_id, wallet_binding, value) VALUES (?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET wallet_binding = excluded.wallet_binding, value = excluded.value', [profileId, binding, next]);
+        check();
+        return true;
+      }, check).catch((error) => this.signedFailure(error));
+      if (!committed) return false;
+      check();
+      try {
+        const identity = await this.signedIdentity(profileId);
+        const after = await this.readSignedRows();
+        this.inspectSignedRows(after, identity);
+        if (identity.walletBindingId !== binding || after[0]?.value !== next) throw failure();
+      } catch (error) { this.poisoned = true; this.signedFailure(error); }
+      check();
+      return true;
+    });
+  }
+
   private async readNotes(): Promise<readonly NoteDomainRow[]> {
     const rows = await this.db.getAllAsync<PairRow>(NOTE_ROWS, [NOTE_DOMAIN_MAX_BYTES]);
     if (rows.length > 1) throw failure();
@@ -492,21 +623,22 @@ export class SqliteWalletStorage implements OpenWalletStorage {
 
   /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */
   private async captureSnapshot(): Promise<RecoveryStorageSnapshot> {
-      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES]);
-      if (rows.length > STORAGE_LIMITS.records + 5) throw failure();
+      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES, EVM_SIGNED_RECORD_LIMITS.bytes]);
+      if (rows.length > STORAGE_LIMITS.records + 6) throw failure();
       const records: { key: string; value: string }[] = [], metadata: { key: string; value: string }[] = [];
       const seen = new Set<string>(), pair: Pair = {};
       const notes: NoteDomainRow[] = [];
+      const signedRecords: SignedRecordDomainRow[] = [];
       for (const row of rows) {
-        if (!['record', 'meta', 'note'].includes(row.source)) throw failure();
+        if (!['record', 'meta', 'note', 'signed'].includes(row.source)) throw failure();
         validateStorageKey(row.key);
         const id = `${row.source}:${row.key}`;
         if (seen.has(id)) throw failure();
         seen.add(id);
-        const value = admittedRow(row, row.source === 'meta' ? 1024 : row.source === 'note' ? NOTE_DOMAIN_MAX_BYTES : STORAGE_LIMITS.valueBytes);
-        if (row.source === 'note') {
+        const value = admittedRow(row, row.source === 'meta' ? 1024 : row.source === 'note' ? NOTE_DOMAIN_MAX_BYTES : row.source === 'signed' ? EVM_SIGNED_RECORD_LIMITS.bytes : STORAGE_LIMITS.valueBytes);
+        if (row.source === 'note' || row.source === 'signed') {
           if (typeof row.wallet_binding !== 'string') throw failure();
-          notes.push(Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value })); continue;
+          (row.source === 'note' ? notes : signedRecords).push(Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value })); continue;
         }
         if (row.source === 'meta' && !['installation', 'backup', 'auth', 'identity'].includes(row.key)) throw failure();
         (row.source === 'record' ? records : metadata).push(Object.freeze({ key: row.key, value }));
@@ -522,7 +654,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
       if (notes.length && !identity) throw failure();
       if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
-      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata), notes: Object.freeze(notes) });
+      this.inspectSignedRows(signedRecords, identity);
+      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata), notes: Object.freeze(notes), signedRecords: Object.freeze(signedRecords) });
   }
 
   private readSnapshot(): Promise<RecoveryStorageSnapshot> {
@@ -542,7 +675,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const metadata = new Map(before.metadata.map((row) => [row.key, row.value]));
       metadata.set('identity', identity); metadata.set('auth', auth);
       if (before.state.backup === 'confirmed') metadata.set('backup', encodeStorageValue({ version: 1, fingerprint }));
-      const after: RecoveryStorageSnapshot = Object.freeze({ identity: checkedIdentity, state: before.state, notes: before.notes,
+      this.inspectSignedRows(before.signedRecords, checkedIdentity);
+      const after: RecoveryStorageSnapshot = Object.freeze({ identity: checkedIdentity, state: before.state, notes: before.notes, signedRecords: before.signedRecords,
         records: Object.freeze(before.records.map((row) => Object.freeze({ key: row.key, value: row.key === 'vault' ? pair.vault! : row.key === 'vault-keys' ? pair.keys! : row.value }))),
         metadata: Object.freeze([...metadata].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([key, value]) => Object.freeze({ key, value }))) });
       const plan = Object.freeze({}) as RecoveryWritePlan;

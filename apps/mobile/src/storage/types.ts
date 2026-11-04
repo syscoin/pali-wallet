@@ -1,3 +1,5 @@
+import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
+
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
   | 'STORAGE_UNAVAILABLE'
@@ -60,6 +62,8 @@ export type WalletIdentityRead = Readonly<{
 }>;
 /** Read-only encrypted note row. No production creation/replacement port exists yet. */
 export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
+/** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
+export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Private, byte-preserving host snapshot; never a screen or public account DTO. */
 export type RecoveryStorageSnapshot = Readonly<{
   identity: WalletIdentityRead | null;
@@ -67,6 +71,7 @@ export type RecoveryStorageSnapshot = Readonly<{
   records: readonly Readonly<{ key: string; value: string }>[];
   metadata: readonly Readonly<{ key: string; value: string }>[];
   notes: readonly NoteDomainRow[];
+  signedRecords: readonly SignedRecordDomainRow[];
 }>;
 /** Opaque, storage-owned one-use replacement; never a UI value. */
 declare const recoveryWriteBrand: unique symbol;
@@ -75,6 +80,7 @@ export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
 
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
+  readonly signedRecords: EvmSignedRecordStorage;
   /** Read-only domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{ read(): Promise<readonly NoteDomainRow[]> }>;
   readonly authGuard: Readonly<{
@@ -86,6 +92,8 @@ export interface OpenWalletStorage {
   readonly recovery?: Readonly<{
     readIdentity(): Promise<WalletIdentityRead | null>;
     readSnapshot(): Promise<RecoveryStorageSnapshot>;
+    /** Called only after the SDK authenticates the root/profile for this exact pair. */
+    bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
     prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
     plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
     commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;

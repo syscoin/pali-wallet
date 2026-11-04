@@ -35,6 +35,10 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import {
+  createEvmSignedRecordLifecycle,
+  EVM_SIGNED_RECORD_PREFIX,
+} from '../../../wallet/evmSignedRecords';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -271,6 +275,10 @@ import {
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import {
+  assertEvmSignedRecordSdk,
+  createChromeEvmSignedRecords,
+} from './evmSignedRecords';
+import {
   freshSdkGasEstimate,
   getSdkGasOverrides,
 } from './freshNativeGasEstimate';
@@ -301,6 +309,8 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
+import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
   SentryAuthorityScheme,
@@ -659,6 +669,7 @@ class MainController {
           (key) =>
             key.match(/^state-vault-\d+$/) ||
             key.startsWith('sysweb3-vault-') ||
+            key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
             key.startsWith('pali-slh-dsa-state:') ||
             key.startsWith('sentry-operator-v1:') ||
             key.startsWith('sentry-settings-v1:') ||
@@ -914,12 +925,61 @@ class MainController {
   }
 
   // Initialize a keyring for a specific slip44
+  private retainedEvmRecords?: EvmSignedRecords;
+
+  private getRetainedEvmRecords(): EvmSignedRecords {
+    this.retainedEvmRecords ??= createChromeEvmSignedRecords();
+    return this.retainedEvmRecords;
+  }
+
+  private captureEvmSignedSubmission(
+    keyring: KeyringManager,
+    context: EvmSubmissionContext
+  ) {
+    this.assertWalletReadyForSigning();
+    const generation = this.walletSessionGeneration;
+    const navigation = getWalletNavigationScope();
+    const selected = { ...store.getState().vault.activeAccount };
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation, keyring);
+      const { vault, vaultGlobal } = store.getState();
+      const currentNavigation = getWalletNavigationScope();
+      const payer =
+        vault.accounts[context.account.type as KeyringAccountType]?.[
+          context.account.id
+        ];
+      if (
+        currentNavigation.account !== navigation.account ||
+        currentNavigation.network !== navigation.network ||
+        vault.activeAccount.id !== selected.id ||
+        vault.activeAccount.type !== selected.type ||
+        vault.isBitcoinBased ||
+        vault.activeNetwork.chainId !== context.network.chainId ||
+        vault.activeNetwork.url !== context.network.url ||
+        vaultGlobal.activeSlip44 !== context.network.slip44 ||
+        payer?.address?.toLowerCase() !== context.account.address.toLowerCase()
+      ) {
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    };
+    assertCurrent();
+    return createEvmSignedRecordLifecycle(this.getRetainedEvmRecords(), {
+      keyring,
+      assertCurrent,
+    });
+  }
+
   private initializeKeyring(slip44: number): KeyringManager {
     if (!this.keyrings.has(slip44)) {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      const keyring = new KeyringManager(undefined, getLedgerHost());
+      assertEvmSignedRecordSdk();
+      const keyring = new KeyringManager(undefined, getLedgerHost(), {
+        captureEvmSubmission: (context) =>
+          this.captureEvmSignedSubmission(keyring, context),
+      });
       // Set up storage access for each keyring
       keyring.setStorage(chrome.storage.local);
       keyring.setVaultStateGetter(() => store.getState().vault);
@@ -1267,7 +1327,11 @@ class MainController {
   // Create a keyring on demand with storage access
   private createKeyringOnDemand(): KeyringManager {
     // Create new keyring with the wallet state
-    const keyring = new KeyringManager(undefined, getLedgerHost());
+    assertEvmSignedRecordSdk();
+    const keyring = new KeyringManager(undefined, getLedgerHost(), {
+      captureEvmSubmission: (context) =>
+        this.captureEvmSignedSubmission(keyring, context),
+    });
 
     // Set up storage access - this gives it access to the global encrypted vault
     keyring.setStorage(chrome.storage.local);
@@ -1935,6 +1999,8 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    // A new authenticated session must re-read and authenticate retained bytes.
+    this.retainedEvmRecords = undefined;
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
@@ -7896,50 +7962,62 @@ class MainController {
   }
 
   public async getRecommendedEvmNonce(address: string): Promise<number> {
+    let retainedReadFailed = false;
     try {
+      const session = this.capturePrivateVaultSession();
+      const capturedNetwork = { ...store.getState().vault.activeNetwork };
+      const assertNonceContext = () => {
+        session.assertCurrent();
+        const network = store.getState().vault.activeNetwork;
+        if (
+          network.chainId !== capturedNetwork.chainId ||
+          network.url !== capturedNetwork.url
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      };
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       const latestNonce = await provider.getTransactionCount(address, 'latest');
+      assertNonceContext();
 
       const normalizedAddress = address.toLowerCase();
       const { accounts, accountTransactions, activeNetwork } =
         store.getState().vault;
-      let accountType: keyof typeof accounts | undefined;
-      let accountId: number | undefined;
-
-      for (const type of Object.keys(accounts) as Array<
-        keyof typeof accounts
-      >) {
-        const accountsById = accounts[type];
-        for (const [id, account] of Object.entries(accountsById)) {
-          if (
-            account?.address &&
-            account.address.toLowerCase() === normalizedAddress
-          ) {
-            accountType = type;
-            accountId = Number(id);
-            break;
-          }
-        }
-        if (accountType !== undefined) {
-          break;
-        }
-      }
-
+      const localTransactions = Object.entries(accounts).flatMap(
+        ([type, members]) =>
+          Object.entries(members).flatMap(([id, account]) =>
+            account?.address?.toLowerCase() === normalizedAddress
+              ? accountTransactions?.[type as keyof typeof accounts]?.[
+                  Number(id)
+                ]?.ethereum?.[activeNetwork.chainId] || []
+              : []
+          )
+      );
       const localConfirmedTransactions: Array<{
         nonce: number;
         transaction: any;
       }> = [];
       const localPendingNonces = new Set<number>();
-      const localTransactions =
-        accountType !== undefined && accountId !== undefined
-          ? accountTransactions?.[accountType]?.[accountId]?.ethereum?.[
-              activeNetwork.chainId
-            ] || []
-          : [];
+      try {
+        const retained = await this.getRetainedEvmRecords().listSender(
+          { keyring: session.keyring, assertCurrent: assertNonceContext },
+          String(activeNetwork.chainId),
+          address
+        );
+        assertNonceContext();
+        for (const entry of retained)
+          if (
+            !['confirmed', 'reverted'].includes(entry.phase) &&
+            entry.nonce >= latestNonce
+          )
+            localPendingNonces.add(entry.nonce);
+      } catch (error) {
+        retainedReadFailed = true;
+        throw error;
+      }
 
       // Match MetaMask's nonce model: start from canonical/latest chain state
       // plus local confirmed history, then skip nonces Pali has locally pending.
@@ -8002,6 +8080,7 @@ class MainController {
 
       return nextNonce;
     } catch (error) {
+      if (retainedReadFailed) throw error;
       return await this.ethereumTransaction.getRecommendedNonce(address);
     }
   }

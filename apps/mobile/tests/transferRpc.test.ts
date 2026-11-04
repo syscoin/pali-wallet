@@ -90,11 +90,12 @@ test('adds exact bounded gas headroom for a complex native transfer', async () =
   );
 });
 test('quotes reject estimates or padded limits above the selected block gas limit', async () => {
-  for (const estimate of ['0x1c9c381', '0x1b00000']) {
-    await assert.rejects(fixture({ eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
+  const block = (body: {params:string[]}) => ({number:body.params[0]==='latest'?'0x20':body.params[0],hash:'0x'+'2'.repeat(64),baseFeePerGas:'0x64',gasLimit:'0xf4240'});
+  for (const estimate of ['0xf4241', '0xdbba0']) {
+    await assert.rejects(fixture({ eth_getBlockByNumber:block, eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
   }
-  const below = fixture({ eth_estimateGas: '0x17d7840' });
-  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '30000000');
+  const below = fixture({ eth_getBlockByNumber:block, eth_estimateGas: '0xc3500' });
+  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '960000');
 });
 test('aborts unresolved sibling requests when one quote component fails', async () => {
   let observed: AbortSignal | undefined;

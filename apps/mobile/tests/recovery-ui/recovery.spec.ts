@@ -24,6 +24,10 @@ test('scope gives exact saved-data and imported-backup limits without a phrase-m
   await expect(page.getByRole('heading', { name: 'Recover access', exact: true })).toBeVisible();
   await expect(page.getByText('Seed-derived accounts', { exact: true })).toBeVisible();
   await expect(page.getByText('6 tokens · 7 saved summaries', { exact: true })).toBeVisible();
+  const saved = page.getByText('Saved transactions', { exact: true }).locator('..');
+  await expect(saved).toContainText('5');
+  await expect(page.getByText('Pending transaction records', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('Journal records', { exact: true })).toHaveCount(0);
   await expect(page.getByText(/Existing recovery phrase backup: not confirmed/)).toBeVisible();
   await expect(page.getByText('Private notes are not supported by this recovery.', { exact: true })).toBeVisible();
   await expect(page.getByText(/phrase alone cannot recreate imported accounts on a new or lost device/)).toBeVisible();

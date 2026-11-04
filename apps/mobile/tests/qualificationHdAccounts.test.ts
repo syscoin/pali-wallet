@@ -9,8 +9,7 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../src/custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import { nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence } from '../qualification/signed-record-evidence.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
@@ -86,12 +85,12 @@ for (const scenario of ['import', 'generate'] as const) {
       assert.equal(created.journalContainerVersion, 1);
       const checkContainers = async () => {
         for (const index of [0, 1]) {
-          const row = await physicalStorage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer;
+          const row = await readSignedRecordEvidence(physicalStorage);
+          const entries = row.entries.filter(entry => entry.signer.type === 'HDAccount' && entry.signer.id === index);
           assert.equal(row.version, 1);
-          assert.equal(row.account.id, `hd:60:${index}`);
-          assert.equal(row.entries.length, 1);
-          assert.equal(row.entries[0]!.phase, 'attempted');
-          assert.equal(row.entries[0]!.hash, index === 0 ? created.firstTransferHash : created.transferHash);
+          assert.equal(entries.length, 1);
+          assert.equal(entries[0]!.phase, 'attempted');
+          assert.equal(entries[0]!.hash, index === 0 ? created.firstTransferHash : created.transferHash);
         }
       };
       await checkContainers();

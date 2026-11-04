@@ -7,7 +7,6 @@ import { SigningKey, keccak256 } from 'ethers/crypto';
 import { Wallet } from 'ethers/wallet';
 import { inspectRecoveryInventory, readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
-import { nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
 import { importedKeyIdentity, IMPORTED_EVM_DOMAIN } from '../src/custody/importedAccounts.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
@@ -37,7 +36,8 @@ async function fixture(empty = false) {
     put(key: string, value: unknown) { owned.database.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(key, encodeStorageValue(value)); },
     meta(key: string, value: unknown) { owned.database.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, ?)').run(key, encodeStorageValue(value)); },
     value(key: string) { return JSON.parse((owned.database.prepare('SELECT value FROM keyring_records WHERE key = ?').get(key) as { value: string }).value); },
-    bytes() { return JSON.stringify({ records: owned.database.prepare('SELECT * FROM keyring_records ORDER BY key').all(), metadata: owned.database.prepare('SELECT * FROM wallet_metadata ORDER BY key').all() }); },
+    bytes() { return JSON.stringify({ records: owned.database.prepare('SELECT * FROM keyring_records ORDER BY key').all(), metadata: owned.database.prepare('SELECT * FROM wallet_metadata ORDER BY key').all(), signed: owned.database.prepare('SELECT * FROM evm_signed_records ORDER BY profile_id').all() }); },
+    async putSigned(value: string) { await storage.recovery.bindIdentity(fingerprint, { ...root, profileId }, () => undefined); await storage.signedRecords.compareAndSet(profileId, undefined, value, () => undefined); },
     async reopen() { await storage.close(); owned = nodeConnection(file, { before(_kind, statement) { sql.push(statement); } }); storage = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, false); },
     async close() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
 }
@@ -45,14 +45,18 @@ async function signed(chainId = 1, signer = wallet) {
   return signer.signTransaction({ type: 2, chainId, nonce: 0, to: '0x1111111111111111111111111111111111111111',
     value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
 }
-async function journal(fingerprint: string, index = 0, phase = 'signed', type: 'HDAccount' | 'Imported' = 'HDAccount') {
-  const id = `${type === 'HDAccount' ? 'hd' : 'imported'}:60:${index}`;
-  return { version: 1, revision: 0, walletFingerprint: fingerprint,
-    account: { id, index, type, slip44: 60, address: wallet.address },
-    entries: await Promise.all(['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].map(async (network) => {
-      const registration = getNativeNetwork(network), rawTransaction = await signed(Number(registration.chainId));
-      return { registration, phase, rawTransaction, hash: keccak256(rawTransaction), nonce: 0, createdAt: 1 };
-    })) };
+// Synthetic ciphertext exercises public structural inventory only. Recovery tests
+// separately require real SDK authentication before any replacement is authorized.
+function signedBundle() {
+  const envelope = (domain: string, recordId: string) => ({ version: 1, profileId, domain, recordId, nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) });
+  return JSON.stringify({ version: 1, profileId, revision: 0,
+    root: envelope('org.syscoin.pali.evm.signed.root.v1', 'manifest'),
+    entries: ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].map((network, index) => {
+      const hash = `0x${String(index + 1).repeat(64)}`;
+      return { hash, chainId: getNativeNetwork(network).chainId, from: wallet.address.toLowerCase(), nonce: 0,
+        phase: 'signed', createdAt: 1, signer: { id: 0, type: 'HDAccount' }, operation: 'send',
+        chunks: [envelope('org.syscoin.pali.evm.signed.chunk.v1', `${hash}/0`)] };
+    }) });
 }
 function assertReadsOnly(statements: string[]) {
   assert.equal(statements.some((sql) => /^(INSERT|UPDATE|DELETE|BEGIN|COMMIT|CREATE|ALTER|DROP)/i.test(sql)), false, statements.join('\n'));
@@ -127,7 +131,7 @@ test('optional identity is strict, pair bound and never substitutes its declared
   } finally { await f.close(); }
 });
 
-test('inventory counts all chain journals, imported envelopes, tokens and opaque historical views without decrypting', async () => {
+test('inventory counts the shared signed bundle, imported envelopes, tokens and opaque history without decrypting', async () => {
   const f = await fixture();
   try {
     const imported = importedKeyIdentity(`0x${'2'.padStart(64, '0')}`, 0);
@@ -136,7 +140,7 @@ test('inventory counts all chain journals, imported envelopes, tokens and opaque
     catalogue.importedAccounts = [{ ...imported, type: 'Imported', slip44: 60, label: 'Private account name',
       envelope: { version: 1, domain: IMPORTED_EVM_DOMAIN, recordId: imported.id, profileId, nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) } }];
     f.put(WALLET_CATALOGUE_KEY, catalogue);
-    f.put(nativeTransferJournalKey(0), await journal(f.fingerprint));
+    await f.putSigned(signedBundle());
     const network = getNativeNetwork('ethereum');
     f.put(NATIVE_TOKEN_REGISTRY_KEY, { version: 1, walletFingerprint: f.fingerprint, revision: 4, entries: [{
       accountId: imported.id, address: imported.address, network: 'ethereum', chainId: '1', registrationHash: network.registrationHash,
@@ -148,30 +152,25 @@ test('inventory counts all chain journals, imported envelopes, tokens and opaque
     const result = await readRecoveryInventory(f.storage);
     assert.equal(result.status, 'needs-matching-phrase-verification');
     assert.deepEqual(result.counts, { hdAccounts: 1, importedKeys: 1, retiredHdAccounts: 0, retiredImportedAccounts: 0,
-      journalRecords: 1, pendingTransactions: 3, terminalTransactions: 0, tokenEntries: 1, historySummaries: 0, cachedTransactions: 1, activityPreferences: 1 });
+      retainedSignedTransactions: 3, tokenEntries: 1, historySummaries: 0, cachedTransactions: 1, activityPreferences: 1 });
     assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     assert.equal(JSON.stringify(result).includes(imported.address), false);
     assert.equal(JSON.stringify(result).includes('Private account name'), false);
   } finally { await f.close(); }
 });
 
-test('all 64 records are inspected, including retired-account journals, and the 65th is never truncated away', async () => {
+test('all 64 records are captured, unknown domains fail closed and the 65th is never truncated away', async () => {
   const f = await fixture();
   try {
-    const catalogue = f.value(WALLET_CATALOGUE_KEY);
-    catalogue.nextIndex = 62; catalogue.retiredIndices = Array.from({ length: 61 }, (_, i) => i + 1); f.put(WALLET_CATALOGUE_KEY, catalogue);
-    const data = await journal(f.fingerprint, 1, 'confirmed');
-    for (let index = 1; index <= 61; index++) f.put(nativeTransferJournalKey(index), { ...data, account: { ...data.account, id: `hd:60:${index}`, index } });
+    for (let index = 0; index < 61; index++) f.put(`unknown-private-${index}`, { retained: index });
     const before = f.bytes(); f.sql.length = 0;
-    assert.equal((await f.storage.recovery.readSnapshot()).records.length, 64);
-    const result = await readRecoveryInventory(f.storage);
-    assert.equal(result.counts?.journalRecords, 61); assert.equal(result.counts?.terminalTransactions, 183);
-    assert.equal(result.counts?.retiredHdAccounts, 61); assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
-    const last = f.value(nativeTransferJournalKey(61));
-    f.put(nativeTransferJournalKey(61), { ...last, entries: [{ ...last.entries[0], phase: 'not-a-phase' }] });
-    assert.equal((await readRecoveryInventory(f.storage)).reason, 'invalid-record', 'the last row must also be parsed');
-    f.put(nativeTransferJournalKey(61), last);
+    const snapshot = await f.storage.recovery.readSnapshot();
+    assert.equal(snapshot.records.length, 64);
+    assert.equal(snapshot.records.some((row) => row.key === 'unknown-private-60'), true);
+    assert.equal((await readRecoveryInventory(f.storage)).reason, 'unsupported-record');
+    assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     f.put('future-extra-row', {});
+    await assert.rejects(f.storage.recovery.readSnapshot(), { code: 'STORAGE_CORRUPT' });
     assert.equal((await readRecoveryInventory(f.storage)).status, 'unavailable');
   } finally { await f.close(); }
 });
@@ -181,9 +180,9 @@ test('malformed known domains and noncatalogued identities fail closed without c
   try {
     for (const [key, value] of [
       [NATIVE_TOKEN_REGISTRY_KEY, { version: 9 }], [ACTIVITY_STORAGE_KEY, { version: 1 }],
-      [nativeTransferJournalKey(0), { version: 2, privateKey: 'do not expose' }],
-      [nativeTransferJournalKey(1), await journal(f.fingerprint, 1)],
-      ['native-evm-transfer-v1:hd:60:00', await journal(f.fingerprint)],
+      ['native-evm-transfer-v1', { version: 1, privateKey: 'do not expose' }],
+      ['native-evm-transfer-v1:hd:60:1', { version: 1 }],
+      ['native-evm-transfer-v1:hd:60:00', { version: 1 }],
     ] as const) {
       f.put(key, value); const before = f.bytes(); f.sql.length = 0;
       const result = await readRecoveryInventory(f.storage);
@@ -203,13 +202,13 @@ test('incomplete development catalogue and journal shapes are rejected without r
     catalogue.networks = [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60, rpcUrl: 'https://ethereum-rpc.publicnode.com', symbol: 'ETH', decimals: 18 }];
     f.put(WALLET_CATALOGUE_KEY, catalogue);
     const rawTransaction = await signed();
-    f.put(nativeTransferJournalKey(0), { version: 1, scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
+    f.put('native-evm-transfer-v1', { version: 1, scope: { walletFingerprint: f.fingerprint, address: wallet.address, chainId: '1' },
       phase: 'attempted', rawTransaction, hash: keccak256(rawTransaction), nonce: 0, createdAt: 1 });
     const before = f.bytes(); f.sql.length = 0;
     assert.equal((await readRecoveryInventory(f.storage)).status, 'unavailable');
     assert.equal(f.bytes(), before); assertReadsOnly(f.sql);
     assert.equal(f.value(WALLET_CATALOGUE_KEY).version, 1);
-    assert.equal(f.value(nativeTransferJournalKey(0)).version, 1);
+    assert.equal(f.value('native-evm-transfer-v1').version, 1);
   } finally { await f.close(); }
 });
 

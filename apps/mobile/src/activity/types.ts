@@ -40,8 +40,10 @@ export type TerminalActivityRecord = Readonly<{
     name: string;
   }>;
 }>;
-export type LocalActivityRecord = Omit<TerminalActivityRecord, 'phase'> &
+export const LOCAL_ACTIVITY_LIMIT = 48;
+export type LocalActivityRecord = Omit<TerminalActivityRecord, 'phase' | 'recipient'> &
   Readonly<{
+    recipient: string | null;
     phase:
       | 'signed'
       | 'attempted'

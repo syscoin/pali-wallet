@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { SigningKey, keccak256 } from 'ethers/crypto';
-import { computeAddress, Transaction } from 'ethers/transaction';
+import { SigningKey } from 'ethers/crypto';
+import { computeAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY, type StoredImportedAccount } from '../src/custody/walletCatalogue.ts';
-import { NativeTransferJournal, nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
+import { signedRecordTestSession } from './signedRecordTestSession.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { encryptImportedKey, decryptImportedKey, importedKeyIdentity, normalizeImportedKey, snapshotImportedEnvelope } from '../src/custody/importedAccounts.ts';
 import { parseNativeAccountId } from '../src/custody/accountIdentity.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -142,7 +145,7 @@ test('imported identity removal is atomic and reimport cannot reuse its retired 
     const model = await f.open(), mutation = await importMutation(f), { id: _id, ...input } = mutation;
     let state = await model.mutate(0, input, current);
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0', journal: null }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
     assert.equal(model.nextImportedIndex, 1);
     await assert.rejects(model.mutate(state.revision, input, current), /CONTEXT_CHANGED/);
     const next = await importMutation(f, 1), { id: _nextId, ...nextInput } = next;
@@ -154,20 +157,40 @@ test('imported identity removal is atomic and reimport cannot reuse its retired 
   } finally { await f.close(); }
 });
 
-test('HD and Imported zero indices use disjoint journal keys and reject each other’s containers', async () => {
+test('HD and Imported aliases share one sender-owned pending record with immutable signer attribution', async () => {
   const f = await fixture();
   try {
-    const signer = new Wallet(KEY), scope = { walletFingerprint: f.root.walletFingerprint, address: signer.address, chainId: '1' };
-    const hd = new NativeTransferJournal(f.storage.keyringStorage, scope, current);
-    const imported = new NativeTransferJournal(f.storage.keyringStorage, scope, current, Date.now, 0, undefined, undefined, 'Imported');
+    const session = signedRecordTestSession(current);
+    await f.storage.recovery.bindIdentity(f.root.walletFingerprint, { ...identity, profileId: await session.keyring.getPrivateRecordProfileId() }, current);
+    const records = new EvmSignedRecords(f.storage.signedRecords, () => 1);
+    const signer = new Wallet(KEY), network = getNativeNetwork('ethereum');
+    const hd = createNativeSignedRecordView(records, session, f.root.walletFingerprint, { index: 0, type: 'HDAccount', address: signer.address }, network);
+    const imported = createNativeSignedRecordView(records, session, f.root.walletFingerprint, { index: 0, type: 'Imported', address: signer.address }, network);
     const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: identity.address, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
-    await hd.saveSigned(raw); await imported.saveSigned(raw);
-    assert.notEqual(nativeTransferJournalKey(0), nativeTransferJournalKey(0, 'Imported'));
-    assert.equal((await hd.load())!.hash, keccak256(raw)); assert.equal(Transaction.from((await imported.load())!.rawTransaction).from, signer.address);
-    const old = await f.storage.keyringStorage.get(nativeTransferJournalKey(0));
-    await f.storage.keyringStorage.set(nativeTransferJournalKey(0, 'Imported'), old);
-    await assert.rejects(imported.load(), /CONTEXT_CHANGED/);
-    assert.deepEqual(await f.storage.keyringStorage.get(nativeTransferJournalKey(0)), old);
+    const signed = await hd.saveSigned(raw);
+    await imported.saveSigned(raw);
+    const values = await records.listSender(session, '1', signer.address);
+    assert.equal(values.length, 1, 're-observing identical wire bytes cannot create a second alias record');
+    assert.deepEqual(values[0]!.signer, { id: 0, type: 'HDAccount' });
+    assert.equal((await imported.load())!.rawTransaction, raw);
+    assert.equal((await hd.load())!.hash, signed.hash);
+    await imported.transition(signed.hash, 'submitted');
+    assert.equal((await hd.load())!.phase, 'submitted');
+    assert.deepEqual((await records.readExact(session, '1', signer.address, signed.hash))!.signer, { id: 0, type: 'HDAccount' });
+    const next = await signer.signTransaction({ type: 2, chainId: 1, nonce: 1, to: identity.address, value: 2, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
+    const nextSigned = await imported.saveSigned(next);
+    const both = await records.listSender(session, '1', signer.address.toLowerCase());
+    assert.equal(both.length, 2); assert.equal(new Set(both.map((row) => row.hash)).size, 2);
+    assert.deepEqual(both.find((row) => row.hash === nextSigned.hash)!.signer, { id: 0, type: 'Imported' });
+    const otherChain = createNativeSignedRecordView(records, session, f.root.walletFingerprint, { index: 0, type: 'Imported', address: signer.address }, getNativeNetwork('base'));
+    assert.equal(await otherChain.load(), null);
+    const encoded = await f.storage.signedRecords.read(await session.keyring.getPrivateRecordProfileId());
+    await f.reopen();
+    const retained = new EvmSignedRecords(f.storage.signedRecords);
+    assert.equal(await retained.validate(session), 2);
+    assert.equal(await f.storage.signedRecords.read(await session.keyring.getPrivateRecordProfileId()), encoded);
+    assert.equal((await retained.readExact(session, '1', signer.address, signed.hash))!.rawTransaction, raw);
+    assert.equal((await retained.readExact(session, '1', signer.address, nextSigned.hash))!.rawTransaction, next);
   } finally { await f.close(); }
 });
 

@@ -25,6 +25,15 @@ length before returning payload over the bridge. Initial limits are 64 KiB per
 record, 256-byte keys, 16 records per atomic batch and 64 records total; larger
 future data models need an explicit reviewed capacity change.
 
+The separate `evm_signed_records` domain stores one opaque encrypted bundle for
+the authenticated wallet profile, bounded by the common signed-record policy at
+16 MiB and 4,096 transactions. It does not change the ordinary keyring limits.
+The adapter compares exact previous bytes, acknowledges COMMIT and exact readback,
+and retains uncertain writes for reopen. The common module owns bundle parsing,
+encryption, transaction identity and retention; SQLite owns only physical atomicity.
+`recovery.bindIdentity` first binds an SDK-authenticated root to the current pair
+without changing the stable wallet binding, backup receipt or failure counter.
+
 Backup confirmation hashes the exact stored wallet tuple with a domain-separated
 SHA-256 digest. It compares the tuple again under the write transaction before
 committing a receipt. Only the trusted authority's verified phrase challenge may
@@ -42,11 +51,14 @@ iOS/Android behavior. Those require device qualification of the final binary.
 ## Recovery inventory reads
 
 The internal `OpenWalletStorage.recovery` read methods take one bounded, coherent snapshot
-of all record and metadata rows. It does not mutate, decrypt or authorize
+of all record, metadata, note and signed-bundle rows. It does not mutate, decrypt or authorize
 anything. `readIdentity` distinguishes a stable data binding from the current
 encrypted-pair digest; new wallets use that digest as their initial binding,
 without an eager metadata write. Optional identity metadata must match the exact
 current pair and still requires SDK root/profile authentication after unlock.
+Signed-bundle bytes participate in the same exact snapshot comparison and are
+preserved during recovery and rollback. Inventory counts retained signed records
+through the common inspector; it does not infer their pending/terminal phases.
 `getWalletFingerprint`, backup receipts and authentication retain their existing
 encrypted-pair semantics.
 

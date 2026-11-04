@@ -1,6 +1,5 @@
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
-import { nativeTransferJournalKey, terminalJournalForRemoval, type JournalRemovalSnapshot } from './transferJournal.ts';
 import { NATIVE_NETWORKS, getNativeNetwork, snapshotNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
@@ -50,7 +49,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
-  | Readonly<{ kind: 'remove'; id: string; journal: JournalRemovalSnapshot | null }>;
+  | Readonly<{ kind: 'remove'; id: string }>;
 
 export class WalletCatalogueError extends Error {
   readonly code: 'CATALOGUE_INVALID' | 'CATALOGUE_CONTEXT_CHANGED' | 'CATALOGUE_REOPEN_REQUIRED' | 'CATALOGUE_BUSY' | 'CATALOGUE_LIMIT' | 'CATALOGUE_NOT_REMOVABLE';
@@ -256,7 +255,6 @@ export class NativeWalletCatalogue {
     this.busy = true;
     const guard = guardFor(assertCurrent);
     let next: CatalogueRecord;
-    let cleanup: Readonly<Record<string, unknown>> | undefined;
     try {
       guard();
       const record = this.record;
@@ -310,7 +308,7 @@ export class NativeWalletCatalogue {
         getNativeNetwork(mutation.id, record.networks);
         active = Object.freeze({ accountId: record.active.accountId, networkId: mutation.id });
       } else {
-        object(mutation, mutation.kind === 'rename' ? ['kind', 'id', 'label'] : mutation.kind === 'remove' ? ['kind', 'id', 'journal'] : ['kind', 'id']);
+        object(mutation, mutation.kind === 'rename' ? ['kind', 'id', 'label'] : mutation.kind === 'remove' ? ['kind', 'id'] : ['kind', 'id']);
         const account = [...accounts, ...importedAccounts].find((a) => a.id === mutation.id);
         if (!account) return changed();
         if (mutation.kind === 'select') active = Object.freeze({ accountId: account.id, networkId: record.active.networkId });
@@ -320,8 +318,6 @@ export class NativeWalletCatalogue {
         }
         else if (mutation.kind === 'remove') {
           if ((account.type === 'HDAccount' && account.index === 0) || account.id === active.accountId || accounts.length + importedAccounts.length <= 1) throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
-          const entry = mutation.journal === null ? undefined : terminalJournalForRemoval(mutation.journal, { walletFingerprint: record.walletFingerprint, address: account.address }, account.index, account.type);
-          cleanup = { [nativeTransferJournalKey(account.index, account.type)]: entry };
           if (account.type === 'HDAccount') {
             accounts = accounts.filter((a) => a.id !== account.id);
             retiredIndices = Object.freeze([...retiredIndices, account.index].sort((a, b) => a - b));
@@ -337,7 +333,7 @@ export class NativeWalletCatalogue {
     return (async () => {
       try {
         guard(); writing = true;
-        const committed = await this.storage.compareAndSet(WALLET_CATALOGUE_KEY, this.stored, next, cleanup);
+        const committed = await this.storage.compareAndSet(WALLET_CATALOGUE_KEY, this.stored, next);
         if (typeof committed !== 'boolean') return invalid();
         if (!committed) { writing = false; this.record = null; return changed(); }
         guard();

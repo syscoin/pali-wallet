@@ -1,7 +1,7 @@
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 
 type Check = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
@@ -105,7 +105,7 @@ export async function qualifyNativeNevmTransfer(
     phase: 'create' | 'restart';
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
-    storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+    storage: Pick<OpenWalletStorage, 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
     password: string;
     expectedFourthAddress?: string;
     check: Check;
@@ -120,14 +120,10 @@ export async function qualifyNativeNevmTransfer(
     );
   const [
     { Transaction },
-    { nativeTransferJournalKey },
     { getNativeNetwork },
-    { encodeStorageValue },
   ] = await Promise.all([
     import('ethers/transaction'),
-    import('../src/custody/transferJournal.ts'),
     import('../src/custody/networkContext.ts'),
-    import('../src/storage/json.ts'),
   ]);
   const transfer = runtime.transfers;
   expect(transfer && authority.supportsAccountManagement());
@@ -165,25 +161,15 @@ export async function qualifyNativeNevmTransfer(
   initialGuard();
   const fingerprint = await storage.getWalletFingerprint();
   initialGuard();
-  const olderRows: string[] = [];
-  for (const index of [0, 1, 2]) {
-    expect(
-      catalogue().accounts.some((account) => account.id === `hd:60:${index}`)
-    );
-    const row = await storage.keyringStorage.get(
-      nativeTransferJournalKey(index)
-    );
-    initialGuard();
-    expect(row !== undefined);
-    olderRows.push(encodeStorageValue(row));
-  }
+  const olderAddresses = [0, 1, 2].map((index) => {
+    const older = catalogue().accounts.find((entry) => entry.id === `hd:60:${index}`);
+    expect(older); return older.address;
+  });
+  const before = await readSignedRecordEvidence(storage); initialGuard();
+  const olderRows = retainedSignedEntries(before.entries, olderAddresses);
+  expect(olderAddresses.every((address) => before.entries.some((entry) => entry.from === address.toLowerCase())));
   if (phase === 'create') {
     expect(!catalogue().accounts.some((account) => account.index === 3));
-    expect(
-      (await storage.keyringStorage.get(nativeTransferJournalKey(3))) ===
-        undefined
-    );
-    initialGuard();
     await check('native NEVM dedicated HD3 account', () =>
       manage({
         kind: 'create',
@@ -223,7 +209,7 @@ export async function qualifyNativeNevmTransfer(
         stored.version === 1 &&
         stored.nonce === 0 &&
         stored.scope.address === address &&
-        stored.scope.walletFingerprint === fingerprint &&
+        stored.scope.walletFingerprint === (await storage.recovery?.readIdentity())?.walletBindingId &&
         stored.scope.chainId === registration.chainId &&
         stored.intent === undefined
     );
@@ -244,32 +230,20 @@ export async function qualifyNativeNevmTransfer(
         signed.maxPriorityFeePerGas === 1n &&
         signed.accessList?.length === 0
     );
-    const row = (await storage.keyringStorage.get(
-      nativeTransferJournalKey(3)
-    )) as TransferJournalContainer;
+    const row = await readSignedRecordEvidence(storage);
     guard();
-    const entry = row.entries.find(
-      (item) => item.registration.chainId === registration.chainId
-    );
+    const entry = row.entries.find((item) => item.hash === stored.hash);
     expect(
       row.version === 1 &&
-        Number.isSafeInteger(row.revision) &&
-        row.revision >= 1 &&
-        row.walletFingerprint === fingerprint &&
-        row.account.id === account.id &&
-        row.account.index === 3 &&
-        row.account.type === 'HDAccount' &&
-        row.account.slip44 === 60 &&
-        row.account.address === address &&
         entry?.phase === 'attempted' &&
         entry.nonce === 0 &&
         entry.hash === stored.hash &&
-        entry.rawTransaction === stored.rawTransaction &&
-        entry.intent === undefined &&
-        Object.entries(registration).every(
-          ([key, field]) =>
-            entry.registration[key as keyof typeof registration] === field
-        )
+        entry.from === address.toLowerCase() &&
+        entry.chainId === registration.chainId &&
+        entry.signer.id === 3 &&
+        entry.signer.type === 'HDAccount' &&
+        entry.metadata?.intent === undefined &&
+        !row.raw?.includes(stored.rawTransaction)
     );
     return stored;
   };
@@ -327,15 +301,10 @@ export async function qualifyNativeNevmTransfer(
       ethereum.rawTransaction !== nevm.rawTransaction
   );
   const nevmGuard = guardFor(account.id, address, 'syscoin-nevm-testnet');
-  const row = (await storage.keyringStorage.get(
-    nativeTransferJournalKey(3)
-  )) as TransferJournalContainer;
+  const row = await readSignedRecordEvidence(storage);
   nevmGuard();
-  expect(
-    row.entries.length === 2 &&
-      row.entries[0]?.hash === ethereum.hash &&
-      row.entries[1]?.hash === nevm.hash
-  );
+  const entries = row.entries.filter((entry) => entry.from === address.toLowerCase());
+  expect(entries.length === 2 && entries[0]?.hash === ethereum.hash && entries[1]?.hash === nevm.hash);
   await selectNetwork('ethereum');
   expect(
     (await readSigned('ethereum', '456')).rawTransaction ===
@@ -345,13 +314,9 @@ export async function qualifyNativeNevmTransfer(
     'native NEVM preserves prior journals and restores HD1 Ethereum',
     async () => {
       const guard = guardFor(account.id, address, 'ethereum');
-      for (const index of [0, 1, 2]) {
-        const saved = await storage.keyringStorage.get(
-          nativeTransferJournalKey(index)
-        );
-        guard();
-        expect(encodeStorageValue(saved) === olderRows[index]);
-      }
+      const retained = await readSignedRecordEvidence(storage);
+      guard();
+      expect(retainedSignedEntries(retained.entries, olderAddresses) === olderRows);
       expect((await storage.getWalletFingerprint()) === fingerprint);
       guard();
       await manage({ kind: 'select', id: second.id });
