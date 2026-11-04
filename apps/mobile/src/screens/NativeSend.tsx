@@ -17,6 +17,10 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
+import {
+  formatTokenUnits,
+  type Erc20Metadata,
+} from '../../../../source/shared/erc20';
 import type { NativeTransferView } from '../custody/transfers';
 import {
   Button,
@@ -30,14 +34,22 @@ import {
   Text,
 } from '../ui';
 
-const failure = (error: unknown) => {
+const failure = (error: unknown, token = false) => {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_INPUT')
     return 'Enter an Ethereum address and an amount greater than zero.';
   if (code === 'EXPIRED')
     return 'Network conditions changed or this review expired. Review the transfer again.';
   if (code === 'INSUFFICIENT_BALANCE')
-    return 'Not enough ETH for the amount and maximum network fee.';
+    return token
+      ? 'Not enough ETH for the maximum network fee.'
+      : 'Not enough ETH for the amount and maximum network fee.';
+  if (code === 'INSUFFICIENT_TOKEN_BALANCE')
+    return 'Not enough tokens for this transfer.';
+  if (code === 'TOKEN_CHANGED')
+    return 'Token precision changed. Review the token before sending again.';
+  if (code === 'TOKEN_TRANSFER_REJECTED')
+    return 'The token contract rejected this transfer.';
   if (code === 'BUSY') return 'Wait for the current request to finish.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'Your wallet was locked. Unlock to continue.';
@@ -49,10 +61,12 @@ export function NativeSend({
   controller,
   onBack,
   accountLabel = 'Account 1',
+  token,
 }: {
   controller: NativeTransferView;
   onBack(): void;
   accountLabel?: string;
+  token?: Erc20Metadata;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -76,7 +90,27 @@ export function NativeSend({
   }, [onBack]);
   const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
   const review = snapshot.review;
-  const amountText = review ? formatBaseUnits(review.amountUnits, 18) : '';
+  const reviewedToken = review?.intent?.token;
+  const outcomeToken = snapshot.intent?.token;
+  const amountText = review
+    ? reviewedToken
+      ? formatTokenUnits(review.amountUnits, reviewedToken.decimals)
+      : formatBaseUnits(review.amountUnits, 18)
+    : '';
+  const tokenIdentity = (asset: Erc20Metadata) => (
+    <Card style={s.summary}>
+      <Text style={s.label}>TOKEN CONTRACT · ETHEREUM</Text>
+      <Text selectable style={s.address} testID="native-send-token-contract">
+        {asset.contractAddress}
+      </Text>
+      <Text style={s.hint}>
+        {asset.name} · {asset.symbol}
+      </Text>
+      <Text style={s.label}>DECIMALS</Text>
+      <Text testID="native-send-token-decimals">{asset.decimals}</Text>
+      <Text style={s.hint}>Custom token · Unverified issuer metadata</Text>
+    </Card>
+  );
   const close = () => {
     lifetime.current.epoch++;
     setPassword('');
@@ -108,7 +142,7 @@ export function NativeSend({
       await operation();
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch)
-        setError(failure(cause));
+        setError(failure(cause, !!token || !!snapshot.intent));
     }
   };
   useEffect(() => {
@@ -155,7 +189,9 @@ export function NativeSend({
       />
     </View>
   );
-  const terminal = ['confirmed', 'reverted', 'nonce-consumed'].includes(snapshot.phase);
+  const terminal = ['confirmed', 'reverted', 'nonce-consumed'].includes(
+    snapshot.phase
+  );
   const hasOutcome =
     snapshot.hash &&
     [
@@ -178,7 +214,15 @@ export function NativeSend({
       title="Review transfer"
       disabled={busy || !recipient.trim() || !amount}
       onPress={() =>
-        void run(() => controller.prepare(recipient.trim(), amount))
+        void run(() =>
+          token
+            ? controller.prepareToken(
+                token.contractAddress,
+                recipient.trim(),
+                amount
+              )
+            : controller.prepare(recipient.trim(), amount)
+        )
       }
       testID="native-send-review"
     />
@@ -196,6 +240,8 @@ export function NativeSend({
                 ? 'Review transfer'
                 : hasOutcome
                 ? 'Transfer status'
+                : token
+                ? `Send ${token.symbol}`
                 : 'Send ETH'
             }
             subtitle={`${accountLabel} · Ethereum`}
@@ -204,15 +250,21 @@ export function NativeSend({
           {review ? (
             <>
               <View style={s.hero}>
-                <Coin id="ethereum" size={46} />
+                <Coin
+                  id={reviewedToken ? 'custom-token' : 'ethereum'}
+                  size={46}
+                />
                 <Text
                   style={[s.amount, amountText.length > 16 && s.preciseAmount]}
                   testID="native-send-amount"
                 >
                   {amountText}
                 </Text>
-                <Text style={styles.muted}>ETH · Ethereum</Text>
+                <Text style={styles.muted}>
+                  {reviewedToken?.symbol ?? 'ETH'} · Ethereum
+                </Text>
               </View>
+              {reviewedToken && tokenIdentity(reviewedToken)}
               <Card style={s.summary}>
                 <Text style={s.label}>TO</Text>
                 <Text
@@ -231,10 +283,21 @@ export function NativeSend({
                   The final network fee may be lower. It cannot exceed this
                   limit.
                 </Text>
-                <View style={s.separator} />
-                <Text style={s.label}>MAXIMUM TOTAL</Text>
-                <Text>{formatBaseUnits(review.totalUnits, 18)} ETH</Text>
+                {!reviewedToken && (
+                  <>
+                    <View style={s.separator} />
+                    <Text style={s.label}>MAXIMUM TOTAL</Text>
+                    <Text>{formatBaseUnits(review.totalUnits, 18)} ETH</Text>
+                  </>
+                )}
               </Card>
+              {reviewedToken && (
+                <Notice
+                  title="Token transfer"
+                  body="The token amount and ETH network fee are separate. Token contracts may deduct fees or apply other rules, so the received amount can differ."
+                  tone="amber"
+                />
+              )}
               {review.retry && (
                 <Notice
                   title="Retry the same transaction"
@@ -262,10 +325,15 @@ export function NativeSend({
           ) : hasOutcome ? (
             <>
               <View style={s.hero}>
-                <Coin id="ethereum" size={46} />
+                <Coin
+                  id={outcomeToken ? 'custom-token' : 'ethereum'}
+                  size={46}
+                />
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
-                    ? 'Transfer confirmed'
+                    ? outcomeToken
+                      ? 'Transaction confirmed'
+                      : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
                     ? 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
@@ -275,6 +343,7 @@ export function NativeSend({
                     : 'Transfer pending'}
                 </Text>
               </View>
+              {outcomeToken && tokenIdentity(outcomeToken)}
               <Notice
                 title={
                   snapshot.phase === 'unknown'
@@ -332,13 +401,23 @@ export function NativeSend({
           ) : (
             <>
               {input('Ethereum address', recipient, setRecipient, { max: 128 })}
-              {input('Amount in ETH', amount, setAmount, {
-                decimal: true,
-                max: 100,
-              })}
+              {token && tokenIdentity(token)}
+              {input(
+                token ? `Amount in ${token.symbol}` : 'Amount in ETH',
+                amount,
+                setAmount,
+                {
+                  decimal: true,
+                  max: token ? 334 : 100,
+                }
+              )}
               <Notice
                 title="Ethereum network"
-                body="Use an Ethereum address. The amount and maximum network fee are shown before you confirm."
+                body={
+                  token
+                    ? 'Send this token only on Ethereum. Check its full contract address. The token amount and ETH network fee are shown separately before you confirm.'
+                    : 'Use an Ethereum address. The amount and maximum network fee are shown before you confirm.'
+                }
               />
               <Text style={s.hint}>
                 Preparing a transfer shares its addresses and amount with the

@@ -4,6 +4,7 @@ import { Transaction } from 'ethers/transaction';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import { getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
+import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
 
 const STORAGE_KEY = 'native-evm-transfer-v1';
 const MAX_RAW_CHARACTERS = 4096;
@@ -22,10 +23,12 @@ export type TransferJournalScope = Readonly<{ walletFingerprint: string; address
 export type TransferJournalEntry = Readonly<{
   version: 1; scope: TransferJournalScope; phase: TransferJournalPhase;
   rawTransaction: string; hash: string; nonce: number; createdAt: number;
+  intent?: Erc20TransferIntent;
 }>;
 type ContainerEntry = Readonly<{
   registration: NativeNetworkRegistration; phase: TransferJournalPhase;
   rawTransaction: string; hash: string; nonce: number; createdAt: number;
+  intent?: Erc20TransferIntent;
 }>;
 export type TransferJournalContainer = Readonly<{
   version: 2; revision: number; walletFingerprint: string;
@@ -74,13 +77,14 @@ function registrationSnapshot(value: unknown): NativeNetworkRegistration {
   if (Object.entries(expected).some(([key, field]) => raw[key] !== field)) return corrupt();
   return expected;
 }
-function signedIdentity(raw: unknown, scope: TransferJournalScope): { hash: string; nonce: number } {
+function signedIdentity(raw: unknown, scope: TransferJournalScope, intent?: Erc20TransferIntent): { hash: string; nonce: number } {
   if (typeof raw !== 'string' || raw.length > MAX_RAW_CHARACTERS || !/^0x(?:[0-9a-f]{2})+$/.test(raw)) return corrupt();
   try {
     const tx = Transaction.from(raw);
     if (!tx.isSigned() || (tx.type !== 0 && tx.type !== 2) || tx.chainId !== BigInt(scope.chainId) ||
-        tx.from !== scope.address || !tx.to || tx.data !== '0x' || tx.accessList?.length ||
+        tx.from !== scope.address || !tx.to || tx.accessList?.length ||
         tx.serialized !== raw || !Number.isSafeInteger(tx.nonce)) return corrupt();
+    assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to, value: tx.value.toString(), data: tx.data }, intent);
     const hash = keccak256(raw);
     if (tx.hash !== hash) return corrupt();
     return { hash, nonce: tx.nonce };
@@ -89,7 +93,8 @@ function signedIdentity(raw: unknown, scope: TransferJournalScope): { hash: stri
 function entrySnapshot(value: unknown, scope: TransferJournalScope, legacy: boolean): ContainerEntry {
   const data = exact(value, legacy
     ? ['version', 'scope', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt']
-    : ['registration', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt']);
+    : ['registration', 'phase', 'rawTransaction', 'hash', 'nonce', 'createdAt',
+      ...(value && typeof value === 'object' && Object.hasOwn(value, 'intent') ? ['intent'] : [])]);
   let registration: NativeNetworkRegistration;
   if (legacy) {
     if (data.version !== 1) return corrupt();
@@ -100,10 +105,12 @@ function entrySnapshot(value: unknown, scope: TransferJournalScope, legacy: bool
   } else registration = registrationSnapshot(data.registration);
   if (!['signed', 'attempted', 'submitted', 'confirmed', 'reverted', 'nonce-consumed'].includes(data.phase as string) ||
       !Number.isSafeInteger(data.createdAt) || (data.createdAt as number) < 0) return corrupt();
-  const identity = signedIdentity(data.rawTransaction, { ...scope, chainId: registration.chainId });
+  let intent: Erc20TransferIntent | undefined;
+  try { if (!legacy && Object.hasOwn(data, 'intent')) intent = snapshotErc20TransferIntent(data.intent); } catch { return corrupt(); }
+  const identity = signedIdentity(data.rawTransaction, { ...scope, chainId: registration.chainId }, intent);
   if (identity.hash !== data.hash || identity.nonce !== data.nonce) return corrupt();
   return Object.freeze({ registration, phase: data.phase as TransferJournalPhase, rawTransaction: data.rawTransaction as string,
-    hash: identity.hash, nonce: identity.nonce, createdAt: data.createdAt as number });
+    hash: identity.hash, nonce: identity.nonce, createdAt: data.createdAt as number, ...(intent ? { intent } : {}) });
 }
 function container(scope: TransferJournalScope, index: number, revision: number, entries: readonly ContainerEntry[]): TransferJournalContainer {
   return Object.freeze({ version: 2, revision, walletFingerprint: scope.walletFingerprint,
@@ -128,7 +135,8 @@ function decode(value: unknown, scope: TransferJournalScope, index: number): { v
 }
 function hostEntry(entry: ContainerEntry, scope: TransferJournalScope): TransferJournalEntry {
   return Object.freeze({ version: 1, scope: Object.freeze({ ...scope, chainId: entry.registration.chainId }), phase: entry.phase,
-    rawTransaction: entry.rawTransaction, hash: entry.hash, nonce: entry.nonce, createdAt: entry.createdAt });
+    rawTransaction: entry.rawTransaction, hash: entry.hash, nonce: entry.nonce, createdAt: entry.createdAt,
+    ...(entry.intent ? { intent: entry.intent } : {}) });
 }
 /** Exact whole-row snapshot, never a selected-chain projection, for atomic cleanup. */
 export function terminalJournalForRemoval(value: JournalRemovalSnapshot, scope: TransferJournalScope, accountIndex = 0): JournalRemovalSnapshot {
@@ -230,12 +238,15 @@ export class NativeTransferJournal {
       return terminalJournalForRemoval(old.raw as JournalRemovalSnapshot, this.scope, this.index);
     });
   }
-  saveSigned(rawTransaction: string): Promise<TransferJournalEntry> {
+  saveSigned(rawTransaction: string, inputIntent?: Erc20TransferIntent): Promise<TransferJournalEntry> {
     this.available(); this.guard();
-    const identity = signedIdentity(rawTransaction, this.scope);
+    let intent: Erc20TransferIntent | undefined;
+    try { if (inputIntent !== undefined) intent = snapshotErc20TransferIntent(inputIntent); } catch { return Promise.reject(new TransferJournalError('CORRUPT')); }
+    const identity = signedIdentity(rawTransaction, this.scope, intent);
     const createdAt = this.now();
     if (!Number.isSafeInteger(createdAt) || createdAt < 0) return Promise.reject(new TransferJournalError('CORRUPT'));
-    const entry: ContainerEntry = Object.freeze({ registration: this.registration, phase: 'signed', rawTransaction, ...identity, createdAt });
+    const entry: ContainerEntry = Object.freeze({ registration: this.registration, phase: 'signed', rawTransaction, ...identity, createdAt,
+      ...(intent ? { intent } : {}) });
     return this.update((value) => {
       const old = value && this.selected(value);
       if (old) {

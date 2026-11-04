@@ -3,9 +3,23 @@ import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/softw
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { CustodySnapshot } from './types.ts';
-import { NativeTransferJournal, TransferJournalError } from './transferJournal.ts';
+import {
+  NativeTransferJournal,
+  TransferJournalError,
+} from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from './transferRpc.ts';
+import {
+  parseTokenAmount,
+  type Erc20Metadata,
+} from '../../../../source/shared/erc20.ts';
+import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
+import {
+  assertTransferIntentEnvelope,
+  equalTransferIntent,
+  snapshotErc20TransferIntent,
+  type Erc20TransferIntent,
+} from './transferIntent.ts';
 
 export type NativeTransferReview = Readonly<{
   id: string;
@@ -19,6 +33,7 @@ export type NativeTransferReview = Readonly<{
   priorityFeePerGas: string | null;
   nonce: string;
   retry: boolean;
+  intent?: Erc20TransferIntent;
 }>;
 export type NativeTransferSnapshot = Readonly<{
   phase:
@@ -36,13 +51,19 @@ export type NativeTransferSnapshot = Readonly<{
   review: NativeTransferReview | null;
   hash: string | null;
   message: string | null;
+  intent: Erc20TransferIntent | null;
 }>;
 export interface NativeTransferRuntime {
+  token?(
+    contractAddress: string,
+    assertCurrent: () => void
+  ): Promise<Erc20Metadata>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournal>;
   sign(
     transaction: PreparedEvmTransaction,
     password: string,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    intent?: Erc20TransferIntent
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
   authorize(password: string, assertCurrent: () => void): Promise<void>;
 }
@@ -60,7 +81,10 @@ export class NativeTransferError extends Error {
     | 'EXPIRED'
     | 'PENDING_TRANSFER'
     | 'FAILED'
-    | 'INSUFFICIENT_BALANCE';
+    | 'INSUFFICIENT_BALANCE'
+    | 'INSUFFICIENT_TOKEN_BALANCE'
+    | 'TOKEN_CHANGED'
+    | 'TOKEN_TRANSFER_REJECTED';
   constructor(code: NativeTransferError['code']) {
     super(code);
     this.name = 'NativeTransferError';
@@ -70,7 +94,13 @@ export class NativeTransferError extends Error {
 export type NativeTransferView = Readonly<
   Pick<
     NativeTransfers,
-    'getSnapshot' | 'subscribe' | 'cancel' | 'prepare' | 'confirm' | 'recover'
+    | 'getSnapshot'
+    | 'subscribe'
+    | 'cancel'
+    | 'prepare'
+    | 'prepareToken'
+    | 'confirm'
+    | 'recover'
   >
 >;
 
@@ -85,7 +115,13 @@ const isTerminal = (
 ): phase is 'confirmed' | 'reverted' | 'nonce-consumed' =>
   ['confirmed', 'reverted', 'nonce-consumed'].includes(phase);
 const initial = (): NativeTransferSnapshot =>
-  Object.freeze({ phase: 'idle', review: null, hash: null, message: null });
+  Object.freeze({
+    phase: 'idle',
+    review: null,
+    hash: null,
+    message: null,
+    intent: null,
+  });
 
 /** Owns consent and submission; screens receive only public projections. */
 export class NativeTransfers {
@@ -96,6 +132,8 @@ export class NativeTransfers {
     cancel: () => this.cancel(),
     prepare: (recipient: string, amount: string) =>
       this.prepare(recipient, amount),
+    prepareToken: (contract: string, recipient: string, amount: string) =>
+      this.prepareToken(contract, recipient, amount),
     confirm: (id: string, password: string) => this.confirm(id, password),
     recover: (offerRetry?: boolean) => this.recover(offerRetry),
   });
@@ -234,7 +272,12 @@ export class NativeTransfers {
     if (this.active) return Promise.reject(new NativeTransferError('BUSY'));
     const captured = this.source.getSnapshot();
     const runtime = this.runtime();
-    if (captured.phase !== 'ready' || !captured.account || captured.account.network !== 'ethereum' || !runtime)
+    if (
+      captured.phase !== 'ready' ||
+      !captured.account ||
+      captured.account.network !== 'ethereum' ||
+      !runtime
+    )
       return Promise.reject(new NativeTransferError('NOT_READY'));
     const address = normalizePublicAddress(
       captured.account.address,
@@ -270,7 +313,11 @@ export class NativeTransfers {
       .catch((error: unknown) => {
         // Journal uncertainty outlives transfer cancellation. Retire only the
         // captured wallet; a late old-runtime error cannot lock its replacement.
-        if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED' && this.runtime() === runtime)
+        if (
+          error instanceof TransferJournalError &&
+          error.code === 'REOPEN_REQUIRED' &&
+          this.runtime() === runtime
+        )
           this.source.lock();
         try {
           assertCurrent();
@@ -279,15 +326,41 @@ export class NativeTransfers {
         }
         if (
           error instanceof NativeTransferRpcError &&
-          error.code === 'INSUFFICIENT_BALANCE'
+          ['INSUFFICIENT_BALANCE', 'INSUFFICIENT_TOKEN_BALANCE'].includes(
+            error.code
+          )
         ) {
           this.publish({
             phase: 'idle',
             review: null,
             hash: null,
-            message: 'Not enough ETH for the amount and maximum network fee.',
+            message:
+              error.code === 'INSUFFICIENT_TOKEN_BALANCE'
+                ? 'Not enough tokens for this transfer.'
+                : this.snapshot.intent
+                ? 'Not enough ETH for the maximum network fee.'
+                : 'Not enough ETH for the amount and maximum network fee.',
           });
-          throw new NativeTransferError('INSUFFICIENT_BALANCE');
+          throw new NativeTransferError(
+            error.code as 'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_TOKEN_BALANCE'
+          );
+        }
+        if (
+          error instanceof NativeTransferRpcError &&
+          ['TOKEN_CHANGED', 'TOKEN_TRANSFER_REJECTED'].includes(error.code)
+        ) {
+          this.publish({
+            phase: 'idle',
+            review: null,
+            hash: null,
+            message:
+              error.code === 'TOKEN_CHANGED'
+                ? 'This token precision changed. Remove and review the token again before sending.'
+                : 'The token contract did not accept this transfer.',
+          });
+          throw new NativeTransferError(
+            error.code as 'TOKEN_CHANGED' | 'TOKEN_TRANSFER_REJECTED'
+          );
         }
         if (error instanceof NativeTransferError) {
           if (error.code === 'EXPIRED')
@@ -322,8 +395,11 @@ export class NativeTransfers {
   }
   private showReview(
     transaction: PreparedEvmTransaction,
-    existing: TransferJournalEntry | null
+    existing: TransferJournalEntry | null,
+    inputIntent?: Erc20TransferIntent
   ) {
+    const intent = existing?.intent ?? inputIntent;
+    assertTransferIntentEnvelope(transaction, intent);
     const entropy = this.randomBytes(16);
     if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
       throw new NativeTransferError('FAILED');
@@ -339,8 +415,8 @@ export class NativeTransfers {
     const publicReview: NativeTransferReview = Object.freeze({
       id,
       from: transaction.from,
-      recipient: transaction.to,
-      amountUnits: transaction.value,
+      recipient: intent?.recipient ?? transaction.to,
+      amountUnits: intent?.amountUnits ?? transaction.value,
       maximumFeeUnits,
       totalUnits: (
         BigInt(transaction.value) + BigInt(maximumFeeUnits)
@@ -351,6 +427,7 @@ export class NativeTransfers {
         transaction.type === 2 ? transaction.maxPriorityFeePerGas : null,
       nonce: transaction.nonce,
       retry: existing !== null,
+      ...(intent ? { intent } : {}),
     });
     this.review = {
       public: publicReview,
@@ -365,6 +442,7 @@ export class NativeTransfers {
     this.publish({
       phase: 'review',
       review: publicReview,
+      intent: intent ?? null,
       hash: existing?.hash ?? null,
       message: existing
         ? 'This resends the exact same signed transaction. It does not create a second transfer.'
@@ -387,6 +465,7 @@ export class NativeTransfers {
         review: null,
         hash: null,
         message: null,
+        intent: null,
       });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
@@ -397,6 +476,7 @@ export class NativeTransfers {
           phase: 'unknown',
           review: null,
           hash: old.hash,
+          intent: old.intent ?? null,
           message: 'Check your pending transfer before starting another.',
         });
         throw new NativeTransferError('PENDING_TRANSFER');
@@ -404,6 +484,65 @@ export class NativeTransfers {
       const quote = await this.rpc.prepare(address, to, units, signal);
       assertCurrent();
       this.showReview(quote.transaction, null);
+    });
+  }
+  prepareToken(
+    contractAddress: string,
+    recipient: string,
+    amount: string
+  ): Promise<void> {
+    let contract: string, to: string;
+    try {
+      contract = normalizeErc20Address(contractAddress);
+      to = normalizeErc20Address(recipient);
+    } catch {
+      return Promise.reject(new NativeTransferError('INVALID_INPUT'));
+    }
+    return this.perform(async ({ assertCurrent, runtime, signal, address }) => {
+      this.review = null;
+      this.publish({
+        phase: 'preparing',
+        review: null,
+        hash: null,
+        message: null,
+        intent: null,
+      });
+      if (!runtime.token) throw new NativeTransferError('NOT_READY');
+      const journal = await runtime.journal(assertCurrent);
+      assertCurrent();
+      const old = await journal.load();
+      assertCurrent();
+      if (old && !isTerminal(old.phase)) {
+        this.publish({
+          phase: 'unknown',
+          review: null,
+          hash: old.hash,
+          intent: old.intent ?? null,
+          message: 'Check your pending transfer before starting another.',
+        });
+        throw new NativeTransferError('PENDING_TRANSFER');
+      }
+      const token = await runtime.token(contract, assertCurrent);
+      assertCurrent();
+      let intent: Erc20TransferIntent;
+      try {
+        intent = snapshotErc20TransferIntent({
+          kind: 'erc20-transfer',
+          token,
+          recipient: to,
+          amountUnits: parseTokenAmount(amount, token.decimals),
+        });
+      } catch {
+        assertCurrent();
+        this.publish({ phase: 'idle' });
+        throw new NativeTransferError('INVALID_INPUT');
+      }
+      if (intent.token.contractAddress !== contract)
+        throw new NativeTransferError('FAILED');
+      this.publish({ intent });
+      const quote = await this.rpc.prepareToken(address, intent, signal);
+      assertCurrent();
+      this.showReview(quote.transaction, null, intent);
     });
   }
   confirm(reviewId: string, password: string): Promise<void> {
@@ -441,6 +580,7 @@ export class NativeTransfers {
         if (
           !stored ||
           stored.hash !== approved.existing.hash ||
+          !equalTransferIntent(stored.intent, approved.public.intent) ||
           isTerminal(stored.phase)
         )
           throw new NativeTransferError('EXPIRED');
@@ -448,14 +588,19 @@ export class NativeTransfers {
         guard();
         entry = stored;
       } else {
-        const latest = await this.rpc.prepare(
-          address,
-          approved.transaction.to,
-          approved.transaction.value,
-          signal
-        );
+        const latest = approved.public.intent
+          ? await this.rpc.prepareToken(address, approved.public.intent, signal)
+          : await this.rpc.prepare(
+              address,
+              approved.transaction.to,
+              approved.transaction.value,
+              signal
+            );
         guard();
         if (
+          latest.transaction.to !== approved.transaction.to ||
+          latest.transaction.value !== approved.transaction.value ||
+          latest.transaction.data !== approved.transaction.data ||
           latest.transaction.nonce !== approved.transaction.nonce ||
           BigInt(latest.transaction.gasLimit) >
             BigInt(approved.transaction.gasLimit) ||
@@ -465,12 +610,27 @@ export class NativeTransfers {
           throw new NativeTransferError('EXPIRED');
         if (BigInt(approved.public.totalUnits) > BigInt(latest.balanceUnits))
           throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
+        if (
+          approved.public.intent &&
+          (!latest.tokenBalanceUnits ||
+            BigInt(latest.tokenBalanceUnits) <
+              BigInt(approved.public.amountUnits))
+        )
+          throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
         const signed = await this.runSecretOperation(() =>
-          runtime.sign(approved.transaction, password, guard)
+          runtime.sign(
+            approved.transaction,
+            password,
+            guard,
+            approved.public.intent
+          )
         );
         guard();
         this.verifySigned(approved.transaction, signed);
-        entry = await journal.saveSigned(signed.rawTransaction);
+        entry = await journal.saveSigned(
+          signed.rawTransaction,
+          approved.public.intent
+        );
         assertCurrent();
         this.publish({ hash: entry.hash });
         guard();
@@ -487,7 +647,12 @@ export class NativeTransfers {
         message: null,
       });
       try {
-        await this.rpc.broadcast(entry.rawTransaction, entry.hash, signal);
+        await this.rpc.broadcast(
+          entry.rawTransaction,
+          entry.hash,
+          signal,
+          entry.intent
+        );
       } catch (error) {
         assertCurrent();
         this.publish({
@@ -555,8 +720,9 @@ export class NativeTransfers {
       nonce: tx.nonce.toString(),
       value: tx.value.toString(),
       gasLimit: tx.gasLimit.toString(),
-      data: '0x',
+      data: tx.data,
     };
+    assertTransferIntentEnvelope(common, entry.intent);
     return Object.freeze(
       tx.type === 0
         ? { ...common, type: 0, gasPrice: tx.gasPrice!.toString() }
@@ -568,8 +734,11 @@ export class NativeTransfers {
           }
     );
   }
-  private terminalMessage(phase: string): string {
-    if (phase === 'confirmed') return 'Transfer confirmed.';
+  private terminalMessage(phase: string, intent?: Erc20TransferIntent): string {
+    if (phase === 'confirmed')
+      return intent
+        ? 'Transaction confirmed. Check the token balance for the received amount; token contracts may deduct fees or apply other rules.'
+        : 'Transfer confirmed.';
     if (phase === 'reverted')
       return 'Transfer reverted. Network fees may still apply.';
     return 'This saved transfer can no longer be retried. Its result is unavailable. Check your account history before sending again.';
@@ -610,11 +779,12 @@ export class NativeTransfers {
         this.publish(initial());
         return;
       }
+      this.publish({ intent: entry.intent ?? null });
       if (isTerminal(entry.phase)) {
         this.publish({
           phase: entry.phase,
           hash: entry.hash,
-          message: this.terminalMessage(entry.phase),
+          message: this.terminalMessage(entry.phase, entry.intent),
         });
         return;
       }
@@ -631,7 +801,7 @@ export class NativeTransfers {
         this.publish({
           phase: receipt.status,
           hash: entry.hash,
-          message: this.terminalMessage(receipt.status),
+          message: this.terminalMessage(receipt.status, entry.intent),
         });
       } else if (!receipt && offerRetry) this.showReview(tx, entry);
       else

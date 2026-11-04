@@ -2,6 +2,16 @@ import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
+import {
+  encodeErc20Transfer,
+  parseErc20Decimals,
+  parseErc20Units,
+} from '../../../../source/shared/erc20.ts';
+import {
+  assertTransferIntentEnvelope,
+  snapshotErc20TransferIntent,
+  type Erc20TransferIntent,
+} from './transferIntent.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { EvmTransferReadError } from './evmFeeContracts.ts';
 import {
@@ -19,13 +29,15 @@ export type NativeTransferQuote = Readonly<{
     nonce: string;
     value: string;
     gasLimit: string;
-    data: '0x';
+    data: string;
     maxFeePerGas: string;
     maxPriorityFeePerGas: string;
   }>;
   balanceUnits: string;
   maximumFeeUnits: string;
   totalUnits: string;
+  tokenBalanceUnits?: string;
+  intent?: Erc20TransferIntent;
 }>;
 export type NativeTransferReceipt = Readonly<
   | {
@@ -41,7 +53,10 @@ export class NativeTransferRpcError extends Error {
     | 'CANCELLED'
     | 'INVALID_RESPONSE'
     | 'UNAVAILABLE'
-    | 'INSUFFICIENT_BALANCE';
+    | 'INSUFFICIENT_BALANCE'
+    | 'INSUFFICIENT_TOKEN_BALANCE'
+    | 'TOKEN_CHANGED'
+    | 'TOKEN_TRANSFER_REJECTED';
   constructor(code: NativeTransferRpcError['code']) {
     super(code);
     this.name = 'NativeTransferRpcError';
@@ -53,6 +68,9 @@ type Method =
   | 'eth_chainId'
   | 'eth_getTransactionCount'
   | 'eth_getBalance'
+  | 'eth_getBlockByNumber'
+  | 'eth_getCode'
+  | 'eth_call'
   | 'eth_feeHistory'
   | 'eth_maxPriorityFeePerGas'
   | 'eth_estimateGas'
@@ -98,7 +116,10 @@ export class NativeTransferRpc {
       this.timeoutMs > 30000
     )
       throw new Error('Invalid transfer RPC timeout');
-    this.receiptRpc = new EvmTransferReadRpc('ethereum', { fetch: this.fetcher, timeoutMs: this.timeoutMs });
+    this.receiptRpc = new EvmTransferReadRpc('ethereum', {
+      fetch: this.fetcher,
+      timeoutMs: this.timeoutMs,
+    });
   }
   private async operation<T>(
     external: AbortSignal,
@@ -162,7 +183,17 @@ export class NativeTransferRpc {
     )
       return invalid();
     const body = object(
-      JSON.parse(await boundedResponseText(response, signal))
+      JSON.parse(
+        await boundedResponseText(
+          response,
+          signal,
+          method === 'eth_getBlockByNumber'
+            ? 512 * 1024
+            : method === 'eth_getCode'
+            ? 64 * 1024 + 512
+            : 16 * 1024
+        )
+      )
     );
     if (
       body.jsonrpc !== '2.0' ||
@@ -258,10 +289,164 @@ export class NativeTransferRpc {
       });
     });
   }
+  prepareToken(
+    from: string,
+    input: Erc20TransferIntent,
+    signal: AbortSignal
+  ): Promise<NativeTransferQuote> {
+    const sender = normalizePublicAddress(from, 'ethereum');
+    const intent = snapshotErc20TransferIntent(input);
+    const data = encodeErc20Transfer(intent.recipient, intent.amountUnits);
+    const call = Object.freeze({
+      from: sender,
+      to: intent.token.contractAddress,
+      value: '0x0',
+      data,
+    });
+    const word = (value: unknown): bigint => {
+      if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value))
+        return invalid();
+      return BigInt(value);
+    };
+    const block = (value: unknown) => {
+      const raw = object(value);
+      return {
+        number: `0x${parseRpcQuantity(raw.number).toString(16)}`,
+        hash: checkedHash(raw.hash),
+      };
+    };
+    return this.operation(signal, async (local) => {
+      await this.checkChain(local);
+      const observed = block(
+        await this.call('eth_getBlockByNumber', ['latest', false], local)
+      );
+      const code = await this.call(
+        'eth_getCode',
+        [intent.token.contractAddress, observed.number],
+        local
+      );
+      if (
+        typeof code !== 'string' ||
+        code.length > 65538 ||
+        !/^0x(?:[0-9a-fA-F]{2})+$/.test(code)
+      )
+        return invalid();
+      const [
+        rawNonce,
+        rawBalance,
+        rawHistory,
+        rawPriority,
+        rawGas,
+        rawDecimals,
+        rawTokens,
+        simulation,
+      ] = await Promise.all([
+        this.call('eth_getTransactionCount', [sender, 'pending'], local),
+        this.call('eth_getBalance', [sender, 'pending'], local),
+        this.call('eth_feeHistory', ['0x1', 'latest', []], local),
+        this.call('eth_maxPriorityFeePerGas', [], local),
+        this.call('eth_estimateGas', [call, observed.number], local),
+        this.call(
+          'eth_call',
+          [
+            { to: intent.token.contractAddress, data: '0x313ce567' },
+            observed.number,
+          ],
+          local
+        ),
+        this.call(
+          'eth_call',
+          [
+            {
+              to: intent.token.contractAddress,
+              data: `0x70a08231${sender
+                .slice(2)
+                .toLowerCase()
+                .padStart(64, '0')}`,
+            },
+            observed.number,
+          ],
+          local
+        ),
+        this.call('eth_call', [call, observed.number], local),
+      ]);
+      // Some established tokens return no bytes on success. Explicit false and
+      // every other malformed/noncanonical return remain rejected.
+      if (simulation !== '0x' && word(simulation) !== 1n)
+        throw new NativeTransferRpcError('TOKEN_TRANSFER_REJECTED');
+      let decimals: number;
+      try {
+        decimals = parseErc20Decimals(word(rawDecimals));
+      } catch {
+        return invalid();
+      }
+      if (decimals !== intent.token.decimals)
+        throw new NativeTransferRpcError('TOKEN_CHANGED');
+      const tokenBalanceUnits = parseErc20Units(word(rawTokens));
+      if (BigInt(tokenBalanceUnits) < BigInt(intent.amountUnits))
+        throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
+      const nonce = parseRpcQuantity(rawNonce),
+        balance = parseRpcQuantity(rawBalance),
+        history = object(rawHistory);
+      if (
+        !Array.isArray(history.baseFeePerGas) ||
+        history.baseFeePerGas.length !== 2
+      )
+        return invalid();
+      parseRpcQuantity(history.oldestBlock);
+      parseRpcQuantity(history.baseFeePerGas[0]);
+      const nextBaseFee = parseRpcQuantity(history.baseFeePerGas[1]),
+        tip = parseRpcQuantity(rawPriority),
+        estimate = parseRpcQuantity(rawGas);
+      if (
+        nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
+        estimate < 21000n ||
+        estimate > 30000000n
+      )
+        return invalid();
+      const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
+      const maxFee = nextBaseFee * 2n + tip,
+        maximumFee = gas * maxFee;
+      assertBaseUnits(maxFee.toString());
+      assertBaseUnits(maximumFee.toString());
+      if (gas > 30000000n) return invalid();
+      if (maximumFee > balance)
+        throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
+      const finalBlock = block(
+        await this.call('eth_getBlockByNumber', [observed.number, false], local)
+      );
+      if (
+        finalBlock.number !== observed.number ||
+        finalBlock.hash !== observed.hash
+      )
+        return invalid();
+      await this.checkChain(local);
+      return Object.freeze({
+        transaction: Object.freeze({
+          type: 2 as const,
+          from: sender,
+          to: intent.token.contractAddress,
+          chainId: '1' as const,
+          nonce: nonce.toString(),
+          value: '0',
+          gasLimit: gas.toString(),
+          data,
+          maxFeePerGas: maxFee.toString(),
+          maxPriorityFeePerGas: tip.toString(),
+        }),
+        balanceUnits: balance.toString(),
+        maximumFeeUnits: maximumFee.toString(),
+        totalUnits: maximumFee.toString(),
+        tokenBalanceUnits,
+        intent,
+      });
+    });
+  }
   broadcast(
     rawTransaction: string,
     expectedHash: string,
-    signal: AbortSignal
+    signal: AbortSignal,
+    intent?: Erc20TransferIntent
   ): Promise<string> {
     const hash = checkedHash(expectedHash);
     if (
@@ -277,9 +462,18 @@ export class NativeTransferRpc {
         !tx.isSigned() ||
         tx.chainId !== 1n ||
         (tx.type !== 0 && tx.type !== 2) ||
-        tx.data !== '0x'
+        !tx.to
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
+      assertTransferIntentEnvelope(
+        {
+          chainId: tx.chainId.toString(),
+          to: tx.to!,
+          value: tx.value.toString(),
+          data: tx.data,
+        },
+        intent
+      );
     } catch {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
@@ -302,28 +496,41 @@ export class NativeTransferRpc {
     }>,
     signal: AbortSignal
   ): Promise<NativeTransferReceipt | null> {
-    return this.receiptRpc.receipt(expected, signal, () => undefined).then((observation) => {
-      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
-      if (!observation) return null;
-      if (observation.status === 'nonce-consumed') {
-        if (!observation.settlement.terminalEligible) return invalid();
-        return Object.freeze({ status: 'nonce-consumed' as const, finalized: true as const });
-      }
-      return Object.freeze({
-        status: observation.outcome === 'succeeded' ? 'confirmed' as const : 'reverted' as const,
-        blockHash: observation.block.hash,
-        blockNumber: observation.block.number,
-        finalized: observation.settlement.terminalEligible,
+    return this.receiptRpc
+      .receipt(expected, signal, () => undefined)
+      .then((observation) => {
+        if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+        if (!observation) return null;
+        if (observation.status === 'nonce-consumed') {
+          if (!observation.settlement.terminalEligible) return invalid();
+          return Object.freeze({
+            status: 'nonce-consumed' as const,
+            finalized: true as const,
+          });
+        }
+        return Object.freeze({
+          status:
+            observation.outcome === 'succeeded'
+              ? ('confirmed' as const)
+              : ('reverted' as const),
+          blockHash: observation.block.hash,
+          blockNumber: observation.block.number,
+          finalized: observation.settlement.terminalEligible,
+        });
+      })
+      .catch((error: unknown) => {
+        // A read deadline is an unavailable observation, not user cancellation.
+        // Only the caller's actual abort signal admits CANCELLED here.
+        if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+        if (
+          error instanceof EvmTransferReadError &&
+          ['INVALID_INPUT', 'INVALID_RESPONSE', 'PROFILE_CHANGED'].includes(
+            error.code
+          )
+        )
+          throw new NativeTransferRpcError('INVALID_RESPONSE');
+        if (error instanceof NativeTransferRpcError) throw error;
+        throw new NativeTransferRpcError('UNAVAILABLE');
       });
-    }).catch((error: unknown) => {
-      // A read deadline is an unavailable observation, not user cancellation.
-      // Only the caller's actual abort signal admits CANCELLED here.
-      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
-      if (error instanceof EvmTransferReadError &&
-          ['INVALID_INPUT', 'INVALID_RESPONSE', 'PROFILE_CHANGED'].includes(error.code))
-        throw new NativeTransferRpcError('INVALID_RESPONSE');
-      if (error instanceof NativeTransferRpcError) throw error;
-      throw new NativeTransferRpcError('UNAVAILABLE');
-    });
   }
 }

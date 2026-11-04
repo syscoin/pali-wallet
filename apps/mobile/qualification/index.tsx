@@ -31,6 +31,7 @@ const PUBLIC_PHRASE =
 const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
+const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
 type Phase = 'create' | 'restart';
 type Scenario = 'import' | 'generate';
 type Check = { name: string; durationMs: number };
@@ -94,6 +95,7 @@ function QualificationApp() {
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
       let expectedHdAddress: string | undefined;
+      let expectedErc20Address: string | undefined;
       let networkCalls = 0;
       const check = async <T,>(
         name: string,
@@ -303,7 +305,9 @@ function QualificationApp() {
             expect(presentation.words.length === 12);
             const { HDNodeWallet } = await import('ethers/wallet');
             expectedHdAddress = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/1").address;
+            expectedErc20Address = HDNodeWallet.fromPhrase(presentation.words.join(' '), undefined, "m/44'/60'/0'/0/2").address;
             if (parameters!.scenario === 'import') expect(expectedHdAddress === EXPECTED_HD_ADDRESS);
+            if (parameters!.scenario === 'import') expect(expectedErc20Address === EXPECTED_ERC20_HD_ADDRESS);
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             else {
@@ -359,6 +363,12 @@ function QualificationApp() {
           expectedRestartAddress: parameters.address, check,
         });
         const { address } = hdEvidence;
+        const { qualifyNativeErc20Transfer } = await import('./erc20-transfer.ts');
+        const erc20Evidence = await qualifyNativeErc20Transfer({
+          phase: parameters.phase, authority, runtime: runtime!, storage: storage!, password: PUBLIC_PASSWORD,
+          expectedThirdAddress: expectedErc20Address ?? (parameters.scenario === 'import' ? EXPECTED_ERC20_HD_ADDRESS : undefined), check,
+        });
+        expect(authority.getSnapshot().account?.address === address && authority.getCatalogue()?.active.accountId === 'hd:60:1');
         await check('synchronous lock and wrong password refusal', async () => {
           authority!.lock();
           expect(
@@ -428,6 +438,7 @@ function QualificationApp() {
           nativeBridgeExercised: true,
           sdkVersion: '2.0.0',
           ...hdEvidence,
+          ...erc20Evidence,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };

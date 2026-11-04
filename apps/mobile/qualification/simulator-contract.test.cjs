@@ -52,6 +52,8 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.address = 'unexpected wallet evidence'; },
     (r) => { r.nativeHdAccountsVerified = true; },
     (r) => { r.journalContainerVersion = 2; },
+    (r) => { r.nativeErc20Verified = true; },
+    (r) => { r.erc20TransferHash = '0x' + 'd'.repeat(64); },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-unknown'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-read'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-check'; },

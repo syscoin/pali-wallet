@@ -78,3 +78,54 @@ export function formatTokenUnits(units: string, decimals: number): string {
   const fraction = padded.slice(-precision).replace(/0+$/, '') || '0';
   return `${integer}.${fraction}`;
 }
+
+/** Exact decimal input for the full uint8 precision range, without rounding. */
+export function parseTokenAmount(value: unknown, decimals: number): string {
+  const precision = parseErc20Decimals(decimals);
+  if (
+    typeof value !== 'string' ||
+    value.length > 334 ||
+    !/^(0|[1-9][0-9]*)(\.[0-9]+)?$/.test(value)
+  )
+    return invalid();
+  const [integer, fraction = ''] = value.split('.');
+  if (fraction.length > precision) return invalid();
+  const units = parseErc20Units(
+    `${integer}${fraction.padEnd(precision, '0')}`.replace(/^0+(?=\d)/, '')
+  );
+  return units === '0' ? invalid() : units;
+}
+
+/** Fixed ERC20 transfer only. Address checksum validation belongs to each host. */
+export function encodeErc20Transfer(
+  recipient: string,
+  amountUnits: string
+): string {
+  if (
+    typeof recipient !== 'string' ||
+    !/^0x[0-9a-fA-F]{40}$/.test(recipient) ||
+    /^0x0{40}$/i.test(recipient)
+  )
+    return invalid();
+  const units = parseErc20Units(amountUnits);
+  if (units === '0') return invalid();
+  return `0xa9059cbb${recipient
+    .slice(2)
+    .toLowerCase()
+    .padStart(64, '0')}${BigInt(units).toString(16).padStart(64, '0')}`;
+}
+
+export function decodeErc20Transfer(
+  data: unknown
+): Readonly<{ recipient: string; amountUnits: string }> {
+  if (
+    typeof data !== 'string' ||
+    !/^0xa9059cbb[0-9a-f]{128}$/.test(data) ||
+    data.slice(10, 34) !== '0'.repeat(24)
+  )
+    return invalid();
+  const recipient = `0x${data.slice(34, 74)}`;
+  const amountUnits = parseErc20Units(BigInt(`0x${data.slice(74)}`));
+  if (encodeErc20Transfer(recipient, amountUnits) !== data) return invalid();
+  return Object.freeze({ recipient, amountUnits });
+}

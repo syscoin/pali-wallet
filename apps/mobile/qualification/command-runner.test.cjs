@@ -3,6 +3,15 @@ const { readFileSync } = require('node:fs');
 const test = require('node:test');
 const { Buffer } = require('node:buffer');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
+const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
+
+const erc20Evidence = (phase = 'create') => ({
+  nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
+  erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
+  erc20TransferHash: '0x' + 'd'.repeat(64), erc20IntentHash: '0x' + 'e'.repeat(64),
+  erc20Signatures: phase === 'create' ? 1 : 0, erc20Authorizations: phase === 'restart' ? 1 : 0,
+  erc20InjectedBroadcasts: 1, erc20RestoredFromJournal: phase === 'restart',
+});
 
 test('only explicit cold-boot wait receives600s while ordinary commands keep180s', () => {
   const calls = [];
@@ -130,7 +139,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -226,13 +235,13 @@ function reportWaitFixture() {
   let now = 0;
   const saved = [];
   const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
-    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
-    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' } });
+    fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence() });
   return { wait, validate, saved, report, now: () => now };
 }
 
@@ -249,7 +258,7 @@ test('the actual report parser preserves producer storage evidence and rejects u
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));
   const failure = { ...passed, status: 'failed', failedStage: 'open SQLCipher and device key', storageDiagnostic: failed.report() };
-  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash']) delete failure[key];
+  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash', ...Object.keys(erc20Evidence())]) delete failure[key];
   assert.throws(() => fixture.validate(JSON.stringify(failure), 'create', 'import'), /sqlcipher-journal-readback/);
   assert.deepEqual(fixture.saved.at(-1).storageDiagnostic, failed.report());
   const beforeOpen = { ...failure, failedStage: 'native crypto bridge and full vectors', storageDiagnostic: {} };
@@ -271,6 +280,98 @@ test('the actual report parser preserves producer storage evidence and rejects u
     assert.throws(() => fixture.validate(JSON.stringify(candidate), 'create', 'import'), /Unexpected qualification report schema/);
     assert.equal(fixture.saved.length, count);
   }
+});
+
+test('the actual report parser requires complete ERC20 evidence before accepting full custody', () => {
+  const fixture = reportWaitFixture();
+  const passed = JSON.parse(fixture.report);
+  assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').nativeErc20Verified, true);
+  for (const key of Object.keys(erc20Evidence())) {
+    const missing = { ...passed }; delete missing[key];
+    const before = fixture.saved.length;
+    assert.throws(() => fixture.validate(JSON.stringify(missing), 'create', 'import'), /Unexpected qualification report schema/);
+    assert.equal(fixture.saved.length, before);
+  }
+  for (const mutation of [
+    { nativeErc20Verified: false }, { erc20AccountId: 'hd:60:1' }, { erc20AccountIndex: 1 },
+    { erc20Address: passed.address }, { erc20Address: 'invalid' },
+    { erc20TransferHash: passed.transferHash }, { erc20TransferHash: passed.firstTransferHash },
+    { erc20TransferHash: '0x123' }, { erc20IntentHash: 'invalid' },
+    { erc20Signatures: 0 }, { erc20Authorizations: 1 },
+    { erc20InjectedBroadcasts: 0 }, { erc20InjectedBroadcasts: 2 },
+    { erc20RestoredFromJournal: true }, { networkCalls: 1 },
+  ]) {
+    const before = fixture.saved.length;
+    assert.throws(() => fixture.validate(JSON.stringify({ ...passed, ...mutation }), 'create', 'import'));
+    assert.equal(fixture.saved.length, before);
+  }
+  const oldReport = { ...passed };
+  for (const key of Object.keys(erc20Evidence())) delete oldReport[key];
+  assert.throws(() => fixture.validate(JSON.stringify(oldReport), 'create', 'import'), /Unexpected qualification report schema/);
+});
+
+test('ERC20 cold restart requires the same account, fingerprint, intent and transaction with no new signature', () => {
+  const created = JSON.parse(reportWaitFixture().report);
+  const restored = { ...created, phase: 'restart', ...erc20Evidence('restart') };
+  assert.equal(matchesErc20RestartEvidence(created, restored), true);
+  for (const mutation of [
+    { erc20Address: '0x1111111111111111111111111111111111111111' },
+    { fingerprint: 'f'.repeat(64) }, { erc20TransferHash: '0x' + 'f'.repeat(64) },
+    { erc20IntentHash: '0x' + 'f'.repeat(64) }, { phase: 'create' },
+    { scenario: 'generate' }, { erc20Signatures: 1 }, { erc20Authorizations: 0 },
+    { erc20RestoredFromJournal: false }, { status: 'failed' },
+  ]) assert.equal(matchesErc20RestartEvidence(created, { ...restored, ...mutation }), false);
+  assert.equal(matchesErc20RestartEvidence({}, {}), false);
+  assert.equal(matchesErc20RestartEvidence({ status: 'failed' }, { status: 'failed' }), false);
+});
+
+test('the actual Android runner requires ERC20 restart evidence in addition to existing HD evidence', async () => {
+  const { runInNewContext } = require('node:vm');
+  const { matchesHdRestartEvidence } = require('./hd-accounts.ts');
+  const diagnostics = require('./log-diagnostics.cjs');
+  const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
+  const start = source.indexOf('async function android()');
+  const end = source.indexOf('\n(async () => {', start);
+  assert(start >= 0 && end > start);
+  const exercise = async (change = {}) => {
+    let phase = 'stopped';
+    const calls = [];
+    const run = (_command, args) => {
+      calls.push(args);
+      if (args[0] === 'dump') return "package: name='com.paliwallet.qualification'\nlaunchable-activity: name='com.paliwallet.qualification.MainActivity'";
+      if (args[0] === 'list') return [...['arm64-v8a', 'x86_64'].flatMap((abi) => ['libQuickCrypto.so', 'libNitroModules.so', 'libexpo-sqlite.so'].map((file) => `lib/${abi}/${file}`)), 'assets/index.android.bundle'].join('\n');
+      if (args.includes('start')) phase = args[args.indexOf('-d') + 1].includes('phase=restart') ? 'restart' : 'create';
+      if (args.includes('force-stop')) phase = 'stopped';
+      if (args.includes('pidof')) return phase === 'stopped' ? '' : phase === 'create' ? '100' : '101';
+      if (args.includes('getprop')) return '35';
+      return '';
+    };
+    run.binary = () => Buffer.alloc(4096, 0x61);
+    const base = JSON.parse(reportWaitFixture().report);
+    const created = { ...base, sessionId: 'create-session' };
+    const restored = { ...base, phase: 'restart', ...erc20Evidence('restart'), sessionId: 'restart-session', ...change };
+    // The mismatch used below deliberately passes the pre-existing HD check.
+    assert.equal(matchesHdRestartEvidence(created, restored), true);
+    const android = runInNewContext(source.slice(start, end) + '\nandroid;', {
+      process: { env: { ANDROID_HOME: '/public-sdk' } },
+      fs: { readdirSync: () => ['35.0.0'], writeFileSync() {}, readFileSync: () => Buffer.from('public APK fixture') },
+      path: require('node:path'), run, platform: 'android', PACKAGE: 'com.paliwallet.qualification', artifact: '/public.apk', output: '/public-output',
+      waitReport: async (_read, requestedPhase, scenario) => ({ ...(requestedPhase === 'create' ? created : restored), scenario }),
+      androidProcessRunning: () => true,
+      databaseEvidence: (bytes) => { assert.equal(bytes.length, 4096); return { plaintextHeader: false }; },
+      matchesHdRestartEvidence, matchesErc20RestartEvidence,
+      captureFixtureLoadError: () => false, redact: (text) => text,
+      latestAndroidExitPid: diagnostics.latestAndroidExitPid,
+      summarizeAndroidLog: diagnostics.summarizeAndroidLog,
+      summarizeAndroidExitInfo: diagnostics.summarizeAndroidExitInfo,
+      hash: (bytes) => require('node:crypto').createHash('sha256').update(bytes).digest('hex'),
+    });
+    return android();
+  };
+  const result = await exercise();
+  assert.equal(result.reports.length, 2);
+  assert(result.reports.every((report) => report.hdAccountsRestored && report.signedTransferRestored && report.erc20TransferRestored));
+  await assert.rejects(exercise({ erc20TransferHash: '0x' + 'f'.repeat(64) }), /Cold restart identity/);
 });
 
 test('Android liveness maps only pidof exit one to absence and preserves transport or command failure', () => {

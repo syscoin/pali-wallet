@@ -35,9 +35,28 @@ index 1. Reports contain only public identities, hashes and fixed success/versio
 fields, never seed words or serialized transaction bytes. Imported fixtures use
 a fixed public expected address; generated wallets derive their own expectation.
 
+After these existing cases, a separate ERC20 case creates HD index 2 and imports
+a fixed public token descriptor. It uses the real native transfer controller,
+software SDK and SQLCipher journal with a bounded injected Ethereum RPC; no
+network service or real token contract is contacted. The create phase signs the
+fixed zero-ETH-value ERC20 call, verifies its intent and durable bytes before the
+injected submission, and simulates a lost response. The new process selects the
+same HD2 account, checks its retained fingerprint, raw transaction and intent,
+then explicitly reauthenticates and retries those exact signed bytes without a
+new signature or metadata lookup. Both phases return to HD1 and prove that the
+original HD0/HD1 native journals are unchanged.
+
+Full reports require the ERC20 address, transaction and intent hashes, fixed HD2
+identity, per-phase signature/authorization counters and exactly one injected
+submission. Create/restart hashes and the wallet fingerprint must match. These
+checks add native controller/signing/persistence evidence; they do not establish
+live-network token execution or token-delivery behavior. The limited iOS
+Simulator refusal occurs before all HD and ERC20 cases and cannot carry these
+success fields.
+
 The full native crypto fixture runs through the actual bridge on each launch,
 including unchanged 20k/900k KDF profiles and authentication-error classification.
-JavaScript fetch/XHR/WebSocket requests are blocked. A fixed public-fixture Ethereum transaction is signed and journaled without broadcasting. Its hash and signed identity must survive the process restart. No RPC or broadcast is allowed. Reports contain case names/timings, public account identity,
+JavaScript fetch/XHR/WebSocket requests are blocked. A fixed public-fixture Ethereum transaction is signed and journaled without broadcasting. Its hash and signed identity must survive the process restart. Only the ERC20 case's local injected RPC is allowed; no network RPC or broadcast is permitted. Reports contain case names/timings, public account identity,
 opaque fingerprint, signed-transaction hashes and OS/build hashes; phrases, passwords, keys and database
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.

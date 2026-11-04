@@ -10,11 +10,22 @@ The full extension-equivalent mobile product is now specified in the [design rev
 
 ### Manual ERC20 portfolio
 
-The native Wallet screen supports manually entering an ERC20 contract on the selected registered EVM network, reviewing its untrusted name/symbol, full contract, precision and balance, and confirming a local list entry. Token details provide exact balances, a selected-token refresh, the existing network-bound Receive flow, and removal from the local list. Removal does not move tokens. Token sending, third-party discovery, market prices, remote token images, NFTs and Syscoin assets remain outside this implementation slice.
+The native Wallet screen supports manually entering an ERC20 contract on the selected registered EVM network, reviewing its untrusted name/symbol, full contract, precision and balance, and confirming a local list entry. Token details provide exact balances, a selected-token refresh, the existing network-bound Receive flow, and removal from the local list. Removal does not move tokens. Ethereum token details also open a password-confirmed ERC20 transfer review with the complete contract and recipient, exact token amount and a separate maximum ETH fee. Other networks remain balance/receive only. Third-party discovery, market prices, remote token images, NFTs and Syscoin assets remain outside this implementation slice.
 
 Descriptors persist in one wallet-bound document, scoped to the HD account/address and exact chain registration. Account retirement preserves entries for restoration. A document may contain at most 256 entries and must also fit the existing 64 KiB storage value limit; reaching either limit refuses the entire addition. Unknown or corrupt storage is never presented as an empty list. Balances are observations, begin unknown after restart, and are not stored as spend authority. The list refresh has two workers and a 15-second deadline: unattempted entries stay unknown and each detail can refresh its own token independently.
 
 Codec/RPC, controller, real SQLite and actual React Native component browser tests cover this flow. Browser component tests are not physical-device, native-networking or release qualification; W02 remains partially implemented.
+
+ERC20 sends use the same account/chain transaction journal as native ETH. The
+reviewed intent is saved alongside the signed bytes before broadcast, retained
+across restart and compared before an exact-byte retry. Token precision cannot
+silently change during review. Token balance and ETH gas funding are checked
+separately, including the original approved fee limit. Preflight accepts an
+explicit true return or an empty return from a non-reverting transfer simulation;
+false or malformed returns are rejected. A successful finalized receipt proves
+transaction execution, not the behavior of an arbitrary token contract: fees,
+rebasing and other token rules may change the received amount. Native testnet and
+physical-device send qualification remain required before release.
 
 ## Run
 

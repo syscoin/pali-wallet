@@ -7,10 +7,18 @@ import test from 'node:test';
 import ts from 'typescript';
 import { isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
 import { isHdQualificationReport } from '../qualification/hd-accounts.ts';
+import { isErc20QualificationReport } from '../qualification/erc20-transfer.ts';
 import { isStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import { loadAfterNativeCrypto } from '../src/startup/loadAfterCrypto.ts';
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
+const erc20Evidence = (phase = 'create') => ({
+  nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
+  erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
+  erc20TransferHash: '0x' + 'd'.repeat(64), erc20IntentHash: '0x' + 'e'.repeat(64),
+  erc20Signatures: phase === 'create' ? 1 : 0, erc20Authorizations: phase === 'restart' ? 1 : 0,
+  erc20InjectedBroadcasts: 1, erc20RestoredFromJournal: phase === 'restart',
+});
 
 test('application evaluation waits for the complete crypto gate', async () => {
   let release!: () => void;
@@ -146,12 +154,12 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
-    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
+    isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
     networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
-    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' } };
+    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence() };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, selectedAccountId: 'hd:60:0' }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, journalContainerVersion: 1 }), 'create', 'generate'));
@@ -169,6 +177,7 @@ test('native report validation requires the generated mnemonic entropy evidence'
         ...report,
         phase: 'restart',
         mnemonicEntropyVerified: false,
+        ...erc20Evidence('restart'),
       }),
       'restart',
       'generate'
@@ -184,7 +193,7 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
-    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    isHdQualificationReport, isErc20QualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;
   let phaseReads = 0;

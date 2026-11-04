@@ -7,6 +7,16 @@ account identity and a bounded list of entries. Each entry holds the complete
 registered network identity, phase, signed bytes, hash, nonce and creation time.
 The internal transfer DTO remains separate from the durable container.
 
+An Ethereum ERC20 entry additionally carries a strict `intent` containing the
+reviewed token contract and metadata, recipient and exact base-unit amount. It
+uses this same version-2 container and same account/chain slot, not a separate
+token nonce domain. The signed envelope must have zero native value and exactly
+the canonical `transfer(address,uint256)` calldata for that intent. An entry
+without intent still requires empty calldata. Version-1 migration remains
+native-only; existing native version-2 records need no rewrite. Older binaries
+that do not understand intent must reject and preserve these records, not strip
+the field or treat the transaction as a native transfer.
+
 A version 1 Ethereum row is strictly validated and migrated in place by CAS. Its
 signed bytes, phase and nonce survive unchanged, including when first opened
 from another network context. Missing rows use atomic create-if-absent. Unknown,
@@ -42,6 +52,11 @@ observations rather than independent consensus proofs. A missing receipt with
 consumed finalized nonce produces only nonce-consumed and does not claim that the
 original transaction succeeded. Retry requires fresh consent
 and reuses the exact saved bytes. The journal itself never sends network traffic.
+Retry also compares the complete saved intent with the approved review; token
+precision is not encoded in the signed transaction. Recovery never resolves new
+metadata from the token list to reinterpret an existing transfer. Successful
+finalized execution is described as a confirmed transaction, not proof that an
+arbitrary token contract delivered the requested units without fees.
 
 Removal validates every entry and refuses any unresolved, malformed or unknown
 outcome. The exact fully-terminal row (or required absence) participates in the

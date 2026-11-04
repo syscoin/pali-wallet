@@ -11,6 +11,7 @@ const {
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
 const { isHdQualificationReport, matchesHdRestartEvidence } = require('./hd-accounts.ts');
+const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget } = require('./simulator-contract.cjs');
 
@@ -85,10 +86,21 @@ const validateReport = (text, phase, scenario) => {
     'selectedAccountIndex',
     'firstTransferHash',
     'journalContainerVersion',
+    'nativeErc20Verified',
+    'erc20AccountId',
+    'erc20AccountIndex',
+    'erc20Address',
+    'erc20TransferHash',
+    'erc20IntentHash',
+    'erc20Signatures',
+    'erc20Authorizations',
+    'erc20InjectedBroadcasts',
+    'erc20RestoredFromJournal',
   ]);
   if (
     Object.keys(report).some((key) => !allowed.has(key)) ||
     !isHdQualificationReport(report) ||
+    !isErc20QualificationReport(report) ||
     (report.cryptoDiagnostic !== undefined && !isCryptoDiagnostic(report.cryptoDiagnostic)) ||
     !isStorageQualificationDiagnostic(report.storageDiagnostic, report.status, report.failedStage) ||
     report.phase !== phase ||
@@ -330,7 +342,8 @@ async function ios() {
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
-        !matchesHdRestartEvidence(created, restored)
+        !matchesHdRestartEvidence(created, restored) ||
+        !matchesErc20RestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -347,6 +360,7 @@ async function ios() {
         sessionChanged: true,
         signedTransferRestored: true,
         hdAccountsRestored: true,
+        erc20TransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
@@ -505,7 +519,8 @@ async function android() {
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
         created.fingerprint !== restored.fingerprint ||
-        !matchesHdRestartEvidence(created, restored)
+        !matchesHdRestartEvidence(created, restored) ||
+        !matchesErc20RestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -529,6 +544,7 @@ async function android() {
         sessionChanged: true,
         signedTransferRestored: true,
         hdAccountsRestored: true,
+        erc20TransferRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
