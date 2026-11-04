@@ -22,9 +22,13 @@ import { NativeActivityScreen } from './NativeActivity';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
+import { RealAppShell, UnavailableActivity } from './RealAppShell';
+import { RealTools } from './RealTools';
+import { RealSettings } from './RealSettings';
+import { useRealShell } from './useRealShell';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'activity' | 'security' | 'import-key';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -96,8 +100,30 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     Keyboard.dismiss(); clearSecrets(); setSendToken(null); setStage('choose'); setError('');
   }, [clearSecrets]);
   const exit = useCallback(() => { revoke(); onExit(); }, [onExit, revoke]);
-  const latestExit = useRef(exit);
-  useLayoutEffect(() => { latestExit.current = exit; }, [exit]);
+  const currentShellScope = () => {
+    const local = controllers.current, state = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
+    return stage === 'choose' && state?.phase === 'ready' && state.account && current
+      ? `${state.revision}:${current.active.accountId}:${state.account.network}` : null;
+  };
+  const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
+    ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
+  const shell = useRealShell(shellIdentity, currentShellScope, exit);
+  const openStage = (next: Stage) => { if (AppState.currentState === 'active' && currentShellScope()) setStage(next); };
+  const latestBack = useRef<() => boolean>(() => true);
+  useLayoutEffect(() => {
+    latestBack.current = () => {
+      // Full-screen leaf flows own their Back behavior regardless of listener order.
+      if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
+          stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
+          stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
+          stage === 'send' && snapshot.phase === 'ready' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network) ||
+          stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
+            (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
+      if (snapshot.phase === 'ready' && stage === 'choose') shell.goBack(); else exit();
+      return true;
+    };
+  });
 
   useEffect(() => {
     const lifecycleEpoch = epoch;
@@ -138,7 +164,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
 
   // Keep listener order stable so Receive can consume Back before wallet exit.
   useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => { latestExit.current(); return true; });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => latestBack.current());
     return () => sub.remove();
   }, []);
 
@@ -229,8 +255,6 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} />;
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={() => setStage('choose')} />;
-  if (stage === 'activity' && activityView && snapshot.phase === 'ready')
-    return <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView)
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
       keyExport={keyExportView} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
@@ -316,16 +340,29 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
   else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network)} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setStage('choose'); }} />;
-  else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
+  else if (snapshot.phase === 'ready' && publicSource) {
+    const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
+    let content: React.ReactNode;
+    if (shell.tab === 'wallet') content = <NativePortfolio
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
-    source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? () => setStage(accounts ? 'accounts' : 'manage-hd') : undefined} onExit={exit} onLock={revoke}
-    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setStage('send'); } : undefined}
-    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); setStage('send'); } : undefined}
-    onManageNetworks={networkView ? () => setStage('networks') : undefined}
-    onViewRecovery={() => setStage('backup-auth')} onSecurity={() => setStage('security')}
-    onActivity={snapshot.account?.network === 'ethereum' ? () => setStage('activity') : undefined}
+    source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
+    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); openStage('send'); } : undefined}
+    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); openStage('send'); } : undefined}
+    onManageNetworks={networkView ? () => openStage('networks') : undefined}
+    onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
+    onActivity={snapshot.account?.network === 'ethereum' ? () => shell.select('activity') : undefined}
+    navigation={shell.navigation}
   />;
+    else if (shell.tab === 'activity') content = snapshot.account?.network === 'ethereum' && activityView
+      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
+    else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
+      networkLabel={EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
+      onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined} onBack={() => shell.select('wallet')} />;
+    else content = <RealSettings accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onLock={revoke} onBack={() => shell.select('wallet')} />;
+    return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>{content}</RealAppShell>;
+  }
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>

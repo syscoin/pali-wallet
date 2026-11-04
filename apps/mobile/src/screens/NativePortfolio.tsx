@@ -14,6 +14,7 @@ import { NativePortfolioController } from '../portfolio/nativePortfolio';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeTokens } from './NativeTokens';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
+import type { ShellLeafNavigation } from './RealAppShell';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import type { NativePortfolioAccount, NativePortfolioSnapshot, PublicCustodySource } from '../portfolio/nativePortfolio';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
@@ -32,23 +33,24 @@ type Props = {
   onManageNetworks?(): void;
   onActivity?(): void;
   tokenView?: NativeTokenView;
+  navigation?: ShellLeafNavigation;
 };
 type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView }: Props) {
+export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch }), [reader]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendToken={onSendToken} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} />;
+  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendToken={onSendToken} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView }: {
+function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot;
-  onExit(): void; onLock(): void; onViewRecovery(): void; onSecurity?(): void; onSend?(): void; onSendToken?(token: Erc20Metadata): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void; onActivity?(): void; tokenView?: NativeTokenView;
+  onExit(): void; onLock(): void; onViewRecovery(): void; onSecurity?(): void; onSend?(): void; onSendToken?(token: Erc20Metadata): void; accountLabel: string; onManageAccounts?(): void; onManageNetworks?(): void; onActivity?(): void; tokenView?: NativeTokenView; navigation?: ShellLeafNavigation;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
@@ -85,7 +87,10 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
     return () => back.remove();
   }, [receiving, invalidateActions]);
 
-  const back = () => { if (receiving) { setReceiveScope(null); invalidateActions(); } else if (!tokenBack.current?.()) onExit(); };
+  const handleBack = () => { if (receiving) { setReceiveScope(null); invalidateActions(); return true; } return tokenBack.current?.() ?? false; };
+  const back = () => { if (!handleBack()) onExit(); };
+  useLayoutEffect(() => navigation?.registerBack(handleBack));
+  useLayoutEffect(() => { navigation?.setImmersive(receiving || !!tokenTitle); return () => navigation?.setImmersive(false); }, [navigation, receiving, tokenTitle]);
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     const current = account;
     if (!current || !model.isCurrent(current) || lifecycle.current.busy) return;
@@ -128,7 +133,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
     <Button title="Share address" icon="share" variant="secondary" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
   </View> : undefined;
 
-  return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
+  return <SafeAreaView edges={navigation && !receiving && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
     <Screen footer={actions}>
       <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>

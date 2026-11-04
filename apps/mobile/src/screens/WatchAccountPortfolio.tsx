@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -11,10 +11,11 @@ import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
+import type { ShellLeafNavigation } from './RealAppShell';
 
 /** Public observation only: this component never receives native custody. */
-export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }: {
-  authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void; onLock(): void;
+export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, navigation }: {
+  authority: WatchOnlyAuthority; onAccounts(): void; onExit(): void; onLock(): void; navigation?: ShellLeafNavigation;
 }) {
   const [mode, setMode] = useState<'home' | 'receive' | 'networks'>('home');
   const [feedback, setFeedback] = useState('');
@@ -30,7 +31,15 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }:
   const getSnapshot = useCallback(() => authority.getSnapshot(), [authority]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
   useEffect(() => { const current = lifecycle.current; current.alive = true; const subscription = AppState.addEventListener('change', (state) => { if (state !== 'active') invalidateActions(); }); return () => { current.alive = false; current.action++; subscription.remove(); }; }, [invalidateActions]);
-  useEffect(() => { const listener = BackHandler.addEventListener('hardwareBackPress', () => { if (mode === 'home') return false; setMode('home'); invalidateActions(); return true; }); return () => listener.remove(); }, [mode, invalidateActions]);
+  const handleBack = () => { if (mode === 'home') return false; setMode('home'); invalidateActions(); return true; };
+  useLayoutEffect(() => navigation?.registerBack(handleBack));
+  useLayoutEffect(() => { navigation?.setImmersive(mode !== 'home'); return () => navigation?.setImmersive(false); }, [navigation, mode]);
+  useEffect(() => { const listener = BackHandler.addEventListener('hardwareBackPress', handleBack); return () => listener.remove(); });
+  useEffect(() => {
+    const state = authority.getSnapshot();
+    if (state.status === 'ready' && state.balance.status === 'unknown') void authority.refresh();
+    return () => authority.cancelRefresh();
+  }, [authority]);
   const account = snapshot.accounts.find((entry) => entry.id === snapshot.selectedAccountId);
   const network = getNetwork(snapshot.selectedNetworkId);
   const address = account?.addresses[network.id];
@@ -60,7 +69,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }:
   const loading = snapshot.balance.status === 'loading';
   const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else onExit(); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
-  return <SafeAreaView style={s.safe} edges={['top', 'bottom']}><Screen footer={mode === 'receive' ? <View style={s.actions}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={s.flex} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={s.flex} /></View> : undefined}>
+  return <SafeAreaView style={s.safe} edges={navigation && mode === 'home' ? ['top'] : ['top', 'bottom']}><Screen footer={mode === 'receive' ? <View style={s.actions}><Button title="Copy address" icon="copy" disabled={busy || !address} onPress={() => void publicAction('copy')} style={s.flex} /><Button title="Share address" icon="share" variant="secondary" disabled={busy || !address} onPress={() => void publicAction('share')} style={s.flex} /></View> : undefined}>
     <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : 'Wallet'} subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back} right={mode === 'home' ? <Button title="Accounts" variant="quiet" onPress={onAccounts} /> : undefined} />
     {snapshot.status !== 'ready' || !address ? <Notice title="Public account hidden" body="Open your watch account to view its public balance." /> : mode === 'networks' ? <>
       <Text style={styles.muted}>Choose the network for this saved EVM public address.</Text>
