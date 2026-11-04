@@ -226,6 +226,22 @@ test('one SELECT captures a coherent snapshot and callers cannot mutate its reco
   } finally { await f.close(); }
 });
 
+test('the exact SDK2 UTF8 diagnostic is retained but arbitrary diagnostic payloads refuse inventory', async () => {
+  const f = await fixture();
+  try {
+    for (const hasUtf8Error of [false, true]) {
+      f.put('utf8Error', { hasUtf8Error }); const before = f.bytes();
+      assert.equal((await readRecoveryInventory(f.storage)).status, 'needs-matching-phrase-verification');
+      assert.equal(f.bytes(), before);
+    }
+    for (const value of [false, { hasUtf8Error: 'false' }, { hasUtf8Error: false, extra: true }, {}]) {
+      f.put('utf8Error', value); const before = f.bytes();
+      assert.equal((await readRecoveryInventory(f.storage)).reason, 'invalid-record');
+      assert.equal(f.bytes(), before);
+    }
+  } finally { await f.close(); }
+});
+
 test('malformed rows, metadata, oversize and installation changes never produce eligible inventory', async () => {
   for (const mutation of ['unknown-metadata', 'oversize-record', 'oversize-key', 'installation'] as const) {
     const f = await fixture();

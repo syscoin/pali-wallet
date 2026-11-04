@@ -15,18 +15,28 @@ import type { NativeImportView } from '../custody/importedAccounts.ts';
 import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
+import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
+
+async function openStorage() {
+  const crypto = await ensureNativeCryptoReady();
+  return openNativeWalletStorage({
+    randomBytes(length) { return crypto.getRandomValues(new Uint8Array(length)); },
+    async digest(bytes) { return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)); },
+  });
+}
 
 function factory() {
   return createKeyringRuntimeFactory({
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
-    openStorage: async () => {
-      const crypto = await ensureNativeCryptoReady();
-      return openNativeWalletStorage({
-        randomBytes(length) { return crypto.getRandomValues(new Uint8Array(length)); },
-        async digest(bytes) { return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)); },
-      });
-    },
+    openStorage,
   });
+}
+
+/** Backend capability only; the recovery UI must own its lifecycle guard/disposal. */
+export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
+  return new NativeRecoveryCoordinator({ owner: controllers.authority,
+    retireControllers() { controllers.disposeTokens(); controllers.disposeTransfers(); controllers.keyExport.dispose(); controllers.backup.dispose(); },
+    ensureCryptoReady: async () => { await ensureNativeCryptoReady(); }, openStorage });
 }
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {

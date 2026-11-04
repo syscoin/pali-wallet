@@ -124,12 +124,14 @@ test('owned native transport propagates fetch rejection without retry or fallbac
 
 test('native factory explicitly wires one owned transport to all network consumers', () => {
   const captures: Record<string, any[]> = {};
-  const capture = (name: string) => class { view = {}; constructor(...args: any[]) { (captures[name] ??= []).push(args); } };
+  const retired: string[] = [];
+  const capture = (name: string) => class { view = {}; constructor(...args: any[]) { (captures[name] ??= []).push(args); } dispose() { retired.push(name); } };
   const fetcher: WalletHttpFetch = async () => { throw Error('no HTTP in wiring test'); };
   const balance = { readBalance() {} };
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/keyringRuntime.ts': { createKeyringRuntimeFactory: () => ({ open() {} }) },
+    '../custody/recovery.ts': { NativeRecoveryCoordinator: capture('recovery') },
     '../custody/seedBackup.ts': { SeedBackupFlow: capture('backup') },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: capture('key') },
     '../custody/transfers.ts': { NativeTransfers: capture('transfers') },
@@ -149,6 +151,12 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.explorer![0][0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
   assert.equal(captures.activity![0].length, 4);
+  factory.createNativeRecoveryCoordinator(bundle);
+  const recovery = captures.recovery![0][0];
+  assert.equal(recovery.owner, bundle.authority);
+  assert.equal(typeof recovery.openStorage, 'function');
+  recovery.retireControllers();
+  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup']);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {

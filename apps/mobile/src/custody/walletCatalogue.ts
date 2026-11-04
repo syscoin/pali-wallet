@@ -176,16 +176,26 @@ function projection(record: CatalogueRecord): NativeWalletCatalogueSnapshot {
     networks: record.networks, active: record.active });
 }
 /** Structural inventory only; no derivation, decryption, migration or ownership grant. */
-export function inspectRecoveryCatalogue(value: unknown, walletFingerprint: string) {
+function recoveryCatalogue(value: unknown, walletFingerprint: string): CatalogueRecord {
   const raw = snapshot(value) as { accounts?: unknown } | null;
   if (!raw || !Array.isArray(raw.accounts)) return invalid();
   const first = raw.accounts.find((account) => account && typeof account === 'object' && account.index === 0);
   if (!first) return invalid();
   const root = publicIdentity({ address: first.address, publicKey: first.publicKey });
-  const record = decode(value, { walletFingerprint, ...root }, true);
+  return decode(value, { walletFingerprint, ...root }, true);
+}
+export function inspectRecoveryCatalogue(value: unknown, walletFingerprint: string) {
+  const record = recoveryCatalogue(value, walletFingerprint);
+  const first = record.accounts.find((account) => account.index === 0)!;
+  const root = Object.freeze({ address: first.address, publicKey: first.publicKey });
   return Object.freeze({ root, accounts: projection(record).accounts,
     retiredIndices: record.retiredIndices, retiredImportedIndices: record.retiredImportedIndices,
     importedProfiles: Object.freeze(record.importedAccounts.map((account) => account.envelope.profileId)) });
+}
+/** Private verifier input. Envelopes never become an inventory or screen DTO. */
+export function recoveryVerificationRecords(value: unknown, walletFingerprint: string) {
+  const record = recoveryCatalogue(value, walletFingerprint);
+  return Object.freeze({ hd: record.accounts, imported: record.importedAccounts });
 }
 function guardFor(assertCurrent: () => void): () => void {
   return () => {

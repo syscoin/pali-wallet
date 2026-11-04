@@ -32,7 +32,7 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
     if (snapshot.records.length > STORAGE_LIMITS.records) throw new Error();
     const records = new Map(snapshot.records.map(({ key, value }) => [key, value]));
     if (records.size !== snapshot.records.length) throw new Error();
-    for (const key of records.keys()) if (!['vault', 'vault-keys', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY].includes(key) &&
+    for (const key of records.keys()) if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY].includes(key) &&
       !/^native-evm-transfer-v1(?::(?:hd|imported):60:(?:0|[1-9][0-9]{0,3}))?$/.test(key))
       return result('unavailable', 'unsupported-record', backup, null);
     if (snapshot.state.presence === 'empty') {
@@ -55,7 +55,12 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
       if (active ? active.address !== address : !(parsed.type === 'HDAccount' ? catalogue.retiredIndices : catalogue.retiredImportedIndices).includes(parsed.index)) throw new Error();
     };
     for (const [key, value] of records) {
-      if (key.startsWith('native-evm-transfer-v1')) {
+      if (key === 'utf8Error') {
+        // Public SDK2 diagnostic, not key material or an authorization result.
+        const diagnostic = decodeStorageValue(value);
+        if (!diagnostic || typeof diagnostic !== 'object' || Array.isArray(diagnostic) || Object.keys(diagnostic).join(',') !== 'hasUtf8Error' ||
+            typeof (diagnostic as { hasUtf8Error: unknown }).hasUtf8Error !== 'boolean') throw new Error();
+      } else if (key.startsWith('native-evm-transfer-v1')) {
         const journal = inspectRecoveryJournal(key, decodeStorageValue(value), binding);
         accountReference(journal.id, journal.address);
         counts.journalRecords++; counts.pendingTransactions += journal.pending;

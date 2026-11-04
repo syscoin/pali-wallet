@@ -7,6 +7,11 @@ import type { NativeTransferView } from '../custody/transfers.ts';
 import type { NativeTokenView } from '../portfolio/nativeTokens.ts';
 import type { NativeActivity } from '../activity/nativeActivity.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
+import type { NativeRecoveryCoordinator } from '../custody/recovery.ts';
+
+export function createNativeRecoveryCoordinator(_controllers: ReturnType<typeof createNativeWalletControllers>): NativeRecoveryCoordinator {
+  throw new Error('Native recovery is unavailable on web');
+}
 
 export function createNativeCustodyAuthority(): NativeCustodyAuthority {
   throw new Error('Native custody is unavailable on web');

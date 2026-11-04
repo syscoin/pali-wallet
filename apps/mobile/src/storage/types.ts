@@ -65,6 +65,10 @@ export type RecoveryStorageSnapshot = Readonly<{
   records: readonly Readonly<{ key: string; value: string }>[];
   metadata: readonly Readonly<{ key: string; value: string }>[];
 }>;
+/** Opaque, storage-owned one-use replacement; never a UI value. */
+declare const recoveryWriteBrand: unique symbol;
+export type RecoveryWritePlan = Readonly<{ [recoveryWriteBrand]: true }>;
+export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
 
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
@@ -73,10 +77,15 @@ export interface OpenWalletStorage {
     recordFailure(): Promise<void>;
     recordSuccess(): Promise<void>;
   }>;
-  /** Optional on synthetic hosts. Native storage provides read-only inventory ports. */
+  /** Private recovery host ports. Optional capabilities make older synthetic hosts fail closed. */
   readonly recovery?: Readonly<{
     readIdentity(): Promise<WalletIdentityRead | null>;
     readSnapshot(): Promise<RecoveryStorageSnapshot>;
+    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
+    plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
+    commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;
+    /** Known credential failure still counts after UI cancellation, but never for another pair. */
+    recordFailureForPair?(pairFingerprint: string): Promise<void>;
   }>;
   readState(): Promise<WalletStoredState>;
   /** Digest of the current encrypted pair, not the stable data binding. */

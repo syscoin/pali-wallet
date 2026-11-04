@@ -41,7 +41,7 @@ iOS/Android behavior. Those require device qualification of the final binary.
 
 ## Recovery inventory reads
 
-The internal `OpenWalletStorage.recovery` port reads one bounded, coherent snapshot
+The internal `OpenWalletStorage.recovery` read methods take one bounded, coherent snapshot
 of all record and metadata rows. It does not mutate, migrate, decrypt or authorize
 anything. `readIdentity` distinguishes a stable data binding from the current
 encrypted-pair digest; legacy stores use that digest as their initial binding,
@@ -54,4 +54,13 @@ encrypted-pair semantics.
 parser and exposes only counts, categories and status. Unknown or invalid records
 refuse eligibility and remain untouched. A successful inventory result means
 `needs-matching-phrase-verification`, never safe, recovered or authorized. Password
-reset, private decryption and atomic replacement are not implemented by this port.
+reset or authentication is not implemented by these read methods.
+
+The backend-only recovery coordinator verifies the matching phrase with the public
+software SDK in an isolated staging host. Its opaque one-use proof can prepare an
+atomic pair/identity/backup/auth replacement while retaining every other saved
+record byte. The old authority and storage lease must drain first. Ambiguous commits
+are closed and read back, never compensated by deleting data or replaying a reset.
+The native runtime authenticates root/profile and current pair before using a stable
+binding for account, token, Activity and journal data. Backup receipts still bind
+the current encrypted pair. No recovery screen is connected to this capability.
