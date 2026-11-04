@@ -13,7 +13,7 @@ const FP = 'a'.repeat(64);
 const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
 const candidate = (index: number, block = 1000 - index, tokenHint = false): ActivityCandidate => ({ hash: hash(index), blockNumber: String(block), timestamp: 1700000000000 - index * 1000, tokenHint });
 const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'confirmed'): ActivityTransactionObservation => ({
-  hash: id, from: owner, to: OTHER, valueUnits: '1', nonce: '0', timestamp: 1700000000000,
+  hash: id, from: owner, to: OTHER, valueUnits: '1', nonce: BigInt(id).toString(), timestamp: 1700000000000,
   block: { hash: hash(999), number: '1000' }, status, events: [], feeUnits: '21000',
 });
 const source = () => {
@@ -101,6 +101,23 @@ test('local journal/archive, cached candidates and duplicate ERC20 discovery mer
   assert.equal(rows.find((row) => row.hash === hash(3))?.candidate?.tokenHint, true);
   assert.equal(rows.find((row) => row.hash === hash(3))?.observation?.events.length, 2);
   assert(f.cacheWrites.length > 0); assert.equal('sign' in f.runtime, false);
+});
+
+test('shared representative selection prefers the mined replacement while retaining the local attempt', async () => {
+  const base = fixture();
+  const explorer = new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1), candidate(2)] : []);
+  const receipts = new FakeReceipts((call) => ({ ...observation(call.hash, call.owner), nonce: '7',
+    block: call.hash === hash(1) ? null : { hash: hash(999), number: '1000' },
+    status: call.hash === hash(1) ? 'pending' : 'confirmed' }));
+  const f = fixture({ explorer, receipts, local: { ...base.local(1, 'submitted'), nonce: 7 } });
+  await f.controller.refresh();
+  await until(() => f.receipts.calls.length === 2 && f.controller.getSnapshot().rows.every((row) => !!row.observation));
+  assert.deepEqual(new Set(f.controller.getSnapshot().rows.map((row) => row.hash)), new Set([hash(1), hash(2)]));
+  assert.equal(f.controller.getSnapshot().rows.find((row) => row.hash === hash(1))?.local?.phase, 'submitted');
+  const remoteOnly = fixture({ explorer, receipts });
+  await remoteOnly.controller.refresh();
+  await until(() => remoteOnly.receipts.calls.length >= 4 && remoteOnly.controller.getSnapshot().rows.length === 1);
+  assert.equal(remoteOnly.controller.getSnapshot().rows[0]?.hash, hash(2));
 });
 
 test('a healthy feed remains visible when the other feed fails, with explicit partial coverage', async () => {

@@ -1,15 +1,17 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
-import { buildAccountHistoryUrl as accountApiUrl } from '../../../../shared/evmExplorer';
 
+import { buildAccountHistoryUrl as accountApiUrl } from '../../../../shared/evmExplorer';
+import {
+  mapEvmExplorerTransaction as mapApiTx,
+  mapEvmExplorerTokenTransfer as mapTokenTransfer,
+  mergeEvmExplorerTransactions,
+  explorerApiError,
+} from '../../../../shared/evmHistory';
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
 import { hasPositiveBalance } from 'utils/balance';
-import {
-  EVM_TRANSACTION_HISTORY_SOURCE,
-  parseEvmInteger,
-  type EvmTransactionHistorySource,
-} from 'utils/evmNonce';
+import { EVM_TRANSACTION_HISTORY_SOURCE } from 'utils/evmNonce';
 import { fetchRoutescan, isRoutescanApiUrl } from 'utils/tokenDiscovery';
 
 import { fetchSmartAccountUserOpTransactions } from './smartAccountHistory';
@@ -23,110 +25,6 @@ const fetchExplorerApi = (url: string, options?: RequestInit) =>
   new URL(url).origin === 'https://api.routescan.io'
     ? fetchRoutescan(url, options)
     : retryableFetch(url, options);
-
-const mapExplorerReceiptStatus = (item: any) => {
-  const binaryStatus = (value: unknown): '0' | '1' | null => {
-    if (
-      value === 0 ||
-      value === '0' ||
-      (typeof value === 'string' && /^0x0+$/i.test(value))
-    )
-      return '0';
-    if (
-      value === 1 ||
-      value === '1' ||
-      (typeof value === 'string' && /^0x0*1$/i.test(value))
-    )
-      return '1';
-    return null;
-  };
-  const error = binaryStatus(
-    typeof item.isError === 'boolean' ? Number(item.isError) : item.isError
-  );
-  const status =
-    binaryStatus(item.txreceipt_status) ??
-    (error === null ? null : error === '0' ? '1' : '0');
-  return {
-    // A receipt status describes success; isError describes the opposite.
-    // Keep both coherent when explicit receipt status overrides explorer flags.
-    // eslint-disable-next-line camelcase
-    txreceipt_status: status,
-    isError: status === null ? null : status === '0' ? '1' : '0',
-  };
-};
-
-// Initial and paginated explorer reads use exactly the same normalization.
-const mapApiTx = (
-  item: any,
-  chainIdForMap: number,
-  overrideTo?: string,
-  historySource: EvmTransactionHistorySource = EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction
-) => {
-  let timestamp = parseInt(item.timeStamp, 10);
-  const now = Math.floor(Date.now() / 1000);
-  const oneYearFromNow = now + 365 * 24 * 60 * 60;
-  if (
-    !timestamp ||
-    isNaN(timestamp) ||
-    timestamp < 0 ||
-    timestamp > oneYearFromNow
-  ) {
-    timestamp = now;
-  }
-  const blockNumberParsed =
-    item.blockNumber !== undefined && item.blockNumber !== null
-      ? parseInt(item.blockNumber)
-      : undefined;
-  const confirmationsParsed =
-    item.confirmations !== undefined && item.confirmations !== null
-      ? parseInt(item.confirmations)
-      : 0;
-  const nonceParsed =
-    item.nonce !== undefined && item.nonce !== null
-      ? parseInt(item.nonce)
-      : undefined;
-  return {
-    hash: item.hash,
-    from: item.from,
-    to: overrideTo ?? item.to,
-    value: item.value,
-    blockNumber: blockNumberParsed,
-    blockHash: item.blockHash,
-    timestamp,
-    confirmations: confirmationsParsed,
-    chainId: chainIdForMap,
-    input: item.input,
-    gasPrice: item.gasPrice,
-    gas: item.gas || item.gasLimit,
-    nonce: nonceParsed,
-    type: parseEvmInteger(item.type),
-    r: item.r,
-    s: item.s,
-    v: parseEvmInteger(item.v),
-    historySource,
-    ...mapExplorerReceiptStatus(item),
-  } as any;
-};
-
-const mapTokenTransfer = (event: any, chainId: number) => ({
-  ...mapApiTx(
-    event,
-    chainId,
-    event.contractAddress,
-    EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
-  ),
-  tokenRecipient: event.to,
-  tokenTransfer: {
-    chainId,
-    contractAddress: event.contractAddress,
-    recipient: event.to,
-    value: event.tokenValue ?? event.value,
-    decimals: event.tokenDecimal,
-    symbol: event.tokenSymbol,
-    tokenId: event.tokenID ?? event.tokenId,
-    tokenStandard: event.tokenType ?? event.tokenStandard,
-  },
-});
 
 const EvmTransactionsController = (): IEvmTransactionsController => {
   const getUserTransactionByDefaultProvider = async (
@@ -501,24 +399,11 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         tokenEventResults.push(...token20Data.result);
     } catch {}
 
-    const tokenTransactions = tokenEventResults.map((ev: any) =>
-      mapTokenTransfer(ev, chainId)
+    allTransactions = mergeEvmExplorerTransactions(
+      allTransactions,
+      tokenEventResults,
+      chainId
     );
-
-    // Merge and deduplicate by hash (prefer base txlist entries when present)
-    const seenHashes = new Set(
-      allTransactions.map((t) => String(t.hash).toLowerCase())
-    );
-    for (const t of tokenTransactions) {
-      const hash = String(t.hash).toLowerCase();
-      if (!seenHashes.has(hash)) {
-        allTransactions.push(t);
-        seenHashes.add(hash);
-      }
-    }
-
-    // Sort by timestamp desc to maintain expected order after merge
-    allTransactions.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     // Cache whether this address has transactions (only if not already cached or cache expired)
     // Persist updated hint on account (0 or >=1)
@@ -577,16 +462,8 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
         token20Resp.ok ? token20Resp.json() : Promise.resolve(null),
       ]);
 
-      const apiError = (reply: any, status: number) =>
-        !reply
-          ? `Explorer API status ${status}`
-          : (reply.status === '0' || reply.message === 'NOTOK') &&
-            !Array.isArray(reply.result) &&
-            reply.message !== 'No transactions found'
-          ? String(reply.result || reply.message || 'Explorer API error')
-          : undefined;
-      const baseError = apiError(data, response.status);
-      const tokenError = apiError(token20Data, token20Resp.status);
+      const baseError = explorerApiError(data, response.status);
+      const tokenError = explorerApiError(token20Data, token20Resp.status);
       const baseRows =
         !baseError && Array.isArray(data?.result) ? data.result : [];
       const tokenRows =
@@ -595,39 +472,16 @@ const EvmTransactionsController = (): IEvmTransactionsController => {
           : [];
       if (baseError || tokenError)
         return { transactions: null, error: baseError || tokenError };
-      const baseTxs = baseRows.map((tx: any) => mapApiTx(tx, chainId));
-
-      // Build quick lookup of token transfers by tx hash to annotate base txs
-      const tokenEventsByHash = new Map<string, any[]>();
-      try {
-        if (tokenRows.length) {
-          for (const ev of tokenRows) {
-            const h = String(ev.hash || '').toLowerCase();
-            if (!h) continue;
-            const arr = tokenEventsByHash.get(h) || [];
-            arr.push(ev);
-            tokenEventsByHash.set(h, arr);
-          }
-        }
-      } catch {}
-
-      // Annotate base txs with tokenRecipient when a matching token transfer exists
-      const annotated = baseTxs.map((tx: any) => {
-        const h = String(tx.hash || '').toLowerCase();
-        const ev = tokenEventsByHash.get(h)?.[0];
-        if (!ev) return tx;
-        return { ...tx, tokenRecipient: ev.to };
-      });
-      const seen = new Set(
-        baseTxs.map((tx: any) => String(tx.hash).toLowerCase())
+      const baseTxs: IEvmTransactionResponse[] = baseRows.map((tx: any) =>
+        mapApiTx(tx, chainId)
       );
-      for (const [hash, events] of tokenEventsByHash) {
-        if (seen.has(hash)) continue;
-        const ev = events[0];
-        annotated.push(mapTokenTransfer(ev, chainId));
-      }
 
-      annotated.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      const annotated = mergeEvmExplorerTransactions(
+        baseTxs,
+        tokenRows,
+        chainId,
+        true
+      );
       const hasMore = baseRows.length >= offset || tokenRows.length >= offset;
       return { transactions: annotated, hasMore };
     } catch (err: any) {

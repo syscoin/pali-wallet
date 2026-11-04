@@ -1,11 +1,13 @@
-export const EVM_TRANSACTION_HISTORY_SOURCE = {
-  ExplorerPending: 'explorer-pendingtxlist',
-  ExplorerTokenTransfer: 'explorer-tokentx',
-  ExplorerTransaction: 'explorer-txlist',
-} as const;
-
-export type EvmTransactionHistorySource =
-  (typeof EVM_TRANSACTION_HISTORY_SOURCE)[keyof typeof EVM_TRANSACTION_HISTORY_SOURCE];
+import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  parseEvmInteger,
+  type EvmTransactionHistorySource,
+} from '../shared/evmHistory';
+export {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  parseEvmInteger,
+  type EvmTransactionHistorySource,
+} from '../shared/evmHistory';
 
 interface IEvmNonceHistoryTransaction {
   from?: unknown;
@@ -17,19 +19,6 @@ interface IEvmNonceHistoryTransaction {
   type?: unknown;
   v?: unknown;
 }
-
-export const parseEvmInteger = (value: unknown): number | undefined => {
-  if (value === undefined || value === null || value === '') {
-    return undefined;
-  }
-
-  const parsed =
-    typeof value === 'string' && value.toLowerCase().startsWith('0x')
-      ? parseInt(value, 16)
-      : Number(value);
-
-  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
-};
 
 const isZeroEvmValue = (value: unknown): boolean => {
   if (typeof value === 'number') {

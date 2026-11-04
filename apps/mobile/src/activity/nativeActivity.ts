@@ -17,6 +17,7 @@ import {
   type LocalActivityRecord,
 } from './types.ts';
 import type { ActivityHistorySnapshot } from './historyStore.ts';
+import { parseEvmInteger, selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
 
 export interface NativeActivityRuntime {
   load(guard: () => void): Promise<{
@@ -410,14 +411,25 @@ export class NativeActivity {
         checking: false,
         unavailable: false,
       });
-    const rows = [...records.values()]
+    const observedRows = [...records.values()]
       .map((row) => ({
         ...row,
         observation: this.observations.get(row.hash),
         checking: this.checking.has(row.hash),
         unavailable: this.unavailable.has(row.hash),
-      }))
-      .sort(
+      }));
+    const representatives = selectEvmHistoryRepresentatives(observedRows.map((row) => ({
+      row, hash: row.hash, from: row.observation?.from ?? (row.local ? this.scope?.address : undefined),
+      nonce: parseEvmInteger(row.observation?.nonce ?? row.local?.nonce),
+      confirmations: row.observation?.block ? 1 : 0,
+      blockNumber: row.observation?.block?.number, blockHash: row.observation?.block?.hash,
+      timestamp: row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ?? 0,
+    })), observedRows.length).map(({ row }) => row);
+    // Local attempts remain inspectable, just as the extension retains its
+    // local replacement history after choosing the fetched representative.
+    const retained = new Map(representatives.map((row) => [row.hash, row]));
+    for (const row of observedRows) if (row.local) retained.set(row.hash, row);
+    const rows = [...retained.values()].sort(
         (a, b) =>
           (b.observation?.timestamp ??
             b.candidate?.timestamp ??
