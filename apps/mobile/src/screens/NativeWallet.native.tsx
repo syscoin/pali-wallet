@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { createNativeWalletControllers } from '../platform/nativeFactory';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
-import { Button, Card, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
+import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
+import { NativePortfolio } from './NativePortfolio';
+import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
 type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge';
@@ -35,6 +37,7 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
 
 export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const controllers = useRef<Controllers | null>(null);
+  const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -58,14 +61,20 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     Keyboard.dismiss(); clearSecrets(); setStage('choose'); setError('');
   }, [clearSecrets]);
   const exit = useCallback(() => { revoke(); onExit(); }, [onExit, revoke]);
+  const latestExit = useRef(exit);
+  useLayoutEffect(() => { latestExit.current = exit; }, [exit]);
 
   useEffect(() => {
     const lifecycleEpoch = epoch;
     mounted.current = true;
     const local = createNativeWalletControllers(); controllers.current = local;
+    const publicView: PublicCustodySource = Object.freeze({
+      getSnapshot: () => local.authority.getSnapshot(),
+      subscribe: (listener: Parameters<PublicCustodySource['subscribe']>[0]) => local.authority.subscribe(listener),
+    });
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state);
+      setSnapshot(state); setPublicSource(publicView);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     });
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
@@ -86,10 +95,11 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     };
   }, [clearSecrets, revoke]);
 
+  // Keep listener order stable so Receive can consume Back before wallet exit.
   useEffect(() => {
-    const sub = BackHandler.addEventListener('hardwareBackPress', () => { exit(); return true; });
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => { latestExit.current(); return true; });
     return () => sub.remove();
-  }, [exit]);
+  }, []);
 
   const perform = async (action: (local: Controllers) => Promise<void>) => {
     if (submitting.current || !protectedScreen || AppState.currentState !== 'active') return;
@@ -175,13 +185,10 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready') body = <>
-    <Notice title="Recovery phrase backed up" body="Your backup has been checked. Keep it somewhere safe and private." />
-    <Card><Text style={s.label}>ACCOUNT 1 · ETHEREUM</Text><Text selectable style={s.address}>{snapshot.account?.address}</Text></Card>
-    <Text style={styles.muted}>Wallet setup is complete. Transfers and other networks are not yet enabled in this development build.</Text>
-    <Button title="View recovery phrase" variant="secondary" onPress={() => setStage('backup-auth')} />
-    <Button title="Lock wallet" onPress={revoke} />
-  </>;
+  else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
+    source={publicSource} onExit={exit} onLock={revoke}
+    onViewRecovery={() => setStage('backup-auth')}
+  />;
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
