@@ -174,19 +174,20 @@ async function ios() {
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
-    const device = await stage('create', () => {
-      const created = run('xcrun', [
-        'simctl',
-        'create',
-        `PaliQualification-${scenario}-${Date.now()}`,
-        type.identifier,
-        runtime.identifier,
-      ]);
-      assertOwnedIosDevice(created, runtime.identifier);
-      return created;
-    });
-    let container;
+    let device, container;
     try {
+      await stage('create', () => {
+        const created = run('xcrun', [
+          'simctl',
+          'create',
+          `PaliQualification-${scenario}-${Date.now()}`,
+          type.identifier,
+          runtime.identifier,
+        ]);
+        assertOwnedIosDevice(created, runtime.identifier);
+        // Retain validated ownership before the completion record can fail.
+        device = created;
+      });
       await stage('boot', () => run('xcrun', ['simctl', 'boot', device]));
       await stage('bootstatus', () => run(
         'xcrun',
@@ -308,19 +309,21 @@ async function ios() {
           } catch { /* A missing fixture error file cannot replace the primary failure. */ }
         }
       }
-      run(
-        'xcrun',
-        [
-          'simctl',
-          'io',
-          device,
-          'screenshot',
-          path.join(output, `ios-${scenario}-final.png`),
-        ],
-        true
-      );
-      run('xcrun', ['simctl', 'shutdown', device], true);
-      run('xcrun', ['simctl', 'delete', device], true);
+      if (device) {
+        run(
+          'xcrun',
+          [
+            'simctl',
+            'io',
+            device,
+            'screenshot',
+            path.join(output, `ios-${scenario}-final.png`),
+          ],
+          true
+        );
+        run('xcrun', ['simctl', 'shutdown', device], true);
+        run('xcrun', ['simctl', 'delete', device], true);
+      }
     }
   }
   return {

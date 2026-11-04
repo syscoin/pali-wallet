@@ -33,7 +33,8 @@ test('owned Booted simulator and live SpringBoard are required before readiness 
   assert.deepEqual(f.calls.map((call) => call.timeout), [10000, 10000]);
   assert(f.calls.every((call) => call.command === 'xcrun' && call.optional === false));
   assert.deepEqual(f.records, [{ version: 1, status: 'ready', stage: 'ready', device: DEVICE, runtime: RUNTIME,
-    deviceState: 'Booted', springboardPidPresent: true, probes: 1, elapsedMs: 0, deadlineMs: 30000 }]);
+    deviceState: 'Booted', springboardPidPresent: true, probes: 1, elapsedMs: 0, deadlineMs: 30000,
+    deadlineExceeded: false, elapsedTruncated: false }]);
 });
 
 test('readiness waits for Booted without spawning commands inside an unbooted simulator', async () => {
@@ -82,6 +83,20 @@ test('readiness shares one deadline across slow probes and sleeps', async () => 
   assert.equal(f.time(), 30000);
   assert(f.calls.at(-1).timeout < 10000);
   assert(f.calls.every((call) => call.timeout > 0 && call.timeout <= 10000));
+});
+
+test('readiness reports a host overrun without shortening it to the requested deadline', async () => {
+  for (const [cost, elapsed, truncated] of [[40000, 40000, false], [700000, 600000, true]]) {
+    let time = 0; const records = [];
+    const run = () => { time += cost; return inventory(); };
+    await assert.rejects(prepareIosSimulator(run, DEVICE, RUNTIME, (value) => records.push(value), {
+      now: () => time, sleep: async () => assert.fail('expired probe must not sleep'),
+    }), /readiness deadline exceeded/);
+    assert.equal(records[0].status, 'failed');
+    assert.equal(records[0].elapsedMs, elapsed);
+    assert.equal(records[0].deadlineExceeded, true);
+    assert.equal(records[0].elapsedTruncated, truncated);
+  }
 });
 
 test('a ready proof must persist, while diagnostic write failure cannot replace an earlier probe failure', async () => {
@@ -160,3 +175,41 @@ test('actual runner refuses unavailable owned simulator before app launch, prese
   assert.equal(stages.stages.at(-1).stage, 'readiness-create'); assert.equal(stages.stages.at(-1).status, 'failed');
   assert(!writes.some((row) => /ios-(qualification|simulator-limited)\.json$/.test(row.path)));
 });
+
+for (const failure of ['before-create', 'after-create', 'invalid-identity', 'create-command']) {
+  test(`actual runner cleans only validated ownership after create-stage failure: ${failure}`, async () => {
+    const calls = [], writes = []; let stageWrites = 0;
+    const process = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output' }, argv: ['node', 'runner', 'ios', '/public-app'], exitCode: 0 };
+    await runInNewContext(readFileSync(require.resolve('./run-native.cjs'), 'utf8'), {
+      require(name) {
+        if (name === 'fs') return { existsSync: () => true, mkdirSync() {}, writeFileSync(path, data) {
+          if (path.endsWith('-stages.json') && ++stageWrites === (failure === 'before-create' ? 1 : 2))
+            throw Error('stage persistence fixture failure');
+          writes.push({ path, data });
+        } };
+        if (name === 'child_process') return { spawnSync(command, args) {
+          calls.push(args); let stdout = '';
+          if (command === 'plutil') stdout = args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification';
+          else if (args.includes('runtimes')) stdout = JSON.stringify({ runtimes: [{ identifier: RUNTIME, version: '26.5', isAvailable: true }] });
+          else if (args.includes('devicetypes')) stdout = JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] });
+          else if (args[1] === 'create') {
+            if (failure === 'create-command') return { status: 7, stderr: 'create fixture failure' };
+            stdout = failure === 'invalid-identity' ? 'all' : DEVICE;
+          }
+          return { status: 0, stdout };
+        } };
+        return require(name);
+      }, process, console: { error() {}, log() {} }, setTimeout,
+    });
+    assert.equal(process.exitCode, 1);
+    assert.equal(calls.filter((args) => args[1] === 'create').length, failure === 'before-create' ? 0 : 1);
+    assert(!calls.some((args) => ['boot', 'bootstatus', 'install', 'launch'].includes(args[1])));
+    const cleanup = calls.filter((args) => ['shutdown', 'delete'].includes(args[1]));
+    assert.deepEqual(cleanup.map((args) => [args[1], args[2]]), failure === 'after-create' ? [['shutdown', DEVICE], ['delete', DEVICE]] : []);
+    const failed = JSON.parse(writes.find((row) => row.path.endsWith('ios-failure.json')).data);
+    if (failure === 'before-create' || failure === 'after-create') assert.equal(failed.failure.message, 'stage persistence fixture failure');
+    else if (failure === 'invalid-identity') assert.equal(failed.failure.message, 'Invalid owned iOS simulator identity');
+    else assert.equal(failed.failure.status, 7);
+    assert(!writes.some((row) => /ios-(qualification|simulator-limited)\.json$/.test(row.path)));
+  });
+}

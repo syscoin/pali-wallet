@@ -61,9 +61,11 @@ async function prepareIosSimulator(run, device, runtime, record, options = {}) {
       await sleep(Math.min(500, remaining()));
     }
   } finally {
-    const elapsedMs = Math.max(0, Math.min(READINESS_DEADLINE_MS, now() - started));
+    const observedElapsedMs = now() - started;
+    const elapsedMs = Math.max(0, Math.min(600000, observedElapsedMs));
     const evidence = Object.freeze({ version: 1, status, stage, device, runtime, deviceState,
-      springboardPidPresent, probes, elapsedMs, deadlineMs: READINESS_DEADLINE_MS });
+      springboardPidPresent, probes, elapsedMs, deadlineMs: READINESS_DEADLINE_MS,
+      deadlineExceeded: observedElapsedMs >= READINESS_DEADLINE_MS, elapsedTruncated: observedElapsedMs > 600000 });
     if (status === 'ready') record(evidence);
     else { try { record(evidence); } catch { /* Preserve the original readiness failure. */ } }
   }

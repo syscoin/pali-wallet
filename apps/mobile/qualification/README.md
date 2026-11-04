@@ -167,6 +167,9 @@ run. Only readiness probes repeat; the app launch does not.
 `ios-<scenario>-<phase>-readiness.json` records that proof or its failed stage.
 `ios-<scenario>-stages.json` records running/completed/failed setup, launch and
 report stages with bounded elapsed times and no command output.
+Measured readiness overruns remain visible, with explicit deadline and duration
+truncation flags. Once creation returns a validated owned UUID, cleanup still
+runs if persisting that stage fails; unvalidated identities are never cleaned.
 
 An iOS launch failure records up to two ten-second diagnostic probes before
 deleting the owned simulator. The log query covers the full launch wait plus a
