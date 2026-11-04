@@ -150,7 +150,12 @@ describe('account mutation wallet setup reservation', () => {
         expect.any(Function),
         expect.any(Function),
         ...(sdkMethod === 'importAccount'
-          ? [expect.objectContaining({ version: 1 })]
+          ? [
+              expect.objectContaining({
+                assertAccount: expect.any(Function),
+                entry: expect.objectContaining({ version: 1 }),
+              }),
+            ]
           : [])
       );
       expect(wallet.saveWalletState).not.toHaveBeenCalled();

@@ -18,6 +18,26 @@ import {
 } from './walletRecovery';
 
 jest.unmock('syscoinjs-lib');
+jest.mock('./walletRecoveryAccounts', () => ({
+  ...jest.requireActual('./walletRecoveryAccounts'),
+  // This suite isolates authentication bookkeeping, not KDF reconstruction.
+  // Keep the real journal, storage admission and Redux hydration below.
+  prepareExtensionAccountRecovery: jest.fn(
+    async (before, _password, _phrase, guard) => {
+      guard();
+      const after = structuredClone(before);
+      after['sysweb3-vault'] = 'synthetic-new-seed-ciphertext';
+      after['sysweb3-vault-keys'] = { salt: 'synthetic-new-salt' };
+      for (const [key, value] of Object.entries(after) as [string, any][]) {
+        if (!/^state-vault-[0-9]+$/.test(key) || !value?.accounts) continue;
+        for (const accounts of Object.values(value.accounts) as any[])
+          for (const account of Object.values(accounts) as any[])
+            if (account.xprv) account.xprv = 'synthetic-new-account-ciphertext';
+      }
+      return after;
+    }
+  ),
+}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/signers'),
@@ -175,12 +195,6 @@ function makeVault(imported = false) {
   return vault;
 }
 
-const resetOwned = (key: string) =>
-  key === 'state' ||
-  key.startsWith('state-') ||
-  key === 'sysweb3-vault' ||
-  key.startsWith('sysweb3-vault-');
-
 function makeWallet() {
   // Avoid constructing RPC/hardware clients. Recovery, rate-limit methods,
   // session admission, lock, and unlock all execute from the real prototype.
@@ -206,40 +220,30 @@ function makeWallet() {
     nativeBalanceRevision: 0,
     receiptBalanceRefresh: { cancel: jest.fn() },
     getActiveKeyring: () => keyring,
-    resetWalletState: async () => {
+    resetWalletState: jest.fn(async () => {
+      throw new Error('Preserving recovery must not reset the wallet');
+    }),
+    createWalletExclusive: jest.fn(async () => {
+      throw new Error('Preserving recovery must not create a new wallet');
+    }),
+    retireWalletRuntime: async () => {
       controller.walletSessionGeneration += 1;
       controller.walletStateGeneration += 1;
       unlocked = false;
       vaultCache.clearCache();
-      await walletPersistenceMutex.runExclusive(async () => {
-        for (const key of Object.keys(records).filter(resetOwned)) {
-          await chromeStorage.removeItem(key);
-        }
-        store.dispatch(forgetWallet());
-      });
     },
-    // Only KDF/account initialization is a stand-in: it writes synthetic
-    // ciphertext through the actual adapter and follows reset generations.
-    createWalletExclusive: async (password: string) => {
-      await controller.resetWalletState();
+    activateRecoveredWallet: async (
+      password: string,
+      assertCurrent: () => void
+    ) => {
+      assertCurrent();
       if (failInitialization) throw new Error('controlled initializer failure');
-      const vault = makeVault();
-      store.dispatch(restoreVaultSnapshot(vault));
-      store.dispatch(setActiveSlip44(60));
-      store.dispatch(setHasEncryptedVault(true));
-      const state = store.getState();
-      await chromeStorage.setItems({
-        'sysweb3-vault': 'synthetic-new-seed-ciphertext',
-        'sysweb3-vault-keys': { salt: 'synthetic-new-salt' },
-        state: {
-          dapp: state.dapp,
-          price: state.price,
-          vaultGlobal: state.vaultGlobal,
-        },
-        'state-vault-60': vault,
-      });
       acceptedPassword = password;
-      unlocked = true;
+      await (MainController.prototype as any).activateRecoveredWallet.call(
+        controller,
+        password,
+        assertCurrent
+      );
     },
   });
   return controller;
@@ -457,7 +461,7 @@ describe('seed recovery unlock throttle', () => {
     expect(wallet.recoveryJournalPending).toBe(true);
     expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
     await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
-      'finish wallet recovery'
+      'Wallet session changed'
     );
     expect(keyring.unlock).not.toHaveBeenCalled();
 
@@ -495,7 +499,7 @@ describe('seed recovery unlock throttle', () => {
       if (writeApplied) expect(backup.before).toBeDefined();
       expect(unchanged).toEqual(before);
       await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
-        'finish wallet recovery'
+        'Wallet session changed'
       );
       expect(keyring.unlock).not.toHaveBeenCalled();
 
@@ -532,8 +536,11 @@ describe('seed recovery unlock throttle', () => {
     expect(wallet.recoveryJournalPending).toBe(true);
     expect(wallet.getWalletSetupStatus()).toBe('recovery-required');
     await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
-      'Wallet recovery journal is invalid'
+      'Wallet session changed'
     );
+    await expect(
+      prepareWalletRecoveryAccess(wallet, wallet.walletRecoveryContext())
+    ).rejects.toThrow('Wallet recovery journal is invalid');
     expect(keyring.unlock).not.toHaveBeenCalled();
     expect(records[JOURNAL]).toEqual(otherJournal);
   });
@@ -580,12 +587,16 @@ describe('seed recovery unlock throttle', () => {
     expect(wallet.recoveryJournalPending).toBe(false);
   });
 
-  it('retries a committed throttle-write failure before checking warm unlock lockout', async () => {
+  it('requires recovery access to finish committed throttle cleanup before warm unlock', async () => {
     await establishLockout();
     failedSetKey = RATE_LIMIT;
     await expect(recover()).rejects.toThrow('finish wallet recovery cleanup');
     expect(wallet.failedUnlockAttempts).toBe(10);
     expect(records[JOURNAL].committedFingerprint).toBeDefined();
+    await expect(wallet.unlock(NEW_PASSWORD)).rejects.toThrow(
+      'Wallet session changed'
+    );
+    await prepareWalletRecoveryAccess(wallet, wallet.walletRecoveryContext());
     await expect(wallet.unlock(NEW_PASSWORD)).resolves.toEqual({
       canLogin: true,
     });
@@ -596,13 +607,18 @@ describe('seed recovery unlock throttle', () => {
 
   it('does not clear throttle or admit unlock through an uncommitted journal', async () => {
     await establishLockout();
-    failInitialization = true;
-    failedReadKey = 'state-vault-60';
+    jest
+      .spyOn(wallet, 'activateRecoveredWallet')
+      .mockImplementationOnce(async () => {
+        // Fail the rollback read, after the forward hydration completed.
+        failedReadKey = 'state-vault-60';
+        throw new Error('controlled initializer failure');
+      });
     await expect(recover()).rejects.toThrow('Failed to rehydrate state');
     expect(records[JOURNAL].committedFingerprint).toBeUndefined();
     keyring.unlock.mockClear();
     await expect(wallet.unlock(OLD_PASSWORD)).rejects.toThrow(
-      'finish wallet recovery'
+      'Wallet session changed'
     );
     expect(keyring.unlock).not.toHaveBeenCalled();
     expect(wallet.failedUnlockAttempts).toBe(10);

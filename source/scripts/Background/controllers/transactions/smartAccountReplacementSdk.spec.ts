@@ -1124,7 +1124,7 @@ describe('published keyring account-scoped replacement signing', () => {
     expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
   });
 
-  it('uses the captured provider for signed zero-fee quote and broadcast', async () => {
+  it('revokes signed zero-fee approval when the provider changes during its balance read', async () => {
     const hash = useOriginal(
       transaction({
         maxFeePerGas: BigNumber.from(0),
@@ -1148,11 +1148,11 @@ describe('published keyring account-scoped replacement signing', () => {
         ...options(),
         approvedMaximumFee: '0',
       })
-    ).resolves.toMatchObject({ isSpeedUp: true, transaction: response });
-    expect(quote).toHaveBeenCalledWith(provider);
+    ).rejects.toThrow('Wallet signing context changed');
+    expect(quote).not.toHaveBeenCalled();
     expect(provider.getBlock).not.toHaveBeenCalled();
     expect(provider.getGasPrice).not.toHaveBeenCalled();
-    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
     expect(otherProvider.sendTransaction).not.toHaveBeenCalled();
   });
 
@@ -1416,7 +1416,7 @@ describe('published keyring account-scoped replacement signing', () => {
     };
     manager.setVaultStateGetter(() => vault);
     const replaceGetter = jest.spyOn(manager, 'setVaultStateGetter');
-    manager.sessionPassword = {};
+    manager.sessionPassword = { isCleared: () => false };
     manager.withSecureData = (read: (password: string) => unknown) =>
       read('synthetic-session-password');
     mockAes.decrypt.mockImplementation((ciphertext: string) => ({

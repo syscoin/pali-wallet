@@ -24,6 +24,7 @@ import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import { getController, notificationManager } from 'scripts/Background';
 import SysAccountController from 'scripts/Background/controllers/account/syscoin';
 import DAppController from 'scripts/Background/controllers/DAppController';
@@ -164,9 +165,19 @@ beforeEach(() => {
   jest
     .spyOn(chromeStorage, 'getItem')
     .mockImplementation(async (key) => structuredClone(disk[key] ?? null));
+  jest
+    .spyOn(chromeStorage, 'getItems')
+    .mockImplementation(async (keys) =>
+      Object.fromEntries(
+        keys
+          .filter((key) => Object.prototype.hasOwnProperty.call(disk, key))
+          .map((key) => [key, structuredClone(disk[key])])
+      )
+    );
   manager = new KeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
+  attachImportedRecoveryCryptoFixture(manager);
   manager.withSecureData = (operation: (password: string) => unknown) =>
     operation('public disposable fixture password');
   wallet = Object.create(MainController.prototype);

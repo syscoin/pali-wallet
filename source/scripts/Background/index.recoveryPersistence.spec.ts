@@ -1,15 +1,13 @@
 import { webcrypto } from 'crypto';
 import { HDNodeWallet } from 'ethers';
 
-import { rehydrate as rehydrateDapps } from 'state/dapp';
 import { walletPersistenceGate } from 'state/paliStorage';
 import { rehydrateStore } from 'state/rehydrate';
-import store, { persistCommittedWalletState } from 'state/store';
-import { forgetWallet, restoreVaultSnapshot } from 'state/vault';
+import store from 'state/store';
+import { forgetWallet } from 'state/vault';
 import vaultCache from 'state/vaultCache';
-import { setActiveSlip44, setHasEncryptedVault } from 'state/vaultGlobal';
+import { setActiveSlip44 } from 'state/vaultGlobal';
 import { AsyncMutex, walletPersistenceMutex } from 'utils/asyncMutex';
-import { PALI_NETWORKS_STATE } from 'utils/constants';
 import { chromeStorage } from 'utils/storageAPI';
 
 import {
@@ -20,6 +18,26 @@ import {
 const mockConstructController = jest.fn();
 
 jest.unmock('syscoinjs-lib');
+jest.mock('./controllers/walletRecoveryAccounts', () => ({
+  ...jest.requireActual('./controllers/walletRecoveryAccounts'),
+  // Only KDF reconstruction is synthetic. Startup, admission and writes stay real.
+  prepareExtensionAccountRecovery: jest.fn(
+    async (before, _password, _phrase, guard) => {
+      guard();
+      const after = structuredClone(before);
+      after['sysweb3-vault'] = 'synthetic-recovered-seed-ciphertext';
+      after['sysweb3-vault-keys'] = { salt: 'synthetic-recovered-salt' };
+      for (const [key, value] of Object.entries(after) as [string, any][]) {
+        if (!/^state-vault-[0-9]+$/.test(key) || !value?.accounts) continue;
+        for (const accounts of Object.values(value.accounts) as any[])
+          for (const account of Object.values(accounts) as any[])
+            if (account.xprv)
+              account.xprv = 'synthetic-recovered-account-ciphertext';
+      }
+      return after;
+    }
+  ),
+}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/signers'),
@@ -60,11 +78,6 @@ const JOURNAL = 'pali-wallet-recovery-journal:v1';
 const OLD_IMPORTED = 'synthetic-old-imported-ciphertext';
 const OLD_SITE = 'old-permission.example';
 const clone = <T>(value: T): T => structuredClone(value);
-const owned = (key: string) =>
-  key === 'state' ||
-  key.startsWith('state-') ||
-  key === 'sysweb3-vault' ||
-  key.startsWith('sysweb3-vault-');
 const flushMicrotasks = async () => {
   for (let i = 0; i < 100; i += 1) await Promise.resolve();
 };
@@ -128,41 +141,23 @@ describe('trusted startup retries and committed wallet recovery', () => {
         wallet.walletSessionGeneration += 1;
         unlocked = false;
       },
-      resetWalletState: async () => {
+      resetWalletState: jest.fn(async () => {
+        throw new Error('Preserving recovery must not reset the wallet');
+      }),
+      createWalletExclusive: jest.fn(async () => {
+        throw new Error('Preserving recovery must not create a new wallet');
+      }),
+      retireWalletRuntime: async () => {
         wallet.walletSessionGeneration += 1;
         wallet.walletStateGeneration += 1;
         unlocked = false;
         vaultCache.clearCache();
-        await walletPersistenceMutex.runExclusive(async () => {
-          for (const key of Object.keys(records).filter(owned)) {
-            await chromeStorage.removeItem(key);
-          }
-          store.dispatch(forgetWallet());
-          store.dispatch(rehydrateDapps({ dapps: {} }));
-        });
       },
-      createWalletExclusive: async () => {
-        await wallet.resetWalletState();
-        const fresh = clone(baselineVault);
-        const hd = HDNodeWallet.fromPhrase(PHRASE);
-        fresh.activeNetwork = clone(PALI_NETWORKS_STATE.ethereum[8453]);
-        fresh.activeChain = 'ethereum';
-        fresh.isBitcoinBased = false;
-        fresh.accounts.HDAccount[0] = {
-          ...fresh.accounts.HDAccount[0],
-          address: hd.address,
-          xpub: hd.signingKey.publicKey,
-          xprv: 'synthetic-recovered-hd-ciphertext',
-          slip44: 60,
-        };
-        store.dispatch(setActiveSlip44(60));
-        store.dispatch(setHasEncryptedVault(true));
-        store.dispatch(restoreVaultSnapshot(fresh));
-        await chromeStorage.setItems({
-          'sysweb3-vault': 'synthetic-recovered-seed-ciphertext',
-          'sysweb3-vault-keys': { salt: 'synthetic-recovered-salt' },
-        });
-        await persistCommittedWalletState(true);
+      activateRecoveredWallet: async (
+        _password: string,
+        assertCurrent: () => void
+      ) => {
+        assertCurrent();
         unlocked = true;
       },
       beginWalletRecovery: () => beginWalletRecovery(wallet, context),
@@ -380,6 +375,12 @@ describe('trusted startup retries and committed wallet recovery', () => {
       'synthetic-recovered-seed-ciphertext'
     );
     const committed = clone(records);
+    expect(committed['state-vault-60'].accounts.Imported[7].xprv).toBe(
+      'synthetic-recovered-account-ciphertext'
+    );
+    expect(committed.state.dapp.dapps[OLD_SITE]).toBeDefined();
+    expect(controller.wallet.resetWalletState).not.toHaveBeenCalled();
+    expect(controller.wallet.createWalletExclusive).not.toHaveBeenCalled();
 
     // The unfixed runtime admits another initializer and leaves this second
     // legacy read pending. Releasing it after the actual commit exposes its
@@ -402,8 +403,8 @@ describe('trusted startup retries and committed wallet recovery', () => {
       constructedControllers: mockConstructController.mock.calls.length,
     }).toEqual({
       durableRecords: committed,
-      liveImportedAccounts: {},
-      livePermissions: {},
+      liveImportedAccounts: committed['state-vault-60'].accounts.Imported,
+      livePermissions: committed.state.dapp.dapps,
       initializerReads: 1,
       migrationCompletions: 1,
       constructedControllers: 1,
