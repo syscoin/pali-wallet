@@ -1,4 +1,5 @@
 import { Transaction } from 'ethers/transaction';
+import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { keccak256 } from 'ethers/crypto';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -722,7 +723,6 @@ export class NativeTransfers {
       signed.rawTransaction.length > 4096
     )
       throw new Error('Invalid signed transfer');
-    const tx = Transaction.from(signed.rawTransaction);
     const unsigned = Transaction.from({
       type: expected.type,
       to: expected.to,
@@ -738,12 +738,17 @@ export class NativeTransfers {
             maxPriorityFeePerGas: BigInt(expected.maxPriorityFeePerGas),
           }),
     });
-    if (
-      !tx.isSigned() ||
-      tx.from !== expected.from ||
-      tx.unsignedSerialized !== unsigned.unsignedSerialized ||
-      tx.hash !== signed.hash
-    )
+    let tx: Transaction;
+    try {
+      tx = assertSignedEvmTransactionMatches(
+        signed.rawTransaction,
+        unsigned.unsignedSerialized,
+        expected.from
+      );
+    } catch {
+      throw new Error('Signed transfer differs from review');
+    }
+    if (tx.hash !== signed.hash)
       throw new Error('Signed transfer differs from review');
   }
   private terminalMessage(phase: string, intent?: Erc20TransferIntent, _context?: NativeSendContext): string {

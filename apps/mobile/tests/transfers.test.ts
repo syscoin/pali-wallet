@@ -40,7 +40,7 @@ function fixture() {
   let final = false;
   let receiptMissing = false;
   let signatures = 0;
-  let altered = false;
+  let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
   let failWrite = false;
   const broadcasts: string[] = [];
@@ -99,13 +99,25 @@ function fixture() {
       signatures++;
       if (signGate) await signGate;
       guard();
-      const raw = await wallet.signTransaction({
+      const signer = altered === 'signer'
+        ? new Wallet(`0x${'22'.repeat(32)}`)
+        : wallet;
+      const raw = await signer.signTransaction({
         ...transaction,
+        ...(altered === 'signer' ? { from: signer.address } : {}),
         nonce: Number(transaction.nonce),
-        ...(altered ? { value: '999' } : {}),
+        ...(altered === 'value' ? { value: '999' } : {}),
       });
       guard();
-      return { rawTransaction: raw, hash: keccak256(raw) };
+      const rawTransaction = altered === 'oversized'
+        ? raw + '0'.repeat(4098 - raw.length)
+        : altered === 'noncanonical'
+        ? `0x${raw.slice(2).toUpperCase()}`
+        : raw;
+      return {
+        rawTransaction,
+        hash: altered === 'hash' ? `0x${'0'.repeat(64)}` : keccak256(rawTransaction),
+      };
     },
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
@@ -197,8 +209,8 @@ function fixture() {
       final = true;
       receiptMissing = true;
     },
-    changeSignedFields() {
-      altered = true;
+    changeSignedFields(fault: NonNullable<typeof altered> = 'value') {
+      altered = fault;
     },
     expire() {
       clock += 100000;
@@ -399,6 +411,22 @@ test('a valid signature for different fields is rejected before durable admissio
     f.close();
   }
 });
+for (const fault of ['signer', 'hash', 'oversized', 'noncanonical'] as const) {
+  test(`a ${fault} signing result is rejected before durable admission`, async () => {
+    const f = fixture();
+    try {
+      const approved = await review(f);
+      f.changeSignedFields(fault);
+      await assert.rejects(f.transfers.confirm(approved.id), { code: 'FAILED' });
+      assert.equal(f.signatures(), 1);
+      assert.equal(Object.keys(f.records).length, 0);
+      assert.equal(f.broadcasts.length, 0);
+      assert.equal(f.source.getSnapshot().phase, 'locked');
+    } finally {
+      f.close();
+    }
+  });
+}
 test('storage failure after signing never reaches the network', async () => {
   const f = fixture();
   try {
