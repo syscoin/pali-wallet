@@ -18,7 +18,7 @@ type Props = {
 function failure(cause: unknown): string {
   const code = cause instanceof Error ? cause.message : '';
   if (code === 'DUPLICATE_ACCOUNT') return 'This address is already a wallet account. Select that account instead.';
-  if (code === 'ACCOUNT_LIMIT') return 'You already have 20 wallet accounts. Remove an unused account before importing another.';
+  if (code === 'ACCOUNT_LIMIT') return 'This wallet has reached its account limit. Use an existing account.';
   if (code === 'INVALID_INPUT') return 'Check the private key and account name, then review the address again.';
   if (code === 'BUSY') return 'Wait for the current wallet operation to finish, then try again.';
   if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Unlock your wallet to try again.';
