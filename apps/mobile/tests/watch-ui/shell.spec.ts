@@ -268,10 +268,15 @@ test('a changed native account invalidates the old originating tab before Back',
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('hd:60:1');
 });
 
-test('all four labels remain visible, operable and unclipped at 320px with large text', async ({ page }, testInfo) => {
+test('all four labels remain whole, operable and unclipped at 320px with large body text', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await openWatch(page);
-  await page.addStyleTag({ content: '[dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; }' });
+  // RN Web ignores native Dynamic Type props. Emulate large body text and the
+  // 1.25x native caption limit; the actual component props have a Node regression.
+  await page.addStyleTag({ content: `
+    [dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; }
+    [data-testid^="main-tab-caption-"] { font-size: 15px !important; line-height: 21.25px !important; }
+  ` });
   for (const name of TABS) {
     await chooseTab(page, name);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -284,6 +289,22 @@ test('all four labels remain visible, operable and unclipped at 320px with large
       expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44);
       expect(box.scroll).toBeLessThanOrEqual(box.client + 1);
     }
+    for (const label of TABS) {
+      const caption = page.getByRole('tab', { name: label, exact: true }).getByText(label, { exact: true });
+      const metrics = await caption.evaluate((element) => {
+        const range = document.createRange(); range.selectNodeContents(element);
+        const rects = Array.from(range.getClientRects());
+        const box = element.getBoundingClientRect();
+        return { text: element.textContent, whiteSpace: getComputedStyle(element).whiteSpace, lines: new Set(rects.map((rect) => Math.round(rect.top))).size,
+          fullWidth: Math.max(...rects.map((rect) => rect.right)) - Math.min(...rects.map((rect) => rect.left)),
+          width: box.width, client: element.clientWidth, scroll: element.scrollWidth };
+      });
+      expect(metrics.text).toBe(label); expect(metrics.whiteSpace).toBe('nowrap'); expect(metrics.lines).toBe(1);
+      expect(metrics.fullWidth).toBeLessThanOrEqual(metrics.width + 1);
+      expect(metrics.scroll).toBeLessThanOrEqual(metrics.client + 1);
+    }
+    expect(await page.getByRole('heading', { name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
+    if (name === 'Settings') await expect(page.getByText('Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`${name.toLowerCase()}-320-large.png`), fullPage: true });
   }
 });

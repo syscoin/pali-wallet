@@ -12,7 +12,7 @@ export function RealSettings({ accountLabel, watchOnly, onSecurity, onLock, onBa
     <Notice title="Device privacy" body="Pali hides and locks the current session when the app leaves the foreground. Public blockchain activity remains public." />
     <Card style={{ padding: 18, gap: 8 }}><Text style={{ fontSize: 18, fontWeight: '600' }}>About Pali</Text>
       <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>Version 0.1.0 · Development build</Text>
-      <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>Biometric unlock and connected apps are not available. Use a test wallet; device and release qualification remain separate.</Text></Card>
+      <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.</Text></Card>
     <Button title={watchOnly ? 'Hide accounts' : 'Lock wallet'} icon="lock" variant="secondary" onPress={onLock} />
   </Screen></SafeAreaView>;
 }
