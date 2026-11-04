@@ -5,7 +5,7 @@ import { NATIVE_NETWORKS, getNativeNetwork, type NativeNetworkRegistration, type
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import { nativeAccountId } from './accountIdentity.ts';
-import { snapshotImportedEnvelope, type ImportedKeyEnvelope } from './importedAccounts.ts';
+import { snapshotImportedRecoveryEntry, type ImportedRecoveryEntry } from '../../../../source/wallet/importedAccountRecovery.ts';
 
 export const WALLET_CATALOGUE_KEY = 'native-wallet-catalogue-v1';
 export const MAX_HD_ACCOUNTS = 20;
@@ -35,7 +35,7 @@ export type NativeWalletCatalogueIdentity = Readonly<{
 export type DerivedCatalogueIdentity = Readonly<{ address: string; publicKey: string }>;
 type CatalogueAccount = NativeCatalogueAccount & { readonly type: 'HDAccount'; readonly publicKey: string };
 /** Private persisted record. Never included in NativeWalletCatalogueSnapshot. */
-export type StoredImportedAccount = NativeCatalogueAccount & { readonly type: 'Imported'; readonly publicKey: string; readonly envelope: ImportedKeyEnvelope };
+export type StoredImportedAccount = NativeCatalogueAccount & { readonly type: 'Imported'; readonly publicKey: string; readonly recovery: ImportedRecoveryEntry };
 type CatalogueRecord = Omit<NativeWalletCatalogueSnapshot, 'accounts' | 'removed'> & Readonly<{
   version: 2; walletFingerprint: string; nextIndex: number;
   retiredIndices: readonly number[]; accounts: readonly CatalogueAccount[];
@@ -44,7 +44,7 @@ type CatalogueRecord = Omit<NativeWalletCatalogueSnapshot, 'accounts' | 'removed
 export type CatalogueMutation =
   | Readonly<{ kind: 'create'; index: number; address: string; publicKey: string; label: string }>
   | Readonly<{ kind: 'restore'; index: number; address: string; publicKey: string; label: string }>
-  | Readonly<{ kind: 'import'; index: number; address: string; publicKey: string; label: string; envelope: ImportedKeyEnvelope }>
+  | Readonly<{ kind: 'import'; index: number; address: string; publicKey: string; label: string; recovery: ImportedRecoveryEntry }>
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'select-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
@@ -132,14 +132,14 @@ function decode(value: unknown, expected: NativeWalletCatalogueIdentity, allowLe
       (expanded && (!Array.isArray(raw.importedAccounts) || !Array.isArray(raw.retiredImportedIndices)))) return invalid();
   const importedUsed = new Set<number>();
   const importedAccounts: StoredImportedAccount[] = (expanded ? raw.importedAccounts as unknown[] : []).map((value) => {
-    const a = object(value, ['id', 'type', 'index', 'slip44', 'address', 'publicKey', 'label', 'envelope']);
+    const a = object(value, ['id', 'type', 'index', 'slip44', 'address', 'publicKey', 'label', 'recovery']);
     if (!Number.isSafeInteger(a.index) || (a.index as number) < 0 || (a.index as number) >= nextImportedIndex ||
         a.id !== nativeAccountId('Imported', a.index as number) || a.type !== 'Imported' || a.slip44 !== 60 || importedUsed.has(a.index as number)) return invalid();
     const key = publicIdentity({ address: a.address, publicKey: a.publicKey });
     if (key.address !== a.address || key.publicKey !== a.publicKey || addresses.has(key.address)) return invalid();
     importedUsed.add(a.index as number); addresses.add(key.address);
     return Object.freeze({ id: a.id as string, type: 'Imported', index: a.index as number, slip44: 60,
-      ...key, label: label(a.label), envelope: snapshotImportedEnvelope(a.envelope, a.id as string) });
+      ...key, label: label(a.label), recovery: snapshotImportedRecoveryEntry(a.recovery, { kind: 'ethereum', slip44: 60, id: a.index as number, address: key.address, xpub: key.publicKey }) });
   });
   const retiredImportedIndices = (expanded ? raw.retiredImportedIndices as unknown[] : []).map((index) => {
     if (!Number.isSafeInteger(index) || (index as number) < 0 || (index as number) >= nextImportedIndex || importedUsed.has(index as number)) return invalid();
@@ -172,7 +172,7 @@ function projection(record: CatalogueRecord): NativeWalletCatalogueSnapshot {
   return Object.freeze({ revision: record.revision,
     removed: Object.freeze(record.retiredIndices.map((index) => Object.freeze({ id: accountId(index), index }))),
     accounts: Object.freeze([...record.accounts.map(({ publicKey: _publicKey, ...account }) => Object.freeze(account)),
-      ...record.importedAccounts.map(({ publicKey: _publicKey, envelope: _envelope, ...account }) => Object.freeze(account))]),
+      ...record.importedAccounts.map(({ publicKey: _publicKey, recovery: _recovery, ...account }) => Object.freeze(account))]),
     networks: record.networks, active: record.active });
 }
 /** Structural inventory only; no derivation, decryption, migration or ownership grant. */
@@ -190,7 +190,7 @@ export function inspectRecoveryCatalogue(value: unknown, walletFingerprint: stri
   const root = Object.freeze({ address: first.address, publicKey: first.publicKey });
   return Object.freeze({ root, accounts: projection(record).accounts,
     retiredIndices: record.retiredIndices, retiredImportedIndices: record.retiredImportedIndices,
-    importedProfiles: Object.freeze(record.importedAccounts.map((account) => account.envelope.profileId)) });
+    importedProfiles: Object.freeze(record.importedAccounts.map((account) => account.recovery.envelope.profileId)) });
 }
 /** Private verifier input. Envelopes never become an inventory or screen DTO. */
 export function recoveryVerificationRecords(value: unknown, walletFingerprint: string) {
@@ -301,16 +301,17 @@ export class NativeWalletCatalogue {
         if (mutation.index === nextIndex) nextIndex++;
         else retiredIndices = Object.freeze(retiredIndices.filter((index) => index !== mutation.index));
       } else if (mutation.kind === 'import') {
-        object(mutation, ['kind', 'index', 'address', 'publicKey', 'label', 'envelope']);
-        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || nextImportedIndex > MAX_HD_ACCOUNT_INDEX)
+        object(mutation, ['kind', 'index', 'address', 'publicKey', 'label', 'recovery']);
+        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || mutation.index > MAX_HD_ACCOUNT_INDEX)
           throw new WalletCatalogueError('CATALOGUE_LIMIT');
-        if (mutation.index !== nextImportedIndex) return changed();
+        if (mutation.index !== nextImportedIndex && !retiredImportedIndices.includes(mutation.index)) return changed();
         const key = publicIdentity({ address: mutation.address, publicKey: mutation.publicKey });
         if ([...accounts, ...importedAccounts].some((account) => account.address === key.address)) return invalid();
         const id = nativeAccountId('Imported', mutation.index);
         importedAccounts.push(Object.freeze({ id, type: 'Imported', index: mutation.index, slip44: 60,
-          ...key, label: label(mutation.label), envelope: snapshotImportedEnvelope(mutation.envelope, id) }));
-        nextImportedIndex++;
+          ...key, label: label(mutation.label), recovery: snapshotImportedRecoveryEntry(mutation.recovery, { kind: 'ethereum', slip44: 60, id: mutation.index, address: key.address, xpub: key.publicKey }) }));
+        if (mutation.index === nextImportedIndex) nextImportedIndex++;
+        else retiredImportedIndices = Object.freeze(retiredImportedIndices.filter((index) => index !== mutation.index));
         active = Object.freeze({ accountId: id, networkId: record.active.networkId });
       } else if (mutation.kind === 'select-network') {
         object(mutation, ['kind', 'id']);

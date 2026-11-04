@@ -24,7 +24,8 @@ import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress } from 'ethers/transaction';
 import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
-import { decryptImportedKey, encryptImportedKey, importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import { importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import { importAccountWithRecovery, readImportedRecoverySecret } from '../../../../source/wallet/importedAccountRecovery.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
@@ -269,7 +270,7 @@ export function createKeyringRuntimeFactory(
             }, async (record) => {
               state.accounts.HDAccount = Object.fromEntries(derived);
               const guard = () => current(captured);
-              const key = await decryptImportedKey(keyring, walletFingerprint, { id: record.id, index: record.index, address: record.address, publicKey: record.publicKey }, record.envelope, guard); guard();
+              const { secret: key } = await readImportedRecoverySecret(keyring, record.recovery, { kind: 'ethereum', slip44: 60, id: record.index, address: record.address, xpub: record.publicKey }, guard); guard();
               const imported = checkedImported(await keyring.importAccount(key, record.label), key, record.index); guard();
               state.accounts.Imported[record.index] = imported;
               return { address: imported.address, publicKey: importedKeyIdentity(key, record.index).publicKey };
@@ -431,7 +432,7 @@ export function createKeyringRuntimeFactory(
               request = Object.freeze({ ...request, privateKey: key });
               validPassword(password, false);
             } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
-            if (catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS || catalogue.nextImportedIndex > MAX_HD_ACCOUNT_INDEX)
+            if (catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS)
               throw new KeyringRuntimeError('ACCOUNT_LIMIT');
             if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
               throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
@@ -452,12 +453,12 @@ export function createKeyringRuntimeFactory(
                   if (!catalogueSnapshot || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
                   if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
                     throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-                  const index = catalogue.nextImportedIndex;
-                  const imported = checkedImported(await keyring.importAccount(request.privateKey, request.label), request.privateKey, index); guard();
-                  const walletFingerprint = await dataBinding(captured, guard); guard();
-                  const sealed = await encryptImportedKey(keyring, walletFingerprint, index, request.privateKey, guard); guard();
-                  const next = await catalogue.mutate(expectedRevision, { kind: 'import', index, address: sealed.identity.address,
-                    publicKey: sealed.identity.publicKey, label: request.label, envelope: sealed.envelope }, guard); guard();
+                  const prepared = await importAccountWithRecovery(keyring, { secret: request.privateKey, label: request.label,
+                    network: { kind: 'ethereum', slip44: 60 } }, guard); guard();
+                  const index = prepared.account.id;
+                  const imported = checkedImported(prepared.account, request.privateKey, index);
+                  const next = await catalogue.mutate(expectedRevision, { kind: 'import', index, address: imported.address,
+                    publicKey: prepared.recovery.identity.xpub, label: request.label, recovery: prepared.recovery }, guard); guard();
                   state.accounts.Imported[index] = imported;
                   publishAccounts(next);
                 });

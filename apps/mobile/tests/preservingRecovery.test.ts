@@ -183,7 +183,7 @@ test('malformed input and a forged private envelope do not count as a wrong phra
     const before = f.read(); await assert.rejects(recovery.prepare('not a phrase', NEXT, () => undefined), { code: 'INVALID_INPUT' });
     assert.deepEqual(f.read(), before);
     const catalogue = JSON.parse(before.records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value);
-    const envelope = catalogue.importedAccounts[0].envelope;
+    const envelope = catalogue.importedAccounts[0].recovery.envelope;
     envelope.ciphertext = (envelope.ciphertext[0] === 'A' ? 'B' : 'A') + envelope.ciphertext.slice(1);
     f.write(WALLET_CATALOGUE_KEY, catalogue); const corrupt = f.read();
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });

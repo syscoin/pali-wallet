@@ -207,6 +207,19 @@ export const handleMasterControllerResponses = (
             assertSetupAdmission();
             // Always execute the method; never attempt to send functions over messaging
             const response = await (targetMethod as any)(...params);
+            // Hardware message signing can remain pending while wallet storage
+            // becomes unavailable. Do not release that signature after the
+            // existing admission gate closes. Transaction submissions retain
+            // their acknowledged result even if readiness changes in flight.
+            if (
+              methods.length === 3 &&
+              methods[0] === 'wallet' &&
+              methods[1] === 'ethereumTransaction' &&
+              ['ethSign', 'signPersonalMessage', 'signTypedData'].includes(
+                methods[2]
+              )
+            )
+              assertSetupAdmission();
             return response;
           })
           .then((response) => {

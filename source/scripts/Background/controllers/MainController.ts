@@ -36,6 +36,10 @@ import {
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
 import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
+import {
+  importAccountWithRecovery,
+  type ImportedRecoveryEntry,
+} from '../../../wallet/importedAccountRecovery';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -46,7 +50,10 @@ import {
 import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
-import { assertWalletPersistenceAllowed } from 'state/paliStorage';
+import {
+  assertWalletPersistenceAllowed,
+  walletPersistenceGate,
+} from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
@@ -1897,6 +1904,7 @@ class MainController {
     keyring?: KeyringManager
   ) {
     if (
+      walletPersistenceGate.blocked ||
       generation !== this.walletSessionGeneration ||
       (keyring &&
         (keyring !== this.getActiveKeyring() || !keyring.isUnlocked()))
@@ -3121,7 +3129,8 @@ class MainController {
 
   public getWalletSetupStatus(): 'busy' | 'recovery-required' | undefined {
     if (this.isCreatingWallet || this.isResettingWallet) return 'busy';
-    if (this.recoveryJournalPending) return 'recovery-required';
+    if (this.recoveryJournalPending || walletPersistenceGate.blocked)
+      return 'recovery-required';
     return undefined;
   }
 
@@ -5523,6 +5532,22 @@ class MainController {
       }
     };
     assertCurrent();
+    let importedRecovery;
+    if (accountType === KeyringAccountType.Imported && target?.xprv) {
+      const profileId =
+        await this.getActiveKeyring().getPrivateRecordProfileId();
+      assertCurrent();
+      importedRecovery = {
+        profileId,
+        identity: {
+          kind: sourceNetwork.kind,
+          slip44: sourceSlip44,
+          id: accountId,
+          address: target.address,
+          xpub: target.xpub,
+        },
+      };
+    }
     const retirement = getController().dapp.captureAccountSessionRetirement(
       accountId,
       accountType
@@ -5535,6 +5560,7 @@ class MainController {
         grants: retirement.grants,
         isSameWallet: () => walletGeneration === this.walletStateGeneration,
         retireSessions: retirement.retire,
+        importedRecovery,
       },
       assertCurrent
     );
@@ -5672,7 +5698,8 @@ class MainController {
       | KeyringAccountType.SmartAccount
       | KeyringAccountType.Trezor
       | KeyringAccountType.Ledger,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    importedRecovery?: ImportedRecoveryEntry
   ) {
     const generation = this.walletStateGeneration;
     // SDK allocation can race across extension documents. Never replace an
@@ -5683,6 +5710,15 @@ class MainController {
       assertAccountCreationAvailable(accounts, accountType, account.id);
     };
     this.resetAutoLockTimer();
+    if (importedRecovery) {
+      return persistAccountCreation(
+        account,
+        accountType,
+        assertCreationCurrent,
+        () => generation === this.walletStateGeneration,
+        importedRecovery
+      );
+    }
     return persistAccountCreation(
       account,
       accountType,
@@ -5697,16 +5733,35 @@ class MainController {
     options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' | 'p2tr' }
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
-    const importedAccount = await (keyring as any).importAccount(
-      privKey,
-      label,
-      options
+    const network = store.getState().vault.activeNetwork;
+    const checkImportContext = () => {
+      assertCurrent();
+      const current = store.getState().vault.activeNetwork;
+      if (
+        current.kind !== network.kind ||
+        current.slip44 !== network.slip44 ||
+        current.chainId !== network.chainId ||
+        current.url !== network.url
+      )
+        throw new Error('Account import network changed. Please retry.');
+    };
+    const imported = await importAccountWithRecovery(
+      keyring,
+      {
+        secret: privKey,
+        label,
+        options,
+        network: { kind: network.kind, slip44: network.slip44 },
+      },
+      checkImportContext
     );
-    assertCurrent();
+    const importedAccount = imported.account;
+    checkImportContext();
     await this.storeCreatedAccount(
       importedAccount,
       KeyringAccountType.Imported,
-      assertCurrent
+      checkImportContext,
+      imported.recovery
     );
 
     setTimeout(() => {

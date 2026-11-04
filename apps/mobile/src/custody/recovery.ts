@@ -5,7 +5,8 @@ import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapsho
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { inspectRecoveryInventory } from './recoveryInventory.ts';
 import { recoveryVerificationRecords, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
-import { decryptImportedKey } from './importedAccounts.ts';
+import { importedKeyIdentity } from './importedAccounts.ts';
+import { readImportedRecoverySecret } from '../../../../source/wallet/importedAccountRecovery.ts';
 import { inspectRecoveryJournal } from './transferJournal.ts';
 import { getNativeNetwork } from './networkContext.ts';
 import { computeAddress } from 'ethers/transaction';
@@ -169,9 +170,13 @@ export class NativeRecoveryCoordinator {
         for (const account of records.hd) { await derive(account.index); check(); }
         const imported = new Map<string, string>();
         for (const account of records.imported) {
-          if (account.envelope.profileId !== profileId) return fail('INVALID_SAVED_DATA');
-          try { await decryptImportedKey(keyring, before.identity.walletBindingId,
-            { id: account.id, index: account.index, address: account.address, publicKey: account.publicKey }, account.envelope, check); check(); }
+          if (account.recovery.envelope.profileId !== profileId) return fail('INVALID_SAVED_DATA');
+          try {
+            const { secret } = await readImportedRecoverySecret(keyring, account.recovery,
+              { kind: 'ethereum', slip44: 60, id: account.index, address: account.address, xpub: account.publicKey }, check); check();
+            const actual = importedKeyIdentity(secret, account.index);
+            if (actual.address !== account.address || actual.publicKey !== account.publicKey) return fail('INVALID_SAVED_DATA');
+          }
           catch { check(); return fail('INVALID_SAVED_DATA'); }
           imported.set(account.id, account.address);
         }
