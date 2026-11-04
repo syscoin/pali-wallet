@@ -297,7 +297,7 @@ it('an SDK failure does not block a separate import or clean retry', async () =>
   ).toEqual([second.address, retry.address]);
 });
 
-it('the real controller commits a real SDK recovery envelope with its imported account', async () => {
+it('the real controller commits a real SDK recovery envelope after Chrome serializes an absent option as null', async () => {
   const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
@@ -330,10 +330,11 @@ it('the real controller commits a real SDK recovery envelope with its imported a
       'Public recovery fixture 1!'
     );
     wallet.getActiveKeyring = () => software;
-    const account = await wallet.importAccountFromPrivateKey(
+    const account = await importThroughChromeMessage(
       keys[0],
       'Real protected import'
     );
+    expect(account).not.toHaveProperty('error');
     const profile = await software.getPrivateRecordProfileId();
     const recoveryKey = `state-imported-account-recovery-v1:${profile}:imported:60:${account.id}`;
     const copy = disk[recoveryKey];
@@ -357,6 +358,72 @@ it('the real controller commits a real SDK recovery envelope with its imported a
       Object.defineProperty(globalThis, 'crypto', originalCrypto);
   }
 });
+
+it.each([
+  false,
+  0,
+  'invalid',
+  [],
+  { unexpected: true },
+  { utxoAddressType: 'invalid' },
+])(
+  'rejects malformed non-null import options %p before SDK import or persistence',
+  async (options) => {
+    const before = structuredClone(disk);
+    const importAccount = jest.spyOn(manager, 'importAccount');
+    const response = await importThroughChromeMessage(
+      keys[0],
+      'Invalid option',
+      options
+    );
+    expect(response).toMatchObject({
+      success: false,
+      error: expect.any(String),
+    });
+    expect(importAccount).not.toHaveBeenCalled();
+    expect(disk).toEqual(before);
+    expect(store.getState().vault.accounts.Imported).toEqual({});
+  }
+);
+
+function importThroughChromeMessage(
+  secret: string,
+  label: string,
+  options?: unknown
+): Promise<any> {
+  const wire = JSON.parse(
+    JSON.stringify({
+      type: 'CONTROLLER_ACTION',
+      data: {
+        methods: ['wallet', 'importAccountFromPrivateKey'],
+        params: [secret, label, options],
+      },
+    })
+  );
+  if (options === undefined) expect(wire.data.params[2]).toBeNull();
+  Object.assign(chrome.runtime, {
+    getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+    id: 'pali-extension',
+  });
+  // Match the normal controller constructor's binding before dispatch.
+  wallet.importAccountFromPrivateKey =
+    wallet.importAccountFromPrivateKey.bind(wallet);
+  handleMasterControllerResponses({ wallet } as any);
+  const calls = jest.mocked(chrome.runtime.onMessage.addListener).mock.calls;
+  const listener = calls[calls.length - 1][0];
+  return new Promise((resolve) => {
+    expect(
+      listener(
+        wire,
+        {
+          id: 'pali-extension',
+          url: 'chrome-extension://pali-extension/app.html',
+        },
+        resolve
+      )
+    ).toBe(true);
+  });
+}
 
 it('repairs a committed-but-rejected controller import before another vault edit or retry', async () => {
   jest.mocked(chromeStorage.setItems).mockImplementationOnce(async (items) => {

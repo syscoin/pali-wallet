@@ -5932,7 +5932,7 @@ class MainController {
       {
         secret: privKey,
         label,
-        options,
+        options: options ?? undefined,
         network: { kind: network.kind, slip44: network.slip44 },
       },
       checkImportContext
