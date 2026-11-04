@@ -49,6 +49,7 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
       server.url
     );
     const page = wallet.page;
+    let recoveryWorkerRestarted = false;
     const locked = async () => {
       await expect(page.locator('#password')).toBeVisible();
       await expect(page.locator('#unlock-btn')).toBeVisible();
@@ -188,6 +189,33 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
       'normal recovery restores only this disposable fixture with a new password',
       async () => {
         await lock();
+        // Re-create the actual worker before recovery: every required packaged
+        // SDK script must have been registered during its installation.
+        const cdp = await wallet!.context.newCDPSession(page);
+        try {
+          const { targetInfos } = await cdp.send('Target.getTargets');
+          const worker = targetInfos.find(
+            (target) =>
+              target.type === 'service_worker' &&
+              target.url.startsWith(
+                `chrome-extension://${wallet!.extensionId}/`
+              )
+          );
+          expect(worker).toBeDefined();
+          expect(
+            (
+              await cdp.send('Target.closeTarget', {
+                targetId: worker!.targetId,
+              })
+            ).success
+          ).toBe(true);
+        } finally {
+          await cdp.detach();
+        }
+        await page.reload();
+        await wallet!.waitAppReady();
+        await locked();
+        recoveryWorkerRestarted = true;
         await page.locator('#import-wallet-link').click();
         await expect(
           page.getByText(en.settings.recoveryLimitations, { exact: true })
@@ -235,6 +263,7 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
           normalUIOnly: true,
           destructiveRecoveryLimitedToFreshFixture: true,
           backupReauthenticationVerified: true,
+          recoveryWorkerRestarted,
           seedOrPrivateKeyReported: false,
           signaturesRequested: false,
           chainBroadcast: false,

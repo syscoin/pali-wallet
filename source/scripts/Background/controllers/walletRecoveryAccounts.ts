@@ -1,3 +1,5 @@
+import * as recoverySdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
+
 import {
   getSentryVaultId,
   listSentryKeys,
@@ -113,6 +115,9 @@ export async function prepareExtensionAccountRecovery(
     { groups, imported, password, phrase },
     {
       assertCurrent,
+      // This module is registered during worker installation. A nested SDK
+      // chunk cannot first be loaded by importScripts after MV3 installation.
+      loadSdk: async () => recoverySdk,
       validateRetained: async ({ keyring, profileId }) => {
         for (const [key, value] of Object.entries(before)) {
           assertCurrent();
