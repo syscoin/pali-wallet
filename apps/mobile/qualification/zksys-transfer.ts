@@ -253,6 +253,7 @@ export async function qualifyNativeZksysTransfer(
     requests = 0;
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
+    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
     async sign(transaction, checkCurrent, intent) {

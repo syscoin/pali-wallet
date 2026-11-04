@@ -11,6 +11,7 @@ import {
   type NativeTransferRuntime,
 } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
+import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay';
 import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords';
 import { createNativeSignedRecordView } from '../../src/custody/sharedSignedRecords';
 import { signedRecordTestSession } from '../signedRecordTestSession';
@@ -131,8 +132,8 @@ const rpc = new NativeTransferRpc({
           : null;
     } else if (request.method === 'eth_sendRawTransaction') {
       const raw = request.params[0];
-      const entry = await (await runtime.journal(() => undefined)).load();
-      if (!entry || entry.rawTransaction !== raw || !['signed', 'submitted'].includes(entry.phase))
+      const entry = await signedRecords.readExact(signedRecordTestSession(), '1', wallet.address, keccak256(raw));
+      if (!entry || entry.rawTransaction !== raw)
         throw Error('Signed record must precede broadcast');
       broadcasts.push(raw);
       if (loseResponse) {
@@ -148,6 +149,10 @@ const rpc = new NativeTransferRpc({
   },
 });
 const runtime: NativeTransferRuntime = {
+  replay(guard, transport, options) {
+    return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+      context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
+  },
   async submit(rawTransaction, _hash, guard, broadcast, intent) {
     const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard(); await broadcast();
   },
@@ -205,10 +210,28 @@ declare global {
       holdQuote(): void;
       releaseQuote(): void;
       networkRoundTrip(): void;
+      seedPredecessor(count?: number): Promise<{ first: string; second: string }>;
     };
   }
 }
 window.__erc20SendFixture = {
+  async seedPredecessor(count = 1) {
+    const session = signedRecordTestSession();
+    const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation:'send' as const};
+    const save = async (nonce: number, value = 1) => {
+      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,to:nonce===0?wallet.address:null,value,gasLimit:100000,
+        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data:nonce===0?'0x':'0x6000'});
+      const tx=Transaction.from(rawTransaction);
+      await signedRecords.append(session,{rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'1',nonce,type:tx.type,context});return tx.hash!;
+    };
+    const first=await save(0);await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
+    for (let i = 1; i < Math.min(count, 30); i++) {
+      const alternative = await save(0, i + 1);
+      await signedRecords.updatePhase(session, '1', wallet.address, alternative, 'confirmed');
+    }
+    const second=await save(1);await signedRecords.updatePhase(session,'1',wallet.address,second,'submitted');
+    loseResponse=false;await controller.recover(true,second);return {first,second};
+  },
   signatures: () => signatures,
   unlockChecks: () => unlockChecks,
   broadcasts: () => [...broadcasts],

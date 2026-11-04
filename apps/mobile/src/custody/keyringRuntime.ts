@@ -1,4 +1,6 @@
-import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';import { EvmSignedRecords, createEvmSignedRecordLifecycle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { createNativeSignedRecordView } from './sharedSignedRecords.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
@@ -722,6 +724,21 @@ export function createKeyringRuntimeFactory(
             },
           },
           transfers: {
+            replay(assertCurrent, transport, options) {
+              if (active || reserved || closed || !canSign()) throw new KeyringRuntimeError('NOT_READY');
+              const captured = generation, selected = selectedAccount();
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+              const context: EvmSubmissionContext = { account: { id: selected.index, type: selected.type, address: selected.address },
+                network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl }, operation: 'send' };
+              const lifecycle = captureSignedSubmission(context, assertCurrent);
+              const check = () => { current(captured); lifecycle.assertCurrent(); };
+              const replay = new EvmSignedReplay(signedRecords, () => ({ context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport }), options.now, options.randomBytes);
+              return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
+                const work = replay.confirm(id);
+                const pending = work.finally(() => pendingSubmissions.delete(pending));
+                pendingSubmissions.add(pending); return pending;
+              } };
+            },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);
               while (active) { await active.catch(() => undefined); checkGuard(assertCurrent); }

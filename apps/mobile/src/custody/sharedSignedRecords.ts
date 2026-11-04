@@ -1,5 +1,6 @@
 import { Transaction } from 'ethers/transaction';
 import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord } from '../../../../source/wallet/evmSignedRecords.ts';
+import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { nativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
 import { TransferJournalError, type TransferJournalEntry, type TransferJournalPhase } from './transferJournal.ts';
@@ -18,9 +19,8 @@ export function createNativeSignedRecordView(
   };
   const map = (entry: EvmRetainedSignedRecord): TransferJournalEntry => {
     const tx = Transaction.from(entry.rawTransaction);
-    if (tx.to === null) throw new TransferJournalError('CORRUPT');
     const intent = entry.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(entry.metadata.intent);
-    assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to, value: tx.value.toString(), data: tx.data }, intent);
+    if (intent) assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to ?? '', value: tx.value.toString(), data: tx.data }, intent);
     return Object.freeze({
     version: 1, scope, phase: entry.phase, rawTransaction: entry.rawTransaction, hash: entry.hash,
     nonce: entry.nonce, createdAt: entry.createdAt,
@@ -45,12 +45,9 @@ export function createNativeSignedRecordView(
       return checked(async () => {
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
         const projected=recent.entries.map(entry => {
-          const tx=Transaction.from(entry.rawTransaction), fee=tx.maxFeePerGas??tx.gasPrice;
-          if(fee===null)throw new TransferJournalError('CORRUPT');
-          const intent=entry.metadata?.intent===undefined?undefined:snapshotErc20TransferIntent(entry.metadata.intent);
-          if(intent)assertTransferIntentEnvelope({chainId:tx.chainId.toString(),to:tx.to??'',value:tx.value.toString(),data:tx.data},intent);
+          const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
           return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
-            recipient:intent?.recipient??tx.to,amountUnits:intent?.amountUnits??tx.value.toString(),maximumFeeUnits:(tx.gasLimit*fee).toString(),...(intent?{token:intent.token}:{})});
+            recipient:saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{})});
         });
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
       });

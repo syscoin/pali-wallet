@@ -5,6 +5,7 @@ import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
+import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
 import { signedRecordTestSession, historicalSignedBundle } from './signedRecordTestSession.ts';
@@ -69,6 +70,10 @@ function fixture() {
     },
   });
   const runtime = {
+    replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
+      return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+        context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
+    },
     async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent) {
       const journal = await runtime.journal(guard);
       try { await journal.saveSigned(rawTransaction,intent); guard(); }
@@ -165,6 +170,7 @@ function fixture() {
   });
   return {
     transfers,
+    signedRecords,
     records,
     broadcasts,
     rpcMethods,
@@ -579,15 +585,10 @@ test('unexpected recovery journal failure does not claim an existing submitted t
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     f.finalize();
-    const open = f.runtime.journal;
-    f.runtime.journal = async (guard) => {
-      const journal = await open(guard);
-      const transition = journal.transition.bind(journal);
-      journal.transition = async (hash, phase) => {
-        if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
-        return transition(hash, phase);
-      };
-      return journal;
+    const transition = f.signedRecords.updatePhase.bind(f.signedRecords);
+    f.signedRecords.updatePhase = async (...args) => {
+      if (args[4] === 'confirmed') throw Error('Unexpected storage failure during recovery');
+      return transition(...args);
     };
     await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -700,4 +701,24 @@ for (const type of [0, 2] as const) test(`current-format type ${type} terminal b
     assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
     assert(!JSON.stringify(f.transfers.getSnapshot()).includes(signed));
   } finally { f.close(); }
+});
+
+test('predecessor choices page locally without changing consent or making more RPC reads',async()=>{
+ const f=fixture();
+ try {
+  const journal=await f.runtime.journal(()=>undefined);
+  for(let value=1;value<=23;value++){
+   const raw=await wallet.signTransaction({type:2,chainId:1,nonce:value===23?1:0,to,value,gasLimit:21000,maxFeePerGas:2,maxPriorityFeePerGas:1});
+   await journal.saveSigned(raw);
+  }
+  await f.transfers.recover(true);
+  const before=f.transfers.getSnapshot().review!;
+  assert.equal(before.replay!.predecessorCount,22);assert.equal(before.replay!.predecessors.length,20);
+  const requests=f.rpcMethods.length;
+  await f.transfers.loadMorePredecessors();
+  const after=f.transfers.getSnapshot().review!;
+  assert.equal(after.id,before.id);assert.equal(after.replay!.predecessors.length,22);
+  assert.equal(new Set(after.replay!.predecessors.map(row=>row.hash)).size,22);
+  assert.equal(f.rpcMethods.length,requests);assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),0);
+ } finally {f.close();}
 });

@@ -1,6 +1,8 @@
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
+import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
 import {
@@ -273,7 +275,7 @@ export class NativeTransferRpc {
     const hash = checkedHash(expectedHash);
     if (
       typeof rawTransaction !== 'string' ||
-      rawTransaction.length > 4096 ||
+      rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
       !/^0x(?:[0-9a-f]{2})+$/.test(rawTransaction) ||
       keccak256(rawTransaction) !== hash
     )
@@ -283,13 +285,12 @@ export class NativeTransferRpc {
       if (
         !tx.isSigned() ||
         tx.chainId !== BigInt(this.context.chainId) ||
-        (tx.type !== 0 && tx.type !== 2) ||
-        !tx.to
+        tx.serialized !== rawTransaction
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
-      assertTransferIntentEnvelope(
+      if (intent) assertTransferIntentEnvelope(
         {
           chainId: tx.chainId.toString(),
           to: tx.to!,
@@ -316,7 +317,7 @@ export class NativeTransferRpc {
     expected: Readonly<{
       hash: string;
       from: string;
-      to: string;
+      to: string | null;
       nonce: string;
     }>,
     signal: AbortSignal
@@ -344,5 +345,10 @@ export class NativeTransferRpc {
         if (error instanceof NativeTransferRpcError) throw error;
         throw new NativeTransferRpcError('UNAVAILABLE');
       });
+  }
+  observation(expected: Readonly<{ hash: string; from: string; to: string | null; nonce: string }>, signal: AbortSignal): Promise<EvmTransactionObservation> {
+    return this.receiptRpc.observation(expected, signal, () => {
+      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+    }).catch(error => this.mapReadError(error));
   }
 }

@@ -741,6 +741,54 @@ export class EvmSignedRecords {
       });
     });
   }
+  readPage(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    options: Readonly<{ beforeHash?: string; maximum: number; nonce?: number }>
+  ): Promise<
+    Readonly<{
+      entries: readonly EvmRetainedSignedRecord[];
+      nextCursor: string | null;
+      total: number;
+    }>
+  > {
+    const from = getAddress(address).toLowerCase();
+    const { maximum, beforeHash, nonce } = options;
+    if (
+      !Number.isSafeInteger(maximum) ||
+      maximum < 1 ||
+      maximum > 30 ||
+      (beforeHash !== undefined && !HASH.test(beforeHash)) ||
+      (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
+    )
+      throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const matching = (bundle?.entries ?? []).filter(
+        (entry) =>
+          entry.chainId === chainId &&
+          entry.from === from &&
+          (nonce === undefined || entry.nonce === nonce)
+      );
+      const end =
+        beforeHash === undefined
+          ? matching.length
+          : matching.findIndex((entry) => entry.hash === beforeHash);
+      if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      const start = Math.max(0, end - maximum),
+        entries: EvmRetainedSignedRecord[] = [];
+      for (const entry of matching.slice(start, end).reverse())
+        entries.push(await this.materialize(session, entry));
+      guard(session);
+      return Object.freeze({
+        entries: Object.freeze(entries),
+        total: matching.length,
+        nextCursor: start > 0 ? matching[start]!.hash : null,
+      });
+    });
+  }
   readExact(
     session: EvmSignedRecordSession,
     chainId: string,

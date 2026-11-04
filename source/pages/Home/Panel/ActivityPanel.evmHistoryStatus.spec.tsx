@@ -1,4 +1,37 @@
-/** @jest-environment jsdom */
+/**
+ * @jest-environment jsdom
+ */
+// These history/rendering tests never admit a UTXO descriptor or submit a
+// retained transaction. Fail if either boundary is crossed; loading native
+// signer cryptography inside JSDOM is outside this EVM view's contract.
+jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/watch-descriptor.js', () => ({
+  descriptorChecksum: jest.fn(() => {
+    throw new Error('Unexpected UTXO descriptor admission');
+  }),
+}));
+jest.mock('@sidhujag/sysweb3-keyring/cjs/software.js', () => ({
+  captureEvmSubmission: jest.fn(() => {
+    throw new Error('Unexpected retained submission');
+  }),
+  submitSignedEvmTransaction: jest.fn(() => {
+    throw new Error('Unexpected retained submission');
+  }),
+  evmSubmissionFailure: jest.fn(() => {
+    throw new Error('Unexpected retained submission');
+  }),
+}));
+
+afterEach(() => {
+  expect(
+    jest.requireMock('@sidhujag/sysweb3-keyring/cjs/utils/watch-descriptor.js')
+      .descriptorChecksum
+  ).not.toHaveBeenCalled();
+  for (const method of Object.values(
+    jest.requireMock('@sidhujag/sysweb3-keyring/cjs/software.js')
+  ))
+    expect(method).not.toHaveBeenCalled();
+});
+
 import '@testing-library/jest-dom';
 import { configureStore } from '@reduxjs/toolkit';
 import {

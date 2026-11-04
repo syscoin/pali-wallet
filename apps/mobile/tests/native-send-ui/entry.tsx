@@ -64,6 +64,7 @@ const controller: NativeTransferView = {
     publish(idle());
   },
   async recover() {},
+  async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },

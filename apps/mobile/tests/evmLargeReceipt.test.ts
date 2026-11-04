@@ -79,3 +79,12 @@ test('detached request survives caller mutation before a missing receipt uses it
  assert(f.calls.filter(c=>c.method==='eth_getTransactionCount').every(c=>c.params[0]===from&&c.params[1]==='latest'));
  assert.deepEqual(f.calls.find(c=>c.method==='eth_getTransactionReceipt')?.params,[hash]);
 });
+
+test('receipt and observation reject accessor inputs without running them, including revoked guards', async()=>{
+ for(const revoked of [false,true])for(const method of ['receipt','observation'] as const){
+  const f=fixture({missing:true});let getters=0;
+  const input={...expected};Object.defineProperty(input,'hash',{enumerable:true,get(){getters++;return hash;}});
+  await assert.rejects(async()=>f.rpc[method](input,signal(),()=>{if(revoked)throw Error('revoked');}));
+  assert.equal(getters,0);assert.equal(f.calls.length,0);
+ }
+});

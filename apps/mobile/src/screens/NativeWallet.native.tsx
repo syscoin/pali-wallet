@@ -93,6 +93,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
+  const [savedTransferHash, setSavedTransferHash] = useState<string | undefined>();
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -444,7 +445,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransferHash} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransferHash(undefined); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
@@ -452,15 +453,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); openStage('send'); } : undefined}
-    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); openStage('send'); } : undefined}
+    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setSavedTransferHash(undefined); openStage('send'); } : undefined}
+    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); setSavedTransferHash(undefined); openStage('send'); } : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
     onActivity={() => shell.select('activity')}
     navigation={shell.navigation}
   />;
     else if (shell.tab === 'activity') content = activityView
-      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onReplay={(hash) => { setSendToken(null); setSavedTransferHash(hash); openStage('send'); }} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       networkLabel={EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}

@@ -72,12 +72,14 @@ export function NativeSend({
   accountLabel = 'Account 1',
   token,
   context,
+  savedHash,
 }: {
   controller: NativeTransferView;
   onBack(): void;
   accountLabel?: string;
   token?: Erc20Metadata;
   context: NativeSendContext;
+  savedHash?: string;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -155,8 +157,8 @@ export function NativeSend({
     }
   };
   useEffect(() => {
-    void controller.recover().catch(() => undefined);
-  }, [controller]);
+    void controller.recover(!!savedHash, savedHash).catch(() => undefined);
+  }, [controller, savedHash]);
   const submit = () => {
     if (!review || busy) return;
     Keyboard.dismiss();
@@ -204,7 +206,7 @@ export function NativeSend({
     ].includes(snapshot.phase);
   const footer = review ? (
     <Button
-      title={review.retry ? 'Confirm retry' : 'Confirm and send'}
+      title={review.retry ? 'Resend signed transaction' : 'Confirm and send'}
       disabled={busy}
       onPress={submit}
       testID="native-send-confirm"
@@ -237,7 +239,7 @@ export function NativeSend({
           <Header
             title={
               review
-                ? 'Review transfer'
+                ? (review.retry ? 'Review resend' : 'Review transfer')
                 : hasOutcome
                 ? 'Transfer status'
                 : token
@@ -275,6 +277,15 @@ export function NativeSend({
                 </Text>
               </View>
               {reviewedToken && tokenIdentity(reviewedToken)}
+              {!!review.replay?.predecessorCount && <Card style={s.summary}>
+                <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
+                <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
+                {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
+                  title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
+                  onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
+                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title="Load more saved transactions" variant="quiet" disabled={busy}
+                  onPress={() => void run(() => controller.loadMorePredecessors())} />}
+              </Card>}
               <Card style={s.summary}>
                 <Text style={s.label}>TO</Text>
                 <Text
@@ -311,20 +322,21 @@ export function NativeSend({
                   tone="amber"
                 />
               )}
-              {review.retry && <Card style={s.summary}><Text style={s.label}>RPC PROVIDER</Text><Text>{new URL(capturedContext.rpcUrl).host}</Text></Card>}
-              {review.retry && (
-                <Notice
-                  title="Retry the same transaction"
-                  body="The network may already have this transaction. Retrying sends the same signed bytes and hash, without creating another transfer."
-                  tone="amber"
-                />
-              )}
+              {review.replay && <Card style={s.summary}>
+                <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>
+                <Text selectable style={s.address}>{review.replay.hash}</Text>
+                <Text style={s.hint}>Connection: {new URL(capturedContext.rpcUrl).host}</Text>
+                <Text>{review.replay.operation === 'cancel' ? 'Cancellation' : review.replay.operation === 'speed-up' ? 'Fee replacement' : review.replay.to === null ? 'Contract creation' : review.replay.dataBytes ? 'Contract interaction' : 'Transfer'}</Text>
+                {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? 'Contract data'} · {review.replay.dataBytes} bytes</Text>}
+                {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
+                {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
+              </Card>}
               <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>
               <Button
-                title="Edit transfer"
+                title={review.retry ? 'Close review' : 'Edit transfer'}
                 variant="quiet"
                 disabled={busy}
                 onPress={() => {

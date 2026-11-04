@@ -5,6 +5,7 @@ import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type Native
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
   rejectRead, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
 import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
+import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_gasPrice' |
@@ -13,7 +14,7 @@ const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockBy
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & { assertCurrent(): void };
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
-type ReceiptRequest = Readonly<{ hash: string; from: string; to: string; nonce: string }>;
+type ReceiptRequest = Readonly<{ hash: string; from: string; to: string | null; nonce: string }>;
 export type EvmReceiptObservation = Readonly<
   | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock }
   | { status: 'nonce-consumed' }
@@ -202,33 +203,22 @@ export class EvmTransferReadRpc {
       return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, now + 90000);
     });
   }
-  /** A canonical receipt confirms now; later reads may revise that observation after a reorg. */
-  receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
-    let expected: ReceiptRequest;
-    try {
-      guardedRead(guard);
-      const raw = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
-      const nonce = units(raw.nonce);
-      if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-      expected = Object.freeze({ hash: checkedReadHash(raw.hash), from: getAddress(raw.from as string), to: getAddress(raw.to as string), nonce: nonce.toString() });
-    } catch (error) { return Promise.reject(error instanceof EvmTransferReadError ? error : new EvmTransferReadError('INVALID_INPUT')); }
-    return this.operation(signal, guard, async (read) => {
-      await this.checkChain(read);
-      const raw = await read('eth_getTransactionReceipt', [expected.hash]);
-      read.assertCurrent();
-      if (raw === null) {
-        const nonce = quantity(await read('eth_getTransactionCount', [expected.from, 'latest']));
-        await this.checkChain(read); read.assertCurrent();
-        // Nonce use never proves this hash succeeded or which other transaction replaced it.
-        return nonce > BigInt(expected.nonce) ? Object.freeze({ status: 'nonce-consumed' }) : null;
-      }
-      const receipt = object(raw);
-      if (checkedReadHash(receipt.transactionHash) !== expected.hash || getAddress(receipt.from as string) !== expected.from || getAddress(receipt.to as string) !== expected.to) return rejectRead('INVALID_RESPONSE');
-      const status = quantity(receipt.status);
-      if (status !== 0n && status !== 1n) return rejectRead('INVALID_RESPONSE');
-      const included = Object.freeze({ number: quantity(receipt.blockNumber).toString(), hash: checkedReadHash(receipt.blockHash) });
-      await this.canonical(read, included); await this.checkChain(read); read.assertCurrent();
-      return Object.freeze({ status: 'included', outcome: status === 1n ? 'succeeded' : 'reverted', canonicalObserved: true, block: included });
+  observation(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmTransactionObservation> {
+    guardedRead(guard);
+    const raw = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
+    const expected = { hash: raw.hash as string, from: raw.from as string, to: raw.to as string | null, nonce: raw.nonce as string, chainId: this.network.chainId };
+    return this.operation(signal, guard, async read => {
+      try { return await observeEvmTransaction(expected, read, () => read.assertCurrent()); }
+      catch (error) { if (error instanceof EvmObservationError) throw new EvmTransferReadError(error.code === 'CONTEXT_CHANGED' ? 'PROFILE_CHANGED' : error.code); throw error; }
     });
+  }
+  /** A canonical receipt confirms now; later reads may revise that observation after a reorg. */
+  async receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
+    guardedRead(guard);
+    const raw = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
+    const expected = { hash: raw.hash as string, from: raw.from as string, to: raw.to as string | null, nonce: raw.nonce as string };
+    const result = await this.observation(expected, signal, guard);
+    if (result.status === 'missing') return BigInt(result.latestNonce) > BigInt(expected.nonce) ? Object.freeze({status:'nonce-consumed'}) : null;
+    return Object.freeze({status:'included',outcome:result.outcome === 'confirmed' ? 'succeeded' : 'reverted',canonicalObserved:true,block:result.block});
   }
 }

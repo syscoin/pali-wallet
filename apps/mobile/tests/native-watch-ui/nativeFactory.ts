@@ -136,6 +136,7 @@ export function createNativeWalletControllers() {
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
+    replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
     async journal(guard) { guard(); return { async load() { guard(); return null; },
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
