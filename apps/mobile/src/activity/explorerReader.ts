@@ -129,6 +129,7 @@ export class ActivityExplorerReader {
       guard();
       return JSON.parse(text);
     } finally {
+      local.abort();
       clearTimeout(timer);
       signal.removeEventListener('abort', abort);
     }

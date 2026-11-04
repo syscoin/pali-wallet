@@ -9,6 +9,7 @@ import {
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from './transferRpc.ts';
+import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { getNativeSendContext, erc20SigningEnabled, type NativeSendContext } from './networkContext.ts';
 import {
   parseTokenAmount,
@@ -160,6 +161,7 @@ export class NativeTransfers {
   private readonly source: Source;
   private readonly runtime: () => NativeTransferRuntime | undefined;
   private readonly rpc?: NativeTransferRpc;
+  private readonly fetcher?: WalletHttpFetch;
   private readonly rpcs = new Map<string, NativeTransferRpc>();
   private readonly randomBytes: (length: number) => Uint8Array;
   private readonly now: () => number;
@@ -168,6 +170,7 @@ export class NativeTransfers {
     runtime: () => NativeTransferRuntime | undefined,
     options: {
       rpc?: NativeTransferRpc;
+      fetch?: WalletHttpFetch;
       randomBytes?: (length: number) => Uint8Array;
       now?: () => number;
     } = {}
@@ -175,6 +178,7 @@ export class NativeTransfers {
     this.source = source;
     this.runtime = runtime;
     this.rpc = options.rpc;
+    this.fetcher = options.fetch;
     this.randomBytes =
       options.randomBytes ??
       ((length) => globalThis.crypto.getRandomValues(new Uint8Array(length)));
@@ -288,7 +292,7 @@ export class NativeTransfers {
     try { context = getNativeSendContext(captured.account.network); }
     catch { return Promise.reject(new NativeTransferError('NOT_READY')); }
     let rpc = this.rpc ?? this.rpcs.get(context.networkId);
-    if (!rpc) { rpc = new NativeTransferRpc({ networkId: context.networkId }); this.rpcs.set(context.networkId, rpc); }
+    if (!rpc) { rpc = new NativeTransferRpc({ networkId: context.networkId, fetch: this.fetcher }); this.rpcs.set(context.networkId, rpc); }
     if (rpc.context !== context) return Promise.reject(new NativeTransferError('NOT_READY'));
     const address = normalizePublicAddress(
       captured.account.address,
