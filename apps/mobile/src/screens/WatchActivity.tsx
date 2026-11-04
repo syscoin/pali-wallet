@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, FlatList, Linking, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, FlatList, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { formatBaseUnits } from '../core/amounts';
@@ -39,9 +39,9 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
     controller.activate();
     const revoke = () => { selectTransaction(null); life.busy = false; life.pending = null; setBusy(false); controller.revoke(); };
     const change = AppState.addEventListener('change', (value) => { if (value !== 'active') revoke(); });
-    const blur = AppState.addEventListener('blur', () => { controller.setFocused(false); revoke(); });
-    const focus = AppState.addEventListener('focus', () => { controller.setFocused(true); });
-    return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; clear(); controller.dispose(); change.remove(); blur.remove(); focus.remove(); };
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { controller.setFocused(false); revoke(); }) : null;
+    const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => { controller.setFocused(true); }) : null;
+    return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; clear(); controller.dispose(); change.remove(); blur?.remove(); focus?.remove(); };
   }, [controller, selectTransaction]);
   useLayoutEffect(() => navigation.registerBack(() => { if (chosen) selectTransaction(null); else onBack(); return true; }), [navigation, chosen, onBack, selectTransaction]);
   useLayoutEffect(() => navigation.registerLeave((navigate) => { controller.revoke(); navigate(); }), [navigation, controller]);

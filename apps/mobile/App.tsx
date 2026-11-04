@@ -328,7 +328,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   }, [watchAccounts]);
   useEffect(() => {
     const hide = () => { lifecycleGeneration.current++; authority.current?.lock(); setSheet(null); setAmount(''); setRecipient(''); };
-    const blur = AppState.addEventListener('blur', hide);
+    const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', hide) : null;
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
       if (state !== 'active') {
@@ -341,7 +341,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
           go('locked');
       }
     });
-    return () => { sub.remove(); blur.remove(); };
+    return () => { sub.remove(); blur?.remove(); };
   }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
     if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
