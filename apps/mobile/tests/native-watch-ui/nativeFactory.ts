@@ -1,6 +1,7 @@
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
 import { SeedBackupFlow } from '../../src/custody/seedBackup';
+import { HdKeyExportFlow } from '../../src/custody/hdKeyExport';
 import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
@@ -12,7 +13,7 @@ import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCata
 import type { CustodyRuntime } from '../../src/custody/types';
 import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
-import { ADDRESS, SECOND, audit, events, unlockGate, signGate } from './state';
+import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure } from './state';
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
@@ -122,7 +123,24 @@ export function createNativeWalletControllers() {
   };
   const backup = new SeedBackupFlow(authority, () => backupRuntime);
   backup.onClear(() => events.push('backup:cancel'));
-  return { authority, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+  const keyRuntime: KeyringRuntime['keyExport'] = {
+    async readSelected(_scope, password, guard) {
+      guard();
+      if (!sessionUnlocked) throw Error('Locked fixture session');
+      audit.keyAttempts++;
+      if (password === 'public-password') audit.keyReads++;
+      events.push('key:start');
+      await keyReadGate();
+      if (keyFailure) throw new KeyringRuntimeError(keyFailure);
+      if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+      guard();
+      events.push('key:finish');
+      return PUBLIC_TEST_KEY;
+    },
+  };
+  const keyExport = new HdKeyExportFlow(authority, () => keyRuntime);
+  keyExport.onClear(() => events.push('key:cancel'));
+  return { authority, keyExport, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {

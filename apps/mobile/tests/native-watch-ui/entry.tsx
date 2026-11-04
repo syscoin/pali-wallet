@@ -4,15 +4,16 @@ import { registerRootComponent } from 'expo';
 import { AppState, Platform } from 'react-native';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch } from './nativeFactory';
-import { audit, events, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign } from './state';
+import { audit, events, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure } from './state';
 
-Platform.OS = 'ios';
+Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
 let appState = 'active';
-const listeners = new Set<(state: string) => void>();
+const listeners = new Map<string, Set<(state: string) => void>>();
 Object.defineProperty(AppState, 'currentState', { configurable: true, get: () => appState });
-AppState.addEventListener = ((_event: string, listener: (state: string) => void) => {
-  listeners.add(listener);
-  return { remove() { listeners.delete(listener); } };
+AppState.addEventListener = ((event: string, listener: (state: string) => void) => {
+  if (!listeners.has(event)) listeners.set(event, new Set());
+  listeners.get(event)!.add(listener);
+  return { remove() { listeners.get(event)!.delete(listener); } };
 }) as typeof AppState.addEventListener;
 globalThis.fetch = fixtureFetch;
 declare global {
@@ -27,7 +28,12 @@ declare global {
       releaseUnlock(): void;
       delaySign(value: boolean): void;
       releaseSign(): void;
-      lifecycle(state: 'active' | 'background'): void;
+      lifecycle(state: 'active' | 'inactive' | 'background'): void;
+      blur(): void;
+      delayKeyRead(value: boolean): void;
+      releaseKeyRead(): void;
+      keyFailure(code: 'AUTH_THROTTLED' | null): void;
+      selectAccount(id: string): Promise<void>;
       nativePhase(): string | null;
       oldPhases(): string[];
       transferPhase(): string | null;
@@ -39,7 +45,10 @@ declare global {
 window.__watchFixture = {
   audit: () => ({ ...audit }), events: () => [...events], accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
-  lifecycle(state) { appState = state; for (const listener of [...listeners]) listener(state); },
+  lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
+  blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
+  delayKeyRead: setDelayKeyRead, releaseKeyRead, keyFailure: setKeyFailure,
+  async selectAccount(id) { await latestAuthority!.manageAccounts({ kind: 'select', id }, latestAuthority!.getSnapshot().revision, latestAuthority!.getCatalogue()!.revision); },
   nativePhase: () => latestAuthority?.getSnapshot().phase ?? null,
   oldPhases: () => retiredAuthorities.map((authority) => authority.getSnapshot().phase),
   transferPhase: () => latestTransfers?.getSnapshot().phase ?? null,

@@ -2,6 +2,7 @@ import { NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../custody/seedBackup.ts';
+import { HdKeyExportFlow } from '../custody/hdKeyExport.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
 import { NativeTokens } from '../portfolio/nativeTokens.ts';
 import { NativeActivity } from '../activity/nativeActivity.ts';
@@ -33,6 +34,7 @@ export function createNativeWalletControllers() {
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
+  const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
   const transfers = new NativeTransfers(authority, () => runtime?.transfers);
   const tokens = new NativeTokens(authority, () => runtime?.tokens, undefined, Date.now, () => authority.lock());
   const activity = new NativeActivity(authority, () => runtime?.activity);
@@ -43,6 +45,6 @@ export function createNativeWalletControllers() {
     execute: (...args: Parameters<NativeAccountView['execute']>) => authority.manageAccounts(...args),
     cancel: () => authority.cancelAccountOperation(),
   });
-  return { authority, backup, accounts, activity, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, accounts, activity, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
