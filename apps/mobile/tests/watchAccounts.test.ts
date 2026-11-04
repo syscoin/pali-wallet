@@ -6,6 +6,9 @@ import { createEvmWatchAccount, WatchOnlyAuthority } from '../src/core/watchOnly
 import type { PublicAccount } from '../src/core/types.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createWatchAccountCodec, type StoredWatchAccount } from '../src/core/watchAccountCodec.ts';
+import { XPUB, KEY } from './publicWatchFixtures.ts';
 
 const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const OTHER = '0x1111111111111111111111111111111111111111';
@@ -15,23 +18,26 @@ const deferred = <T>() => {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 };
-function storage(initial: readonly PublicAccount[] = [account]) {
-  let saved = initial;
+function storage(initial: readonly PublicAccount[] = [account], beforeWrite?: () => Promise<void>) {
+  const codec = createWatchAccountCodec();
+  let raw = codec.encode(codec.validate(initial.map((entry) => ({ kind: 'address', ...entry }))).records);
   const writes: readonly PublicAccount[][] = [];
   let readFailure = false;
   let writeFailure = false;
-  const model = new WatchAccounts({
-    async load() { if (readFailure) throw Error('storage read failure'); return saved; },
-    async compareAndSet(expected, next) {
-      assert.deepEqual(expected, saved, 'compare-and-set must use the loaded public snapshot');
+  const repository = createPublicAccountStorage({
+    async get() { if (readFailure) throw Error('storage read failure'); return raw; },
+    async set(_key, next) {
+      await beforeWrite?.();
       if (writeFailure) throw Error('storage write failure');
-      saved = next;
-      (writes as PublicAccount[][]).push([...next]);
+      raw = next;
+      (writes as PublicAccount[][]).push([...codec.decode(raw).accounts]);
     },
   });
+  const model = new WatchAccounts(repository.records);
   return {
-    model, writes,
-    get saved() { return saved; },
+    model, writes, repository,
+    get saved() { return codec.decode(raw).accounts; },
+    get records() { return codec.decode(raw).records; },
     set readFailure(value: boolean) { readFailure = value; },
     set writeFailure(value: boolean) { writeFailure = value; },
   };
@@ -104,7 +110,7 @@ test('add, rename, and remove commit the existing public store and survive a new
   await f.model.change({ kind: 'rename', id: 'public_2', name: '  Renamed savings  ' });
   assert.equal(f.saved[1]!.name, 'Renamed savings');
   await f.model.change({ kind: 'remove', id: account.id });
-  const reopened = new WatchAccounts({ load: async () => f.saved, compareAndSet: async () => assert.fail('read-only reopen') });
+  const reopened = new WatchAccounts(f.repository.records);
   await reopened.load();
   assert.deepEqual(reopened.getSnapshot().accounts.map(({ id, name }) => ({ id, name })), [{ id: 'public_2', name: 'Renamed savings' }]);
   assert.equal(f.writes.length, 3);
@@ -126,8 +132,8 @@ test('write failure quarantines public mutations until the persisted snapshot is
 
 test('simultaneous mutations cannot race their compare-and-set or admit a stale rename', async () => {
   const gate = deferred<void>();
-  let writes = 0;
-  const model = new WatchAccounts({ load: async () => [account], compareAndSet: async () => { writes++; await gate.promise; } });
+  const f = storage([account], () => gate.promise);
+  const model = f.model;
   await model.load();
   const rename = model.change({ kind: 'rename', id: account.id, name: 'New name' });
   assert.equal(model.getSnapshot().busy, true);
@@ -135,8 +141,27 @@ test('simultaneous mutations cannot race their compare-and-set or admit a stale 
   await assert.rejects(model.load(), /still saving/);
   gate.resolve();
   await rename;
-  assert.equal(writes, 1);
+  assert.equal(f.writes.length, 1);
   assert.equal(model.getSnapshot().accounts[0]!.name, 'New name');
+});
+
+test('adding, renaming and reopening a public account key retains its canonical source record', async () => {
+  const f = storage();
+  await f.model.load();
+  await f.model.change({ kind: 'add', id: 'public_key', name: '  Bitcoin account  ', address: XPUB, network: 'bitcoin' });
+  const source = f.records[1] as Extract<StoredWatchAccount, { kind: 'utxo-public' }>;
+  assert.equal(source.kind, 'utxo-public');
+  assert.equal(source.identifier, KEY);
+  assert.equal(source.networkId, 'bitcoin');
+  assert.ok(f.saved[1]!.addresses.bitcoin);
+  assert.ok(!JSON.stringify(f.saved).includes(KEY));
+  await f.model.change({ kind: 'rename', id: source.id, name: '  Cold wallet  ' });
+  assert.deepEqual(f.records[1], { ...source, name: 'Cold wallet' });
+  const reopened = new WatchAccounts(f.repository.records);
+  await reopened.load();
+  assert.equal(reopened.getSnapshot().accounts[1]!.name, 'Cold wallet');
+  await reopened.change({ kind: 'remove', id: account.id });
+  assert.deepEqual(f.records, [{ ...source, name: 'Cold wallet' }]);
 });
 
 test('watch lifecycle revocation aborts balances and late completions cannot restore a visible account or signing', async () => {

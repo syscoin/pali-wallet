@@ -8,6 +8,7 @@ import ts from 'typescript';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 
@@ -30,7 +31,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
   }).code : ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true,
   } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, console, setTimeout, clearTimeout,
+  runInNewContext(code, { module, exports: module.exports, console, setTimeout, clearTimeout, AbortController,
     require(name: string) { assert.ok(Object.hasOwn(dependencies, name), `Unexpected import: ${name}`); return dependencies[name]; },
   });
   return module.exports;
@@ -204,7 +205,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const source = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
     react: render.api, 'react-native': native, '../ui': ui,
-    '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoNetworks': { getUtxoNetwork },
+    '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
@@ -218,7 +219,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
-    './src/platform': { loadPublicAccounts: async () => [], compareAndSetPublicAccounts: async () => {},
+    './src/platform': { publicAccountRecords: { load: async () => ({ version: 1, records: [], accounts: [] }), compareAndSet: async () => ({ version: 1, records: [], accounts: [] }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },
   });
   let exited = 0;
@@ -232,7 +233,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   await new Promise<void>((resolve) => setImmediate(resolve));
   parentTree = render.render(parent, parentComponent, parentProps); render.flush(parent);
   if (path === 'app') (get(parentTree, (element) => element.type === onboarding.Welcome).props.onWatch as () => void)();
-  else press(get(parentTree, (element) => element.props.title === 'Watch an address'));
+  else press(get(parentTree, (element) => element.props.title === 'Watch an account'));
   parentTree = render.render(parent, parentComponent, parentProps);
   const nested = get(parentTree, (element) => element.type === AddWatch);
   let finish: (error: Error) => void = () => assert.fail('No pending save');
@@ -261,8 +262,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const review = () => {
     press(control(childTree, 'Bitcoin')); update();
     (control(childTree, 'Account name').props.onChangeText as (text: string) => void)('Public BTC');
-    (control(childTree, 'Public Bitcoin address').props.onChangeText as (text: string) => void)('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
-    update(); press(named(childTree, 'Review address')); update();
+    (control(childTree, 'Public address, account key or descriptor').props.onChangeText as (text: string) => void)('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+    update(); press(named(childTree, 'Review account')); update();
     assert.ok(find(childTree, (element) => element.children.includes('Check your watch account')));
   };
   return { back, review, update, isOpen, tree: () => childTree, saves: () => saves, finish: () => finish(new Error('Synthetic save failure')), exited: () => exited,
@@ -278,8 +279,8 @@ for (const path of ['app', 'accounts'] as const) {
         screen.review(); screen.back.dispatch(); const edited = screen.update();
         assert.equal(screen.isOpen(), true, 'Hardware Back must keep the add form open at review');
         assert.equal(control(edited, 'Account name').props.value, 'Public BTC');
-        assert.equal(control(edited, 'Public Bitcoin address').props.value, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
-        assert.ok(find(edited, (element) => element.children.includes('Watch an address')));
+        assert.equal(control(edited, 'Public address, account key or descriptor').props.value, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+        assert.ok(find(edited, (element) => element.children.includes('Watch an account')));
         screen.back.dispatch(); assert.equal(screen.isOpen(), false, 'Second Back cancels the editable form');
         assert.equal(screen.exited(), 0, 'Accounts itself must remain open'); assert.equal(screen.back.defaults(), 0);
       } finally { screen.dispose(); }
@@ -300,7 +301,7 @@ for (const path of ['app', 'accounts'] as const) {
         assert.equal(screen.saves(), 1); assert.equal(screen.back.defaults(), 0);
         screen.finish(); await new Promise<void>((resolve) => setImmediate(resolve)); screen.update();
         screen.back.dispatch(); const edited = screen.update(); assert.equal(screen.isOpen(), true);
-        assert.ok(find(edited, (element) => element.children.includes('Watch an address')));
+        assert.ok(find(edited, (element) => element.children.includes('Watch an account')));
         screen.back.dispatch(); assert.equal(screen.isOpen(), false);
       } finally { screen.dispose(); }
     });

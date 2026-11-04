@@ -26,7 +26,7 @@ async function openImport(page: Page) {
 async function preview(page: Page, key = KEY, name = NAME) {
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(name);
   await page.getByRole('textbox', { name: 'EVM private key', exact: true }).fill(key);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
 }
 async function submit(page: Page, password = 'public-password') {
   await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
@@ -159,10 +159,10 @@ test('imported removal requires its own backup warning and reimport creates a ne
 test('a shared-address watch remains public and separate from its imported key account', async ({ page }) => {
   await openWallet(page); await openImport(page); await preview(page); await submit(page); await imported(page);
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
+  await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Imported address watch');
   await page.getByRole('textbox', { name: 'Public EVM address', exact: true }).fill(ADDRESS);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByText('Imported address watch · Watch-only', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Receive', exact: true })).toBeVisible();
@@ -184,7 +184,7 @@ test('leaving a review and opening a new import clears every entered secret and 
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'EVM private key', exact: true })).toHaveValue('');
   await expect(page.getByRole('textbox', { name: 'Account name', exact: true })).toHaveValue('');
-  await expect(page.getByRole('button', { name: 'Review address', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Review account', exact: true })).toBeDisabled();
   expect(await page.content()).not.toContain('not-submitted-password');
   expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(0);
 });

@@ -56,8 +56,7 @@ import type {
   NetworkId,
 } from './src/core/types';
 import {
-  loadPublicAccounts,
-  compareAndSetPublicAccounts,
+  publicAccountRecords,
   loadAccountSelection,
   saveAccountSelection,
   balanceReader,
@@ -195,7 +194,7 @@ type Route =
 type Sheet = 'send' | 'receive' | 'filter' | 'accounts';
 type AppProps = { availableWatchNetworks?: readonly WatchAccountNetwork[] };
 function AppContent({ availableWatchNetworks }: AppProps) {
-  const [watchAccounts] = useState(() => new WatchAccounts({ load: loadPublicAccounts, compareAndSet: compareAndSetPublicAccounts }));
+  const [watchAccounts] = useState(() => new WatchAccounts(publicAccountRecords));
   const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [requestedHdId, setRequestedHdId] = useState<string | undefined>();
@@ -247,6 +246,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const authority = useRef<WatchOnlyAuthority | null>(null);
   const addingAccount = useRef(false);
   const removeListener = useRef<(() => void) | null>(null);
+  const openingWatch = useRef<AbortController | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const navigationGeneration = useRef(0);
   const lifecycleGeneration = useRef(0);
@@ -282,10 +282,14 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(''), 2800);
   };
-  const connect = (accounts: readonly PublicAccount[]) => {
+  const connect = async (accounts: readonly PublicAccount[]) => {
+    openingWatch.current?.abort();
+    const opening = new AbortController(); openingWatch.current = opening;
     removeListener.current?.();
     authority.current?.lock();
-    const next = new WatchOnlyAuthority(accounts, balanceReader);
+    const next = await WatchOnlyAuthority.openRecords({ repository: publicAccountRecords, reader: balanceReader, signal: opening.signal });
+    if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error('Saved watch accounts changed. Reopen them.');
+    openingWatch.current = null;
     authority.current = next; setWatchAuthority(next);
     setSnapshot(next.getSnapshot());
     removeListener.current = next.subscribe(setSnapshot);
@@ -301,7 +305,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       try {
         const next = await watchAccounts.load().then(() => watchAccounts.getSnapshot());
         if (!active) return;
-        connect(next.accounts);
+        await connect(next.accounts);
+        if (!active) return;
         try {
           const saved = await loadAccountSelection();
           if (!active) return;
@@ -317,7 +322,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       finally { if (active) setLoading(false); }
     })();
     return () => {
-      active = false; removeListener.current?.(); authority.current?.lock();
+      active = false; openingWatch.current?.abort(); removeListener.current?.(); authority.current?.lock();
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
   }, [watchAccounts]);
@@ -414,7 +419,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
       if (watchAccounts.getSnapshot().status === 'unavailable') setStartupError('The watch account change could not be verified. Reopen your saved accounts before continuing. Nothing has been replaced.');
       throw cause;
     }
-    const next = connect(accounts);
+    const next = await connect(accounts);
     if (lastSelection.current?.kind === 'watch' && !accounts.some((entry) => entry.id === lastSelection.current?.id))
       rememberSelection(accounts[0] ? { kind: 'watch', id: accounts[0].id } : null);
     if (wasReady && accounts.length && foreground.current && navigation === navigationGeneration.current && lifecycle === lifecycleGeneration.current) {
