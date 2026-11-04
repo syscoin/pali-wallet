@@ -149,11 +149,11 @@ test('feed failure remains retryable, and detail/back works while receipts are i
     .click();
   await expect(
     page
-      .getByRole('button', { name: /Ethereum activity, Checking transaction/ })
+      .getByRole('button', { name: /Network activity, Checking transaction/ })
       .first()
   ).toBeVisible();
   await page
-    .getByRole('button', { name: /Ethereum activity, Checking transaction/ })
+    .getByRole('button', { name: /Network activity, Checking transaction/ })
     .first()
     .click();
   await expect(

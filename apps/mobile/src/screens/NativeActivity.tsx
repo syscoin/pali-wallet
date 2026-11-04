@@ -22,6 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type {
   ActivityRow,
@@ -52,24 +53,10 @@ function direction(
   owner: string
 ): 'sent' | 'received' | 'self' | 'unknown' {
   if (row.local)
-    return row.local.recipient.toLowerCase() === owner.toLowerCase()
-      ? 'self'
-      : 'sent';
+    return getEvmHistoryDirection({ from: owner, to: row.local.recipient }, owner);
   const tx = row.observation;
   if (!tx) return 'unknown';
-  const incoming =
-    tx.to?.toLowerCase() === owner.toLowerCase() ||
-    tx.events.some((event) => event.to.toLowerCase() === owner.toLowerCase());
-  const outgoing =
-    tx.from.toLowerCase() === owner.toLowerCase() ||
-    tx.events.some((event) => event.from.toLowerCase() === owner.toLowerCase());
-  return incoming && outgoing
-    ? 'self'
-    : outgoing
-    ? 'sent'
-    : incoming
-    ? 'received'
-    : 'unknown';
+  return getEvmHistoryDirection(tx, owner, tx.events);
 }
 function zeroOnly(row: ActivityRow) {
   return (

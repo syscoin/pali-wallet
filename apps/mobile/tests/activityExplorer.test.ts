@@ -26,10 +26,10 @@ test('shared account URL preserves configured query identity and extension defau
 
 test('candidate codec preserves exact hash/block identity while discarding untrusted transaction facts', () => {
   const [candidate] = decodeActivityPage(envelope([row({ hash: hash(10).toUpperCase().replace('0X', '0x'), value: '999',
-    isError: '0', confirmations: '999999', tokenSymbol: 'FAKE', input: '0xabcdef' })]), 'tokentx', OWNER);
+    isError: '0', confirmations: '999999', tokenSymbol: 'FAKE', input: '0xabcdef' })]), 'tokentx', OWNER, 1);
   assert.deepEqual(candidate, { hash: hash(10), blockNumber: '123', timestamp: 1700000000000, tokenHint: true });
   assert.equal(Object.isFrozen(candidate), true);
-  assert.deepEqual(decodeActivityPage({ status: '0', message: 'No transactions found', result: [] }, 'txlist', OWNER), []);
+  assert.deepEqual(decodeActivityPage({ status: '0', message: 'No transactions found', result: [] }, 'txlist', OWNER, 1), []);
 });
 
 test('candidate codec rejects malformed status, unrelated owners, inexact integers and excessive rows', () => {
@@ -40,12 +40,12 @@ test('candidate codec rejects malformed status, unrelated owners, inexact intege
     envelope([row({ blockNumber: '01' })]), envelope([row({ blockNumber: '-1' })]), envelope([row({ blockNumber: '9'.repeat(79) })]),
     envelope(Array.from({ length: ACTIVITY_PAGE_SIZE + 1 }, () => row())),
   ];
-  for (const value of invalid) assert.throws(() => decodeActivityPage(value, 'txlist', OWNER), { code: 'INVALID' });
+  for (const value of invalid) assert.throws(() => decodeActivityPage(value, 'txlist', OWNER, 1), { code: 'INVALID' });
 });
 
 test('invalid and implausibly future explorer timestamps stay unknown instead of becoming now', () => {
   for (const timeStamp of [undefined, 'bad', '-1', '01', '999999999999']) {
-    assert.equal(decodeActivityPage(envelope([row({ timeStamp })]), 'txlist', OWNER)[0]?.timestamp, null);
+    assert.equal(decodeActivityPage(envelope([row({ timeStamp })]), 'txlist', OWNER, 1)[0]?.timestamp, null);
   }
 });
 
@@ -88,6 +88,16 @@ test('reader pins API path, account, page size and sampled end block without exp
     return new Response(JSON.stringify(envelope()));
   });
   assert.equal((await reader.page(scope, 'tokentx', 2, '256', signal(), () => undefined))[0]?.tokenHint, true);
+});
+
+test('Activity uses the shared Routescan key-header transport without putting its key in the URL', async () => {
+  const keyedScope = { ...scope, apiUrl: `${scope.apiUrl}?apikey=fixture-only-key` };
+  const reader = new ActivityExplorerReader(async (url, init) => {
+    assert.equal(new URL(url).searchParams.has('apikey'), false);
+    assert.equal(new Headers(init.headers).get('apikey'), 'fixture-only-key');
+    return new Response(JSON.stringify(envelope()));
+  });
+  assert.equal((await reader.page(keyedScope, 'txlist', 1, '256', signal(), () => undefined)).length, 1);
 });
 
 test('invalid pages and end blocks reject before requesting an address', async () => {

@@ -5,9 +5,13 @@ import flatMap from 'lodash/flatMap';
 import isEmpty from 'lodash/isEmpty';
 import range from 'lodash/range';
 
+import {
+  belongsToEvmHistoryAccount,
+  getEvmHistoryDirection,
+  selectEvmHistoryRepresentatives,
+} from '../../../../shared/evmHistory';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
-import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import { ISysTransaction, IEvmTransactionResponse } from './types';
 
@@ -230,144 +234,7 @@ export const findUserTxsInProviderByBlocksRange = async (
 export const treatAndSortTransactions = (
   transactions: UnifiedTransaction[],
   limit = 30
-): UnifiedTransaction[] => {
-  // Single pass: Group transactions by their ID and keep the best version
-  const txMap = new Map<string, UnifiedTransaction>();
-
-  for (const tx of transactions) {
-    // For EVM transactions, nonce is only unique per sender. Include `from`
-    // so inbound and outbound txs with the same nonce do not collapse together.
-    // For UTXO or transactions without a sender nonce, use hash/txid.
-    let id: string;
-    if (
-      'nonce' in tx &&
-      typeof tx.nonce === 'number' &&
-      'from' in tx &&
-      tx.from
-    ) {
-      id = `${tx.from.toLowerCase()}:${tx.nonce}`;
-    } else {
-      id = ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
-    }
-
-    // Normal deduplication by hash
-    const existing = txMap.get(id);
-    const sameTransaction =
-      existing &&
-      ('hash' in existing ? existing.hash : existing.txid).toLowerCase() ===
-        ('hash' in tx ? tx.hash : tx.txid).toLowerCase();
-
-    // Two mined rows under the same id with different block hashes mean a
-    // reorg moved the transaction; the later-observed row (provider rows are
-    // merged after vault rows) carries the canonical placement and must win
-    // even though a later block height yields fewer confirmations.
-    const isReorgReplacement = Boolean(
-      existing &&
-        isTransactionInBlock(existing) &&
-        isTransactionInBlock(tx) &&
-        (existing as any).blockHash &&
-        (tx as any).blockHash &&
-        String((existing as any).blockHash).toLowerCase() !==
-          String((tx as any).blockHash).toLowerCase()
-    );
-
-    // Update if: no existing tx, more confirmations, reorg replacement, or
-    // transaction just got into a block
-    const shouldUpdate =
-      !existing ||
-      tx.confirmations > existing.confirmations ||
-      isReorgReplacement ||
-      (existing && !isTransactionInBlock(existing) && isTransactionInBlock(tx));
-
-    if (shouldUpdate) {
-      // If this is a new tx or has better status, it becomes our candidate
-      const mergedTx = existing ? { ...tx } : tx;
-
-      // Timestamps belong to a hash, not the nonce shared by its replacements.
-      if (existing && sameTransaction) {
-        const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
-        const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
-
-        if (
-          existing[TSTAMP_PROP] &&
-          (!mergedTx[TSTAMP_PROP] ||
-            existing[TSTAMP_PROP] < mergedTx[TSTAMP_PROP])
-        ) {
-          (mergedTx as any)[TSTAMP_PROP] = existing[TSTAMP_PROP];
-        }
-
-        if (
-          existing[BLOCKTIME_PROP] &&
-          (!mergedTx[BLOCKTIME_PROP] ||
-            existing[BLOCKTIME_PROP] < mergedTx[BLOCKTIME_PROP])
-        ) {
-          (mergedTx as any)[BLOCKTIME_PROP] = existing[BLOCKTIME_PROP];
-        }
-      }
-
-      txMap.set(id, mergedTx);
-    } else if (existing) {
-      // The existing tx has same or more confirmations, but enrich it with
-      // authoritative explorer metadata and earlier timestamps. Older vault
-      // rows may predate the source/type fields used for EOA nonce filtering.
-      const TSTAMP_PROP = 'timestamp' as keyof UnifiedTransaction;
-      const BLOCKTIME_PROP = 'blockTime' as keyof UnifiedTransaction;
-
-      let updated = false;
-      const mergedTx = { ...existing };
-
-      for (const metadataProperty of ['historySource', 'type', 'r', 's', 'v']) {
-        if (
-          (tx as any)[metadataProperty] !== undefined &&
-          (tx as any)[metadataProperty] !== (existing as any)[metadataProperty]
-        ) {
-          (mergedTx as any)[metadataProperty] = (tx as any)[metadataProperty];
-          updated = true;
-        }
-      }
-
-      if (
-        sameTransaction &&
-        tx[TSTAMP_PROP] &&
-        (!existing[TSTAMP_PROP] || tx[TSTAMP_PROP] < existing[TSTAMP_PROP])
-      ) {
-        (mergedTx as any)[TSTAMP_PROP] = tx[TSTAMP_PROP];
-        updated = true;
-      }
-
-      if (
-        sameTransaction &&
-        tx[BLOCKTIME_PROP] &&
-        (!existing[BLOCKTIME_PROP] ||
-          tx[BLOCKTIME_PROP] < existing[BLOCKTIME_PROP])
-      ) {
-        (mergedTx as any)[BLOCKTIME_PROP] = tx[BLOCKTIME_PROP];
-        updated = true;
-      }
-
-      if (updated) {
-        txMap.set(id, mergedTx);
-      }
-    }
-  }
-
-  // Convert to array and sort
-  const deduplicatedTxs = Array.from(txMap.values());
-
-  // Sort by confirmations ascending (pending first), then by timestamp descending
-  deduplicatedTxs.sort((a, b) => {
-    if (a.confirmations !== b.confirmations) {
-      return a.confirmations - b.confirmations; // pending (0) first
-    }
-    // If confirmations are equal, sort by timestamp descending
-    const aTime = (a as any).timestamp || (a as any).blockTime || 0;
-    const bTime = (b as any).timestamp || (b as any).blockTime || 0;
-    return bTime - aTime;
-  });
-
-  // Return limited array
-  return deduplicatedTxs.slice(0, limit);
-};
+): UnifiedTransaction[] => selectEvmHistoryRepresentatives(transactions, limit);
 
 export const validateAndManageUserTransactions = (
   providerTxs: IEvmTransactionResponse[]
@@ -412,39 +279,11 @@ export const validateAndManageUserTransactions = (
   const userAddress = account.address.toLowerCase();
 
   const filteredTxs = providerTxs
-    .filter((tx: any) => {
-      const fromAddr = tx.from?.toLowerCase();
-      const toCandidate = (tx.tokenRecipient || tx.to)?.toLowerCase();
-      // ERC-4337 executions: the outer transaction is gasPayer -> EntryPoint,
-      // but it belongs to the smart account recorded as the execution sender.
-      const smartAccountFrom = tx.smartAccountExecutionFrom?.toLowerCase?.();
-      return (
-        (fromAddr === userAddress ||
-          toCandidate === userAddress ||
-          smartAccountFrom === userAddress) &&
-        // Include valid transactions: either pending (missing block info) or confirmed (has both)
-        (!tx.blockHash || !tx.blockNumber || (tx.blockHash && tx.blockNumber))
-      );
-    })
-    .map((tx: any) => {
-      // Add direction field to transaction using tokenRecipient when present
-      const fromAddress = tx.from?.toLowerCase();
-      const toCandidate = (tx.tokenRecipient || tx.to)?.toLowerCase();
-
-      let direction = 'unknown';
-      if (fromAddress === userAddress && toCandidate !== userAddress) {
-        direction = 'sent';
-      } else if (fromAddress !== userAddress && toCandidate === userAddress) {
-        direction = 'received';
-      } else if (fromAddress === userAddress && toCandidate === userAddress) {
-        direction = 'self';
-      }
-
-      return {
-        ...tx,
-        direction,
-      };
-    });
+    .filter((tx: any) => belongsToEvmHistoryAccount(tx, userAddress))
+    .map((tx: any) => ({
+      ...tx,
+      direction: getEvmHistoryDirection(tx, userAddress),
+    }));
 
   // Always use Ethereum for EVM
   const transactionType = TransactionsType.Ethereum;
