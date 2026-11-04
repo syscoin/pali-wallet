@@ -12,14 +12,25 @@ import { snapshotPrivateVaultBundle, parsePrivateVaultBundle } from '../../../so
 const PROFILE = `0x${'a'.repeat(64)}`;
 const envelope = (domain: string, n: string) => ({ version: 1, domain, recordId: `00000000-0000-4000-8000-00000000000${n}`, profileId: PROFILE, nonce: 'A'.repeat(16), ciphertext: 'A'.repeat(24) });
 const bundle = () => ({ format: 'pali-private-note-vault', version: 1, root: envelope('org.syscoin.pali.privacy.notes.v1', '1'), shards: [envelope('org.syscoin.pali.privacy.notes.shard.v2', '2')] });
-async function fixture() {
+async function fixture(observe?: (rows: readonly unknown[]) => void) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-note-domain-'));
-  const file = path.join(directory, 'wallet.sqlite'); let owned = nodeConnection(file);
+  const file = path.join(directory, 'wallet.sqlite');
+  const connect = () => {
+    const owned = nodeConnection(file);
+    const read = owned.connection.getAllAsync.bind(owned.connection);
+    owned.connection.getAllAsync = async <T>(sql: string, parameters?: readonly (string | number | null)[]) => {
+      const rows = await read<T>(sql, parameters);
+      if (sql.includes('FROM private_note_records')) observe?.(rows);
+      return rows;
+    };
+    return owned;
+  };
+  let owned = connect();
   let storage = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, true);
   await storage.keyringStorage.createManyIfAbsent(validPair()); const binding = await storage.getWalletFingerprint();
   return { file, get storage() { return storage; }, get db() { return owned.database; }, binding,
     insert(value = JSON.stringify(bundle()), profile = PROFILE, wallet = binding) { owned.database.prepare('INSERT INTO private_note_records VALUES (?, ?, ?)').run(profile, wallet, value); },
-    async reopen() { await storage.close(); owned = nodeConnection(file); storage = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, false); },
+    async reopen() { await storage.close(); owned = connect(); storage = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, false); },
     async close() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); } };
 }
 test('schema1 migration preserves all existing bytes; schema2 refuses the exact old-reader predicate', async () => {
@@ -96,4 +107,33 @@ for (const phase of ['before-create', 'after-commit'] as const) test(`schema mig
     await f.reopen(); assert.deepEqual(f.db.prepare('SELECT * FROM keyring_records ORDER BY key').all(), before);
     assert.equal(f.db.prepare('PRAGMA user_version').get()!.user_version, 2);
   } finally { await connection?.connection.closeAsync(); await f.close(); }
+});
+
+
+for (const method of ['notes', 'snapshot'] as const) test(`multiple note rows transfer zero ciphertext bytes through ${method} connection results`, async () => {
+  const returned: unknown[][] = [];
+  const f = await fixture((rows) => returned.push([...rows]));
+  try {
+    for (const digit of ['a', 'b', 'c']) f.insert('x'.repeat(1024 * 1024), `0x${digit.repeat(64)}`);
+    const before = f.db.prepare('SELECT * FROM private_note_records ORDER BY profile_id').all(); returned.length = 0;
+    await assert.rejects(method === 'notes' ? f.storage.notes.read() : f.storage.recovery.readSnapshot(), { code: 'STORAGE_CORRUPT' });
+    assert.equal(returned.length, 1, 'one actual SQLite SELECT reaches the connection boundary');
+    const rows = returned[0]! as { source: string; value: unknown }[];
+    assert.equal(rows.filter((row) => row.source === 'note').length, method === 'notes' ? 2 : 3);
+    const bytes = rows.reduce((total, row) => total + (row.source === 'note' && typeof row.value === 'string' ? Buffer.byteLength(row.value, 'utf8') : 0), 0);
+    assert.equal(bytes, 0, 'SQL must reject cardinality before returning any note ciphertext');
+    assert.deepEqual(f.db.prepare('SELECT * FROM private_note_records ORDER BY profile_id').all(), before);
+  } finally { await f.close(); }
+});
+
+test('single valid note row still returns its exact bytes through both connection reads', async () => {
+  const returned: unknown[][] = [];
+  const f = await fixture((rows) => returned.push([...rows]));
+  try {
+    const value = JSON.stringify(bundle()); f.insert(value); returned.length = 0;
+    assert.equal((await f.storage.notes.read())[0]!.value, value);
+    assert.equal((await f.storage.recovery.readSnapshot()).notes[0]!.value, value);
+    assert.equal(returned.length, 2);
+    for (const rows of returned) assert.deepEqual((rows as { source: string; value: unknown }[]).filter((row) => row.source === 'note').map((row) => row.value), [value]);
+  } finally { await f.close(); }
 });

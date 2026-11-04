@@ -689,11 +689,13 @@ test('a changed note row after proof invalidates the whole replacement CAS', asy
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
 
-test('shared actualSDK inspector accepts the512-note boundary and returns no authority for a513th note', async () => {
+test('shared actualSDK inspector accepts512unique notes and rejects a duplicated shard identity', async () => {
   const data = await noteBundle(512);
   try {
     const session = { keyring: data.keyring, generation: 1, assertCurrent() {} };
     const result = await readPrivateVaultBundle(data.bundle, session); assert.equal(result.manifest.notes.length, 512); assert.equal(result.capacity, 512);
+    assert.equal(new Set(result.manifest.notes.map((note) => note.id)).size, 512);
+    assert.equal(new Set(result.manifest.notes.map((note) => note.note)).size, 512);
     const forged = { ...data.bundle, shards: [...data.bundle.shards, data.bundle.shards[0]!] };
     await assert.rejects(readPrivateVaultBundle(forged, session));
   } finally { await data.keyring.lockWallet(); }
@@ -719,4 +721,25 @@ test('wrong valid phrase with retained notes counts one failure and leaves every
     assert.deepEqual(f.read().notes, before.notes); assert.deepEqual(f.read().records, before.records);
     assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 1);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
+});
+
+
+test('shared actualSDK inspector rejects an authenticated bundle containing513unique notes', async () => {
+  const data = await noteBundle(513);
+  try {
+    const rootBytes = await data.keyring.decryptPrivateRecord({ domain: data.bundle.root.domain, recordId: data.bundle.root.recordId, envelope: data.bundle.root });
+    const root = JSON.parse(new TextDecoder().decode(rootBytes)); rootBytes.fill(0);
+    assert.equal(root.noteCount, 513); assert.equal(root.capacity, 512); assert.equal(root.shards.length, 33);
+    const ids = new Set<string>(), notes = new Set<string>();
+    assert.equal(new Set(data.bundle.shards.map((shard) => shard.recordId)).size, 33);
+    for (const [index, shard] of data.bundle.shards.entries()) {
+      assert.equal(root.shards[index].hash, envelopeHash(shard));
+      const bytes = await data.keyring.decryptPrivateRecord({ domain: shard.domain, recordId: shard.recordId, envelope: shard });
+      const plain = JSON.parse(new TextDecoder().decode(bytes)); bytes.fill(0);
+      assert.equal(plain.notes.length, root.shards[index].count);
+      for (const note of plain.notes) { ids.add(note.id); notes.add(note.note); }
+    }
+    assert.equal(ids.size, 513); assert.equal(notes.size, 513);
+    await assert.rejects(readPrivateVaultBundle(data.bundle, { keyring: data.keyring, generation: 1, assertCurrent() {} }), { message: 'privacy_vault_corrupt' });
+  } finally { await data.keyring.lockWallet(); }
 });
