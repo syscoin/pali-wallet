@@ -161,6 +161,10 @@ function fixture(changes = {}) {
     JSON.parse(fs.readFileSync(path.join(app, 'Info.plist'), 'utf8'));
   const spawn = (command, args, config) => {
     calls.push({ command, args });
+    if (command === 'xcodebuild') {
+      assert.deepEqual(args, ['-version']);
+      return changes.xcodeResult || ok('Xcode 27.2\nBuild version 18C54\n');
+    }
     if (command === 'git')
       return ok(
         args.includes('rev-parse')
@@ -355,6 +359,123 @@ test('invalid CLI arguments are contained without echoing them or contacting a d
   assert.equal(result.stdout, '');
   assert.equal(result.stderr, 'INVALID_ARGUMENTS\n');
   assert(!result.stderr.includes('private-argument-example'));
+});
+test('physical runner accepts selected Xcode 27 or newer before artifact preparation', async () => {
+  for (const version of ['27', '27.0', '27.2', '28.1.2']) {
+    const f = fixture({
+      xcodeResult: {
+        status: 0,
+        stdout: `Xcode ${version}\r\nBuild version 18C54\r\n`,
+      },
+    });
+    try {
+      assert.equal((await run(f)).fixtureCustodyQualified, true);
+      assert.deepEqual(f.calls[0], {
+        command: 'xcodebuild',
+        args: ['-version'],
+      });
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+test('physical runner rejects Xcode 26 before inspecting artifacts or contacting a device', async () => {
+  const f = fixture({
+    reset: true,
+    xcodeResult: { status: 0, stdout: 'Xcode 26.6\nBuild version 17F42\n' },
+  });
+  try {
+    for (const app of Object.values(f.options.apps))
+      fs.rmSync(app, { recursive: true });
+    await assert.rejects(run(f), { code: 'XCODE_27_REQUIRED' });
+    assert.deepEqual(f.calls, [{ command: 'xcodebuild', args: ['-version'] }]);
+    assert.equal(fs.existsSync(f.options.output), false);
+  } finally {
+    f.cleanup();
+  }
+});
+test('physical runner rejects missing or malformed selected Xcode versions before any work', async () => {
+  for (const xcodeResult of [
+    { status: 0 },
+    { status: 0, stdout: '' },
+    { status: 0, stdout: 'Xcode 27.2\n' },
+    { status: 0, stdout: 'Xcode 027.2\nBuild version 18C54\n' },
+    { status: 0, stdout: 'Xcode 27.2.0.1\nBuild version 18C54\n' },
+    { status: 0, stdout: 'Xcode 27.2\nBuild version ../private\n' },
+    { status: 0, stdout: 'Xcode 27.2\nBuild version 18C54\nextra' },
+    { status: 0, stdout: 'x'.repeat(1024) },
+    { status: 127, stderr: 'private command details' },
+    { status: null, error: { code: 'ENOENT' } },
+  ]) {
+    const f = fixture({ xcodeResult });
+    try {
+      for (const app of Object.values(f.options.apps))
+        fs.rmSync(app, { recursive: true });
+      await assert.rejects(run(f), { code: 'XCODE_27_REQUIRED' });
+      assert.deepEqual(f.calls, [
+        { command: 'xcodebuild', args: ['-version'] },
+      ]);
+      assert.equal(fs.existsSync(f.options.output), false);
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+test('physical runner CLI gives fixed Xcode selection guidance without raw diagnostics', () => {
+  const f = fixture();
+  try {
+    const preload = path.join(
+      path.dirname(f.options.output),
+      'xcode-preload.cjs'
+    );
+    fs.writeFileSync(
+      preload,
+      `require('node:child_process').spawnSync = (command, args) => {
+      if (command !== 'xcodebuild' || args.join() !== '-version') throw Error('Unexpected command');
+      return { status: 0, stdout: 'Xcode 26.6\\nBuild version 17F42\\n', stderr: 'private diagnostics' };
+    };\n`
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--require',
+        preload,
+        require.resolve('./run-physical-ios.cjs'),
+        '--device',
+        DEVICE,
+        '--source-revision',
+        SOURCE,
+        '--import-app',
+        f.options.apps.import,
+        '--generate-app',
+        f.options.apps.generate,
+        '--import-cdhash',
+        f.options.cdhashes.import,
+        '--generate-cdhash',
+        f.options.cdhashes.generate,
+        '--output',
+        f.options.output,
+      ],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          NODE_NO_WARNINGS: '1',
+          CI: 'true',
+          PALI_NATIVE_QUALIFICATION: '1',
+        },
+      }
+    );
+    assert.equal(result.status, 1);
+    assert.equal(result.stdout, '');
+    assert.equal(
+      result.stderr,
+      'XCODE_27_REQUIRED: Physical iOS qualification requires Xcode 27 or newer. Select it with xcode-select or DEVELOPER_DIR, then retry.\n'
+    );
+    assert.equal(fs.existsSync(f.options.output), false);
+  } finally {
+    f.cleanup();
+  }
 });
 test('device gate refuses simulators, unpaired, disconnected and ambiguous identities', () => {
   assert.equal(

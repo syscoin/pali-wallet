@@ -123,6 +123,15 @@ HD-account and offline ERC20 journal/retry checks described above. It does not
 qualify the normal app's UI, Activity, physical privacy behavior, or live-network
 transactions.
 
+The physical runner requires the selected **Xcode 27 or newer** toolchain for
+`devicectl --json-output -` support. Check `xcodebuild -version` before preparing
+the signed fixtures; select the intended Xcode with `xcode-select` or
+`DEVELOPER_DIR`. The runner checks that version before reading or copying apps,
+creating evidence, or contacting a device. Missing, older, or unrecognized
+version output stops with `XCODE_27_REQUIRED` and selection guidance.
+This minimum applies only to the physical runner. The separate iOS Simulator
+workflow and its Xcode 26.6 selection are unchanged.
+
 The two fixed physical fixture identities are:
 
 - Import: `com.paliwallet.qualification.physical.import`

@@ -24,6 +24,8 @@ const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
 const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024;
 const MAX_ARTIFACT_FILE_BYTES = 256 * 1024 * 1024;
 const MAX_ARTIFACT_ENTRIES = 20000;
+const XCODE_REQUIREMENT =
+  'Physical iOS qualification requires Xcode 27 or newer. Select it with xcode-select or DEVELOPER_DIR, then retry.';
 function plain(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -216,6 +218,23 @@ function executor(spawn) {
     }
     return result;
   };
+}
+
+function requirePhysicalXcode(execute) {
+  let output;
+  try {
+    output = execute('xcodebuild', ['-version']).stdout;
+  } catch {
+    return fail('XCODE_27_REQUIRED');
+  }
+  if (typeof output !== 'string' || Buffer.byteLength(output) > 256)
+    fail('XCODE_27_REQUIRED');
+  const version =
+    /^Xcode ([1-9][0-9]{0,2})(?:\.(?:0|[1-9][0-9]{0,2})){0,2}\r?\nBuild version [A-Za-z0-9]{1,32}(?:\r?\n)?$/.exec(
+      output
+    );
+  if (!version || version[0] !== output || Number(version[1]) < 27)
+    fail('XCODE_27_REQUIRED');
 }
 
 function deviceSelection(document, requested) {
@@ -665,6 +684,9 @@ async function runPhysical(options, dependencies = {}) {
     process.env.PALI_NATIVE_QUALIFICATION !== '1'
   )
     fail('EXPLICIT_QUALIFICATION_REQUIRED');
+  // stdout JSON from devicectl requires the selected Xcode 27+ toolchain.
+  // Reject it before reading/copying artifacts or contacting any device.
+  requirePhysicalXcode(execute);
   if (
     execute('git', ['-C', repository, 'rev-parse', 'HEAD']).stdout.trim() !==
       options.sourceRevision ||
@@ -920,7 +942,9 @@ if (require.main === module) {
     .then(() => console.log('Physical iPhone fixture qualification passed.'))
     .catch((error) => {
       console.error(
-        /^[A-Z0-9_]+$/.test(error.code || '')
+        error.code === 'XCODE_27_REQUIRED'
+          ? `XCODE_27_REQUIRED: ${XCODE_REQUIREMENT}`
+          : /^[A-Z0-9_]+$/.test(error.code || '')
           ? error.code
           : 'PHYSICAL_QUALIFICATION_FAILED'
       );
