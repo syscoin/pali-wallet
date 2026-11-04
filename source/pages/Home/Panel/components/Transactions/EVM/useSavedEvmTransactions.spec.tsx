@@ -46,6 +46,7 @@ beforeEach(() => mockEmitter.mockReset());
 test('local projection retains exact money, null creation target and a call hint without fabricating calldata or receipts', () => {
   const result: any = savedTransactionHistoryRow(row('1') as any);
   expect(result.value).toBe('9007199254740993000000001');
+  expect(result.historySource).toBe('local-signed');
   expect(result.to).toBeNull();
   expect(result.dataBytes).toBe(10000);
   expect(result.input).toBeUndefined();
