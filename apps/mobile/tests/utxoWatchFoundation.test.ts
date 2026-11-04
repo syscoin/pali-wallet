@@ -36,7 +36,7 @@ function responses(network: UtxoNetworkId, values?: unknown[]) {
   } };
 }
 
-test('fixed UTXO definitions retain coin, genesis, SLIP and valid zero identity without enabling UI', () => {
+test('fixed UTXO watch definitions retain coin, genesis, SLIP and valid zero identity', () => {
   assert.equal(UTXO_NETWORKS.length, 2);
   assert.deepEqual(UTXO_NETWORKS.map((n) => [n.id, n.chainId, n.slip44, n.addressHrp]), [
     ['syscoin', 57, 57, 'sys'], ['bitcoin', 0, 0, 'bc'],
@@ -48,7 +48,7 @@ test('fixed UTXO definitions retain coin, genesis, SLIP and valid zero identity 
   assert.equal(Object.isFrozen(UTXO_NETWORKS), true);
   for (const network of UTXO_NETWORKS) {
     assert.equal(Object.isFrozen(network), true);
-    assert.equal(getNetwork(network.id).canWatch, false);
+    assert.equal(getNetwork(network.id).canWatch, true);
   }
   for (const id of ['ethereum', 'syscoin-nevm', '0', 0, {}, null])
     assert.throws(() => getUtxoNetwork(id as UtxoNetworkId));
@@ -99,7 +99,7 @@ for (const network of ['syscoin', 'bitcoin'] as const) {
     for (const { init } of fixture.calls) {
       assert.equal(init.method, 'GET'); assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
       assert.equal(init.cache, 'no-store'); assert.equal(init.referrerPolicy, 'no-referrer'); assert.equal(init.body, undefined);
-      assert.equal(init.signal?.aborted, false);
+      assert.equal(init.signal?.aborted, true);
     }
   });
 }

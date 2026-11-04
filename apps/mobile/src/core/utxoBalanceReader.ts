@@ -144,6 +144,7 @@ export function createUtxoBalanceReader(options: Readonly<{ fetch: FetchLike; ti
         if (cause instanceof ResponseSizeLimitError) return fail('RESPONSE_TOO_LARGE');
         return fail('UNAVAILABLE');
       } finally {
+        controller.abort();
         clearTimeout(timer);
         externalSignal.removeEventListener('abort', abort);
       }

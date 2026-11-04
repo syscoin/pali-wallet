@@ -10,7 +10,7 @@ export const NETWORKS: readonly WalletNetwork[] = Object.freeze([
     decimals: 8,
     kind: 'utxo',
     color: '#42B6E8',
-    canWatch: false,
+    canWatch: true,
   }),
   Object.freeze({
     id: 'bitcoin',
@@ -19,7 +19,7 @@ export const NETWORKS: readonly WalletNetwork[] = Object.freeze([
     decimals: 8,
     kind: 'utxo',
     color: '#F7931A',
-    canWatch: false,
+    canWatch: true,
   }),
   ...EVM_NETWORK_DEFINITIONS.map((definition) => Object.freeze({
     id: definition.id, name: definition.name, symbol: definition.network.currency.toUpperCase(), decimals: 18,
