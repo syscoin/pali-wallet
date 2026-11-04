@@ -86,14 +86,7 @@ export function NativeSend({
   );
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordReviewId, setPasswordReviewId] = useState(snapshot.review?.id);
   const [error, setError] = useState('');
-  if (passwordReviewId !== snapshot.review?.id) {
-    // Reset before React commits a replacement or expired review to the screen.
-    setPasswordReviewId(snapshot.review?.id);
-    setPassword('');
-  }
   const lifetime = useRef({ alive: true, epoch: 0 });
   const latestBack = useRef(onBack);
   useLayoutEffect(() => {
@@ -130,7 +123,6 @@ export function NativeSend({
   );
   const close = () => {
     lifetime.current.epoch++;
-    setPassword('');
     controller.cancel();
     Keyboard.dismiss();
     onBack();
@@ -166,23 +158,15 @@ export function NativeSend({
     void controller.recover().catch(() => undefined);
   }, [controller]);
   const submit = () => {
-    if (!review || !password || busy) return;
-    let entered = password;
-    setPassword('');
+    if (!review || busy) return;
     Keyboard.dismiss();
-    void run(async () => {
-      try {
-        await controller.confirm(review.id, entered);
-      } finally {
-        entered = '';
-      }
-    });
+    void run(() => controller.confirm(review.id));
   };
   const input = (
     label: string,
     value: string,
     change: (value: string) => void,
-    options: { secret?: boolean; decimal?: boolean; max?: number } = {}
+    options: { decimal?: boolean; max?: number } = {}
   ) => (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
@@ -197,7 +181,6 @@ export function NativeSend({
         autoComplete="off"
         importantForAutofill="noExcludeDescendants"
         textContentType="none"
-        secureTextEntry={options.secret}
         keyboardType={options.decimal ? 'decimal-pad' : 'default'}
         maxLength={options.max ?? 1024}
         placeholderTextColor={colors.muted}
@@ -222,7 +205,7 @@ export function NativeSend({
   const footer = review ? (
     <Button
       title={review.retry ? 'Confirm retry' : 'Confirm and send'}
-      disabled={busy || !password}
+      disabled={busy}
       onPress={submit}
       testID="native-send-confirm"
     />
@@ -336,9 +319,6 @@ export function NativeSend({
                   tone="amber"
                 />
               )}
-              {input('Confirm your wallet password', password, setPassword, {
-                secret: true,
-              })}
               <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
@@ -348,7 +328,6 @@ export function NativeSend({
                 variant="quiet"
                 disabled={busy}
                 onPress={() => {
-                  setPassword('');
                   controller.cancel();
                 }}
               />
@@ -421,7 +400,6 @@ export function NativeSend({
                   onPress={() => {
                     setRecipient('');
                     setAmount('');
-                    setPassword('');
                     setError('');
                     controller.cancel();
                   }}

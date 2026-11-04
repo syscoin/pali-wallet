@@ -292,7 +292,6 @@ export async function qualifyNativeNevmTransfer(
         maxFeePerGas: '3',
         maxPriorityFeePerGas: '1',
       },
-      password,
       guard
     );
     guard();

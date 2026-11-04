@@ -21,7 +21,8 @@ async function prepare(page: Page, amount = '2.5') {
   await page.getByLabel('Ethereum address', { exact: true }).fill(recipient);
   await page.getByLabel('Amount in FIX', { exact: true }).fill(amount);
   await page.getByTestId('native-send-review').click();
-  await expect(password(page)).toBeVisible();
+  await expect(page.getByTestId('native-send-confirm')).toBeVisible();
+  await expect(password(page)).toHaveCount(0);
 }
 
 for (const [kind, amount] of [
@@ -51,14 +52,14 @@ for (const [kind, amount] of [
       await page.evaluate(() => ({
         rpc: window.__erc20SendFixture.rpcMethods(),
         signatures: window.__erc20SendFixture.signatures(),
-        authorizations: window.__erc20SendFixture.authorizations(),
+        unlockChecks: window.__erc20SendFixture.unlockChecks(),
         broadcasts: window.__erc20SendFixture.broadcasts(),
         journal: window.__erc20SendFixture.journal(),
       }))
     ).toEqual({
       rpc: [],
       signatures: 0,
-      authorizations: 0,
+      unlockChecks: 0,
       broadcasts: [],
       journal: null,
     });
@@ -78,11 +79,13 @@ for (const [kind, amount] of [
 
     await amountInput.fill('2.5');
     await page.getByTestId('native-send-review').click();
-    await expect(password(page)).toBeVisible();
-    await expect(password(page)).toHaveValue('');
+    await expect(page.getByTestId('native-send-confirm')).toBeVisible();
+    await expect(password(page)).toHaveCount(0);
     await expect(page.getByTestId('native-send-amount')).toHaveText('2.5');
-    await expect(page.getByTestId('native-send-recipient')).toHaveText(recipient);
-    await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+    await expect(page.getByTestId('native-send-recipient')).toHaveText(
+      recipient
+    );
+    await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
     expect(
       await page.evaluate(() => window.__erc20SendFixture.rpcMethods())
     ).toContain('eth_estimateGas');
@@ -115,7 +118,6 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
     path: info.outputPath('erc20-review.png'),
     fullPage: true,
   });
-  await password(page).fill('Public fixture password');
   await page.getByTestId('native-send-confirm').click();
   await expect(page.getByTestId('native-send-hash')).toBeVisible();
   const firstHash = await page.getByTestId('native-send-hash').textContent();
@@ -138,8 +140,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
-  await expect(password(page)).toHaveValue('');
-  await password(page).fill('Fresh public fixture password');
+  await expect(password(page)).toHaveCount(0);
   await page.getByTestId('native-send-confirm').click();
   await expect(page.getByTestId('native-send-hash')).toHaveText(firstHash!);
   expect(
@@ -149,7 +150,7 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
     await page.evaluate(() => window.__erc20SendFixture.signatures())
   ).toBe(0);
   expect(
-    await page.evaluate(() => window.__erc20SendFixture.authorizations())
+    await page.evaluate(() => window.__erc20SendFixture.unlockChecks())
   ).toBe(1);
   await page.evaluate(() => window.__erc20SendFixture.finalized());
   await page.getByRole('button', { name: 'Check status', exact: true }).click();
@@ -164,34 +165,32 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   ).toBeVisible();
 });
 
-test('ERC20 review expiry requires fresh password entry for its replacement', async ({
+test('ERC20 review expiry retires consent and its replacement never signs automatically', async ({
   page,
 }) => {
   await page.clock.install();
   await page.goto('/?erc20-send');
   await prepare(page);
-  await password(page).fill('Expired public fixture password');
   await page.clock.runFor(90001);
   await expect(password(page)).toHaveCount(0);
   await prepare(page);
-  await expect(password(page)).toHaveValue('');
-  await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+  await expect(password(page)).toHaveCount(0);
+  await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   expect(
     await page.evaluate(() => window.__erc20SendFixture.signatures())
   ).toBe(0);
 });
 
-test('account-context revision retires an ERC20 review and entered password', async ({
+test('account-context revision retires an ERC20 review without signing', async ({
   page,
 }) => {
   await page.goto('/?erc20-send');
   await prepare(page);
-  await password(page).fill('Old account-context password');
   await page.evaluate(() => window.__erc20SendFixture.revise());
   await expect(password(page)).toHaveCount(0);
   await prepare(page);
-  await expect(password(page)).toHaveValue('');
-  await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+  await expect(password(page)).toHaveCount(0);
+  await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   expect(
     await page.evaluate(() => window.__erc20SendFixture.signatures())
   ).toBe(0);
@@ -214,14 +213,14 @@ test('network A-B-A rejects a held ERC20 quote before a new review', async ({
   });
   await expect(password(page)).toHaveCount(0);
   await prepare(page);
-  await expect(password(page)).toHaveValue('');
-  await expect(page.getByTestId('native-send-confirm')).toBeDisabled();
+  await expect(password(page)).toHaveCount(0);
+  await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   expect(
     await page.evaluate(() => window.__erc20SendFixture.signatures())
   ).toBe(0);
 });
 
-test('narrow ERC20 review retains full identities, exact amount and reachable password/confirmation', async ({
+test('narrow ERC20 review retains full identities, exact amount and reachable confirmation', async ({
   page,
 }, info) => {
   await page.setViewportSize({ width: 320, height: 568 });
@@ -233,8 +232,6 @@ test('narrow ERC20 review retains full identities, exact amount and reachable pa
   await expect(page.getByTestId('native-send-token-contract')).toHaveText(
     contract
   );
-  await password(page).focus();
-  await password(page).fill('Narrow public fixture password');
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
   expect(
     await page.evaluate(
@@ -262,12 +259,7 @@ test('narrow ERC20 review retains full identities, exact amount and reachable pa
       () => document.documentElement.scrollWidth <= window.innerWidth
     )
   ).toBe(true);
-  await password(page).scrollIntoViewIfNeeded();
-  await expect(password(page)).toBeInViewport();
-  await page.screenshot({
-    path: info.outputPath('erc20-password-320-large-text.png'),
-    fullPage: true,
-  });
+  await expect(password(page)).toHaveCount(0);
   await page.getByTestId('native-send-confirm').scrollIntoViewIfNeeded();
   await expect(page.getByTestId('native-send-confirm')).toBeInViewport();
   await page.screenshot({

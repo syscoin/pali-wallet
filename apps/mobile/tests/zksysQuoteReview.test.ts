@@ -44,7 +44,7 @@ function fixture() {
       signatures++;
       throw Error('unexpected signature');
     },
-    async authorize() {
+    assertUnlocked() {
       throw Error('unexpected authorization');
     },
   };
@@ -118,7 +118,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0x12c');
       else f.setNonce('0x1');
       await assert.rejects(
-        f.controller.confirm(review.id, 'public test password'),
+        f.controller.confirm(review.id),
         { code: 'EXPIRED' }
       );
       const state = f.controller.getSnapshot();
@@ -155,7 +155,7 @@ for (const kind of ['base-fee', 'nonce'] as const) {
       if (kind === 'base-fee') f.setBaseFee('0xnot-a-quantity');
       else f.setNonce('0xnot-a-quantity');
       await assert.rejects(
-        f.controller.confirm(review.id, 'public test password'),
+        f.controller.confirm(review.id),
         { code: 'FAILED' }
       );
       const state = f.controller.getSnapshot();

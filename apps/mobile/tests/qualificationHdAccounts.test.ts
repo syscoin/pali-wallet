@@ -33,7 +33,7 @@ test('HD fixture guard rejects A-B-A revisions even when address and readiness m
   } as unknown as NativeCustodyAuthority;
   const runtime = {
     transfers: {
-      async sign(_transaction: unknown, _password: string, assertCurrent: () => void) {
+      async sign(_transaction: unknown, assertCurrent: () => void) {
         revision += 2;
         assertCurrent();
         throw Error('UNREACHABLE_STALE_FIXTURE_GUARD');

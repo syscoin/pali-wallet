@@ -130,12 +130,12 @@ network service or real token contract is contacted. The create phase signs the
 fixed zero-ETH-value ERC20 call, verifies its intent and durable bytes before the
 injected submission, and simulates a lost response. The new process selects the
 same HD2 account, checks its retained fingerprint, raw transaction and intent,
-then explicitly reauthenticates and retries those exact signed bytes without a
-new signature or metadata lookup. Both phases return to HD1 and prove that the
+then explicitly confirms retry in the current unlocked session and resends those
+exact signed bytes without a new signature, password check or metadata lookup. Both phases return to HD1 and prove that the
 original HD0/HD1 native journals are unchanged.
 
 Full reports require the ERC20 address, transaction and intent hashes, fixed HD2
-identity, per-phase signature/authorization counters and exactly one injected
+identity, per-phase signature/unlocked-session admission counters and exactly one injected
 submission. Create/restart hashes and the wallet fingerprint must match. These
 checks add native controller/signing/persistence evidence; they do not establish
 live-network token execution or token-delivery behavior.

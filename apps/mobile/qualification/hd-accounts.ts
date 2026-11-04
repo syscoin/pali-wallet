@@ -118,7 +118,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       type: 2, from: address, to: '0x1111111111111111111111111111111111111111',
       chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x',
       maxFeePerGas: '3', maxPriorityFeePerGas: '1',
-    }, password, guardFor(address));
+    }, guardFor(address));
     const journal = await transfer.journal(guardFor(address));
     const stored = await journal.saveSigned(signed.rawTransaction);
     requireEvidence(stored.hash === signed.hash);

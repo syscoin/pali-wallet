@@ -283,13 +283,14 @@ export async function qualifyNativeZksysTransfer(
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
     journal: (checkCurrent) => transfer.journal(checkCurrent),
-    async sign(transaction, credential, checkCurrent, intent) {
+    async sign(transaction, checkCurrent, intent) {
       expect(phase === 'create' && ++signatures === 1 && intent === undefined);
-      return transfer.sign(transaction, credential, checkCurrent, intent);
+      return transfer.sign(transaction, checkCurrent, intent);
     },
-    async authorize(credential, checkCurrent) {
+    // Retain the report field: this counts unlocked-session admission, not a password check.
+    assertUnlocked(checkCurrent) {
       expect(phase === 'restart' && ++authorizations === 1);
-      return transfer.authorize(credential, checkCurrent);
+      return transfer.assertUnlocked(checkCurrent);
     },
   };
   const rpc = new NativeTransferRpc({
@@ -433,7 +434,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               review.totalUnits === '900789'
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(controller.getSnapshot().phase === 'unknown');
         }
@@ -453,7 +454,7 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               controller.getSnapshot().hash === entry.hash
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(controller.getSnapshot().phase === 'pending');
         }

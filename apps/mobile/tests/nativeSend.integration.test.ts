@@ -108,7 +108,7 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
     assert.equal(authority!.getSnapshot().phase, 'ready');
     await transfers!.prepare(RECIPIENT, '0.001');
     const review = transfers!.getSnapshot().review!;
-    await transfers!.confirm(review.id, PASSWORD);
+    await transfers!.confirm(review.id);
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
     const firstHash = transfers!.getSnapshot().hash;
     assert.equal(Transaction.from(submitted[0]!).to, RECIPIENT);
@@ -127,7 +127,7 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
     const retry = transfers!.getSnapshot().review!;
     assert.equal(retry.retry, true);
     loseResponse = false;
-    await transfers!.confirm(retry.id, PASSWORD);
+    await transfers!.confirm(retry.id);
     assert.equal(submitted.length, 2);
     assert.equal(submitted[0], submitted[1]);
     assert.equal(transfers!.getSnapshot().phase, 'pending');
@@ -148,36 +148,38 @@ async function cancellationFixture() {
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let signatures = 0;
+  let authentications = 0;
+  let hydrations = 0;
   let sdkInstance!: InstanceType<typeof sdk.SoftwareKeyring>;
   let journalGate: { phase: 'signed' | 'attempted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
   let gate: {
-    stage: 'password' | 'hydrate';
+    stage: 'storage-read' | 'requote';
     entered(): void;
     release: Promise<void>;
   } | null = null;
-  const pause = async (stage: 'password' | 'hydrate') => {
+  const pause = async (stage: 'storage-read' | 'requote') => {
     const current = gate;
     if (current?.stage === stage) {
       current.entered();
       await current.release;
     }
   };
-  // Run the actual SDK work, then pause its result at the runtime's await
-  // boundary. Cancellation must revoke custody before that result is consumed.
+  // Keep the real SDK signer; pause only storage/RPC boundaries that still exist
+  // in the unlocked-session flow. There is no per-send password or hydration.
   class ControlledKeyring extends sdk.SoftwareKeyring {
     constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
       super(host);
       sdkInstance = this;
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
+        hydrations++;
         const result = await hydrate(...args);
-        await pause('hydrate');
         return result;
       };
     }
     async unlock(password: string) {
+      authentications++;
       const result = await super.unlock(password);
-      await pause('password');
       return result;
     }
     signPreparedEvmTransaction(
@@ -196,6 +198,7 @@ async function cancellationFixture() {
     async openStorage() {
       storage = await SqliteWalletStorage.open(
         nodeConnection(file, { after: async (kind, sql) => {
+          if (kind === 'get' && sql.includes('keyring_records')) await pause('storage-read');
           const current = journalGate;
           if (!current) return;
           if (kind === 'run' && sql.startsWith(current.phase === 'signed'
@@ -247,7 +250,7 @@ async function cancellationFixture() {
       else if (request.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-      else if (request.method === 'eth_estimateGas') result = '0x5208';
+      else if (request.method === 'eth_estimateGas') { await pause('requote'); result = '0x5208'; }
       else if (request.method === 'eth_getTransactionReceipt') {
         if (!largeReceipt.oversized) result = recovery?.receipt ?? null;
         else {
@@ -311,6 +314,8 @@ async function cancellationFixture() {
     get transfers() { return transfers; },
     rpc,
     get signatures() { return signatures; },
+    get authentications() { return authentications; },
+    get hydrations() { return hydrations; },
     get sdkUnlocked() { return sdkInstance.isUnlocked(); },
     holdJournal(phase: 'signed' | 'attempted') {
       let entered!: () => void;
@@ -331,7 +336,7 @@ async function cancellationFixture() {
     },
     loseResponse() { loseResponse = true; },
     setRecovery(value: NonNullable<typeof recovery>) { recovery = structuredClone(value); },
-    hold(stage: 'password' | 'hydrate') {
+    hold(stage: 'storage-read' | 'requote') {
       let entered!: () => void;
       let resume!: () => void;
       const started = new Promise<void>((resolve) => {
@@ -365,11 +370,9 @@ async function cancellationFixture() {
   };
 }
 
-for (const stage of ['password', 'hydrate'] as const) {
-  for (const retry of [false, true]) {
-    test(`cancelling ${
-      retry ? 'retry authorization' : 'signing'
-    } during ${stage} keeps real custody and SDK state aligned`, async () => {
+for (const retry of [false, true]) {
+  for (const cancellation of ['back', 'dispose', 'lock'] as const) {
+    test(`${cancellation} during ${retry ? 'retry storage read' : 'final fee read'} revokes pending confirmation`, async () => {
       const f = await cancellationFixture();
       let hold: ReturnType<typeof f.hold> | undefined;
       let pending: Promise<void> | undefined;
@@ -377,69 +380,69 @@ for (const stage of ['password', 'hydrate'] as const) {
         await f.transfers.prepare(RECIPIENT, '0.001');
         if (retry) {
           f.loseResponse();
-          await f.transfers.confirm(
-            f.transfers.getSnapshot().review!.id,
-            PASSWORD
-          );
+          await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
           await f.transfers.recover(true);
         }
         const initialSignatures = f.signatures;
         const initialBroadcasts = f.broadcasts.length;
+        const credentials = [f.authentications, f.hydrations];
         const journal = await f.readJournal();
-        const revision = f.authority.getSnapshot().revision;
-        hold = f.hold(stage);
-        pending = f.transfers.confirm(
-          f.transfers.getSnapshot().review!.id,
-          PASSWORD
-        );
+        hold = f.hold(retry ? 'storage-read' : 'requote');
+        pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id);
         const rejected = assert.rejects(pending, { code: 'CANCELLED' });
         await hold.started;
-        // Dispose exercises the same revocation while removing the screen's
-        // controller; the other cases exercise Back/edit cancellation.
-        if (retry && stage === 'hydrate') f.transfers.dispose();
+        if (cancellation === 'dispose') f.transfers.dispose();
+        else if (cancellation === 'lock') f.authority.lock();
         else f.transfers.cancel();
-        assert.equal(f.authority.getSnapshot().phase, 'locked');
-        assert.equal(f.authority.getSnapshot().revision, revision + 1);
-        assert.equal(f.authority.getSnapshot().account, null);
         hold.finish();
-        await rejected;
-        pending = undefined;
-        assert.equal(f.authority.getSnapshot().phase, 'locked');
-        await assert.rejects(
-          f.runtime.session.readEthereumAddress(),
-          /NOT_READY/
-        );
+        await rejected; pending = undefined;
+        assert.equal(f.authority.getSnapshot().phase, cancellation === 'lock' ? 'locked' : 'ready');
+        assert.equal(f.sdkUnlocked, cancellation !== 'lock');
         assert.equal(f.signatures, initialSignatures);
         assert.equal(f.broadcasts.length, initialBroadcasts);
         assert.deepEqual(await f.readJournal(), journal);
-
-        await f.authority.unlock(PASSWORD);
-        assert.equal(f.authority.getSnapshot().phase, 'ready');
-        if (retry && stage === 'hydrate') f.replaceTransfers();
+        assert.deepEqual([f.authentications, f.hydrations], credentials);
+        if (cancellation === 'lock') await f.authority.unlock(PASSWORD);
+        if (cancellation === 'dispose') f.replaceTransfers();
         await f.transfers.recover(retry);
         if (!retry) await f.transfers.prepare(RECIPIENT, '0.001');
-        await f.transfers.confirm(
-          f.transfers.getSnapshot().review!.id,
-          PASSWORD
-        );
+        const before = [f.authentications, f.hydrations];
+        await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
         assert.equal(f.signatures, initialSignatures + (retry ? 0 : 1));
         assert.equal(f.broadcasts.length, initialBroadcasts + 1);
+        assert.deepEqual([f.authentications, f.hydrations], before);
         if (retry) assert.equal(f.broadcasts[0], f.broadcasts[1]);
       } finally {
-        hold?.finish();
-        await pending?.catch(() => undefined);
-        await f.close();
+        hold?.finish(); await pending?.catch(() => undefined); await f.close();
       }
     });
   }
 }
+
+test('background lock during final fee check invalidates review without signing or unlocking', async () => {
+  const f = await cancellationFixture();
+  let hold: ReturnType<typeof f.hold> | undefined;
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    const credentials = [f.authentications, f.hydrations];
+    hold = f.hold('requote');
+    const pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+    await hold.started; f.authority.lock(); hold.finish(); await rejected;
+    assert.equal(f.sdkUnlocked, false);
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+    assert.equal(f.signatures, 0); assert.equal(f.broadcasts.length, 0);
+    assert.equal(await f.readJournal(), undefined);
+    assert.deepEqual([f.authentications, f.hydrations], credentials);
+  } finally { hold?.finish(); await f.close(); }
+});
 
 for (const repeated of [false, true]) {
   test(`${repeated ? 'repeated' : 'initial'} oversized receipt preserves the real journal regardless of nonce consumption`, async () => {
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
       f.recovery.oversized = true;
       f.recovery.repeated = repeated;
       if (repeated) {
@@ -480,7 +483,7 @@ for (const repeated of [false, true]) {
       assert.equal(after.entries[0]!.rawTransaction, retained.entries[0]!.rawTransaction);
       await f.transfers.prepare(RECIPIENT, '0.002');
       assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
       assert.equal(f.signatures, 2);
       assert.equal(f.broadcasts.length, 2);
       assert.equal(Transaction.from(f.broadcasts[1]!).nonce, 1);
@@ -496,7 +499,7 @@ for (const phase of ['signed', 'attempted'] as const) {
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
       hold = f.holdJournal(phase);
-      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id);
       const rejected = assert.rejects(pending, { code: 'CANCELLED' });
       await hold.started;
       assert.equal(f.signatures, 1);
@@ -542,7 +545,7 @@ for (const phase of ['signed', 'attempted'] as const) {
     try {
       await transfers.prepare(RECIPIENT, '0.001');
       hold = old.holdJournal(phase);
-      pending = transfers.confirm(transfers.getSnapshot().review!.id, PASSWORD);
+      pending = transfers.confirm(transfers.getSnapshot().review!.id);
       const rejected = assert.rejects(pending, { code: 'CANCELLED' });
       await hold.started;
       const retained = await old.readDurableJournal();
@@ -576,7 +579,7 @@ for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as con
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
       const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
       const entry = saved.entries[0]!;
       const tx = Transaction.from(entry.rawTransaction);
@@ -594,7 +597,7 @@ for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as con
     const f = await cancellationFixture();
     try {
       await f.transfers.prepare(RECIPIENT, '0.001');
-      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
       const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
       const entry = saved.entries[0]!;
       f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status,
@@ -613,7 +616,7 @@ test('missing receipt with a consumed nonce records only nonce-consumed', async 
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
     const before = await f.readJournal() as { entries: { rawTransaction: string }[] };
     f.setRecovery({ receipt: null, nonce: '0x1', canonicalHash: '0x' + '1'.repeat(64) });
     await f.transfers.recover();
@@ -628,7 +631,7 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
   const f = await cancellationFixture();
   try {
     await f.transfers.prepare(RECIPIENT, '0.001');
-    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
     const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
     const entry = saved.entries[0]!;
     f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status: '0x1',

@@ -52,6 +52,7 @@ export type ScreenSpec = {
   scope?: 'extension-parity' | 'shared-enhancement';
   hiddenInCatalog?: boolean;
   authorization?: boolean;
+  deviceConfirmation?: boolean;
   requiresAccountSigner?: boolean;
   notice?: { title: string; body: string; tone?: 'blue' | 'amber' | 'red' };
   primary?: { label: string; to: string };
@@ -749,25 +750,20 @@ const baseScreens: ScreenSpec[] = [
       title: 'Check every detail',
       body: 'Confirm the recipient, network, amount and fee before approving.',
     },
-    primary: { label: 'Authorize send', to: 'transfer.authorize' },
+    primary: { label: 'Confirm and send', to: 'transfer.authorize' },
     secondary: { label: 'Edit details', to: 'transfer.details' },
     accountContext: true,
   }),
   make('transfer', 'transfer.authorize', 'Authorize transfer', 'form', {
     purpose:
-      'Local password/device authentication or external hardware approval depends on account type. Authentication cannot repair an expired review.',
-    fields: [
-      {
-        label: 'Wallet password',
-        value: 'Authorization entry — disabled in design',
-        secret: true,
-      },
-    ],
+      'Use the reviewed transfer in the current unlocked session. External signing needs the account’s device or policy approval.',
     description:
       'Hardware accounts ask for confirmation on the device. Watch-only accounts cannot authorize.',
     primary: { label: 'Confirm transfer', to: 'transfer.submitted' },
     secondary: { label: 'Cancel', to: 'transfer.review' },
     accountContext: true,
+    deviceConfirmation: true,
+    hiddenInCatalog: true,
   }),
   make('transfer', 'transfer.submitted', 'Transaction submitted', 'success', {
     purpose:
@@ -853,7 +849,7 @@ const baseScreens: ScreenSpec[] = [
         row('Recipient', 'Sample full address'),
         row('Maximum network fee', 'Shown in ETH'),
       ],
-      primary: { label: 'Authorize transfer', to: 'transfer.nft-authorize' },
+      primary: { label: 'Confirm and send', to: 'transfer.nft-authorize' },
       accountContext: true,
     }
   ),
@@ -869,7 +865,7 @@ const baseScreens: ScreenSpec[] = [
       row('Signing scope', 'This wallet’s inputs only'),
       row('Result', 'May be partially signed'),
     ],
-    primary: { label: 'Authorize signing', to: 'transfer.psbt-authorize' },
+    primary: { label: 'Sign reviewed PSBT', to: 'transfer.psbt-authorize' },
     secondary: { label: 'Reject', to: 'connections.home' },
     accountContext: true,
   }),
@@ -2574,7 +2570,7 @@ const baseScreens: ScreenSpec[] = [
       row('Maximum fee', undefined, undefined, undefined, '0.000042 ETH'),
       row('Maximum total', undefined, undefined, undefined, '0.250042 ETH'),
     ],
-    primary: { label: 'Authorize send', to: 'transfer.eth-authorize' },
+    primary: { label: 'Confirm and send', to: 'transfer.eth-authorize' },
     secondary: { label: 'Edit details', to: 'transfer.eth-details' },
     accountContext: true,
   }),
@@ -2583,15 +2579,12 @@ const baseScreens: ScreenSpec[] = [
       'Retain Ethereum and reviewed quantity while choosing the correct account-specific authorizer.',
     fields: [
       { label: 'Reviewed transfer', value: '0.25 ETH · Ethereum' },
-      {
-        label: 'Wallet password',
-        value: 'Protected authorization — inactive in design',
-        secret: true,
-      },
     ],
     primary: { label: 'Confirm transfer', to: 'transfer.eth-submitted' },
     secondary: { label: 'Cancel', to: 'transfer.eth-review' },
     accountContext: true,
+    deviceConfirmation: true,
+    hiddenInCatalog: true,
   }),
   make(
     'transfer',
@@ -2650,7 +2643,7 @@ const baseScreens: ScreenSpec[] = [
       row('Maximum fee', undefined, undefined, undefined, '0.000042 BTC'),
       row('Maximum total', undefined, undefined, undefined, '0.005042 BTC'),
     ],
-    primary: { label: 'Authorize send', to: 'transfer.btc-authorize' },
+    primary: { label: 'Confirm and send', to: 'transfer.btc-authorize' },
     secondary: { label: 'Edit details', to: 'transfer.btc-details' },
     accountContext: true,
   }),
@@ -2659,15 +2652,12 @@ const baseScreens: ScreenSpec[] = [
       'Retain Bitcoin and reviewed quantity while choosing the correct account-specific authorizer.',
     fields: [
       { label: 'Reviewed transfer', value: '0.005 BTC · Bitcoin' },
-      {
-        label: 'Wallet password',
-        value: 'Protected authorization — inactive in design',
-        secret: true,
-      },
     ],
     primary: { label: 'Confirm transfer', to: 'transfer.btc-submitted' },
     secondary: { label: 'Cancel', to: 'transfer.btc-review' },
     accountContext: true,
+    deviceConfirmation: true,
+    hiddenInCatalog: true,
   }),
   make(
     'transfer',
@@ -2726,7 +2716,7 @@ const baseScreens: ScreenSpec[] = [
       row('Maximum fee', undefined, undefined, undefined, '0.000042 SYS'),
       row('Maximum total', undefined, undefined, undefined, '125.000042 SYS'),
     ],
-    primary: { label: 'Authorize send', to: 'transfer.nevm-authorize' },
+    primary: { label: 'Confirm and send', to: 'transfer.nevm-authorize' },
     secondary: { label: 'Edit details', to: 'transfer.nevm-details' },
     accountContext: true,
   }),
@@ -2735,15 +2725,12 @@ const baseScreens: ScreenSpec[] = [
       'Retain Syscoin NEVM and reviewed quantity while choosing the correct account-specific authorizer.',
     fields: [
       { label: 'Reviewed transfer', value: '125.00 SYS · Syscoin NEVM' },
-      {
-        label: 'Wallet password',
-        value: 'Protected authorization — inactive in design',
-        secret: true,
-      },
     ],
     primary: { label: 'Confirm transfer', to: 'transfer.nevm-submitted' },
     secondary: { label: 'Cancel', to: 'transfer.nevm-review' },
     accountContext: true,
+    deviceConfirmation: true,
+    hiddenInCatalog: true,
   }),
   make(
     'transfer',
@@ -2805,15 +2792,12 @@ const baseScreens: ScreenSpec[] = [
       fields: [
         { label: 'Network', value: 'Syscoin UTXO' },
         { label: 'Operation', value: 'Sign only — no broadcast' },
-        {
-          label: 'Wallet password',
-          value: 'Protected authorization — inactive in design',
-          secret: true,
-        },
       ],
       primary: { label: 'Sign reviewed PSBT', to: 'transfer.psbt-result' },
       secondary: { label: 'Cancel', to: 'transfer.psbt' },
       accountContext: true,
+      deviceConfirmation: true,
+      hiddenInCatalog: true,
     }
   ),
   make('transfer', 'transfer.psbt-result', 'PSBT signature ready', 'success', {
@@ -2836,11 +2820,6 @@ const baseScreens: ScreenSpec[] = [
       fields: [
         { label: 'Collectible', value: 'Example collection #104 · Ethereum' },
         { label: 'Recipient', value: 'Sample complete recipient' },
-        {
-          label: 'Wallet password',
-          value: 'Protected authorization — inactive in design',
-          secret: true,
-        },
       ],
       primary: {
         label: 'Confirm collectible transfer',
@@ -2848,6 +2827,8 @@ const baseScreens: ScreenSpec[] = [
       },
       secondary: { label: 'Cancel', to: 'transfer.nft-review' },
       accountContext: true,
+      deviceConfirmation: true,
+      hiddenInCatalog: true,
     }
   ),
   make(
@@ -3653,6 +3634,11 @@ export function getScreen(id: string): ScreenSpec {
   const found = screens.find((s) => s.id === id);
   if (!found) throw new Error(`Unknown design screen: ${id}`);
   return found;
+}
+/** Software signing adds no password screen after explicit transaction review. */
+export function resolveDesignAction(id: string, kind: 'personal' | 'watch' | 'hardware' | 'smart'): string {
+  const target = getScreen(id);
+  return kind === 'personal' && target.deviceConfirmation && target.primary ? target.primary.to : id;
 }
 export const reviewStates = [
   { id: 'ready', label: 'Ready' },

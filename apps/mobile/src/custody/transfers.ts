@@ -66,11 +66,10 @@ export interface NativeTransferRuntime {
   journal(assertCurrent: () => void): Promise<NativeTransferJournal>;
   sign(
     transaction: PreparedEvmTransaction,
-    password: string,
     assertCurrent: () => void,
     intent?: Erc20TransferIntent
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
-  authorize(password: string, assertCurrent: () => void): Promise<void>;
+  assertUnlocked(assertCurrent: () => void): void;
 }
 type Source = {
   getCatalogue?(): NativeWalletCatalogueSnapshot | null;
@@ -140,7 +139,7 @@ export class NativeTransfers {
       this.prepare(recipient, amount),
     prepareToken: (contract: string, recipient: string, amount: string) =>
       this.prepareToken(contract, recipient, amount),
-    confirm: (id: string, password: string) => this.confirm(id, password),
+    confirm: (id: string) => this.confirm(id),
     recover: (offerRetry?: boolean) => this.recover(offerRetry),
   });
   private snapshot: NativeTransferSnapshot = initial();
@@ -581,7 +580,7 @@ export class NativeTransfers {
       this.showReview(quote.transaction, null, intent, context);
     });
   }
-  confirm(reviewId: string, password: string): Promise<void> {
+  confirm(reviewId: string): Promise<void> {
     if (this.active) return Promise.reject(new NativeTransferError('BUSY'));
     const approved = this.review;
     if (
@@ -620,7 +619,7 @@ export class NativeTransfers {
           !equalTransferIntent(stored.intent, approved.public.intent)
         )
           throw new NativeTransferError('EXPIRED');
-        await this.runSecretOperation(() => runtime.authorize(password, guard));
+        runtime.assertUnlocked(guard);
         guard();
         entry = stored;
       } else {
@@ -649,7 +648,6 @@ export class NativeTransfers {
         const signed = await this.runSecretOperation(() =>
           runtime.sign(
             approved.transaction,
-            password,
             guard,
             approved.public.intent
           )

@@ -47,7 +47,7 @@ let snapshot = idle();
 let sequence = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<(value: NativeTransferSnapshot) => void>();
-const confirmations: { id: string; password: string }[] = [];
+const confirmations: { id: string }[] = [];
 const publish = (next: NativeTransferSnapshot) => {
   snapshot = Object.freeze(next);
   for (const listener of listeners) listener(snapshot);
@@ -92,19 +92,26 @@ const controller: NativeTransferView = {
     });
     expiry = setTimeout(() => publish(idle()), 90000);
   },
-  async confirm(id, password) {
-    if (snapshot.review?.id !== id || !password)
-      throw Error('Invalid fixture confirmation');
-    const quoteFailure = new URLSearchParams(window.location.search).get('quoteFailure');
+  async confirm(id) {
+    if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
+    const quoteFailure = new URLSearchParams(window.location.search).get(
+      'quoteFailure'
+    );
     if (quoteFailure) {
       clearTimeout(expiry);
       const expired = quoteFailure === 'base-fee' || quoteFailure === 'nonce';
-      publish({ ...snapshot, phase: expired ? 'idle' : 'unavailable', review: null, hash: null,
-        message: expired ? 'The review expired or network conditions changed. Review the transfer again.'
-          : 'The request could not be completed. Try again or check Activity for an existing transaction.' });
+      publish({
+        ...snapshot,
+        phase: expired ? 'idle' : 'unavailable',
+        review: null,
+        hash: null,
+        message: expired
+          ? 'The review expired or network conditions changed. Review the transfer again.'
+          : 'The request could not be completed. Try again or check Activity for an existing transaction.',
+      });
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
-    confirmations.push({ id, password });
+    confirmations.push({ id });
     const context = snapshot.review.context;
     clearTimeout(expiry);
     publish({
@@ -124,7 +131,7 @@ declare global {
       replaceReview(): Promise<void>;
       refreshReview(): void;
       reviewId(): string | null;
-      confirmations(): readonly { id: string; password: string }[];
+      confirmations(): readonly { id: string }[];
       changeContext(): void;
       settle(status: 'confirmed' | 'reverted' | 'nonce-consumed'): void;
     };

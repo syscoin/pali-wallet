@@ -98,7 +98,8 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const wrapped: NativeTransferRuntime = {
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
-      async authorize(...args) { expect(phase === 'restart'); authorizations++; return transfer.authorize(...args); },
+      // The report counts unlocked-session admission; retry never reauthenticates.
+      assertUnlocked(...args) { expect(phase === 'restart'); authorizations++; return transfer.assertUnlocked(...args); },
     };
     const rpc = new NativeTransferRpc({ networkId: network, fetch: async (url, init) => {
       guard(); expect(url === registration.rpcUrl && init.method === 'POST' && init.credentials === 'omit' && init.redirect === 'error');
@@ -143,7 +144,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
         }
         guard(); const review = controller.getSnapshot().review;
         expect(review && review.retry === (phase === 'restart') && review.context.chainId === registration.chainId);
-        await controller.confirm(review.id, password); guard();
+        await controller.confirm(review.id); guard();
         expect(controller.getSnapshot().phase === (phase === 'create' ? 'unknown' : 'pending'));
         const saved = await (await transfer.journal(guard)).load(); guard();
         expect(saved && saved.rawTransaction === expectedRaw && saved.phase === (phase === 'create' ? 'attempted' : 'submitted'));

@@ -91,7 +91,7 @@ const storage: KeyringStoragePort = {
 const broadcasts: string[] = [];
 const rpcMethods: string[] = [];
 let signatures = 0;
-let authorizations = 0;
+let unlockChecks = 0;
 let finalized = false;
 let loseResponse = true;
 let heldQuote: Promise<void> | null = null;
@@ -99,10 +99,13 @@ let releaseQuote: (() => void) | undefined;
 const word = (value: bigint | number) =>
   `0x${BigInt(value).toString(16).padStart(64, '0')}`;
 const block = (number: string) => ({
-  number, baseFeePerGas: '0x1', gasLimit: '0x1c9c380',
+  number,
+  baseFeePerGas: '0x1',
+  gasLimit: '0x1c9c380',
   hash: `0x${BigInt(number).toString(16).padStart(64, '0')}`,
 });
-const rpc = new NativeTransferRpc({ networkId: 'ethereum',
+const rpc = new NativeTransferRpc({
+  networkId: 'ethereum',
   fetch: async (_url, init) => {
     const request = JSON.parse(String(init.body));
     rpcMethods.push(request.method);
@@ -194,14 +197,12 @@ const runtime: NativeTransferRuntime = {
       guard
     );
   },
-  async authorize(password, guard) {
+  assertUnlocked(guard) {
     guard();
-    if (!password) throw Error('Credential required');
-    authorizations++;
+    unlockChecks++;
   },
-  async sign(transaction: PreparedEvmTransaction, password, guard, intent) {
+  async sign(transaction: PreparedEvmTransaction, guard, intent) {
     guard();
-    if (!password) throw Error('Credential required');
     assertTransferIntentEnvelope(transaction, intent);
     const rawTransaction = await wallet.signTransaction({
       type: transaction.type,
@@ -229,7 +230,7 @@ declare global {
   interface Window {
     __erc20SendFixture: {
       signatures(): number;
-      authorizations(): number;
+      unlockChecks(): number;
       broadcasts(): readonly string[];
       rpcMethods(): readonly string[];
       journal(): unknown;
@@ -245,7 +246,7 @@ declare global {
 }
 window.__erc20SendFixture = {
   signatures: () => signatures,
-  authorizations: () => authorizations,
+  unlockChecks: () => unlockChecks,
   broadcasts: () => [...broadcasts],
   rpcMethods: () => [...rpcMethods],
   journal: () => localStorage.getItem(key('native-evm-transfer-v1')),

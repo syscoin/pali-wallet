@@ -277,13 +277,13 @@ for (const scenario of ['import', 'generate'] as const) {
           ...disk.runtime,
           transfers: {
             ...realTransfer,
-            async sign(transaction, password, guard, intent) {
+            async sign(transaction, guard, intent) {
               signatures++;
               assert.equal(
                 transaction.chainId,
                 signatures === 1 ? '1' : '5700'
               );
-              return realTransfer.sign(transaction, password, guard, intent);
+              return realTransfer.sign(transaction, guard, intent);
             },
           },
         };
@@ -368,7 +368,7 @@ for (const scenario of ['import', 'generate'] as const) {
             async sign() {
               throw Error('RESTART_MUST_NOT_SIGN');
             },
-            async authorize() {
+            assertUnlocked() {
               throw Error('RESTART_MUST_NOT_AUTHORIZE');
             },
           },

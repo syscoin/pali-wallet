@@ -83,15 +83,20 @@ test('EVM and sign-only journeys retain their identity', async ({ page }) => {
   ).toBeVisible();
   await expect(phone.getByText('0.250042 ETH', { exact: true })).toBeVisible();
   await page.getByTestId('design-primary-action').click();
-  await page.getByTestId('design-primary-action').click();
   await expect(phone.getByText('0.25 ETH', { exact: true })).toBeVisible();
+  await expect(phone.getByText('Wallet password', { exact: true })).toHaveCount(0);
   await choose(page, 'transfer.psbt');
-  await page.getByTestId('design-primary-action').click();
   await page.getByTestId('design-primary-action').click();
   await expect(
     phone.getByText('Signed data returned', { exact: true })
   ).toBeVisible();
   await expect(phone.getByText(/No transaction was broadcast/)).toBeVisible();
+  await choose(page, 'transfer.eth-review');
+  await page.getByRole('radio', { name: 'Hardware', exact: true }).click();
+  await page.getByRole('button', { name: 'Return to review', exact: true }).click();
+  await page.getByTestId('design-primary-action').click();
+  await expect(phone.getByText('Check your device.', { exact: true })).toBeVisible();
+  await expect(phone.getByText('Wallet password', { exact: true })).toHaveCount(0);
 });
 test('account and review scenarios expose safe unavailable states', async ({
   page,

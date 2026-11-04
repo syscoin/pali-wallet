@@ -640,44 +640,35 @@ export function createKeyringRuntimeFactory(
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, selected.index, network, (record, guard) => activityHistory.archiveTerminal(record, guard), selected.type);
             },
-            authorize: (password, assertCurrent) => {
-              if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
-              if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
-              return run(async (captured) => {
-              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
-              checkGuard(assertCurrent);
-              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-              current(captured); checkGuard(assertCurrent);
-              await hydrate(captured);
-              current(captured); checkGuard(assertCurrent);
-            }); },
-            sign: (transaction, password, assertCurrent, inputIntent) => {
+            assertUnlocked: (assertCurrent) => {
+              const captured = generation;
+              current(captured); checkGuard(assertCurrent); current(captured);
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+              if (!keyring.isUnlocked() || !canSign()) throw new KeyringRuntimeError('NOT_READY');
+            },
+            sign: (transaction, assertCurrent, inputIntent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
               if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
               let intent;
+              let prepared: typeof transaction;
               try {
                 intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-                assertTransferIntentEnvelope(transaction, intent);
-                if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks).chainId)
-                  throw new KeyringRuntimeError('INVALID_INPUT');
-                snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
+                prepared = snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
+                assertTransferIntentEnvelope(prepared, intent);
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               checkGuard(assertCurrent);
-              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
               current(captured); checkGuard(assertCurrent);
-              await hydrate(captured);
-              current(captured); checkGuard(assertCurrent);
-              assertTransferIntentEnvelope(transaction, intent);
+              assertTransferIntentEnvelope(prepared, intent);
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-              if (!nativeSigningEnabled(network.id) || transaction.chainId !== network.chainId)
+              if (!nativeSigningEnabled(network.id) || prepared.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
-              snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
+              snapshotUnsignedTransfer(prepared as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
-                account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: transaction.from },
+                account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: prepared.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
-                transaction,
+                transaction: prepared,
               }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });
               current(captured); checkGuard(assertCurrent);
               return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });

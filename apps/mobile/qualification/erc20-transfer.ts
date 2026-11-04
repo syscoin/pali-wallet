@@ -292,19 +292,20 @@ export async function qualifyNativeErc20Transfer(
       return transfer.token!(contract, assertCurrent);
     },
     journal: (assertCurrent) => transfer.journal(assertCurrent),
-    async sign(transaction, credential, assertCurrent, intent) {
+    async sign(transaction, assertCurrent, intent) {
       signatures++;
       expect(
         signatures <= 1 &&
           phase === 'create' &&
           equalTransferIntent(intent, expectedIntent)
       );
-      return transfer.sign(transaction, credential, assertCurrent, intent);
+      return transfer.sign(transaction, assertCurrent, intent);
     },
-    async authorize(credential, assertCurrent) {
+    // Retain the report field: this counts unlocked-session admission, not a password check.
+    assertUnlocked(assertCurrent) {
       authorizations++;
       expect(authorizations === 1 && phase === 'restart');
-      return transfer.authorize(credential, assertCurrent);
+      return transfer.assertUnlocked(assertCurrent);
     },
   };
   const rpc = new NativeTransferRpc({ networkId: 'ethereum',
@@ -457,7 +458,7 @@ export async function qualifyNativeErc20Transfer(
               review.totalUnits === '180000' &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
@@ -488,7 +489,7 @@ export async function qualifyNativeErc20Transfer(
               review.amountUnits === amountUnits &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&

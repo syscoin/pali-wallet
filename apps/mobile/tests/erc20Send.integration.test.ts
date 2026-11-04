@@ -191,7 +191,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
         values.base = 0;
         values.eth = 100000n;
       }
-      await assert.rejects(transfers!.confirm(review.id, PASSWORD), {
+      await assert.rejects(transfers!.confirm(review.id), {
         code:
           kind === 'token'
             ? 'INSUFFICIENT_TOKEN_BALANCE'
@@ -213,7 +213,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       gas: 50000,
     });
     await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.23');
-    await transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id);
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
     const raw = sent[0]!;
     const hash = keccak256(raw);
@@ -242,14 +242,14 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     tampered.entries[0].intent.token.decimals = 3;
     await storage!.keyringStorage.set('native-evm-transfer-v1', tampered);
     await assert.rejects(
-      transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD),
+      transfers!.confirm(transfers!.getSnapshot().review!.id),
       { code: 'EXPIRED' }
     );
     assert.equal(sent.length, 1);
     await storage!.keyringStorage.set('native-evm-transfer-v1', saved);
     await transfers!.recover(true);
     values.loseResponse = false;
-    await transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id);
     assert.equal(sent.length, 2);
     assert.equal(sent[1], raw);
     assert.equal(transfers!.getSnapshot().hash, hash);

@@ -145,8 +145,8 @@ export function createNativeWalletControllers() {
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
     async journal(guard) { guard(); const account = catalogue.accounts.find((item) => item.id === catalogue.active.accountId)!; return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: account.address, chainId: '1' }, guard, Date.now, account.index, undefined, undefined, account.type); },
-    async authorize(_password, guard) { guard(); },
-    async sign(_transaction, _password, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+    assertUnlocked(guard) { guard(); },
+    async sign(_transaction, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
   const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;
