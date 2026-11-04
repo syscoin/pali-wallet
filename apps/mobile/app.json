@@ -33,7 +33,13 @@
           "faceIDPermission": false
         }
       ],
-      "./plugins/withMobileSafety.cjs"
+      "./plugins/withMobileSafety.cjs",
+      [
+        "expo-sqlite",
+        {
+          "useSQLCipher": true
+        }
+      ]
     ],
     "updates": {
       "enabled": false

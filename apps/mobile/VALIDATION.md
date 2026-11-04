@@ -1,8 +1,14 @@
 # Mobile foundation validation
 
-Checked November 2, 2026. Design/source baseline: `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The draft mobile work is now based on the shared-foundation stack through `4ec602086`. Its mobile diff does not change extension source, manifest or root dependencies.
+## Current source status
 
-This is a React Native implementation and a watch-only first slice, not a qualified self-custody release. The supplied video and 32-screen PDF were design references. The matching demo source was not available in the inspected public repositories.
+The native development flow implements creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations. SQLCipher storage retains the signed-transaction journal before submission. Watch-only accounts and design previews remain separate. Full extension feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified. This paragraph records source status, not new execution evidence; see [README.md](README.md) and [SECURITY.md](SECURITY.md) for current scope and release gates.
+
+## Historical foundation validation — November 2, 2026
+
+The following results and limitations describe the earlier watch-only snapshot, not the current native implementation. Design/source baseline: `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. That draft was based on the shared-foundation stack through `4ec602086`; its mobile diff did not change extension source, manifest or root dependencies.
+
+That snapshot was a React Native watch-only first slice, not a qualified self-custody release. The supplied video and 32-screen PDF were design references. The matching demo source was not available in the inspected public repositories.
 
 | Check | Observed result |
 | --- | --- |
@@ -20,24 +26,24 @@ Browser network tests use synthetic public addresses and mocked responses. The s
 
 The UI has separate live and preview preferences, readable fixed network context, native-safe layouts, reduced-motion handling, scrollable sheets, modal background isolation, and a single clipboard acknowledgment. Pending balance requests are retired on lock or context changes. Account creation is single-flight; a late durable write cannot unlock the interface after backgrounding or navigation.
 
-## Not established
+### Limits of that validation
 
-No iOS/Android binary was compiled, signed, installed or exercised on a physical device. Full Xcode is not installed on this host. Native SecureStore persistence, Android/iOS lifecycle behavior, native clipboard and sharing, accessibility services, large system fonts, keyboard behavior and performance still require device validation. Generated manifest checks are not a review of a merged release manifest or compiled binary.
+That record did not include a compiled, signed or installed iOS/Android binary, or physical-device execution. Full Xcode was not installed on the validation host. Native SecureStore persistence, Android/iOS lifecycle behavior, native clipboard and sharing, accessibility services, large system fonts, keyboard behavior and performance were not established by those checks. Generated manifest checks were not a review of a merged release manifest or compiled binary.
 
-No seed creation/import, private-key custody, PIN authentication, biometric unlock, live signing/broadcast, UTXO watch backend, dapp connection, hardware wallet, passkey, private-note or proving integration is implemented. Public observations and visual previews must not be advertised as those capabilities.
+At that snapshot, seed creation/import, private-key custody, PIN authentication, biometric unlock, live signing/broadcast, UTXO watch backend, dapp connection, hardware wallet, passkey, private-note and proving integration were not implemented. The current source status above supersedes that implementation inventory; the historical checks do not validate the later capabilities.
 
-Metro reports a dependency export warning for `@noble/hashes/crypto.js` while resolving ethers. Exports and the tested public-address code work, but this warning and native runtime compatibility must be resolved before adding custody. It has not been silenced or treated as proof of native cryptographic readiness.
+Metro reported a dependency export warning for `@noble/hashes/crypto.js` while resolving ethers. Exports and the tested public-address code worked, but those results did not establish native runtime compatibility or cryptographic readiness.
 
 See [SECURITY.md](SECURITY.md) for the custody and transaction release gates and [README.md](README.md) to run the build.
 
 ## Full-wallet design review
 
-Checked November 2, 2026 against the same extension baseline. The full-wallet explorer contains 182 selectable views and 40 additional operation-specific authorization/result models. All 46 capability groups in [the parity matrix](design/PARITY_MATRIX.md) have explicit design mappings. Counts establish navigation coverage, not feature implementation or protocol equivalence.
+**Historical record.** Checked November 2, 2026 against the same extension baseline. The full-wallet explorer contains 182 selectable views and 40 additional operation-specific authorization/result models. All 46 capability groups in [the parity matrix](design/PARITY_MATRIX.md) have explicit design mappings. Counts establish navigation coverage, not feature implementation or protocol equivalence.
 
 - Strict TypeScript check and web production export pass.
 - All 24 unit tests pass, including six design tests for complete navigation targets, source capability mapping, operation-specific authorization, inert secret samples and consistent backup inventory.
 - All 16 browser tests pass: seven foundation checks and nine design checks, including Ethereum/PSBT identity, account-change re-review, watch-only restrictions, three responsive sizes, local versus hardware authorization, and password-confirmed note-package restoration with verification pending.
-- Representative screens were visually inspected in Chromium and the in-app browser. The final preview remains available at `http://127.0.0.1:4177/` while its local server is running.
+- Representative screens were visually inspected in Chromium and the in-app browser. The review used a local preview at `http://127.0.0.1:4177/`; this record does not establish that the server is still running.
 - Independent source/design review corrected the guardian/composite distinction, pinned Ethereum privacy scope, individual-note backup behavior, per-operation results, restored-note verification and backup handoff versus read-back verification.
 
 The draft PR integration also adds a package-local Expo lint configuration and a dedicated CI workflow. Extension lint and unit-test discovery exclude the mobile package because its own lint, Node tests and browser tests run separately. The extension's 736-suite `test:unit` selection is unchanged. Mobile screens derive their visible route from the current watch-authority state, and modal dismissal content is retained in state rather than mutating refs during render. Design Back closes panels, follows local design history, then exits; the shared Escape path is browser-tested while native Back delivery remains a device check.

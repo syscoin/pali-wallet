@@ -11,7 +11,8 @@ jobs:
         with:
           node-version: '26.12.1'
           check-latest: true
-      - run: yarn install
+      - run: yarn install --frozen-lockfile
+      - run: yarn type-check
       - run: yarn test-all
   recovery-enrollment:
     name: Pali recovery enrollment interoperability

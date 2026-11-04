@@ -64,8 +64,11 @@ Browser strings cannot be guaranteed to be erased from process memory; the
 application avoids keeping plaintext notes in persistent or shared UI state.
 The wallet recovery phrase alone cannot recreate randomly generated notes,
 including after recovery or reset. While the wallet is unlocked and the password
-is known, reveal and separately back up each note. Anyone holding a note can
-withdraw with it; keep each backup secret and secure.
+is known, use the encrypted whole-note backup, or reveal an individual note for
+backup. After a file restore, review ordinary notes with your wallet password
+against the saved verified pool data; recorded withdrawal uncertainty remains
+blocked. Anyone holding a note can withdraw with it; keep each backup secret and
+secure. Restoring does not invalidate another copy or cancel an earlier proof.
 
 The UI polls only local verified state for saved-note status. Public pool sync
 is separately opt-in and runs at the shared 15-minute boundary. Pausing sync

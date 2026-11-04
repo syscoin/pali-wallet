@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 import {
   createCipheriv,
   createDecipheriv,
@@ -6,6 +6,7 @@ import {
   pbkdf2Sync,
   randomBytes,
 } from 'crypto';
+import { Interface, parseEther, toQuantity } from 'ethers';
 import fs from 'fs';
 import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
@@ -27,7 +28,7 @@ import {
 // These publicly known synthetic notes have no deposits. Never fund them.
 const NOTES = [
   `tornado-eth-0.1-1-0x${'01'.repeat(62)}`,
-  `tornado-eth-1-1-0x${'02'.repeat(62)}`,
+  `tornado-eth-1-1-0x${'00'.repeat(62)}`,
 ];
 const FILE_PASSWORD = 'Public synthetic file password 2026';
 const SOURCE_PASSWORD = 'PublicSourceWallet!2026';
@@ -43,6 +44,174 @@ const summary = (added: number, duplicates: number, guarded: number) =>
     .replace('{{added}}', String(added))
     .replace('{{duplicates}}', String(duplicates))
     .replace('{{guarded}}', String(guarded));
+
+// The independent public vectors also used by privacyPoolSync.spec.ts. The
+// production controller must download, hash and anchor these synthetic leaves;
+// no cache rows, controller results or authority are injected by this fixture.
+async function installRestorePoolRoutes(
+  context: BrowserContext,
+  addresses: string[]
+) {
+  const pool = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936';
+  const root =
+    '0x220b4b81baca64b1efe6bbf6725960bfc2781f3af4886dccd44f9f0f8aba0dd2';
+  const block = 20000000;
+  const blockHash = '0x' + '42'.repeat(32);
+  const timestamp = toQuantity(Math.floor(Date.now() / 1000) - 900);
+  const abi = new Interface([
+    'function nextIndex() view returns (uint32)',
+    'function getLastRoot() view returns (bytes32)',
+    'function levels() view returns (uint32)',
+    'function denomination() view returns (uint256)',
+    'function isKnownRoot(bytes32 root) view returns (bool)',
+  ]);
+  const reads: string[] = [];
+  const deniedWrites: string[] = [];
+  const owns = (address: unknown) =>
+    addresses.some(
+      (value) => value.toLowerCase() === String(address).toLowerCase()
+    );
+  await context.route(
+    'https://ethereum-rpc.publicnode.com/**',
+    async (route) => {
+      let payload: any;
+      try {
+        payload = route.request().postDataJSON();
+      } catch {
+        return route.abort('blockedbyclient');
+      }
+      const calls = Array.isArray(payload) ? payload : [payload];
+      if (route.request().method() !== 'POST' || !calls.length)
+        return route.abort('blockedbyclient');
+      const replies = calls.map((call) => {
+        if (call?.jsonrpc !== '2.0' || !Array.isArray(call.params))
+          return undefined;
+        if (
+          /^(?:eth_send|sendrawtransaction|sys_sign|wallet_sendCalls)/i.test(
+            call.method
+          )
+        )
+          deniedWrites.push(call.method);
+        let result: unknown;
+        switch (call.method) {
+          case 'eth_chainId':
+            result = '0x1';
+            break;
+          case 'net_version':
+            result = '1';
+            break;
+          case 'eth_blockNumber':
+            result = toQuantity(block);
+            break;
+          case 'eth_getBalance':
+          case 'eth_getTransactionCount':
+            if (!owns(call.params[0])) return undefined;
+            result = '0x0';
+            break;
+          case 'eth_gasPrice':
+          case 'eth_maxPriorityFeePerGas':
+            result = '0x3b9aca00';
+            break;
+          case 'eth_getCode':
+            if (!owns(call.params[0])) return undefined;
+            result = '0x';
+            break;
+          case 'eth_getBlockByNumber':
+            if (
+              call.params.length !== 2 ||
+              call.params[1] !== false ||
+              !['latest', toQuantity(block)].includes(call.params[0])
+            )
+              return undefined;
+            result = {
+              number: toQuantity(block),
+              hash: blockHash,
+              timestamp,
+              parentHash: '0x' + '41'.repeat(32),
+              nonce: '0x0000000000000000',
+              difficulty: '0x0',
+              gasLimit: '0x1c9c380',
+              gasUsed: '0x0',
+              miner: '0x' + '00'.repeat(20),
+              extraData: '0x',
+              transactions: [],
+              baseFeePerGas: '0x3b9aca00',
+            };
+            break;
+          case 'eth_call': {
+            if (
+              call.params.length !== 2 ||
+              String(call.params[0]?.to).toLowerCase() !== pool
+            )
+              return undefined;
+            const parsed = abi.parseTransaction({ data: call.params[0].data });
+            if (!parsed) return undefined;
+            if (parsed.name === 'isKnownRoot') {
+              if (call.params[1] !== 'latest' || parsed.args[0] !== root)
+                return undefined;
+              result = abi.encodeFunctionResult(parsed.name, [true]);
+            } else {
+              if (call.params[1] !== toQuantity(block)) return undefined;
+              const values: Record<string, unknown> = {
+                nextIndex: 2,
+                getLastRoot: root,
+                levels: 20,
+                denomination: parseEther('1'),
+              };
+              if (!(parsed.name in values)) return undefined;
+              result = abi.encodeFunctionResult(parsed.name, [
+                values[parsed.name],
+              ]);
+            }
+            break;
+          }
+          default:
+            return undefined;
+        }
+        reads.push(call.method);
+        return { jsonrpc: '2.0', id: call.id, result };
+      });
+      if (replies.some((reply) => reply === undefined))
+        return route.abort('blockedbyclient');
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(Array.isArray(payload) ? replies : replies[0]),
+      });
+    }
+  );
+  await context.route(
+    'https://sysnode.info/api/privacy/v1/**',
+    async (route) => {
+      if (
+        route.request().method() !== 'GET' ||
+        route.request().url() !==
+          'https://sysnode.info/api/privacy/v1/pools/eth-1/snapshot'
+      )
+        return route.abort('blockedbyclient');
+      reads.push('public-pool-snapshot');
+      return route.fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({
+          version: 1,
+          chainId: 1,
+          poolAddress: pool,
+          asOfBlockNumber: block,
+          asOfBlockHash: blockHash,
+          leafCount: 2,
+          root,
+          leaves: [
+            '0x17731ee23dee1b3a01f4c667052b7898aee8db579cc49748d8fc798d4e769d58',
+            '0x2d707d9af99186d8fab88c82455e4af57221d7148440318e2de0039bc6ce7841',
+          ],
+          withdrawnNullifiers: [
+            '0x1247b27cdafda5cc981be564e7c1b992b711fc5393c137435574d875714e6638',
+          ],
+        }),
+      });
+    }
+  );
+  return { reads, deniedWrites, block };
+}
 
 /** Independent classical Node implementation; does not invoke the production codec. */
 function fixtureBackup(): Buffer {
@@ -250,6 +419,9 @@ test('private note files: real download, saved-file verification and fenced rest
   >[] = [];
   const seedFile = fixtureBackup();
   const observations: Record<string, unknown> = {};
+  let poolFixture:
+    | Awaited<ReturnType<typeof installRestorePoolRoutes>>
+    | undefined;
   const screenshots: string[] = [];
   let wallet: PaliWallet | undefined;
   fs.mkdirSync(E2E_CONFIG.artifactsDir, { recursive: true });
@@ -349,6 +521,10 @@ test('private note files: real download, saved-file verification and fenced rest
     networkAudits.push(
       await installIsolatedVaultRoutes(wallet.context, fixture, fence.url)
     );
+    poolFixture = await installRestorePoolRoutes(
+      wallet.context,
+      fixture.evmAddresses
+    );
     await wallet.step(
       'create a disposable fenced wallet and open private notes',
       async () => {
@@ -364,6 +540,9 @@ test('private note files: real download, saved-file verification and fenced rest
         const page = wallet!.page;
         const initial = await privateStorage(page);
         const dialog = await restorePreview(page);
+        await expect(
+          dialog.getByText(copy.reconciliation, { exact: true })
+        ).toBeVisible();
         await expect(
           dialog.getByText(summary(2, 0, 2), { exact: true })
         ).toBeVisible();
@@ -457,6 +636,202 @@ test('private note files: real download, saved-file verification and fenced rest
           noPlaintextNotes: true,
           canonicalEncryptedBundles: true,
         });
+      }
+    );
+    await wallet.step(
+      'restored-note review clears canceled passwords and pagehide events and refuses unverified pool data',
+      async () => {
+        const page = wallet!.page;
+        const row = noteRows(page).filter({
+          has: page.getByText('1 ETH', { exact: true }),
+        });
+        const review = en.privacy.restoreReview;
+        const unchanged = await privateStorage(page);
+        expect(
+          await row
+            .getByRole('button', { name: review.action, exact: true })
+            .evaluate((element) => getComputedStyle(element).fontSize)
+        ).toBe('12px');
+        await row
+          .getByRole('button', { name: review.action, exact: true })
+          .click();
+        await expect(
+          row.getByText(review.disclosure, { exact: true })
+        ).toBeVisible();
+        await expect(
+          row.getByText(review.noSnapshot, { exact: true })
+        ).toBeVisible();
+        await row
+          .getByLabel(review.password, { exact: true })
+          .fill(SOURCE_PASSWORD);
+        await row
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveCount(0);
+        await row
+          .getByRole('button', { name: review.action, exact: true })
+          .click();
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveValue('');
+        await row
+          .getByLabel(review.password, { exact: true })
+          .fill(SOURCE_PASSWORD);
+        // Headless Chromium keeps background tabs visible. Dispatch the browser
+        // lifecycle event without replacing visibility state or production
+        // APIs; the visibility-change handler is covered separately in jsdom.
+        await page.evaluate(() =>
+          window.dispatchEvent(new PageTransitionEvent('pagehide'))
+        );
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveCount(0);
+        await page.evaluate(() =>
+          window.dispatchEvent(new PageTransitionEvent('pageshow'))
+        );
+        await row
+          .getByRole('button', { name: review.action, exact: true })
+          .click();
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveValue('');
+        await row
+          .getByLabel(review.password, { exact: true })
+          .fill(SOURCE_PASSWORD);
+        await row
+          .getByRole('button', { name: review.confirm, exact: true })
+          .click();
+        await expect(row.getByRole('alert')).toHaveText(review.failed, {
+          timeout: 120000,
+        });
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveValue('');
+        expect(await privateStorage(page)).toEqual(unchanged);
+        expect(
+          poolFixture!.reads.filter(
+            (method) => method === 'public-pool-snapshot'
+          )
+        ).toEqual([]);
+        await row
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        observations.unverifiedReview = {
+          refused: true,
+          custodyUnchanged: true,
+          canceledPasswordCleared: true,
+          pagehideEventPasswordCleared: true,
+          nativeTabVisibilityQualified: false,
+          noImplicitPoolSync: true,
+        };
+      }
+    );
+    await wallet.step(
+      'ordinary restored note accepts a fresh password only after public pool verification',
+      async () => {
+        const page = wallet!.page;
+        const review = en.privacy.restoreReview;
+        await page
+          .getByRole('button', { name: en.buttons.back, exact: true })
+          .click();
+        await wallet!.switchNetwork('Ethereum Mainnet', 'EVM');
+        await openPrivacy(wallet!);
+        await page
+          .getByRole('combobox', { name: en.privacy.poolLabel })
+          .selectOption('eth-1');
+        await page
+          .getByRole('button', { name: en.privacy.prepare, exact: true })
+          .click();
+        const status = page
+          .locator('section[aria-labelledby="privacy-pool-data-title"]')
+          .getByRole('status');
+        await expect(status).toContainText(en.privacy.ready, {
+          timeout: 60000,
+        });
+        await page
+          .getByRole('button', { name: en.privacy.refreshNotes, exact: true })
+          .click();
+        const row = noteRows(page).filter({
+          has: page.getByText('1 ETH', { exact: true }),
+        });
+        const unchanged = await privateStorage(page);
+        await row
+          .getByRole('button', { name: review.action, exact: true })
+          .click();
+        await expect(
+          row.getByText(
+            review.snapshot.replace('{{block}}', String(poolFixture!.block)),
+            { exact: true }
+          )
+        ).toBeVisible();
+        expect(
+          await row.evaluate(
+            (element) => element.scrollWidth <= element.clientWidth
+          )
+        ).toBe(true);
+        screenshots.push(await wallet!.shot('restored-note-review-320x480'));
+        await row
+          .getByLabel(review.password, { exact: true })
+          .fill('WrongPublicPassword!2026');
+        await row
+          .getByRole('button', { name: review.confirm, exact: true })
+          .click();
+        await expect(row.getByRole('alert')).toHaveText(review.failed, {
+          timeout: 120000,
+        });
+        expect(await privateStorage(page)).toEqual(unchanged);
+        await expect(
+          row.getByLabel(review.password, { exact: true })
+        ).toHaveValue('');
+        await row
+          .getByLabel(review.password, { exact: true })
+          .fill(SOURCE_PASSWORD);
+        await row
+          .getByRole('button', { name: review.confirm, exact: true })
+          .click();
+        await expect(
+          row.getByRole('button', { name: review.action, exact: true })
+        ).toHaveCount(0, { timeout: 120000 });
+        await expect(
+          row.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeVisible();
+        expect(await privateStorage(page)).not.toEqual(unchanged);
+        // Reopen the document through the ordinary app path; the local review
+        // must survive without another password being held by this form.
+        await page.reload();
+        await wallet!.waitAppReady();
+        await expect(
+          row.getByRole('button', { name: review.action, exact: true })
+        ).toHaveCount(0);
+        await expect(
+          row.getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toBeVisible();
+        expect(
+          poolFixture!.reads.filter(
+            (method) => method === 'public-pool-snapshot'
+          ).length
+        ).toBeGreaterThan(0);
+        expect(
+          poolFixture!.reads.filter((method) => method === 'eth_call').length
+        ).toBeGreaterThan(0);
+        await noPlaintextUi(page);
+        observations.ordinaryReview = {
+          realPasswordAuthentication: true,
+          wrongPasswordRefused: true,
+          publicMerkleRootVerified: true,
+          cachedAsOfBlock: poolFixture!.block,
+          withdrawalControlEnabled: true,
+          persistedOnReopen: true,
+          withdrawalNotStarted: true,
+        };
       }
     );
     await wallet.step(
@@ -654,6 +1029,19 @@ test('private note files: real download, saved-file verification and fenced rest
         screenshots.push(await wallet!.shot('backup-restore-preview-320x480'));
         await confirmRestore(page, DESTINATION_PASSWORD, capture);
         await expect(noteRows(page)).toHaveCount(2);
+        // A source wallet's local review is never a portable authorization.
+        await expect(
+          noteRows(page).getByRole('button', {
+            name: en.privacy.restoreReview.action,
+            exact: true,
+          })
+        ).toHaveCount(2);
+        await expect(
+          noteRows(page).getByRole('button', {
+            name: en.privacy.withdrawal.open,
+            exact: true,
+          })
+        ).toHaveCount(0);
         observations.destinationRestore = await privateStorage(page);
         expect(observations.destinationRestore).toMatchObject({
           count: 1,
@@ -668,6 +1056,7 @@ test('private note files: real download, saved-file verification and fenced rest
             .profileSha256
         );
         observations.differentSeedAndPasswordVerified = true;
+        observations.localReviewNotTransferred = true;
       }
     );
     await wallet.step(
@@ -690,6 +1079,7 @@ test('private note files: real download, saved-file verification and fenced rest
       }
     );
     for (const audit of networkAudits) expect(audit.deniedWrites).toEqual([]);
+    expect(poolFixture!.deniedWrites).toEqual([]);
     fs.writeFileSync(
       path.join(E2E_CONFIG.artifactsDir, 'private-note-backup.json'),
       JSON.stringify(
@@ -710,7 +1100,11 @@ test('private note files: real download, saved-file verification and fenced rest
           screenshots,
           observations,
           network: {
-            deniedWrites: networkAudits.flatMap((audit) => audit.deniedWrites),
+            deniedWrites: [
+              ...networkAudits.flatMap((audit) => audit.deniedWrites),
+              ...poolFixture!.deniedWrites,
+            ],
+            publicPoolFixtureReads: poolFixture!.reads,
             readCount: networkAudits.reduce(
               (total, audit) => total + audit.reads.length,
               0

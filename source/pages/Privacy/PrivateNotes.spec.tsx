@@ -1077,9 +1077,84 @@ it('projects only safe metadata fields and rejects invalid phases or blocks', ()
   expect(() => readPrivateNote({ ...note, phase: 'spendable' })).toThrow();
   expect(() => readPrivateNote({ ...note, blockNumber: -1 })).toThrow();
   expect(() => readPrivateNote({ ...note, id: 'a'.repeat(129) })).toThrow();
+  expect(() =>
+    readPrivateNote({ ...note, restoration: 'authorized' })
+  ).toThrow();
+  expect(
+    readPrivateNote({ ...note, restoration: 'review-required' })
+  ).toMatchObject({ restoration: 'review-required' });
   expect(
     readPrivateNote({ ...note, phase: 'prepared', blockNumber: undefined })
   ).toMatchObject({ phase: 'prepared', amount: '0.1' });
+});
+
+it('opens a separate password review for a restored note before exposing withdrawal', async () => {
+  let reviewed = false;
+  mockEmitter.mockImplementation(async ([, method]) => {
+    if (method === 'getNotes')
+      return {
+        notes: [
+          {
+            ...note,
+            phase: reviewed ? 'verified' : 'waiting',
+            restoration: reviewed ? 'reviewed' : 'review-required',
+          },
+        ],
+      };
+    if (method === 'reviewRestoredNote') {
+      reviewed = true;
+      return undefined;
+    }
+    throw new Error('Unexpected call');
+  });
+  render(<PrivateNotes />);
+  fireEvent.click(
+    await screen.findByRole('button', { name: en.privacy.restoreReview.action })
+  );
+  expect(
+    screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+  ).not.toBeInTheDocument();
+  expect(screen.getByText(en.privacy.restoreReview.disclosure)).toBeVisible();
+  fireEvent.change(screen.getByLabelText(en.privacy.restoreReview.password), {
+    target: { value: 'synthetic-password' },
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: en.privacy.restoreReview.confirm })
+  );
+  await screen.findByRole('button', { name: en.privacy.withdrawal.open });
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([methods]) => methods[1] === 'reviewRestoredNote'
+    )
+  ).toEqual([
+    [
+      ['privateVault', 'reviewRestoredNote'],
+      [note.id, 'synthetic-password'],
+      120000,
+      false,
+    ],
+  ]);
+  expect(
+    mockEmitter.mock.calls.every(([methods]) =>
+      ['getNotes', 'reviewRestoredNote'].includes(methods[1])
+    )
+  ).toBe(true);
+});
+
+it('explains imported withdrawal uncertainty without offering restored-note review', async () => {
+  mockEmitter.mockResolvedValue({
+    notes: [{ ...note, phase: 'waiting', restoration: 'withdrawal-pending' }],
+  });
+  render(<PrivateNotes />);
+  expect(
+    await screen.findByText(en.privacy.restoreReview.pending)
+  ).toBeVisible();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.restoreReview.action })
+  ).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole('button', { name: en.privacy.withdrawal.open })
+  ).not.toBeInTheDocument();
 });
 
 it('quietly polls saved-note status every 15 seconds without clearing displayed metadata', async () => {

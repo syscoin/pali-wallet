@@ -17,6 +17,7 @@ export interface IPrivateNoteView extends Omit<IPrivateNoteStatus, 'phase'> {
   id: string;
   phase: IPrivateNoteStatus['phase'] | 'prepared';
   poolId: PrivacyPoolId;
+  restoration?: 'review-required' | 'reviewed' | 'withdrawal-pending';
   withdrawal?: {
     canCheckRecovery?: true;
     jobId?: string;
@@ -49,6 +50,7 @@ export interface IPrivateVaultController {
   importNote: (note: string) => Promise<IPrivateNoteView>;
   recoverFailedWithdrawal: (id: string, password: string) => Promise<void>;
   revealNote: (id: string, password: string) => Promise<string>;
+  reviewRestoredNote: (id: string, password: string) => Promise<void>;
   setCapacity: (
     capacity: PrivateVaultCapacity
   ) => Promise<IPrivateVaultCapacity>;

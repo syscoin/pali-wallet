@@ -2,7 +2,7 @@ node_modules/
 .expo/
 dist/
 dist-*/
-ios/
-android/
+/ios/
+/android/
 playwright-report/
 test-results/

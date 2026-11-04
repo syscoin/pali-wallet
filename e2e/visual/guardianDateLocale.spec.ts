@@ -134,6 +134,7 @@ for (const target of [
       // attested ABI/storage responses, never the local wallet or its keys.
       fixture.hydrationState.deployed = true;
       fixture.hydrationState.guardianInstalled = true;
+      fixture.state.blockNumber++;
       for (const language of ['en', target.code] as const) {
         const text = language === 'en' ? en : target.text;
         if (language !== 'en')

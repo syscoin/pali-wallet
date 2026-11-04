@@ -1,12 +1,12 @@
 # Pali mobile product design
 
-Status: proposed native product specification and review artifact. This describes the full extension-equivalent product, not the capabilities of the initial watch-only implementation.
+Status: proposed native product specification and review artifact. The current native development flow implements wallet creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. This document describes the broader extension-equivalent target. Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified.
 
 Source baseline: `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's `88cc9c9a8959b5dccc7ff43f136d60203782918a` reference adds documentation changes. The supplied 32-screen deck and video inform visual direction and journeys; labels such as “approved” inside those artifacts do not establish approval of this specification, working native custody, or security qualification.
 
 ## Product decision
 
-Build one Pali product with shared wallet/domain behavior and a native mobile presentation. Keep the extension's capabilities, account distinctions, exact amount handling, contextual reviews, recovery rules and localization. Adapt presentation and host services to iOS and Android. Do not reduce the intended product to the watch-only experiment currently in `apps/mobile`.
+Build one Pali product with shared wallet/domain behavior and a native mobile presentation. Keep the extension's capabilities, account distinctions, exact amount handling, contextual reviews, recovery rules and localization. Adapt presentation and host services to iOS and Android. The implemented native flow is one step toward that product; watch-only remains a separate account mode.
 
 The mobile app should feel calm and deliberate: the selected account and network are clear, amounts are readable, primary actions are reachable, and unusual consequences are explained at the decision where they matter. Preserve the Pali navy, pink and blue identity. Avoid adding exchange-style price noise, promotional panels or unrelated financial products to make the screen appear busier.
 
@@ -26,6 +26,10 @@ Recommend four stable top-level destinations: **Wallet, Activity, Tools, Setting
 For larger screens, the same destinations can become a sidebar with list/detail layouts. A tablet is not a centered phone stretched into unused space. On phones, avoid a fifth “More” tab and never dynamically remove top-level tabs when changing network or account type. A tool with unmet requirements opens a useful explanation and a relevant next step.
 
 The account selector and network selector remain distinct controls. The account label includes type when relevant: seed-derived, imported, watch-only, Ledger, Trezor or smart account. A small network label alone is insufficient when the same symbol appears on several chains.
+
+Watch-only remains a first-class account type in this same app. Keep “Watch an address” as an onboarding option so the app can be used solely to monitor an external wallet. Inside an established wallet, add watched addresses through account management and identify them clearly in the account selector. They can display balances, activity and optional alerts, but cannot sign or spend and must never ask for the external wallet's recovery phrase. Mixing watched and signing accounts must not accidentally inherit signing capabilities or imply that a watched address is owned.
+
+Transaction alerts are a separate, opt-in capability, not a consequence of displaying a balance or importing a key. Explain what addresses and device/push identifiers a notification service receives before enrollment, allow controls per account/network, hide amounts and addresses from lock-screen previews by default, and revoke subscriptions when a watched account is removed. A notification or deep link opens the relevant public activity context; it never unlocks or authorizes a transaction. Notification delivery, backend indexing and privacy controls remain to be implemented and qualified.
 
 An optional “All networks” portfolio is a read-only lens. A send, receive, connection request or settings mutation resolves to one concrete account/network context before continuing. Aggregation never adds unlike asset units together. Fiat totals disclose unavailable prices or incomplete networks instead of silently presenting an incomplete total as complete.
 
@@ -213,7 +217,7 @@ A mobile release claiming extension equivalence must satisfy the following cover
 | Settings/security        | Localization, currency, auto-lock, disclosure/export, backup scope, hardware setup and equivalent provider controls preserve their consequences                                  |
 | Native behavior          | Physical-device keyboard, safe areas, accessibility, back/gestures, clipboard, camera, background snapshots, biometric/key-store failure and process death have passing evidence |
 
-Do not check a parity item merely because a wrapper screen or fixture exists. The development watch-only/preview modes are useful validation surfaces, but they cannot satisfy custody or signing rows in this table.
+Do not check a parity item merely because a wrapper screen or fixture exists. The implemented native flow needs its own qualification evidence. Watch-only and preview modes cannot validate custody or signing rows in this table.
 
 ## Design acceptance criteria
 

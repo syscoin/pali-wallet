@@ -4,7 +4,7 @@ Design basis: November 2, 2026. Extension source: **`4470e54e8777cca2a4fe7c71240
 
 **Target:** carry every supported extension user journey into the mobile product, preserving account/network restrictions, review and consent, error handling, and recovery semantics. Layout and operating-system integration can change. An advanced feature awaiting native qualification stays in this matrix; it is not silently removed from the target.
 
-**Actual mobile baseline:** `apps/mobile/src/core/watchOnlyAuthority.ts` currently provides public EVM account watching. Its signing, wallet creation, seed import, biometrics and connection capabilities are false. The separate visual preview contains sample data. Neither establishes custody, transfer, UTXO, hardware or advanced-feature equivalence.
+**Actual mobile baseline:** The native development flow implements wallet creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. `apps/mobile/src/core/watchOnlyAuthority.ts` separately provides public EVM account watching without signing authority; the visual preview contains sample data. Full extension feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified. The rows below are the broader target, not completed-capability claims.
 
 ## Navigation and screen organization
 

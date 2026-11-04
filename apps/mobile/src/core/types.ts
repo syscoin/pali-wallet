@@ -1,10 +1,7 @@
-export type NetworkId =
-  | 'syscoin'
-  | 'bitcoin'
-  | 'syscoin-nevm'
-  | 'ethereum'
-  | 'base'
-  | 'arbitrum';
+import type { EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
+export type { EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
+
+export type NetworkId = 'syscoin' | 'bitcoin' | EvmNetworkId;
 
 export type WalletNetwork = Readonly<{
   id: NetworkId;
@@ -15,6 +12,7 @@ export type WalletNetwork = Readonly<{
   chainId?: number;
   color: string;
   canWatch: boolean;
+  testnet?: boolean;
 }>;
 
 /** Intentionally excludes keys, phrases, xpubs and keyring state. */

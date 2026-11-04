@@ -1,3 +1,4 @@
+import { CHAIN_IDS, createExtensionEvmNetworks } from '../shared/evmNetworks';
 import {
   FaucetChainIds,
   FaucetChainNames,
@@ -11,18 +12,7 @@ import {
   getBitcoinMainnetNetwork,
 } from './defaultNetworks';
 
-// Chain ID Constants
-export const CHAIN_IDS = {
-  SYSCOIN_MAINNET: 57,
-  SYSCOIN_TESTNET: 5700,
-  BASE_MAINNET: 8453,
-  ARBITRUM_ONE: 42161,
-  SYSCOIN_NEVM_TESTNET: 5700,
-  ZKSYS_TANENBAUM_TESTNET: 57057,
-  ROLLUX_MAINNET: 570,
-  ROLLUX_TESTNET: 57000,
-  ETHEREUM_MAINNET: 1,
-} as const;
+export { CHAIN_IDS } from '../shared/evmNetworks';
 
 export const INITIAL_FEE = {
   baseFee: 0,
@@ -56,62 +46,20 @@ export const syscoinKeysOfInterest = [
   'metaData', // Syscoin 5 metadata field
 ];
 
+const defaultEvmNetworks = createExtensionEvmNetworks() as Record<
+  number,
+  INetwork
+>;
 export const ROLLUX_DEFAULT_NETWORK = {
   chain: INetworkType.Ethereum,
-  network: {
-    chainId: CHAIN_IDS.ROLLUX_MAINNET,
-    currency: 'sys',
-    default: true,
-    label: 'Rollux',
-    url: 'https://rpc.rollux.com',
-    apiUrl: 'https://explorer.rollux.com/api',
-    explorer: 'https://explorer.rollux.com',
-    kind: INetworkType.Ethereum,
-    slip44: 60, // EVM networks use Ethereum's slip44
-    coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
-    coingeckoPlatformId: 'rollux', // Platform ID for token searches
-  } as INetwork,
+  network: defaultEvmNetworks[CHAIN_IDS.ROLLUX_MAINNET],
 };
-
-export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 = {
-  chainId: CHAIN_IDS.SYSCOIN_NEVM_TESTNET,
-  url: 'https://rpc.tanenbaum.io',
-  label: 'Syscoin NEVM Testnet',
-  default: false, // Allow users to remove testnets to avoid chainId conflicts
-  currency: 'tsys',
-  kind: INetworkType.Ethereum,
-  slip44: 60, // EVM networks use Ethereum's slip44
-  apiUrl: 'https://explorer.tanenbaum.io/api',
-  explorer: 'https://explorer.tanenbaum.io/',
-  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
-} as INetwork;
-
-export const ZKSYS_TANENBAUM_TESTNET_NETWORK_57057 = {
-  chainId: CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET,
-  url: 'https://rpc-zk.tanenbaum.io',
-  label: 'zkTanenbaum',
-  default: true,
-  currency: 'tsys',
-  kind: INetworkType.Ethereum,
-  slip44: 60, // EVM networks use Ethereum's slip44
-  apiUrl: 'https://explorer-zk.tanenbaum.io/api',
-  explorer: 'https://explorer-zk.tanenbaum.io',
-  coingeckoId: 'syscoin', // Native token (TSYS uses SYS for price reference)
-} as INetwork;
-
-export const SYSCOIN_MAINNET_NETWORK = {
-  chainId: CHAIN_IDS.SYSCOIN_MAINNET,
-  url: 'https://rpc.syscoin.org',
-  label: 'Syscoin NEVM',
-  default: true,
-  currency: 'sys',
-  kind: INetworkType.Ethereum,
-  slip44: 60, // EVM networks use Ethereum's slip44
-  apiUrl: 'https://explorer.syscoin.org/api',
-  explorer: 'https://explorer.syscoin.org',
-  coingeckoId: 'syscoin', // Native token (SYS) CoinGecko ID
-  coingeckoPlatformId: 'syscoin-nevm', // Platform ID for token searches
-} as INetwork;
+export const SYSCOIN_NEVM_TESTNET_NETWORK_5700 =
+  defaultEvmNetworks[CHAIN_IDS.SYSCOIN_NEVM_TESTNET];
+export const ZKSYS_TANENBAUM_TESTNET_NETWORK_57057 =
+  defaultEvmNetworks[CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET];
+export const SYSCOIN_MAINNET_NETWORK =
+  defaultEvmNetworks[CHAIN_IDS.SYSCOIN_MAINNET];
 
 export const SYSCOIN_UTXO_MAINNET_NETWORK = getSyscoinUTXOMainnetNetwork();
 export const BITCOIN_MAINNET_NETWORK = getBitcoinMainnetNetwork();
@@ -177,48 +125,6 @@ export const faucetTxSyscoinNEVMTestnetInfo = {
 
 // Our own networks state with proper 'kind' properties - replaces broken initialNetworksState
 export const PALI_NETWORKS_STATE = {
-  ethereum: {
-    [CHAIN_IDS.SYSCOIN_MAINNET]: SYSCOIN_MAINNET_NETWORK,
-    [CHAIN_IDS.ROLLUX_MAINNET]: ROLLUX_DEFAULT_NETWORK.network,
-    [CHAIN_IDS.SYSCOIN_NEVM_TESTNET]: SYSCOIN_NEVM_TESTNET_NETWORK_5700,
-    [CHAIN_IDS.ZKSYS_TANENBAUM_TESTNET]: ZKSYS_TANENBAUM_TESTNET_NETWORK_57057,
-    [CHAIN_IDS.ETHEREUM_MAINNET]: {
-      chainId: CHAIN_IDS.ETHEREUM_MAINNET,
-      url: 'https://ethereum-rpc.publicnode.com',
-      label: 'Ethereum Mainnet',
-      default: true,
-      currency: 'eth',
-      explorer: 'https://etherscan.io',
-      apiUrl: 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api',
-      kind: INetworkType.Ethereum,
-      slip44: 60, // Ethereum
-      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
-      coingeckoPlatformId: 'ethereum', // Platform ID for token searches
-    } as INetwork,
-    [CHAIN_IDS.BASE_MAINNET]: {
-      chainId: CHAIN_IDS.BASE_MAINNET,
-      currency: 'eth',
-      default: true,
-      label: 'Base',
-      url: 'https://mainnet.base.org',
-      explorer: 'https://basescan.org',
-      kind: INetworkType.Ethereum,
-      slip44: 60, // EVM networks use Ethereum's slip44
-      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
-      coingeckoPlatformId: 'base', // Platform ID for token searches
-    } as INetwork,
-    [CHAIN_IDS.ARBITRUM_ONE]: {
-      chainId: CHAIN_IDS.ARBITRUM_ONE,
-      currency: 'eth',
-      default: true,
-      label: 'Arbitrum One',
-      url: 'https://arb1.arbitrum.io/rpc',
-      explorer: 'https://arbiscan.io',
-      kind: INetworkType.Ethereum,
-      slip44: 60, // EVM networks use Ethereum's slip44
-      coingeckoId: 'ethereum', // Native token (ETH) CoinGecko ID
-      coingeckoPlatformId: 'arbitrum-one', // Platform ID for token searches
-    } as INetwork,
-  },
+  ethereum: defaultEvmNetworks,
   syscoin: getDefaultUTXONetworks(), // Use coins.ts as single source of truth
 };

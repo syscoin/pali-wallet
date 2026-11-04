@@ -121,6 +121,7 @@ test('guardian recovery observes external requests without a local intent and fa
     );
     fixture.hydrationState.deployed = true;
     fixture.hydrationState.guardianInstalled = true;
+    fixture.state.blockNumber++;
     await wallet.step(
       'show the externally scheduled recovery and exact deadline without enabling finalization',
       async (capture) => {

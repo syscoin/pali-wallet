@@ -1,0 +1,628 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { keccak256 } from 'ethers/crypto';
+import { Transaction } from 'ethers/transaction';
+import {
+  createKeyringRuntimeFactory,
+  type KeyringRuntime,
+} from '../src/custody/keyringRuntime.ts';
+import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
+import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
+
+process.env.NODE_ENV = 'production';
+delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
+delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
+const PHRASE =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+const PASSWORD = 'Public native transfer fixture password';
+const RECIPIENT = '0x1111111111111111111111111111111111111111';
+
+test('shared SDK and SQLite retain exact pending bytes across a process-style authority restart', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
+  const file = path.join(directory, 'wallet.sqlite');
+  const oldFetch = globalThis.fetch;
+  let leakedNetwork = 0;
+  let loseResponse = true;
+  globalThis.fetch = (async () => {
+    leakedNetwork++;
+    throw Error('Public network forbidden');
+  }) as typeof fetch;
+  let storage: SqliteWalletStorage | undefined;
+  let runtime: KeyringRuntime | undefined;
+  let authority: NativeCustodyAuthority | undefined;
+  let transfers: NativeTransfers | undefined;
+  const submitted: string[] = [];
+  const factory = createKeyringRuntimeFactory({
+    async ensureCryptoReady() {
+      assert.ok(globalThis.crypto.subtle);
+    },
+    async openStorage() {
+      const fresh = !existsSync(file);
+      storage = await SqliteWalletStorage.open(
+        nodeConnection(file).connection,
+        digest,
+        INSTALLATION,
+        fresh
+      );
+      return storage;
+    },
+  });
+  const open = async () => {
+    authority = new NativeCustodyAuthority({
+      async open() {
+        runtime = (await factory.open()) as KeyringRuntime;
+        return runtime;
+      },
+    });
+    await authority.initialize();
+    const rpc = new NativeTransferRpc({
+      fetch: async (_url, init) => {
+        const b = JSON.parse(String(init.body));
+        let result: unknown;
+        if (b.method === 'eth_chainId') result = '0x1';
+        else if (b.method === 'eth_getTransactionCount') result = '0x0';
+        else if (b.method === 'eth_getBalance') result = '0x10000000000000000';
+        else if (b.method === 'eth_feeHistory')
+          result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
+        else if (b.method === 'eth_maxPriorityFeePerGas') result = '0x1';
+        else if (b.method === 'eth_estimateGas') result = '0x5208';
+        else if (b.method === 'eth_getTransactionReceipt') result = null;
+        else if (b.method === 'eth_getBlockByNumber') result = { number: b.params[0] === 'finalized' ? '0x20' : b.params[0], hash: '0x' + 'f'.repeat(64) };
+        else if (b.method === 'eth_sendRawTransaction') {
+          const persisted = (await storage!.keyringStorage.get(
+            'native-evm-transfer-v1'
+          )) as { entries: { registration: { chainId: string }; phase: string; rawTransaction: string }[] };
+          const entry = persisted.entries.find((value) => value.registration.chainId === '1');
+          assert(entry && ['attempted', 'submitted'].includes(entry.phase));
+          assert.equal(entry.rawTransaction, b.params[0]);
+          submitted.push(b.params[0]);
+          if (loseResponse)
+            throw Error('Lost response after network acceptance');
+          result = keccak256(b.params[0]);
+        } else throw Error('Unexpected method');
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: b.id, result }),
+          { headers: { 'content-type': 'application/json' } }
+        );
+      },
+    });
+    transfers = new NativeTransfers(authority, () => runtime?.transfers, {
+      rpc,
+    });
+  };
+  try {
+    await open();
+    await authority!.importPhrase(PHRASE, PASSWORD);
+    await runtime!.backup.confirm(await runtime!.backup.fingerprint());
+    authority!.lock();
+    await authority!.unlock(PASSWORD);
+    assert.equal(authority!.getSnapshot().phase, 'ready');
+    await transfers!.prepare(RECIPIENT, '0.001');
+    const review = transfers!.getSnapshot().review!;
+    await transfers!.confirm(review.id, PASSWORD);
+    assert.equal(transfers!.getSnapshot().phase, 'unknown');
+    const firstHash = transfers!.getSnapshot().hash;
+    assert.equal(Transaction.from(submitted[0]!).to, RECIPIENT);
+    assert.equal(Transaction.from(submitted[0]!).value, 1000000000000000n);
+    transfers!.dispose();
+    await authority!.dispose();
+    await open();
+    await authority!.unlock(PASSWORD);
+    await transfers!.recover();
+    assert.equal(transfers!.getSnapshot().hash, firstHash);
+    assert.equal(transfers!.getSnapshot().phase, 'unknown');
+    await assert.rejects(transfers!.prepare(RECIPIENT, '0.002'), {
+      code: 'PENDING_TRANSFER',
+    });
+    await transfers!.recover(true);
+    const retry = transfers!.getSnapshot().review!;
+    assert.equal(retry.retry, true);
+    loseResponse = false;
+    await transfers!.confirm(retry.id, PASSWORD);
+    assert.equal(submitted.length, 2);
+    assert.equal(submitted[0], submitted[1]);
+    assert.equal(transfers!.getSnapshot().phase, 'pending');
+    assert.equal(transfers!.getSnapshot().hash, firstHash);
+    assert.equal(leakedNetwork, 0);
+  } finally {
+    transfers?.dispose();
+    await authority?.dispose();
+    globalThis.fetch = oldFetch;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+async function cancellationFixture() {
+  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
+  const file = path.join(directory, 'wallet.sqlite');
+  let storage!: SqliteWalletStorage;
+  let runtime!: KeyringRuntime;
+  let signatures = 0;
+  let sdkInstance!: InstanceType<typeof sdk.SoftwareKeyring>;
+  let journalGate: { phase: 'signed' | 'attempted'; written: boolean; entered(): void; release: Promise<void> } | null = null;
+  let gate: {
+    stage: 'password' | 'hydrate';
+    entered(): void;
+    release: Promise<void>;
+  } | null = null;
+  const pause = async (stage: 'password' | 'hydrate') => {
+    const current = gate;
+    if (current?.stage === stage) {
+      current.entered();
+      await current.release;
+    }
+  };
+  // Run the actual SDK work, then pause its result at the runtime's await
+  // boundary. Cancellation must revoke custody before that result is consumed.
+  class ControlledKeyring extends sdk.SoftwareKeyring {
+    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
+      super(host);
+      sdkInstance = this;
+      const hydrate = this.createFirstAccount;
+      this.createFirstAccount = async (...args) => {
+        const result = await hydrate(...args);
+        await pause('hydrate');
+        return result;
+      };
+    }
+    async unlock(password: string) {
+      const result = await super.unlock(password);
+      await pause('password');
+      return result;
+    }
+    signPreparedEvmTransaction(
+      ...args: Parameters<
+        InstanceType<typeof sdk.SoftwareKeyring>['signPreparedEvmTransaction']
+      >
+    ) {
+      signatures++;
+      return super.signPreparedEvmTransaction(...args);
+    }
+  }
+  const base = createKeyringRuntimeFactory({
+    async ensureCryptoReady() {
+      assert.ok(globalThis.crypto.subtle);
+    },
+    async openStorage() {
+      storage = await SqliteWalletStorage.open(
+        nodeConnection(file, { after: async (kind, sql) => {
+          const current = journalGate;
+          if (!current) return;
+          if (kind === 'run' && sql.startsWith(current.phase === 'signed'
+            ? 'INSERT INTO keyring_records' : 'UPDATE keyring_records')) current.written = true;
+          if (current.written && kind === 'exec' && sql === 'COMMIT') {
+            current.entered();
+            await current.release;
+            throw Error('Lost journal commit acknowledgement');
+          }
+        } }).connection,
+        digest,
+        INSTALLATION,
+        true
+      );
+      return storage;
+    },
+    loadSdk: async () => ({ ...sdk, SoftwareKeyring: ControlledKeyring }),
+  });
+  const authority = new NativeCustodyAuthority({
+    async open() {
+      runtime = (await base.open()) as KeyringRuntime;
+      return runtime;
+    },
+  });
+  const broadcasts: string[] = [];
+  let loseResponse = false;
+  const largeReceipt = {
+    oversized: false,
+    repeated: false,
+    receiptReads: 0,
+    consumed: false,
+  };
+  let recovery: { receipt: Record<string, unknown> | null; nonce: string; height: string; canonicalHash: string } | undefined;
+  const rpc = new NativeTransferRpc({
+    fetch: async (_url, init) => {
+      const request = JSON.parse(String(init.body));
+      let result: unknown;
+      if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionCount') {
+        result = largeReceipt.oversized
+          ? (request.params[1] === 'pending' || largeReceipt.consumed ||
+              (largeReceipt.repeated && largeReceipt.receiptReads === 1) ? '0x1' : '0x0')
+          : (request.params[1] === 'pending' ? '0x0' : recovery?.nonce ?? '0x0');
+      } else if (request.method === 'eth_getBalance')
+        result = '0x10000000000000000';
+      else if (request.method === 'eth_feeHistory')
+        result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
+      else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
+      else if (request.method === 'eth_estimateGas') result = '0x5208';
+      else if (request.method === 'eth_getTransactionReceipt') {
+        if (!largeReceipt.oversized) result = recovery?.receipt ?? null;
+        else {
+          largeReceipt.receiptReads++;
+          const tx = Transaction.from(broadcasts[0]!);
+          result = {
+            transactionHash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            status: '0x1',
+            blockNumber: '0xa',
+            blockHash: '0x' + '8'.repeat(64),
+            ...(largeReceipt.repeated && largeReceipt.receiptReads % 2 === 1 ? {} : {
+              logs: [{ address: tx.to, topics: [], data: '0x' + 'ab'.repeat(10_000) }],
+            }),
+          };
+        }
+      } else if (request.method === 'eth_getBlockByNumber') {
+        if (largeReceipt.oversized) {
+          const number = request.params[0] === 'finalized' ? '0xb' : request.params[0];
+          result = { number, hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64) };
+        } else {
+          const current = recovery;
+          const number = request.params[0] === 'finalized' ? current?.height ?? '0x20' : request.params[0];
+          result = { number, hash: current && number === current.receipt?.blockNumber ? current.canonicalHash : '0x' + 'f'.repeat(64) };
+        }
+      } else if (request.method === 'eth_sendRawTransaction') {
+        broadcasts.push(request.params[0]);
+        if (loseResponse) throw Error('Lost acknowledgement');
+        result = keccak256(request.params[0]);
+      } else throw Error('Unexpected method');
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
+        { headers: { 'content-type': 'application/json' } }
+      );
+    },
+  });
+  let transfers = new NativeTransfers(authority, () => runtime?.transfers, {
+    rpc,
+  });
+  try {
+    await authority.initialize();
+    await authority.importPhrase(PHRASE, PASSWORD);
+    await runtime.backup.confirm(await runtime.backup.fingerprint());
+    authority.lock();
+    await authority.unlock(PASSWORD);
+  } catch (error) {
+    transfers.dispose();
+    await authority.dispose();
+    await rm(directory, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    authority,
+    runtime,
+    broadcasts,
+    recovery: largeReceipt,
+    get transfers() { return transfers; },
+    rpc,
+    get signatures() { return signatures; },
+    get sdkUnlocked() { return sdkInstance.isUnlocked(); },
+    holdJournal(phase: 'signed' | 'attempted') {
+      let entered!: () => void;
+      let resume!: () => void;
+      const started = new Promise<void>((resolve) => { entered = resolve; });
+      const release = new Promise<void>((resolve) => { resume = resolve; });
+      journalGate = { phase, written: false, entered, release };
+      return { started, finish() { journalGate = null; resume(); } };
+    },
+    async readDurableJournal() {
+      // Observe durable bytes independently of the quarantined runtime port.
+      const { DatabaseSync } = await import('node:sqlite');
+      const observer = new DatabaseSync(file, { readOnly: true });
+      try {
+        const row = observer.prepare('SELECT value FROM keyring_records WHERE key = ?').get('native-evm-transfer-v1') as { value: string } | undefined;
+        return row ? JSON.parse(row.value) : undefined;
+      } finally { observer.close(); }
+    },
+    loseResponse() { loseResponse = true; },
+    setRecovery(value: NonNullable<typeof recovery>) { recovery = structuredClone(value); },
+    hold(stage: 'password' | 'hydrate') {
+      let entered!: () => void;
+      let resume!: () => void;
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
+      gate = { stage, entered, release };
+      return {
+        started,
+        finish() {
+          gate = null;
+          resume();
+        },
+      };
+    },
+    replaceTransfers() {
+      transfers = new NativeTransfers(authority, () => runtime.transfers, {
+        rpc,
+      });
+    },
+    async readJournal() {
+      return storage.keyringStorage.get('native-evm-transfer-v1');
+    },
+    async close() {
+      transfers.dispose();
+      try { await authority.dispose(); }
+      finally { await rm(directory, { recursive: true, force: true }); }
+    },
+  };
+}
+
+for (const stage of ['password', 'hydrate'] as const) {
+  for (const retry of [false, true]) {
+    test(`cancelling ${
+      retry ? 'retry authorization' : 'signing'
+    } during ${stage} keeps real custody and SDK state aligned`, async () => {
+      const f = await cancellationFixture();
+      let hold: ReturnType<typeof f.hold> | undefined;
+      let pending: Promise<void> | undefined;
+      try {
+        await f.transfers.prepare(RECIPIENT, '0.001');
+        if (retry) {
+          f.loseResponse();
+          await f.transfers.confirm(
+            f.transfers.getSnapshot().review!.id,
+            PASSWORD
+          );
+          await f.transfers.recover(true);
+        }
+        const initialSignatures = f.signatures;
+        const initialBroadcasts = f.broadcasts.length;
+        const journal = await f.readJournal();
+        const revision = f.authority.getSnapshot().revision;
+        hold = f.hold(stage);
+        pending = f.transfers.confirm(
+          f.transfers.getSnapshot().review!.id,
+          PASSWORD
+        );
+        const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+        await hold.started;
+        // Dispose exercises the same revocation while removing the screen's
+        // controller; the other cases exercise Back/edit cancellation.
+        if (retry && stage === 'hydrate') f.transfers.dispose();
+        else f.transfers.cancel();
+        assert.equal(f.authority.getSnapshot().phase, 'locked');
+        assert.equal(f.authority.getSnapshot().revision, revision + 1);
+        assert.equal(f.authority.getSnapshot().account, null);
+        hold.finish();
+        await rejected;
+        pending = undefined;
+        assert.equal(f.authority.getSnapshot().phase, 'locked');
+        await assert.rejects(
+          f.runtime.session.readEthereumAddress(),
+          /NOT_READY/
+        );
+        assert.equal(f.signatures, initialSignatures);
+        assert.equal(f.broadcasts.length, initialBroadcasts);
+        assert.deepEqual(await f.readJournal(), journal);
+
+        await f.authority.unlock(PASSWORD);
+        assert.equal(f.authority.getSnapshot().phase, 'ready');
+        if (retry && stage === 'hydrate') f.replaceTransfers();
+        await f.transfers.recover(retry);
+        if (!retry) await f.transfers.prepare(RECIPIENT, '0.001');
+        await f.transfers.confirm(
+          f.transfers.getSnapshot().review!.id,
+          PASSWORD
+        );
+        assert.equal(f.signatures, initialSignatures + (retry ? 0 : 1));
+        assert.equal(f.broadcasts.length, initialBroadcasts + 1);
+        if (retry) assert.equal(f.broadcasts[0], f.broadcasts[1]);
+      } finally {
+        hold?.finish();
+        await pending?.catch(() => undefined);
+        await f.close();
+      }
+    });
+  }
+}
+
+for (const repeated of [false, true]) {
+  test(`${
+    repeated ? 'repeated' : 'initial'
+  } oversized receipt preserves real SDK journal bytes until finalized nonce consumption permits a higher nonce`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const pending = (await f.readJournal()) as TransferJournalContainer;
+      assert.equal(pending.entries.length, 1);
+      assert.equal(pending.entries[0]!.phase, 'submitted');
+      f.recovery.oversized = true;
+      f.recovery.repeated = repeated;
+      // A pending-state nonce alone must not release the saved transaction.
+      await assert.rejects(f.transfers.recover(true), { code: 'FAILED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.deepEqual(await f.readJournal(), pending);
+      await assert.rejects(f.transfers.prepare(RECIPIENT, '0.002'), {
+        code: 'PENDING_TRANSFER',
+      });
+      assert.equal(f.signatures, 1);
+      assert.equal(f.broadcasts.length, 1);
+      f.recovery.receiptReads = 0;
+      f.recovery.consumed = true;
+      await f.transfers.recover(true);
+      assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
+      assert.match(
+        f.transfers.getSnapshot().message!,
+        /result is unavailable/i
+      );
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.deepEqual(await f.readJournal(), {
+        ...pending,
+        revision: pending.revision + 1,
+        entries: pending.entries.map((entry) => ({ ...entry, phase: 'nonce-consumed' })),
+      });
+      await f.transfers.prepare(RECIPIENT, '0.002');
+      assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      assert.equal(f.signatures, 2);
+      assert.equal(f.broadcasts.length, 2);
+      assert.equal(Transaction.from(f.broadcasts[1]!).nonce, 1);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+for (const phase of ['signed', 'attempted'] as const) {
+  test(`cancelled post-sign ${phase} acknowledgement still quarantines the current authority`, async () => {
+    const f = await cancellationFixture();
+    let hold: ReturnType<typeof f.holdJournal> | undefined;
+    let pending: Promise<void> | undefined;
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      hold = f.holdJournal(phase);
+      pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await hold.started;
+      assert.equal(f.signatures, 1);
+      assert.equal(f.sdkUnlocked, true);
+      const before = f.authority.getSnapshot();
+      const retained = await f.readDurableJournal();
+      assert.equal(retained.entries[0].phase, phase);
+      f.transfers.cancel();
+      assert.equal(f.authority.getSnapshot(), before, 'Back after signing does not itself lock custody');
+      hold.finish();
+      await rejected; pending = undefined;
+      assert.equal(f.authority.getSnapshot().phase, 'unavailable');
+      assert.equal(f.authority.getSnapshot().error, 'UNAVAILABLE');
+      assert.equal(f.authority.getSnapshot().account, null);
+      assert.equal(f.sdkUnlocked, false, 'the actual SDK session is retired');
+      await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+      assert.equal(f.broadcasts.length, 0);
+      assert.deepEqual(await f.readDurableJournal(), retained);
+      await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED/);
+    } finally {
+      hold?.finish();
+      await pending?.catch(() => undefined);
+      await f.close().catch(() => undefined);
+    }
+  });
+
+  test(`a cancelled old-runtime ${phase} failure cannot lock the replacement authority`, async () => {
+    const old = await cancellationFixture();
+    const replacement = await cancellationFixture();
+    let active = old;
+    let locks = 0;
+    const listeners = new Set<Parameters<typeof old.authority.subscribe>[0]>();
+    const unsubscribe = [old, replacement].map((owner) => owner.authority.subscribe((snapshot) => {
+      if (active === owner) for (const listener of listeners) listener(snapshot);
+    }));
+    const transfers = new NativeTransfers({
+      getSnapshot: () => active.authority.getSnapshot(),
+      subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+      lock() { locks++; active.authority.lock(); },
+    }, () => active.runtime.transfers, { rpc: old.rpc });
+    let hold: ReturnType<typeof old.holdJournal> | undefined;
+    let pending: Promise<void> | undefined;
+    try {
+      await transfers.prepare(RECIPIENT, '0.001');
+      hold = old.holdJournal(phase);
+      pending = transfers.confirm(transfers.getSnapshot().review!.id, PASSWORD);
+      const rejected = assert.rejects(pending, { code: 'CANCELLED' });
+      await hold.started;
+      const retained = await old.readDurableJournal();
+      transfers.cancel();
+      old.authority.lock();
+      active = replacement;
+      const before = replacement.authority.getSnapshot();
+      hold.finish();
+      await rejected; pending = undefined;
+      assert.equal(locks, 0, 'late failure must not forward a lock to a different runtime');
+      assert.equal(replacement.authority.getSnapshot(), before);
+      assert.equal(replacement.sdkUnlocked, true);
+      assert.equal(await replacement.runtime.session.readEthereumAddress(), before.account!.address);
+      assert.equal(await replacement.readJournal(), undefined);
+      assert.deepEqual(await old.readDurableJournal(), retained);
+      assert.equal(old.sdkUnlocked, false);
+      assert.equal(old.broadcasts.length, 0);
+    } finally {
+      hold?.finish();
+      await pending?.catch(() => undefined);
+      transfers.dispose(); unsubscribe.forEach((stop) => stop());
+      await old.close().catch(() => undefined);
+      await replacement.close();
+    }
+  });
+}
+
+
+for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as const) {
+  test(`orphan receipt cannot ${phase === 'confirmed' ? 'confirm' : 'revert'} a real journal even when replacement nonce is finalized`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+      const entry = saved.entries[0]!;
+      const tx = Transaction.from(entry.rawTransaction);
+      f.setRecovery({ receipt: { transactionHash: entry.hash, from: tx.from, to: RECIPIENT, status,
+        blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '2'.repeat(64) });
+      await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
+      assert.equal(f.authority.getSnapshot().phase, 'ready');
+      assert.deepEqual(await f.readJournal(), saved, 'the unresolved exact signed entry must remain recoverable');
+      assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+    } finally { await f.close(); }
+  });
+
+  test(`canonical finalized ${phase} receipt can terminalize the matching real journal`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+      const entry = saved.entries[0]!;
+      f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status,
+        blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '1'.repeat(64) });
+      await f.transfers.recover();
+      assert.equal(f.transfers.getSnapshot().phase, phase);
+      const next = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
+      assert.equal(next.entries[0]!.phase, phase);
+      assert.equal(next.entries[0]!.rawTransaction, entry.rawTransaction);
+      assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+    } finally { await f.close(); }
+  });
+}
+
+test('missing receipt with a finalized consumed nonce records only nonce-consumed', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    const before = await f.readJournal() as { entries: { rawTransaction: string }[] };
+    f.setRecovery({ receipt: null, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '1'.repeat(64) });
+    await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
+    const after = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
+    assert.equal(after.entries[0]!.phase, 'nonce-consumed');
+    assert.equal(after.entries[0]!.rawTransaction, before.entries[0]!.rawTransaction);
+  } finally { await f.close(); }
+});
+
+test('canonical receipt above finalized height leaves its real journal unresolved', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+    const entry = saved.entries[0]!;
+    f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status: '0x1',
+      blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0xf', canonicalHash: '0x' + '1'.repeat(64) });
+    await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.deepEqual(await f.readJournal(), saved);
+  } finally { await f.close(); }
+});

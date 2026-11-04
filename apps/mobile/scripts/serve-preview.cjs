@@ -1,7 +1,8 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const root = path.resolve(__dirname, '../dist');
+const root = path.resolve(__dirname, '..', process.argv[2] ?? 'dist');
+const port = Number(process.argv[3] ?? 4178);
 const types = {
   '.html': 'text/html',
   '.js': 'text/javascript',
@@ -36,6 +37,6 @@ http
       res.end('Not found');
     }
   })
-  .listen(4178, '127.0.0.1', () =>
-    console.log('Pali preview: http://127.0.0.1:4178')
+  .listen(port, '127.0.0.1', () =>
+    console.log(`Pali preview: http://127.0.0.1:${port}`)
   );

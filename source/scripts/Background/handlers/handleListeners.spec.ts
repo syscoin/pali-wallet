@@ -184,6 +184,7 @@ const mockMasterController: jest.Mocked<IMasterController> = {
     verifyExport: jest.fn(),
   },
   privateVault: {
+    reviewRestoredNote: jest.fn(),
     recoverFailedWithdrawal: jest.fn(),
     clearCompletedNotes: jest.fn(),
     createDepositNote: jest.fn(),

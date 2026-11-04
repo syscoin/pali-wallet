@@ -1,3 +1,4 @@
+import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
 import type { NetworkId, WalletNetwork } from './types.ts';
 
 // Kind participates in identity: a numeric chain identifier alone is not enough.
@@ -20,46 +21,10 @@ export const NETWORKS: readonly WalletNetwork[] = Object.freeze([
     color: '#F7931A',
     canWatch: false,
   }),
-  Object.freeze({
-    id: 'syscoin-nevm',
-    name: 'Syscoin NEVM',
-    symbol: 'SYS',
-    decimals: 18,
-    kind: 'evm',
-    chainId: 57,
-    color: '#42B6E8',
-    canWatch: true,
-  }),
-  Object.freeze({
-    id: 'ethereum',
-    name: 'Ethereum',
-    symbol: 'ETH',
-    decimals: 18,
-    kind: 'evm',
-    chainId: 1,
-    color: '#8B9EEC',
-    canWatch: true,
-  }),
-  Object.freeze({
-    id: 'base',
-    name: 'Base',
-    symbol: 'ETH',
-    decimals: 18,
-    kind: 'evm',
-    chainId: 8453,
-    color: '#477CFF',
-    canWatch: true,
-  }),
-  Object.freeze({
-    id: 'arbitrum',
-    name: 'Arbitrum One',
-    symbol: 'ETH',
-    decimals: 18,
-    kind: 'evm',
-    chainId: 42161,
-    color: '#7EC7F0',
-    canWatch: true,
-  }),
+  ...EVM_NETWORK_DEFINITIONS.map((definition) => Object.freeze({
+    id: definition.id, name: definition.name, symbol: definition.network.currency.toUpperCase(), decimals: 18,
+    kind: 'evm' as const, chainId: definition.network.chainId, color: definition.color, canWatch: true, testnet: definition.testnet,
+  })),
 ] satisfies WalletNetwork[]);
 
 export function getNetwork(id: NetworkId): WalletNetwork {

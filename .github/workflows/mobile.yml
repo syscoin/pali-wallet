@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'apps/mobile/**'
+      - 'source/shared/evmNetworks.ts'
       - 'source/utils/nativeBalance.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/assets/all_assets/favicon-128.png'
@@ -39,6 +40,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - name: Reject moderate and higher dependency advisories
+        run: npm audit --audit-level=moderate
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -46,7 +49,7 @@ jobs:
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:ui
       # These validate the platform dependency graphs, not native binaries or
-      # device custody. The app remains watch-only in this foundation.
+      # device custody. Actual native custody is checked by its separate workflow.
       - run: npx --no-install expo export --platform android --max-workers 2 --output-dir dist-android
       - run: npx --no-install expo export --platform ios --max-workers 2 --output-dir dist-ios
       - name: Upload browser failure evidence

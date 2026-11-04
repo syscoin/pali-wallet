@@ -18,6 +18,7 @@ import type { IPrivateNoteView } from 'utils/privacy/privateVaultTypes';
 
 import PrivateDeposit from './PrivateDeposit';
 import PrivateNoteBackupDialog from './PrivateNoteBackupDialog';
+import PrivateNoteRestoreReview from './PrivateNoteRestoreReview';
 import PrivateVaultCapacitySettings from './PrivateVaultCapacitySettings';
 import PrivateVaultClearCompleted from './PrivateVaultClearCompleted';
 import PrivateWithdrawal from './PrivateWithdrawal';
@@ -431,6 +432,21 @@ function NotesView() {
                   {t('privacy.noteAsOfBlock', { block: note.blockNumber })}
                 </p>
               )}
+              {note.phase !== 'spent' &&
+                note.restoration === 'review-required' && (
+                  <PrivateNoteRestoreReview
+                    id={note.id}
+                    blockNumber={note.blockNumber}
+                    controllerEmitter={controllerEmitter}
+                    onReviewed={() => void refresh()}
+                  />
+                )}
+              {note.phase !== 'spent' &&
+                note.restoration === 'withdrawal-pending' && (
+                  <p className="text-xs text-brand-gray200">
+                    {t('privacy.restoreReview.pending')}
+                  </p>
+                )}
               {note.withdrawal && (
                 <div className="space-y-2 text-xs text-brand-gray200">
                   {note.withdrawal.canCheckRecovery && (
