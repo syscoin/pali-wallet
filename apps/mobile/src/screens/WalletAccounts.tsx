@@ -58,7 +58,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
       {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening saved watch accounts…</Text></View>}
       {props.watch.status === 'unavailable' && <><Notice title="Watch accounts unavailable" body="Your saved watch data has been preserved. Reopen it before making changes." tone="amber" /><Button title="Reopen watch accounts" disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
       {form && typeof form !== 'string' ? <>
-        <Notice title={form.name} body={form.kind === 'remove' ? 'This removes only the public address saved on this device. It does not move funds. You can add this address again.' : 'Names are saved on this device and do not change the public address.'} />
+        <Notice title={form.name} body={form.kind === 'remove' ? 'This removes the watch account from this device. It does not move funds. You can add it again.' : 'Names are saved on this device and do not change the account.'} />
         <Text selectable style={s.address}>{form.address}</Text>
         {form.kind === 'rename' && <><Text style={styles.muted}>Account name</Text><IdleTextInput accessibilityLabel="Watch account name" value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
       </> : <>
@@ -69,7 +69,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
             <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
               const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0]);
-              return network.kind === 'utxo' ? `Watch-only · ${network.name} · Single address` : 'Watch-only · Public EVM address';
+              return network.kind === 'utxo' ? `Watch-only · ${network.name}` : 'Watch-only · Public EVM address';
             })()}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
           </IdlePressable>
@@ -80,8 +80,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
         </Card>)}
         {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}
         {props.onOpenWallet && <Button title="Open wallet" variant="secondary" disabled={busy} onPress={props.onOpenWallet} />}
-        <Button title="Watch an address" disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
-        <Text style={s.kind}>Public addresses only. Extended public keys and output descriptors are not supported.</Text>
+        <Button title="Watch an account" disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
+        <Text style={s.kind}>Use a public address, account key or supported descriptor.</Text>
       </>}
       {(busy || props.watch.busy) && <ActivityIndicator accessibilityLabel="Saving account change" color={colors.pink} />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}

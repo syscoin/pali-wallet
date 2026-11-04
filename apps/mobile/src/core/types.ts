@@ -40,18 +40,6 @@ export type WalletCapabilities = Readonly<{
   walletConnect: false;
 }>;
 
-/** Bounded public observations, never spendable balance or complete account history. */
-export type PublicAccountObservation = Readonly<{
-  kind: 'bip84-public'; accountId: string; networkId: 'bitcoin' | 'syscoin'; policy: 'bip84-p2wpkh';
-  status: 'unknown' | 'loading' | 'partial' | 'gap-reached' | 'unavailable';
-  reason: 'pass-limit' | 'index-limit' | 'read-failed' | null;
-  totals: Readonly<{ confirmedUnits: string; pendingDeltaUnits: string }> | null;
-  coverage: readonly Readonly<{ nextIndex: number; lastUsedIndex: number }>[] | null;
-  observedAddresses: number; observedThisPass: number; observationsSpanPasses: boolean;
-  anchor: Readonly<{ height: number; hash: string; endHeight: number }> | null;
-  canContinue: boolean;
-}>;
-
 export type PublicSnapshot = Readonly<{
   status: 'empty' | 'locked' | 'ready';
   accounts: readonly PublicAccount[];
@@ -60,7 +48,6 @@ export type PublicSnapshot = Readonly<{
   generation: number;
   balance: PublicBalance;
   capabilities: WalletCapabilities;
-  accountObservation?: PublicAccountObservation;
 }>;
 
 export type ReviewContext = Readonly<{

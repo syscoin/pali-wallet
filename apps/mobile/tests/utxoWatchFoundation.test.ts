@@ -66,17 +66,19 @@ test('P2WPKH parser accepts fixed public vectors, normalizes uppercase and binds
   assert.throws(() => normalizeUtxoAddress(SYS, 'bitcoin'));
 });
 
-test('parser rejects unsupported scripts, bad checksums/case/padding and private or descriptor inputs', () => {
+test('parser rejects bad checksums/case/padding and private or descriptor inputs', () => {
   const words = [0, ...bech32.toWords(PROGRAM)];
   for (const invalid of [
     '', null, undefined, 1, [], {}, ` ${BTC}`, `${BTC}\n`, BTC.slice(0, -1) + 'q', 'bC' + BTC.slice(2),
     bech32.encode('tb', words), bech32.encode('tsys', words),
-    bech32.encode('bc', [0, ...bech32.toWords(new Uint8Array(32))]),
     bech32.encode('bc', [1, ...bech32.toWords(PROGRAM)]), bech32m.encode('bc', words),
     bech32.encode('bc', [...words, 1]), 'bc1' + 'q'.repeat(100),
-    '1BoatSLRHtKNngkdXEeobR76b53LETtpyT', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy',
     'xpub-public-key', 'xprv-private-key', '0x' + '11'.repeat(32), `wpkh(${BTC})`,
   ]) assert.throws(() => normalizeUtxoAddress(invalid, 'bitcoin'));
+});
+
+test('SDK address codec preserves supported P2PKH, P2SH and P2WSH scripts', () => {
+  for (const address of ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', bech32.encode('bc', [0, ...bech32.toWords(new Uint8Array(32))])]) assert.equal(normalizeUtxoAddress(address, 'bitcoin'), address);
 });
 
 test('parser rejects Unicode before Bech32 case conversion', () => {
@@ -95,7 +97,7 @@ for (const network of ['syscoin', 'bitcoin'] as const) {
       genesisHash: definition.genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123', unconfirmedTransactions: 2, observedHeight: 123 });
     assert.equal(Object.isFrozen(result), true);
     assert.deepEqual(fixture.calls.map(({ url }) => url), [`${definition.endpoint}/api/`,
-      `${definition.endpoint}/api/v2/block-index/0`, `${definition.endpoint}/api/v2/address/${addressFor(network)}?details=tokens`]);
+      `${definition.endpoint}/api/v2/block-index/0`, `${definition.endpoint}/api/v2/address/${addressFor(network)}?details=tokenBalances&tokens=nonzero`]);
     for (const { init } of fixture.calls) {
       assert.equal(init.method, 'GET'); assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
       assert.equal(init.cache, 'no-store'); assert.equal(init.referrerPolicy, 'no-referrer'); assert.equal(init.body, undefined);

@@ -16,12 +16,12 @@ import {
 import { colors, Icon, PaliMark } from '../ui';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { NETWORKS } from '../core/networks';
-import { getUtxoNetwork } from '../core/utxoNetworks';
+import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
 const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...NETWORKS.filter((n) => n.canWatch && (n.id === 'syscoin' || n.id === 'bitcoin')).map((n) => n.id as 'syscoin' | 'bitcoin')];
 const WATCH_CHOICES = [
   { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
-  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public Syscoin address', prefix: 'sys1q', provider: getUtxoNetwork('syscoin').endpoint.replace('https://', ''), scope: 'Watch one supported Syscoin mainnet receive address (sys1q…). Other receive and change addresses in its wallet are not included.' },
-  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public Bitcoin address', prefix: 'bc1q', provider: getUtxoNetwork('bitcoin').endpoint.replace('https://', ''), scope: 'Watch one supported Bitcoin mainnet receive address (bc1q…). Other receive and change addresses in its wallet are not included.' },
+  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public address, account key or descriptor', prefix: 'sys1, zpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
+  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public address, account key or descriptor', prefix: 'bc1, xpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
 ];
 
 type WelcomeProps = {
@@ -113,14 +113,14 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
         )}
         <IdlePressable
           accessibilityRole="button"
-          accessibilityHint="Add a public address to view its balance"
+          accessibilityHint="Add a public address or account key to view its balance"
           onPress={onWatch}
           style={({ pressed }) => [
             styles.primaryButton,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.primaryButtonText}>Watch an address</Text>
+          <Text style={styles.primaryButtonText}>Watch an account</Text>
           <Icon name="arrow-right" size={21} color={colors.bg} />
         </IdlePressable>
         <IdlePressable
@@ -171,8 +171,9 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
     if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
       if (!availableNetworks.includes(network)) throw new Error('This network is not available in this build.');
-      const account = createWatchAccount('review', name.trim(), address.trim(), network);
-      setReview({ name: account.name, address: Object.values(account.addresses)[0]!, network });
+      const source = network === 'evm' ? null : parseUtxoPublicIdentifier(address.trim(), network);
+      const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network);
+      setReview({ name: account.name, address: source?.identifier ?? Object.values(account.addresses)[0]!, network });
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the public address.'); }
   };
@@ -187,16 +188,16 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
     <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
         <IdlePressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
-        <Text style={styles.navigationLabel}>{review ? 'REVIEW ADDRESS' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
+        <Text style={styles.navigationLabel}>{review ? 'REVIEW ACCOUNT' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
       </View>
       <View style={styles.formIntro}><View style={styles.largeEye}><Icon name="eye" size={30} color={colors.blue} /></View>
-        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an address'}</Text>
-        <Text style={styles.formDescription}>{review ? 'Check the network and complete address before saving.' : 'Keep an eye on a public address, without connecting its wallet.'}</Text>
+        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an account'}</Text>
+        <Text style={styles.formDescription}>{review ? 'Check the network and public account before saving.' : 'Keep an eye on a wallet using only its public information.'}</Text>
       </View>
       {review ? <View style={styles.fields}>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text><Text style={styles.reviewText}>{review.name}</Text></View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Network</Text><Text style={styles.reviewText}>{info.title}</Text></View>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Complete public address</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Public account</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
         <Text style={styles.fieldHint}>{info.scope}</Text>
       </View> : <View style={styles.fields}>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Address network</Text>
@@ -213,22 +214,19 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
             placeholderTextColor={colors.muted} returnKeyType="next" selectionColor={colors.pink} style={styles.input} textContentType="none" value={name} />
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{info.inputLabel}</Text>
-          <IdleTextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste a public address beginning with ${info.prefix}. Never enter a recovery phrase or private key.`}
-            autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 90}
+          <IdleTextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste public information for ${info.title}. Never enter a recovery phrase or private key.`}
+            autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 4096}
             onChangeText={(value) => { setAddress(value); setError(null); }} onSubmitEditing={prepare} placeholder={`${info.prefix}…`} placeholderTextColor={colors.muted}
             returnKeyType="done" selectionColor={colors.pink} spellCheck={false} style={[styles.input, styles.addressInput]} textContentType="none" value={address} />
           <Text style={styles.fieldHint}>{info.scope}</Text>
         </View>
       </View>}
-      <View style={styles.safetyCard}><Icon name="shield" size={21} color={colors.green} /><View style={styles.safetyCopy}>
-        <Text style={styles.safetyTitle}>Your keys are not needed</Text><Text style={styles.safetyDescription}>Balance lookups share this public address and your IP address with {info.provider}. Watching an address does not give Pali permission to spend its funds. Never enter a recovery phrase or private key in this form.</Text>
-      </View></View>
       {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
       <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
         {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
-        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review address'}</Text>
-      </IdlePressable><Text style={styles.footerNote}>Public addresses and their transactions are visible on the blockchain.</Text></View>
+        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review account'}</Text>
+      </IdlePressable><Text style={styles.footerNote}>Use public information only. Never enter a recovery phrase or private key.</Text></View>
     </ScrollView>
   </KeyboardAvoidingView>;
 }

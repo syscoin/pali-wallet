@@ -17,6 +17,7 @@ const utxoBalanceReader = createUtxoBalanceReader({ fetch: walletFetch });
 export const balanceReader: BalanceReader = Object.freeze({
   readBalance: evmBalanceReader.readBalance,
   readUtxoBalance: utxoBalanceReader.readBalance,
+  readUtxoAccount: utxoBalanceReader.readAccount,
 });
 // The web review build is ephemeral. It never writes browser storage.
 const memory = new Map<string, string>();
@@ -36,6 +37,6 @@ const publicStorage = createPublicAccountStorage({
   },
 });
 export const loadPublicAccounts = publicStorage.loadAccounts;
-export const compareAndSetPublicAccounts = publicStorage.compareAndSetAccounts;
+export const publicAccountRecords = publicStorage.records;
 export const loadAccountSelection = publicStorage.loadSelection;
 export const saveAccountSelection = publicStorage.saveSelection;

@@ -136,7 +136,7 @@ test('account management, imported-key review and send approval exclude tabs', a
   await page.getByRole('button', { name: 'Import private key', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Public fixture import');
   await page.getByRole('textbox', { name: 'EVM private key', exact: true }).fill(`0x${'1'.padStart(64, '0')}`);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Import account', exact: true })).toBeVisible();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -194,11 +194,11 @@ test('same-address native to watch switch revokes native owner before public tab
 
 test('fixed Bitcoin watch Activity requires consent and its Wallet scope survives tab changes', async ({ page }) => {
   await page.goto('/?empty=1');
-  await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
+  await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('BTC shell fixture');
-  await page.getByRole('textbox', { name: 'Public Bitcoin address', exact: true }).fill(BTC);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(BTC);
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await tabs(page);

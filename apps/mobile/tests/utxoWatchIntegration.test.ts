@@ -20,7 +20,7 @@ function fixture(raw = JSON.stringify(document([mapped])), loseAck = false) {
   let writes = 0;
   const repository = createPublicAccountStorage({ async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : null; },
     async set(key, value) { assert.equal(key, PUBLIC_ACCOUNTS_KEY); saved = value; writes++; if (loseAck) { loseAck = false; throw Error('Lost acknowledgement'); } } });
-  const accounts = new WatchAccounts({ load: repository.loadAccounts, compareAndSet: repository.compareAndSetAccounts });
+  const accounts = new WatchAccounts(repository.records);
   return { repository, accounts, get raw() { return saved; }, get writes() { return writes; }, replace(value: string) { saved = value; } };
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { resolve, promise }; }
@@ -103,11 +103,11 @@ test('lost public write acknowledgement requires reopening and recovers committe
 });
 
 test('external record changes and competing saves cannot be silently replaced by a stale UTXO snapshot', async () => {
-  const f = fixture(); await f.accounts.load(); const expected = f.accounts.getSnapshot().accounts;
+  const f = fixture(); await f.accounts.load(); const expected = await f.repository.records.load();
   f.replace(JSON.stringify(document([mapped, btc])));
   await assert.rejects(f.accounts.change({ kind: 'add', id: sys.id, name: sys.name, address: SYS, network: 'syscoin' }), /verified/);
   assert.equal(f.writes, 0); assert.deepEqual(await f.repository.loadAccounts(), [mapped, btc]);
-  await assert.rejects(f.repository.compareAndSetAccounts(expected, [mapped, sys]), /changed/);
+  await assert.rejects(f.repository.records.compareAndSet(expected, [{ kind: 'address', ...mapped }, { kind: 'address', ...sys }]), /Reopen|changed/);
 });
 
 test('optional add-network input rejects coercion, getters and private fields before storage', async () => {

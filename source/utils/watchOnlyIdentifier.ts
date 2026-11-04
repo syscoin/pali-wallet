@@ -1,7 +1,8 @@
-import { descriptorChecksum } from '@sidhujag/sysweb3-keyring';
+import { Buffer } from 'buffer';
+import { descriptorChecksum } from '@sidhujag/sysweb3-keyring/cjs/utils/watch-descriptor.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { isAddress } from './ethersV6Compat';
+import { isAddress } from 'ethers/address';
 
 const PUBLIC_EXTENDED_VERSIONS = new Map([
   ['xpub', 0x0488b21e],
@@ -108,18 +109,18 @@ const publicKeyExpression = (value: string, xOnly: boolean): boolean => {
   );
   if (!match) return false;
   return match[2]
-    ? publicExtendedKey(match[1])
-    : publicExtendedKey(match[1]) || publicPoint(match[1], xOnly);
+    ? publicExtendedKey(match[1]!)
+    : publicExtendedKey(match[1]!) || publicPoint(match[1]!, xOnly);
 };
 
 const publicDescriptor = (value: string): boolean => {
   const parts = value.split('#');
   if (
     parts.length > 2 ||
-    (parts.length === 2 && descriptorChecksum(parts[0]) !== parts[1])
+    (parts.length === 2 && descriptorChecksum(parts[0]!) !== parts[1])
   )
     return false;
-  const text = parts[0].replace(/\s/g, '');
+  const text = parts[0]!.replace(/\s/g, '');
   if (!DESCRIPTOR_ROOTS.has(text.match(/^([a-z_]+)\(/)?.[1] ?? ''))
     return false;
   let offset = 0,
@@ -149,7 +150,7 @@ const publicDescriptor = (value: string): boolean => {
       .slice(offset)
       .match(/^((?:[ascdvjntul]+:)?)([a-z_]+)\(/);
     if (functionMatch) {
-      const name = functionMatch[2];
+      const name = functionMatch[2]!;
       if (!DESCRIPTOR_FUNCTIONS.has(name)) return false;
       offset += functionMatch[0].length;
       let index = 0;
@@ -161,7 +162,7 @@ const publicDescriptor = (value: string): boolean => {
       return text[offset++] === ')';
     }
     const start = offset;
-    while (offset < text.length && !',)}'.includes(text[offset])) offset++;
+    while (offset < text.length && !',)}'.includes(text[offset]!)) offset++;
     const leaf = text.slice(start, offset);
     if (parent === 'addr') return publicAddress(leaf);
     if (['sha256', 'hash256'].includes(parent))
