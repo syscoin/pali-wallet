@@ -34,3 +34,14 @@ test('HD key qualification cannot read a secret before backup confirmation or fo
   }
   assert.equal(reads, 0);
 });
+
+test('restart evidence never accepts failed or incomplete reports', () => {
+  const failedCreate = { status: 'failed', phase: 'create' };
+  const failedRestart = { status: 'failed', phase: 'restart' };
+  for (const [created, restored] of [
+    [failedCreate, failedRestart],
+    [evidence('create'), failedRestart],
+    [failedCreate, evidence('restart')],
+    [{ status: 'passed', phase: 'create' }, { status: 'passed', phase: 'restart' }],
+  ]) assert.equal(matchesHdKeyRevealRestartEvidence(created!, restored!), false);
+});

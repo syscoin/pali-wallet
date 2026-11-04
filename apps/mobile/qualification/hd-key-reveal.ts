@@ -14,7 +14,8 @@ export function isHdKeyRevealQualificationReport(report: Record<string, unknown>
 }
 
 export function matchesHdKeyRevealRestartEvidence(created: Record<string, unknown>, restored: Record<string, unknown>): boolean {
-  return created.phase === 'create' && restored.phase === 'restart' &&
+  return created.status === 'passed' && restored.status === 'passed' &&
+    created.phase === 'create' && restored.phase === 'restart' &&
     isHdKeyRevealQualificationReport(created) && isHdKeyRevealQualificationReport(restored) &&
     ['address', 'selectedAccountId', 'selectedAccountIndex'].every((field) => created[field] === restored[field]);
 }
