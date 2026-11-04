@@ -188,6 +188,7 @@ for (const scenario of ['import', 'generate'])
         ...process.env,
         CI: 'true',
         PALI_NATIVE_QUALIFICATION: '1',
+        PALI_NATIVE_HTTP_QUALIFICATION: '0',
         PALI_PHYSICAL_QUALIFICATION: scenario,
         GITHUB_SHA: 'a'.repeat(40),
       };

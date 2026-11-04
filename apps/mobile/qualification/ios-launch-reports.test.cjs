@@ -135,11 +135,12 @@ function passedReport() {
     ...importedEvidence() });
 }
 
-async function actualRunner({ created = report(), writeFailure = false, readFailure = false } = {}) {
+async function actualRunner({ created = report(), writeFailure = false, readFailure = false, http = false } = {}) {
   const events = [], writes = [];
   let launchError, reportedError;
   const files = filesFixture({ [filename('create')]: JSON.stringify(created) });
-  const process = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/output' },
+  const process = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/output',
+    ...(http ? { PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: 'e0919d07b33ae36be8b5100555703e5cb1c786cf' } : {}) },
     argv: ['node', 'runner', 'ios', '/app'], exitCode: 0 };
   await runInNewContext(readFileSync(require.resolve('./run-native.cjs'), 'utf8'), {
     require(name) {
@@ -163,6 +164,22 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
         else if (args[1] === 'launch') return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch timeout'), { code: 'ETIMEDOUT' }) };
         return { status: 0, stdout };
       } };
+      if (name === './http-companion.cjs') return { async startHttpCompanion({ platform, sourceRevision }) {
+        assert.equal(http, true, 'the fixture must never start a real HTTP companion');
+        events.push(['http-start', platform, sourceRevision]);
+        return {
+          async begin(phase, scenario) {
+            events.push(['http-begin', phase, scenario]);
+            await Promise.resolve();
+            events.push(['http-ready']);
+            return '&httpPort=48123&httpToken=0123456789abcdef0123456789abcdef';
+          },
+          async verify() { events.push(['http-verify']); assert.fail('a failed launch cannot verify HTTP qualification'); },
+          assertComplete() { events.push(['http-complete']); assert.fail('a failed launch cannot complete HTTP qualification'); },
+          async diagnostic() { events.push(['http-diagnostic']); return undefined; },
+          async close() { events.push(['http-close']); },
+        };
+      } };
       if (name === './command-runner.cjs') {
         const original = require(name);
         return { ...original, createCommandRunner(...args) {
@@ -179,7 +196,7 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
       return require(name);
     }, process, console: { log() {}, error() {} }, setTimeout,
   });
-  return { events, writes, process, launchError, reportedError };
+  return { events, writes, process, launchError, reportedError, reportReads: files.reads, closedReports: files.closed };
 }
 
 test('actual runner records an existing passed report without promoting its timed-out launch', async () => {
@@ -210,6 +227,45 @@ test('actual runner keeps launch failure and owned cleanup after read or diagnos
     assert(result.events.some((args) => args[1] === 'delete' && args[2] === DEVICE));
     assert(!JSON.stringify(result.writes).includes(SECRET));
   }
+});
+
+test('actual HTTP runner awaits its public launch token and captures bounded reports before failed-launch cleanup', async () => {
+  const result = await actualRunner({ created: passedReport(), http: true });
+  assert.deepEqual(result.events.filter((event) => event[0] === 'http-start'),
+    [['http-start', 'ios', result.process.env.GITHUB_SHA]]);
+  assert.deepEqual(result.events.filter((event) => event[0] === 'http-begin'), [['http-begin', 'create', 'import']]);
+  const launches = result.events.filter((args) => args[1] === 'launch');
+  assert.deepEqual(launches, [['simctl', 'launch', DEVICE, 'com.paliwallet.qualification', '-PaliQualificationURL',
+    'pali-wallet-qualification://run?phase=create&scenario=import&httpPort=48123&httpToken=0123456789abcdef0123456789abcdef']]);
+  const launched = result.events.indexOf(launches[0]);
+  const ready = result.events.findIndex((event) => event[0] === 'http-ready');
+  assert(ready >= 0 && ready < launched);
+  const diagnosticWrite = result.writes.find(({ file }) => file.endsWith('-launch-reports.json'));
+  assert(diagnosticWrite);
+  assert(Buffer.byteLength(diagnosticWrite.data) <= 8192);
+  const diagnostic = JSON.parse(diagnosticWrite.data);
+  assert.equal(diagnostic.diagnosticOnly, true);
+  assert.deepEqual(diagnostic.reports.map(({ availability }) => availability), ['unavailable', 'available']);
+  assert.equal(diagnostic.reports[1].reportedStatus, 'passed');
+  assert(result.reportReads.length > 0 && result.reportReads.every((length) => length <= 100001));
+  assert.equal(result.closedReports.length, 1);
+  const collected = result.events.findIndex((event) => event[0] === 'write' && event[1] === diagnosticWrite.file);
+  const shutdown = result.events.findIndex((args) => args[1] === 'shutdown');
+  const deleted = result.events.findIndex((args) => args[1] === 'delete');
+  const closed = result.events.findIndex((event) => event[0] === 'http-close');
+  assert(launched < collected && collected < shutdown && shutdown < deleted && deleted < closed);
+  assert.deepEqual(result.events.filter((args) => ['shutdown', 'delete'].includes(args[1])).map((args) => [args[1], args[2]]),
+    [['shutdown', DEVICE], ['delete', DEVICE]]);
+  assert.equal(result.events.filter((event) => event[0] === 'http-close').length, 1);
+  assert.equal(result.events.filter((event) => ['http-verify', 'http-complete'].includes(event[0])).length, 0);
+  assert.equal(result.process.exitCode, 1);
+  assert(result.launchError);
+  assert.equal(result.reportedError, result.launchError);
+  const failure = JSON.parse(result.writes.find(({ file }) => file.endsWith('ios-failure.json')).data);
+  assert.equal(failure.sourceRevision, result.process.env.GITHUB_SHA);
+  assert.equal(failure.failure.errorCode, 'ETIMEDOUT');
+  assert.equal(failure.failure.args.at(-1), launches[0].at(-1));
+  assert(!result.writes.some(({ file }) => /ios-(qualification|simulator-limited)\.json$/.test(file)));
 });
 
 test('typed log-query failures retain bounded classification and the exact original launch error', () => {

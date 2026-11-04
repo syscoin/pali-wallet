@@ -60,4 +60,13 @@ function describeQualificationFailure(error, redact = (value) => value) {
   };
 }
 
-module.exports = { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS };
+/** Only typed no-status transport failures can lose a mutation acknowledgement. */
+function isAmbiguousCommandFailure(error, command, args) {
+  if (!(error instanceof QualificationCommandError)) return false;
+  const failure = error.failure;
+  return failure.command === command && failure.status === null &&
+    failure.args.length === args.length && failure.args.every((value, index) => value === args[index]) &&
+    ['ETIMEDOUT', 'ECONNRESET', 'EPIPE', 'ENOTCONN'].includes(failure.errorCode);
+}
+
+module.exports = { createCommandRunner, describeQualificationFailure, isAmbiguousCommandFailure, COLD_BOOT_TIMEOUT_MS };

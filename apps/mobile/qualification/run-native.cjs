@@ -27,6 +27,12 @@ if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
 const platform = process.argv[2];
 const mode = qualificationMode(platform, process.argv.slice(4));
 const simulatorContract = mode === 'ios-simulator-contract';
+const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
+if (httpEnabled && !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || ''))
+  throw Error('Native HTTP qualification requires an immutable source revision');
+let httpCompanion;
+let httpRead;
+let httpDiagnosticSaved = false;
 const artifact = path.resolve(process.argv[3] || '');
 const output = path.resolve(
   process.env.QUALIFICATION_ARTIFACTS ||
@@ -57,6 +63,17 @@ const androidProcessRunning = () =>
   );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
+async function captureHttpDiagnostic() {
+  if (!httpCompanion || httpDiagnosticSaved) return;
+  try {
+    const diagnostic = await httpCompanion.diagnostic?.(httpRead);
+    if (!diagnostic) return;
+    const text = JSON.stringify(diagnostic, null, 2);
+    if (Buffer.byteLength(text) > 8192) return;
+    fs.writeFileSync(path.join(output, `${platform}-http-diagnostic.json`), `${text}\n`);
+    httpDiagnosticSaved = true;
+  } catch { /* Partial diagnostics never replace the original failure. */ }
+}
 const validateReport = (text, phase, scenario) => {
   const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract);
   fs.writeFileSync(
@@ -172,6 +189,10 @@ async function ios() {
     if (!/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '')) throw Error('Simulator contract requires source revision');
   }
   const reports = [];
+  if (httpEnabled) {
+    const { startHttpCompanion } = require('./http-companion.cjs');
+    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+  }
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
@@ -204,6 +225,7 @@ async function ios() {
         PACKAGE,
         'data',
       ]));
+      httpRead = (name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8');
       const read = (phase) => {
         try {
           return fs.readFileSync(
@@ -220,9 +242,10 @@ async function ios() {
       };
       await stage('readiness-create', () => prepareIosSimulator(run, device, runtime.identifier,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      const httpCreate = httpCompanion ? await httpCompanion.begin('create', scenario) : '';
       await stage('launch-create', () => {
         try {
-          return launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+          return launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
             (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
         } catch (error) {
           try {
@@ -238,6 +261,10 @@ async function ios() {
         scenario,
         () => read('startup')
       ));
+      if (httpCompanion) {
+        const evidence = await httpCompanion.verify((name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8'), created.sessionId);
+        fs.writeFileSync(path.join(output, `ios-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+      }
       if (simulatorContract) {
         // The original report remains failed. No database read, restart or
         // full-custody aggregate follows this expected protection refusal.
@@ -272,7 +299,8 @@ async function ios() {
       );
       await stage('readiness-restart', () => prepareIosSimulator(run, device, runtime.identifier,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
-      await stage('launch-restart', () => launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+      const httpRestart = httpCompanion ? await httpCompanion.begin('restart', scenario) : '';
+      await stage('launch-restart', () => launchIos(run, device, `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${httpRestart}`,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-restart-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
       const restored = await stage('report-restart', () => waitReport(
         () => read('restart'),
@@ -280,6 +308,10 @@ async function ios() {
         scenario,
         () => read('startup')
       ));
+      if (httpCompanion) {
+        const evidence = await httpCompanion.verify((name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8'), restored.sessionId);
+        fs.writeFileSync(path.join(output, `ios-${scenario}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+      }
       if (
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
@@ -312,7 +344,8 @@ async function ios() {
         importedAccountRestored: true,
         journalContainerVersion: 2,
       });
-    } finally {
+    } catch (error) { await captureHttpDiagnostic(); throw error; }
+    finally {
       if (container) {
         for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
           try {
@@ -392,11 +425,16 @@ async function android() {
   }
   prepareAndroidRoot(run, (evidence) => fs.writeFileSync(
     path.join(output, 'android-root-readiness.json'), `${JSON.stringify(evidence, null, 2)}\n`));
+  if (httpEnabled) {
+    const { startHttpCompanion } = require('./http-companion.cjs');
+    httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
+  }
   const reports = [];
   for (const scenario of ['import', 'generate']) {
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
     try {
       run('adb', ['install', artifact]);
+      httpRead = (name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`], false, 5000);
       const read = (phase) =>
         run(
           'adb',
@@ -427,8 +465,9 @@ async function android() {
         );
         return result;
       };
+      const httpCreate = httpCompanion ? await httpCompanion.begin('create', scenario) : '';
       launch(
-        `pali-wallet-qualification://run?phase=create&scenario=${scenario}`,
+        `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
         'create'
       );
       const created = await waitReport(
@@ -438,6 +477,10 @@ async function android() {
         () => read('startup'),
         androidProcessRunning
       );
+      if (httpCompanion) {
+        const evidence = await httpCompanion.verify((name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`]), created.sessionId);
+        fs.writeFileSync(path.join(output, `android-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+      }
       const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
       if (run('adb', ['shell', 'pidof', '-s', PACKAGE], true))
@@ -453,8 +496,9 @@ async function android() {
         64 * 1024 * 1024
       );
       const database = databaseEvidence(captured);
+      const httpRestart = httpCompanion ? await httpCompanion.begin('restart', scenario) : '';
       launch(
-        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}`,
+        `pali-wallet-qualification://run?phase=restart&scenario=${scenario}&address=${created.address}${httpRestart}`,
         'restart'
       );
       const restored = await waitReport(
@@ -464,6 +508,10 @@ async function android() {
         () => read('startup'),
         androidProcessRunning
       );
+      if (httpCompanion) {
+        const evidence = await httpCompanion.verify((name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`]), restored.sessionId);
+        fs.writeFileSync(path.join(output, `android-${scenario}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+      }
       const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       if (
         oldPid === newPid ||
@@ -505,7 +553,8 @@ async function android() {
         importedAccountRestored: true,
         journalContainerVersion: 2,
       });
-    } finally {
+    } catch (error) { await captureHttpDiagnostic(); throw error; }
+    finally {
       try {
         for (const [stage, suffix] of [['quick-crypto-load', 'load-error'], ['software-sdk-load', 'sdk-load-error']]) {
           captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-${suffix}.json`], true), scenario, stage);
@@ -679,7 +728,22 @@ async function android() {
 }
 
 (async () => {
-  const report = await (platform === 'ios' ? ios() : android());
+  let report;
+  let primaryFailure;
+  try {
+    report = await (platform === 'ios' ? ios() : android());
+    if (httpEnabled) {
+      httpCompanion.assertComplete(simulatorContract ? 1 : 4);
+      report.nativeHttpQualified = true;
+    }
+  } catch (error) { primaryFailure = error; throw error; }
+  finally {
+    if (primaryFailure) {
+      await captureHttpDiagnostic();
+      await httpCompanion?.close().catch(() => undefined);
+    }
+    else await httpCompanion?.close();
+  }
   fs.writeFileSync(
     path.join(output, simulatorContract ? 'ios-simulator-limited.json' : `${platform}-qualification.json`),
     `${JSON.stringify(

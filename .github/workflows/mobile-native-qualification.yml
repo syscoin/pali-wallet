@@ -29,10 +29,11 @@ env:
   EXPO_NO_TELEMETRY: '1'
   EXPO_NO_DOTENV: '1'
   PALI_NATIVE_QUALIFICATION: '1'
+  PALI_NATIVE_HTTP_QUALIFICATION: '1'
 
 jobs:
   ios:
-    name: iOS Simulator crypto and protected-storage refusal
+    name: iOS Simulator HTTP, crypto and protected-storage refusal
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -67,7 +68,7 @@ jobs:
           node qualification/source-map-evidence.cjs preserve ios \
             "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app/main.jsbundle" \
             "$SOURCEMAP_FILE" "$RUNNER_TEMP/pali-native-ios"
-      - name: Verify native crypto and expected protected-storage refusal
+      - name: Verify native HTTP, crypto and expected protected-storage refusal
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
         run: >-

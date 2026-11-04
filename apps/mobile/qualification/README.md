@@ -9,7 +9,50 @@ The workflow builds release-mode iOS simulator and Android emulator binaries,
 including the actual Expo modules, Hermes, SQLCipher and pinned software SDK.
 The iOS Simulator job checks native crypto and an expected protected-storage
 refusal. It does not qualify custody. The Android job retains the full custody
-and cold-restart checks below.
+and cold-restart checks below. Both jobs also require the native HTTP companion
+described below before any protected-storage admission.
+
+## Offline native HTTP companion
+
+The native CI workflow always sets `PALI_NATIVE_HTTP_QUALIFICATION=1`. This gate
+adds a loopback-only cleartext exception to the isolated fixture configuration;
+the production app configuration, TLS validation and safety plugin are unchanged.
+It is incompatible with physical qualification. The companion requires an
+immutable `GITHUB_SHA` and binds each report to that source, the lockfile hash,
+the app session, phase and a fresh 128-bit public run token.
+
+The host starts a separate Node child bound exclusively to `127.0.0.1` on an
+ephemeral port. Android requires the selected target to be an emulator and uses
+a serial-bound, non-replacing `adb reverse` mapping; cleanup removes only that
+owned port. No external service, wallet address or faucet is contacted. The
+fixture serves only a fixed allowlist of token-bound GET routes and has no proxy.
+
+The actual production `walletFetch` adapter exercises Expo's compiled native
+fetch path while global fetch, XHR and WebSocket remain forbidden. A separate
+Expo fetch call seeds a public, short-lived cookie for a positive control; the
+wallet request must omit it. Other cases require an unchanged GET URL, refusal
+to follow a redirect (zero target requests), abort before headers and during a
+body, socket closure after a body-size rejection, and a healthy later request.
+The host independently checks exact request counts and close evidence before
+accepting the strict `pali-native-http-<token>.json` sidecar. Missing, stale,
+extra-field or inconsistent evidence fails qualification. Owned timers, sockets,
+child processes and reverse mappings are closed on failure as well as success.
+The existing `networkCalls: 0` records forbidden global transport attempts; the
+separate host audit records the explicit local native HTTP requests.
+Failed HTTP cases write only a fixed case label, with best-effort bounded partial
+server counters and stream-close flags collected before shutdown. These records
+are explicitly failed diagnostics and cannot satisfy the passing sidecar schema.
+Ambiguous reverse-install timeouts or transport loss permit cleanup only after
+prior absence and exact serial/port readback; collisions and unknown ownership
+never authorize removal.
+
+HTTP executes after native crypto qualification and before storage admission.
+The iOS Simulator's original failed storage report and refusal schema remain
+unchanged; its aggregate may claim `nativeHttpQualified: true` while retaining
+`custodyQualified: false`. This proves local HTTP adapter behavior only. It does
+not qualify public RPC availability, production TLS handshakes, fixed-network
+balance semantics, native memory ceilings or physical-device networking. Node
+fixture tests are controls; the compiled native CI run is required evidence.
 The qualification entry defers all wallet/ethers/BIP39 imports until the native
 crypto gate has completed. During fresh generation, a bounded in-memory observer
 delegates RNG requests to the qualified native provider and verifies that the
