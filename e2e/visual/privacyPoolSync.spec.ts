@@ -884,25 +884,10 @@ test('privacy pool preparation verifies local note imports and preserves a good 
         expect(scheduled!.scheduledTime - Date.now()).toBeLessThanOrEqual(
           15 * 60 * 1000
         );
-        await wallet!.page
-          .getByRole('button', { name: en.privacy.pause, exact: true })
-          .click();
-        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.paused);
-        expect((await readPublicCache(wallet!.page)).ready).toEqual(
-          (observations.verified as any).ready
-        );
-        await expect.poll(readAlarm).toBeUndefined();
-        await wallet!.page
-          .getByRole('button', { name: en.privacy.resume, exact: true })
-          .click();
-        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
-        expect(knownRootCalls).toBe(4);
-        expect(await readAlarm()).toBeDefined();
         // The controller intentionally syncs at shared 15-minute boundaries.
-        // If one is due during the following custody/transaction checks, wait
-        // for that real refresh first. Otherwise a legitimate scheduled GET
-        // would be mistaken for a note-specific request. Keep the exact
-        // no-additional-read assertions below and the overall test deadline.
+        // Wait before pause/resume as well as the custody checks: a boundary
+        // after Resume can complete before the UI observes its brief ready
+        // state. Keep exact per-refresh/request counts and the test deadline.
         const untilBoundary = 15 * 60 * 1000 - (Date.now() % (15 * 60 * 1000));
         if (untilBoundary <= 90_000) {
           const beforePeriodic = snapshots.length;
@@ -926,6 +911,29 @@ test('privacy pool preparation verifies local note imports and preserves a good 
             });
           observations.scheduledRefreshBeforeTransactions = true;
         }
+        await wallet!.page
+          .getByRole('button', { name: en.privacy.pause, exact: true })
+          .click();
+        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.paused);
+        expect((await readPublicCache(wallet!.page)).ready).toEqual(
+          (observations.verified as any).ready
+        );
+        await expect.poll(readAlarm).toBeUndefined();
+        const beforeResumeAnchors = knownRootCalls;
+        const beforeResumeSnapshots = snapshots.length;
+        await wallet!.page
+          .getByRole('button', { name: en.privacy.resume, exact: true })
+          .click();
+        await expect(poolStatus(wallet!.page)).toContainText(en.privacy.ready);
+        expect(knownRootCalls).toBe(beforeResumeAnchors + 2);
+        expect(snapshots).toHaveLength(beforeResumeSnapshots + 1);
+        observations.resumeVerification = {
+          beforeAnchors: beforeResumeAnchors,
+          afterAnchors: knownRootCalls,
+          beforeSnapshots: beforeResumeSnapshots,
+          afterSnapshots: snapshots.length,
+        };
+        expect(await readAlarm()).toBeDefined();
       }
     );
     await wallet.step(
