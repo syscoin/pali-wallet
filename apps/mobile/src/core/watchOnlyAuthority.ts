@@ -1,7 +1,9 @@
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { normalizePublicAddress } from './addresses.ts';
-import { loadedBalance } from './amounts.ts';
+import { assertBaseUnits, loadedBalance } from './amounts.ts';
 import { getNetwork, NETWORKS } from './networks.ts';
+import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import type { UtxoBalance } from './utxoBalanceReader.ts';
 import type {
   NetworkId,
   PublicAccount,
@@ -21,6 +23,8 @@ export interface BalanceReader {
     address: string,
     signal: AbortSignal
   ): Promise<{ chainId: number; units: string }>;
+  /** Separate from the EVM observation contract; amounts are never combined. */
+  readUtxoBalance?(networkId: UtxoNetworkId, address: string, signal: AbortSignal): Promise<UtxoBalance>;
 }
 
 /** Untrusted persisted public data must not import private keyring records. */
@@ -36,7 +40,7 @@ export function validatePublicAccounts(
       if (!raw || typeof raw !== 'object' || Array.isArray(raw))
         throw new Error('Invalid public account');
       if (
-        Object.keys(raw).some(
+        Reflect.ownKeys(raw).length !== 3 || Object.keys(raw).length !== 3 || Object.keys(raw).some(
           (key) => !['id', 'name', 'addresses'].includes(key)
         )
       )
@@ -62,6 +66,11 @@ export function validatePublicAccounts(
         Array.isArray(addresses)
       )
         throw new Error('Invalid public addresses');
+      const networkIds = Object.keys(addresses);
+      if (networkIds.length !== Reflect.ownKeys(addresses).length) throw new Error('Invalid public addresses');
+      const utxo = networkIds.filter((id) => getNetwork(id as NetworkId).kind === 'utxo');
+      if (utxo.length && (utxo.length !== 1 || networkIds.length !== 1))
+        throw new Error('A UTXO watch account has exactly one network and address');
       const normalized: Partial<Record<NetworkId, string>> = {};
       for (const [networkId, address] of Object.entries(addresses)) {
         if (typeof address !== 'string')
@@ -87,6 +96,33 @@ export function createEvmWatchAccount(id: string, name: string, address: string)
     if (network.canWatch && network.kind === 'evm') addresses[network.id] = normalized;
   }
   return validatePublicAccounts([{ id, name, addresses }])[0]!;
+}
+
+export type WatchAccountNetwork = 'evm' | UtxoNetworkId;
+/** Preserve EVM callers; a UTXO address is never copied to another network. */
+export function createWatchAccount(id: string, name: string, address: string, network: WatchAccountNetwork = 'evm'): PublicAccount {
+  if (network === 'evm') return createEvmWatchAccount(id, name, address);
+  const fixed = getUtxoNetwork(network);
+  return validatePublicAccounts([{ id, name, addresses: { [fixed.id]: normalizePublicAddress(address, fixed.id) } }])[0]!;
+}
+
+function utxoObservation(value: UtxoBalance, networkId: UtxoNetworkId, updatedAt: number): PublicBalance {
+  assertJsonWorkBudget(value, 2048, 3, 30);
+  const network = getUtxoNetwork(networkId);
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      Reflect.ownKeys(value).length !== 8 || Object.keys(value).length !== 8 || Object.keys(value).some((key) => ![
+        'networkId', 'kind', 'chainId', 'genesisHash', 'confirmedUnits', 'pendingDeltaUnits', 'unconfirmedTransactions', 'observedHeight',
+      ].includes(key)) || value.kind !== 'utxo' || value.networkId !== network.id || value.chainId !== network.chainId ||
+      value.genesisHash !== network.genesisHash || typeof value.pendingDeltaUnits !== 'string' ||
+      !/^(?:0|-?[1-9][0-9]{0,77})$/.test(value.pendingDeltaUnits) ||
+      !Number.isSafeInteger(value.unconfirmedTransactions) || value.unconfirmedTransactions < 0 ||
+      !Number.isSafeInteger(value.observedHeight) || value.observedHeight < 0)
+    throw new Error('Invalid UTXO balance observation');
+  assertBaseUnits(value.confirmedUnits);
+  assertBaseUnits(value.pendingDeltaUnits.replace(/^-/, ''));
+  if (!Number.isFinite(updatedAt) || updatedAt < 0) throw new Error('Invalid UTXO balance time');
+  return Object.freeze({ status: 'available', kind: 'utxo', units: value.confirmedUnits, updatedAt,
+    pendingDeltaUnits: value.pendingDeltaUnits, unconfirmedTransactions: value.unconfirmedTransactions, observedHeight: value.observedHeight });
 }
 
 /** Existing records retain their explicit address mappings; missing networks are never inferred. */
@@ -235,11 +271,10 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.balance = Object.freeze({ status: 'loading' });
     this.publish();
     try {
-      const response = await this.reader.readBalance(
-        network.id,
-        address,
-        request.signal
-      );
+      const isUtxo = network.id === 'syscoin' || network.id === 'bitcoin';
+      const response = isUtxo
+        ? await this.reader.readUtxoBalance?.(network.id as UtxoNetworkId, address, request.signal)
+        : await this.reader.readBalance(network.id, address, request.signal);
       if (
         request.signal.aborted ||
         this.pending !== request ||
@@ -247,9 +282,13 @@ export class WatchOnlyAuthority implements WalletAuthority {
         this.locked
       )
         return;
-      if (response.chainId !== network.chainId)
-        throw new Error('Network identity mismatch');
-      this.balance = loadedBalance(response.units, this.now());
+      if (isUtxo) {
+        this.balance = utxoObservation(response as UtxoBalance, network.id as UtxoNetworkId, this.now());
+      } else {
+        if (!response || 'kind' in response || response.chainId !== network.chainId)
+          throw new Error('Network identity mismatch');
+        this.balance = loadedBalance(response.units, this.now());
+      }
     } catch {
       if (
         request.signal.aborted ||
