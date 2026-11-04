@@ -83,6 +83,44 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
     page.getByRole('button', { name: 'Watch an address' })
   ).toBeVisible();
 });
+test('a new watch-only address can switch across every offered EVM network', async ({ page }) => {
+  const networks = [
+    { name: 'Ethereum', url: 'https://ethereum-rpc.publicnode.com', chain: 1 },
+    { name: 'Syscoin NEVM', url: 'https://rpc.syscoin.org', chain: 57 },
+    { name: 'Base', url: 'https://mainnet.base.org', chain: 8453 },
+    { name: 'Arbitrum One', url: 'https://arb1.arbitrum.io/rpc', chain: 42161 },
+    { name: 'Rollux', url: 'https://rpc.rollux.com', chain: 570 },
+    { name: 'Syscoin NEVM Testnet', url: 'https://rpc.tanenbaum.io', chain: 5700 },
+    { name: 'zkTanenbaum Testnet', url: 'https://rpc-zk.tanenbaum.io', chain: 57057 },
+  ];
+  const errors: string[] = [];
+  const calls: { chain: number; method: string }[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route(/^https?:\/\/(?!127\.0\.0\.1(?::|\/))/, async (route) => {
+    const network = networks.find((entry) => new URL(entry.url).href === new URL(route.request().url()).href);
+    if (!network) throw new Error('Unexpected network request');
+    const request = route.request().postDataJSON();
+    calls.push({ chain: network.chain, method: request.method });
+    await route.fulfill({ json: { jsonrpc: '2.0', id: request.id,
+      result: request.method === 'eth_chainId' ? `0x${network.chain.toString(16)}` : '0x0' } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Watch an address' }).click();
+  await page.getByRole('textbox', { name: 'Public EVM address' }).fill('0x000000000000000000000000000000000000dEaD');
+  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await expect(page.getByText('ETH · On-chain balance')).toBeVisible();
+  let selected = 'Ethereum';
+  for (const network of networks) {
+    await page.getByRole('button', { name: selected, exact: true }).click();
+    await page.getByRole('button', { name: `Choose ${network.name} on ${network.name}`, exact: true }).click();
+    await expect(page.getByRole('button', { name: network.name, exact: true })).toBeVisible({ timeout: 5000 });
+    await expect.poll(() => calls.filter((call) => call.chain === network.chain && call.method === 'eth_getBalance').length).toBeGreaterThan(0);
+    await expect(page.getByRole('button', { name: 'Send unavailable' })).toBeDisabled();
+    selected = network.name;
+  }
+  expect(errors).toEqual([]);
+  expect(calls.every((call) => ['eth_chainId', 'eth_getBalance'].includes(call.method))).toBe(true);
+});
 test('activity filters show the selected sample direction', async ({
   page,
 }) => {

@@ -26,7 +26,7 @@ export interface NativeAccountView {
   cancel(): void;
 }
 
-/** Runtime-only stage-1 network selection; UI integration follows separately. */
+/** Durable network selection consumed by the native network picker. */
 export interface NativeNetworkRuntime {
   reserve(id: string, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;

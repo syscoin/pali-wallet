@@ -32,8 +32,9 @@ family is shared across these EVM networks; selecting a chain neither allocates
 an account nor changes its derivation path. No seed/private key/session field
 enters the catalogue or public projection.
 
-There is no native network picker wiring yet. Public watch-only reads can use
-all registrations. Native transfer entry points remain explicitly gated to
+The native network picker uses this durable selection and labels test networks.
+New public EVM watch accounts can read all registrations; existing watch records
+retain only their explicitly saved network/address mappings. Native transfer entry points remain explicitly gated to
 Ethereum; selecting another network cannot access an Ethereum journal, sign,
 authorize submission or query the hardcoded Ethereum transfer RPC. CAS-protected per-account multi-network journal containers now preserve
 recovery identities; their presence does not enable additional signing.

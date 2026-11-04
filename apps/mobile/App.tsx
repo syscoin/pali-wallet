@@ -39,7 +39,8 @@ import { DesignStudio } from './src/design/Studio';
 import { SettingsScreen, InformationScreen } from './src/screens/Settings';
 import {
   WatchOnlyAuthority,
-  NETWORKS,
+  createEvmWatchAccount,
+  getWatchNetworks,
   getNetwork,
   normalizePublicAddress,
   formatBaseUnits,
@@ -335,6 +336,14 @@ function AppContent() {
     ? sampleAssets.filter((a) => filter === 'all' || a.networkId === filter)
     : [liveAsset];
   const current = preview ? selected : liveAsset;
+  const networkChoices = preview ? sampleAssets : getWatchNetworks(activeAccount).map((network) => ({
+    ...liveAsset,
+    id: network.id,
+    name: network.name,
+    networkId: network.id,
+    network: network.name,
+    symbol: network.symbol,
+  }));
   const exit = () => {
     authority.current?.lock();
     setPreview(false);
@@ -373,16 +382,9 @@ function AppContent() {
       const accounts = authority.current?.getSnapshot().accounts ?? [];
       if (accounts.some((a) => a.addresses.ethereum === normalized))
         throw new Error('This address is already in Pali.');
-      const newAccount: PublicAccount = {
-        id: `watch_${Date.now()}`,
-        name: name.trim(),
-        addresses: {
-          ethereum: normalized,
-          base: normalized,
-          arbitrum: normalized,
-          'syscoin-nevm': normalized,
-        },
-      };
+      const newAccount = createEvmWatchAccount(
+        `watch_${Date.now()}`, name.trim(), normalized
+      );
       await savePublicAccounts([...accounts, newAccount]);
       const next = connect([...accounts, newAccount]);
       if (
@@ -1419,28 +1421,20 @@ function AppContent() {
                         }}
                       />
                     )}
-                    {(preview
-                      ? sampleAssets
-                      : NETWORKS.filter((n) => n.canWatch).map((n) => ({
-                          ...liveAsset,
-                          id: n.id,
-                          name: n.name,
-                          networkId: n.id,
-                          network: n.name,
-                          symbol: n.symbol,
-                        }))
-                    ).map((a, index) => (
+                    {networkChoices.map((a, index) => (
                       <Pressable
                         key={a.id}
                         accessibilityRole="button"
                         accessibilityLabel={`Choose ${a.name} on ${a.network}`}
                         onPress={() => {
                           if (!preview && displayedSheet === 'filter') {
-                            authority.current?.selectNetwork(a.networkId);
-                            void authority.current
-                              ?.refresh()
-                              .catch(() => undefined);
-                            setSheet(null);
+                            try {
+                              authority.current?.selectNetwork(a.networkId);
+                              void authority.current?.refresh().catch(() => undefined);
+                              setSheet(null);
+                            } catch {
+                              announce('Could not switch networks. Select your account and try again.');
+                            }
                           } else
                             chooseAsset(
                               a,
@@ -1453,7 +1447,7 @@ function AppContent() {
                         }}
                         style={[
                           s.assetRow,
-                          index !== (preview ? sampleAssets.length : 4) - 1 &&
+                          index !== networkChoices.length - 1 &&
                             s.line,
                         ]}
                       >
