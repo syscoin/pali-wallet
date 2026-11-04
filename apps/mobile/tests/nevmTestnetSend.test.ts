@@ -119,7 +119,7 @@ test('only the fixed NEVM testnet adds native send and never ERC20 capability', 
     const capability = getNativeSendCapabilities(network.id);
     assert.equal(
       capability.native,
-      ['ethereum', 'syscoin-nevm-testnet'].includes(network.id)
+      ['ethereum', 'syscoin-nevm-testnet', 'zksys-testnet'].includes(network.id)
     );
     assert.equal(capability.erc20, network.id === 'ethereum');
     assert(Object.isFrozen(capability));

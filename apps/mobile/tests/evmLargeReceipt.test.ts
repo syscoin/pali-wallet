@@ -173,11 +173,14 @@ test('generic oversized receipt preserves NEVM observation-only semantics and re
       )
     );
   }
-  const disabled = fixture({ id: 'zksys-testnet' });
-  await assert.rejects(disabled.rpc.receipt(expected, signal(), guard), {
-    code: 'UNQUALIFIED_PROFILE',
+  // zkSYS has its own finalized-execution path, including a sampled latest head.
+  const zksys = fixture({ id: 'zksys-testnet', blockResult: (call) => ({
+    number: call.params[0] === 'latest' ? '0x20' : call.params[0] === 'finalized' ? '0xa' : call.params[0],
+    hash: blockHash,
+  }) });
+  assert.deepEqual(await zksys.rpc.receipt(expected, signal(), guard), {
+    status: 'nonce-consumed', settlement: { kind: 'zkos-finalized-executed', observedHeight: '10', terminalEligible: true },
   });
-  assert.equal(disabled.calls.length, 0);
 });
 
 test('generic oversized receipt still requires bounded canonical finalized block and chain consistency', async () => {

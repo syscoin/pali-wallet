@@ -7,8 +7,7 @@ checks the guard, and request groups abort on failure. Input fields are detached
 and validated before the first await. Ethereum receipt recovery uses the canonical receipt adapter through
 `NativeTransferRpc.receipt`; its public result shape is unchanged. Preparation,
 fee review, confirmation signing and broadcast use the separate host-owned send
-capabilities. The native-coin path now also supports fixed NEVM testnet 5700;
-ERC20 remains Ethereum-only. L2 fee adapters remain unwired into `NativeTransfers`.
+capabilities. The development native-coin path also supports fixed NEVM testnet 5700 and zkTanenbaum testnet 57057; ERC20 remains Ethereum-only. Other L2 fee adapters remain unwired into `NativeTransfers`.
 
 ## Fees and consent
 
@@ -19,7 +18,7 @@ profile/version, unsigned-envelope hash and sampled block number/hash. Sender
 is a separate field because an unsigned Ethereum envelope does not encode it.
 The builder accepts only registry-owned network and profile instances and the
 complete required component list: Base L1-data plus operator, Rollux L1-data,
-and no extras for execution-only/Nitro profiles. Unqualified models reject.
+and no extras for execution-only/Nitro/zkOS profiles. Unqualified models reject.
 A current chain check precedes address disclosure; a second check and canonical
 block-hash readback finish every quote. RPC observations remain a provider trust
 boundary, not independent chain proofs.
@@ -47,12 +46,10 @@ values must not be mixed with these timestamps.
 | Arbitrum One | Supplied gas limit includes publication cost; verify `eth_estimateGas` fits it, add no separate L1 surcharge | Settlement unqualified; matching node fee/finality and native qualification remain. |
 | Base | Source-pinned Jovian GPO: `getL1FeeUpperBound(unsignedByteLength)` and `getOperatorFee(gasLimit)` | Both extras are estimates; settlement and native qualification remain. |
 | Rollux | Source-pinned legacy GPO: `getL1Fee(canonicalUnsignedBytes)` | No modern OP method probing/fallback. L1 remains uncapped; node charging, settlement and native qualification remain. |
-| zkTanenbaum | Unqualified; fee/receipt reads reject before RPC | Pubdata billing and finality semantics remain unresolved. |
+| zkTanenbaum 57057 | Source-qualified zkOS inclusive gas; estimate the exact chosen type-2 fee envelope, add no separate pubdata fee | Distinct finalized-execution policy; deployed RPC semantics, native and funded end-to-end qualification remain pending. |
 
 `feeSourceQualified` describes the fee model or oracle source correspondence,
-not full sending qualification. Only the NEVM testnet profile exposes new-send
-eligibility. Registry-owned host capabilities allow native coins on Ethereum and
-NEVM testnet, and ERC20 only on Ethereum; a caller-supplied profile never grants it.
+not full sending qualification. NEVM and zkSYS testnet profiles expose development new-send eligibility. Registry-owned host capabilities allow native coins on Ethereum, NEVM testnet and zkSYS testnet, and ERC20 only on Ethereum; a caller-supplied profile never grants it.
 
 ## Oracle identity
 
@@ -99,7 +96,7 @@ An oversized initial or repeated receipt remains opaque: only the shared reader'
 typed byte-limit error permits a separate finalized-block/nonce observation,
 with numeric-block nonce lookup, canonical hash recheck and a final chain check.
 An unconsumed nonce or unavailable evidence remains an error, never an absent
-receipt that could offer retry. Only Ethereum can mark this observation terminal;
+receipt that could offer retry. This Ethereum fallback can mark its observation terminal;
 NEVM mainnet stays observation-only and unqualified settlement profiles refuse it.
 Malformed admitted bodies, recognized RPC errors and transport failures do not
 select this path. The receipt budget remains 16 KiB.
@@ -109,8 +106,9 @@ invalid observation; the journal remains unresolved. A caller abort maps to
 `CANCELLED`; a read deadline or unavailable endpoint maps to `UNAVAILABLE`, and
 malformed/profile-mismatch observations map to `INVALID_RESPONSE`.
 NEVM tags are depth lookbacks in the matched Geth source, with observed 11/12
-block lags; they are not independent ChainLock proof. Other settlement profiles
-remain unqualified and cannot return terminal eligibility.
+block lags; they are not independent ChainLock proof. Other unqualified settlement
+profiles cannot return terminal eligibility. zkSYS uses the separate numeric
+finalized-execution path described below.
 
 The NEVM testnet send path does not use `finalized`. It samples head H, reads the
 canonical numeric anchor H-11, and reads the sender nonce at that same anchor.
@@ -135,3 +133,13 @@ a broadcaster-capable fake RPC, cancellation and A-B-A, separate response bounds
 canonical/orphan receipts and observed versus terminal settlement. This local
 phase does not claim physical-device behavior, native multi-network offline
 signing, new-chain submission or finality qualification.
+
+## zkSYS testnet development candidate
+
+The fee model is grounded in Syscoin server commit `b4c6b5e997c1f2b7e417cc52ac392e9616fe47a5` (`lib/rpc/src/eth_call_handler.rs`, `lib/rpc/src/rpc_storage.rs`) and upstream zkOS guest `69bc430549e88f9264066d14f2001707572c5d33` (v0.4.0), with Syscoin patch SHA-256 `0af88710e0275ce3dc49928a264e93639f945c85ab79600e12a41306731053d7`. These pins describe source behavior, not the deployed server. On 2026-11-04, curl/Node read-only probes returned HTTP 403, while default macOS URLSession probes succeeded for chain 57057, a numeric finalized-block hash, fee history, zero priority fee and exact type-2 estimation. Block metadata reported execution version 7. The reported client version `zksync-os/v0.23.0` is also generated by the b4c6b5e source manifest, so it does not attest the deployed revision. Native custody, funded execution and settlement-topology qualification remain pending.
+
+The wallet obtains nonce, balance and fee inputs before estimating. It supplies type 2, chain ID, sender, recipient, nonce, value, empty calldata, max fee and priority fee to `eth_estimateGas`. This is a wallet consistency requirement: the server supports omitted/zero fees too. Estimation accounts for execution, proving and pubdata; receipt `gasUsed * effectiveGasPrice` includes those costs. No OP oracle or additional pubdata surcharge is added. A zero priority fee is valid. Confirmation re-estimates using the original approved cap and tip, since changing the effective gas price can change the native-resource budget. A higher required limit, changed nonce, unaffordable total or base fee above the approved cap requires new review. An estimate is not a guarantee across subsequent block/state changes.
+
+The maximum native funding requirement remains value plus gas limit times max fee. Optional zkSYS gas-tank credit does not reduce native collateral admission and is not assumed by the wallet. New Ethereum (EIP-7825) and zkSYS quotes reject estimates/padding above 16,777,216 gas; NEVM keeps its separate existing ceiling. Existing journal bytes, including historical Ethereum type-0 transactions above the new-send ceiling, remain readable and are not rewritten.
+
+The zkSYS receipt reader resolves one finalized tag to a numeric anchor, verifies its canonical hash, and reads the sender nonce at that same height. A matching successful/reverted receipt becomes terminal only at or below that anchor with consumed nonce proof and repeated receipt/block checks. Anchor/head reorgs and unavailable finality fail closed. Missing or oversized receipts may retire only a proven consumed nonce; they never report execution success. No 12-block fallback or Ethereum-finality label is used. The source's finalized-execution boundary follows its active settlement layer; deployment topology and actual endpoint semantics must be verified before the first funded test. Native artifact qualification and independent review must pass before merge or release.

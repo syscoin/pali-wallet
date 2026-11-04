@@ -381,23 +381,25 @@ export class NativeTransfers {
             error.code as 'TOKEN_CHANGED' | 'TOKEN_TRANSFER_REJECTED'
           );
         }
-        if (error instanceof NativeTransferError) {
-          if (error.code === 'EXPIRED')
-            this.publish({
+        if ((error instanceof NativeTransferError && error.code === 'EXPIRED') ||
+            (error instanceof NativeTransferRpcError && error.code === 'REVIEW_REQUIRED')) {
+          this.publish({
               phase: this.snapshot.hash ? 'unknown' : 'idle',
               review: null,
               message: this.snapshot.hash
                 ? 'A signed transaction was saved before the review expired. Check it before sending again.'
                 : 'The review expired or network conditions changed. Review the transfer again.',
             });
-          throw error;
+          throw new NativeTransferError('EXPIRED');
         }
+        if (error instanceof NativeTransferError) throw error;
         if (!(error instanceof NativeTransferRpcError)) this.source.lock();
         this.publish({
           phase: 'unavailable',
           review: null,
-          message:
-            'The transfer could not be completed. Your pending transaction has been preserved.',
+          message: this.snapshot.hash
+            ? 'The transfer could not be completed. Your pending transaction has been preserved.'
+            : 'The request could not be completed. Try again or check Activity for an existing transaction.',
         });
         throw new NativeTransferError('FAILED');
       })
@@ -614,9 +616,12 @@ export class NativeTransfers {
         guard();
         entry = stored;
       } else {
-        const latest = approved.public.intent
-          ? await rpc.prepareToken(address, approved.public.intent, signal)
-          : await rpc.prepare(
+        let latest;
+        if (approved.public.intent) latest = await rpc.prepareToken(address, approved.public.intent, signal);
+        else if (context.settlement.kind === 'zkos-finalized-executed') {
+          if (approved.transaction.type !== 2) throw new NativeTransferError('FAILED');
+          latest = await rpc.requote(approved.transaction, signal);
+        } else latest = await rpc.prepare(
               address,
               approved.transaction.to,
               approved.transaction.value,
@@ -761,6 +766,10 @@ export class NativeTransfers {
     );
   }
   private terminalMessage(phase: string, intent?: Erc20TransferIntent, context?: NativeSendContext): string {
+    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'confirmed')
+      return 'Settlement confirmed at the zkSYS finalized execution boundary.';
+    if (context?.settlement.kind === 'zkos-finalized-executed' && phase === 'reverted')
+      return 'Transfer reverted at the zkSYS finalized execution boundary. Network fees may still apply.';
     if (context?.settlement.kind === 'nevm-depth-12' && phase === 'confirmed')
       return 'Depth confirmed after 12 confirmations. This is a confirmation-depth observation, not protocol finality.';
     if (context?.settlement.kind === 'nevm-depth-12' && phase === 'reverted')
@@ -839,7 +848,8 @@ export class NativeTransfers {
           phase: receipt ? 'pending' : 'unknown',
           hash: entry.hash,
           message: receipt
-            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.' : 'Included in a block. Waiting for finality.'
+            ? context.settlement.kind === 'nevm-depth-12' ? 'Included in a block. Waiting for 12 confirmations.'
+              : context.settlement.kind === 'zkos-finalized-executed' ? 'Included in a block. Waiting for zkSYS settlement confirmation.' : 'Included in a block. Waiting for finality.'
             : 'Submission is unconfirmed. Do not create another transfer for this nonce.',
         });
     });

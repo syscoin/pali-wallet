@@ -29,7 +29,7 @@ const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockBy
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & { assertCurrent(): void };
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null }>;
 type ReceiptRequest = Readonly<{ hash: string; from: string; to: string; nonce: string }>;
-type Settlement = Readonly<{ kind: 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'unqualified'; observedHeight: string | null; terminalEligible: boolean }>;
+type Settlement = Readonly<{ kind: 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'zkos-finalized-executed' | 'unqualified'; observedHeight: string | null; terminalEligible: boolean }>;
 export type EvmReceiptObservation = Readonly<
   | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock; settlement: Settlement }
   | { status: 'nonce-consumed'; settlement: Settlement }
@@ -183,9 +183,10 @@ export class EvmTransferReadRpc {
       if (cap < sampled.baseFee) return rejectRead('REVIEW_REQUIRED');
       const price = sampled.baseFee + BigInt(transaction.maxPriorityFeePerGas);
       const extras: EvmFeeExtra[] = [];
-      if (this.profile.feeModel === 'nitro-inclusive-gas') {
+      if (this.profile.feeModel === 'nitro-inclusive-gas' || this.profile.feeModel === 'zkos-inclusive-gas') {
         const estimated = quantity(await read('eth_estimateGas', [{ from: transaction.from, to: transaction.to, data: '0x',
-          value: hex(BigInt(transaction.value)), maxFeePerGas: hex(cap), maxPriorityFeePerGas: hex(BigInt(transaction.maxPriorityFeePerGas)) }, hex(BigInt(sampled.number))]));
+          value: hex(BigInt(transaction.value)), maxFeePerGas: hex(cap), maxPriorityFeePerGas: hex(BigInt(transaction.maxPriorityFeePerGas)),
+          ...(this.profile.feeModel === 'zkos-inclusive-gas' ? { type: '0x2', chainId: hex(BigInt(transaction.chainId)), nonce: hex(BigInt(transaction.nonce)) } : {}) }, hex(BigInt(sampled.number))]));
         read.assertCurrent();
         if (estimated < 21000n || estimated > BigInt(transaction.gasLimit)) return rejectRead('REVIEW_REQUIRED');
       } else if (this.profile.feeModel === 'op-jovian' || this.profile.feeModel === 'rollux-legacy') {
@@ -279,6 +280,52 @@ export class EvmTransferReadRpc {
     return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true,
       block: receipt.block, settlement: settlement(eligible) });
   }
+  /** zkOS exposes settlement-layer finalized execution, not an L2 depth rule. */
+  private async zkOsReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation | null> {
+    const head = block(await read('eth_getBlockByNumber', ['latest', false]));
+    const anchor = block(await read('eth_getBlockByNumber', ['finalized', false]));
+    read.assertCurrent();
+    if (BigInt(anchor.number) > BigInt(head.number)) rejectRead('PROFILE_CHANGED');
+    // Resolve the tag once, then pin nonce and all rechecks to this numeric anchor.
+    await this.canonical(read, anchor);
+    let raw: unknown, opaque = false;
+    try { raw = await read('eth_getTransactionReceipt', [expected.hash]); }
+    catch (error) { if (!(error instanceof ResponseSizeLimitError)) throw error; opaque = true; }
+    read.assertCurrent();
+    const consumed = quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(anchor.number))])) > BigInt(expected.nonce);
+    read.assertCurrent();
+    let receipt = !opaque && raw !== null ? this.checkedReceipt(raw, expected) : null;
+    if (receipt) {
+      if (BigInt(receipt.block.number) > BigInt(head.number)) rejectRead('PROFILE_CHANGED');
+      await this.canonical(read, receipt.block);
+    }
+    const eligible = !!receipt && consumed && BigInt(receipt.block.number) <= BigInt(anchor.number);
+    if (eligible) {
+      try {
+        const repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
+        if (repeated.block.number !== receipt!.block.number || repeated.block.hash !== receipt!.block.hash || repeated.outcome !== receipt!.outcome)
+          rejectRead('PROFILE_CHANGED');
+        await this.canonical(read, repeated.block);
+      } catch (error) {
+        if (!(error instanceof ResponseSizeLimitError)) throw error;
+        opaque = true; receipt = null;
+      }
+    }
+    await this.canonical(read, anchor);
+    await this.canonical(read, head);
+    await this.checkChain(read);
+    read.assertCurrent();
+    const settlement = (terminalEligible: boolean): Settlement => Object.freeze({
+      kind: 'zkos-finalized-executed', observedHeight: anchor.number, terminalEligible,
+    });
+    if (!receipt) {
+      if (consumed) return Object.freeze({ status: 'nonce-consumed', settlement: settlement(true) });
+      if (opaque) return rejectRead('UNAVAILABLE');
+      return null;
+    }
+    return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true,
+      block: receipt.block, settlement: settlement(eligible) });
+  }
   receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
     let expected: ReceiptRequest;
     try {
@@ -293,6 +340,7 @@ export class EvmTransferReadRpc {
       await this.checkChain(read);
       read.assertCurrent();
       if (this.profile.settlement === 'nevm-depth-12') return this.depthReceipt(read, expected);
+      if (this.profile.settlement === 'zkos-finalized-executed') return this.zkOsReceipt(read, expected);
       let raw: unknown;
       try {
         raw = await read('eth_getTransactionReceipt', [expected.hash]);

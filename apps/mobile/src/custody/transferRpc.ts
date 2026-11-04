@@ -13,8 +13,8 @@ import {
   type Erc20TransferIntent,
 } from './transferIntent.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
-import { EvmTransferReadError } from './evmFeeContracts.ts';
-import { getNativeSendContext, erc20SigningEnabled, type EvmNetworkId } from './networkContext.ts';
+import { EvmTransferReadError, snapshotUnsignedTransfer } from './evmFeeContracts.ts';
+import { getNativeNetwork, getNativeSendContext, nativeTransferGasLimit, erc20SigningEnabled, type EvmNetworkId } from './networkContext.ts';
 import {
   boundedResponseText,
   parseRpcQuantity,
@@ -54,6 +54,7 @@ export class NativeTransferRpcError extends Error {
     | 'CANCELLED'
     | 'INVALID_RESPONSE'
     | 'UNAVAILABLE'
+    | 'REVIEW_REQUIRED'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
     | 'TOKEN_CHANGED'
@@ -223,6 +224,8 @@ export class NativeTransferRpc {
     const value = assertBaseUnits(valueUnits);
     if (value <= 0n || /^0x0{40}$/i.test(recipient))
       throw new NativeTransferRpcError('INVALID_RESPONSE');
+    if (this.context.networkId === 'zksys-testnet')
+      return this.prepareZkOs(sender, recipient, value, signal);
     return this.operation(signal, async (local) => {
       // Check chain before disclosing an address, then again before admitting the quote.
       await this.checkChain(local);
@@ -261,7 +264,7 @@ export class NativeTransferRpc {
       if (
         nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
         estimate < 21000n ||
-        estimate > 30000000n
+        estimate > nativeTransferGasLimit(this.context.networkId)
       )
         return invalid();
       const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
@@ -270,7 +273,7 @@ export class NativeTransferRpc {
       const total = value + maximumFee;
       assertBaseUnits(maxFee.toString());
       assertBaseUnits(total.toString());
-      if (gas > 30000000n) return invalid();
+      if (gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
       if (total > balance)
         throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
       await this.checkChain(local);
@@ -290,6 +293,79 @@ export class NativeTransferRpc {
         balanceUnits: balance.toString(),
         maximumFeeUnits: maximumFee.toString(),
         totalUnits: total.toString(),
+      });
+    });
+  }
+  /** Recheck the exact approved fee envelope; a new tip can change zkOS gas requirements. */
+  requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal): Promise<NativeTransferQuote> {
+    if (this.context.networkId !== 'zksys-testnet') return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
+    let approved;
+    try { approved = snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(this.context.networkId)); }
+    catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
+    return this.prepareZkOs(approved.from, approved.to, BigInt(approved.value), signal, approved);
+  }
+  private prepareZkOs(
+    sender: string, recipient: string, value: bigint, signal: AbortSignal,
+    approved?: NativeTransferQuote['transaction']
+  ): Promise<NativeTransferQuote> {
+    const quantity = (value: unknown): bigint => {
+      try { return parseRpcQuantity(value); } catch { return invalid(); }
+    };
+    const validUnits = (value: bigint): void => {
+      try { assertBaseUnits(value.toString()); } catch { return invalid(); }
+    };
+    return this.operation(signal, async (local) => {
+      await this.checkChain(local);
+      const sampled = object(await this.call('eth_getBlockByNumber', ['latest', false], local));
+      const height = quantity(sampled.number);
+      const sampledHash = checkedHash(sampled.hash);
+      const sampledBaseFee = quantity(sampled.baseFeePerGas);
+      const blockGasLimit = quantity(sampled.gasLimit);
+      const [rawNonce, rawBalance, rawHistory, rawPriority] = await Promise.all([
+        this.call('eth_getTransactionCount', [sender, 'pending'], local),
+        this.call('eth_getBalance', [sender, 'pending'], local),
+        this.call('eth_feeHistory', ['0x1', 'latest', []], local),
+        this.call('eth_maxPriorityFeePerGas', [], local),
+      ]);
+      const nonce = quantity(rawNonce), balance = quantity(rawBalance);
+      const history = object(rawHistory);
+      if (!Array.isArray(history.baseFeePerGas) || history.baseFeePerGas.length !== 2 ||
+          nonce > BigInt(Number.MAX_SAFE_INTEGER) || blockGasLimit < 21000n) return invalid();
+      quantity(history.oldestBlock);
+      quantity(history.baseFeePerGas[0]);
+      const nextBaseFee = quantity(history.baseFeePerGas[1]);
+      const selectedTip = quantity(rawPriority);
+      const baseFee = sampledBaseFee > nextBaseFee ? sampledBaseFee : nextBaseFee;
+      const tip = approved ? BigInt(approved.maxPriorityFeePerGas) : selectedTip;
+      const maxFee = approved ? BigInt(approved.maxFeePerGas) : baseFee * 2n + tip;
+      validUnits(maxFee);
+      if (maxFee === 0n || tip > maxFee) return invalid();
+      if (approved && (maxFee < baseFee || BigInt(approved.nonce) !== nonce))
+        throw new NativeTransferRpcError('REVIEW_REQUIRED');
+      if (maxFee < baseFee) return invalid();
+      const hex = (number: bigint) => `0x${number.toString(16)}`;
+      // Bind estimation to the fields that will actually be signed. RPC itself also
+      // supports omitted fees; explicit fields avoid changing the native-resource budget.
+      const rawGas = await this.call('eth_estimateGas', [{
+        type: '0x2', chainId: hex(BigInt(this.context.chainId)), from: sender, to: recipient,
+        nonce: hex(nonce), value: hex(value), data: '0x',
+        maxFeePerGas: hex(maxFee), maxPriorityFeePerGas: hex(tip),
+      }, 'pending'], local);
+      const estimate = quantity(rawGas);
+      if (estimate < 21000n || estimate > blockGasLimit || estimate > nativeTransferGasLimit(this.context.networkId)) return invalid();
+      const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
+      if (gas > blockGasLimit || gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
+      const maximumFee = gas * maxFee, total = value + maximumFee;
+      validUnits(maximumFee); validUnits(total);
+      if (total > balance) throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
+      const repeated = object(await this.call('eth_getBlockByNumber', [hex(height), false], local));
+      if (quantity(repeated.number) !== height || checkedHash(repeated.hash) !== sampledHash) return invalid();
+      await this.checkChain(local);
+      return Object.freeze({
+        transaction: Object.freeze({ type: 2, from: sender, to: recipient, chainId: this.context.chainId,
+          nonce: nonce.toString(), value: value.toString(), gasLimit: gas.toString(), data: '0x',
+          maxFeePerGas: maxFee.toString(), maxPriorityFeePerGas: tip.toString() }),
+        balanceUnits: balance.toString(), maximumFeeUnits: maximumFee.toString(), totalUnits: total.toString(),
       });
     });
   }
@@ -406,7 +482,7 @@ export class NativeTransferRpc {
       if (
         nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
         estimate < 21000n ||
-        estimate > 30000000n
+        estimate > nativeTransferGasLimit(this.context.networkId)
       )
         return invalid();
       const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
@@ -414,7 +490,7 @@ export class NativeTransferRpc {
         maximumFee = gas * maxFee;
       assertBaseUnits(maxFee.toString());
       assertBaseUnits(maximumFee.toString());
-      if (gas > 30000000n) return invalid();
+      if (gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
       if (maximumFee > balance)
         throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
       const finalBlock = block(
@@ -470,6 +546,8 @@ export class NativeTransferRpc {
         !tx.to
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
+      if (this.context.networkId === 'zksys-testnet' &&
+          (tx.type !== 2 || tx.gasLimit < 21000n || tx.gasLimit > nativeTransferGasLimit(this.context.networkId))) return invalid();
       assertTransferIntentEnvelope(
         {
           chainId: tx.chainId.toString(),

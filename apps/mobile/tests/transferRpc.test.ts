@@ -86,6 +86,13 @@ test('adds exact bounded gas headroom for a complex native transfer', async () =
     '36000'
   );
 });
+test('new Ethereum quotes reject estimates or padded limits above the EIP-7825 transaction cap', async () => {
+  for (const estimate of ['0x1000001', '0xe00000']) {
+    await assert.rejects(fixture({ eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
+  }
+  const below = fixture({ eth_estimateGas: '0xd55555' });
+  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '16777216');
+});
 test('aborts unresolved sibling requests when one quote component fails', async () => {
   let observed: AbortSignal | undefined;
   const f = fixture({

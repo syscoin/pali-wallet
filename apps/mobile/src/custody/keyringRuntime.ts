@@ -13,6 +13,7 @@ import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent } from './transferIntent.ts';
+import { snapshotUnsignedTransfer } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
@@ -459,6 +460,8 @@ export function createKeyringRuntimeFactory(
                 assertTransferIntentEnvelope(transaction, intent);
                 if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId).chainId)
                   throw new KeyringRuntimeError('INVALID_INPUT');
+                if (catalogueSnapshot!.active.networkId === 'zksys-testnet')
+                  snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork('zksys-testnet'));
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
@@ -471,6 +474,8 @@ export function createKeyringRuntimeFactory(
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
               if (!nativeSigningEnabled(network.id) || transaction.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
+              if (network.id === 'zksys-testnet')
+                snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
                 account: { id: state.activeAccount.id, type: 'HDAccount', expectedAddress: transaction.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },

@@ -38,14 +38,16 @@ import {
   Text,
 } from '../ui';
 
-const failure = (error: unknown, context: NativeSendContext, token = false) => {
+const failure = (error: unknown, context: NativeSendContext, token = false, hasSavedTransaction = false) => {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_INPUT')
     return `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
       context.name
     } address and an amount greater than zero.`;
   if (code === 'EXPIRED')
-    return 'Network conditions changed or this review expired. Review the transfer again.';
+    return hasSavedTransaction
+      ? 'A signed transaction was saved before the review expired. Check it before sending again.'
+      : 'Network conditions changed or this review expired. Review the transfer again.';
   if (code === 'INSUFFICIENT_BALANCE')
     return token
       ? `Not enough ${context.symbol} for the maximum network fee.`
@@ -60,7 +62,9 @@ const failure = (error: unknown, context: NativeSendContext, token = false) => {
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'Your wallet was locked. Unlock to continue.';
   if (code === 'PENDING_TRANSFER') return '';
-  return 'This request could not be completed. Check your pending transaction before sending again.';
+  return hasSavedTransaction
+    ? 'This request could not be completed. Check your pending transaction before sending again.'
+    : 'This request could not be completed. Try again or check Activity for an existing transaction.';
 };
 
 export function NativeSend({
@@ -103,6 +107,8 @@ export function NativeSend({
     capturedContext.testnet ? ' · Test network' : ''
   }`;
   const depthConfirmed = capturedContext.settlement.kind === 'nevm-depth-12';
+  const zkSysSettlement =
+    capturedContext.settlement.kind === 'zkos-finalized-executed';
   const networkArticle = capturedContext.networkId === 'ethereum' ? 'an' : 'a';
   const reviewedToken = review?.intent?.token;
   const outcomeToken = snapshot.intent?.token;
@@ -158,7 +164,7 @@ export function NativeSend({
       await operation();
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch)
-        setError(failure(cause, capturedContext, !!token || !!snapshot.intent));
+        setError(failure(cause, capturedContext, !!token || !!snapshot.intent, !!controller.getSnapshot().hash));
     }
   };
   useEffect(() => {
@@ -307,8 +313,9 @@ export function NativeSend({
                   {capturedContext.symbol}
                 </Text>
                 <Text style={s.hint}>
-                  The final network fee may be lower. It cannot exceed this
-                  limit.
+                  {zkSysSettlement
+                    ? 'This limit includes execution, proving and data costs. The final network fee may be lower.'
+                    : 'The final network fee may be lower. It cannot exceed this limit.'}
                 </Text>
                 {!reviewedToken && (
                   <>
@@ -332,6 +339,12 @@ export function NativeSend({
                 <Notice
                   title="12-confirmation depth policy"
                   body="Pali marks this transfer depth confirmed after 12 confirmations. Depth confirmation is not protocol finality."
+                />
+              )}
+              {zkSysSettlement && (
+                <Notice
+                  title="zkSYS settlement policy"
+                  body="Settlement confirmation uses the zkSYS RPC's finalized execution boundary. A receipt alone does not establish settlement."
                 />
               )}
               {review.retry && (
@@ -369,12 +382,16 @@ export function NativeSend({
                   {snapshot.phase === 'confirmed'
                     ? depthConfirmed
                       ? 'Depth confirmed'
+                      : zkSysSettlement
+                      ? 'Settlement confirmed'
                       : outcomeToken
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
                     ? depthConfirmed
                       ? 'Reverted · depth confirmed'
+                      : zkSysSettlement
+                      ? 'Reverted · settlement confirmed'
                       : 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'

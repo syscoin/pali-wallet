@@ -4,7 +4,7 @@ import { getAddress } from 'ethers/address';
 import { assertBaseUnits } from '../core/amounts.ts';
 import { getEvmTransferProfile } from './evmTransferProfiles.ts';
 import type { EvmTransferProfile } from './evmTransferProfiles.ts';
-import { NATIVE_NETWORKS } from './networkContext.ts';
+import { NATIVE_NETWORKS, nativeTransferGasLimit } from './networkContext.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 
 export class EvmTransferReadError extends Error {
@@ -62,7 +62,7 @@ export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: Na
   try { from = getAddress(data.from as string); to = getAddress(data.to as string); } catch { return rejectRead('INVALID_INPUT'); }
   if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to)) return rejectRead('INVALID_INPUT');
   const nonce = units(data.nonce), amount = units(data.value), gas = units(data.gasLimit), cap = units(data.maxFeePerGas), tip = units(data.maxPriorityFeePerGas);
-  if (nonce > BigInt(Number.MAX_SAFE_INTEGER) || amount === 0n || gas < 21000n || gas > 30000000n || cap === 0n || tip > cap) return rejectRead('INVALID_INPUT');
+  if (nonce > BigInt(Number.MAX_SAFE_INTEGER) || amount === 0n || gas < 21000n || gas > nativeTransferGasLimit(network.id) || cap === 0n || tip > cap) return rejectRead('INVALID_INPUT');
   return Object.freeze({ type: 2, from, to, chainId: network.chainId, nonce: nonce.toString(), value: amount.toString(),
     gasLimit: gas.toString(), data: '0x', maxFeePerGas: cap.toString(), maxPriorityFeePerGas: tip.toString() });
 }
