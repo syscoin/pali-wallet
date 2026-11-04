@@ -66,6 +66,9 @@ export class NativeRecoveryCoordinator {
         return fail('CANCELLED');
       }
     } catch { return fail('CANCELLED'); }
+    // The caller's synchronous guard may itself cancel or dispose this flow.
+    const afterGuard = this.now();
+    if (this.disposed || generation !== this.generation || afterGuard > deadline) return fail('CANCELLED');
   }
   private async close(storage: OpenWalletStorage): Promise<void> {
     try { await storage.close(); } catch { this.unavailable = true; return fail('REOPEN_REQUIRED'); }

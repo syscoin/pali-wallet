@@ -358,3 +358,18 @@ test('an old recovery coordinator cannot charge or replace a newer recovered pai
     assert.deepEqual(f.read(), committed);
   } finally { await old.dispose(); await next?.dispose(); await f.close(); }
 });
+
+test('a reentrant cancellation from the final commit guard rolls back before COMMIT', async () => {
+  const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+  let metadataWrites = 0, finalChecks = 0, cancelled = false;
+  const guard = () => {
+    if (metadataWrites === 3 && ++finalChecks === 2) { cancelled = true; recovery.cancel(); }
+  };
+  try {
+    const before = f.read(), proof = await recovery.prepare(PHRASE, NEXT, guard);
+    f.setAfter((_kind, sql) => { if (sql.startsWith('INSERT INTO wallet_metadata')) metadataWrites++; });
+    await assert.rejects(recovery.commit(proof), { code: 'CANCELLED' });
+    assert.equal(cancelled, true);
+    assert.deepEqual(f.read(), before);
+  } finally { f.setAfter(); await recovery.dispose(); await f.close(); }
+});
