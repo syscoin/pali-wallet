@@ -64,6 +64,9 @@ if (require.main === module) {
   try {
     const [command, ...args] = process.argv.slice(2);
     if (command === 'preserve' && args.length === 4) {
+      if (process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1') {
+        require('./post-evidence.cjs').assertCurrentPostSourceMap(JSON.parse(readBounded(args[2], MAX_MAP_BYTES).toString('utf8')));
+      }
       preserveSourceMap(...args, process.env.GITHUB_SHA || null);
     } else if (command === 'resolve' && args.length === 2) {
       const report = JSON.parse(readBounded(args[0], MAX_REPORT_BYTES).toString('utf8'));

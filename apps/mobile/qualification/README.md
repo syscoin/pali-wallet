@@ -25,7 +25,7 @@ The host starts a separate Node child bound exclusively to `127.0.0.1` on an
 ephemeral port. Android requires the selected target to be an emulator and uses
 a serial-bound, non-replacing `adb reverse` mapping; cleanup removes only that
 owned port. No external service, wallet address or faucet is contacted. The
-fixture serves only a fixed allowlist of token-bound GET routes and has no proxy.
+fixture serves only fixed allowlists of token-bound GET and POST routes and has no proxy.
 
 The actual production `walletFetch` adapter exercises Expo's compiled native
 fetch path while global fetch, XHR and WebSocket remain forbidden. A separate
@@ -46,13 +46,58 @@ Ambiguous reverse-install timeouts or transport loss permit cleanup only after
 prior absence and exact serial/port readback; collisions and unknown ownership
 never authorize removal.
 
-HTTP executes after native crypto qualification and before storage admission.
+GET and POST execute after native crypto qualification and before storage admission.
 The iOS Simulator's original failed storage report and refusal schema remain
 unchanged; its aggregate may claim `nativeHttpQualified: true` while retaining
 `custodyQualified: false`. This proves local HTTP adapter behavior only. It does
 not qualify public RPC availability, production TLS handshakes, fixed-network
 balance semantics, native memory ceilings or physical-device networking. Node
 fixture tests are controls; the compiled native CI run is required evidence.
+
+### Native POST and JSON-RPC gate
+
+The five POST cases are separate from the unchanged seven GET cases and their
+v1 report/audit schemas. `post-native.ts` exercises the actual
+`createBalanceReader` JSON serialization and parsing with a qualification-only
+exact-origin mapping to the owned loopback fixture. It never dispatches to the
+public RPC URL. The host compares complete received UTF-8 bodies against fixed
+literal fixtures, verifies JSON headers/cache policy/cookie omission, and records
+only byte lengths and SHA256 digests rather than raw bodies.
+
+The cases cover an exact large integer and valid zero; mismatched ID, JSON-RPC
+error, malformed JSON and wrong MIME; declared and streamed 16 KiB response
+limits; cancellation after the full request body reaches the host and a healthy
+later POST; and one lost response followed by an explicit replay of identical
+synthetic bytes. No key, signature, signed transaction or live provider is used.
+The replay is a transport check. Real transaction retries preserve signed
+payload bytes while their JSON-RPC IDs can change; this gate does not replace
+the existing journal-backed cold-restart evidence.
+
+Each launch requires `pali-native-post-<token>.json`, bound to the same immutable
+source/lock, platform, phase, scenario and native session as its GET sidecar.
+The host takes one final atomic GET+POST audit, validates both, and saves the
+unchanged `<platform>-<scenario>-<phase>-http.json` plus a separate `-post.json`.
+Only then can the aggregate set `nativePostQualified: true`. Old GET-only
+artifacts cannot satisfy the new gate. Failed POST diagnostics use a different
+kind and cannot be accepted as success.
+
+Request bodies are bounded at 8 KiB, responses retain production 16 KiB limits,
+and all fixture body reads, control waits, paced streams and sockets are bounded
+and closed on failure. Sidecar filenames are fixed token names; iOS host reads
+use no-follow/nonblocking regular-file checks and an 8 KiB consumed limit.
+Android rejects nonregular/symlink paths, caps output and has a 5-second command
+deadline; it does not claim atomic filesystem exclusion against a concurrently
+changing app file. Diagnostics preserve the original failure.
+
+The source-map preservation CLI checks every embedded project source against
+the exact build checkout and requires all 60 prior c960 project modules plus
+`post-native.ts`, `post-contract.ts` and `post-fixtures.ts`. Native artifact
+review must retain that complete binding, independently hash the lockfile and
+ZIP/map bytes, verify all five launch pairs, and preserve all Android custody
+and restart checks. On iOS the original storage-refusal report stays failed,
+with `custodyQualified: false` and `sdkSmokeVerified: false`, even when both
+transport gates pass. No native pass is claimed by the Node controls alone.
+
 The qualification entry defers all wallet/ethers/BIP39 imports until the native
 crypto gate has completed. During fresh generation, a bounded in-memory observer
 delegates RNG requests to the qualified native provider and verifies that the

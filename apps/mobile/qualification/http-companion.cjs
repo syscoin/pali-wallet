@@ -5,6 +5,8 @@ const { randomBytes, createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 const { assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
+const { assertPostReport, postDiagnosticCase } = require('./post-contract.ts');
+const { assertPostAudit, partialPostAudit } = require('./post-server.cjs');
 const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 const { ROUTES } = require('./http-server.cjs');
 
@@ -46,7 +48,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     execArgv: [], stdio: ['ignore', 'ignore', 'ignore', 'ipc'], env: { PALI_HTTP_FIXTURE: '1' },
   });
   const pending = new Map();
-  let nextId = 0, port, mapped = false, active, stopped = false, serial, finalAudit, failedCase = 'unavailable';
+  let nextId = 0, port, mapped = false, active, stopped = false, serial, finalAudit, finalPostAudit, failedCase = 'unavailable';
   let readyResolve, readyReject;
   const ready = new Promise((resolve, reject) => { readyResolve = resolve; readyReject = reject; });
   child.on('message', (message) => {
@@ -129,6 +131,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       await rpc('begin', token);
       active = { sourceRevision, lockfileSha256, token, phase, scenario, platform };
       finalAudit = undefined;
+      finalPostAudit = undefined;
       failedCase = 'unavailable';
       return `&httpPort=${port}&httpToken=${token}`;
     },
@@ -139,10 +142,20 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       const report = JSON.parse(text);
       assertHttpReport(report, active);
       if (report.sessionId !== sessionId) throw Error('HTTP_FIXTURE_SESSION_MISMATCH');
+      const postText = read(`pali-native-post-${active.token}.json`);
+      if (typeof postText !== 'string' || Buffer.byteLength(postText) > 8192) throw Error('POST_QUALIFICATION_REPORT_INVALID');
+      const postReport = JSON.parse(postText);
+      assertPostReport(postReport, active);
+      if (postReport.sessionId !== sessionId) throw Error('POST_FIXTURE_SESSION_MISMATCH');
       failedCase = 'host-verification';
-      const audit = finalAudit = await rpc('snapshot', active.token);
+      const snapshot = await rpc('snapshotAll', active.token);
+      if (!snapshot || Object.keys(snapshot).sort().join(',') !== 'get,post') throw Error('HTTP_FIXTURE_AUDIT_FAILED');
+      const audit = finalAudit = snapshot.get;
+      finalPostAudit = snapshot.post;
       assertAudit(audit, active.token, port);
-      records.push({ nativeHttpQualified: true, report, audit });
+      assertPostAudit(finalPostAudit, active.token, port);
+      records.push({ nativeHttpQualified: true, report, audit,
+        post: { nativePostQualified: true, report: postReport, audit: finalPostAudit } });
       active = undefined;
       return records.at(-1);
     },
@@ -155,16 +168,35 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       } catch { /* Missing or malformed native evidence remains unavailable. */ }
       let server = partialAudit(finalAudit, active.token, port);
       if (!server) {
-        try { server = partialAudit(await rpc('inspect', active.token, 1000), active.token, port); }
+        try {
+          const snapshot = await rpc('inspectAll', active.token, 1000);
+          server = partialAudit(snapshot?.get, active.token, port);
+        }
         catch { /* Diagnostic loss must not replace the original failure. */ }
       }
       return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
         ...active, failedCase, server };
     },
+    async postDiagnostic(read = () => undefined) {
+      if (!active) return undefined;
+      let failedPostCase = 'unavailable';
+      try {
+        const text = read(`pali-native-post-${active.token}.json`);
+        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192) failedPostCase = postDiagnosticCase(JSON.parse(text), active) ?? failedPostCase;
+      } catch { /* Missing sidecar remains unavailable. */ }
+      let server = partialPostAudit(finalPostAudit, active.token, port);
+      if (!server) {
+        try { server = partialPostAudit((await rpc('inspectAll', active.token, 1000))?.post, active.token, port); }
+        catch { /* Diagnostics never replace the primary failure. */ }
+      }
+      return { version: 1, kind: 'native-post-diagnostic', status: 'failed', diagnosticOnly: true,
+        ...active, failedCase: failedPostCase, server };
+    },
     assertComplete(expected) {
       const phases = expected === 1 ? ['import:create'] : expected === 4
         ? ['generate:create', 'generate:restart', 'import:create', 'import:restart'] : [];
-      if (!phases.length || active || records.length !== expected || new Set(records.map(({ report }) => report.token)).size !== expected ||
+      if (!phases.length || active || records.length !== expected || records.some(record => record.nativeHttpQualified !== true || record.post?.nativePostQualified !== true) ||
+          new Set(records.map(({ report }) => report.token)).size !== expected ||
           records.map(({ report }) => `${report.scenario}:${report.phase}`).sort().join(',') !== phases.join(','))
         throw Error('HTTP_QUALIFICATION_INCOMPLETE');
     },

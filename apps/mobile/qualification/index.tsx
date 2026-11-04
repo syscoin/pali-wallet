@@ -282,8 +282,8 @@ function QualificationApp() {
           // Run before protected-storage admission, in a separate report: an
           // iOS Simulator storage refusal must never become custody success.
           stage = 'native HTTP transport';
-          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }] = await Promise.all([
-            import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'),
+          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }, { qualifyNativePost, PostQualificationError }] = await Promise.all([
+            import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'), import('./post-native.ts'),
           ]);
           if (!FileSystem.documentDirectory) throw Error('HTTP_QUALIFICATION_REPORT_UNAVAILABLE');
           const destination = `${FileSystem.documentDirectory}pali-native-http-${parameters.http.token}.json`;
@@ -294,13 +294,22 @@ function QualificationApp() {
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            stage = 'native POST transport';
+            const postDestination = `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json`;
+            const postEvidence = await qualifyNativePost({ launch: parameters.http, build, walletFetch,
+              phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
+              sessionId: Constants.sessionId, networkCalls: () => networkCalls });
+            await FileSystem.writeAsStringAsync(`${postDestination}.tmp`, JSON.stringify(postEvidence));
+            await FileSystem.moveAsync({ from: `${postDestination}.tmp`, to: postDestination });
           } catch (error) {
-            if (error instanceof HttpQualificationError) {
-              const diagnostic = { ...build, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+            if (error instanceof HttpQualificationError || error instanceof PostQualificationError) {
+              const isPost = error instanceof PostQualificationError;
+              const failedDestination = isPost ? `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json` : destination;
+              const diagnostic = { ...build, kind: isPost ? 'native-post-diagnostic' : 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
                 failedCase: error.failedCase, token: parameters.http.token, phase: parameters.phase,
                 scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId };
-              await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(diagnostic))
-                .then(() => FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination })).catch(() => undefined);
+              await FileSystem.writeAsStringAsync(`${failedDestination}.tmp`, JSON.stringify(diagnostic))
+                .then(() => FileSystem.moveAsync({ from: `${failedDestination}.tmp`, to: failedDestination })).catch(() => undefined);
             }
             throw error;
           }

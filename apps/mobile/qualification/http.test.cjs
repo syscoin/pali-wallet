@@ -13,6 +13,10 @@ const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
 const { qualifyNativeHttp } = require('./http-native.ts');
+const { qualifyNativePost } = require('./post-native.ts');
+const { createNativeHttpFetch } = require('../src/platform/httpPolicy.ts');
+const { POST_CASES } = require('./post-contract.ts');
+const { POST_BODIES, POST_CONTROLS, POST_ROUTES, POST_RETRY_PAYLOAD } = require('./post-fixtures.ts');
 const build = { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: 'b'.repeat(64) };
 const expected = { ...build, token: 'c'.repeat(32), phase: 'create', scenario: 'import', platform: 'ios' };
 delete expected.version;
@@ -21,6 +25,14 @@ const report = () => ({ version: 1, kind: 'native-http', status: 'passed', nativ
 const audit = () => ({ token: expected.token, port: 45454, invalid: 0,
   counts: Object.fromEntries(ROUTES.map((route) => [route, route === 'target' ? 0 : 1])),
   closed: { before: true, body: true, oversize: true } });
+const digest = value => createHash('sha256').update(value).digest('hex');
+const postAudit = token => ({ version: 1, token, port: 45454, invalid: 0, lostResponses: 1,
+  counts: Object.fromEntries(POST_ROUTES.map(route => { const n = POST_CONTROLS.includes(route) ? 1 : POST_BODIES[route].length; return [route, { started: n, completed: n }]; })),
+  closed: { declared: true, stream: true, abort: true },
+  requests: Object.entries(POST_BODIES).flatMap(([route, bodies]) => bodies.map((body, i) => ({ route, ordinal: i + 1, id: JSON.parse(body).id,
+    bytes: Buffer.byteLength(body), bodySha256: digest(body), payloadSha256: route === 'post-lost' ? digest(Buffer.from(POST_RETRY_PAYLOAD.slice(2), 'hex')) : null }))) });
+const readBoth = value => name => JSON.stringify(name.includes('native-post-')
+  ? { ...value, kind: 'native-post', nativeHttpQualified: undefined, nativePostQualified: true, cases: [...POST_CASES] } : value);
 
 test('HTTP launch/build identity cannot choose hosts, secrets or arbitrary parameters', () => {
   assert.deepEqual(httpLaunch('45454', expected.token), { port: 45454, token: expected.token });
@@ -129,8 +141,9 @@ function childControl(snapshot = (value) => value) {
   child.send = (message, callback) => {
     callback?.();
     if (message.kind === 'begin') child.token = message.token;
-    let value = ['snapshot', 'inspect'].includes(message.kind) ? { ...audit(), token: child.token } : undefined;
-    if (message.kind === 'snapshot') child.lastSnapshot = value = snapshot(value);
+    let value = ['snapshot', 'inspect', 'snapshotAll', 'inspectAll'].includes(message.kind) ? { ...audit(), token: child.token } : undefined;
+    if (message.kind === 'snapshot' || message.kind === 'snapshotAll') child.lastSnapshot = value = snapshot(value);
+    if (message.kind === 'snapshotAll' || message.kind === 'inspectAll') value = { get: value, post: postAudit(child.token) };
     queueMicrotask(() => child.emit('message', { id: message.id, ok: true, value }));
   };
   child.kill = () => { child.signalCode = 'SIGTERM'; queueMicrotask(() => child.emit('exit')); return true; };
@@ -153,8 +166,9 @@ test('companion owns only one reverse mapping and requires matching sidecar/sess
     const token = new URLSearchParams(suffix).get('httpToken');
     const value = { ...report(), token, platform: 'android', lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
     await assert.rejects(companion.verify(() => undefined, value.sessionId));
-    await assert.rejects(companion.verify(() => JSON.stringify(value), '22222222-2222-2222-2222-222222222222'));
-    await companion.verify(() => JSON.stringify(value), value.sessionId);
+    await assert.rejects(companion.verify(readBoth(value), '22222222-2222-2222-2222-222222222222'));
+    await assert.rejects(companion.verify(name => name.includes('native-post-') ? undefined : JSON.stringify(value), value.sessionId), /POST_QUALIFICATION_REPORT_INVALID/);
+    await companion.verify(readBoth(value), value.sessionId);
     companion.assertComplete(1);
   } finally { await companion.close(); }
   assert.deepEqual(commands.map(([, args]) => args), [['get-serialno'], ['-s', 'emulator-5554', 'shell', 'getprop', 'ro.kernel.qemu'],
@@ -170,7 +184,7 @@ test('final snapshot is authoritative when traffic changes after a clean inspect
   try {
     const token = new URLSearchParams(await companion.begin('create', 'import')).get('httpToken');
     const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
-    await assert.rejects(companion.verify(() => JSON.stringify(value), value.sessionId), /AUDIT_FAILED/);
+    await assert.rejects(companion.verify(readBoth(value), value.sessionId), /AUDIT_FAILED/);
     assert.equal(child.lastSnapshot.counts.target, 1);
     assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
     assert.equal((await companion.diagnostic()).server.counts.target, 1);
@@ -183,7 +197,7 @@ test('a valid final snapshot is the exact audit recorded for qualification', asy
   try {
     const token = new URLSearchParams(await companion.begin('create', 'import')).get('httpToken');
     const value = { ...report(), token, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') };
-    const recorded = await companion.verify(() => JSON.stringify(value), value.sessionId);
+    const recorded = await companion.verify(readBoth(value), value.sessionId);
     assert.equal(recorded.audit, child.lastSnapshot);
     companion.assertComplete(1);
   } finally { await companion.close(); }
@@ -283,7 +297,9 @@ test('real child IPC, same-source sidecar, server audit and shutdown compose wit
       lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') },
       walletFetch: (url, init) => fetch(url, { ...init, credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
-    await companion.verify(() => JSON.stringify(value), value.sessionId);
+    const post = await qualifyNativePost({ launch, build: { ...build, lockfileSha256: value.lockfileSha256 },
+      walletFetch: createNativeHttpFetch(fetch), phase: 'create', scenario: 'import', platform: 'ios', sessionId: value.sessionId, networkCalls: () => 0 });
+    await companion.verify(name => JSON.stringify(name.includes('native-post-') ? post : value), value.sessionId);
     companion.assertComplete(1);
   } finally { await companion.close(); }
   await assert.rejects(fetch(endpoint));

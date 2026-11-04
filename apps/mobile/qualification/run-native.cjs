@@ -20,6 +20,7 @@ const { qualificationMode, assertSimulatorTarget } = require('./simulator-contra
 const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
 const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
+const { readHttpSidecar, readAndroidHttpSidecar } = require('./post-sidecar.cjs');
 
 if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
   throw Error('Run only against isolated qualification devices');
@@ -65,11 +66,13 @@ const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 async function captureHttpDiagnostic() {
   if (!httpCompanion || httpDiagnosticSaved) return;
   try {
-    const diagnostic = await httpCompanion.diagnostic?.(httpRead);
-    if (!diagnostic) return;
-    const text = JSON.stringify(diagnostic, null, 2);
-    if (Buffer.byteLength(text) > 8192) return;
-    fs.writeFileSync(path.join(output, `${platform}-http-diagnostic.json`), `${text}\n`);
+    for (const [kind, method] of [['http', 'diagnostic'], ['post', 'postDiagnostic']]) {
+      const diagnostic = await httpCompanion[method]?.(httpRead);
+      if (!diagnostic) continue;
+      const text = JSON.stringify(diagnostic, null, 2);
+      if (Buffer.byteLength(text) > 8192) continue;
+      fs.writeFileSync(path.join(output, `${platform}-${kind}-diagnostic.json`), `${text}\n`);
+    }
     httpDiagnosticSaved = true;
   } catch { /* Partial diagnostics never replace the original failure. */ }
 }
@@ -224,7 +227,7 @@ async function ios() {
         PACKAGE,
         'data',
       ]));
-      httpRead = (name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8');
+      httpRead = (name) => readHttpSidecar(path.join(container, 'Documents'), name);
       const read = (phase) => {
         try {
           return fs.readFileSync(
@@ -251,8 +254,9 @@ async function ios() {
         () => read('startup')
       ));
       if (httpCompanion) {
-        const evidence = await httpCompanion.verify((name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8'), created.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
         fs.writeFileSync(path.join(output, `ios-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `ios-${scenario}-create-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       if (simulatorContract) {
         // The original report remains failed. No database read, restart or
@@ -298,8 +302,9 @@ async function ios() {
         () => read('startup')
       ));
       if (httpCompanion) {
-        const evidence = await httpCompanion.verify((name) => fs.readFileSync(path.join(container, 'Documents', name), 'utf8'), restored.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, restored.sessionId);
         fs.writeFileSync(path.join(output, `ios-${scenario}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `ios-${scenario}-restart-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       if (
         created.sessionId === restored.sessionId ||
@@ -423,7 +428,7 @@ async function android() {
     run('adb', ['uninstall', PACKAGE], true); // Dedicated test package only.
     try {
       run('adb', ['install', artifact]);
-      httpRead = (name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`], false, 5000);
+      httpRead = (name) => readAndroidHttpSidecar(run, name);
       const read = (phase) =>
         run(
           'adb',
@@ -467,8 +472,9 @@ async function android() {
         androidProcessRunning
       );
       if (httpCompanion) {
-        const evidence = await httpCompanion.verify((name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`]), created.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
         fs.writeFileSync(path.join(output, `android-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${scenario}-create-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       const oldPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       run('adb', ['shell', 'am', 'force-stop', PACKAGE]);
@@ -498,8 +504,9 @@ async function android() {
         androidProcessRunning
       );
       if (httpCompanion) {
-        const evidence = await httpCompanion.verify((name) => run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/${name}`]), restored.sessionId);
+        const { post, ...evidence } = await httpCompanion.verify(httpRead, restored.sessionId);
         fs.writeFileSync(path.join(output, `android-${scenario}-restart-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+        fs.writeFileSync(path.join(output, `android-${scenario}-restart-post.json`), `${JSON.stringify(post, null, 2)}\n`);
       }
       const newPid = run('adb', ['shell', 'pidof', '-s', PACKAGE]);
       if (
@@ -724,6 +731,7 @@ async function android() {
     if (httpEnabled) {
       httpCompanion.assertComplete(simulatorContract ? 1 : 4);
       report.nativeHttpQualified = true;
+      report.nativePostQualified = true;
     }
   } catch (error) { primaryFailure = error; throw error; }
   finally {
