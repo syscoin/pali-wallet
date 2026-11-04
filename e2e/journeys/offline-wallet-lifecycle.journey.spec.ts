@@ -232,6 +232,8 @@ test('offline wallet lifecycle: lock, backup reauthentication and seed recovery'
         await page.locator('#create-password').fill(recoveredPassword);
         await page.locator('#confirm-password').fill(recoveredPassword);
         await page.locator('#create-password-action').click();
+        await locked();
+        await unlock(recoveredPassword);
         await expect(page).toHaveURL(/#\/home$/, { timeout: 30000 });
         await wallet!.switchNetwork('Syscoin Testnet', 'UTXO');
         await sameAccount();

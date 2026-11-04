@@ -134,7 +134,10 @@ let reads: Array<{ method: string; url: string }>;
 let unexpectedReads: number;
 let heldAlpha: { promise: Promise<void>; resolve: () => void } | null;
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(async () => {
+  httpRules = [];
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
@@ -165,6 +168,12 @@ beforeEach(async () => {
   heldAlpha = null;
   globalThis.fetch = jest.fn(async (input, options) => {
     const url = String(input);
+    expect(
+      httpRules.some(
+        (rule) =>
+          rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
+      )
+    ).toBe(true);
     if (url === `${BLOCKBOOK}/api/v2`) {
       expect(options?.method).toBeUndefined();
       reads.push({ method: 'blockbook-info', url });
@@ -228,7 +237,22 @@ beforeEach(async () => {
     throw new Error('Unexpected synthetic public read');
   });
   global.chrome = {
-    runtime: { id: 'synthetic-network-api-selection' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], callback: (value: any) => void) =>

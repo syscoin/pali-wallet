@@ -189,7 +189,10 @@ const mountActualRoutes = () =>
     </Provider>
   );
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(async () => {
+  httpRules = [];
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'warn').mockImplementation();
@@ -211,7 +214,22 @@ beforeEach(async () => {
   }));
   records = {};
   global.chrome = {
-    runtime: { id: 'synthetic-activity-save-path' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], callback: (value: any) => void) =>
@@ -235,6 +253,12 @@ beforeEach(async () => {
   } as any;
   globalThis.fetch = jest.fn(async (url, options) => {
     expect(String(url)).toBe(RPC);
+    expect(
+      httpRules.some(
+        (rule) =>
+          rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
+      )
+    ).toBe(true);
     expect(options?.method).toBe('POST');
     expect(JSON.parse(String(options?.body))).toEqual({
       jsonrpc: '2.0',

@@ -158,7 +158,10 @@ const advance = async (ms: number) =>
     await jest.advanceTimersByTimeAsync(ms);
   });
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(async () => {
+  httpRules = [];
   jest.useFakeTimers({ now: 1000000 });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
@@ -197,7 +200,23 @@ beforeEach(async () => {
   }));
   window.history.replaceState({ key: mockLocation.key }, '', '/app.html');
   global.chrome = {
-    runtime: { id: 'synthetic-quality' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (resource: string) =>
+        `chrome-extension://${'a'.repeat(32)}/${resource}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], callback: any) =>
@@ -223,6 +242,14 @@ beforeEach(async () => {
     if (![OLD.url, NEW_URL].includes(url) || options?.method !== 'POST')
       throw Error('Denied non-fixture HTTP');
     const body = JSON.parse(options.body);
+    if (body.method === 'eth_chainId') {
+      expect(
+        httpRules.some(
+          (rule) =>
+            rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
+        )
+      ).toBe(true);
+    }
     const requests = Array.isArray(body) ? body : [body];
     const responses = await Promise.all(
       requests.map(async (request: any) => {

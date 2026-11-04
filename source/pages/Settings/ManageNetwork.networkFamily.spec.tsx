@@ -205,7 +205,10 @@ const registerBothFamilies = async () => {
   cleanup();
 };
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(async () => {
+  httpRules = [];
   jest.clearAllMocks();
   clearRpcCaches();
   clearCustomRpcDrafts();
@@ -258,6 +261,12 @@ beforeEach(async () => {
   global.fetch = async (target: any, options?: any) => {
     if (String(target) !== url && String(target) !== url + '/api/v2')
       throw Error('Disallowed nonfixture request: ' + String(target));
+    expect(
+      httpRules.some(
+        (rule) =>
+          rule.condition.urlFilter === `|${new URL(String(target)).origin}/`
+      )
+    ).toBe(true);
     return transport(target, { ...options, redirect: 'error' });
   };
   global.MessageChannel = class {
@@ -290,7 +299,22 @@ beforeEach(async () => {
     }),
   });
   global.chrome = {
-    runtime: { id: 'local-network-family-identity' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], done: any) =>
