@@ -128,6 +128,8 @@ jobs:
           key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - name: Build extension
         run: yarn build:chrome
+      - name: Verify installed Chromium sandbox helper
+        run: bash .github/scripts/configure-chromium-sandbox.sh
       - name: Verify wallet HTTP identity on the wire
         if: matrix.shard == 1
         env:
@@ -228,6 +230,8 @@ jobs:
       - name: Remove temporary apt configuration
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
+      - name: Verify installed Chromium sandbox helper
+        run: bash .github/scripts/configure-chromium-sandbox.sh
       - name: Install local conformance chain fixture
         uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
         with:

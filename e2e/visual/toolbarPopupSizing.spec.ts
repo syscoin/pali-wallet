@@ -14,6 +14,7 @@ test('native toolbar popup has its normal intrinsic size without an emulated vie
   const server = await startUtxoFixtureServer();
   const profile = fs.mkdtempSync(path.join(directory, 'profile-'));
   const context = await chromium.launchPersistentContext(profile, {
+    chromiumSandbox: true,
     args: [
       ...(E2E_CONFIG.headless
         ? ['--headless=new', '--screen-info={0,0 1280x900}']

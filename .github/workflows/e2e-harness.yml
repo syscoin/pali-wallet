@@ -25,6 +25,8 @@ jobs:
           check-latest: true
       - run: yarn install
       - run: npx playwright install --with-deps chromium
+      - name: Verify installed Chromium sandbox helper
+        run: bash .github/scripts/configure-chromium-sandbox.sh
       - name: Install local conformance chain fixture
         uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
         with:

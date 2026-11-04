@@ -338,6 +338,7 @@ test('native toolbar Create action is anchored to the actual Chrome popup bottom
   const extensionPath =
     process.env.PALI_TEST_DAPP_EXTENSION_PATH || E2E_CONFIG.extensionPath;
   const context = await chromium.launchPersistentContext(profile, {
+    chromiumSandbox: true,
     args: [
       ...(E2E_CONFIG.headless
         ? ['--headless=new', '--screen-info={0,0 1280x900}']
