@@ -6,6 +6,13 @@ export type Erc20Metadata = Readonly<{
   symbol: string;
 }>;
 
+/** Decoded contract fields, before a host applies its display/import policy. */
+export type Erc20ReadFields = Readonly<{
+  decimals: number;
+  name: string;
+  symbol: string;
+}>;
+
 export const ERC20_TEXT_LIMITS = Object.freeze({
   name: Object.freeze({ bytes: 512, characters: 128 }),
   symbol: Object.freeze({ bytes: 256, characters: 64 }),
@@ -14,6 +21,102 @@ const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
 const invalid = (): never => {
   throw new Error('Invalid ERC20 data');
 };
+
+function snapshotFields(
+  value: unknown,
+  fields: readonly string[]
+): Record<string, unknown> {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
+    return invalid();
+  const keys = Reflect.ownKeys(value);
+  if (
+    keys.length !== fields.length ||
+    keys.some((key) => typeof key !== 'string' || !fields.includes(key))
+  )
+    return invalid();
+  const snapshot: Record<string, unknown> = Object.create(null);
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor?.enumerable || !('value' in descriptor)) return invalid();
+    snapshot[field] = descriptor.value;
+  }
+  return snapshot;
+}
+
+function checkedReadFields(fields: Record<string, unknown>): Erc20ReadFields {
+  if (typeof fields.name !== 'string' || typeof fields.symbol !== 'string')
+    return invalid();
+  return Object.freeze({
+    decimals: parseErc20Decimals(fields.decimals),
+    name: fields.name,
+    symbol: fields.symbol,
+  });
+}
+
+/** Existing token reads must remain usable regardless of their display text. */
+export function parseErc20ReadFields(value: unknown): Erc20ReadFields {
+  return checkedReadFields(
+    snapshotFields(value, ['decimals', 'name', 'symbol'])
+  );
+}
+
+/**
+ * Bind the host's trusted checksum implementation once. It must not resolve
+ * names or perform I/O. No dependency is resolved from the shared source tree.
+ */
+export function createErc20Policy(normalize: (address: string) => string) {
+  if (typeof normalize !== 'function') return invalid();
+
+  // Preserve the checksum library's syntactic forms (including ICAP and zero).
+  const normalizeAddress = (value: unknown): string => {
+    if (typeof value !== 'string') return invalid();
+    try {
+      const result = normalize(value);
+      if (typeof result !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(result))
+        return invalid();
+      return result;
+    } catch {
+      return invalid();
+    }
+  };
+  const normalizeNonzeroHexAddress = (value: unknown): string => {
+    if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(value))
+      return invalid();
+    const address = normalizeAddress(value);
+    return /^0x0{40}$/.test(address) ? invalid() : address;
+  };
+  const parseMetadata = (value: unknown): Erc20Metadata => {
+    // Read every own field before the trusted callback can reenter the host.
+    const snapshot = snapshotFields(value, [
+      'contractAddress',
+      'decimals',
+      'name',
+      'symbol',
+    ]);
+    const fields = checkedReadFields(snapshot);
+    const name = parseErc20Text(fields.name, 'name');
+    const symbol = parseErc20Text(fields.symbol, 'symbol');
+    const contractAddress = normalizeNonzeroHexAddress(
+      snapshot.contractAddress
+    );
+    return Object.freeze({
+      contractAddress,
+      decimals: fields.decimals,
+      name,
+      symbol,
+    });
+  };
+  return Object.freeze({
+    normalizeAddress,
+    normalizeNonzeroHexAddress,
+    parseMetadata,
+  });
+}
 
 /** Reject unsafe numbers; uint256 values always cross a boundary as text/bigint. */
 export function parseErc20Units(value: unknown): string {
@@ -117,7 +220,7 @@ export function encodeErc20Transfer(
 
 export function decodeErc20Transfer(
   data: unknown
-): Readonly<{ recipient: string; amountUnits: string }> {
+): Readonly<{ amountUnits: string; recipient: string }> {
   if (
     typeof data !== 'string' ||
     !/^0xa9059cbb[0-9a-f]{128}$/.test(data) ||

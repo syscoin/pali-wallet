@@ -10,7 +10,7 @@ jest.mock('@sidhujag/sysweb3-utils', () => ({
   getTokenStandardMetadata: jest.fn(),
   getNftStandardMetadata: jest.fn(),
   getERC721StandardBalance: jest.fn(),
-  cleanTokenSymbol: (value: string) => value,
+  cleanTokenSymbol: jest.fn((value: string) => value),
 }));
 jest.mock('../balances/BatchBalanceController', () => ({
   BatchBalanceController: jest.fn(),
@@ -22,6 +22,7 @@ jest.mock('utils/ethersV6Compat', () => ({
 jest.mock('./nft-utils', () => ({ verifyERC1155OwnershipHelper: jest.fn() }));
 
 import {
+  cleanTokenSymbol,
   contractChecker,
   getTokenStandardMetadata,
 } from '@sidhujag/sysweb3-utils';
@@ -70,7 +71,11 @@ afterEach(() => {
 });
 
 describe('ERC20 shared metadata boundary', () => {
-  const load = (overrides: Record<string, unknown> = {}) => {
+  const load = (
+    overrides: Record<string, unknown> = {},
+    contractAddress = TOKEN,
+    accountAddress = ACCOUNT
+  ) => {
     const fields = {
       name: 'Example token',
       symbol: 'EXAMPLE',
@@ -86,7 +91,11 @@ describe('ERC20 shared metadata boundary', () => {
         ])
       )
     );
-    return EvmAssetsController().getERC20TokenInfo(TOKEN, ACCOUNT, {} as any);
+    return EvmAssetsController().getERC20TokenInfo(
+      contractAddress,
+      accountAddress,
+      {} as any
+    );
   };
   it('shares exact unit and full uint8 precision validation with native token reads', async () => {
     await expect(load()).resolves.toEqual({
@@ -116,6 +125,33 @@ describe('ERC20 shared metadata boundary', () => {
       });
     }
   );
+
+  it.each([
+    ['token.example.eth', 'holder.example.eth'],
+    ['XE65GB6LDNXYOFTX0NSV3FUWKOWIXAMJK36', ACCOUNT.slice(2)],
+    [`0x${'0'.repeat(40)}`, `0x${'0'.repeat(40)}`],
+  ])(
+    'preserves contract/holder resolution for %s and %s',
+    async (target, holder) => {
+      await load({}, target, holder);
+      expect(Contract).toHaveBeenCalledWith(
+        target,
+        expect.any(Array),
+        expect.anything()
+      );
+      const instance = (Contract as unknown as jest.Mock).mock.results[0].value;
+      expect(instance.balanceOf).toHaveBeenCalledWith(holder);
+    }
+  );
+
+  it('applies extension symbol presentation after shared field validation', async () => {
+    (cleanTokenSymbol as jest.Mock).mockReturnValueOnce('DISPLAY');
+    await expect(load({ symbol: 'Raw token symbol' })).resolves.toMatchObject({
+      name: 'Example token',
+      symbol: 'DISPLAY',
+    });
+    expect(cleanTokenSymbol).toHaveBeenCalledWith('Raw token symbol');
+  });
 });
 
 describe('discovery availability is not an empty wallet', () => {
