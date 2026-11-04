@@ -20,6 +20,7 @@ type SettingsProps = {
   onHideBalances: (hidden: boolean) => void;
   onNavigate: (screen: string) => void;
   onExit: () => void;
+  onWallet?: () => void;
 };
 
 type InformationProps = {
@@ -34,6 +35,7 @@ export function SettingsScreen({
   onHideBalances,
   onNavigate,
   onExit,
+  onWallet,
 }: SettingsProps) {
   return (
     <Screen>
@@ -50,13 +52,14 @@ export function SettingsScreen({
           <Text style={localStyles.body}>
             {preview
               ? 'Sample data. Your settings stay in this preview.'
-              : 'Your public address, with no signing keys in the app.'}
+              : 'This account uses only a public address. It cannot sign.'}
           </Text>
         </View>
       </Card>
 
       <Label>Wallet</Label>
       <Card>
+        {onWallet && <Row title="Open wallet" subtitle="Create, restore or unlock" icon="wallet" onPress={onWallet} />}
         <Row
           title="Security"
           subtitle="Understand what this app can access"
@@ -198,7 +201,7 @@ export function InformationScreen({
           <InformationHero
             icon="shield"
             title="Your keys stay with you."
-            body="Watch balances with a public address. Pali does not ask for your recovery phrase or private key in this build."
+            body="Watch balances with a public address. Watching this account does not require its recovery phrase or private key."
           />
           <Label>Current capabilities</Label>
           <Card>
@@ -214,7 +217,7 @@ export function InformationScreen({
             />
             <Row
               title="Biometric wallet unlock"
-              subtitle="Not enabled for this watch-only app"
+              subtitle="Not enabled for watch-only accounts"
               icon="shield"
               last
             />
@@ -232,7 +235,7 @@ export function InformationScreen({
           <InformationHero
             icon="wallet"
             title="A backup is worth protecting."
-            body="This watch-only app does not hold your recovery phrase. Manage your backup in the wallet that controls the account."
+            body="Watch-only accounts do not store a recovery phrase. Manage your backup in the wallet that controls the account."
           />
           <GuideStep
             number="1"
@@ -310,7 +313,7 @@ export function InformationScreen({
           </Card>
           <Notice
             title="A foundation in development"
-            body="Native custody, sending and recovery are not available. Browser previews and source tests do not establish production or device security."
+            body="Wallet setup is available in the iOS and Android development builds. Sending and other wallet features are still in development. Browser previews do not establish device security."
             tone="blue"
           />
         </>

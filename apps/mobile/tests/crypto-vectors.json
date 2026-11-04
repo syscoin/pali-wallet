@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "securityNotice": "ALL keys/passwords/roots are PUBLIC SYNTHETIC fixtures. Never use them for funds.",
+  "generatedWith": {
+    "node": "v26.12.1",
+    "openssl": "3.5.9",
+    "sdkCommit": "825f21dd05fb2d9c2f14d3fa6b09dfb781491a38"
+  },
+  "pbkdf2": [
+    {
+      "id": "startup-1-iteration",
+      "classification": "startup-self-test-only",
+      "password": "PUBLIC startup self-test only",
+      "passwordUtf8Hex": "5055424c494320737461727475702073656c662d74657374206f6e6c79",
+      "saltHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "hash": "SHA-512",
+      "iterations": 1,
+      "outputBytes": 32,
+      "expectedHex": "02b76fb5d7d9fb89a348f72b0d8159bd40af60c5e20e0393a822b7937b0eb4d2"
+    },
+    {
+      "id": "legacy-20000-unicode",
+      "classification": "legacy-format-qualification",
+      "password": "PUBLIC fixture: caf\u00e9 / Cafe\u0301 / \u96ea / \ud83d\udd10 / \u0000 end",
+      "passwordUtf8Hex": "5055424c494320666978747572653a20636166c3a9202f2043616665cc81202f20e99baa202f20f09f9490202f200020656e64",
+      "saltHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "hash": "SHA-512",
+      "iterations": 20000,
+      "outputBytes": 32,
+      "expectedHex": "dbc234ce231f9c070a9a23a6896a06bb6e39dab4f97f39d397eaea98097c7c26"
+    },
+    {
+      "id": "current-900000-unicode",
+      "classification": "production-cost-qualification",
+      "password": "PUBLIC fixture: caf\u00e9 / Cafe\u0301 / \u96ea / \ud83d\udd10 / \u0000 end",
+      "passwordUtf8Hex": "5055424c494320666978747572653a20636166c3a9202f2043616665cc81202f20e99baa202f20f09f9490202f200020656e64",
+      "saltHex": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "hash": "SHA-512",
+      "iterations": 900000,
+      "outputBytes": 32,
+      "expectedHex": "9862375bd7b5af242b88e330bed94c28385d86579b2f38cea243de90ebaa1056"
+    }
+  ],
+  "hkdf": {
+    "rootText": "PUBLIC synthetic root: caf\u00e9 / \u96ea / \ud83d\udd10",
+    "rootNormalized": "PUBLIC synthetic root: cafe\u0301 / \u96ea / \ud83d\udd10",
+    "rootUtf8Hex": "5055424c49432073796e74686574696320726f6f743a2063616665cc81202f20e99baa202f20f09f9490",
+    "saltHex": "737973776562332f707269766174652d7265636f72642f7631",
+    "profileInfoHex": "5b22737973776562332f707269766174652d7265636f72642f7631222c2270726f66696c652d6964225d",
+    "profileHex": "f2e52475bc64a198afe10bc4e7eaa8d32b9d677511efcd98ab19eb12ed35a62c",
+    "keyInfoHex": "5b22737973776562332f707269766174652d7265636f72642f7631222c22656e6372797074696f6e2d6b6579222c226f72672e737973636f696e2e70616c692e707269766163792e6e6f7465732e7631225d",
+    "domainKeyHex": "abf56885a7515b127cf502cad980875baf5ec39c7075bd9a4fbe096865cca325",
+    "domain": "org.syscoin.pali.privacy.notes.v1",
+    "recordId": "00000000-0000-4000-8000-000000000001",
+    "aadText": "[\"sysweb3/private-record/v1\",1,\"org.syscoin.pali.privacy.notes.v1\",\"00000000-0000-4000-8000-000000000001\",\"0xf2e52475bc64a198afe10bc4e7eaa8d32b9d677511efcd98ab19eb12ed35a62c\"]"
+  },
+  "aes": [
+    {
+      "id": "vault-v4-default-tag-no-aad",
+      "keyHex": "9862375bd7b5af242b88e330bed94c28385d86579b2f38cea243de90ebaa1056",
+      "ivHex": "000102030405060708090a0b",
+      "plaintextHex": "7b225055424c49435f544553545f46495854555245223a747275652c226163636f756e7473223a5b5d7d",
+      "aadHex": null,
+      "tagBits": 128,
+      "ciphertextAndTagHex": "61bc00f54015e6c9e7d02b47db5edba64489439cb72f324333d0e54860c2c9783b324893420735d97c1b13f39aa8e4ad3e61503a8b0bfe622e91"
+    },
+    {
+      "id": "private-record-sdk-aad",
+      "keyHex": "abf56885a7515b127cf502cad980875baf5ec39c7075bd9a4fbe096865cca325",
+      "ivHex": "000102030405060708090a0b",
+      "plaintextHex": "7b2276657273696f6e223a312c226e6f746573223a5b5d7d",
+      "aadHex": "5b22737973776562332f707269766174652d7265636f72642f7631222c312c226f72672e737973636f696e2e70616c692e707269766163792e6e6f7465732e7631222c2230303030303030302d303030302d343030302d383030302d303030303030303030303031222c22307866326535323437356263363461313938616665313062633465376561613864333262396436373735313165666364393861623139656231326564333561363263225d",
+      "tagBits": 128,
+      "ciphertextAndTagHex": "8cd076650af0f4438f6cbfe1bf96a3068fcb9bc4b70da984510e40db1ea5edb9491c53fd3cd2b3e5"
+    }
+  ]
+}

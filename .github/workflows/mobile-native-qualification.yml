@@ -1,0 +1,179 @@
+name: Mobile native qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'apps/mobile/src/**'
+      - 'apps/mobile/modules/**'
+      - 'apps/mobile/qualification/**'
+      - 'apps/mobile/package*.json'
+      - 'apps/mobile/app.json'
+      - 'apps/mobile/metro.config.js'
+      - 'apps/mobile/plugins/**'
+      - 'apps/mobile/scripts/configure-native-qualification.cjs'
+      - 'source/utils/nativeBalance.ts'
+      - '.nvmrc'
+      - '.github/workflows/mobile-native-qualification.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-native-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  EXPO_NO_TELEMETRY: '1'
+  EXPO_NO_DOTENV: '1'
+  PALI_NATIVE_QUALIFICATION: '1'
+
+jobs:
+  ios:
+    name: iOS Simulator crypto and protected-storage refusal
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: node --test qualification/*.test.cjs
+      - run: xcodebuild -version
+      - run: node scripts/configure-native-qualification.cjs
+      - run: npx --no-install expo prebuild --platform ios --no-install
+      - run: pod install --project-directory=ios
+      - name: Build real iOS simulator binary
+        env:
+          SOURCEMAP_FILE: ${{ runner.temp }}/pali-native-ios/ios-main.jsbundle.map
+        run: |
+          mkdir -p "$RUNNER_TEMP/pali-native-ios"
+          xcodebuild -workspace ios/PaliQualification.xcworkspace \
+            -scheme PaliQualification -configuration Release -sdk iphonesimulator \
+            -derivedDataPath "$RUNNER_TEMP/pali-native-ios-build" \
+            CODE_SIGNING_ALLOWED=NO build
+          node qualification/source-map-evidence.cjs preserve ios \
+            "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app/main.jsbundle" \
+            "$SOURCEMAP_FILE" "$RUNNER_TEMP/pali-native-ios"
+      - name: Verify native crypto and expected protected-storage refusal
+        env:
+          QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
+        run: >-
+          node qualification/run-native.cjs ios
+          "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app"
+          --ios-simulator-contract
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: native-ios-simulator-limited-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pali-native-ios/
+          if-no-files-found: warn
+          retention-days: 14
+
+  android:
+    name: Android native custody and cold restart
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up verified Android command-line tools
+        shell: bash
+        run: |
+          PALI_SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          PALI_TOOLS_ARCHIVE="$RUNNER_TEMP/pali-command-line-tools.zip"
+          PALI_TOOLS_STAGE="$RUNNER_TEMP/pali-command-line-tools"
+          curl --fail --location --retry 3 --connect-timeout 15 \
+            https://dl.google.com/android/repository/commandlinetools-linux-15859902_latest.zip \
+            --output "$PALI_TOOLS_ARCHIVE"
+          echo "4e4c464f145a7512b57d088ac6c278c03c9eea610886b35a5e0804e74eedf583  $PALI_TOOLS_ARCHIVE" | sha256sum --check --strict
+          mkdir -p "$PALI_TOOLS_STAGE" "$PALI_SDK_ROOT/cmdline-tools"
+          unzip -q "$PALI_TOOLS_ARCHIVE" -d "$PALI_TOOLS_STAGE"
+          mv "$PALI_TOOLS_STAGE/cmdline-tools" "$PALI_SDK_ROOT/cmdline-tools/pali-15859902"
+          echo "ANDROID_HOME=$PALI_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$PALI_SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$PALI_SDK_ROOT/cmdline-tools/pali-15859902/bin" >> "$GITHUB_PATH"
+          echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
+      - run: npm ci --ignore-scripts
+      - run: node --test qualification/*.test.cjs
+      - name: Install pinned native toolchain
+        run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
+      - run: node scripts/configure-native-qualification.cjs
+      - run: npx --no-install expo prebuild --platform android --no-install
+      - name: Build real Android binary
+        run: |
+          (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)
+          node qualification/source-map-evidence.cjs preserve android \
+            android/app/build/generated/assets/react/release/index.android.bundle \
+            android/app/build/generated/sourcemaps/react/release/index.android.bundle.map \
+            "$RUNNER_TEMP/pali-native-android"
+      - name: Start isolated API 35 emulator
+        timeout-minutes: 15
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pali-native-android"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/pali-android-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          trap 'status=$?; if [ -f "$RUNNER_TEMP/pali-emulator.log" ]; then cp "$RUNNER_TEMP/pali-emulator.log" "$RUNNER_TEMP/pali-native-android/emulator.log"; if [ "$status" -ne 0 ]; then tail -100 "$RUNNER_TEMP/pali-emulator.log"; fi; fi; exit "$status"' EXIT
+          sudo chmod a+rw /dev/kvm
+          sdkmanager 'platform-tools' 'emulator' 'system-images;android-35;google_apis;x86_64'
+          echo no | avdmanager create avd --name PaliQualification --path "$ANDROID_AVD_HOME/PaliQualification.avd" --package 'system-images;android-35;google_apis;x86_64' --force 2>&1 | tee "$RUNNER_TEMP/pali-native-android/avd-create.log"
+          {
+            printf 'ANDROID_AVD_HOME=%s\n' "$ANDROID_AVD_HOME"
+            printf 'ANDROID_USER_HOME=%s\n' "${ANDROID_USER_HOME:-unset}"
+            printf 'ANDROID_EMULATOR_HOME=%s\n' "${ANDROID_EMULATOR_HOME:-unset}"
+            printf 'ANDROID_SDK_HOME=%s\n' "${ANDROID_SDK_HOME:-unset}"
+            avdmanager list avd
+            find "$ANDROID_AVD_HOME" -maxdepth 2 -type f -name '*.ini' -print
+          } > "$RUNNER_TEMP/pali-native-android/avd-inventory.log" 2>&1
+          "$ANDROID_HOME/emulator/emulator" -list-avds > "$RUNNER_TEMP/pali-native-android/emulator-avds.log" 2>&1
+          test -f "$ANDROID_AVD_HOME/PaliQualification.ini"
+          grep -Fxq PaliQualification "$RUNNER_TEMP/pali-native-android/emulator-avds.log"
+          "$ANDROID_HOME/emulator/emulator" -avd PaliQualification -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader > "$RUNNER_TEMP/pali-emulator.log" 2>&1 &
+          PALI_EMULATOR_PID=$!
+          for attempt in $(seq 1 60); do
+            if ! kill -0 "$PALI_EMULATOR_PID" 2>/dev/null; then exit 1; fi
+            PALI_BOOT_STATE=$(timeout 5s adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+            if [ "$PALI_BOOT_STATE" = '1' ]; then exit 0; fi
+            sleep 3
+          done
+          exit 1
+      - name: Exercise native bridge and two-process persistence
+        env:
+          QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
+        run: node qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
+      - name: Stop isolated emulator
+        if: always()
+        run: adb emu kill || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/pali-native-android/
+          if-no-files-found: warn
+          retention-days: 14

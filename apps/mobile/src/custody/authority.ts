@@ -1,4 +1,5 @@
 import { normalizePublicAddress } from '../core/addresses.ts';
+import { CustodyRuntimeError } from './types.ts';
 import type {
   CustodyErrorCode,
   CustodyRuntime,
@@ -19,8 +20,8 @@ export class CustodyOperationError extends Error {
 }
 
 /**
- * Dormant host orchestration. No production factory or screen constructs this
- * controller yet. Native crypto, storage and device qualification are separate.
+ * Native host orchestration. The native factory must qualify crypto
+ * and storage first; physical-device/release qualification remains separate.
  * JS input strings cannot be promised secure zeroization.
  */
 export class NativeCustodyAuthority {
@@ -208,6 +209,46 @@ export class NativeCustodyAuthority {
     return this.authenticate('unlock', password);
   }
 
+  /** Refresh wallet-bound setup metadata only while the same session is live. */
+  refreshAuthenticatedMetadata(): Promise<void> {
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    if (!this.runtime || !this.snapshot.account ||
+      !['backup-required', 'ready'].includes(this.snapshot.phase))
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
+    const runtime = this.runtime;
+    const revision = this.revision;
+    const account = this.snapshot.account;
+    let resolveAdmission!: () => void;
+    this.pending = new Promise<void>((resolve) => { resolveAdmission = resolve; });
+    const current = () => {
+      if (revision !== this.revision || this.snapshot.phase === 'disposed')
+        throw new CustodyOperationError('CANCELLED');
+      if (this.lockFailed || this.snapshot.phase === 'unavailable')
+        throw new CustodyOperationError('UNAVAILABLE');
+    };
+    return (async () => {
+      try {
+        await this.drainLocks(); current();
+        await this.readState(true); current();
+        const address = normalizePublicAddress(await runtime.session.readEthereumAddress(), 'ethereum');
+        current();
+        if (address !== account.address) throw new CustodyOperationError('UNAVAILABLE');
+        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required' });
+        current();
+      } catch {
+        this.requestLock();
+        try { await this.drainLocks(); } catch { /* quarantine already published */ }
+        if (revision !== this.revision || this.snapshot.phase === 'disposed')
+          throw new CustodyOperationError('CANCELLED');
+        this.failUnavailable();
+        throw new CustodyOperationError('UNAVAILABLE');
+      } finally {
+        this.pending = null;
+        resolveAdmission();
+      }
+    })();
+  }
+
   private authenticate(
     operation: 'create' | 'import' | 'unlock',
     password: string,
@@ -276,7 +317,7 @@ export class NativeCustodyAuthority {
           error: null,
         });
         assertCurrent();
-      } catch {
+      } catch (cause) {
         // Raw SDK unlock can finish after lock. Retire its late session before
         // admitting the next attempt; cleanup must never target a newer session.
         this.requestLock();
@@ -292,12 +333,16 @@ export class NativeCustodyAuthority {
         }
         if (this.lockFailed || this.snapshot.phase === 'unavailable')
           throw new CustodyOperationError('UNAVAILABLE');
+        const code = credentialRejected ? 'INVALID_CREDENTIAL' :
+          cause instanceof CustodyRuntimeError &&
+          (cause.code === 'AUTH_THROTTLED' || cause.code === 'INVALID_INPUT')
+            ? cause.code : 'OPERATION_FAILED';
         this.publish({
           phase: this.snapshot.presence === 'empty' ? 'empty' : 'locked',
           account: null,
-          error: credentialRejected ? 'INVALID_CREDENTIAL' : 'OPERATION_FAILED',
+          error: code,
         });
-        throw new CustodyOperationError(credentialRejected ? 'INVALID_CREDENTIAL' : 'OPERATION_FAILED');
+        throw new CustodyOperationError(code);
       } finally {
         this.pending = null;
         resolveAdmission();

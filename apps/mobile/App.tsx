@@ -34,6 +34,7 @@ import {
   styles,
 } from './src/ui';
 import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
+import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { DesignStudio } from './src/design/Studio';
 import { SettingsScreen, InformationScreen } from './src/screens/Settings';
 import {
@@ -166,6 +167,7 @@ const blankSnapshot: PublicSnapshot = {
 };
 type Route =
   | 'welcome'
+  | 'native'
   | 'design'
   | 'add'
   | 'home'
@@ -212,7 +214,7 @@ function AppContent() {
   const [snapshot, setSnapshot] = useState(blankSnapshot);
   const route: Route =
     !preview &&
-    !['welcome', 'add', 'locked', 'design'].includes(requestedRoute) &&
+    !['welcome', 'add', 'locked', 'design', 'native'].includes(requestedRoute) &&
     snapshot.status !== 'ready'
       ? snapshot.accounts.length
         ? 'locked'
@@ -238,6 +240,9 @@ function AppContent() {
   const go = (next: Route) => {
     navigationGeneration.current++;
     setRoute(next);
+  };
+  const openWallet = () => {
+    authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
   const announce = (message: string) => {
     setToast(message);
@@ -287,14 +292,14 @@ function AppContent() {
         setSheet(null);
         setAmount('');
         setRecipient('');
-        if (!preview && authority.current?.getSnapshot().accounts.length)
+        if (requestedRoute !== 'native' && !preview && authority.current?.getSnapshot().accounts.length)
           go('locked');
       }
     });
     return () => sub.remove();
-  }, [preview, setSheet]);
+  }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
-    if (route === 'design' || Platform.OS === 'web') return;
+    if (route === 'design' || route === 'native' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);
@@ -452,6 +457,7 @@ function AppContent() {
   const navigateInfo = (s: string) => go(s as Route);
   const back = () => go('home');
   if (route === 'design') return <DesignStudio onExit={exit} />;
+  if (route === 'native') return <NativeWalletScreen onExit={exit} />;
   let content: React.ReactNode;
   if (loading)
     content = (
@@ -490,6 +496,7 @@ function AppContent() {
           body={startupError}
           tone="amber"
         />
+        {Platform.OS !== 'web' && <Button title="Open wallet" onPress={openWallet} />}
       </Screen>
     );
   else if (route === 'welcome')
@@ -498,6 +505,7 @@ function AppContent() {
         onPreview={startPreview}
         onWatch={() => go('add')}
         onDesign={openDesign}
+        onWallet={Platform.OS !== 'web' ? openWallet : undefined}
       />
     );
   else if (route === 'add')
@@ -534,6 +542,7 @@ function AppContent() {
               variant="quiet"
               onPress={startPreview}
             />
+            {Platform.OS !== 'web' && <Button title="Open wallet" variant="secondary" onPress={openWallet} />}
           </>
         }
       >
@@ -833,6 +842,7 @@ function AppContent() {
         onHideBalances={setHideBalances}
         onNavigate={navigateInfo}
         onExit={exit}
+        onWallet={Platform.OS !== 'web' && !preview ? openWallet : undefined}
       />
     );
   else if (['security', 'backup', 'connections', 'about'].includes(route))

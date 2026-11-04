@@ -1,0 +1,139 @@
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath, URL as NodeURL } from 'node:url';
+import { runInNewContext } from 'node:vm';
+import test from 'node:test';
+import ts from 'typescript';
+import { isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
+import { isStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
+import { loadAfterNativeCrypto } from '../src/startup/loadAfterCrypto.ts';
+
+const root = fileURLToPath(new NodeURL('../', import.meta.url));
+
+test('application evaluation waits for the complete crypto gate', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const events: string[] = [];
+  const loading = loadAfterNativeCrypto(async () => {
+    events.push('qualification');
+    await gate;
+    events.push('installed');
+  }, () => { events.push('app'); return 'loaded'; });
+  assert.deepEqual(events, ['qualification']);
+  release();
+  assert.equal(await loading, 'loaded');
+  assert.deepEqual(events, ['qualification', 'installed', 'app']);
+});
+
+test('a failed gate settles before watch-only application evaluation', async () => {
+  const events: string[] = [];
+  const result = await loadAfterNativeCrypto(async () => {
+    await Promise.resolve();
+    events.push('unavailable');
+    throw Error('synthetic native failure');
+  }, () => { events.push('watch-only'); return true; });
+  assert.equal(result, true);
+  assert.deepEqual(events, ['unavailable', 'watch-only']);
+});
+
+// Select the same real noble browser crypto.js branch that Metro uses. Node's
+// default exports instead choose cryptoNode.js, which would conceal this bug.
+const probe = `
+import assert from 'node:assert/strict';
+import { createRequire, registerHooks } from 'node:module';
+import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
+const require = createRequire(process.cwd() + '/package.json');
+const browserCrypto = pathToFileURL(join(dirname(require.resolve('@noble/hashes/sha256')), 'crypto.js')).href;
+registerHooks({ resolve(specifier, context, next) {
+  if (specifier === '@noble/hashes/crypto') return { url: browserCrypto, shortCircuit: true };
+  return next(specifier, context);
+}});
+const { loadAfterNativeCrypto } = await import(pathToFileURL(process.cwd() + '/src/startup/loadAfterCrypto.ts').href);
+const old = { getRandomValues() { throw Error('OLD_CRYPTO'); } };
+Object.defineProperty(globalThis, 'crypto', { value: old, configurable: true });
+let calls = 0;
+const installed = { getRandomValues(value) { calls++; value.fill(0x42); return value; } };
+const eager = process.env.PALI_ORDER_PROBE === 'eager';
+let bip39 = eager ? require('bip39') : undefined;
+await loadAfterNativeCrypto(async () => {
+  await Promise.resolve();
+  Object.defineProperty(globalThis, 'crypto', { value: installed, configurable: true });
+}, () => { bip39 ??= require('bip39'); });
+if (eager) {
+  assert.throws(() => bip39.generateMnemonic(128), /OLD_CRYPTO/);
+  assert.equal(calls, 0);
+} else {
+  assert.equal(require('@noble/hashes/crypto').crypto, installed);
+  const phrase = bip39.generateMnemonic(128);
+  assert.equal(bip39.mnemonicToEntropy(phrase), '42'.repeat(16));
+  assert.equal(calls, 1);
+}
+process.stdout.write(JSON.stringify({ mode: eager ? 'eager' : 'gated', passed: true }));
+`;
+for (const mode of ['eager', 'gated']) {
+  test(`real BIP39/noble browser branch demonstrates ${mode} module capture`, () => {
+    const child = spawnSync(process.execPath, ['--input-type=module', '--eval', probe], {
+      cwd: root,
+      env: { ...process.env, PALI_ORDER_PROBE: mode },
+      encoding: 'utf8',
+      timeout: 15_000,
+    });
+    assert.equal(child.status, 0, child.stderr);
+    assert.deepEqual(JSON.parse(child.stdout), { mode, passed: true });
+  });
+}
+
+test('production and qualification entries cannot eagerly import the wallet graph', () => {
+  const entry = readFileSync(new NodeURL('../index.ts', import.meta.url), 'utf8');
+  assert.equal(entry.trim(), "import './src/entry';");
+  for (const path of ['../src/entry.native.tsx', '../qualification/index.tsx']) {
+    const source = readFileSync(new NodeURL(path, import.meta.url), 'utf8');
+    const parsed = ts.createSourceFile(path, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    const imports = parsed.statements.filter(ts.isImportDeclaration)
+      .filter((item) => !item.importClause?.isTypeOnly)
+      .map((item) => (item.moduleSpecifier as ts.StringLiteral).text);
+    assert.equal(imports.some((name) => /(?:\/App$|\/custody\/|\/core\/|^ethers|^bip39|^@noble)/.test(name)), false, path);
+  }
+});
+
+// Execute the real report validator without its process/device side effects.
+test('native report validation requires the generated mnemonic entropy evidence', () => {
+  const source = readFileSync(new NodeURL('../qualification/run-native.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('const validateReport =');
+  const end = source.indexOf('const waitReport =', start);
+  assert(start >= 0 && end > start);
+  const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
+    isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
+    fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
+  }) as (text: string, phase: string, scenario: string) => unknown;
+  const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
+    networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64),
+    cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' } };
+  assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
+  assert.throws(() => validate(JSON.stringify({ ...report, cryptoDiagnostic: { bootstrap: 'NATIVE_RAW_ERROR_SECRET' } }), 'create', 'generate'));
+  assert.throws(() => validate(JSON.stringify({ ...report, mnemonicEntropyVerified: false }), 'create', 'generate'));
+  const missing: Record<string, unknown> = { ...report };
+  delete missing.mnemonicEntropyVerified;
+  assert.throws(() => validate(JSON.stringify(missing), 'create', 'generate'));
+  assert.doesNotThrow(() => validate(JSON.stringify({ ...report, phase: 'restart', mnemonicEntropyVerified: false }), 'restart', 'generate'));
+});
+
+test('a pre-parameter startup failure is read immediately instead of waiting for a phase report', async () => {
+  const source = readFileSync(new NodeURL('../qualification/run-native.cjs', import.meta.url), 'utf8');
+  const start = source.indexOf('const validateReport =');
+  const end = source.indexOf('const databaseEvidence =', start);
+  const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
+    isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
+  }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;
+  let phaseReads = 0;
+  await assert.rejects(wait(() => { phaseReads++; return null; }, 'create', 'import', () => JSON.stringify({
+    version: 1, status: 'failed', phase: 'unknown', scenario: 'unknown', platform: 'android',
+    failedStage: 'parameters', cryptoDiagnostic: { bootstrap: 'unchecked' }, storageDiagnostic: {},
+  })), /Native qualification failed at parameters/);
+  assert.equal(phaseReads, 0);
+  const entry = readFileSync(new NodeURL('../qualification/index.tsx', import.meta.url), 'utf8');
+  assert(entry.includes("writeReport(parameters?.phase ?? 'startup', report)"));
+});

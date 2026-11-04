@@ -15,19 +15,31 @@
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
+    "@craftzdog/react-native-buffer": "6.1.2",
+    "@sidhujag/sysweb3-keyring": "1.0.628",
+    "assert": "2.1.0",
     "ethers": "6.17.0",
     "expo": "58.0.22",
     "expo-clipboard": "~58.0.4",
+    "expo-file-system": "58.0.13",
+    "expo-screen-capture": "58.0.6",
     "expo-secure-store": "~58.0.2",
+    "expo-sqlite": "58.0.15",
     "expo-status-bar": "58.0.4",
     "expo-system-ui": "~58.0.7",
+    "process": "0.11.10",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "react-native": "0.88.1",
+    "react-native-nitro-modules": "0.37.2",
     "react-native-qrcode-svg": "6.3.50",
+    "react-native-quick-base64": "3.0.1",
+    "react-native-quick-crypto": "1.1.9",
     "react-native-safe-area-context": "~5.10.1",
     "react-native-svg": "15.16.0",
-    "react-native-web": "^0.21.4"
+    "react-native-web": "^0.21.4",
+    "readable-stream": "3.6.2",
+    "syscoinjs-lib": "1.0.275"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
@@ -35,13 +47,26 @@
     "@types/react": "~19.2.2",
     "eslint": "9.39.5",
     "eslint-config-expo": "58.0.4",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "babel-plugin-transform-remove-console": "6.9.4",
+    "babel-preset-expo": "58.0.23"
   },
   "overrides": {
     "glob": "14.0.3",
-    "minimatch": "11.0.4"
+    "minimatch": "11.0.4",
+    "@sidhujag/sysweb3-core": "1.0.29",
+    "@sidhujag/sysweb3-network": "1.0.110",
+    "@sidhujag/sysweb3-utils": "1.1.280",
+    "syscointx-js": "1.0.128",
+    "axios@<1.20.0": "1.21.0",
+    "jws": "^4.0.1"
   },
   "engines": {
     "node": ">=26.12.1 <27"
+  },
+  "expo": {
+    "autolinking": {
+      "nativeModulesDir": "./modules"
+    }
   }
 }

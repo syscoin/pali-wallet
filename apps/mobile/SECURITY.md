@@ -2,9 +2,15 @@
 
 ## Current trust boundary
 
-This mobile foundation is watch-only. It has no seed intake, private-key storage, PIN authentication, signing implementation or broadcast implementation. The design preview has no authority and must remain isolated from live public account state. No screen, URL, QR payload or UI flag may enable an unsupported capability.
+Native onboarding offers create, restore and watch-only choices. The native wallet development flow accepts test recovery phrases and uses the shared software keyring for creation/import, unlock and seed backup. Runtime crypto/storage checks and session capabilities are mandatory; UI visibility is never an authorization boundary. There is no signing or broadcast implementation. The design preview has no authority and must remain isolated from real wallet state. No screen, URL or QR payload may enable an unsupported capability.
 
 A native watch-only account may persist public addresses in platform protected storage. That does not establish a secure vault implementation. Public addresses and their association with this device still deserve privacy protection. Network requests disclose queried addresses to the configured service; never add an analytics, crash-reporting or address-enrichment service without a separate product/privacy decision.
+
+Native custody uses an application-private SQLCipher database with a random device key in SecureStore, in addition to the SDK's password-encrypted records. A native directory/lease adapter excludes the database from OS backups and rejects unexpected file types. Atomic record creation and wallet-bound backup receipts are mandatory. A missing key, a missing database after completed provisioning, corruption or a failed/ambiguous commit never authorizes erasure or replacement. SecureStore accessibility is not biometric authorization. Device compromise and an unlocked application remain outside the protection promised by database encryption.
+
+PBKDF2/HKDF/AES-GCM are provided by narrow native key handles using CryptoKit/CommonCrypto on iOS and JCA/Bouncy Castle KDFs on Android. QuickCrypto supplies Node compatibility for SDK dependencies, not vault AES-GCM authentication classification. Production KDF parameters are unchanged. Only typed native authentication failures map to `OperationError`. Startup known-answer checks are capability checks, not an independent cryptographic audit.
+
+Every native wallet session is revoked on background/inactive state and Android focus loss. Capture and app-switcher protection are requested before custody initialization and retained for the process lifetime. These APIs still require physical-device verification. Recovery words never enter public snapshots or the clipboard; JavaScript strings and keyboard memory cannot be guaranteed to be zeroized. Release builds remove console calls. No notification registration exists yet; adding it requires an explicit privacy design and must not grant custody authority.
 
 Operation identity includes account, network, endpoint and a session/generation value. Returning from A to B to A is not the same authority context. Locking, backgrounding, account changes and network changes must invalidate pending work. A late network result cannot overwrite a newer context. Failed reads and unavailable balances must remain distinct from a valid zero or an absent account.
 
@@ -28,3 +34,18 @@ Operation identity includes account, network, endpoint and a session/generation 
 Build and inspect signed release artifacts for both platforms. Test supported physical iOS and Android devices, including the slowest supported hardware, with cold start, unlock latency, large state, long histories, offline/slow RPC, background/resume and memory pressure. Verify accessibility, text scaling, safe areas, software keyboards and native back gestures. Validate transport security and release permissions against actual binaries.
 
 Source review, unit tests, a browser preview, prior extension QA, the attached PDF and the video do not establish these properties. Keep a release checklist with exact commit, OS/device, build configuration, observed result and unresolved limitations. Do not describe this foundation as production-ready until the applicable gates have evidence.
+
+## Native startup import order
+
+The native entry registers a minimal loading shell, qualifies and installs native
+crypto, then evaluates the application graph. This order is a security boundary:
+BIP39's noble dependency snapshots `globalThis.crypto` when its module loads.
+The web entry uses its usual watch-only application startup. If native crypto
+qualification fails, watch-only UI may load, while the memoized rejected native
+gate continues to prohibit custody. No fallback RNG is installed.
+
+The isolated native qualification entry obeys the same ordering and checks the
+real generated mnemonic against entropy observed from the qualified native
+provider. Node ordering probes reproduce both the stale import failure and the
+ordered success using the installed BIP39/noble browser module; those probes do
+not replace native simulator/device qualification.
