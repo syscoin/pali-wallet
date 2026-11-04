@@ -1,9 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
 
 const SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
-const SHOTS = '/private/tmp/pali-utxo-watch-ui';
 async function form(page: Page, network: 'Syscoin UTXO' | 'Bitcoin') {
   await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
   await page.getByRole('button', { name: network, exact: true }).click();
@@ -28,7 +26,7 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test('SYS actual paste, full-address review, fixed scope, QR, copy/share and rename roundtrip', async ({ page, context }) => {
+test('SYS actual paste, full-address review, fixed scope, QR, copy/share and rename roundtrip', async ({ page, context }, testInfo) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/?empty=1'); await form(page, 'Syscoin UTXO');
   await page.evaluate((address) => navigator.clipboard.writeText(address), SYS.toUpperCase());
@@ -37,7 +35,7 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   await page.getByRole('button', { name: 'Review address', exact: true }).click();
   await expect(page.getByLabel(`Review Syscoin UTXO address ${SYS}`, { exact: true })).toBeVisible();
   await expect(page.getByText(/Other receive and change addresses/)).toBeVisible();
-  await mkdir(SHOTS, { recursive: true }); await page.screenshot({ path: `${SHOTS}/sys-full-address-review.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('sys-full-address-review.png'), fullPage: true });
   expect(await page.evaluate(() => window.__watchFixture.audit().writes)).toBe(0);
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Syscoin UTXO confirmed balance 1.23456789 SYS', { exact: true })).toBeVisible();
@@ -53,7 +51,7 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   expect(await page.evaluate(() => window.__watchFixture.shares())).toEqual([`Syscoin UTXO (SYS) address\n${SYS}`]);
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 23px !important; line-height: 1.4 !important; }' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
-  await page.screenshot({ path: `${SHOTS}/sys-large-text-receive.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('sys-large-text-receive.png'), fullPage: true });
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByText('Watch-only · Syscoin UTXO · Single address', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Rename SYS savings watch', exact: true }).click();
@@ -66,7 +64,7 @@ test('SYS actual paste, full-address review, fixed scope, QR, copy/share and ren
   await expect(page.getByText('Renamed SYS · Watch-only', { exact: true })).toBeVisible(); await watchOnly(page);
 });
 
-test('BTC shows confirmed and negative pending separately without fiat or network switching', async ({ page }) => {
+test('BTC shows confirmed and negative pending separately without fiat or network switching', async ({ page }, testInfo) => {
   await page.goto('/?empty=1'); await form(page, 'Bitcoin'); await review(page, 'Bitcoin', BTC);
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Bitcoin confirmed balance 1.23456789 BTC', { exact: true })).toBeVisible();
@@ -74,7 +72,7 @@ test('BTC shows confirmed and negative pending separately without fiat or networ
   await expect(page.getByText('Incoming and outgoing transactions waiting for confirmation.', { exact: true })).toBeVisible();
   await expect(page.getByText(/blockbook.btc.zelcore.io/)).toBeVisible();
   await expect(page.getByText(/\$|USD/)).toHaveCount(0); await expect(page.getByRole('button', { name: /^Network/ })).toHaveCount(0);
-  await mkdir(SHOTS, { recursive: true }); await page.screenshot({ path: `${SHOTS}/btc-negative-pending.png`, fullPage: true });
+  await page.screenshot({ path: testInfo.outputPath('btc-negative-pending.png'), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false); await watchOnly(page);
 });
 
