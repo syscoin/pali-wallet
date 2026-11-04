@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { Buffer } = require('node:buffer');
-// Preserve all 60 c960 project bindings and require the three new native modules.
+// Preserve prior native bindings and require the shared account, replay and HTTP code.
 const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/qualification/index.tsx",
   "apps/mobile/qualification/launch-parameters.ts",
@@ -66,7 +66,21 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/qualification/imported-evm.ts",
   "apps/mobile/qualification/post-native.ts",
   "apps/mobile/qualification/post-contract.ts",
-  "apps/mobile/qualification/post-fixtures.ts"
+  "apps/mobile/qualification/post-fixtures.ts",
+  "source/shared/passwordPolicy.ts",
+  "source/shared/paliHttpIdentity.ts",
+  "source/shared/evmTransactionObservation.ts",
+  "source/wallet/accountRecords.ts",
+  "source/wallet/accountRecovery.ts",
+  "source/wallet/importedAccountRecovery.ts",
+  "source/wallet/evmSignedRecords.ts",
+  "source/wallet/evmSignedReplay.ts",
+  "apps/mobile/src/storage/accountRecordKey.ts",
+  "apps/mobile/src/storage/recoverySnapshot.ts",
+  "apps/mobile/src/storage/walletIdentity.ts",
+  "apps/mobile/src/storage/noteDomain.ts",
+  "apps/mobile/src/custody/sharedSignedRecords.ts",
+  "apps/mobile/src/custody/recoveryInventory.ts"
 ]);
 function assertPostMappedSources(map, readExpected) {
   if (!map || map.version !== 3 || !Array.isArray(map.sources) || !Array.isArray(map.sourcesContent) ||

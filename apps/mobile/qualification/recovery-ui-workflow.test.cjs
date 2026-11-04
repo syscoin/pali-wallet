@@ -57,3 +57,17 @@ test('portable recovery output is exercised in the existing CI budget and upload
   assert(includes.includes('apps/mobile/test-results/'), 'existing recursive upload must include the recovery output directory');
   assert(path.resolve(mobile, output).startsWith(path.resolve(root, 'apps/mobile/test-results') + path.sep));
 });
+
+
+test('both mobile workflows include shared wallet code and native runner dependency resolution', () => {
+  for (const name of ['mobile.yml', 'mobile-native-qualification.yml']) {
+    const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8'));
+    assert(workflow.on.pull_request.paths.includes('source/wallet/**'));
+  }
+  const native = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile-native-qualification.yml'), 'utf8'));
+  assert(native.on.pull_request.paths.includes('apps/mobile/scripts/register-shared-test-dependencies.mjs'));
+  for (const job of Object.values(native.jobs)) {
+    assert(job.steps.some(step => step.run === 'node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs'));
+    assert(job.steps.some(step => step.run?.includes('node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs')));
+  }
+});

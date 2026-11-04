@@ -10,6 +10,7 @@ const { POST_CASES, assertPostReport, postDiagnosticCase } = require('./post-con
 const { POST_CHAIN_BODY, POST_RETRY_BODY, POST_RETRY_PAYLOAD } = require('./post-fixtures.ts');
 const { qualifyNativePost } = require('./post-native.ts');
 const { qualifyNativeHttp } = require('./http-native.ts');
+const { HTTP_CASES } = require('./http-contract.ts');
 const token = 'c'.repeat(32), build = { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: 'b'.repeat(64) };
 const expected = { sourceRevision: build.sourceRevision, lockfileSha256: build.lockfileSha256, token, phase: 'create', scenario: 'import', platform: 'ios' };
 const report = () => ({ ...build, kind: 'native-post', status: 'passed', nativePostQualified: true, token,
@@ -17,7 +18,7 @@ const report = () => ({ ...build, kind: 'native-post', status: 'passed', nativeP
 const options = (fixture, walletFetch = createNativeHttpFetch(fetch)) => ({ launch: { port: fixture.port, token }, build,
   walletFetch, phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
 let validAudit;
-test('actual Node loopback control retains seven GET cases and independently validates five POST cases', async () => {
+test('actual Node loopback control retains every HTTP case and independently validates five POST cases', async () => {
   const fixture = await createHttpFixture(); fixture.begin(token);
   let cookie;
   try {
@@ -26,7 +27,7 @@ test('actual Node loopback control retains seven GET cases and independently val
       const value = await fetch(url, { ...init, headers }); const set = value.headers.get('set-cookie');
       if (set) cookie = set.includes('Max-Age=0') ? undefined : set.split(';')[0]; return value;
     } });
-    assert.equal(get.cases.length, 7);
+    assert.deepEqual(get.cases, HTTP_CASES);
     const post = await qualifyNativePost(options(fixture)); assertPostReport(post, expected);
     const all = fixture.snapshotAll(token); assertAudit(all.get, token, fixture.port); assertPostAudit(all.post, token, fixture.port);
     validAudit = all.post;

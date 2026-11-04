@@ -16,7 +16,7 @@ const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
 const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
-const { qualificationMode, assertSimulatorTarget } = require('./simulator-contract.cjs');
+const { qualificationMode, assertSimulatorTarget, selectSimulatorTarget } = require('./simulator-contract.cjs');
 const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
 const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
@@ -27,6 +27,7 @@ if (process.env.CI !== 'true' || process.env.PALI_NATIVE_QUALIFICATION !== '1')
 const platform = process.argv[2];
 const mode = qualificationMode(platform, process.argv.slice(4));
 const simulatorContract = mode === 'ios-simulator-contract';
+let simulatorVersion;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
 if (httpEnabled && !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || ''))
   throw Error('Native HTTP qualification requires an immutable source revision');
@@ -77,7 +78,7 @@ async function captureHttpDiagnostic() {
   } catch { /* Partial diagnostics never replace the original failure. */ }
 }
 const validateReport = (text, phase, scenario) => {
-  const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract);
+  const report = decodeNativeReport(text, platform, phase, scenario, simulatorContract, simulatorVersion);
   fs.writeFileSync(
     path.join(output, `${platform}-${scenario}-${phase}.json`),
     simulatorContract ? text : `${JSON.stringify(report, null, 2)}\n`
@@ -171,23 +172,14 @@ async function ios() {
   const runtimes = JSON.parse(
     run('xcrun', ['simctl', 'list', 'runtimes', '-j'])
   ).runtimes;
-  const runtime = runtimes
-    .filter(
-      (item) =>
-        item.isAvailable &&
-        item.identifier === 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'
-    )
-    .sort((a, b) =>
-      a.version.localeCompare(b.version, undefined, { numeric: true })
-    )
-    .at(-1);
   const types = JSON.parse(
     run('xcrun', ['simctl', 'list', 'devicetypes', '-j'])
   ).devicetypes;
-  const type = types.find((item) => item.identifier.endsWith('.iPhone-17'));
-  if (!runtime || !type) throw Error('No installed iOS simulator runtime');
+  const { runtime, type } = selectSimulatorTarget(runtimes, types,
+    process.env.PALI_IOS_SIMULATOR_RUNTIME, process.env.PALI_IOS_SIMULATOR_DEVICE_TYPE);
+  simulatorVersion = runtime.version;
   if (simulatorContract) {
-    assertSimulatorTarget(run('plutil', ['-extract', 'DTPlatformName', 'raw', '-o', '-', info]), runtime.identifier);
+    assertSimulatorTarget(run('plutil', ['-extract', 'DTPlatformName', 'raw', '-o', '-', info]), runtime.identifier, runtime.identifier);
     if (!/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '')) throw Error('Simulator contract requires source revision');
   }
   const reports = [];

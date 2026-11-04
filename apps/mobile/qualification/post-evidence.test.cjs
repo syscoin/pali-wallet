@@ -5,10 +5,10 @@ const { POST_REQUIRED_MAPPED_SOURCES, assertPostMappedSources } = require('./pos
 const fixture = () => ({ version: 3, sources: POST_REQUIRED_MAPPED_SOURCES.map(path => `/${path.replace(/^apps\/mobile\//, '')}`),
   sourcesContent: POST_REQUIRED_MAPPED_SOURCES.map(path => `exact ${path}`) });
 const expected = path => Buffer.from(`exact ${path}`);
-test('POST map qualification retains every prior project source plus the new native modules', () => {
-  assert.equal(POST_REQUIRED_MAPPED_SOURCES.length, 63);
-  assert.equal(assertPostMappedSources(fixture(), expected), 63);
-  for (let index = 0; index < 63; index++) {
+test('POST map qualification retains every prior project source plus the shared wallet modules', () => {
+  assert.equal(POST_REQUIRED_MAPPED_SOURCES.length, 77);
+  assert.equal(assertPostMappedSources(fixture(), expected), 77);
+  for (let index = 0; index < 77; index++) {
     const map = fixture(); map.sources.splice(index, 1); map.sourcesContent.splice(index, 1);
     assert.throws(() => assertPostMappedSources(map, expected), /MISSING/);
   }

@@ -126,7 +126,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   let transferHash: string;
   if (options.phase === 'create') {
     firstTransferHash = await check('native first-account prepared signature and durable container', () => sign(firstAddress, 0));
-    address = await check('native HD create select remove and restore', async () => {
+    address = await check('native HD create select remove and SDK gap reuse', async () => {
       requireEvidence(catalogue().active.accountId === first.id && selected() === firstAddress);
       await manage({ kind: 'create', label: 'Qualification account 2', password });
       const second = catalogue().accounts.find((account) => account.index === 1);
@@ -137,11 +137,9 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       await manage({ kind: 'select', id: first.id });
       await manage({ kind: 'remove', id: second.id, password });
       requireEvidence(!catalogue().accounts.some((account) => account.id === second.id));
-      requireEvidence(catalogue().removed.some((account) => account.id === second.id && account.index === 1));
-      await manage({ kind: 'restore', index: 1, label: 'Qualification restored account 2', password });
+      await manage({ kind: 'create', label: 'Qualification reused account 2', password });
       const restored = catalogue().accounts.find((account) => account.index === 1);
       requireEvidence(restored?.id === second.id && restored.address === second.address && selected() === second.address);
-      requireEvidence(!catalogue().removed.some((account) => account.index === 1));
       return second.address;
     });
     transferHash = await check('native selected-HD prepared signature and durable container', () => sign(address, 1));

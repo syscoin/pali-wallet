@@ -1,6 +1,8 @@
 import { qualifyNativeImportedEvm, matchesImportedRestartEvidence, isImportedQualificationReport } from '../qualification/imported-evm.ts';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { HDNodeWallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
@@ -19,9 +21,8 @@ import {
   type KeyringRuntime,
 } from '../src/custody/keyringRuntime.ts';
 import { readSignedRecordEvidence, retainedSignedEntries } from '../qualification/signed-record-evidence.ts';
-import type { OpenWalletStorage } from '../src/storage/types.ts';
-import { readWalletIdentity } from '../src/storage/walletIdentity.ts';
-import { encodeStorageValue } from '../src/storage/json.ts';
+import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
+import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -101,126 +102,44 @@ test('zkSYS report rejects missing, forged or cross-phase evidence', () => {
   assert.equal(isZksysQualificationReport({ status: 'failed' }), true);
   assert.equal(matchesZksysRestartEvidence({}, {}), false);
 });
-function memoryDisk() {
-  const records = new Map<string, unknown>();
-  const signedBundles = new Map<string, string>();
-  let identityMetadata: string | undefined;
-  let confirmation: string | undefined;
-  let storage!: OpenWalletStorage;
+async function sqliteDisk() {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-qualification-'));
+  const file = path.join(directory, 'wallet.sqlite');
+  let initialized = false;
+  let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const fingerprint = () =>
-    createHash('sha256')
-      .update(JSON.stringify([records.get('vault'), records.get('vault-keys')]))
-      .digest('hex');
   const factory = createKeyringRuntimeFactory({
-    ensureCryptoReady: async () => {
-      assert(globalThis.crypto.subtle);
-    },
+    ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
-      storage = {
-        recovery: {
-          async readIdentity() { return readWalletIdentity(fingerprint(), identityMetadata); },
-          async readSnapshot() {
-            const identity = readWalletIdentity(fingerprint(), identityMetadata);
-            return Object.freeze({ identity, state: await storage.readState(), metadata: [], notes: [],
-              records: Object.freeze([...records].sort(([a], [b]) => a.localeCompare(b)).map(([key, value]) => Object.freeze({ key, value: encodeStorageValue(value) }))),
-              signedRecords: Object.freeze([...signedBundles].map(([profileId, value]) => Object.freeze({ profileId, walletBindingId: identity.walletBindingId, value }))),
-            });
-          },
-          async bindIdentity(expected, root, assertCurrent) {
-            assert.equal(assertCurrent(), undefined);
-            assert.equal(fingerprint(), expected);
-            const current = readWalletIdentity(expected, identityMetadata);
-            if (current.root) assert.deepEqual(current.root, root);
-            const next = JSON.stringify({ version: 1, walletBindingId: current.walletBindingId, pairFingerprint: expected, root });
-            readWalletIdentity(expected, next);
-            identityMetadata = next;
-          },
-        },
-        signedRecords: {
-          async read(profileId) { return signedBundles.get(profileId); },
-          async compareAndSet(profileId, expected, next, assertCurrent) {
-            assert.equal(assertCurrent(), undefined);
-            if (signedBundles.get(profileId) !== expected) return false;
-            signedBundles.set(profileId, next); return true;
-          },
-        },
-        keyringStorage: {
-          async get(key) {
-            return records.has(key)
-              ? structuredClone(records.get(key))
-              : undefined;
-          },
-          async set(key, value) {
-            records.set(key, structuredClone(value));
-          },
-          async deleteItem(key) {
-            records.delete(key);
-          },
-          async createManyIfAbsent(values) {
-            if (Object.keys(values).some((key) => records.has(key)))
-              return false;
-            for (const [key, value] of Object.entries(values))
-              records.set(key, structuredClone(value));
-            return true;
-          },
-          async compareAndSet(key, expected, value, removals = {}) {
-            if (
-              !records.has(key) ||
-              JSON.stringify(records.get(key)) !== JSON.stringify(expected) ||
-              Object.entries(removals).some(
-                ([name, before]) =>
-                  JSON.stringify(records.get(name)) !== JSON.stringify(before)
-              )
-            )
-              return false;
-            records.set(key, structuredClone(value));
-            for (const name of Object.keys(removals)) records.delete(name);
-            return true;
-          },
-        },
-        authGuard: {
-          async checkAllowed() {},
-          async recordFailure() {},
-          async recordSuccess() {},
-        },
-        async readState() {
-          assert.equal(records.has('vault'), records.has('vault-keys'));
-          return records.has('vault')
-            ? {
-                presence: 'existing',
-                backup:
-                  confirmation === fingerprint() ? 'confirmed' : 'unconfirmed',
-              }
-            : { presence: 'empty', backup: 'unconfirmed' };
-        },
-        async getWalletFingerprint() {
-          assert(records.has('vault'));
-          return fingerprint();
-        },
-        async confirmBackup(expected) {
-          assert.equal(expected, fingerprint());
-          confirmation = expected;
-        },
-        async close() {},
-      };
+      storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
+      initialized = true;
       return storage;
     },
   });
   return {
-    records, signedBundles,
-    get runtime() {
-      return runtime;
+    get runtime() { return runtime; },
+    get storage() { return storage; },
+    owner: { async open() { runtime = await factory.open() as KeyringRuntime; return runtime; } },
+    async snapshot(excludeSuccessfulAuthentication = false) {
+      const snapshot = await storage.recovery.readSnapshot();
+      if (!excludeSuccessfulAuthentication) return JSON.stringify(snapshot);
+      // Real successful authentication refreshes lastAttempt; private domains
+      // and every other metadata row must remain byte-exact.
+      const row = snapshot.metadata.find(entry => entry.key === 'auth');
+      assert(row);
+      const authentication = JSON.parse(row.value);
+      assert.equal(authentication.version, 1);
+      assert.equal(authentication.failures, 0);
+      assert.equal(authentication.notBefore, 0);
+      return JSON.stringify({ ...snapshot, metadata: snapshot.metadata.filter(entry => entry.key !== 'auth') });
     },
-    get storage() {
-      return storage;
+    async replaceSigned(profile: string, value: string) {
+      // Corrupt the physical fixture directly; do not weaken production admission.
+      const external = nodeConnection(file);
+      try { await external.connection.runAsync('UPDATE evm_signed_records SET value = ? WHERE profile_id = ?', [value, profile]); }
+      finally { await external.connection.closeAsync(); }
     },
-    owner: {
-      async open() {
-        runtime = (await factory.open()) as KeyringRuntime;
-        return runtime;
-      },
-    },
+    async close() { await rm(directory, { recursive: true, force: true }); },
   };
 }
 
@@ -229,7 +148,7 @@ for (const scenario of ['import', 'generate'] as const) {
     `zkSYS ${scenario} uses the installed SDK and exact-fee controller, preserving all prior journals across restart`,
     { timeout: 120000 },
     async () => {
-      const disk = memoryDisk();
+      const disk = await sqliteDisk();
       let authority = new NativeCustodyAuthority(disk.owner);
       const originalFetch = globalThis.fetch;
       let networkCalls = 0;
@@ -285,7 +204,7 @@ for (const scenario of ['import', 'generate'] as const) {
           expectedFourthAddress: derived[2],
         });
         const older = await rows();
-        const beforeInvalid = JSON.stringify([...disk.records]);
+        const beforeInvalid = await disk.snapshot();
         await assert.rejects(
           qualifyNativeZksysTransfer({
             ...options(),
@@ -294,7 +213,7 @@ for (const scenario of ['import', 'generate'] as const) {
           }),
           /QUALIFICATION_ZKSYS_ASSERTION_FAILED/
         );
-        assert.equal(JSON.stringify([...disk.records]), beforeInvalid);
+        assert.equal(await disk.snapshot(), beforeInvalid);
         const created = await qualifyNativeZksysTransfer({
           ...options(),
           phase: 'create',
@@ -317,10 +236,10 @@ for (const scenario of ['import', 'generate'] as const) {
         await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const fingerprint = await disk.storage.getWalletFingerprint();
-        const beforeKeyReveal = JSON.stringify([...disk.records]);
+        const beforeKeyReveal = await disk.snapshot(true);
         const keyReveal = await qualifyNativeHdKeyReveal({ ...options(), expectedAddress: hd.address });
         assert.deepEqual(keyReveal, { nativeHdKeyRevealVerified: true });
-        assert(JSON.stringify([...disk.records]) === beforeKeyReveal, 'Key reveal must preserve all stored records');
+        assert(await disk.snapshot(true) === beforeKeyReveal, 'Key reveal must preserve all stored records');
         const imported = await qualifyNativeImportedEvm({ ...options(), phase: 'create' });
         const firstReport = {
           status: 'passed',
@@ -378,7 +297,7 @@ for (const scenario of ['import', 'generate'] as const) {
           const evidence = await readSignedRecordEvidence(disk.storage);
           const original = JSON.parse(evidence.raw!);
           const profile = (await disk.storage.recovery!.readIdentity())!.root!.profileId;
-          disk.signedBundles.set(profile, JSON.stringify({ ...original, entries: original.entries.filter((entry: { hash: string }) => entry.hash !== stored[0]!.hash) }));
+          await disk.replaceSigned(profile, JSON.stringify({ ...original, entries: original.entries.filter((entry: { hash: string }) => entry.hash !== stored[0]!.hash) }));
           await assert.rejects(
             qualifyNativeZksysTransfer({
               ...options(),
@@ -387,7 +306,7 @@ for (const scenario of ['import', 'generate'] as const) {
               expectedFifthAddress: derived[3],
             })
           );
-          disk.signedBundles.set(profile, evidence.raw!);
+          await disk.replaceSigned(profile, evidence.raw!);
           if (authority.getSnapshot().phase === 'locked') await authority.unlock(PASSWORD);
           if (authority.getSnapshot().account?.network !== 'ethereum')
             await authority.selectNetwork(
@@ -418,10 +337,10 @@ for (const scenario of ['import', 'generate'] as const) {
         assert.deepEqual(await rows(), oldAfterEarlierRetries);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
-        const beforeRestartKeyReveal = JSON.stringify([...disk.records]);
+        const beforeRestartKeyReveal = await disk.snapshot(true);
         const keyRevealAgain = await qualifyNativeHdKeyReveal({ ...options(), expectedAddress: hdAgain.address });
         assert.deepEqual(keyRevealAgain, keyReveal);
-        assert(JSON.stringify([...disk.records]) === beforeRestartKeyReveal, 'Restart key reveal must preserve all stored records');
+        assert(await disk.snapshot(true) === beforeRestartKeyReveal, 'Restart key reveal must preserve all stored records');
         assert(matchesHdKeyRevealRestartEvidence(firstReport, { status: 'passed', phase: 'restart', ...hdAgain, ...keyRevealAgain }));
         assert(
           matchesZksysRestartEvidence(firstReport, {
@@ -442,6 +361,7 @@ for (const scenario of ['import', 'generate'] as const) {
       } finally {
         await authority.dispose().catch(() => undefined);
         globalThis.fetch = originalFetch;
+        await disk.close();
       }
     }
   );

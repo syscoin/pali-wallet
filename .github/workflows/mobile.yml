@@ -6,6 +6,7 @@ on:
     paths:
       - 'apps/mobile/**'
       - 'source/shared/**'
+      - 'source/wallet/**'
       - 'source/utils/nativeBalance.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/assets/all_assets/favicon-128.png'

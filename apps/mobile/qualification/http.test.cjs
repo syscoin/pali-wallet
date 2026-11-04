@@ -335,8 +335,10 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
   const originalApp = readFileSync(require.resolve('../app.json'));
   try {
     fs.mkdirSync(path.join(root, 'scripts'));
+    fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] }));
     fs.copyFileSync(require.resolve('../scripts/configure-native-qualification.cjs'), path.join(root, 'scripts/configure-native-qualification.cjs'));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': '2.0.0' } }));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] } }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'app.json'), originalApp);
     fs.writeFileSync(path.join(root, 'index.ts'), 'public production entry');

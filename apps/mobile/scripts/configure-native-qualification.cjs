@@ -22,8 +22,14 @@ if (
   app.expo.android.allowBackup !== false
 )
   throw Error('Qualification must preserve backup/update restrictions');
-if (pkg.dependencies['@sidhujag/sysweb3-keyring'] !== '2.0.0')
-  throw Error('Unexpected shared keyring version');
+const keyringVersion = pkg.dependencies['@sidhujag/sysweb3-keyring'];
+const installedKeyring = JSON.parse(fs.readFileSync(
+  path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), 'utf8'
+));
+if (typeof keyringVersion !== 'string' ||
+    !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/.test(keyringVersion) ||
+    installedKeyring.name !== '@sidhujag/sysweb3-keyring' || installedKeyring.version !== keyringVersion)
+  throw Error('Installed shared keyring must match the exact manifest version');
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
@@ -66,11 +72,12 @@ const receipt = {
   originalMain: pkg.main,
   identifier: 'com.paliwallet.qualification',
   qualificationEntry: 'qualification/index.tsx',
-  keyringVersion: '2.0.0',
+  keyringVersion,
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
 };
 pkg.main = receipt.qualificationEntry;
+app.expo.extra = { ...app.expo.extra, paliQualificationSdkVersion: keyringVersion };
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';

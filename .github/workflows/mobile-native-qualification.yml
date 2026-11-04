@@ -13,7 +13,9 @@ on:
       - 'apps/mobile/metro.config.js'
       - 'apps/mobile/plugins/**'
       - 'apps/mobile/scripts/configure-native-qualification.cjs'
+      - 'apps/mobile/scripts/register-shared-test-dependencies.mjs'
       - 'source/shared/**'
+      - 'source/wallet/**'
       - 'source/utils/nativeBalance.ts'
       - '.nvmrc'
       - '.github/workflows/mobile-native-qualification.yml'
@@ -41,6 +43,7 @@ jobs:
         working-directory: apps/mobile
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      PALI_IOS_SIMULATOR_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -51,7 +54,7 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
-      - run: node --test qualification/*.test.cjs
+      - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform ios --no-install
@@ -72,7 +75,7 @@ jobs:
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
         run: >-
-          node qualification/run-native.cjs ios
+          node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs ios
           "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app"
           --ios-simulator-contract
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
@@ -122,7 +125,7 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
-      - run: node --test qualification/*.test.cjs
+      - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - name: Install pinned native toolchain
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: node scripts/configure-native-qualification.cjs
@@ -168,7 +171,7 @@ jobs:
       - name: Exercise native bridge and two-process persistence
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
-        run: node qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
+        run: node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
       - name: Stop isolated emulator
         if: always()
         run: adb emu kill || true

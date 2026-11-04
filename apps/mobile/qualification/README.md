@@ -114,11 +114,11 @@ and matching encrypted-vault fingerprint establish the tested cold restart.
 
 After the first account's offline signature, full qualification creates HD index
 1 through the real SDK, verifies active/first-account removal refusal, selects
-index 0, removes index 1 before it has a journal, and restores index 1 to the
-independently derived address. Both accounts retain real `attempted` transactions
-in separate version-2 journal containers. Pending-journal removal must fail and
+index 0, removes index 1 before it has a journal, and uses SDK account creation
+to reuse index 1 with the independently derived address. Both accounts retain real `attempted` transactions
+in the shared sender-owned signed-record bundle. Pending-journal removal must fail and
 lock custody; no terminal receipt is fabricated. The restarted process must
-already select index 1, recover both containers and signatures, and finish on
+already select index 1, recover both senders' records and signatures, and finish on
 index 1. Reports contain only public identities, hashes and fixed success/version
 fields, never seed words or serialized transaction bytes. Imported fixtures use
 a fixed public expected address; generated wallets derive their own expectation.
@@ -143,7 +143,7 @@ live-network token execution or token-delivery behavior.
 A separate native-coin case creates HD index 3 and signs two transactions with
 the installed SDK: one on Ethereum and one on the fixed Syscoin NEVM testnet
 (chain 5700). Both use nonce zero and retain distinct entries in the same
-version-2 account journal. The new process selects HD3, verifies both signed
+shared signed-record bundle. The new process selects HD3, verifies both signed
 envelopes and hashes from durable storage without signing again, and returns to
 HD1 on Ethereum. Both phases compare the complete prior HD0/HD1 native and HD2
 ERC20 journal rows, so chain qualification cannot silently replace that evidence.
@@ -185,8 +185,8 @@ opaque fingerprint, signed-transaction hashes and OS/build hashes; phrases, pass
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.
 The NEVM case is offline signing and persistence evidence. It does not contact
-the testnet, fund an account, broadcast, or qualify live 12-confirmation
-settlement behavior. Passing source tests or building this harness alone does
+the testnet, fund an account, broadcast, or qualify live transaction acceptance
+and receipt handling. Passing source tests or building this harness alone does
 not establish native execution; that requires the recorded native artifact run.
 
 Fresh iOS simulator devices isolate scenarios, including Keychain state. Android
@@ -210,8 +210,8 @@ The backup flag is an advisory [backup policy request](https://developer.apple.c
 not a guarantee that a file will be omitted. SQLCipher and the ThisDeviceOnly
 keychain key are separate controls.
 
-CI invokes `run-native.cjs ios <app> --ios-simulator-contract`. This explicit mode
-requires the pinned Simulator runtime and an `iphonesimulator` application. It
+CI invokes `node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs ios <app> --ios-simulator-contract`. This explicit mode
+binds to the explicitly selected installed Simulator runtime and an `iphonesimulator` application. It
 runs native process/Hermes checks, all native crypto vectors and opaque-handle
 checks, then attempts the unchanged production storage open. Only a specific
 `STORAGE_UNAVAILABLE` refusal classified as missing, none, unless-open or
@@ -349,7 +349,7 @@ Run the harness from the original clean approved checkout, using the signed
 `Release-iphoneos` app paths and an output directory that does not yet exist:
 
 ```sh
-CI=true PALI_NATIVE_QUALIFICATION=1 node qualification/run-physical-ios.cjs \
+CI=true PALI_NATIVE_QUALIFICATION=1 node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-physical-ios.cjs \
   --device "$PALI_DEVICE" --source-revision "$PALI_REVIEWED_COMMIT" \
   --import-app "$PALI_IMPORT_APP" --import-cdhash "$PALI_IMPORT_CDHASH" \
   --generate-app "$PALI_GENERATE_APP" --generate-cdhash "$PALI_GENERATE_CDHASH" \
@@ -427,3 +427,10 @@ is not an acceptable substitute.
 The offline qualification entry creates and retires public fixture Imported ordinal 0, imports a different public fixture at ordinal 1, and uses the actual native authority, SDK private-record AEAD storage, selected-key reveal and NativeTransfers controller. It writes attempted journals on Ethereum, NEVM testnet and zkSYS using injected bounded RPC responses. A cold restart rehydrates the same imported key and retries only the saved signed bytes: three authorizations, no new signatures. All HD0–4 journal bytes and the original SDK vault pair/fingerprint are checked before and after; HD1/Ethereum is restored at the end.
 
 Strict report fields contain only the imported account identity, three chain IDs and transaction hashes, counters and verification flags. They never contain the key, seed, envelope, ciphertext, profile ID or a key hash. Android and physical-iOS runners require this evidence and compare every chain across restart. Simulator storage-refusal evidence still cannot claim custody or imported-account success. Node tests and JavaScript exports do not establish native execution, screen privacy or live transactions. Do not fund these public fixture keys. The RPC is injected, and the harness makes no real balance request or network broadcast.
+
+
+### Exact SDK and simulator selection
+
+Configuration reads the installed mobile keyring package metadata and requires it to match the exact package.json pin. The same version is embedded in the qualification build and verified by the loaded SDK metadata before reporting success. An unreviewed package, version range or mismatched installation cannot satisfy the gate.
+
+The local iOS runner selects the newest available standard iOS runtime and an installed iPhone device type. PALI_IOS_SIMULATOR_RUNTIME and PALI_IOS_SIMULATOR_DEVICE_TYPE can select exact installed identities; an unavailable explicit selection fails instead of falling back. The hosted workflow intentionally pins iOS26.5, while a local27.2 run binds its refusal report to27.2. Simulator refusal still proves no custody. All Node qualification commands use the existing shared-source dependency resolver so the mobile-only npm installation is authoritative.

@@ -127,6 +127,7 @@ function QualificationApp() {
       let expectedNevmAddress: string | undefined;
       let expectedZksysAddress: string | undefined;
       let networkCalls = 0;
+      let verifiedSdkVersion: string | undefined;
       const check = async <T,>(
         name: string,
         fn: () => Promise<T>
@@ -360,6 +361,10 @@ function QualificationApp() {
               },
               () => undefined
             ));
+            // The embedded package metadata must match the exact locked build pin.
+            const installedVersion = require('@sidhujag/sysweb3-keyring/package.json').version;
+            expect(typeof installedVersion === 'string' && installedVersion === Constants.expoConfig?.extra?.paliQualificationSdkVersion);
+            verifiedSdkVersion = installedVersion;
             stage = 'initialize native custody';
             setStatus(stage);
             return sdk;
@@ -549,7 +554,7 @@ function QualificationApp() {
           },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
-          sdkVersion: '2.0.0',
+          sdkVersion: verifiedSdkVersion,
           ...hdEvidence,
           ...erc20Evidence,
           ...nevmEvidence,

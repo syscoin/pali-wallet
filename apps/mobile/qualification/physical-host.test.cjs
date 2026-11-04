@@ -57,7 +57,7 @@ function report(phase, scenario, runId) {
     fingerprint: 'f'.repeat(64),
     networkCalls: 0,
     nativeBridgeExercised: true,
-    sdkVersion: '2.0.0',
+    sdkVersion: require('../package.json').dependencies['@sidhujag/sysweb3-keyring'],
     nativeSigningVerified: true,
     ...importedEvidence(phase),
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true,
@@ -373,7 +373,8 @@ test('CLI accepts only exact bounded physical inputs, with explicit reset', () =
 test('invalid CLI arguments are contained without echoing them or contacting a device', () => {
   const result = spawnSync(
     process.execPath,
-    [require.resolve('./run-physical-ios.cjs'), '--private-argument-example'],
+    ['--import', require.resolve('../scripts/register-shared-test-dependencies.mjs'),
+      require.resolve('./run-physical-ios.cjs'), '--private-argument-example'],
     { encoding: 'utf8', env: { ...process.env, NODE_NO_WARNINGS: '1' } }
   );
   assert.equal(result.status, 1);
@@ -459,6 +460,8 @@ test('physical runner CLI gives fixed Xcode selection guidance without raw diagn
     const result = spawnSync(
       process.execPath,
       [
+        '--import',
+        require.resolve('../scripts/register-shared-test-dependencies.mjs'),
         '--require',
         preload,
         require.resolve('./run-physical-ios.cjs'),

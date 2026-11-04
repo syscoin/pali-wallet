@@ -146,6 +146,8 @@ for (const scenario of ['import', 'generate'])
     );
     try {
       fs.mkdirSync(path.join(directory, 'scripts'));
+      fs.mkdirSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
+      fs.writeFileSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] }));
       fs.mkdirSync(path.join(directory, 'qualification'));
       for (const file of [
         'scripts/configure-native-qualification.cjs',
@@ -171,7 +173,7 @@ for (const scenario of ['import', 'generate'])
         path.join(directory, 'package.json'),
         JSON.stringify({
           main: 'index.ts',
-          dependencies: { '@sidhujag/sysweb3-keyring': '2.0.0' },
+          dependencies: { '@sidhujag/sysweb3-keyring': JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] },
         })
       );
       fs.writeFileSync(
