@@ -36,7 +36,7 @@ import {
 import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
 import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { WalletAccounts } from './src/screens/WalletAccounts';
-import { WatchAccountPortfolio } from './src/screens/WatchAccountPortfolio';
+import { WatchSession } from './src/screens/WatchSession';
 import { WatchAccounts } from './src/core/watchAccounts';
 import type { WatchAccountNetwork } from './src/core/watchOnlyAuthority';
 import { nativeAccountSelection, type AccountSelection } from './src/core/accountDirectory';
@@ -504,7 +504,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
     onBack={() => go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome')}
     onOpenWallet={Platform.OS !== 'web' ? () => openWallet() : undefined} />{selectionNotice}</>;
-  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchAccountPortfolio key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit} onLock={exit} />{selectionNotice}</>;
+  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchSession key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit} />{selectionNotice}</>;
   let content: React.ReactNode;
   if (loading)
     content = (

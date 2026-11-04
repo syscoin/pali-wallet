@@ -49,6 +49,18 @@ const store: KeyringStoragePort = {
 };
 export function createNativeWalletControllers() {
   const runtime: CustodyRuntime = {
+    networks: {
+      getSelectedId: () => catalogue.active.networkId,
+      reserve(id, expectedRevision) {
+        const registration = NATIVE_NETWORKS.find((network) => network.id === id);
+        if (expectedRevision !== catalogue.revision || !registration) throw new KeyringRuntimeError('CANCELLED');
+        return { cancel() {}, async execute(guard) {
+          guard();
+          catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, networkId: registration.id } });
+          guard();
+        } };
+      },
+    },
     accounts: {
       supported: () => true,
       getSnapshot: () => catalogue,

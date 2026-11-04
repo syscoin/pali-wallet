@@ -1,5 +1,5 @@
 // Public synthetic data only. This entrypoint is never imported by the app.
-import React, { useState } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NativeActivityScreen } from '../../src/screens/NativeActivity';
@@ -22,13 +22,15 @@ import {
   type ActivityViewState,
 } from '../../src/activity/types';
 import type { CustodySnapshot } from '../../src/custody/types';
-import { Button } from '../../src/ui';
+import { Button, Header, Notice, Screen } from '../../src/ui';
+import { RealAppShell } from '../../src/screens/RealAppShell';
+import { useRealShell } from '../../src/screens/useRealShell';
 
 const owner = `0x${'11'.repeat(20)}`,
   recipient = `0x${'22'.repeat(20)}`;
 const hash = (i: number) => `0x${i.toString(16).padStart(64, '0')}`;
 const scope = createActivityScope('a'.repeat(64), 'hd:60:0', owner, 'ethereum');
-const state: CustodySnapshot = {
+let state: CustodySnapshot = {
   phase: 'ready',
   revision: 1,
   presence: 'existing',
@@ -36,6 +38,10 @@ const state: CustodySnapshot = {
   account: { network: 'ethereum', address: owner },
   error: null,
 };
+const stateListeners = new Set<(state: CustodySnapshot) => void>();
+const subscribe = (listener: (state: CustodySnapshot) => void) => { stateListeners.add(listener); return () => { stateListeners.delete(listener); }; };
+const getState = () => state;
+function lock() { state = { ...state, revision: state.revision + 1, phase: 'locked', account: null }; for (const listener of stateListeners) listener(state); }
 let fail = false,
   delay = false;
 const waiting: (() => void)[] = [];
@@ -43,6 +49,8 @@ let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
 let tokenPrecision: number | null = null;
 let invalidFee = false;
+let saveRequests = 0;
+let saveSettled = 0;
 class Explorer extends ActivityExplorerReader {
   async head() {
     return '1000';
@@ -130,14 +138,15 @@ const runtime: NativeActivityRuntime = {
   },
   async saveCache() {},
   async saveView(_scope, view, guard) {
-    if (saveDelay)
-      await new Promise((resolve) => setTimeout(resolve, saveDelay));
-    guard();
-    savedView = view;
+    saveRequests++;
+    try {
+      if (saveDelay) await new Promise((resolve) => setTimeout(resolve, saveDelay));
+      guard(); savedView = view;
+    } finally { saveSettled++; }
   },
 };
 const controller = new NativeActivity(
-  { getSnapshot: () => state, subscribe: () => () => undefined },
+  { getSnapshot: getState, subscribe },
   () => runtime,
   new Explorer(),
   new Receipts()
@@ -153,6 +162,9 @@ declare global {
       clearView(): void;
       tokenPrecision(value: number): void;
       invalidFee(value: boolean): void;
+      saveRequests(): number;
+      saveSettled(): number;
+      lock(): void;
     };
   }
 }
@@ -182,12 +194,24 @@ window.__activityFixture = {
   invalidFee(value) {
     invalidFee = value;
   },
+  saveRequests: () => saveRequests,
+  saveSettled: () => saveSettled,
+  lock,
 };
+function ShellFixture() {
+  const current = useSyncExternalStore(subscribe, getState, getState);
+  const scope = () => state.phase === 'ready' ? `activity:${state.revision}` : null;
+  const shell = useRealShell(scope(), scope, lock);
+  const content = current.phase !== 'ready' ? <Notice title="Fixture locked" body="Late navigation must remain revoked." />
+    : shell.tab === 'activity' ? <NativeActivityScreen controller={controller} accountLabel="Public test account" onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+    : <Screen><Header title={shell.tab === 'wallet' ? 'Wallet' : shell.tab === 'tools' ? 'Tools' : 'Settings'} /></Screen>;
+  return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || current.phase !== 'ready'}>{content}</RealAppShell>;
+}
 function Fixture() {
   const [open, setOpen] = useState(true);
   return (
     <SafeAreaProvider>
-      {open ? (
+      {new URLSearchParams(window.location.search).has('shell') ? <ShellFixture /> : open ? (
         <NativeActivityScreen
           controller={controller}
           accountLabel="Public test account"

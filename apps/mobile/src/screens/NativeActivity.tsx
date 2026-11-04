@@ -22,6 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import type { ShellLeafNavigation } from './RealAppShell';
 import type {
   ActivityRow,
   NativeActivity,
@@ -115,10 +116,12 @@ export function NativeActivityScreen({
   controller,
   accountLabel,
   onBack,
+  navigation,
 }: {
   controller: NativeActivity;
   accountLabel: string;
   onBack(): void;
+  navigation?: ShellLeafNavigation;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -133,6 +136,7 @@ export function NativeActivityScreen({
       snapshot={snapshot}
       accountLabel={accountLabel}
       onBack={onBack}
+      navigation={navigation}
     />
   );
 }
@@ -141,11 +145,13 @@ function NativeActivityContent({
   snapshot,
   accountLabel,
   onBack,
+  navigation,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
   accountLabel: string;
   onBack(): void;
+  navigation?: ShellLeafNavigation;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -160,6 +166,7 @@ function NativeActivityContent({
   const restoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstVisible = useRef<string | null>(null);
   const navigating = useRef(false);
+  const navigateAfterSave = useRef<(() => void) | null>(null);
   const visibleItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: { item: ActivityRow }[] }) => {
       firstVisible.current = viewableItems[0]?.item.hash ?? null;
@@ -171,6 +178,7 @@ function NativeActivityContent({
     const local = lifetime.current;
     return () => {
       local.epoch++;
+      navigateAfterSave.current = null;
       if (restoreTimer.current) clearTimeout(restoreTimer.current);
     };
   }, []);
@@ -220,13 +228,20 @@ function NativeActivityContent({
       await controller.setView(position);
   };
   const afterPositionSaved = async (navigate: () => void): Promise<void> => {
+    navigateAfterSave.current = navigate;
     if (navigating.current) return;
     navigating.current = true;
     const captured = lifetime.current.epoch;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      await savePosition();
-      if (lifetime.current.epoch === captured) navigate();
+      // A slow public view-state write must not trap navigation. Its existing
+      // context guard still rejects stale completion after this screen leaves.
+      await Promise.race([savePosition(), new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1000); })]);
+      const latest = navigateAfterSave.current;
+      navigateAfterSave.current = null;
+      if (lifetime.current.epoch === captured) latest?.();
     } finally {
+      if (timeout) clearTimeout(timeout);
       navigating.current = false;
     }
   };
@@ -237,6 +252,12 @@ function NativeActivityContent({
       void afterPositionSaved(onBack);
     }
   };
+  useLayoutEffect(() => navigation?.registerBack(() => { close(); return true; }));
+  useLayoutEffect(() => navigation?.registerLeave((navigate) => { void afterPositionSaved(navigate); }));
+  useLayoutEffect(() => {
+    navigation?.setImmersive(!!selected || !!copyAddress);
+    return () => navigation?.setImmersive(false);
+  }, [navigation, selected, copyAddress]);
   useEffect(() => {
     const listener = BackHandler.addEventListener('hardwareBackPress', () => {
       close();
@@ -284,7 +305,7 @@ function NativeActivityContent({
     }
   };
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={s.root}>
+    <SafeAreaView edges={navigation && !selected && !copyAddress ? ['top'] : ['top', 'bottom']} style={s.root}>
       <View style={s.header}>
         <Header
           title={chosen ? 'Transaction details' : 'Activity'}

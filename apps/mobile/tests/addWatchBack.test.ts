@@ -8,6 +8,8 @@ import ts from 'typescript';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { TabDeparture } from '../src/navigation/tabDeparture.ts';
+import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 
 const require = createRequire(import.meta.url);
 // Use the declared Expo Babel preset's toolchain to strip the installed RN Flow
@@ -69,6 +71,11 @@ function renderer() {
       if (!hook.deps || deps.some((value, index) => !Object.is(value, hook.deps![index]))) { hook.value = callback; hook.deps = deps; }
       return hook.value;
     },
+    useMemo<T>(factory: () => T, deps: readonly unknown[]) {
+      const hook = cell();
+      if (!hook.deps || deps.some((value, index) => !Object.is(value, hook.deps![index]))) { hook.value = factory(); hook.deps = deps; }
+      return hook.value;
+    },
     useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => { cell(); return snapshot(); },
   };
   return { api, instance,
@@ -79,6 +86,86 @@ function renderer() {
     flush(owner: Instance) { owner.effects.splice(0).forEach((run) => run()); },
     dispose(owner: Instance) { owner.cells.forEach((hook) => hook.cleanup?.()); },
   };
+}
+
+for (const kind of ['native', 'watch', 'activity'] as const) {
+  for (const order of ['parent-first', 'child-first'] as const) {
+    test(`${kind} real screen and shell consume nested Back before exit (${order})`, async () => {
+      const back = backHandler(); const render = renderer();
+      type Subscription = { remove(): void };
+      type BackApi = { addEventListener(name: string, handler: () => boolean): Subscription };
+      const actual = back.api as BackApi;
+      let owner: 'parent' | 'child' = 'parent';
+      const subscriptions: { owner: 'parent' | 'child'; handler: () => boolean; actual: Subscription; removed: boolean }[] = [];
+      const observedBack = { addEventListener(name: string, handler: () => boolean) {
+        const subscription = { owner, handler, actual: actual.addEventListener(name, handler), removed: false };
+        subscriptions.push(subscription);
+        return { remove() { subscription.removed = true; subscription.actual.remove(); } };
+      } };
+      const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
+        AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
+        StyleSheet: { create: (value: unknown) => value }, Share: {}, Linking: {},
+        ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
+      };
+      const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
+      const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
+      const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
+      const dependencies = { react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+        'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
+        '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
+        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), nativeSigningEnabled: () => false },
+        '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
+        './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
+        '../../../../source/shared/erc20': {},
+      };
+      const source = kind === 'native' ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
+        : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
+      const exports = evaluate(source, dependencies);
+      const leaf = (kind === 'native' ? exports.NativePortfolioContent : kind === 'activity' ? exports.NativeActivityContent : exports.WatchAccountPortfolio) as Component;
+      let exits = 0;
+      let shell!: { tab: RealTab; goBack(): void; select(tab: RealTab): void; finishLeave(tab: RealTab): void; navigation: ShellLeafNavigation };
+      const parent = render.instance(), child = render.instance();
+      const Root = () => {
+        shell = (hooks.useRealShell as (scope: string, current: () => string, exit: () => void) => typeof shell)('watch/ethereum', () => 'watch/ethereum', () => { exits++; });
+        render.api.useEffect(() => { const subscription = observedBack.addEventListener('hardwareBackPress', () => { shell.goBack(); return true; }); return () => subscription.remove(); }, []);
+        return { type: 'root', props: {}, children: [] };
+      };
+      render.render(parent, Root, {}); render.flush(parent);
+      if (kind === 'activity') { shell.select('activity'); render.render(parent, Root, {}); render.flush(parent); }
+      const account = core.createWatchAccount('watch', 'Public account', '0x1111111111111111111111111111111111111111');
+      const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
+      authority.unlock(); await authority.refresh();
+      const props = () => kind === 'native' ? {
+        model: { isCurrent: () => true }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
+        accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
+      } : kind === 'activity' ? { controller: { async setView() {} },
+        snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
+        accountLabel: 'Public account', onBack: () => shell.finishLeave('wallet'), navigation: shell.navigation,
+      } : { authority, onAccounts() {}, onExit() { exits++; }, onLock() {}, navigation: shell.navigation };
+      owner = 'child'; let tree = render.render(child, leaf, props()); render.flush(child);
+      if (kind !== 'activity') {
+        press(get(tree, (element) => element.props.title === 'Receive'));
+        tree = render.render(child, leaf, props()); render.flush(child);
+      }
+      const active = subscriptions.filter((subscription) => !subscription.removed);
+      active.forEach((subscription) => subscription.actual.remove());
+      active.sort((a, b) => (a.owner === (order === 'parent-first' ? 'parent' : 'child') ? -1 : 1) - (b.owner === (order === 'parent-first' ? 'parent' : 'child') ? -1 : 1));
+      assert.deepEqual(active.map((subscription) => subscription.owner), order === 'parent-first' ? ['parent', 'child'] : ['child', 'parent']);
+      active.forEach((subscription) => { subscription.actual = actual.addEventListener('hardwareBackPress', subscription.handler); });
+      try {
+        back.dispatch(); await new Promise<void>((resolve) => setImmediate(resolve));
+        if (kind === 'activity') {
+          render.render(parent, Root, {}); render.flush(parent); assert.equal(shell.tab, 'wallet'); render.dispose(child);
+        } else {
+          tree = render.render(child, leaf, props()); render.flush(child); assert.ok(find(tree, (element) => element.props.title === 'Wallet'));
+        }
+        assert.equal(exits, 0);
+        back.dispatch(); assert.equal(exits, 1); assert.equal(back.defaults(), 0);
+      } finally {
+        render.dispose(child); render.dispose(parent); back.dispatch(); assert.equal(back.defaults(), 1);
+      }
+    });
+  }
 }
 function find(tree: unknown, predicate: (element: Element) => boolean): Element | undefined {
   if (!tree || typeof tree !== 'object' || !('props' in tree)) return;
@@ -129,7 +216,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
-    './src/screens/WatchAccountPortfolio': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
+    './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
     './src/platform': { loadPublicAccounts: async () => [], compareAndSetPublicAccounts: async () => {},
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },

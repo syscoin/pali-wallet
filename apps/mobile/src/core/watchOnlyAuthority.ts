@@ -224,6 +224,13 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.publish();
   }
 
+  /** A departing public screen may cancel its read without locking the session. */
+  cancelRefresh(): void {
+    if (!this.pending) return;
+    this.invalidate();
+    this.publish();
+  }
+
   /** Restore a saved public navigation hint without opening balances or custody. */
   restoreSelection(id: string): void {
     if (!this.locked) throw new Error('Selection restoration requires a locked view');
