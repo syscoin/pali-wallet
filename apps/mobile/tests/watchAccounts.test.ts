@@ -62,7 +62,8 @@ test('persisted selection is bounded navigation data, never capability or keyrin
   assert.deepEqual(parseAccountSelection({ kind: 'hd', id: 'hd:60:0' }), { kind: 'hd', id: 'hd:60:0' });
   assert.deepEqual(parseAccountSelection({ kind: 'watch', id: account.id }), { kind: 'watch', id: account.id });
   assert.equal(parseAccountSelection(null), null);
-  for (const value of [undefined, [], {}, { kind: 'HDAccount', id: 'hd:60:0' },
+  for (const value of [undefined, [], {}, { kind: ['watch'], id: 'watch_1' },
+    { kind: ['hd'], id: 'hd:60:0' }, { kind: 1, id: 'watch_1' }, { kind: 'HDAccount', id: 'hd:60:0' },
     { kind: 'hd', id: 'hd:60:0', unlocked: true }, { kind: 'watch', id: 'x'.repeat(65) },
     { kind: 'watch', id: '__proto__', capabilities: { signing: true } }, { kind: 'hd', id: 'hd:60:-1' }]) {
     assert.throws(() => parseAccountSelection(value));

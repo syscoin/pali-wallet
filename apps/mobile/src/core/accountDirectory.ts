@@ -29,7 +29,7 @@ export function parseAccountSelection(value: unknown): AccountSelection | null {
   if (value === null) return null;
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid account selection');
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 2 || !['hd', 'watch'].includes(String(record.kind)) || typeof record.id !== 'string' ||
+  if (Object.keys(record).length !== 2 || typeof record.kind !== 'string' || !['hd', 'watch'].includes(record.kind) || typeof record.id !== 'string' ||
       !(record.kind === 'hd' ? /^hd:60:(0|[1-9][0-9]{0,3})$/ : /^[A-Za-z0-9_-]{1,64}$/).test(record.id))
     throw new Error('Invalid account selection');
   if (record.kind === 'hd' && Number(record.id.split(':')[2]) > 4095) throw new Error('Invalid account selection');
