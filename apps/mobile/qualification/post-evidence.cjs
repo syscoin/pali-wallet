@@ -2,7 +2,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { Buffer } = require('node:buffer');
-// Preserve prior native bindings and require the shared account, replay and HTTP code.
+// Bind the current native graph and its shared account, replay and HTTP code.
 const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/qualification/index.tsx",
   "apps/mobile/qualification/launch-parameters.ts",
@@ -30,7 +30,6 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/src/platformRpc.ts",
   "source/shared/evmNetworks.ts",
   "apps/mobile/src/core/addresses.ts",
-  "apps/mobile/src/core/networks.ts",
   "apps/mobile/src/custody/authority.ts",
   "apps/mobile/src/custody/types.ts",
   "apps/mobile/src/custody/keyringRuntime.ts",
@@ -45,7 +44,6 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/src/custody/evmFeeContracts.ts",
   "apps/mobile/src/core/amounts.ts",
   "source/utils/nativeBalance.ts",
-  "apps/mobile/src/custody/evmTransferProfiles.ts",
   "apps/mobile/src/portfolio/tokenRegistry.ts",
   "apps/mobile/src/activity/historyStore.ts",
   "apps/mobile/src/activity/types.ts",
@@ -68,6 +66,7 @@ const POST_REQUIRED_MAPPED_SOURCES = Object.freeze([
   "apps/mobile/qualification/post-contract.ts",
   "apps/mobile/qualification/post-fixtures.ts",
   "source/shared/passwordPolicy.ts",
+  "source/shared/networkText.ts",
   "source/shared/paliHttpIdentity.ts",
   "source/shared/evmTransactionObservation.ts",
   "source/wallet/accountRecords.ts",

@@ -14,17 +14,17 @@ function readBounded(file, maximum) {
   return fs.readFileSync(file);
 }
 
-function preserveSourceMap(platform, bundleFile, mapFile, output, sourceRevision = null) {
+function validatePreservationInput(platform, sourceRevision) {
   if (!['ios', 'android'].includes(platform) ||
       (sourceRevision !== null && !/^[a-f0-9]{40}$/.test(sourceRevision)))
     throw Error('NATIVE_SOURCE_MAP_INPUT_INVALID');
-  const bundle = readBounded(bundleFile, MAX_MAP_BYTES);
-  const map = readBounded(mapFile, MAX_MAP_BYTES);
-  if (JSON.parse(map.toString('utf8')).version !== 3) throw Error('NATIVE_SOURCE_MAP_INPUT_INVALID');
+}
+
+function writePreservedMap(platform, bundle, map, output, sourceRevision) {
   const name = platform === 'ios' ? 'ios-main.jsbundle.map' : 'android-index.android.bundle.map';
   const target = path.join(output, name);
   fs.mkdirSync(output, { recursive: true });
-  if (path.resolve(mapFile) !== path.resolve(target)) fs.copyFileSync(mapFile, target);
+  fs.writeFileSync(target, map);
   const manifest = {
     version: 1, platform, sourceRevision,
     bundleFile: platform === 'ios' ? 'main.jsbundle' : 'index.android.bundle',
@@ -32,6 +32,52 @@ function preserveSourceMap(platform, bundleFile, mapFile, output, sourceRevision
   };
   fs.writeFileSync(path.join(output, `${platform}-source-map.json`), `${JSON.stringify(manifest, null, 2)}\n`);
   return manifest;
+}
+
+function preserveSourceMap(platform, bundleFile, mapFile, output, sourceRevision = null) {
+  validatePreservationInput(platform, sourceRevision);
+  const bundle = readBounded(bundleFile, MAX_MAP_BYTES);
+  const map = readBounded(mapFile, MAX_MAP_BYTES);
+  if (JSON.parse(map.toString('utf8')).version !== 3) throw Error('NATIVE_SOURCE_MAP_INPUT_INVALID');
+  return writePreservedMap(platform, bundle, map, output, sourceRevision);
+}
+
+function failureReason(error) {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'POST_SOURCE_MAP_MISSING') return 'required-source-missing';
+  if (message === 'POST_SOURCE_MAP_MISMATCH') return 'source-content-mismatch';
+  if (message === 'POST_SOURCE_MAP_INVALID' || error instanceof SyntaxError) return 'source-map-invalid';
+  if (message === 'NATIVE_SOURCE_MAP_INPUT_INVALID') return 'input-invalid';
+  if (error && ['ENOENT', 'ENOTDIR', 'EACCES', 'ELOOP'].includes(error.code)) return 'input-unavailable';
+  return 'evidence-failed';
+}
+
+function preserveQualifiedSourceMap(platform, bundleFile, mapFile, output, sourceRevision = null, checkPost = false) {
+  validatePreservationInput(platform, sourceRevision);
+  let map;
+  try {
+    // Read once; preserve these exact bytes even when later source admission fails.
+    map = readBounded(mapFile, MAX_MAP_BYTES);
+    const parsed = JSON.parse(map.toString('utf8'));
+    if (parsed.version !== 3) throw Error('POST_SOURCE_MAP_INVALID');
+    const bundle = readBounded(bundleFile, MAX_MAP_BYTES);
+    if (checkPost) require('./post-evidence.cjs').assertCurrentPostSourceMap(parsed);
+    return writePreservedMap(platform, bundle, map, output, sourceRevision);
+  } catch (error) {
+    const reason = failureReason(error);
+    try {
+      fs.mkdirSync(output, { recursive: true });
+      const mapName = `${platform}-failed-source-map.map`;
+      if (map) fs.writeFileSync(path.join(output, mapName), map, { flag: 'wx' });
+      const diagnostic = { version: 1, status: 'failed', platform, sourceRevision, reason,
+        ...(map ? { sourceMapFile: mapName, sourceMapSha256: hash(map) } : {}) };
+      fs.writeFileSync(path.join(output, `${platform}-source-map-failure.json`),
+        `${JSON.stringify(diagnostic, null, 2)}\n`, { flag: 'wx' });
+    } catch {
+      // Retention errors cannot replace the original failure or produce success.
+    }
+    throw error;
+  }
 }
 
 function resolveLocations(report, sourceMap) {
@@ -64,10 +110,8 @@ if (require.main === module) {
   try {
     const [command, ...args] = process.argv.slice(2);
     if (command === 'preserve' && args.length === 4) {
-      if (process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1') {
-        require('./post-evidence.cjs').assertCurrentPostSourceMap(JSON.parse(readBounded(args[2], MAX_MAP_BYTES).toString('utf8')));
-      }
-      preserveSourceMap(...args, process.env.GITHUB_SHA || null);
+      preserveQualifiedSourceMap(...args, process.env.GITHUB_SHA || null,
+        process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1');
     } else if (command === 'resolve' && args.length === 2) {
       const report = JSON.parse(readBounded(args[0], MAX_REPORT_BYTES).toString('utf8'));
       const map = JSON.parse(readBounded(args[1], MAX_MAP_BYTES).toString('utf8'));
@@ -75,11 +119,12 @@ if (require.main === module) {
     } else {
       throw Error('NATIVE_SOURCE_MAP_ARGUMENTS_INVALID');
     }
-  } catch {
+  } catch (error) {
     // Parser and filesystem errors can embed source contents or user-provided paths.
     process.stderr.write('NATIVE_SOURCE_MAP_EVIDENCE_FAILED\n');
+    process.stderr.write(`NATIVE_SOURCE_MAP_REASON=${failureReason(error)}\n`);
     process.exitCode = 1;
   }
 }
 
-module.exports = { preserveSourceMap, resolveLocations };
+module.exports = { preserveSourceMap, preserveQualifiedSourceMap, resolveLocations };

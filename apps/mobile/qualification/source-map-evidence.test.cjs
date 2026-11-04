@@ -1,3 +1,4 @@
+/* global __dirname */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
@@ -7,7 +8,8 @@ const { Buffer } = require('node:buffer');
 const { spawnSync } = require('node:child_process');
 const test = require('node:test');
 const { SourceMapGenerator } = require('source-map');
-const { preserveSourceMap, resolveLocations } = require('./source-map-evidence.cjs');
+const { preserveSourceMap, preserveQualifiedSourceMap, resolveLocations } = require('./source-map-evidence.cjs');
+const { POST_REQUIRED_MAPPED_SOURCES } = require('./post-evidence.cjs');
 
 function fixtureMap() {
   const map = new SourceMapGenerator({ file: 'main.jsbundle' });
@@ -80,9 +82,80 @@ test('offline CLI reads explicit report/map files and never prints parsing paylo
     const malformed = run();
     assert.equal(malformed.status, 1);
     assert.equal(malformed.stdout, '');
-    assert.equal(malformed.stderr, 'NATIVE_SOURCE_MAP_EVIDENCE_FAILED\n');
+    assert.equal(malformed.stderr, 'NATIVE_SOURCE_MAP_EVIDENCE_FAILED\nNATIVE_SOURCE_MAP_REASON=source-map-invalid\n');
     fs.truncateSync(reportFile, 1024 * 1024 + 1);
-    assert.equal(run().stderr, 'NATIVE_SOURCE_MAP_EVIDENCE_FAILED\n');
+    assert.equal(run().stderr, 'NATIVE_SOURCE_MAP_EVIDENCE_FAILED\nNATIVE_SOURCE_MAP_REASON=input-invalid\n');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+function currentMap() {
+  return { version: 3, sources: POST_REQUIRED_MAPPED_SOURCES.map(source => `/${source.replace(/^apps\/mobile\//, '')}`),
+    sourcesContent: POST_REQUIRED_MAPPED_SOURCES.map(source => fs.readFileSync(path.resolve(__dirname, '../../..', source), 'utf8')) };
+}
+
+test('current project source bytes pass admission and are retained exactly', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-map-current-'));
+  try {
+    const mapFile = path.join(directory, 'compiled.map'), bundleFile = path.join(directory, 'compiled.bundle');
+    const map = Buffer.from(JSON.stringify(currentMap()));
+    fs.writeFileSync(mapFile, map); fs.writeFileSync(bundleFile, 'public compiled fixture');
+    const result = preserveQualifiedSourceMap('android', bundleFile, mapFile, directory, 'a'.repeat(40), true);
+    assert.deepEqual(fs.readFileSync(path.join(directory, result.sourceMapFile)), map);
+    assert(!fs.existsSync(path.join(directory, 'android-source-map-failure.json')));
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('failed required-source admission retains the bounded original map without a success manifest', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-map-missing-'));
+  try {
+    const mapFile = path.join(directory, 'compiled.map'), bundleFile = path.join(directory, 'compiled.bundle');
+    const map = currentMap(); map.sources.shift(); map.sourcesContent.shift();
+    const bytes = Buffer.from(JSON.stringify(map));
+    fs.writeFileSync(mapFile, bytes); fs.writeFileSync(bundleFile, 'public compiled fixture');
+    assert.throws(() => preserveQualifiedSourceMap('android', bundleFile, mapFile, directory, 'a'.repeat(40), true), /POST_SOURCE_MAP_MISSING/);
+    const failure = JSON.parse(fs.readFileSync(path.join(directory, 'android-source-map-failure.json'), 'utf8'));
+    assert.deepEqual(failure, { version: 1, status: 'failed', platform: 'android', sourceRevision: 'a'.repeat(40),
+      reason: 'required-source-missing', sourceMapFile: 'android-failed-source-map.map',
+      sourceMapSha256: crypto.createHash('sha256').update(bytes).digest('hex') });
+    assert.deepEqual(fs.readFileSync(path.join(directory, failure.sourceMapFile)), bytes);
+    assert(!fs.existsSync(path.join(directory, 'android-source-map.json')));
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('failure reasons do not expose source payloads and retention errors never turn failure into success', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-map-private-'));
+  try {
+    const mapFile = path.join(directory, 'compiled.map'), bundleFile = path.join(directory, 'compiled.bundle');
+    const map = currentMap(); map.sourcesContent[0] += 'PRIVATE_SOURCE_PAYLOAD';
+    fs.writeFileSync(mapFile, JSON.stringify(map)); fs.writeFileSync(bundleFile, 'public compiled fixture');
+    const output = path.join(directory, 'artifacts');
+    const args = [require.resolve('./source-map-evidence.cjs'), 'preserve', 'ios', bundleFile, mapFile, output];
+    const run = spawnSync(process.execPath, args, { encoding: 'utf8', env: { ...process.env,
+      PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: 'a'.repeat(40) } });
+    assert.equal(run.status, 1); assert.equal(run.stdout, '');
+    assert.equal(run.stderr, 'NATIVE_SOURCE_MAP_EVIDENCE_FAILED\nNATIVE_SOURCE_MAP_REASON=source-content-mismatch\n');
+    const diagnostic = fs.readFileSync(path.join(output, 'ios-source-map-failure.json'), 'utf8');
+    assert(!diagnostic.includes('PRIVATE_SOURCE_PAYLOAD')); assert(!diagnostic.includes(directory));
+    assert(!fs.existsSync(path.join(output, 'ios-source-map.json')));
+    const blockedOutput = path.join(directory, 'not-a-directory'); fs.writeFileSync(blockedOutput, 'existing');
+    assert.throws(() => preserveQualifiedSourceMap('ios', bundleFile, mapFile, blockedOutput, null, true), /POST_SOURCE_MAP_MISMATCH/);
+    assert.equal(fs.readFileSync(blockedOutput, 'utf8'), 'existing');
+  } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('missing or oversized input retains only bounded failure metadata', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-map-input-'));
+  try {
+    const absent = path.join(directory, 'absent'), output = path.join(directory, 'artifacts');
+    assert.throws(() => preserveQualifiedSourceMap('android', absent, absent, output));
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(output, 'android-source-map-failure.json'), 'utf8')),
+      { version: 1, status: 'failed', platform: 'android', sourceRevision: null, reason: 'input-unavailable' });
+    assert(!fs.existsSync(path.join(output, 'android-failed-source-map.map')));
+    const oversized = path.join(directory, 'oversized'); fs.writeFileSync(oversized, ''); fs.truncateSync(oversized, 64 * 1024 * 1024 + 1);
+    const largeOutput = path.join(directory, 'large-artifacts');
+    assert.throws(() => preserveQualifiedSourceMap('android', absent, oversized, largeOutput));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(largeOutput, 'android-source-map-failure.json'), 'utf8')).reason, 'input-invalid');
+    assert(!fs.existsSync(path.join(largeOutput, 'android-failed-source-map.map')));
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 
