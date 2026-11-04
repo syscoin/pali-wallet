@@ -15,3 +15,7 @@ export function parseNativeAccountId(value: unknown): Readonly<{ id: string; typ
   if (nativeAccountId(type, index) !== value) throw new Error('INVALID_ACCOUNT_ID');
   return Object.freeze({ id: value, type, index });
 }
+
+export function isNativeAccountId(value: unknown): value is string {
+  try { parseNativeAccountId(value); return true; } catch { return false; }
+}

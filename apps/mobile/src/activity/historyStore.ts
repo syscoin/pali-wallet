@@ -1,3 +1,4 @@
+import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { parseErc20Metadata } from '../portfolio/erc20Metadata.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
@@ -85,7 +86,7 @@ export function validateTerminalActivity(
     typeof data.walletFingerprint !== 'string' ||
     !/^[0-9a-f]{64}$/.test(data.walletFingerprint) ||
     typeof data.accountId !== 'string' ||
-    !/^hd:60:(0|[1-9][0-9]{0,3})$/.test(data.accountId) ||
+    !isNativeAccountId(data.accountId) ||
     typeof data.address !== 'string' ||
     getAddress(data.address) !== data.address ||
     typeof data.recipient !== 'string' ||

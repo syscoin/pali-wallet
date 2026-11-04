@@ -38,7 +38,7 @@ import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { WalletAccounts } from './src/screens/WalletAccounts';
 import { WatchAccountPortfolio } from './src/screens/WatchAccountPortfolio';
 import { WatchAccounts } from './src/core/watchAccounts';
-import type { AccountSelection } from './src/core/accountDirectory';
+import { nativeAccountSelection, type AccountSelection } from './src/core/accountDirectory';
 import type { NativeWalletCatalogueSnapshot } from './src/custody/walletCatalogue';
 import { DesignStudio } from './src/design/Studio';
 import { SettingsScreen, InformationScreen } from './src/screens/Settings';
@@ -266,7 +266,7 @@ function AppContent() {
   const openWallet = (id?: unknown) => {
     const selectedId = typeof id === 'string' ? id : requestedHdId ?? catalogue?.active.accountId;
     setRequestedHdId(selectedId);
-    if (selectedId) rememberSelection({ kind: 'hd', id: selectedId });
+    if (selectedId) rememberSelection(nativeAccountSelection(selectedId));
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
   };
   const openWatch = (selection: AccountSelection) => {
@@ -308,7 +308,7 @@ function AppContent() {
             // Restore only an advisory choice; the authority remains privacy-locked.
             authority.current?.restoreSelection(saved.id);
           }
-          if (saved?.kind === 'hd' && Platform.OS !== 'web') { setRequestedHdId(saved.id); go('native'); }
+          if (saved && saved.kind !== 'watch' && Platform.OS !== 'web') { setRequestedHdId(saved.id); go('native'); }
           else if (next.accounts.length) go('locked');
         } catch { if (active) { setSelectionError('Your last account choice could not be read. Your accounts are unchanged.'); if (next.accounts.length) go('locked'); } }
       } catch (cause) { if (active) setStartupError(cause instanceof Error ? cause.message : 'Your saved accounts could not be read. Nothing has been replaced.'); }
@@ -496,10 +496,10 @@ function AppContent() {
   if (route === 'design') return <DesignStudio onExit={exit} />;
   const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); } };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection({ kind: 'hd', id }); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
-    onSelect={(selection) => { if (selection.kind === 'hd') openWallet(selection.id); else openWatch(selection); }}
+    onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}
     onBack={() => go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome')}
     onOpenWallet={Platform.OS !== 'web' ? () => openWallet() : undefined} />{selectionNotice}</>;
   if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchAccountPortfolio key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit} onLock={exit} />{selectionNotice}</>;

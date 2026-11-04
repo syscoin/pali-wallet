@@ -1,13 +1,25 @@
 import { computeAddress } from 'ethers/transaction';
 import { SigningKey } from 'ethers/crypto';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
-import { nativeAccountId } from './accountIdentity.ts';
+import { nativeAccountId, parseNativeAccountId } from './accountIdentity.ts';
 
 export const IMPORTED_EVM_DOMAIN = 'pali/native-imported-evm/v1';
 export type ImportedKeyEnvelope = Readonly<{
   version: 1; domain: string; recordId: string; profileId: string; nonce: string; ciphertext: string;
 }>;
 export type ImportedKeyIdentity = Readonly<{ id: string; index: number; address: string; publicKey: string }>;
+/** Private form input; never an account-directory action or public snapshot. */
+export type NativeImportRequest = Readonly<{ privateKey: string; label: string; expectedAddress: string }>;
+export interface NativeImportRuntime {
+  reserve(input: NativeImportRequest, password: string, catalogueRevision: number): {
+    execute(assertCurrent: () => void): Promise<void>;
+    cancel(): void;
+  };
+}
+export interface NativeImportView {
+  submit(input: NativeImportRequest, password: string, contextRevision: number, catalogueRevision: number): Promise<void>;
+  cancel(): void;
+}
 export type ImportedKeyCryptography = Readonly<{
   encryptPrivateRecord(input: { domain: string; recordId: string; plaintext: Uint8Array }): Promise<ImportedKeyEnvelope>;
   decryptPrivateRecord(input: { domain: string; recordId: string; envelope: ImportedKeyEnvelope }): Promise<Uint8Array>;
@@ -39,6 +51,14 @@ export function importedKeyIdentity(key: string, index: number): ImportedKeyIden
   return Object.freeze({ id: nativeAccountId('Imported', index), index, address: computeAddress(canonical),
     publicKey: SigningKey.computePublicKey(canonical, true).toLowerCase() });
 }
+export function snapshotImportedIdentity(value: ImportedKeyIdentity): ImportedKeyIdentity {
+  const raw = record(value, ['id', 'index', 'address', 'publicKey']);
+  const account = parseNativeAccountId(raw.id);
+  if (account.type !== 'Imported' || account.index !== raw.index || typeof raw.address !== 'string' ||
+      typeof raw.publicKey !== 'string' || !/^0x(?:02|03)[0-9a-f]{64}$/.test(raw.publicKey) ||
+      computeAddress(raw.publicKey) !== raw.address) return invalid();
+  return Object.freeze(raw) as ImportedKeyIdentity;
+}
 export function snapshotImportedEnvelope(value: unknown, id: string): ImportedKeyEnvelope {
   const raw = record(value, ['version', 'domain', 'recordId', 'profileId', 'nonce', 'ciphertext']);
   if (raw.version !== 1 || raw.domain !== IMPORTED_EVM_DOMAIN || raw.recordId !== id ||
@@ -48,7 +68,7 @@ export function snapshotImportedEnvelope(value: unknown, id: string): ImportedKe
       !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(raw.ciphertext)) return invalid();
   return Object.freeze(raw) as ImportedKeyEnvelope;
 }
-function fingerprint(value: string): void { if (!/^[0-9a-f]{64}$/.test(value)) invalid(); }
+function fingerprint(value: string): void { if (typeof value !== 'string' || !/^[0-9a-f]{64}$/.test(value)) invalid(); }
 export async function encryptImportedKey(crypto: ImportedKeyCryptography, walletFingerprint: string,
   index: number, input: string, guard: () => void): Promise<Readonly<{ identity: ImportedKeyIdentity; envelope: ImportedKeyEnvelope }>> {
   fingerprint(walletFingerprint); check(guard);
@@ -64,17 +84,18 @@ export async function encryptImportedKey(crypto: ImportedKeyCryptography, wallet
 export async function decryptImportedKey(crypto: ImportedKeyCryptography, walletFingerprint: string,
   expected: ImportedKeyIdentity, input: ImportedKeyEnvelope, guard: () => void): Promise<string> {
   fingerprint(walletFingerprint); check(guard);
-  const envelope = snapshotImportedEnvelope(input, expected.id);
+  const identity = snapshotImportedIdentity(expected);
+  const envelope = snapshotImportedEnvelope(input, identity.id);
   let bytes: Uint8Array | undefined;
   try {
-    bytes = await crypto.decryptPrivateRecord({ domain: IMPORTED_EVM_DOMAIN, recordId: expected.id, envelope });
+    bytes = await crypto.decryptPrivateRecord({ domain: IMPORTED_EVM_DOMAIN, recordId: identity.id, envelope });
     check(guard);
     if (!(bytes instanceof Uint8Array) || bytes.length > 1536) return invalid();
     const raw = record(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
       ['version', 'walletFingerprint', 'id', 'index', 'address', 'publicKey', 'privateKey']);
     if (raw.version !== 1 || raw.walletFingerprint !== walletFingerprint) return invalid();
-    const key = normalizeImportedKey(raw.privateKey), actual = importedKeyIdentity(key, expected.index);
-    if (Object.entries(actual).some(([field, value]) => raw[field] !== value || expected[field as keyof ImportedKeyIdentity] !== value)) return invalid();
+    const key = normalizeImportedKey(raw.privateKey), actual = importedKeyIdentity(key, identity.index);
+    if (Object.entries(actual).some(([field, value]) => raw[field] !== value || identity[field as keyof ImportedKeyIdentity] !== value)) return invalid();
     check(guard); return key;
   } catch { return invalid();
   } finally { if (bytes instanceof Uint8Array) bytes.fill(0); }

@@ -1,3 +1,4 @@
+import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { type Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { parseErc20Metadata } from './erc20Metadata.ts';
@@ -72,7 +73,7 @@ function scope(value: unknown): NativeTokenScope {
     typeof v.walletFingerprint !== 'string' ||
     !/^[0-9a-f]{64}$/.test(v.walletFingerprint) ||
     typeof v.accountId !== 'string' ||
-    !/^hd:60:(0|[1-9][0-9]{0,3})$/.test(v.accountId) ||
+    !isNativeAccountId(v.accountId) ||
     typeof v.address !== 'string' ||
     getAddress(v.address) !== v.address ||
     /^0x0{40}$/i.test(v.address) ||
@@ -116,7 +117,7 @@ function decode(value: unknown, expected: NativeTokenScope): RecordValue {
     // Retired accounts are retained. Registration changes never relabel old provenance.
     if (
       typeof e.accountId !== 'string' ||
-      !/^hd:60:(0|[1-9][0-9]{0,3})$/.test(e.accountId) ||
+      !isNativeAccountId(e.accountId) ||
       typeof e.address !== 'string' ||
       getAddress(e.address) !== e.address ||
       /^0x0{40}$/i.test(e.address) ||

@@ -100,7 +100,7 @@ export function NativeAccounts({ controller, onBack }: { controller: NativeAccou
             <Text selectable style={s.address}>{account.address}</Text>
           </Pressable>
           <View style={s.actions}><Button title="Rename" variant="quiet" onPress={() => open({ kind: 'rename', id: account.id, label: account.label, address: account.address })} />
-            {account.index !== 0 && account.id !== snapshot.active.accountId && <Button title="Remove" variant="quiet" onPress={() => open({ kind: 'remove', id: account.id, label: account.label, address: account.address })} />}</View>
+            {(account.type !== 'HDAccount' || account.index !== 0) && account.id !== snapshot.active.accountId && <Button title="Remove" variant="quiet" onPress={() => open({ kind: 'remove', id: account.id, label: account.label, address: account.address })} />}</View>
         </Card>)}
         <Button title="Add account" onPress={() => open({ kind: 'create', label: '' })} />
         {snapshot.removed.length > 0 && <><Text style={s.section}>Removed accounts</Text><Text style={styles.muted}>Restore an earlier account without changing your recovery phrase.</Text>

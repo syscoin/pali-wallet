@@ -43,7 +43,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   await storage.keyringStorage.createManyIfAbsent(validPair());
   const root = { ...identity, walletFingerprint: await storage.getWalletFingerprint() };
   const readImport = async (record: StoredImportedAccount) => {
-    const key = await decryptImportedKey(await crypto(), root.walletFingerprint, record, record.envelope, current);
+    const key = await decryptImportedKey(await crypto(), root.walletFingerprint, { id: record.id, index: record.index, address: record.address, publicKey: record.publicKey }, record.envelope, current);
     const actual = importedKeyIdentity(key, record.index);
     return { address: actual.address, publicKey: actual.publicKey };
   };
@@ -70,7 +70,7 @@ test('installed SDK AEAD binds imported key payload to profile, record, wallet a
   assert.equal(JSON.stringify(wrapped.envelope).includes(KEY), false);
   for (const changed of [
     { ...wrapped.envelope, domain: 'wrong' }, { ...wrapped.envelope, recordId: 'imported:60:6' },
-    { ...wrapped.envelope, ciphertext: 'A' + wrapped.envelope.ciphertext.slice(1) },
+    { ...wrapped.envelope, ciphertext: (wrapped.envelope.ciphertext[0] === 'A' ? 'B' : 'A') + wrapped.envelope.ciphertext.slice(1) },
     { ...wrapped.envelope, profileId: '0x' + 'b'.repeat(64) },
   ]) await assert.rejects(decryptImportedKey(sdk, fingerprint, wrapped.identity, changed, current));
   await assert.rejects(decryptImportedKey(sdk, 'b'.repeat(64), wrapped.identity, wrapped.envelope, current));
@@ -219,4 +219,23 @@ test('combined native capacity and malformed imported records never discard exis
       assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), corrupted);
     }
   } finally { await f.close(); }
+});
+
+test('decrypt snapshots identity before awaits and rejects getters or repaired invalid input', async () => {
+  const sdk = await crypto(), fp = 'a'.repeat(64), wrapped = await encryptImportedKey(sdk, fp, 3, KEY, current);
+  let entered!: () => void, release!: () => void, calls = 0;
+  const started = new Promise<void>((r) => { entered = r; }), held = new Promise<void>((r) => { release = r; });
+  const port = { encryptPrivateRecord: (p: Parameters<typeof sdk.encryptPrivateRecord>[0]) => sdk.encryptPrivateRecord(p),
+    async decryptPrivateRecord(p: Parameters<typeof sdk.decryptPrivateRecord>[0]) { calls++; entered(); await held; return sdk.decryptPrivateRecord(p); } };
+  const mutable = { ...wrapped.identity };
+  const pending = decryptImportedKey(port, fp, mutable, wrapped.envelope, current);
+  await started; mutable.index = 4; mutable.id = 'imported:60:4'; release();
+  assert.equal(await pending, KEY);
+  const bad = { ...wrapped.identity, index: 4 };
+  const failed = decryptImportedKey(port, fp, bad, wrapped.envelope, current);
+  bad.index = 3; await assert.rejects(failed); assert.equal(calls, 1);
+  let getters = 0;
+  const accessor = { ...wrapped.identity }; Object.defineProperty(accessor, 'id', { enumerable: true, get() { getters++; return wrapped.identity.id; } });
+  await assert.rejects(decryptImportedKey(port, fp, accessor, wrapped.envelope, current));
+  assert.equal(getters, 0); assert.equal(calls, 1);
 });

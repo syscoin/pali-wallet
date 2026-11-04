@@ -1,5 +1,6 @@
 import type { EvmNetworkId } from './networkContext.ts';
 import type { NativeNetworkRuntime, NativeAccountRuntime } from './accounts.ts';
+import type { NativeImportRuntime } from './importedAccounts.ts';
 /** Public state only. Neither SDK state nor recovery material belongs here. */
 export type CustodySnapshot = Readonly<{
   phase:
@@ -30,11 +31,12 @@ export type CustodyErrorCode =
   | 'CLEANUP_FAILED'
   | 'ACCOUNT_LIMIT'
   | 'ACCOUNT_NOT_REMOVABLE'
-  | 'PENDING_TRANSFER';
+  | 'PENDING_TRANSFER'
+  | 'DUPLICATE_ACCOUNT';
 
 /** Explicit host errors; untyped SDK errors must never supply UI classifications. */
 export class CustodyRuntimeError extends Error {
-  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER';
+  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER' | 'DUPLICATE_ACCOUNT';
   constructor(code: CustodyRuntimeError['code']) {
     super(code);
     this.name = 'CustodyRuntimeError';
@@ -56,6 +58,7 @@ export type CustodyStoredState =
  */
 export interface CustodyRuntime {
   readonly accounts?: NativeAccountRuntime;
+  readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
   readonly session: {
     createWallet(password: string): Promise<void>;

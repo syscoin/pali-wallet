@@ -1,3 +1,4 @@
+import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, TextInput, View } from 'react-native';
 import { createNativeWalletControllers } from '../platform/nativeFactory';
@@ -174,7 +175,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     bridge.current?.onSelectWatch(selection);
   };
   if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
-    return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? { kind: 'hd', id: catalogue.active.accountId } : null}
+    return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={() => setStage('choose')} onSelect={async (selection) => {
         if (selection.kind === 'watch') { selectWatch(selection); return; }
         if (snapshot.phase === 'ready' && accountView && catalogue && selection.id !== catalogue.active.accountId)

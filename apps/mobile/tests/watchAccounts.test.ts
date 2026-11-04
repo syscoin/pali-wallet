@@ -181,3 +181,11 @@ test('a reentrant privacy lock never delivers the superseded ready snapshot to l
   assert.deepEqual(later, ['locked']);
   assert.equal(authority.getSnapshot().status, 'locked');
 });
+
+test('Imported selection is advisory, kind-bound and separate from watch and HD identities', () => {
+  const imported = parseAccountSelection({ kind: 'imported', id: 'imported:60:0' });
+  assert.deepEqual(imported, { kind: 'imported', id: 'imported:60:0' });
+  for (const selection of [{ kind: 'hd', id: 'imported:60:0' }, { kind: 'imported', id: 'hd:60:0' },
+    { kind: 'imported', id: 'imported:60:4096' }, { kind: 'imported', id: 'imported:60:00' }])
+    assert.throws(() => parseAccountSelection(selection));
+});

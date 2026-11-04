@@ -23,6 +23,9 @@ import { createActivityScope, type ActivityScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress } from 'ethers/transaction';
 import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
+import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
+import { decryptImportedKey, encryptImportedKey, importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import type { NativeImportRuntime } from './importedAccounts.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -105,7 +108,7 @@ export function createKeyringRuntimeFactory(
           },
           accounts: {
             HDAccount: {} as Record<number, IKeyringAccountState>,
-            Imported: {}, Ledger: {}, Trezor: {}, SmartAccount: {},
+            Imported: {} as Record<number, IKeyringAccountState>, Ledger: {}, Trezor: {}, SmartAccount: {},
           },
         };
         keyring.setVaultStateGetter(() => state);
@@ -128,6 +131,7 @@ export function createKeyringRuntimeFactory(
           // Invoke the SDK now: its secret buffers are retired synchronously.
           const pending = keyring.lockWallet();
           state.accounts.HDAccount = {};
+          state.accounts.Imported = {};
           catalogueSnapshot = null;
           // Retire secrets synchronously, then report quarantine asynchronously.
           // storage.close() must still install its cleanup promise and drain work.
@@ -174,8 +178,32 @@ export function createKeyringRuntimeFactory(
           current(captured); checkGuard(assertCurrent);
           return checkedAccount(account, index);
         };
+        const checkedImported = (value: IKeyringAccountState, key: string, index: number) => {
+          const expected = importedKeyIdentity(key, index);
+          if (!value || value.isImported !== true || value.isLedgerWallet || value.isTrezorWallet || value.isSmartAccount ||
+              !Number.isSafeInteger(value.id) || value.id < 0 || value.id > MAX_HD_ACCOUNT_INDEX ||
+              normalizePublicAddress(value.address, 'ethereum') !== expected.address ||
+              typeof value.xpub !== 'string' || !/^0x(?:(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/.test(value.xpub) || computeAddress(value.xpub) !== expected.address ||
+              typeof value.xprv !== 'string' || value.xprv.length < 32 || value.xprv.length > 1024)
+            throw new KeyringRuntimeError('OPERATION_FAILED');
+          // Imported EVM scalars have no derivation path. The host owns their durable ordinal.
+          return { ...value, id: index, address: expected.address };
+        };
+        const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
+          state.accounts.HDAccount = Object.fromEntries(next.accounts.filter((a) => a.type === 'HDAccount').map((a) =>
+            [a.index, { ...state.accounts.HDAccount[a.index]!, label: a.label }]));
+          state.accounts.Imported = Object.fromEntries(next.accounts.filter((a) => a.type === 'Imported').map((a) =>
+            [a.index, { ...state.accounts.Imported[a.index]!, label: a.label }]));
+          const selected = next.accounts.find((a) => a.id === next.active.accountId)!;
+          state.activeAccount = { id: selected.index, type: selected.type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported };
+          const network = getNativeNetwork(next.active.networkId);
+          state.activeNetwork = { ...state.activeNetwork, chainId: Number(network.chainId), slip44: network.slip44,
+            url: network.rpcUrl, currency: network.symbol, label: network.id };
+          catalogueSnapshot = next;
+        };
         const hydrate = async (captured: number) => {
           current(captured);
+          state.accounts.Imported = {};
           const first = checkedAccount(await keyring.createFirstAccount(), 0);
           current(captured);
           const derived = new Map<number, IKeyringAccountState>([[0, first]]);
@@ -183,21 +211,35 @@ export function createKeyringRuntimeFactory(
           current(captured);
           const nextCatalogue = await catalogue.reconcile({ walletFingerprint, address: first.address, publicKey: first.xpub },
             () => current(captured), async (index) => {
-              const account = await deriveAt(index, captured);
-              derived.set(index, account);
+              const account = await deriveAt(index, captured); derived.set(index, account);
               return { address: account.address, publicKey: account.xpub };
+            }, async (record) => {
+              state.accounts.HDAccount = Object.fromEntries(derived);
+              const guard = () => current(captured);
+              const key = await decryptImportedKey(keyring, walletFingerprint, { id: record.id, index: record.index, address: record.address, publicKey: record.publicKey }, record.envelope, guard); guard();
+              const imported = checkedImported(await keyring.importAccount(key, record.label), key, record.index); guard();
+              state.accounts.Imported[record.index] = imported;
+              return { address: imported.address, publicKey: importedKeyIdentity(key, record.index).publicKey };
             });
           current(captured);
+          state.accounts.HDAccount = Object.fromEntries(derived);
           for (const account of nextCatalogue.accounts) {
-            await new NativeTransferJournal(storage.keyringStorage, { walletFingerprint, address: account.address, chainId: '1' }, () => current(captured), Date.now, account.index).load();
+            await new NativeTransferJournal(storage.keyringStorage, { walletFingerprint, address: account.address, chainId: '1' },
+              () => current(captured), Date.now, account.index, undefined, undefined, account.type).load();
             current(captured);
           }
-          state.accounts.HDAccount = Object.fromEntries(nextCatalogue.accounts.map((a) => [a.index, { ...derived.get(a.index)!, label: a.label }]));
-          const selected = nextCatalogue.accounts.find((a) => a.id === nextCatalogue.active.accountId)!;
-          state.activeAccount = { id: selected.index, type: sdk.KeyringAccountType.HDAccount };
-          const selectedNetwork = getNativeNetwork(nextCatalogue.active.networkId);
-          state.activeNetwork = { ...state.activeNetwork, chainId: Number(selectedNetwork.chainId), slip44: selectedNetwork.slip44, url: selectedNetwork.rpcUrl, currency: selectedNetwork.symbol, label: selectedNetwork.id };
-          catalogueSnapshot = nextCatalogue;
+          publishAccounts(nextCatalogue);
+        };
+        const selectedAccount = () => {
+          if (!catalogueSnapshot || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
+          const catalogue = catalogueSnapshot;
+          const selected = catalogue.accounts.find((a) => a.id === catalogue.active.accountId);
+          if (!selected || selected.index !== state.activeAccount.id || selected.type !== state.activeAccount.type)
+            throw new KeyringRuntimeError('CANCELLED');
+          const runtime = state.accounts[selected.type][selected.index];
+          if (!runtime || runtime.address !== selected.address || (selected.type === 'Imported') !== runtime.isImported)
+            throw new KeyringRuntimeError('CANCELLED');
+          return selected;
         };
         const authenticate = async (password: string, captured: number) => {
           validPassword(password, false);
@@ -227,7 +269,7 @@ export function createKeyringRuntimeFactory(
               ? ['kind', 'index', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
               : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'select' || request.kind === 'select-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
-                ('id' in request && request.kind !== 'select-network' && (typeof request.id !== 'string' || !/^hd:60:(?:0|[1-9][0-9]{0,3})$/.test(request.id))) ||
+                ('id' in request && request.kind !== 'select-network' && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
                 ('index' in request && (!Number.isSafeInteger(request.index) || request.index < 1 || request.index > 4095)) ||
                 ('label' in request && (typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label || request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))))
               throw new KeyringRuntimeError('INVALID_INPUT');
@@ -243,7 +285,7 @@ export function createKeyringRuntimeFactory(
             if ('id' in request && request.kind !== 'select-network') {
               const target = catalogueSnapshot.accounts.find((account) => account.id === request.id);
               if (!target) throw new KeyringRuntimeError('INVALID_INPUT');
-              if (request.kind === 'remove' && (target.index === 0 || target.id === catalogueSnapshot.active.accountId || catalogueSnapshot.accounts.length <= 1))
+              if (request.kind === 'remove' && ((target.type === 'HDAccount' && target.index === 0) || target.id === catalogueSnapshot.active.accountId || catalogueSnapshot.accounts.length <= 1))
                 throw new KeyringRuntimeError('ACCOUNT_NOT_REMOVABLE');
             }
             const token = {};
@@ -282,7 +324,7 @@ export function createKeyringRuntimeFactory(
                       if (!account) throw new KeyringRuntimeError('CANCELLED');
                       const fingerprint = await storage.getWalletFingerprint();
                       current(captured); checkGuard(assertCurrent);
-                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard));
+                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard), account.type);
                       const pending = await journal.removalSnapshot();
                       current(captured); checkGuard(assertCurrent);
                       mutation = { kind: 'remove' as const, id: request.id, journal: pending };
@@ -291,15 +333,62 @@ export function createKeyringRuntimeFactory(
                   const next = await catalogue.mutate(expectedRevision, mutation, () => { current(captured); checkGuard(assertCurrent); });
                   current(captured); checkGuard(assertCurrent);
                   if (derived) state.accounts.HDAccount[derived.id] = derived;
-                  state.accounts.HDAccount = Object.fromEntries(next.accounts.map((a) => [a.index, { ...state.accounts.HDAccount[a.index]!, label: a.label }]));
-                  const selected = next.accounts.find((a) => a.id === next.active.accountId)!;
-                  state.activeAccount = { id: selected.index, type: sdk.KeyringAccountType.HDAccount };
-                  const selectedNetwork = getNativeNetwork(next.active.networkId);
-                  state.activeNetwork = { ...state.activeNetwork, chainId: Number(selectedNetwork.chainId), slip44: selectedNetwork.slip44, url: selectedNetwork.rpcUrl, currency: selectedNetwork.symbol, label: selectedNetwork.id };
-                  catalogueSnapshot = next;
+                  publishAccounts(next);
                 });
               },
             };
+        };
+        const imports: NativeImportRuntime = {
+          reserve(input, password, expectedRevision) {
+            if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+            if (active || reserved) throw new KeyringRuntimeError('BUSY');
+            if (catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
+            let request: typeof input;
+            try {
+              request = decodeStorageValue(encodeStorageValue(input)) as typeof input;
+              if (!request || typeof request !== 'object' || Array.isArray(request) ||
+                  Object.keys(request).sort().join(',') !== 'expectedAddress,label,privateKey' ||
+                  typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label ||
+                  request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label)) throw new Error('INVALID_INPUT');
+              const key = normalizeImportedKey(request.privateKey);
+              const identity = importedKeyIdentity(key, 0);
+              if (request.expectedAddress !== identity.address) throw new Error('INVALID_INPUT');
+              request = Object.freeze({ ...request, privateKey: key });
+              validPassword(password, false);
+            } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
+            if (catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS || catalogue.nextImportedIndex > MAX_HD_ACCOUNT_INDEX)
+              throw new KeyringRuntimeError('ACCOUNT_LIMIT');
+            if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
+              throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
+            const token = {}; reserved = token; const generationAtAdmission = ++generation; let used = false;
+            return {
+              cancel() { if (!used && reserved === token) reserved = null; used = true; },
+              execute(assertCurrent) {
+                if (used || reserved !== token || generationAtAdmission !== generation) {
+                  if (reserved === token) reserved = null;
+                  return Promise.reject(new KeyringRuntimeError('CANCELLED'));
+                }
+                used = true; reserved = null;
+                return run(async (captured) => {
+                  const guard = () => { current(captured); checkGuard(assertCurrent); current(captured); };
+                  guard();
+                  if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                  guard(); await hydrate(captured); guard();
+                  if (!catalogueSnapshot || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
+                  if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
+                    throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
+                  const index = catalogue.nextImportedIndex;
+                  const imported = checkedImported(await keyring.importAccount(request.privateKey, request.label), request.privateKey, index); guard();
+                  const walletFingerprint = await storage.getWalletFingerprint(); guard();
+                  const sealed = await encryptImportedKey(keyring, walletFingerprint, index, request.privateKey, guard); guard();
+                  const next = await catalogue.mutate(expectedRevision, { kind: 'import', index, address: sealed.identity.address,
+                    publicKey: sealed.identity.publicKey, label: request.label, envelope: sealed.envelope }, guard); guard();
+                  state.accounts.Imported[index] = imported;
+                  publishAccounts(next);
+                });
+              },
+            };
+          },
         };
         const accounts: NativeAccountRuntime = {
           supported: () => typeof keyring.deriveEvmHdRuntimeAccount === 'function',
@@ -315,14 +404,14 @@ export function createKeyringRuntimeFactory(
           },
         };
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
-        const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number }> => {
+        const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
           const guard = () => { current(captured); checkGuard(assertCurrent); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
           guard();
           const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
           const networkId = catalogueSnapshot!.active.networkId;
           const fingerprint = await storage.getWalletFingerprint(); guard();
-          return { scope: createActivityScope(fingerprint, selected.id, selected.address, networkId), guard, index: selected.index };
+          return { scope: createActivityScope(fingerprint, selected.id, selected.address, networkId), guard, index: selected.index, type: selected.type };
         };
         const checkActivityContext = async (scope: ActivityScope, assertCurrent: () => void) => {
           const context = await activityContext(assertCurrent);
@@ -358,6 +447,7 @@ export function createKeyringRuntimeFactory(
         };
         return {
           accounts,
+          imports,
           networks,
           tokens: {
             load: async (guard) => {
@@ -384,11 +474,11 @@ export function createKeyringRuntimeFactory(
                   const catalogue = catalogueSnapshot;
                   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
                   if (!keyring.isUnlocked() || !catalogue || !selected) throw new KeyringRuntimeError('NOT_READY');
-                  if (catalogue.revision !== scope.catalogueRevision || selected.type !== 'HDAccount' ||
+                  if (catalogue.revision !== scope.catalogueRevision || selected.type !== parseNativeAccountId(scope.accountId).type ||
                       selected.slip44 !== 60 || selected.id !== scope.accountId || selected.index !== scope.index ||
                       selected.address !== scope.address || catalogue.active.networkId !== scope.networkId ||
                       getNativeNetwork(catalogue.active.networkId).registrationHash !== scope.registrationHash ||
-                      state.activeAccount.id !== selected.index || state.activeAccount.type !== sdk.KeyringAccountType.HDAccount)
+                      state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
                 };
                 check();
@@ -398,7 +488,7 @@ export function createKeyringRuntimeFactory(
                 check();
                 await hydrate(captured); check();
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
-                const privateKey = await keyring.getPrivateKeyByAccountId(scope.index, sdk.KeyringAccountType.HDAccount, password);
+                const privateKey = await keyring.getPrivateKeyByAccountId(scope.index, parseNativeAccountId(scope.accountId).type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
                 check();
                 if (typeof privateKey !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(privateKey) ||
                     BigInt(privateKey) === 0n || BigInt(privateKey) >= 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n ||
@@ -435,16 +525,14 @@ export function createKeyringRuntimeFactory(
             }),
             async readEthereumAddress() {
               if (closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked()) throw new Error('NOT_READY');
-              const account = state.accounts.HDAccount[state.activeAccount.id];
-              if (!account) throw new Error('NOT_READY');
-              return normalizePublicAddress(account.address, 'ethereum');
+              return normalizePublicAddress(selectedAccount().address, 'ethereum');
             },
             lock,
           },
           activity: {
             async load(assertCurrent) {
-              const { scope, guard, index } = await activityContext(assertCurrent);
-              const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: scope.walletFingerprint, address: scope.address, chainId: scope.network.chainId }, guard, Date.now, index, scope.network, (record, check) => activityHistory.archiveTerminal(record, check));
+              const { scope, guard, index, type } = await activityContext(assertCurrent);
+              const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: scope.walletFingerprint, address: scope.address, chainId: scope.network.chainId }, guard, Date.now, index, scope.network, (record, check) => activityHistory.archiveTerminal(record, check), type);
               const local = await journal.activity(); guard();
               const saved = await activityHistory.load(scope, guard); guard();
               return { scope, local, saved };
@@ -475,12 +563,13 @@ export function createKeyringRuntimeFactory(
               if (!canSign()) throw new KeyringRuntimeError('NOT_READY');
               const captured = generation;
               current(captured); checkGuard(assertCurrent);
-              if (!keyring.isUnlocked() || !state.accounts.HDAccount[state.activeAccount.id]) throw new KeyringRuntimeError('CANCELLED');
+              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+              const selected = selectedAccount();
               const fingerprint = await storage.getWalletFingerprint();
               current(captured); checkGuard(assertCurrent);
-              const address = normalizePublicAddress(state.accounts.HDAccount[state.activeAccount.id]!.address, 'ethereum');
+              const address = normalizePublicAddress(selected.address, 'ethereum');
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
-              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, state.activeAccount.id, network, (record, guard) => activityHistory.archiveTerminal(record, guard));
+              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, selected.index, network, (record, guard) => activityHistory.archiveTerminal(record, guard), selected.type);
             },
             authorize: (password, assertCurrent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
@@ -519,7 +608,7 @@ export function createKeyringRuntimeFactory(
               if (network.id === 'zksys-testnet')
                 snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
-                account: { id: state.activeAccount.id, type: 'HDAccount', expectedAddress: transaction.from },
+                account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: transaction.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
                 transaction,
               }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });

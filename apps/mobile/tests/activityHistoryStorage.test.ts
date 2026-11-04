@@ -423,3 +423,19 @@ test('corrupt persisted history is preserved and never presented as a new empty 
     assert.deepEqual(await f.port.get(ACTIVITY_STORAGE_KEY), corrupt);
   } finally { await f.cleanup(); }
 });
+
+test('imported history retains its own identity across retirement and never appears in HD scope', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history();
+    await history.archiveTerminal(f.record(1), guard);
+    await history.archiveTerminal(f.record(2, { accountId: 'imported:60:0' }), guard);
+    assert.deepEqual((await history.load(f.scope(), guard)).archived.map((entry) => entry.hash), [entryHash(1)]);
+    const importedScope = createActivityScope(f.fingerprint, 'imported:60:0', wallet.address, 'ethereum');
+    assert.deepEqual((await history.load(importedScope, guard)).archived.map((entry) => entry.hash), [entryHash(2)]);
+    const reimportedScope = createActivityScope(f.fingerprint, 'imported:60:1', wallet.address, 'ethereum');
+    assert.deepEqual((await history.load(reimportedScope, guard)).archived, []);
+    await f.reopen();
+    assert.deepEqual((await f.history().load(importedScope, guard)).archived.map((entry) => entry.hash), [entryHash(2)]);
+  } finally { await f.cleanup(); }
+});

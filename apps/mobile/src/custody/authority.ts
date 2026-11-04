@@ -1,4 +1,5 @@
 import type { NativeAccountRequest } from './accounts.ts';
+import type { NativeImportRequest } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { CustodyRuntimeError } from './types.ts';
@@ -69,6 +70,14 @@ export class NativeCustodyAuthority {
     return this.manageContext((runtime) => {
       if (!runtime.accounts) throw new CustodyRuntimeError('NOT_READY');
       return runtime.accounts.reserve(request, expectedCatalogueRevision);
+    }, expectedRevision);
+  }
+
+  /** Private protected-form path; imported key material never enters account projections. */
+  importEvmAccount(input: NativeImportRequest, password: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    return this.manageContext((runtime) => {
+      if (!runtime.imports) throw new CustodyRuntimeError('NOT_READY');
+      return runtime.imports.reserve(input, password, expectedCatalogueRevision);
     }, expectedRevision);
   }
 

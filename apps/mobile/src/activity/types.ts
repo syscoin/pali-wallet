@@ -1,3 +1,4 @@
+import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
@@ -105,7 +106,7 @@ export function createActivityScope(
 ): ActivityScope {
   if (
     !/^[0-9a-f]{64}$/.test(walletFingerprint) ||
-    !/^hd:60:(0|[1-9][0-9]{0,3})$/.test(accountId)
+    !isNativeAccountId(accountId)
   )
     throw new ActivityError('INVALID');
   const network = getNativeNetwork(networkId);

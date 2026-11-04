@@ -234,3 +234,18 @@ test('context loss after acknowledged write quarantines until reload', async () 
     await f.cleanup();
   }
 });
+
+test('HD and imported token metadata never share an account scope or retired identity', async () => {
+  const f = await fixture();
+  try {
+    const registry = new NativeTokenRegistry(f.port), imported = { ...f.scope, accountId: 'imported:60:0' };
+    await registry.load(f.scope, current); await registry.add(f.scope, 0, token(1), current);
+    assert.deepEqual((await registry.load(imported, current)).items, []);
+    await registry.add(imported, 1, token(2), current);
+    assert.deepEqual((await registry.load(f.scope, current)).items, [token(1)]);
+    assert.deepEqual((await registry.load(imported, current)).items, [token(2)]);
+    assert.deepEqual((await registry.load({ ...imported, accountId: 'imported:60:1' }, current)).items, []);
+    await f.reopen();
+    assert.deepEqual((await new NativeTokenRegistry(f.port).load(imported, current)).items, [token(2)]);
+  } finally { await f.cleanup(); }
+});

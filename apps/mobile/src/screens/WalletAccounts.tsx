@@ -60,9 +60,9 @@ export function WalletAccounts(props: WalletAccountsProps) {
       </> : <>
         <Text style={styles.muted}>Recovery phrase accounts unlock through your wallet. Watch accounts can view balances and receive addresses only.</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
-          <Pressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind === 'hd' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
-            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : 'Watch-only · Public EVM address'}</Text>
+            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : 'Watch-only · Public EVM address'}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
           </Pressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
