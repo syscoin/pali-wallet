@@ -174,7 +174,9 @@ async function cancellationFixture() {
       return result;
     }
     signPreparedEvmTransaction(
-      ...args: Parameters<InstanceType<typeof sdk.SoftwareKeyring>['signPreparedEvmTransaction']>
+      ...args: Parameters<
+        InstanceType<typeof sdk.SoftwareKeyring>['signPreparedEvmTransaction']
+      >
     ) {
       signatures++;
       return super.signPreparedEvmTransaction(...args);
@@ -197,25 +199,65 @@ async function cancellationFixture() {
   });
   const authority = new NativeCustodyAuthority({
     async open() {
-      runtime = await base.open() as KeyringRuntime;
+      runtime = (await base.open()) as KeyringRuntime;
       return runtime;
     },
   });
   const broadcasts: string[] = [];
   let loseResponse = false;
+  const recovery = {
+    oversized: false,
+    repeated: false,
+    receiptReads: 0,
+    consumed: false,
+  };
   const rpc = new NativeTransferRpc({
     fetch: async (_url, init) => {
       const request = JSON.parse(String(init.body));
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
-      else if (request.method === 'eth_getTransactionCount') result = '0x0';
-      else if (request.method === 'eth_getBalance') result = '0x10000000000000000';
+      else if (request.method === 'eth_getTransactionCount') {
+        result =
+          recovery.oversized &&
+          (request.params[1] === 'pending' ||
+            recovery.consumed ||
+            (request.params[1] === 'finalized' && recovery.repeated))
+            ? '0x1'
+            : '0x0';
+      } else if (request.method === 'eth_getBalance')
+        result = '0x10000000000000000';
       else if (request.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (request.method === 'eth_estimateGas') result = '0x5208';
-      else if (request.method === 'eth_getTransactionReceipt') result = null;
-      else if (request.method === 'eth_sendRawTransaction') {
+      else if (request.method === 'eth_getTransactionReceipt') {
+        if (!recovery.oversized) result = null;
+        else {
+          recovery.receiptReads++;
+          const tx = Transaction.from(broadcasts[0]!);
+          result = {
+            transactionHash: tx.hash,
+            from: tx.from,
+            to: tx.to,
+            status: '0x1',
+            blockNumber: '0xa',
+            blockHash: '0x' + '8'.repeat(64),
+            ...(recovery.repeated && recovery.receiptReads % 2 === 1
+              ? {}
+              : {
+                  logs: [
+                    {
+                      address: tx.to,
+                      topics: [],
+                      data: '0x' + 'ab'.repeat(10_000),
+                    },
+                  ],
+                }),
+          };
+        }
+      } else if (request.method === 'eth_getBlockByNumber') {
+        result = { number: '0xb', hash: '0x' + '9'.repeat(64) };
+      } else if (request.method === 'eth_sendRawTransaction') {
         broadcasts.push(request.params[0]);
         if (loseResponse) throw Error('Lost acknowledgement');
         result = keccak256(request.params[0]);
@@ -226,7 +268,9 @@ async function cancellationFixture() {
       );
     },
   });
-  let transfers = new NativeTransfers(authority, () => runtime?.transfers, { rpc });
+  let transfers = new NativeTransfers(authority, () => runtime?.transfers, {
+    rpc,
+  });
   try {
     await authority.initialize();
     await authority.importPhrase(PHRASE, PASSWORD);
@@ -243,22 +287,38 @@ async function cancellationFixture() {
     authority,
     runtime,
     broadcasts,
-    get transfers() { return transfers; },
-    get signatures() { return signatures; },
-    loseResponse() { loseResponse = true; },
+    recovery,
+    get transfers() {
+      return transfers;
+    },
+    get signatures() {
+      return signatures;
+    },
+    loseResponse() {
+      loseResponse = true;
+    },
     hold(stage: 'password' | 'hydrate') {
       let entered!: () => void;
       let resume!: () => void;
-      const started = new Promise<void>((resolve) => { entered = resolve; });
-      const release = new Promise<void>((resolve) => { resume = resolve; });
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const release = new Promise<void>((resolve) => {
+        resume = resolve;
+      });
       gate = { stage, entered, release };
       return {
         started,
-        finish() { gate = null; resume(); },
+        finish() {
+          gate = null;
+          resume();
+        },
       };
     },
     replaceTransfers() {
-      transfers = new NativeTransfers(authority, () => runtime.transfers, { rpc });
+      transfers = new NativeTransfers(authority, () => runtime.transfers, {
+        rpc,
+      });
     },
     async readJournal() {
       return storage.keyringStorage.get('native-evm-transfer-v1');
@@ -273,7 +333,9 @@ async function cancellationFixture() {
 
 for (const stage of ['password', 'hydrate'] as const) {
   for (const retry of [false, true]) {
-    test(`cancelling ${retry ? 'retry authorization' : 'signing'} during ${stage} keeps real custody and SDK state aligned`, async () => {
+    test(`cancelling ${
+      retry ? 'retry authorization' : 'signing'
+    } during ${stage} keeps real custody and SDK state aligned`, async () => {
       const f = await cancellationFixture();
       let hold: ReturnType<typeof f.hold> | undefined;
       let pending: Promise<void> | undefined;
@@ -281,7 +343,10 @@ for (const stage of ['password', 'hydrate'] as const) {
         await f.transfers.prepare(RECIPIENT, '0.001');
         if (retry) {
           f.loseResponse();
-          await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+          await f.transfers.confirm(
+            f.transfers.getSnapshot().review!.id,
+            PASSWORD
+          );
           await f.transfers.recover(true);
         }
         const initialSignatures = f.signatures;
@@ -289,7 +354,10 @@ for (const stage of ['password', 'hydrate'] as const) {
         const journal = await f.readJournal();
         const revision = f.authority.getSnapshot().revision;
         hold = f.hold(stage);
-        pending = f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+        pending = f.transfers.confirm(
+          f.transfers.getSnapshot().review!.id,
+          PASSWORD
+        );
         const rejected = assert.rejects(pending, { code: 'CANCELLED' });
         await hold.started;
         // Dispose exercises the same revocation while removing the screen's
@@ -303,7 +371,10 @@ for (const stage of ['password', 'hydrate'] as const) {
         await rejected;
         pending = undefined;
         assert.equal(f.authority.getSnapshot().phase, 'locked');
-        await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+        await assert.rejects(
+          f.runtime.session.readEthereumAddress(),
+          /NOT_READY/
+        );
         assert.equal(f.signatures, initialSignatures);
         assert.equal(f.broadcasts.length, initialBroadcasts);
         assert.deepEqual(await f.readJournal(), journal);
@@ -313,7 +384,10 @@ for (const stage of ['password', 'hydrate'] as const) {
         if (retry && stage === 'hydrate') f.replaceTransfers();
         await f.transfers.recover(retry);
         if (!retry) await f.transfers.prepare(RECIPIENT, '0.001');
-        await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+        await f.transfers.confirm(
+          f.transfers.getSnapshot().review!.id,
+          PASSWORD
+        );
         assert.equal(f.signatures, initialSignatures + (retry ? 0 : 1));
         assert.equal(f.broadcasts.length, initialBroadcasts + 1);
         if (retry) assert.equal(f.broadcasts[0], f.broadcasts[1]);
@@ -324,4 +398,55 @@ for (const stage of ['password', 'hydrate'] as const) {
       }
     });
   }
+}
+
+for (const repeated of [false, true]) {
+  test(`${
+    repeated ? 'repeated' : 'initial'
+  } oversized receipt preserves real SDK journal bytes until finalized nonce consumption permits a higher nonce`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const pending = (await f.readJournal()) as {
+        phase: string;
+        hash: string;
+        rawTransaction: string;
+      };
+      assert.equal(pending.phase, 'submitted');
+      f.recovery.oversized = true;
+      f.recovery.repeated = repeated;
+      // A pending-state nonce alone must not release the saved transaction.
+      await assert.rejects(f.transfers.recover(true), { code: 'FAILED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.deepEqual(await f.readJournal(), pending);
+      await assert.rejects(f.transfers.prepare(RECIPIENT, '0.002'), {
+        code: 'PENDING_TRANSFER',
+      });
+      assert.equal(f.signatures, 1);
+      assert.equal(f.broadcasts.length, 1);
+      f.recovery.receiptReads = 0;
+      f.recovery.consumed = true;
+      await f.transfers.recover(true);
+      assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
+      assert.match(
+        f.transfers.getSnapshot().message!,
+        /result is unavailable/i
+      );
+      assert.equal(f.transfers.getSnapshot().review, null);
+      assert.deepEqual(await f.readJournal(), {
+        ...pending,
+        phase: 'nonce-consumed',
+      });
+      await f.transfers.prepare(RECIPIENT, '0.002');
+      assert.equal(f.transfers.getSnapshot().review!.nonce, '1');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      assert.equal(f.signatures, 2);
+      assert.equal(f.broadcasts.length, 2);
+      assert.equal(Transaction.from(f.broadcasts[1]!).nonce, 1);
+    } finally {
+      await f.close();
+    }
+  });
 }

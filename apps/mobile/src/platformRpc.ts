@@ -14,6 +14,23 @@ export const RPC_ENDPOINTS: Readonly<Partial<Record<NetworkId, string>>> =
   });
 
 const MAX_RESPONSE_BYTES = 16 * 1024;
+const ABSOLUTE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+
+/** A byte budget was exceeded; the response content and outcome remain unknown. */
+export class ResponseSizeLimitError extends Error {
+  constructor() {
+    super('Response exceeded the size limit');
+    this.name = 'ResponseSizeLimitError';
+  }
+}
+
+function cancelResponseBody(response: Response): void {
+  try {
+    void response.body?.cancel().catch(() => undefined);
+  } catch {
+    // Cancellation is best effort and must not replace the primary failure.
+  }
+}
 const REQUEST_TIMEOUT_MS = 12_000;
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
@@ -49,14 +66,26 @@ export function utf8ByteLength(value: string): number {
 
 export async function boundedResponseText(
   response: Response,
-  signal: AbortSignal
+  signal: AbortSignal,
+  maxBytes = MAX_RESPONSE_BYTES
 ): Promise<string> {
-  const lengthHeader = response.headers.get('content-length');
+  checkAborted(signal);
   if (
-    lengthHeader &&
-    (!/^\d+$/.test(lengthHeader) || Number(lengthHeader) > MAX_RESPONSE_BYTES)
-  ) {
-    throw new Error('Balance response exceeded the size limit');
+    !Number.isSafeInteger(maxBytes) ||
+    maxBytes < 1 ||
+    maxBytes > ABSOLUTE_MAX_RESPONSE_BYTES
+  )
+    throw new Error('Invalid response size limit');
+  const lengthHeader = response.headers.get('content-length');
+  if (lengthHeader !== null) {
+    if (!/^\d+$/.test(lengthHeader)) {
+      cancelResponseBody(response);
+      throw new Error('Invalid response content length');
+    }
+    if (Number(lengthHeader) > maxBytes) {
+      cancelResponseBody(response);
+      throw new ResponseSizeLimitError();
+    }
   }
   // Streaming fetch implementations can stop reading immediately at the limit.
   // Native fetch may buffer the HTTP body; the parsed response is still bounded.
@@ -70,22 +99,22 @@ export async function boundedResponseText(
         const chunk = await abortable(reader.read(), signal);
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
-        if (bytes > MAX_RESPONSE_BYTES)
-          throw new Error('Balance response exceeded the size limit');
+        if (bytes > maxBytes) throw new ResponseSizeLimitError();
         result += decoder.decode(chunk.value, { stream: true });
       }
       result += decoder.decode();
       return result;
     } finally {
-      void reader.cancel().catch(() => undefined);
+      try {
+        void reader.cancel().catch(() => undefined);
+      } catch {
+        // Preserve the read/decode/size failure if cancellation itself fails.
+      }
     }
   }
   const text = await abortable(response.text(), signal);
-  if (
-    text.length > MAX_RESPONSE_BYTES ||
-    utf8ByteLength(text) > MAX_RESPONSE_BYTES
-  ) {
-    throw new Error('Balance response exceeded the size limit');
+  if (text.length > maxBytes || utf8ByteLength(text) > maxBytes) {
+    throw new ResponseSizeLimitError();
   }
   return text;
 }

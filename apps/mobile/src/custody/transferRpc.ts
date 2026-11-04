@@ -6,6 +6,7 @@ import {
   boundedResponseText,
   parseRpcQuantity,
   RPC_ENDPOINTS,
+  ResponseSizeLimitError,
 } from '../platformRpc.ts';
 
 export type NativeTransferQuote = Readonly<{
@@ -55,7 +56,8 @@ type Method =
   | 'eth_maxPriorityFeePerGas'
   | 'eth_estimateGas'
   | 'eth_sendRawTransaction'
-  | 'eth_getTransactionReceipt';
+  | 'eth_getTransactionReceipt'
+  | 'eth_getBlockByNumber';
 const invalid = (): never => {
   throw new NativeTransferRpcError('INVALID_RESPONSE');
 };
@@ -158,7 +160,13 @@ export class NativeTransferRpc {
     )
       return invalid();
     const body = object(
-      JSON.parse(await boundedResponseText(response, signal))
+      JSON.parse(
+        await boundedResponseText(
+          response,
+          signal,
+          method === 'eth_getBlockByNumber' ? 512 * 1024 : undefined
+        )
+      )
     );
     if (
       body.jsonrpc !== '2.0' ||
@@ -172,6 +180,34 @@ export class NativeTransferRpc {
   private async checkChain(signal: AbortSignal): Promise<void> {
     if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== 1n)
       return invalid();
+  }
+  /** A receipt too large to inspect proves no outcome, even after inclusion. */
+  private async consumedAfterOversizedReceipt(
+    from: string,
+    nonce: bigint,
+    signal: AbortSignal
+  ): Promise<NativeTransferReceipt> {
+    const finalized = object(
+      await this.call('eth_getBlockByNumber', ['finalized', false], signal)
+    );
+    const number = parseRpcQuantity(finalized.number);
+    const hash = checkedHash(finalized.hash);
+    const tag = '0x' + number.toString(16);
+    const finalizedNonce = parseRpcQuantity(
+      await this.call('eth_getTransactionCount', [from, tag], signal)
+    );
+    const canonical = object(
+      await this.call('eth_getBlockByNumber', [tag, false], signal)
+    );
+    if (
+      parseRpcQuantity(canonical.number) !== number ||
+      checkedHash(canonical.hash) !== hash
+    )
+      return invalid();
+    await this.checkChain(signal);
+    if (finalizedNonce <= nonce)
+      throw new NativeTransferRpcError('UNAVAILABLE');
+    return Object.freeze({ status: 'nonce-consumed', finalized: true });
   }
   prepare(
     from: string,
@@ -306,11 +342,13 @@ export class NativeTransferRpc {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     return this.operation(signal, async (local) => {
       await this.checkChain(local);
-      const result = await this.call(
-        'eth_getTransactionReceipt',
-        [hash],
-        local
-      );
+      let result: unknown;
+      try {
+        result = await this.call('eth_getTransactionReceipt', [hash], local);
+      } catch (error) {
+        if (!(error instanceof ResponseSizeLimitError)) throw error;
+        return this.consumedAfterOversizedReceipt(from, nonce, local);
+      }
       if (result === null) {
         const finalizedNonce = parseRpcQuantity(
           await this.call('eth_getTransactionCount', [from, 'finalized'], local)
@@ -340,9 +378,15 @@ export class NativeTransferRpc {
         await this.call('eth_getTransactionCount', [from, 'finalized'], local)
       );
       if (finalizedNonce > nonce) {
-        const repeated = object(
-          await this.call('eth_getTransactionReceipt', [hash], local)
-        );
+        let repeated: Record<string, unknown>;
+        try {
+          repeated = object(
+            await this.call('eth_getTransactionReceipt', [hash], local)
+          );
+        } catch (error) {
+          if (!(error instanceof ResponseSizeLimitError)) throw error;
+          return this.consumedAfterOversizedReceipt(from, nonce, local);
+        }
         if (
           checkedHash(repeated.transactionHash) !== hash ||
           checkedHash(repeated.blockHash) !== blockHash ||
