@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useSyncExternalStore } from 'react';
 import {
   View,
   Pressable,
@@ -35,14 +35,17 @@ import {
 } from './src/ui';
 import { Welcome, AddWatchAccount } from './src/screens/Onboarding';
 import { NativeWalletScreen } from './src/screens/NativeWallet';
+import { WalletAccounts } from './src/screens/WalletAccounts';
+import { WatchAccountPortfolio } from './src/screens/WatchAccountPortfolio';
+import { WatchAccounts } from './src/core/watchAccounts';
+import type { AccountSelection } from './src/core/accountDirectory';
+import type { NativeWalletCatalogueSnapshot } from './src/custody/walletCatalogue';
 import { DesignStudio } from './src/design/Studio';
 import { SettingsScreen, InformationScreen } from './src/screens/Settings';
 import {
   WatchOnlyAuthority,
-  createEvmWatchAccount,
   getWatchNetworks,
   getNetwork,
-  normalizePublicAddress,
   formatBaseUnits,
   parseDecimalAmount,
 } from './src/core/index';
@@ -53,7 +56,9 @@ import type {
 } from './src/core/types';
 import {
   loadPublicAccounts,
-  savePublicAccounts,
+  compareAndSetPublicAccounts,
+  loadAccountSelection,
+  saveAccountSelection,
   balanceReader,
   isNativePersistence,
 } from './src/platform';
@@ -169,6 +174,7 @@ const blankSnapshot: PublicSnapshot = {
 type Route =
   | 'welcome'
   | 'native'
+  | 'accounts'
   | 'design'
   | 'add'
   | 'home'
@@ -187,6 +193,12 @@ type Route =
   | 'locked';
 type Sheet = 'send' | 'receive' | 'filter' | 'accounts';
 function AppContent() {
+  const [watchAccounts] = useState(() => new WatchAccounts({ load: loadPublicAccounts, compareAndSet: compareAndSetPublicAccounts }));
+  const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
+  const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
+  const [requestedHdId, setRequestedHdId] = useState<string | undefined>();
+  const lastSelection = useRef<AccountSelection | null>(null);
+  const [selectionError, setSelectionError] = useState('');
   const [requestedRoute, setRoute] = useState<Route>('welcome');
   const [preview, setPreview] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
@@ -213,9 +225,10 @@ function AppContent() {
   }, []);
   const [filter, setFilter] = useState<NetworkId | 'all'>('all');
   const [snapshot, setSnapshot] = useState(blankSnapshot);
+  const [watchAuthority, setWatchAuthority] = useState<WatchOnlyAuthority | null>(null);
   const route: Route =
     !preview &&
-    !['welcome', 'add', 'locked', 'design', 'native'].includes(requestedRoute) &&
+    !['welcome', 'add', 'locked', 'design', 'native', 'accounts'].includes(requestedRoute) &&
     snapshot.status !== 'ready'
       ? snapshot.accounts.length
         ? 'locked'
@@ -242,8 +255,25 @@ function AppContent() {
     navigationGeneration.current++;
     setRoute(next);
   };
-  const openWallet = () => {
+  const rememberSelection = (selection: AccountSelection | null) => {
+    if ((!selection && !lastSelection.current) || (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id)) return;
+    lastSelection.current = selection;
+    void saveAccountSelection(selection).then(() => setSelectionError('')).catch(() => {
+      if (selection && lastSelection.current?.kind === selection.kind && lastSelection.current.id === selection.id) lastSelection.current = null;
+      setSelectionError('Your last account choice could not be saved. Your accounts are unchanged.');
+    });
+  };
+  const openWallet = (id?: unknown) => {
+    const selectedId = typeof id === 'string' ? id : requestedHdId ?? catalogue?.active.accountId;
+    setRequestedHdId(selectedId);
+    if (selectedId) rememberSelection({ kind: 'hd', id: selectedId });
     authority.current?.lock(); setSheet(null); setPreview(false); go('native');
+  };
+  const openWatch = (selection: AccountSelection) => {
+    if (!foreground.current || selection.kind !== 'watch' || watchAccounts.getSnapshot().status !== 'ready' || !authority.current?.getSnapshot().accounts.some((account) => account.id === selection.id)) return;
+    authority.current.unlock(); authority.current.selectAccount(selection.id);
+    rememberSelection(selection); setPreview(false); setSheet(null); go('home');
+    void authority.current.refresh();
   };
   const announce = (message: string) => {
     setToast(message);
@@ -254,36 +284,41 @@ function AppContent() {
     removeListener.current?.();
     authority.current?.lock();
     const next = new WatchOnlyAuthority(accounts, balanceReader);
-    authority.current = next;
+    authority.current = next; setWatchAuthority(next);
     setSnapshot(next.getSnapshot());
     removeListener.current = next.subscribe(setSnapshot);
     return next;
   };
+  const loadAccounts = async () => {
+    await watchAccounts.load();
+    return connect(watchAccounts.getSnapshot().accounts);
+  };
   useEffect(() => {
     let active = true;
-    loadPublicAccounts()
-      .then((accounts) => {
-        if (active) {
-          connect(accounts);
-          if (accounts.length) go('locked');
-        }
-      })
-      .catch(() => {
-        if (active)
-          setStartupError(
-            'Your saved accounts could not be read. Nothing has been replaced. Try reopening Pali.'
-          );
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    void (async () => {
+      try {
+        const next = await watchAccounts.load().then(() => watchAccounts.getSnapshot());
+        if (!active) return;
+        connect(next.accounts);
+        try {
+          const saved = await loadAccountSelection();
+          if (!active) return;
+          lastSelection.current = saved;
+          if (saved?.kind === 'watch' && next.accounts.some((entry) => entry.id === saved.id)) {
+            // Restore only an advisory choice; the authority remains privacy-locked.
+            authority.current?.restoreSelection(saved.id);
+          }
+          if (saved?.kind === 'hd' && Platform.OS !== 'web') { setRequestedHdId(saved.id); go('native'); }
+          else if (next.accounts.length) go('locked');
+        } catch { if (active) { setSelectionError('Your last account choice could not be read. Your accounts are unchanged.'); if (next.accounts.length) go('locked'); } }
+      } catch (cause) { if (active) setStartupError(cause instanceof Error ? cause.message : 'Your saved accounts could not be read. Nothing has been replaced.'); }
+      finally { if (active) setLoading(false); }
+    })();
     return () => {
-      active = false;
-      removeListener.current?.();
-      authority.current?.lock();
+      active = false; removeListener.current?.(); authority.current?.lock();
       if (toastTimer.current) clearTimeout(toastTimer.current);
     };
-  }, []);
+  }, [watchAccounts]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       foreground.current = state === 'active';
@@ -300,7 +335,7 @@ function AppContent() {
     return () => sub.remove();
   }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
-    if (route === 'design' || route === 'native' || Platform.OS === 'web') return;
+    if (route === 'design' || route === 'native' || route === 'accounts' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);
@@ -365,44 +400,44 @@ function AppContent() {
     setFilter('all');
     setSelected(sampleAssets[0]!);
   };
-  const addAccount = async ({
-    name,
-    address,
-  }: {
-    name: string;
-    address: string;
-  }) => {
-    if (addingAccount.current)
-      throw new Error('Another account is still saving. Please wait.');
-    addingAccount.current = true;
-    try {
-      const startNavigation = navigationGeneration.current;
-      const startLifecycle = lifecycleGeneration.current;
-      const normalized = normalizePublicAddress(address, 'ethereum');
-      const accounts = authority.current?.getSnapshot().accounts ?? [];
-      if (accounts.some((a) => a.addresses.ethereum === normalized))
-        throw new Error('This address is already in Pali.');
-      const newAccount = createEvmWatchAccount(
-        `watch_${Date.now()}`, name.trim(), normalized
-      );
-      await savePublicAccounts([...accounts, newAccount]);
-      const next = connect([...accounts, newAccount]);
-      if (
-        !foreground.current ||
-        startNavigation !== navigationGeneration.current ||
-        startLifecycle !== lifecycleGeneration.current
-      ) {
-        return;
-      }
-      next.unlock();
-      next.selectAccount(newAccount.id);
-      setPreview(false);
-      go('home');
-      void next.refresh().catch(() => undefined);
-    } finally {
-      addingAccount.current = false;
+  const changeWatch = async (change: Parameters<WatchAccounts['change']>[0]) => {
+    const selectedId = authority.current?.getSnapshot().selectedAccountId;
+    const selectedNetwork = authority.current?.getSnapshot().selectedNetworkId;
+    const wasReady = authority.current?.getSnapshot().status === 'ready';
+    const navigation = navigationGeneration.current;
+    const lifecycle = lifecycleGeneration.current;
+    let accounts: readonly PublicAccount[];
+    try { accounts = await watchAccounts.change(change); }
+    catch (cause) {
+      if (watchAccounts.getSnapshot().status === 'unavailable') setStartupError('The watch account change could not be verified. Reopen your saved accounts before continuing. Nothing has been replaced.');
+      throw cause;
     }
+    const next = connect(accounts);
+    if (lastSelection.current?.kind === 'watch' && !accounts.some((entry) => entry.id === lastSelection.current?.id))
+      rememberSelection(accounts[0] ? { kind: 'watch', id: accounts[0].id } : null);
+    if (wasReady && accounts.length && foreground.current && navigation === navigationGeneration.current && lifecycle === lifecycleGeneration.current) {
+      next.unlock();
+      if (selectedId && accounts.some((entry) => entry.id === selectedId)) next.selectAccount(selectedId);
+      if (selectedNetwork && next.getSnapshot().accounts.find((entry) => entry.id === next.getSnapshot().selectedAccountId)?.addresses[selectedNetwork]) next.selectNetwork(selectedNetwork);
+      void next.refresh();
+    }
+    return next;
   };
+  const addAccount = async ({ name, address }: { name: string; address: string }) => {
+    if (addingAccount.current) throw new Error('Another account is still saving. Please wait.');
+    addingAccount.current = true;
+    const startNavigation = navigationGeneration.current;
+    const startLifecycle = lifecycleGeneration.current;
+    try {
+      // IDs are local to the watch store. Authority routing always also checks kind.
+      const id = `watch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      await changeWatch({ kind: 'add', id, name, address });
+      if (!foreground.current || startNavigation !== navigationGeneration.current || startLifecycle !== lifecycleGeneration.current) return;
+      openWatch({ kind: 'watch', id });
+    } finally { addingAccount.current = false; }
+  };
+  const renameWatch = async (id: string, name: string) => { await changeWatch({ kind: 'rename', id, name }); };
+  const removeWatch = async (id: string) => { await changeWatch({ kind: 'remove', id }); };
   const chooseAsset = (asset: Asset, action: 'send' | 'receive' | 'filter') => {
     setSheet(null);
     if (action === 'filter') {
@@ -459,7 +494,15 @@ function AppContent() {
   const navigateInfo = (s: string) => go(s as Route);
   const back = () => go('home');
   if (route === 'design') return <DesignStudio onExit={exit} />;
-  if (route === 'native') return <NativeWalletScreen onExit={exit} />;
+  const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); } };
+  const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection({ kind: 'hd', id }); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
+    active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
+    onSelect={(selection) => { if (selection.kind === 'hd') openWallet(selection.id); else openWatch(selection); }}
+    onBack={() => go(snapshot.status === 'ready' ? 'home' : snapshot.accounts.length ? 'locked' : 'welcome')}
+    onOpenWallet={Platform.OS !== 'web' ? () => openWallet() : undefined} />{selectionNotice}</>;
+  if (!preview && route === 'home' && watchAuthority && !startupError) return <><WatchAccountPortfolio key={snapshot.selectedAccountId} authority={watchAuthority} onAccounts={() => go('accounts')} onExit={exit} onLock={exit} />{selectionNotice}</>;
   let content: React.ReactNode;
   if (loading)
     content = (
@@ -477,10 +520,9 @@ function AppContent() {
             onPress={() => {
               setStartupError('');
               setLoading(true);
-              loadPublicAccounts()
-                .then((a) => {
-                  connect(a);
-                  go(a.length ? 'locked' : 'welcome');
+              loadAccounts()
+                .then((next) => {
+                  go(next.getSnapshot().accounts.length ? 'locked' : 'welcome');
                 })
                 .catch(() =>
                   setStartupError(
@@ -534,16 +576,10 @@ function AppContent() {
               title="View my accounts"
               icon="eye"
               onPress={() => {
-                authority.current?.unlock();
-                go('home');
-                void authority.current?.refresh().catch(() => undefined);
+                if (snapshot.selectedAccountId) openWatch({ kind: 'watch', id: snapshot.selectedAccountId });
               }}
             />
-            <Button
-              title="Explore the design"
-              variant="quiet"
-              onPress={startPreview}
-            />
+            <Button title="Accounts" variant="secondary" onPress={() => go('accounts')} />
             {Platform.OS !== 'web' && <Button title="Open wallet" variant="secondary" onPress={openWallet} />}
           </>
         }
@@ -558,7 +594,7 @@ function AppContent() {
           </Text>
           <Notice
             title="Privacy screen"
-            body="No keys are stored. Viewing public accounts does not require wallet authentication."
+            body="Watch-only accounts do not store signing keys. Viewing them does not unlock your wallet."
           />
         </View>
       </Screen>

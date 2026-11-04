@@ -68,8 +68,8 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
     .fill('0x000000000000000000000000000000000000dEaD');
   await page.getByRole('button', { name: 'Add watch-only account' }).click();
   await expect(
-    page.getByRole('button', { name: 'Send unavailable' })
-  ).toBeDisabled();
+    page.getByRole('button', { name: 'Send', exact: true })
+  ).toHaveCount(0);
   await expect(page.getByText('0.0', { exact: true }).first()).toBeVisible();
   expect(calls).toEqual(['eth_chainId', 'eth_getBalance']);
   expect(
@@ -108,14 +108,14 @@ test('a new watch-only address can switch across every offered EVM network', asy
   await page.getByRole('button', { name: 'Watch an address' }).click();
   await page.getByRole('textbox', { name: 'Public EVM address' }).fill('0x000000000000000000000000000000000000dEaD');
   await page.getByRole('button', { name: 'Add watch-only account' }).click();
-  await expect(page.getByText('ETH · On-chain balance')).toBeVisible();
+  await expect(page.getByLabel('Ethereum balance 0.0 ETH', { exact: true })).toBeVisible();
   let selected = 'Ethereum';
   for (const network of networks) {
-    await page.getByRole('button', { name: selected, exact: true }).click();
-    await page.getByRole('button', { name: `Choose ${network.name} on ${network.name}`, exact: true }).click();
-    await expect(page.getByRole('button', { name: network.name, exact: true })).toBeVisible({ timeout: 5000 });
+    await page.getByRole('button', { name: `Network ${selected}`, exact: true }).click();
+    await page.getByRole('button').filter({ has: page.getByText(network.name, { exact: true }) }).click();
+    await expect(page.getByRole('button', { name: `Network ${network.name}`, exact: true })).toBeVisible({ timeout: 5000 });
     await expect.poll(() => calls.filter((call) => call.chain === network.chain && call.method === 'eth_getBalance').length).toBeGreaterThan(0);
-    await expect(page.getByRole('button', { name: 'Send unavailable' })).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
     selected = network.name;
   }
   expect(errors).toEqual([]);

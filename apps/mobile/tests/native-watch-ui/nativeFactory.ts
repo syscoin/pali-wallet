@@ -1,0 +1,144 @@
+// Actual custody/transfer controllers, with deterministic in-memory runtime ports.
+import { NativeCustodyAuthority } from '../../src/custody/authority';
+import { SeedBackupFlow } from '../../src/custody/seedBackup';
+import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyringRuntime';
+import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
+import { NativeTransferRpc } from '../../src/custody/transferRpc';
+import { NativeTransferJournal } from '../../src/custody/transferJournal';
+import { NativeActivity } from '../../src/activity/nativeActivity';
+import { NativeTokens } from '../../src/portfolio/nativeTokens';
+import type { NativeAccountView } from '../../src/custody/accounts';
+import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
+import type { CustodyRuntime } from '../../src/custody/types';
+import type { KeyringStoragePort } from '../../src/storage/types';
+import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
+import { ADDRESS, SECOND, audit, events, unlockGate, signGate } from './state';
+
+const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
+let backupConfirmed = !needsInitialBackup;
+const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
+const fingerprint = '1'.repeat(64);
+
+let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
+  revision: 0, removed: [], networks: NATIVE_NETWORKS,
+  active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+  accounts: [
+    { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
+    ...(needsInitialBackup ? [] : [{ id: 'hd:60:1', type: 'HDAccount' as const, index: 1, slip44: 60 as const, label: 'Account 2', address: SECOND }]),
+  ],
+});
+export let latestAuthority: NativeCustodyAuthority | null = null;
+export let latestTransfers: NativeTransfers | null = null;
+export const retiredAuthorities: NativeCustodyAuthority[] = [];
+let sessionUnlocked = false;
+const stored: Record<string, unknown> = {};
+const store: KeyringStoragePort = {
+  async get(key) { return stored[key] === undefined ? undefined : structuredClone(stored[key]); },
+  async set(key, value) { stored[key] = structuredClone(value); },
+  async deleteItem() { throw Error('Fixture never deletes a journal'); },
+  async createManyIfAbsent(values) { if (Object.keys(values).some((key) => key in stored)) return false; Object.assign(stored, structuredClone(values)); return true; },
+  async compareAndSet(key, expected, value) { if (JSON.stringify(stored[key]) !== JSON.stringify(expected)) return false; stored[key] = structuredClone(value); return true; },
+};
+export function createNativeWalletControllers() {
+  const runtime: CustodyRuntime = {
+    accounts: {
+      supported: () => true,
+      getSnapshot: () => catalogue,
+      reserve(request, expectedRevision) {
+        if (expectedRevision !== catalogue.revision) throw Error('CANCELLED');
+        return {
+          cancel() {},
+          async execute(guard) {
+            guard();
+            let account: NativeWalletCatalogueSnapshot['accounts'][number] | undefined;
+            if (request.kind === 'create') {
+              if (request.password !== 'public-password' || catalogue.accounts.length > 2) throw Error('Invalid synthetic account creation');
+              // Public fixture only: exercise real account-management UI without deriving a key.
+              const index = catalogue.accounts.length;
+              account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label, address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
+              catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account] });
+            } else if (request.kind === 'select') {
+              account = catalogue.accounts.find((candidate) => candidate.id === request.id);
+            } else throw Error('This fixture only selects or creates HD accounts');
+            if (!account) throw Error('Unknown fixture HD account');
+            catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId: account.id } });
+            guard();
+          },
+        };
+      },
+    },
+    session: {
+      async createWallet() { throw Error('Fixture cannot create real wallets'); },
+      async importWallet() { throw Error('Fixture cannot import real wallets'); },
+      async unlock(password) {
+        audit.unlocks++; events.push('unlock:start');
+        await unlockGate();
+        sessionUnlocked = password === 'public-password';
+        events.push('unlock:finish');
+        return { authenticated: sessionUnlocked };
+      },
+      async readEthereumAddress() {
+        if (!sessionUnlocked) throw Error('Locked fixture session');
+        return catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.address;
+      },
+      async lock() { sessionUnlocked = false; events.push('lock'); },
+    },
+    storage: {
+      async readState() { return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' }; },
+      async close() { audit.closed++; events.push('close'); },
+    },
+  };
+  const authority = new NativeCustodyAuthority({ open: async () => runtime });
+  latestAuthority = authority;
+  retiredAuthorities.push(authority);
+  const transferRuntime: NativeTransferRuntime = {
+    async journal(guard) { guard(); return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: ADDRESS, chainId: '1' }, guard); },
+    async authorize(_password, guard) { guard(); },
+    async sign(_transaction, _password, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+  };
+  const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ fetch: fixtureFetch }) });
+  latestTransfers = transfers;
+  const tokens = new NativeTokens(authority, () => undefined);
+  const activity = new NativeActivity(authority, () => undefined);
+  const accounts: NativeAccountView = {
+    getSnapshot: () => authority.getCatalogue(), getContextRevision: () => authority.getSnapshot().revision,
+    subscribe: (listener) => authority.subscribe(() => listener()),
+    execute: (...args) => authority.manageAccounts(...args), cancel: () => authority.cancelAccountOperation(),
+  };
+  const backupRuntime: KeyringRuntime['backup'] = {
+    async readPhrase(password) {
+      if (!sessionUnlocked) throw Error('Locked fixture session');
+      if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+      return publicBackupWords;
+    },
+    async fingerprint() {
+      if (!sessionUnlocked) throw Error('Locked fixture session');
+      return fingerprint;
+    },
+    async confirm(expected) {
+      if (!sessionUnlocked || expected !== fingerprint) throw Error('Invalid fixture backup confirmation');
+      backupConfirmed = true; events.push('backup:confirmed');
+    },
+  };
+  const backup = new SeedBackupFlow(authority, () => backupRuntime);
+  backup.onClear(() => events.push('backup:cancel'));
+  return { authority, transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+}
+export const fixtureFetch: typeof fetch = async (_url, init) => {
+  const request = JSON.parse(String(init?.body));
+  let result: unknown;
+  switch (request.method) {
+    case 'eth_chainId': result = '0x1'; break;
+    case 'eth_getBalance': result = '0x10000000000000000'; break;
+    case 'eth_getTransactionCount': result = '0x0'; break;
+    case 'eth_getBlockByNumber': result = { number: '0x20', hash: '0x' + '2'.repeat(64) }; break;
+    case 'eth_feeHistory': result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] }; break;
+    case 'eth_maxPriorityFeePerGas': result = '0x1'; break;
+    case 'eth_estimateGas': result = '0x5208'; break;
+    case 'eth_getTransactionReceipt': result = null; break;
+    case 'eth_sendRawTransaction': audit.broadcasts++; throw Error('Fixture forbids broadcast');
+    default: throw Error(`Unhandled synthetic RPC ${request.method}`);
+  }
+  return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'Content-Type': 'application/json' } });
+};
