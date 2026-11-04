@@ -15,6 +15,7 @@ const require = createRequire(import.meta.url);
 const requireBabel = createRequire(require.resolve('babel-preset-expo'));
 const babel = requireBabel('@babel/core') as { transformSync(source: string, options: object): { code: string } };
 type Element = { type: unknown; props: Record<string, unknown>; children: unknown[] };
+type BackApi = { addEventListener(name: string, handler: () => boolean): { remove(): void } };
 type Component = (props: Record<string, unknown>) => Element;
 type Cell = { value?: unknown; deps?: readonly unknown[]; cleanup?: () => void };
 type Instance = { cells: Cell[]; next: number; effects: (() => void)[]; layouts: (() => void)[] };
@@ -41,7 +42,7 @@ function backHandler() {
     '../EventEmitter/RCTDeviceEventEmitter': { addListener(name: string, callback: () => void) { assert.equal(name, 'hardwareBackPress'); dispatch = callback; } },
     './HardwareBackPressEvent': { HardwareBackPressEvent: class {} },
   }, true);
-  return { api: loaded.default, dispatch: () => dispatch(), defaults: () => defaultCalls };
+  return { api: loaded.default as BackApi, dispatch: () => dispatch(), defaults: () => defaultCalls };
 }
 function renderer() {
   let current: Instance;
@@ -96,10 +97,18 @@ function named(tree: Element, text: string) {
 
 async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-first') {
   const back = backHandler(); const render = renderer();
+  let registrationOwner: 'parent' | 'child' = 'parent';
+  const registrations: { owner: 'parent' | 'child'; name: string; handler: () => boolean; actual: { remove(): void }; removed: boolean }[] = [];
+  const observedBack = { ...back.api, addEventListener(name: string, handler: () => boolean) {
+    const registration = { owner: registrationOwner, name, handler,
+      actual: back.api.addEventListener(name, handler), removed: false };
+    registrations.push(registration);
+    return { remove() { registration.removed = true; registration.actual.remove(); } };
+  } };
   const parent = render.instance(); const child = render.instance();
   const ui = Object.fromEntries(['Icon', 'PaliMark', 'Button', 'Card', 'Header', 'Notice', 'Screen', 'Text', 'Row', 'Label', 'Coin'].map((name) => [name, name]));
   Object.assign(ui, { colors: {}, styles: {} });
-  const native = { Platform: { OS: 'android' }, BackHandler: back.api,
+  const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
     AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
     AccessibilityInfo: { isReduceMotionEnabled: async () => false, addEventListener: () => ({ remove() {} }) },
     StyleSheet: { create: (value: unknown) => value }, Share: {},
@@ -143,7 +152,20 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   let saves = 0;
   const childProps = { ...nested.props, onAdd: () => { saves++; return new Promise<void>((_resolve, reject) => { finish = reject; }); } };
   let childTree = render.render(child, AddWatch, childProps);
-  for (const owner of order === 'parent-first' ? [parent, child] : [child, parent]) render.flush(owner);
+  for (const owner of order === 'parent-first' ? [parent, child] : [child, parent]) {
+    registrationOwner = owner === parent ? 'parent' : 'child'; render.flush(owner);
+  }
+  // A mounted Accounts parent naturally registers before its new Add child.
+  // Remove and reinstall actual RN handlers to exercise the opposite order too.
+  const activeRegistrations = registrations.filter((registration) => !registration.removed);
+  assert.deepEqual(activeRegistrations.map((r) => r.owner).sort(), path === 'accounts' ? ['child', 'parent'] : ['child']);
+  for (const registration of activeRegistrations) registration.actual.remove();
+  activeRegistrations.sort((a, b) => order === 'parent-first'
+    ? (a.owner === 'parent' ? -1 : 1) - (b.owner === 'parent' ? -1 : 1)
+    : (a.owner === 'child' ? -1 : 1) - (b.owner === 'child' ? -1 : 1));
+  for (const registration of activeRegistrations) registration.actual = back.api.addEventListener(registration.name, registration.handler);
+  assert.deepEqual(activeRegistrations.map((r) => r.owner), path === 'accounts'
+    ? (order === 'parent-first' ? ['parent', 'child'] : ['child', 'parent']) : ['child']);
   const update = () => {
     parentTree = render.render(parent, parentComponent, parentProps); childTree = render.render(child, AddWatch, childProps);
     render.flush(parent); render.flush(child); return childTree;
@@ -157,7 +179,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     assert.ok(find(childTree, (element) => element.children.includes('Check your watch account')));
   };
   return { back, review, update, isOpen, tree: () => childTree, saves: () => saves, finish: () => finish(new Error('Synthetic save failure')), exited: () => exited,
-    dispose() { render.dispose(child); render.dispose(parent); },
+    dispose() { render.dispose(child); render.dispose(parent); back.dispatch(); assert.equal(back.defaults(), 1, 'Every handler must be removed on unmount'); },
   };
 }
 
@@ -179,6 +201,10 @@ for (const path of ['app', 'accounts'] as const) {
       const screen = await fixture(path, order);
       try {
         screen.review(); press(named(screen.tree(), 'Confirm watch account'));
+        // Exercise both event sources before React has rerendered disabled controls.
+        press(control(screen.tree(), 'Back'));
+        press(named(screen.tree(), 'Confirm watch account'));
+        assert.equal(screen.saves(), 1);
         // The synchronous guard must cover the window before submitting renders.
         screen.back.dispatch(); assert.equal(screen.isOpen(), true);
         const pending = screen.update(); assert.equal(control(pending, 'Back').props.disabled, true);
