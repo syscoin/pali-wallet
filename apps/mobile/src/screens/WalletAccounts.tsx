@@ -58,7 +58,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
         <Text selectable style={s.address}>{form.address}</Text>
         {form.kind === 'rename' && <><Text style={styles.muted}>Account name</Text><TextInput accessibilityLabel="Watch account name" value={name} onChangeText={setName} editable={!busy} maxLength={40} autoCorrect={false} style={s.input} /></>}
       </> : <>
-        <Text style={styles.muted}>Recovery phrase accounts unlock through your wallet. Watch accounts can view balances and receive addresses only.</Text>
+        <Text style={styles.muted}>Wallet accounts unlock through your wallet. Imported keys need separate backups. Watch accounts can view balances and receive addresses only.</Text>
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
@@ -70,7 +70,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
             <Button title={`Remove ${entry.name}`} variant="quiet" disabled={!canManageWatch} onPress={() => { setForm({ kind: 'remove', id: entry.selection.id, name: entry.name, address: entry.address }); setError(''); }} />
           </View>}
         </Card>)}
-        {props.onManageHd && <Button title="Manage recovery phrase accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}
+        {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}
         {props.onOpenWallet && <Button title="Open wallet" variant="secondary" disabled={busy} onPress={props.onOpenWallet} />}
         <Button title="Watch an address" disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
         <Text style={s.kind}>EVM public addresses only. Extended public keys and output descriptors are not supported.</Text>

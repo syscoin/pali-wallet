@@ -3,8 +3,8 @@ import React from 'react';
 import { registerRootComponent } from 'expo';
 import { AppState, Platform } from 'react-native';
 import App from '../../App';
-import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch } from './nativeFactory';
-import { audit, events, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure } from './state';
+import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue } from './nativeFactory';
+import { audit, events, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 
 Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
 let appState = 'active';
@@ -33,6 +33,10 @@ declare global {
       delayKeyRead(value: boolean): void;
       releaseKeyRead(): void;
       keyFailure(code: 'AUTH_THROTTLED' | null): void;
+      delayImport(value: boolean): void;
+      releaseImport(): void;
+      importFailure(code: 'AUTH_THROTTLED' | null): void;
+      catalogue(): ReturnType<typeof fixtureCatalogue>;
       selectAccount(id: string): Promise<void>;
       nativePhase(): string | null;
       oldPhases(): string[];
@@ -48,6 +52,7 @@ window.__watchFixture = {
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
   delayKeyRead: setDelayKeyRead, releaseKeyRead, keyFailure: setKeyFailure,
+  delayImport: setDelayImport, releaseImport, importFailure: setImportFailure, catalogue: fixtureCatalogue,
   async selectAccount(id) { await latestAuthority!.manageAccounts({ kind: 'select', id }, latestAuthority!.getSnapshot().revision, latestAuthority!.getCatalogue()!.revision); },
   nativePhase: () => latestAuthority?.getSnapshot().phase ?? null,
   oldPhases: () => retiredAuthorities.map((authority) => authority.getSnapshot().phase),

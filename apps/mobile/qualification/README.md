@@ -305,3 +305,9 @@ fresh build of the same approved source. Never capture recovery words or copy
 them to the clipboard as test evidence. Actual live testnet transfers require a
 reviewed supported signing-network configuration; changing a mainnet endpoint
 is not an acceptable substitute.
+
+## Imported EVM accounts (unmerged candidate)
+
+The offline qualification entry creates and retires public fixture Imported ordinal 0, imports a different public fixture at ordinal 1, and uses the actual native authority, SDK private-record AEAD storage, selected-key reveal and NativeTransfers controller. It writes attempted journals on Ethereum, NEVM testnet and zkSYS using injected bounded RPC responses. A cold restart rehydrates the same imported key and retries only the saved signed bytes: three authorizations, no new signatures. All HD0–4 journal bytes and the original SDK vault pair/fingerprint are checked before and after; HD1/Ethereum is restored at the end.
+
+Strict report fields contain only the imported account identity, three chain IDs and transaction hashes, counters and verification flags. They never contain the key, seed, envelope, ciphertext, profile ID or a key hash. Android and physical-iOS runners require this evidence and compare every chain across restart. Simulator storage-refusal evidence still cannot claim custody or imported-account success. Node tests and JavaScript exports do not establish native execution, screen privacy or live transactions. Do not fund these public fixture keys. The RPC is injected, and the harness makes no real balance request or network broadcast.

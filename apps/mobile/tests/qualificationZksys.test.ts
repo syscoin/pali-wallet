@@ -1,3 +1,4 @@
+import { qualifyNativeImportedEvm, matchesImportedRestartEvidence, isImportedQualificationReport } from '../qualification/imported-evm.ts';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
@@ -290,6 +291,7 @@ for (const scenario of ['import', 'generate'] as const) {
         const keyReveal = await qualifyNativeHdKeyReveal({ ...options(), expectedAddress: hd.address });
         assert.deepEqual(keyReveal, { nativeHdKeyRevealVerified: true });
         assert(JSON.stringify([...disk.records]) === beforeKeyReveal, 'Key reveal must preserve all stored records');
+        const imported = await qualifyNativeImportedEvm({ ...options(), phase: 'create' });
         const firstReport = {
           status: 'passed',
           phase: 'create',
@@ -301,8 +303,10 @@ for (const scenario of ['import', 'generate'] as const) {
           ...nevm,
           ...created,
           ...keyReveal,
+          ...imported,
         };
         assert(isZksysQualificationReport(firstReport));
+        assert(isImportedQualificationReport(firstReport));
         assert(!JSON.stringify(firstReport).includes(words.join(' ')));
         assert(!JSON.stringify(firstReport).includes(PASSWORD));
         assert(
@@ -408,6 +412,8 @@ for (const scenario of ['import', 'generate'] as const) {
             ...restored,
           })
         );
+        const importedAgain = await qualifyNativeImportedEvm({ ...options(), phase: 'restart', runtime: noSignRuntime });
+        assert(matchesImportedRestartEvidence(firstReport, { status: 'passed', phase: 'restart', scenario, networkCalls, fingerprint, ...importedAgain }));
         assert.equal(networkCalls, 0);
       } finally {
         await authority.dispose().catch(() => undefined);

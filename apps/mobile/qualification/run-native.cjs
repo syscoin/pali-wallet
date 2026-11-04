@@ -1,3 +1,4 @@
+const { matchesImportedRestartEvidence } = require('./imported-evm.ts');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -275,7 +276,8 @@ async function ios() {
         !matchesErc20RestartEvidence(created, restored) ||
         !matchesNevmRestartEvidence(created, restored) ||
         !matchesZksysRestartEvidence(created, restored) ||
-        !matchesHdKeyRevealRestartEvidence(created, restored)
+        !matchesHdKeyRevealRestartEvidence(created, restored) ||
+        !matchesImportedRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -295,6 +297,7 @@ async function ios() {
         erc20TransferRestored: true,
         nevmTransferRestored: true,
         zksysTransferRestored: true,
+        importedAccountRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
@@ -457,7 +460,8 @@ async function android() {
         !matchesErc20RestartEvidence(created, restored) ||
         !matchesNevmRestartEvidence(created, restored) ||
         !matchesZksysRestartEvidence(created, restored) ||
-        !matchesHdKeyRevealRestartEvidence(created, restored)
+        !matchesHdKeyRevealRestartEvidence(created, restored) ||
+        !matchesImportedRestartEvidence(created, restored)
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
@@ -484,6 +488,7 @@ async function android() {
         erc20TransferRestored: true,
         nevmTransferRestored: true,
         zksysTransferRestored: true,
+        importedAccountRestored: true,
         journalContainerVersion: 2,
       });
     } finally {
