@@ -130,7 +130,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -218,6 +218,7 @@ test('the real iOS runner launches the isolated app directly with its public arg
 function reportWaitFixture() {
   const { runInNewContext } = require('node:vm');
   const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
+  const { isHdQualificationReport } = require('./hd-accounts.ts');
   const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const start = source.indexOf('const validateReport =');
@@ -225,12 +226,12 @@ function reportWaitFixture() {
   let now = 0;
   const saved = [];
   const { waitReport: wait, validateReport: validate } = runInNewContext(source.slice(start, end) + '\n({ waitReport, validateReport });', {
-    isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync(_file, text) { saved.push(JSON.parse(text)); } }, path: { join: () => 'unused' }, output: 'unused',
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' } });
   return { wait, validate, saved, report, now: () => now };
 }
@@ -242,12 +243,13 @@ test('the actual report parser preserves producer storage evidence and rejects u
   const ready = createStorageQualificationDiagnostic();
   ready.observe('ready');
   const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: '2.0.0',
-    osVersion: '26.5', sessionId: 'public-session', address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94', checks: [] };
+    osVersion: '26.5', sessionId: 'public-session', address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', checks: [] };
   assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').status, 'passed');
   const failed = createStorageQualificationDiagnostic();
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));
   const failure = { ...passed, status: 'failed', failedStage: 'open SQLCipher and device key', storageDiagnostic: failed.report() };
+  for (const key of ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'journalContainerVersion', 'firstTransferHash']) delete failure[key];
   assert.throws(() => fixture.validate(JSON.stringify(failure), 'create', 'import'), /sqlcipher-journal-readback/);
   assert.deepEqual(fixture.saved.at(-1).storageDiagnostic, failed.report());
   const beforeOpen = { ...failure, failedStage: 'native crypto bridge and full vectors', storageDiagnostic: {} };

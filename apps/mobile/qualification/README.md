@@ -24,10 +24,21 @@ leaves the database open. The runner terminates that OS process and relaunches
 the same installed app/data. A changed native session ID, matching public address
 and matching encrypted-vault fingerprint establish the tested cold restart.
 
+After the first account's offline signature, full qualification creates HD index
+1 through the real SDK, verifies active/first-account removal refusal, selects
+index 0, removes index 1 before it has a journal, and restores index 1 to the
+independently derived address. Both accounts retain real `attempted` transactions
+in separate version-2 journal containers. Pending-journal removal must fail and
+lock custody; no terminal receipt is fabricated. The restarted process must
+already select index 1, recover both containers and signatures, and finish on
+index 1. Reports contain only public identities, hashes and fixed success/version
+fields, never seed words or serialized transaction bytes. Imported fixtures use
+a fixed public expected address; generated wallets derive their own expectation.
+
 The full native crypto fixture runs through the actual bridge on each launch,
 including unchanged 20k/900k KDF profiles and authentication-error classification.
 JavaScript fetch/XHR/WebSocket requests are blocked. A fixed public-fixture Ethereum transaction is signed and journaled without broadcasting. Its hash and signed identity must survive the process restart. No RPC or broadcast is allowed. Reports contain case names/timings, public account identity,
-opaque fingerprint, signed-transaction hash and OS/build hashes; phrases, passwords, keys and database
+opaque fingerprint, signed-transaction hashes and OS/build hashes; phrases, passwords, keys and database
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.
 
@@ -66,6 +77,7 @@ separate `ios-simulator-limited.json` has `status: "limited"` and
 `custodyQualified: false`, carries the source/binary identity and fixed refusal,
 and explicitly records that no SDK smoke check was run. This mode never writes
 `ios-qualification.json`, reads a wallet database or attempts cold restart. It
+also never reaches SDK loading, indexed-HD operations or journal qualification. It
 refuses output directories containing a full-custody aggregate. Consumers must
 not accept this limited artifact as full custody evidence. Omitting the flag
 retains the original full-custody validation, which fails on this storage refusal.

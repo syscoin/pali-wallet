@@ -50,6 +50,8 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.nativeBridgeExercised = false; },
     (r) => { r.failedStage = 'load software SDK'; },
     (r) => { r.address = 'unexpected wallet evidence'; },
+    (r) => { r.nativeHdAccountsVerified = true; },
+    (r) => { r.journalContainerVersion = 2; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-unknown'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-read'; },
     (r) => { r.storageDiagnostic.stage = 'ios-policy-protection-check'; },

@@ -6,6 +6,7 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
+import { isHdQualificationReport } from '../qualification/hd-accounts.ts';
 import { isStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import { loadAfterNativeCrypto } from '../src/startup/loadAfterCrypto.ts';
 
@@ -145,13 +146,15 @@ test('native report validation requires the generated mnemonic entropy evidence'
   const end = source.indexOf('const waitReport =', start);
   assert(start >= 0 && end > start);
   const validate = runInNewContext(source.slice(start, end) + '\nvalidateReport;', {
-    isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
+    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'ios',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (text: string, phase: string, scenario: string) => unknown;
   const report = { version: 1, status: 'passed', phase: 'create', scenario: 'generate', platform: 'ios',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64),
     cryptoEvidence: { passed: true, productionIterations: 900000 }, cryptoDiagnostic: { bootstrap: 'ready', fullCase: 'random-view-boundaries' }, mnemonicEntropyVerified: true, storageDiagnostic: { stage: 'ready' } };
   assert.doesNotThrow(() => validate(JSON.stringify(report), 'create', 'generate'));
+  assert.throws(() => validate(JSON.stringify({ ...report, selectedAccountId: 'hd:60:0' }), 'create', 'generate'));
+  assert.throws(() => validate(JSON.stringify({ ...report, journalContainerVersion: 1 }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, nativeSigningVerified: false }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, transferHash: 'invalid' }), 'create', 'generate'));
   assert.throws(() => validate(JSON.stringify({ ...report, sdkVersion: '1.0.628' }), 'create', 'generate'));
@@ -181,7 +184,7 @@ test('a pre-parameter startup failure is read immediately instead of waiting for
   const start = source.indexOf('const validateReport =');
   const end = source.indexOf('const databaseEvidence =', start);
   const wait = runInNewContext(source.slice(start, end) + '\nwaitReport;', {
-    isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
+    isHdQualificationReport, isCryptoDiagnostic, isStorageQualificationDiagnostic, simulatorContract: false, PUBLIC_PHRASE: 'public fixture', PUBLIC_PASSWORD: 'public password', platform: 'android',
     fs: { writeFileSync() {} }, path: { join: () => 'unused' }, output: 'unused',
   }) as (read: () => string | null, phase: string, scenario: string, startup: () => string) => Promise<unknown>;
   let phaseReads = 0;
