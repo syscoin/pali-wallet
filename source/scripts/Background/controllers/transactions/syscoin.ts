@@ -2,6 +2,7 @@ import clone from 'lodash/clone';
 import * as sys from 'syscoinjs-lib';
 
 import { createBlockbookAccountHistory } from '../../../../shared/blockbookAccountHistory';
+import { mergeFreshBlockbookHistory } from '../../../../shared/blockbookHistoryMerge';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -182,7 +183,10 @@ const SysTransactionController = (): ISysTransactionsController => {
       }
     }
 
-    const mergedArrays = [...validGetSysTxs, ...validSyscoinUserTransactions];
+    const mergedArrays = mergeFreshBlockbookHistory(
+      validGetSysTxs,
+      validSyscoinUserTransactions
+    );
 
     // Use the optimized function that deduplicates, sorts, and limits in one go
     return treatAndSortTransactions(mergedArrays, 30) as ISysTransaction[];
