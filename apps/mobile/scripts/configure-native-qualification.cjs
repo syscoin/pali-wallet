@@ -22,7 +22,7 @@ if (
   app.expo.android.allowBackup !== false
 )
   throw Error('Qualification must preserve backup/update restrictions');
-if (pkg.dependencies['@sidhujag/sysweb3-keyring'] !== '1.0.628')
+if (pkg.dependencies['@sidhujag/sysweb3-keyring'] !== '2.0.0')
   throw Error('Unexpected shared keyring version');
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const receipt = {
@@ -34,7 +34,7 @@ const receipt = {
   originalMain: pkg.main,
   identifier: 'com.paliwallet.qualification',
   qualificationEntry: 'qualification/index.tsx',
-  keyringVersion: '1.0.628',
+  keyringVersion: '2.0.0',
 };
 pkg.main = receipt.qualificationEntry;
 app.expo.name = 'PaliQualification';

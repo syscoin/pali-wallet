@@ -47,7 +47,7 @@ export function utf8ByteLength(value: string): number {
   return length;
 }
 
-async function boundedResponseText(
+export async function boundedResponseText(
   response: Response,
   signal: AbortSignal
 ): Promise<string> {

@@ -1,0 +1,6 @@
+{
+  "name": "pali-native-send-ui-fixture",
+  "version": "1.0.0",
+  "private": true,
+  "main": "entry.tsx"
+}

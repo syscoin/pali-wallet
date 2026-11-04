@@ -11,7 +11,8 @@ export type TransferJournalPhase =
   | 'attempted'
   | 'submitted'
   | 'confirmed'
-  | 'reverted';
+  | 'reverted'
+  | 'nonce-consumed';
 export type TransferJournalScope = Readonly<{
   walletFingerprint: string;
   address: string;
@@ -139,9 +140,14 @@ function decode(
     throw new TransferJournalError('CONTEXT_CHANGED');
   if (
     data.version !== 1 ||
-    !['signed', 'attempted', 'submitted', 'confirmed', 'reverted'].includes(
-      data.phase as string
-    ) ||
+    ![
+      'signed',
+      'attempted',
+      'submitted',
+      'confirmed',
+      'reverted',
+      'nonce-consumed',
+    ].includes(data.phase as string) ||
     !Number.isSafeInteger(data.createdAt) ||
     (data.createdAt as number) < 0
   )
@@ -165,7 +171,7 @@ function decode(
  * A durable attempted marker is required BEFORE any network submission. After
  * process death, attempted/submitted is unresolved: reconcile the same hash and
  * never create a replacement transaction automatically.
- * The native storage lease permits one process; this queue permits one writer.
+ * The native lease permits one owner in this process; this queue permits one writer.
  */
 export class NativeTransferJournal {
   private readonly scope: TransferJournalScope;
@@ -236,7 +242,7 @@ export class NativeTransferJournal {
     return this.exclusive(async () => {
       const old = await this.read();
       if (old) {
-        if (!['confirmed', 'reverted'].includes(old.phase))
+        if (!['confirmed', 'reverted', 'nonce-consumed'].includes(old.phase))
           throw new TransferJournalError('PENDING_TRANSFER');
         if (entry.nonce <= old.nonce)
           throw new TransferJournalError('INVALID_TRANSITION');
@@ -268,8 +274,11 @@ export class NativeTransferJournal {
       const allowed =
         (phase === 'attempted' && old.phase === 'signed') ||
         (phase === 'submitted' && old.phase === 'attempted') ||
-        ((phase === 'confirmed' || phase === 'reverted') &&
-          ['attempted', 'submitted'].includes(old.phase));
+        ((phase === 'confirmed' ||
+          phase === 'reverted' ||
+          phase === 'nonce-consumed') &&
+          ['attempted', 'submitted'].includes(old.phase)) ||
+        (phase === 'nonce-consumed' && old.phase === 'signed');
       if (!allowed) throw new TransferJournalError('INVALID_TRANSITION');
       const entry = Object.freeze({ ...old, phase });
       this.guard();

@@ -5,6 +5,8 @@ import type { OpenWalletStorage } from '../storage/types.ts';
 import { WalletStorageError } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
+import { NativeTransferJournal } from './transferJournal.ts';
+import type { NativeTransferRuntime } from './transfers.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 
@@ -23,6 +25,8 @@ export type KeyringRuntimeDependencies = Readonly<{
 
 /** Internal capability consumed by the epoch-bound backup controller only. */
 export interface KeyringRuntime extends CustodyRuntime {
+  /** Native transfer host only; never exposed directly to a screen. */
+  readonly transfers?: NativeTransferRuntime;
   readonly backup: {
     readPhrase(password: string): Promise<readonly string[]>;
     fingerprint(): Promise<string>;
@@ -166,6 +170,40 @@ export function createKeyringRuntimeFactory(
               return normalizePublicAddress(account.address, 'ethereum');
             },
             lock,
+          },
+          transfers: {
+            async journal(assertCurrent) {
+              const captured = generation;
+              current(captured); assertCurrent();
+              if (!keyring.isUnlocked() || !state.accounts.HDAccount[0]) throw new KeyringRuntimeError('CANCELLED');
+              const fingerprint = await storage.getWalletFingerprint();
+              current(captured); assertCurrent();
+              const address = normalizePublicAddress(state.accounts.HDAccount[0]!.address, 'ethereum');
+              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: '1' }, () => { current(captured); assertCurrent(); });
+            },
+            authorize: (password, assertCurrent) => run(async (captured) => {
+              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+              assertCurrent();
+              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              current(captured); assertCurrent();
+              await hydrate(captured);
+              current(captured); assertCurrent();
+            }),
+            sign: (transaction, password, assertCurrent) => run(async (captured) => {
+              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+              assertCurrent();
+              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              current(captured); assertCurrent();
+              await hydrate(captured);
+              current(captured); assertCurrent();
+              const signed = keyring.signPreparedEvmTransaction({
+                account: { id: 0, type: 'HDAccount', expectedAddress: transaction.from },
+                network: { kind: 'ethereum', chainId: '1', slip44: 60, url: RPC_ENDPOINTS.ethereum! },
+                transaction,
+              }, { assertCurrent: () => { current(captured); assertCurrent(); } });
+              current(captured); assertCurrent();
+              return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
+            }),
           },
           storage: {
             readState: () => storage.readState(),

@@ -3,7 +3,11 @@ const path = require('path');
 const crypto = require('crypto');
 const { spawnSync } = require('child_process');
 const { Buffer } = require('node:buffer');
-const { summarizeAndroidLog, summarizeAndroidExitInfo, latestAndroidExitPid } = require('./log-diagnostics.cjs');
+const {
+  summarizeAndroidLog,
+  summarizeAndroidExitInfo,
+  latestAndroidExitPid,
+} = require('./log-diagnostics.cjs');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { isStorageQualificationDiagnostic } = require('./storage-diagnostics.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
@@ -28,14 +32,20 @@ if (!['ios', 'android'].includes(platform) || !fs.existsSync(artifact))
 if (simulatorContract && fs.existsSync(path.join(output, 'ios-qualification.json')))
   throw Error('Simulator output must not contain full custody evidence');
 fs.mkdirSync(output, { recursive: true });
-const redact = (value) => value
-  .split(PUBLIC_PHRASE).join('[public phrase redacted]')
-  .split(PUBLIC_PASSWORD).join('[public password redacted]');
+const redact = (value) =>
+  value
+    .split(PUBLIC_PHRASE)
+    .join('[public phrase redacted]')
+    .split(PUBLIC_PASSWORD)
+    .join('[public password redacted]');
 const run = createCommandRunner(spawnSync, redact);
-const androidProcessRunning = () => Boolean(run('adb', [
-  'shell',
-  `pidof -s ${PACKAGE}; pali_pidof_status=$?; if [ "$pali_pidof_status" -eq 1 ]; then exit 0; fi; exit "$pali_pidof_status"`,
-]));
+const androidProcessRunning = () =>
+  Boolean(
+    run('adb', [
+      'shell',
+      `pidof -s ${PACKAGE}; pali_pidof_status=$?; if [ "$pali_pidof_status" -eq 1 ]; then exit 0; fi; exit "$pali_pidof_status"`,
+    ])
+  );
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 const validateReport = (text, phase, scenario) => {
@@ -61,6 +71,8 @@ const validateReport = (text, phase, scenario) => {
     'networkCalls',
     'nativeBridgeExercised',
     'sdkVersion',
+    'nativeSigningVerified',
+    'transferHash',
     'pendingProcessTermination',
     'failedStage',
     'cryptoEvidence',
@@ -88,7 +100,11 @@ const validateReport = (text, phase, scenario) => {
     report.status !== 'passed' ||
     report.networkCalls !== 0 ||
     report.nativeBridgeExercised !== true ||
-    report.mnemonicEntropyVerified !== (phase === 'create' && scenario === 'generate') ||
+    report.nativeSigningVerified !== true ||
+    report.sdkVersion !== '2.0.0' ||
+    !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
+    report.mnemonicEntropyVerified !==
+      (phase === 'create' && scenario === 'generate') ||
     !/^[0-9a-f]{64}$/.test(report.fingerprint || '') ||
     report.cryptoEvidence?.passed !== true ||
     report.cryptoEvidence?.productionIterations !== 900000
@@ -111,7 +127,9 @@ const captureFixtureLoadError = (text, scenario, stage = 'quick-crypto-load') =>
     const suffix = stage === 'quick-crypto-load' ? 'load-error' : 'sdk-load-error';
     fs.writeFileSync(path.join(output, `${platform}-import-fixture-${suffix}.json`), redact(text));
     return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 };
 const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
   const startedAt = Date.now();
@@ -132,7 +150,9 @@ const waitReport = async (read, phase, scenario, readStartup, isRunning) => {
       // A process may write its final report between the first read and exit.
       const finalReport = readAvailable();
       if (finalReport) return finalReport;
-      throw Error(`Native ${platform} ${scenario} ${phase} process exited before report`);
+      throw Error(
+        `Native ${platform} ${scenario} ${phase} process exited before report`
+      );
     }
     await sleep(1000);
   }
@@ -211,7 +231,12 @@ async function ios() {
     let container;
     try {
       run('xcrun', ['simctl', 'boot', device]);
-      run('xcrun', ['simctl', 'bootstatus', device, '-b'], false, COLD_BOOT_TIMEOUT_MS);
+      run(
+        'xcrun',
+        ['simctl', 'bootstatus', device, '-b'],
+        false,
+        COLD_BOOT_TIMEOUT_MS
+      );
       run('xcrun', ['simctl', 'install', device, artifact]);
       container = run('xcrun', [
         'simctl',
@@ -297,7 +322,8 @@ async function ios() {
       if (
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
-        created.fingerprint !== restored.fingerprint
+        created.fingerprint !== restored.fingerprint ||
+        created.transferHash !== restored.transferHash
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       run('xcrun', [
@@ -312,6 +338,7 @@ async function ios() {
         database,
         processRestartVerified: true,
         sessionChanged: true,
+        signedTransferRestored: true,
       });
     } finally {
       if (container) {
@@ -362,12 +389,23 @@ async function android() {
     'list',
     artifact,
   ]).split('\n');
-  const nativeLibraries = apkEntries.filter((file) => /^lib\/.*\.so$/.test(file));
-  fs.writeFileSync(path.join(output, 'android-apk-startup.json'), JSON.stringify({
-    packageMatches: true,
-    mainActivityMatches: badging.includes(`launchable-activity: name='${PACKAGE}.MainActivity'`),
-    mainBundlePresent: apkEntries.includes('assets/index.android.bundle'),
-  }, null, 2));
+  const nativeLibraries = apkEntries.filter((file) =>
+    /^lib\/.*\.so$/.test(file)
+  );
+  fs.writeFileSync(
+    path.join(output, 'android-apk-startup.json'),
+    JSON.stringify(
+      {
+        packageMatches: true,
+        mainActivityMatches: badging.includes(
+          `launchable-activity: name='${PACKAGE}.MainActivity'`
+        ),
+        mainBundlePresent: apkEntries.includes('assets/index.android.bundle'),
+      },
+      null,
+      2
+    )
+  );
   for (const abi of ['arm64-v8a', 'x86_64']) {
     for (const library of [
       'libQuickCrypto.so',
@@ -409,7 +447,10 @@ async function android() {
           '-n',
           `${PACKAGE}/.MainActivity`,
         ]);
-        fs.writeFileSync(path.join(output, `android-${scenario}-${phase}-launch.log`), redact(result).slice(-4096));
+        fs.writeFileSync(
+          path.join(output, `android-${scenario}-${phase}-launch.log`),
+          redact(result).slice(-4096)
+        );
         return result;
       };
       launch(
@@ -429,7 +470,11 @@ async function android() {
         throw Error('App process did not stop');
       const captured = run.binary(
         'adb',
-        ['exec-out', 'cat', `/data/user/0/${PACKAGE}/no_backup/PaliWallet/wallet.sqlite`],
+        [
+          'exec-out',
+          'cat',
+          `/data/user/0/${PACKAGE}/no_backup/PaliWallet/wallet.sqlite`,
+        ],
         false,
         64 * 1024 * 1024
       );
@@ -450,18 +495,30 @@ async function android() {
         oldPid === newPid ||
         created.sessionId === restored.sessionId ||
         created.address !== restored.address ||
-        created.fingerprint !== restored.fingerprint
+        created.fingerprint !== restored.fingerprint ||
+        created.transferHash !== restored.transferHash
       )
         throw Error('Cold restart identity or backup fingerprint mismatch');
       try {
-        const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
-        if (screenshot) fs.writeFileSync(path.join(output, `android-${scenario}-restart.png`), screenshot);
-      } catch { /* Optional screenshot persistence cannot invalidate qualification. */ }
+        const screenshot = run.binary(
+          'adb',
+          ['exec-out', 'screencap', '-p'],
+          true
+        );
+        if (screenshot)
+          fs.writeFileSync(
+            path.join(output, `android-${scenario}-restart.png`),
+            screenshot
+          );
+      } catch {
+        /* Optional screenshot persistence cannot invalidate qualification. */
+      }
       reports.push({
         scenario,
         database,
         processRestartVerified: true,
         sessionChanged: true,
+        signedTransferRestored: true,
       });
     } finally {
       try {
@@ -469,35 +526,160 @@ async function android() {
           captureFixtureLoadError(run('adb', ['shell', 'cat', `/data/user/0/${PACKAGE}/files/pali-native-qualification-${suffix}.json`], true), scenario, stage);
         }
         const processId = run('adb', ['shell', 'pidof', '-s', PACKAGE], true);
-        const logs = run('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-t', '300', '-v', 'brief', '*:E'], true);
-        const exitInfo = run('adb', ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE], true);
+        const logs = run(
+          'adb',
+          [
+            'logcat',
+            '-b',
+            'main',
+            '-b',
+            'system',
+            '-b',
+            'crash',
+            '-d',
+            '-t',
+            '300',
+            '-v',
+            'brief',
+            '*:E',
+          ],
+          true
+        );
+        const exitInfo = run(
+          'adb',
+          ['shell', 'dumpsys', 'activity', 'exit-info', PACKAGE],
+          true
+        );
         const exitPid = latestAndroidExitPid(exitInfo);
-        const crashBytes = run.binary('adb', ['logcat', '-b', 'crash', '-d', '-v', 'brief', ...(exitPid ? ['--pid', String(exitPid)] : [])], true, 1024 * 1024);
+        const crashBytes = run.binary(
+          'adb',
+          [
+            'logcat',
+            '-b',
+            'crash',
+            '-d',
+            '-v',
+            'brief',
+            ...(exitPid ? ['--pid', String(exitPid)] : []),
+          ],
+          true,
+          1024 * 1024
+        );
         const crashLog = crashBytes?.toString('utf8');
-        const processBytes = exitPid ? run.binary('adb', ['logcat', '-b', 'main', '-b', 'system', '-b', 'crash', '-d', '-v', 'brief', '--pid', String(exitPid), '*:E'], true, 1024 * 1024) : null;
+        const processBytes = exitPid
+          ? run.binary(
+              'adb',
+              [
+                'logcat',
+                '-b',
+                'main',
+                '-b',
+                'system',
+                '-b',
+                'crash',
+                '-d',
+                '-v',
+                'brief',
+                '--pid',
+                String(exitPid),
+                '*:E',
+              ],
+              true,
+              1024 * 1024
+            )
+          : null;
         const processLog = processBytes?.toString('utf8');
         const exitSummary = summarizeAndroidExitInfo(exitInfo);
         // Isolated CI fixtures only: preserve bounded, redacted fatal evidence
         // separately from the fixed public diagnostic schema.
-        if (scenario === 'import' && crashLog) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-crash.log`), redact(crashLog).slice(0, 128 * 1024));
-        if (scenario === 'import' && processLog) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-process.log`), redact(processLog).slice(0, 128 * 1024));
-        if (scenario === 'import' && exitInfo) fs.writeFileSync(path.join(output, `android-${scenario}-fixture-exit-info.log`), redact(exitInfo).slice(0, 32 * 1024));
-        if (scenario === 'import' && exitPid && exitSummary.exitReasons[0] === 'CRASH_NATIVE') {
-          const inventory = run('adb', ['shell', 'ls', '-t', '/data/tombstones'], true) || '';
-          for (const file of inventory.split(/\s+/).filter((name) => /^tombstone_[0-9]+$/.test(name)).slice(0, 4)) {
-            const tombstone = run.binary('adb', ['exec-out', 'head', '-c', '131072', `/data/tombstones/${file}`], true, 131072)?.toString('utf8');
-            if (tombstone && new RegExp(`\\bpid: ${exitPid}\\b`).test(tombstone)) {
-              fs.writeFileSync(path.join(output, `android-${scenario}-fixture-tombstone.log`), redact(tombstone));
+        if (scenario === 'import' && crashLog)
+          fs.writeFileSync(
+            path.join(output, `android-${scenario}-fixture-crash.log`),
+            redact(crashLog).slice(0, 128 * 1024)
+          );
+        if (scenario === 'import' && processLog)
+          fs.writeFileSync(
+            path.join(output, `android-${scenario}-fixture-process.log`),
+            redact(processLog).slice(0, 128 * 1024)
+          );
+        if (scenario === 'import' && exitInfo)
+          fs.writeFileSync(
+            path.join(output, `android-${scenario}-fixture-exit-info.log`),
+            redact(exitInfo).slice(0, 32 * 1024)
+          );
+        if (
+          scenario === 'import' &&
+          exitPid &&
+          exitSummary.exitReasons[0] === 'CRASH_NATIVE'
+        ) {
+          const inventory =
+            run('adb', ['shell', 'ls', '-t', '/data/tombstones'], true) || '';
+          for (const file of inventory
+            .split(/\s+/)
+            .filter((name) => /^tombstone_[0-9]+$/.test(name))
+            .slice(0, 4)) {
+            const tombstone = run
+              .binary(
+                'adb',
+                [
+                  'exec-out',
+                  'head',
+                  '-c',
+                  '131072',
+                  `/data/tombstones/${file}`,
+                ],
+                true,
+                131072
+              )
+              ?.toString('utf8');
+            if (
+              tombstone &&
+              new RegExp(`\\bpid: ${exitPid}\\b`).test(tombstone)
+            ) {
+              fs.writeFileSync(
+                path.join(output, `android-${scenario}-fixture-tombstone.log`),
+                redact(tombstone)
+              );
               break;
             }
           }
         }
-        fs.writeFileSync(path.join(output, `android-${scenario}-runtime-diagnostics.json`), JSON.stringify({ processRunning: Boolean(processId), logcatAvailable: logs !== null, exitInfoAvailable: exitInfo !== null, crashLogAvailable: crashBytes !== null, processLogAvailable: processBytes !== null, crashLogScoped: Boolean(exitPid), ...summarizeAndroidLog(`${logs || ''}\n${crashLog || ''}\n${processLog || ''}`), ...exitSummary }, null, 2));
-      } catch { /* Diagnostic collection cannot replace the primary failure. */ }
+        fs.writeFileSync(
+          path.join(output, `android-${scenario}-runtime-diagnostics.json`),
+          JSON.stringify(
+            {
+              processRunning: Boolean(processId),
+              logcatAvailable: logs !== null,
+              exitInfoAvailable: exitInfo !== null,
+              crashLogAvailable: crashBytes !== null,
+              processLogAvailable: processBytes !== null,
+              crashLogScoped: Boolean(exitPid),
+              ...summarizeAndroidLog(
+                `${logs || ''}\n${crashLog || ''}\n${processLog || ''}`
+              ),
+              ...exitSummary,
+            },
+            null,
+            2
+          )
+        );
+      } catch {
+        /* Diagnostic collection cannot replace the primary failure. */
+      }
       try {
-        const screenshot = run.binary('adb', ['exec-out', 'screencap', '-p'], true);
-        if (screenshot) fs.writeFileSync(path.join(output, `android-${scenario}-final.png`), screenshot);
-      } catch { /* Preserve the primary failure if cleanup screenshot/write fails. */ }
+        const screenshot = run.binary(
+          'adb',
+          ['exec-out', 'screencap', '-p'],
+          true
+        );
+        if (screenshot)
+          fs.writeFileSync(
+            path.join(output, `android-${scenario}-final.png`),
+            screenshot
+          );
+      } catch {
+        /* Preserve the primary failure if cleanup screenshot/write fails. */
+      }
       run('adb', ['shell', 'am', 'force-stop', PACKAGE], true);
       run('adb', ['uninstall', PACKAGE], true);
     }
@@ -536,13 +718,24 @@ async function android() {
   // the original command/timeout even if screenshot/shutdown/delete also fail.
   const failure = describeQualificationFailure(error, redact);
   try {
-    fs.writeFileSync(path.join(output, `${platform}-failure.json`), `${JSON.stringify({
-      version: 1, status: 'failed', platform,
-      sourceRevision: process.env.GITHUB_SHA || null,
-      runnerImage: process.env.ImageVersion || null,
-      failure,
-    }, null, 2)}\n`);
-  } catch { /* Preserve the primary failure even if artifact writing fails. */ }
+    fs.writeFileSync(
+      path.join(output, `${platform}-failure.json`),
+      `${JSON.stringify(
+        {
+          version: 1,
+          status: 'failed',
+          platform,
+          sourceRevision: process.env.GITHUB_SHA || null,
+          runnerImage: process.env.ImageVersion || null,
+          failure,
+        },
+        null,
+        2
+      )}\n`
+    );
+  } catch {
+    /* Preserve the primary failure even if artifact writing fails. */
+  }
   console.error('Native qualification failed:', JSON.stringify(failure));
   process.exitCode = 1;
 });

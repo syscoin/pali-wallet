@@ -268,3 +268,11 @@ test('invalid scope getters are not invoked and missing journal data is not infe
   f.corrupt(null);
   await assert.rejects(f.journal.load(), { code: 'CORRUPT' });
 });
+
+
+test('an externally finalized nonce can retire a saved unsubmitted signature without deleting it', async () => {
+  const f = fixture(); const first = await f.journal.saveSigned(await raw());
+  const retired = await f.journal.transition(first.hash, 'nonce-consumed');
+  assert.equal(retired.rawTransaction, first.rawTransaction);
+  assert.equal((await f.journal.saveSigned(await raw(1))).nonce, 1);
+});

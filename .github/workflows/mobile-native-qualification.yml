@@ -49,6 +49,8 @@ jobs:
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
       - run: npm ci --ignore-scripts
+      - name: Verify staged shared keyring
+        run: node scripts/verify-staged-keyring.cjs
       - run: node --test qualification/*.test.cjs
       - run: xcodebuild -version
       - run: node scripts/configure-native-qualification.cjs
@@ -120,6 +122,8 @@ jobs:
           echo "$PALI_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
           echo "$PALI_SDK_ROOT/emulator" >> "$GITHUB_PATH"
       - run: npm ci --ignore-scripts
+      - name: Verify staged shared keyring
+        run: node scripts/verify-staged-keyring.cjs
       - run: node --test qualification/*.test.cjs
       - name: Install pinned native toolchain
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'

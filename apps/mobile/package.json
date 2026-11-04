@@ -12,11 +12,12 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:ui": "playwright test",
-    "lint": "eslint . --max-warnings 0"
+    "lint": "eslint . --max-warnings 0",
+    "postinstall": "node scripts/verify-staged-keyring.cjs"
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
-    "@sidhujag/sysweb3-keyring": "1.0.628",
+    "@sidhujag/sysweb3-keyring": "2.0.0",
     "assert": "2.1.0",
     "ethers": "6.17.0",
     "expo": "58.0.22",
@@ -39,17 +40,17 @@
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
     "readable-stream": "3.6.2",
-    "syscoinjs-lib": "1.0.275"
+    "syscoinjs-lib": "1.0.276"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "@types/node": "^22.19.0",
     "@types/react": "~19.2.2",
+    "babel-plugin-transform-remove-console": "6.9.4",
+    "babel-preset-expo": "58.0.23",
     "eslint": "9.39.5",
     "eslint-config-expo": "58.0.4",
-    "typescript": "~5.9.3",
-    "babel-plugin-transform-remove-console": "6.9.4",
-    "babel-preset-expo": "58.0.23"
+    "typescript": "~5.9.3"
   },
   "overrides": {
     "glob": "14.0.3",

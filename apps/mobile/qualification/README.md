@@ -6,7 +6,7 @@ configuration script refuses to run without explicit CI/qualification flags or
 against an already modified production identifier. Use an isolated checkout.
 
 The workflow builds release-mode iOS simulator and Android emulator binaries,
-including the actual Expo modules, Hermes, SQLCipher and published software SDK.
+including the actual Expo modules, Hermes, SQLCipher and pinned software SDK.
 The iOS Simulator job checks native crypto and an expected protected-storage
 refusal. It does not qualify custody. The Android job retains the full custody
 and cold-restart checks below.
@@ -26,9 +26,8 @@ and matching encrypted-vault fingerprint establish the tested cold restart.
 
 The full native crypto fixture runs through the actual bridge on each launch,
 including unchanged 20k/900k KDF profiles and authentication-error classification.
-JavaScript fetch/XHR/WebSocket requests are blocked. No transaction is prepared,
-signed or broadcast. Reports contain case names/timings, public account identity,
-opaque fingerprint and OS/build hashes; phrases, passwords, keys and database
+JavaScript fetch/XHR/WebSocket requests are blocked. A fixed public-fixture Ethereum transaction is signed and journaled without broadcasting. Its hash and signed identity must survive the process restart. No RPC or broadcast is allowed. Reports contain case names/timings, public account identity,
+opaque fingerprint, signed-transaction hash and OS/build hashes; phrases, passwords, keys and database
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.
 

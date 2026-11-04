@@ -6,6 +6,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 test('qualification configuration is explicit, isolated, and preserves the production entry bytes', () => {
+  const keyringVersion = JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'];
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), 'pali-qualification-config-')
   );
@@ -19,7 +20,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
       path.join(root, 'package.json'),
       JSON.stringify({
         main: 'index.ts',
-        dependencies: { '@sidhujag/sysweb3-keyring': '1.0.628' },
+        dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion },
       })
     );
     fs.writeFileSync(
@@ -55,6 +56,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
       }).status,
       0
     );
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.native-qualification.json'))).keyringVersion, keyringVersion);
     const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'))).expo;
     assert.equal(app.ios.bundleIdentifier, 'com.paliwallet.qualification');
     assert.equal(app.android.package, 'com.paliwallet.qualification');

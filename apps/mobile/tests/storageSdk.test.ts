@@ -10,7 +10,7 @@ import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const require = createRequire(import.meta.url);
 
-test('published software SDK creates and reopens its real wallet through SQLite at production KDF', async () => {
+test('pinned software SDK creates and reopens its real wallet through SQLite at production KDF', async () => {
   const oldEnv = [
     process.env.NODE_ENV,
     process.env.SYSWEB3_PBKDF2_ENC_ITERS,
@@ -38,7 +38,7 @@ test('published software SDK creates and reopens its real wallet through SQLite 
     } = require('@sidhujag/sysweb3-keyring/cjs/software');
     assert.equal(
       require('@sidhujag/sysweb3-keyring/package.json').version,
-      '1.0.628'
+      '2.0.0'
     );
     storage = await SqliteWalletStorage.open(
       nodeConnection(file).connection,

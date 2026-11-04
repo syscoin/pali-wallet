@@ -12,9 +12,17 @@ import { ensureNativeProcessCompatibility } from '../src/platform/processCompati
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { SeedBackupFlow } from '../src/custody/seedBackup.ts';
-import { ensureNativeCryptoReady, nativeCryptoCheckpoint, nativeCryptoInstallDiagnostic, nativeCryptoLoadDiagnostic } from '../src/platform/cryptoBootstrap';
+import {
+  ensureNativeCryptoReady,
+  nativeCryptoCheckpoint,
+  nativeCryptoInstallDiagnostic,
+  nativeCryptoLoadDiagnostic,
+} from '../src/platform/cryptoBootstrap';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import type { CryptoFullCase, CryptoLoadDiagnostic } from '../src/crypto/diagnostics.ts';
+import type {
+  CryptoFullCase,
+  CryptoLoadDiagnostic,
+} from '../src/crypto/diagnostics.ts';
 import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts';
 
 // Public BIP39 fixture only. This entry is selected exclusively by the isolated
@@ -35,12 +43,16 @@ async function launchParameters(): Promise<{
   scenario: Scenario;
   address: string | null;
 }> {
-  assertQualificationBuild(Constants.expoConfig?.ios?.bundleIdentifier, Constants.expoConfig?.android?.package);
+  assertQualificationBuild(
+    Constants.expoConfig?.ios?.bundleIdentifier,
+    Constants.expoConfig?.android?.package
+  );
   if (Platform.OS === 'ios') {
     // NSArgumentDomain is read only by this dedicated fixture entry. Direct
     // simctl launch avoids SpringBoard's confirmation for external URL opens.
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { Settings } = require('react-native') as typeof import('react-native');
+    const { Settings } =
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      require('react-native') as typeof import('react-native');
     return parseQualificationLaunch(Settings.get('PaliQualificationURL'));
   }
   const initial = await Linking.getInitialURL();
@@ -81,6 +93,8 @@ function QualificationApp() {
       const mnemonicEntropy: Uint8Array[] = [];
       let observingGeneration = false;
       let mnemonicEntropyVerified = false;
+      let nativeSigningVerified = false;
+      let transferHash: string | undefined;
       let networkCalls = 0;
       const check = async <T,>(
         name: string,
@@ -142,18 +156,30 @@ function QualificationApp() {
               // eslint-disable-next-line @typescript-eslint/no-require-imports
               () => require('react-native-quick-crypto'),
               async (text) => {
-                if (!FileSystem.documentDirectory) throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
-                await FileSystem.writeAsStringAsync(`${FileSystem.documentDirectory}pali-native-qualification-load-error.json`, text);
+                if (!FileSystem.documentDirectory)
+                  throw Error('QUALIFICATION_REPORT_UNAVAILABLE');
+                await FileSystem.writeAsStringAsync(
+                  `${FileSystem.documentDirectory}pali-native-qualification-load-error.json`,
+                  text
+                );
               },
-              (diagnostic) => { qualificationLoadDiagnostic = diagnostic; }
+              (diagnostic) => {
+                qualificationLoadDiagnostic = diagnostic;
+              }
             );
             const provider = await ensureNativeCryptoReady();
-            const { createNativeWalletCrypto } = await import('../src/crypto/native');
-            const { qualifyWalletCryptoFull } = await import('../src/crypto/qualificationFull.ts');
+            const { createNativeWalletCrypto } = await import(
+              '../src/crypto/native'
+            );
+            const { qualifyWalletCryptoFull } = await import(
+              '../src/crypto/qualificationFull.ts'
+            );
             cryptoEvidence = await qualifyWalletCryptoFull(
               provider,
               createNativeWalletCrypto,
-              (name) => { fullCryptoCase = name; }
+              (name) => {
+                fullCryptoCase = name;
+              }
             );
             return provider;
           }
@@ -170,15 +196,33 @@ function QualificationApp() {
           getRandomValues<T extends ArrayBufferView>(array: T): T {
             const result = nativeCrypto.getRandomValues(array);
             if (observingGeneration && result?.byteLength === 16) {
-              if (mnemonicEntropy.length >= 32) throw Error('QUALIFICATION_ENTROPY_BOUND');
-              mnemonicEntropy.push(new Uint8Array(result.buffer, result.byteOffset, result.byteLength).slice());
+              if (mnemonicEntropy.length >= 32)
+                throw Error('QUALIFICATION_ENTROPY_BOUND');
+              mnemonicEntropy.push(
+                new Uint8Array(
+                  result.buffer,
+                  result.byteOffset,
+                  result.byteLength
+                ).slice()
+              );
             }
             return result;
           },
           randomUUID: () => nativeCrypto.randomUUID(),
         });
-        Object.defineProperty(globalThis, 'crypto', { value: observedCrypto, configurable: true, enumerable: true, writable: false });
-        const [{ NativeCustodyAuthority }, { createKeyringRuntimeFactory }, { SeedBackupFlow }, { openNativeWalletStorage }, bip39] = await Promise.all([
+        Object.defineProperty(globalThis, 'crypto', {
+          value: observedCrypto,
+          configurable: true,
+          enumerable: true,
+          writable: false,
+        });
+        const [
+          { NativeCustodyAuthority },
+          { createKeyringRuntimeFactory },
+          { SeedBackupFlow },
+          { openNativeWalletStorage },
+          bip39,
+        ] = await Promise.all([
           import('../src/custody/authority.ts'),
           import('../src/custody/keyringRuntime.ts'),
           import('../src/custody/seedBackup.ts'),
@@ -240,8 +284,11 @@ function QualificationApp() {
               await authority!.importPhrase(PUBLIC_PHRASE, PUBLIC_PASSWORD);
             else {
               observingGeneration = true;
-              try { await authority!.create(PUBLIC_PASSWORD); }
-              finally { observingGeneration = false; }
+              try {
+                await authority!.create(PUBLIC_PASSWORD);
+              } finally {
+                observingGeneration = false;
+              }
             }
           });
           expect(authority.getSnapshot().phase === 'backup-required');
@@ -251,9 +298,15 @@ function QualificationApp() {
             if (parameters!.scenario === 'import')
               expect(presentation.words.join(' ') === PUBLIC_PHRASE);
             else {
-              const generatedEntropy = bip39.mnemonicToEntropy(presentation.words.join(' '));
-              mnemonicEntropyVerified = mnemonicEntropy.some((bytes) =>
-                Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('') === generatedEntropy);
+              const generatedEntropy = bip39.mnemonicToEntropy(
+                presentation.words.join(' ')
+              );
+              mnemonicEntropyVerified = mnemonicEntropy.some(
+                (bytes) =>
+                  Array.from(bytes, (byte) =>
+                    byte.toString(16).padStart(2, '0')
+                  ).join('') === generatedEntropy
+              );
               expect(mnemonicEntropyVerified && mnemonicEntropy.length > 0);
               mnemonicEntropy.forEach((bytes) => bytes.fill(0));
               mnemonicEntropy.length = 0;
@@ -293,6 +346,61 @@ function QualificationApp() {
           expect(address === EXPECTED_ADDRESS);
         if (parameters.phase === 'restart')
           expect(address === parameters.address);
+        await check(
+          'native prepared signature and durable transfer journal',
+          async () => {
+            const transfer = runtime?.transfers;
+            if (!transfer || !address)
+              throw Error('QUALIFICATION_TRANSFER_UNAVAILABLE');
+            const assertCurrent = () =>
+              expect(
+                authority!.getSnapshot().phase === 'ready' &&
+                  authority!.getSnapshot().account?.address === address
+              );
+            const journal = await transfer.journal(assertCurrent);
+            const { Transaction } = await import('ethers/transaction');
+            if (parameters!.phase === 'create') {
+              const signed = await transfer.sign(
+                {
+                  type: 2,
+                  from: address,
+                  to: '0x1111111111111111111111111111111111111111',
+                  chainId: '1',
+                  nonce: '0',
+                  value: '123',
+                  gasLimit: '21000',
+                  data: '0x',
+                  maxFeePerGas: '3',
+                  maxPriorityFeePerGas: '1',
+                },
+                PUBLIC_PASSWORD,
+                assertCurrent
+              );
+              const stored = await journal.saveSigned(signed.rawTransaction);
+              expect(stored.hash === signed.hash);
+              await journal.transition(stored.hash, 'attempted');
+            }
+            const stored = await journal.load();
+            expect(stored?.phase === 'attempted');
+            if (!stored) throw Error('QUALIFICATION_TRANSFER_MISSING');
+            const signed = Transaction.from(stored.rawTransaction);
+            expect(
+              signed.isSigned() &&
+                signed.from === address &&
+                signed.hash === stored.hash &&
+                signed.chainId === 1n &&
+                signed.nonce === 0 &&
+                signed.value === 123n &&
+                signed.gasLimit === 21000n &&
+                signed.to === '0x1111111111111111111111111111111111111111' &&
+                signed.data === '0x' &&
+                signed.maxFeePerGas === 3n &&
+                signed.maxPriorityFeePerGas === 1n
+            );
+            transferHash = stored.hash;
+            nativeSigningVerified = true;
+          }
+        );
         await check('synchronous lock and wrong password refusal', async () => {
           authority!.lock();
           expect(
@@ -342,10 +450,26 @@ function QualificationApp() {
           checks,
           networkCalls,
           cryptoEvidence,
-          cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
+          cryptoDiagnostic: {
+            bootstrap: qualificationLoadDiagnostic
+              ? 'quick-crypto-load'
+              : nativeCryptoCheckpoint(),
+            ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}),
+            ...(nativeCryptoInstallDiagnostic()
+              ? { install: nativeCryptoInstallDiagnostic() }
+              : {}),
+            ...(qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()
+              ? {
+                  load:
+                    qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic(),
+                }
+              : {}),
+          },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
-          sdkVersion: '1.0.628',
+          sdkVersion: '2.0.0',
+          nativeSigningVerified,
+          transferHash,
           storageDiagnostic: storageDiagnostic.report(),
           pendingProcessTermination: parameters.phase === 'create',
         };
@@ -372,7 +496,9 @@ function QualificationApp() {
           storageDiagnostic: storageDiagnostic.report(),
           cryptoDiagnostic: { bootstrap: qualificationLoadDiagnostic ? 'quick-crypto-load' : nativeCryptoCheckpoint(), ...(fullCryptoCase ? { fullCase: fullCryptoCase } : {}), ...(nativeCryptoInstallDiagnostic() ? { install: nativeCryptoInstallDiagnostic() } : {}), ...((qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic()) ? { load: qualificationLoadDiagnostic ?? nativeCryptoLoadDiagnostic() } : {}) },
         };
-        await writeReport(parameters?.phase ?? 'startup', report).catch(() => undefined);
+        await writeReport(parameters?.phase ?? 'startup', report).catch(
+          () => undefined
+        );
         setStatus('QUALIFICATION FAILED');
       }
     };

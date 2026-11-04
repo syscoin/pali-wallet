@@ -6,10 +6,11 @@ import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
 import { NativePortfolio } from './NativePortfolio';
+import { NativeSend } from './NativeSend';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -38,6 +39,7 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
 export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const controllers = useRef<Controllers | null>(null);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
+  const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -74,7 +76,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     });
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView);
+      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     });
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
@@ -90,7 +92,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', revoke) : null;
     return () => {
       mounted.current = false; lifecycleEpoch.current++; unsubscribe(); clear(); lifecycle.remove(); blur?.remove();
-      local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
+      local.disposeTransfers(); local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
       if (controllers.current === local) controllers.current = null;
     };
   }, [clearSecrets, revoke]);
@@ -185,8 +187,10 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView) return <NativeSend controller={transferView} onBack={() => setStage('choose')} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
     source={publicSource} onExit={exit} onLock={revoke}
+    onSend={() => setStage('send')}
     onViewRecovery={() => setStage('backup-auth')}
   />;
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;

@@ -226,3 +226,27 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
+
+
+test('native transfer port authenticates and signs through the actual shared SDK without network access', async () => {
+  const disk = memoryDisk(); disk.denyNetwork();
+  const runtime = await disk.factory.open() as KeyringRuntime;
+  try {
+    await runtime.session.importWallet(PHRASE, PASSWORD);
+    const transfers = runtime.transfers; assert.ok(transfers);
+    const transaction = { type: 2 as const, from: ADDRESS, to: '0x1111111111111111111111111111111111111111', chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x', maxFeePerGas: '3', maxPriorityFeePerGas: '1' };
+    const signed = await transfers.sign(transaction, PASSWORD, () => undefined);
+    const { Transaction } = await import('ethers/transaction');
+    const decoded = Transaction.from(signed.rawTransaction);
+    assert.equal(decoded.from, ADDRESS); assert.equal(decoded.hash, signed.hash); assert.equal(decoded.value, 123n);
+    const journal = await transfers.journal(() => undefined);
+    assert.equal((await journal.saveSigned(signed.rawTransaction)).hash, signed.hash);
+    assert.equal((await journal.transition(signed.hash, 'attempted')).phase, 'attempted');
+    await assert.rejects(transfers.sign(transaction, 'wrong password', () => undefined), /INVALID_CREDENTIAL/);
+    assert.equal(disk.failureWrites, 1);
+    await assert.rejects(transfers.authorize(PASSWORD, () => undefined), /CANCELLED/);
+    assert.equal((await runtime.session.unlock(PASSWORD)).authenticated, true);
+    await transfers.authorize(PASSWORD, () => undefined);
+    assert.equal((await (await transfers.journal(() => undefined)).load())?.rawTransaction, signed.rawTransaction);
+  } finally { await runtime.storage.close(); disk.restoreNetwork(); }
+});

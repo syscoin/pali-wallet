@@ -14,8 +14,8 @@ test('only explicit cold-boot wait receives600s while ordinary commands keep180s
   run('adb', ['shell', 'getprop', 'sys.boot_completed']);
   assert.deepEqual(calls.map((call) => call.options.timeout), [180000, 600000, 180000]);
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
-  assert.match(source, /\['simctl', 'bootstatus', device, '-b'\], false, COLD_BOOT_TIMEOUT_MS/);
-  assert.equal((source.match(/false, COLD_BOOT_TIMEOUT_MS/g) || []).length, 1);
+  assert.match(source, /\['simctl', 'bootstatus', device, '-b'\],\s*false,\s*COLD_BOOT_TIMEOUT_MS/);
+  assert.equal((source.match(/false,\s*COLD_BOOT_TIMEOUT_MS/g) || []).length, 1);
 });
 
 test('primary timed-out command survives optional cleanup failure with bounded redacted diagnostics', () => {
@@ -130,7 +130,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' } }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -230,7 +230,7 @@ function reportWaitFixture() {
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
-    networkCalls: 0, nativeBridgeExercised: true, mnemonicEntropyVerified: false,
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: '2.0.0', nativeSigningVerified: true, transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' } });
   return { wait, validate, saved, report, now: () => now };
 }
@@ -241,7 +241,7 @@ test('the actual report parser preserves producer storage evidence and rejects u
   const fixture = reportWaitFixture();
   const ready = createStorageQualificationDiagnostic();
   ready.observe('ready');
-  const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: '1.0.628',
+  const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: '2.0.0',
     osVersion: '26.5', sessionId: 'public-session', address: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94', checks: [] };
   assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').status, 'passed');
   const failed = createStorageQualificationDiagnostic();

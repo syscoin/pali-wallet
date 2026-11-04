@@ -2,6 +2,7 @@ import { NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../custody/seedBackup.ts';
+import { NativeTransfers } from '../custody/transfers.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
 
@@ -29,5 +30,6 @@ export function createNativeWalletControllers() {
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
-  return { authority, backup };
+  const transfers = new NativeTransfers(authority, () => runtime?.transfers);
+  return { authority, backup, transfers: transfers.view, disposeTransfers: () => transfers.dispose() };
 }
