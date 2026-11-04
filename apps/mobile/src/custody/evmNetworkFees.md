@@ -91,6 +91,14 @@ fetch the canonical block at the receipt height; require its hash to match;
 require finalized height at least the receipt height and nonce consumption at
 that finalized height; repeat the receipt and check the finalized block hash.
 Missing receipts can establish only `nonce-consumed`, never successful execution.
+An oversized initial or repeated receipt remains opaque: only the shared reader's
+typed byte-limit error permits a separate finalized-block/nonce observation,
+with numeric-block nonce lookup, canonical hash recheck and a final chain check.
+An unconsumed nonce or unavailable evidence remains an error, never an absent
+receipt that could offer retry. Only Ethereum can mark this observation terminal;
+NEVM stays observation-only and unqualified settlement profiles refuse it.
+Malformed admitted bodies, recognized RPC errors and transport failures do not
+select this path. The receipt budget remains 16 KiB.
 NEVM tags are depth lookbacks in the matched Geth source, with observed 11/12
 block lags; they are not independent ChainLock proof. Other settlement profiles
 remain unqualified and cannot return terminal eligibility.

@@ -1,7 +1,7 @@
 import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import { getAddress } from 'ethers/address';
-import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import { boundedResponseText, parseRpcQuantity, ResponseSizeLimitError } from '../platformRpc.ts';
 import { getNativeNetwork, type EvmNetworkId } from './networkContext.ts';
 import { getEvmTransferProfile } from './evmTransferProfiles.ts';
 import {
@@ -211,6 +211,25 @@ export class EvmTransferReadRpc {
       return assembleFeeQuote(transaction, this.network, this.profile, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, extras, monotonicMilliseconds + 90000);
     });
   }
+  private async consumedAfterOversizedReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation> {
+    read.assertCurrent();
+    const kind = this.profile.settlement;
+    if (kind === 'unqualified') return rejectRead('UNAVAILABLE');
+    const finalized = block(await read('eth_getBlockByNumber', ['finalized', false]));
+    read.assertCurrent();
+    const nonce = quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(finalized.number))]));
+    read.assertCurrent();
+    await this.canonical(read, finalized);
+    read.assertCurrent();
+    await this.checkChain(read);
+    read.assertCurrent();
+    if (nonce <= BigInt(expected.nonce)) return rejectRead('UNAVAILABLE');
+    // The oversized body is opaque. This retires only a consumed nonce and
+    // never supplies an execution status or upgrades a settlement profile.
+    return Object.freeze({ status: 'nonce-consumed', settlement: Object.freeze({
+      kind, observedHeight: finalized.number, terminalEligible: kind === 'ethereum-finalized',
+    }) });
+  }
   receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
     let expected: ReceiptRequest;
     try {
@@ -224,7 +243,14 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       read.assertCurrent();
-      const raw = await read('eth_getTransactionReceipt', [expected.hash]);
+      let raw: unknown;
+      try {
+        raw = await read('eth_getTransactionReceipt', [expected.hash]);
+      } catch (error) {
+        read.assertCurrent();
+        if (!(error instanceof ResponseSizeLimitError)) throw error;
+        return this.consumedAfterOversizedReceipt(read, expected);
+      }
       read.assertCurrent();
       const kind = this.profile.settlement;
       let finalized: ReadBlock | null = null;
@@ -249,7 +275,14 @@ export class EvmTransferReadRpc {
       read.assertCurrent();
       const eligible = !!finalized && consumed && BigInt(receipt.block.number) <= BigInt(finalized.number);
       if (eligible) {
-        const repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
+        let repeated: ReturnType<EvmTransferReadRpc['checkedReceipt']>;
+        try {
+          repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
+        } catch (error) {
+          read.assertCurrent();
+          if (!(error instanceof ResponseSizeLimitError)) throw error;
+          return this.consumedAfterOversizedReceipt(read, expected);
+        }
         read.assertCurrent();
         if (receipt.block.hash !== repeated.block.hash || receipt.block.number !== repeated.block.number || receipt.outcome !== repeated.outcome) rejectRead('PROFILE_CHANGED');
       }
