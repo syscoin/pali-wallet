@@ -11,6 +11,8 @@ on:
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/assets/all_assets/favicon-128.png'
       - '.github/workflows/mobile.yml'
+      - '.github/scripts/configure-chromium-sandbox.sh'
+      - '.github/scripts/tests/configure-chromium-sandbox.test.cjs'
       - '.nvmrc'
 
 permissions:
@@ -48,6 +50,10 @@ jobs:
       - run: npm test
       - run: npm run build:web
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Validate Chromium sandbox helper admission
+        run: node --test ../../.github/scripts/tests/configure-chromium-sandbox.test.cjs
+      - name: Verify installed Chromium sandbox helper
+        run: bash ../../.github/scripts/configure-chromium-sandbox.sh
       - run: npm run test:ui
       - run: npm run test:activity-ui
       - run: npm run test:watch-ui
