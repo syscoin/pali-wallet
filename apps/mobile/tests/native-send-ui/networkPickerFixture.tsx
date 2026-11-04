@@ -1,0 +1,93 @@
+// Public deterministic UI fixture. No storage, RPC or signing authority is loaded.
+import React, { useLayoutEffect, useState } from 'react';
+import type { NativeNetworkSnapshot, NativeNetworkView } from '../../src/custody/networkView';
+import { NativeNetworks } from '../../src/screens/NativeNetworks';
+import { Text } from '../../src/ui';
+
+const networks = [
+  { id: 'ethereum', name: 'Ethereum', symbol: 'ETH', testnet: false, canSign: true },
+  { id: 'syscoin-nevm', name: 'Syscoin NEVM', symbol: 'SYS', testnet: false, canSign: false },
+  { id: 'rollux', name: 'Rollux', symbol: 'SYS', testnet: false, canSign: false },
+  { id: 'base', name: 'Base', symbol: 'ETH', testnet: false, canSign: false },
+  { id: 'arbitrum', name: 'Arbitrum One', symbol: 'ETH', testnet: false, canSign: false },
+  { id: 'syscoin-testnet', name: 'Syscoin NEVM Testnet', symbol: 'TSYS', testnet: true, canSign: false },
+  { id: 'zksys-testnet', name: 'zkTanenbaum', symbol: 'TSYS', testnet: true, canSign: false },
+];
+let snapshot: NativeNetworkSnapshot | null = Object.freeze({ revision: 4, selectedId: 'ethereum', networks });
+let contextRevision = 19;
+let cancelled = 0;
+let release: (() => void) | undefined;
+let releaseReplacement: (() => void) | undefined;
+let swapController: ((restore?: boolean) => void) | undefined;
+const listeners = new Set<() => void>();
+const requests: { id: string; contextRevision: number; catalogueRevision: number }[] = [];
+const notify = () => { for (const listener of listeners) listener(); };
+const controller: NativeNetworkView = {
+  getSnapshot: () => snapshot,
+  getContextRevision: () => contextRevision,
+  subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
+  cancel() { cancelled++; contextRevision++; },
+  async select(id, expectedContextRevision, expectedCatalogueRevision) {
+    if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    requests.push({ id, contextRevision: expectedContextRevision, catalogueRevision: expectedCatalogueRevision });
+    if (new URLSearchParams(window.location.search).has('busy')) throw Error('BUSY');
+    if (new URLSearchParams(window.location.search).has('hold')) await new Promise<void>((resolve) => { release = resolve; });
+    if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    snapshot = Object.freeze({ ...snapshot, selectedId: id, revision: snapshot.revision + 1 });
+    contextRevision++; notify();
+  },
+};
+let replacementSnapshot: NativeNetworkSnapshot = Object.freeze({ revision: 7, selectedId: 'ethereum', networks });
+let replacementRevision = 41;
+const replacementListeners = new Set<() => void>();
+const replacementController: NativeNetworkView = {
+  getSnapshot: () => replacementSnapshot,
+  getContextRevision: () => replacementRevision,
+  subscribe(listener) { replacementListeners.add(listener); return () => replacementListeners.delete(listener); },
+  cancel() { replacementRevision++; cancelled++; },
+  async select(id, context, revision) {
+    if (context !== replacementRevision || revision !== replacementSnapshot.revision) throw Error('CANCELLED');
+    requests.push({ id, contextRevision: context, catalogueRevision: revision });
+    await new Promise<void>((resolve) => { releaseReplacement = resolve; });
+    if (context !== replacementRevision || revision !== replacementSnapshot.revision) throw Error('CANCELLED');
+    replacementSnapshot = Object.freeze({ ...replacementSnapshot, selectedId: id, revision: revision + 1 });
+    replacementRevision++;
+    for (const listener of replacementListeners) listener();
+  },
+};
+declare global {
+  interface Window {
+    __nativeNetworksFixture: {
+      requests(): readonly { id: string; contextRevision: number; catalogueRevision: number }[];
+      cancelled(): number;
+      release(): void;
+      replace(): void;
+      replaceController(): void;
+      restoreController(): void;
+      releaseReplacement(): void;
+      selected(): string | null;
+    };
+  }
+}
+window.__nativeNetworksFixture = {
+  requests: () => requests,
+  cancelled: () => cancelled,
+  release: () => release?.(),
+  selected: () => snapshot?.selectedId ?? null,
+  replaceController: () => swapController?.(),
+  restoreController: () => swapController?.(true),
+  releaseReplacement: () => releaseReplacement?.(),
+  replace() {
+    if (snapshot) snapshot = Object.freeze({ ...snapshot, selectedId: 'ethereum', revision: snapshot.revision + 1 });
+    contextRevision++; notify();
+  },
+};
+export function NetworkPickerFixture() {
+  const [open, setOpen] = useState(true);
+  const [activeController, setActiveController] = useState<NativeNetworkView>(controller);
+  useLayoutEffect(() => {
+    swapController = (restore) => setActiveController(restore ? controller : replacementController);
+    return () => { swapController = undefined; };
+  }, []);
+  return open ? <NativeNetworks controller={activeController} onBack={() => setOpen(false)} /> : <Text>Picker closed</Text>;
+}

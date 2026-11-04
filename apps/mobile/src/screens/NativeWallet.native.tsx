@@ -8,12 +8,15 @@ import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '
 import { NativePortfolio } from './NativePortfolio';
 import { NativeSend } from './NativeSend';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
+import { NativeNetworks } from './NativeNetworks';
+import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
+import { nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'networks';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -43,6 +46,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const controllers = useRef<Controllers | null>(null);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
+  const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const mounted = useRef(false);
@@ -75,13 +79,14 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const lifecycleEpoch = epoch;
     mounted.current = true;
     const local = createNativeWalletControllers(); controllers.current = local;
+    const networks = createNativeNetworkView(local.authority);
     const publicView: PublicCustodySource = Object.freeze({
       getSnapshot: () => local.authority.getSnapshot(),
       subscribe: (listener: Parameters<PublicCustodySource['subscribe']>[0]) => local.authority.subscribe(listener),
     });
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers);
+      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setNetworkView(networks);
       setCatalogue(local.authority.getCatalogue());
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
@@ -145,6 +150,8 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? 'Account 1';
   if (stage === 'accounts' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeAccounts controller={accountView} onBack={() => setStage('choose')} />;
+  if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
+    return <NativeNetworks controller={networkView} onBack={() => setStage('choose')} />;
   let body: React.ReactNode;
   if (unavailable) body = <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
@@ -197,10 +204,11 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView) return <NativeSend controller={transferView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accountView ? () => setStage('accounts') : undefined} onExit={exit} onLock={revoke}
-    onSend={() => setStage('send')}
+    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => setStage('send') : undefined}
+    onManageNetworks={networkView ? () => setStage('networks') : undefined}
     onViewRecovery={() => setStage('backup-auth')}
   />;
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;

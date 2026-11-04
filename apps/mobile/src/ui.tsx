@@ -132,7 +132,7 @@ export function PaliMark({ size = 34 }: { size?: number }) {
 
 export function Coin({ id, size = 42 }: { id: string; size?: number }) {
   const token = id.toLowerCase();
-  if (['syscoin', 'syscoin-nevm', 'sys', 'nevm'].includes(token)) {
+  if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'nevm'].includes(token)) {
     return (
       <Image
         source={require('../assets/syscoin.png')}
@@ -142,6 +142,18 @@ export function Coin({ id, size = 42 }: { id: string; size?: number }) {
       />
     );
   }
+  // Reuse the extension's bundled vector artwork; no remote icon requests.
+  if (token === 'rollux') return <Svg width={size} height={size} viewBox="0 0 40 40" accessible={false}>
+    <Circle cx="20" cy="20" r="20" fill="#000000" />
+    <Polygon points="10.59 10.59 11.34 10.59 29.28 27.03 29.28 29.28 10.59 29.28 10.59 10.59" fill="#dbef88" />
+    <Path d="m24.74,21.44c0.51-1.01,0.81-2.16,0.81-3.38,0-4.13-3.35-7.48-7.48-7.48-1.45,0-2.8,0.41-3.95,1.12l10.62,9.73Z" fill="#dbef88" />
+  </Svg>;
+  if (token === 'zksys-testnet') return <Svg width={size} height={size} viewBox="0 0 48 48" accessible={false}>
+    <Circle cx="24" cy="24" r="24" fill="#292117" />
+    <G transform="translate(5 15.16) scale(0.04292)">
+      <Path d="M0.580331 338.968L336.527 77.7306H0.531929V0H472.984V206.282L763.356 0H882.479L644.548 170.814L885.38 411.066H778.951L584.032 214.503L502.022 273.617H395.254V131.501L134.113 333.335H369.65H395.254H472.984V411.066H2.12219e-05L0.580331 338.968Z" fill="#F7931A" />
+    </G>
+  </Svg>;
   let graphic: React.ReactNode;
   if (token === 'bitcoin' || token === 'btc') {
     graphic = (

@@ -1,11 +1,13 @@
 import { normalizePublicAddress } from '../core/addresses.ts';
+import { getNetwork } from '../core/networks.ts';
+import type { EvmNetworkId } from '../custody/networkContext.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
 import type { CustodySnapshot } from '../custody/types.ts';
 
 export type NativePortfolioAccount = Readonly<{
   address: string;
-  network: 'ethereum';
+  network: EvmNetworkId;
   revision: number;
 }>;
 
@@ -49,7 +51,7 @@ function snapshot(
   return Object.freeze({ account, status, units, updatedAt });
 }
 
-/** Public ETH observations, bound to the exact ready custody revision. */
+/** Public EVM observations, bound to the exact ready custody revision. */
 export class NativePortfolioController {
   private readonly source: PublicCustodySource;
   private readonly reader: BalanceReader;
@@ -73,12 +75,13 @@ export class NativePortfolioController {
       const current = this.source.getSnapshot();
       if (
         current.phase !== 'ready' || !current.account ||
-        current.account.network !== 'ethereum' ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
+      const network = getNetwork(current.account.network);
+      if (network.kind !== 'evm' || !network.canWatch) return null;
       return Object.freeze({
-        address: normalizePublicAddress(current.account.address, 'ethereum'),
-        network: 'ethereum',
+        address: normalizePublicAddress(current.account.address, network.id),
+        network: network.id as EvmNetworkId,
         revision: current.revision,
       });
     } catch {
@@ -210,11 +213,11 @@ export class NativePortfolioController {
     this.replace(snapshot(account, 'loading'), true);
     if (!this.current(request)) return;
     try {
-      const result = await this.reader.readBalance('ethereum', account.address, request.controller.signal);
+      const result = await this.reader.readBalance(account.network, account.address, request.controller.signal);
       if (!this.current(request)) return;
       if (!result) throw new Error('Invalid observation');
       const { chainId, units } = result;
-      if (chainId !== 1) throw new Error('Invalid chain');
+      if (chainId !== getNetwork(account.network).chainId) throw new Error('Invalid chain');
       assertBaseUnits(units);
       const updatedAt = this.now();
       if (!Number.isFinite(updatedAt) || updatedAt < 0) throw new Error('Invalid time');

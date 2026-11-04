@@ -4,6 +4,7 @@ import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import type { PublicCustodySource } from '../src/portfolio/nativePortfolio.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { BalanceReader } from '../src/core/watchOnlyAuthority.ts';
+import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import { createBalanceReader, RPC_ENDPOINTS } from '../src/platformRpc.ts';
 
 const A = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -83,7 +84,8 @@ test('all non-ready or invalid public custody states stay unavailable without re
     ready('not-an-address'), ready('0x' + '0'.repeat(40)), ready(` ${A}`),
     ready('0x52908400098527886e0F7030069857D2E4169EE7'),
     ready(A, -1), ready(A, 0.5), ready(A, NaN), ready(A, Number.MAX_SAFE_INTEGER + 1),
-    { ...ready(), account: { network: 'base', address: A } } as unknown as CustodySnapshot,
+    { ...ready(), account: { network: 'syscoin', address: A } } as unknown as CustodySnapshot,
+    { ...ready(), account: { network: 'unknown', address: A } } as unknown as CustodySnapshot,
   ];
   for (const value of values) {
     const f = fixture(new Source(value)); const disconnect = f.controller.connect();
@@ -342,4 +344,45 @@ test('an address rendered before an unannounced source change cannot authorize a
   assert.equal(f.calls.length, 1); // Reading the gate itself starts no request.
   f.source.set(ready(B, 2));
   assert.equal(f.calls.length, 2); disconnect();
+});
+
+
+test('every registered EVM chain reads the selected network and refuses a wrong-chain observation', async () => {
+  for (const network of NATIVE_NETWORKS) {
+    const source = new Source({ ...ready(), account: { network: network.id, address: A } });
+    const f = fixture(source);
+    const stop = f.controller.connect();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0]!.network, network.id);
+    f.calls[0]!.resolve({ chainId: Number(network.chainId), units: '1500000000000000000' });
+    await tick();
+    assert.equal(f.controller.getSnapshot().status, 'available');
+    const current = f.controller.getActiveAccount();
+    assert.equal(current?.network, network.id);
+    assert.equal(current?.address, A);
+    const pending = f.controller.refresh();
+    f.calls[1]!.resolve({ chainId: Number(network.chainId) + 1, units: '0' });
+    await pending;
+    assert.equal(f.controller.getSnapshot().status, 'error');
+    assert.equal(f.controller.getSnapshot().units, null);
+    stop();
+  }
+});
+
+test('network A-B-A discards old balances even with identical address and a reused public revision', async () => {
+  const f = fixture(); const stop = f.controller.connect();
+  const original = f.controller.getActiveAccount();
+  f.source.set({ ...ready(), account: { network: 'base', address: A } });
+  assert.equal(f.calls[0]!.signal.aborted, true);
+  assert.equal(f.controller.isCurrent(original), false);
+  f.source.set(ready());
+  assert.equal(f.calls[1]!.signal.aborted, true);
+  assert.equal(f.calls.length, 3);
+  f.calls[0]!.resolve({ chainId: 1, units: '10' });
+  f.calls[1]!.resolve({ chainId: 8453, units: '20' });
+  await tick();
+  assert.equal(f.controller.getSnapshot().status, 'loading');
+  f.calls[2]!.resolve({ chainId: 1, units: '30' }); await tick();
+  assert.equal(f.controller.getSnapshot().units, '30');
+  stop();
 });
