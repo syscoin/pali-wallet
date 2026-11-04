@@ -16,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import type { Erc20Metadata } from '../../../../source/shared/erc20';
 import { getNetwork } from '../core/networks';
 import type {
   NativeTokenSnapshot,
@@ -26,6 +27,7 @@ import { Button, Card, Coin, colors, Notice, styles, Text } from '../ui';
 type Props = {
   controller: NativeTokenView;
   onReceive(): void;
+  onSend?(token: Erc20Metadata): void;
   onBackHandlerChange?(handler: (() => boolean) | null): void;
   onModeChange?(title: string | null): void;
 };
@@ -60,6 +62,7 @@ function TokenContent({
   controller,
   snapshot,
   onReceive,
+  onSend,
   onBackHandlerChange,
   onModeChange,
 }: Props & { snapshot: NativeTokenSnapshot }) {
@@ -78,6 +81,7 @@ function TokenContent({
         )
       : undefined;
   const busy = snapshot.busy || snapshot.previewStatus === 'loading';
+  const canSendToken = !!onSend && snapshot.account?.network === 'ethereum';
   const title =
     route.kind === 'import'
       ? 'Import token'
@@ -468,10 +472,12 @@ function TokenContent({
                       })}
                     </Text>
                   )}
-                  <Notice
+                  {!canSendToken && <Notice
                     title="Receive only"
                     body="Sending this token is not available in this build."
-                  />
+                  />}
+                  {canSendToken && <Button title="Send token" icon="arrow-up-right" disabled={busy}
+                    onPress={() => onSend?.(token.metadata)} />}
                   <Button
                     title="Receive token"
                     icon="arrow-down-left"

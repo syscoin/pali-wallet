@@ -12,6 +12,8 @@ import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime }
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeTransferRuntime } from './transfers.ts';
+import { assertTransferIntentEnvelope, snapshotErc20TransferIntent } from './transferIntent.ts';
+import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
@@ -378,6 +380,17 @@ export function createKeyringRuntimeFactory(
             lock,
           },
           transfers: {
+            async token(contractAddress, assertCurrent) {
+              const contract = normalizeErc20Address(contractAddress);
+              while (active) { await active.catch(() => undefined); checkGuard(assertCurrent); }
+              return tokenOperation(assertCurrent, async (scope, check) => {
+                const inventory = await tokens.load(scope, check);
+                check();
+                const token = inventory.items.find((item) => item.contractAddress === contract);
+                if (!token) throw new KeyringRuntimeError('NOT_READY');
+                return token;
+              });
+            },
             async journal(assertCurrent) {
               if (closed || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               if (!canSign()) throw new KeyringRuntimeError('NOT_READY');
@@ -400,9 +413,14 @@ export function createKeyringRuntimeFactory(
               await hydrate(captured);
               current(captured); checkGuard(assertCurrent);
             }); },
-            sign: (transaction, password, assertCurrent) => {
+            sign: (transaction, password, assertCurrent, inputIntent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
               if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
+              let intent;
+              try {
+                intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
+                assertTransferIntentEnvelope(transaction, intent);
+              } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               checkGuard(assertCurrent);
@@ -410,6 +428,7 @@ export function createKeyringRuntimeFactory(
               current(captured); checkGuard(assertCurrent);
               await hydrate(captured);
               current(captured); checkGuard(assertCurrent);
+              assertTransferIntentEnvelope(transaction, intent);
               const signed = keyring.signPreparedEvmTransaction({
                 account: { id: state.activeAccount.id, type: 'HDAccount', expectedAddress: transaction.from },
                 network: { kind: 'ethereum', chainId: '1', slip44: 60, url: RPC_ENDPOINTS.ethereum! },

@@ -14,6 +14,7 @@ import { nativeSigningEnabled, type EvmNetworkId } from '../custody/networkConte
 import { NativeAccounts } from './NativeAccounts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
+import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
 type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'networks';
@@ -50,6 +51,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
+  const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -70,7 +72,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const revoke = useCallback(() => {
     epoch.current++;
     controllers.current?.backup.cancel(); controllers.current?.authority.lock();
-    Keyboard.dismiss(); clearSecrets(); setStage('choose'); setError('');
+    Keyboard.dismiss(); clearSecrets(); setSendToken(null); setStage('choose'); setError('');
   }, [clearSecrets]);
   const exit = useCallback(() => { revoke(); onExit(); }, [onExit, revoke]);
   const latestExit = useRef(exit);
@@ -205,11 +207,12 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} token={sendToken ?? undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setStage('choose'); }} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accountView ? () => setStage('accounts') : undefined} onExit={exit} onLock={revoke}
-    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => setStage('send') : undefined}
+    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setStage('send'); } : undefined}
+    onSendToken={snapshot.account?.network === 'ethereum' ? (token) => { setSendToken(token); setStage('send'); } : undefined}
     onManageNetworks={networkView ? () => setStage('networks') : undefined}
     onViewRecovery={() => setStage('backup-auth')}
   />;
