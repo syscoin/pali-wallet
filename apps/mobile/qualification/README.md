@@ -67,11 +67,20 @@ only byte lengths and SHA256 digests rather than raw bodies.
 The cases cover an exact large integer and valid zero; mismatched ID, JSON-RPC
 error, malformed JSON and wrong MIME; declared and streamed 16 KiB response
 limits; cancellation after the full request body reaches the host and a healthy
-later POST; and one lost response followed by an explicit replay of identical
+later POST; and one interrupted response body followed by an explicit replay of identical
 synthetic bytes. No key, signature, signed transaction or live provider is used.
 The replay is a transport check. Real transaction retries preserve signed
 payload bytes while their JSON-RPC IDs can change; this gate does not replace
 the existing journal-backed cold-restart evidence.
+
+The declared-size fixture sends one body byte with its oversized Content-Length:
+Foundation can defer delivering headers until data arrives. The limit remains
+16 KiB and this case must close before consuming an oversized body. The lost-body
+fixture sends valid response headers and a JSON prefix before closing. A
+disconnect before headers can be recovered internally by a native HTTP stack;
+this gate does not claim to disable or detect every such transport retry. It
+requires the first explicit caller attempt to fail and the second to return the
+expected result, with exactly two identical request-body and payload digests.
 
 Each launch requires `pali-native-post-<token>.json`, bound to the same immutable
 source/lock, platform, phase, scenario and native session as its GET sidecar.
@@ -79,7 +88,9 @@ The host takes one final atomic GET+POST audit, validates both, and saves the
 unchanged `<platform>-<scenario>-<phase>-http.json` plus a separate `-post.json`.
 Only then can the aggregate set `nativePostQualified: true`. Old GET-only
 artifacts cannot satisfy the new gate. Failed POST diagnostics use a different
-kind and cannot be accepted as success.
+kind and cannot be accepted as success. They also retain a bounded fixture-route,
+explicit attempt count and rejection category (`none`, `size-limit`, `abort`, or
+`other`). No exception payload, request body or arbitrary URL enters diagnostics.
 
 Request bodies are bounded at 8 KiB, responses retain production 16 KiB limits,
 and all fixture body reads, control waits, paced streams and sockets are bounded

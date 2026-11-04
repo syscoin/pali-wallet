@@ -88,7 +88,16 @@ function handlePostRoute(request, response, route, state) {
     const id = JSON.parse(expected).id;
     const result = route === 'post-zero' && id === 2 ? '0x0' : id === 1 ? '0x1' : POST_QUANTITY;
     const body = JSON.stringify({ jsonrpc: '2.0', id, result });
-    if (route === 'post-lost' && ordinal === 1) { state.lostResponses++; response.destroy(); return; }
+    if (route === 'post-lost' && ordinal === 1) {
+      // Lose an in-flight response body, after the native transport can expose
+      // its headers. A disconnect before headers may be retried internally by
+      // the OS HTTP stack without returning an ambiguous result to the caller.
+      response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) });
+      response.write(body.slice(0, 11));
+      const timer = setTimeout(() => { state.lostResponses++; response.destroy(); }, 100);
+      response.once('close', () => clearTimeout(timer));
+      return;
+    }
     if (route === 'post-id') { ok(JSON.stringify({ jsonrpc: '2.0', id: id + 1, result })); return; }
     if (route === 'post-error') { ok(JSON.stringify({ jsonrpc: '2.0', id, result, error: { code: -32603, message: 'fixture error' } })); return; }
     if (route === 'post-malformed') { ok('{"jsonrpc":'); return; }
@@ -97,7 +106,12 @@ function handlePostRoute(request, response, route, state) {
       const name = route.slice(5); let selfClosed = false, interval;
       const timer = setTimeout(() => { selfClosed = true; response.destroy(); }, 7000);
       response.once('close', () => { clearTimeout(timer); clearInterval(interval); state.closed[name] = !selfClosed && !response.writableFinished; notify(); });
-      if (route === 'post-declared') { response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': '16385' }); response.flushHeaders(); }
+      if (route === 'post-declared') {
+        response.writeHead(200, { 'Content-Type': 'application/json', 'Content-Length': '16385' });
+        // Some native stacks defer exposing headers until body data arrives.
+        // One byte keeps this a declared-size test, not a streamed-size test.
+        response.write(' ');
+      }
       if (route === 'post-stream') {
         response.writeHead(200, { 'Content-Type': 'application/json' }); response.write('{"jsonrpc":"2.0","id":1,"result":"'); let sent = 0;
         interval = setInterval(() => { if (response.destroyed) return; response.write('A'.repeat(1024)); sent += 1024;

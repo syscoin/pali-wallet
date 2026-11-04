@@ -307,7 +307,8 @@ function QualificationApp() {
               const failedDestination = isPost ? `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json` : destination;
               const diagnostic = { ...build, kind: isPost ? 'native-post-diagnostic' : 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
                 failedCase: error.failedCase, token: parameters.http.token, phase: parameters.phase,
-                scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId };
+                scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId,
+                ...(isPost ? { failureDetail: error.failureDetail } : {}) };
               await FileSystem.writeAsStringAsync(`${failedDestination}.tmp`, JSON.stringify(diagnostic))
                 .then(() => FileSystem.moveAsync({ from: `${failedDestination}.tmp`, to: failedDestination })).catch(() => undefined);
             }

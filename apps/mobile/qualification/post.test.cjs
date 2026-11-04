@@ -6,9 +6,9 @@ const { createNativeHttpFetch } = require('../src/platform/httpPolicy.ts');
 const { createHttpFixture } = require('./http-server.cjs');
 const { assertAudit } = require('./http-companion.cjs');
 const { assertPostAudit, partialPostAudit } = require('./post-server.cjs');
-const { POST_CASES, assertPostReport, postDiagnosticCase } = require('./post-contract.ts');
+const { POST_CASES, assertPostReport, postDiagnosticCase, validPostFailureDetail } = require('./post-contract.ts');
 const { POST_CHAIN_BODY, POST_RETRY_BODY, POST_RETRY_PAYLOAD } = require('./post-fixtures.ts');
-const { qualifyNativePost } = require('./post-native.ts');
+const { qualifyNativePost, PostQualificationError } = require('./post-native.ts');
 const { qualifyNativeHttp } = require('./http-native.ts');
 const token = 'c'.repeat(32), build = { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: 'b'.repeat(64) };
 const expected = { sourceRevision: build.sourceRevision, lockfileSha256: build.lockfileSha256, token, phase: 'create', scenario: 'import', platform: 'ios' };
@@ -42,8 +42,13 @@ test('POST report requires exact source, session shape, cases, and schema; faile
   for (const patch of [{ nativePostQualified: false }, { token: 'd'.repeat(32) }, { sourceRevision: 'd'.repeat(40) }, { lockfileSha256: 'd'.repeat(64) },
     { platform: 'android' }, { phase: 'restart' }, { scenario: 'generate' }, { sessionId: 'wrong' }, { networkCalls: 1 }, { cases: [...POST_CASES].reverse() },
     { kind: 'native-http' }, { unexpected: true }]) assert.throws(() => assertPostReport({ ...report(), ...patch }, expected));
-  const diagnostic = { ...build, ...expected, kind: 'native-post-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: POST_CASES[0], sessionId: report().sessionId };
+  const diagnostic = { ...build, ...expected, kind: 'native-post-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: POST_CASES[0],
+    failureDetail: { route: 'post-balance', attempt: 0, rejection: 'none' }, sessionId: report().sessionId };
   assert.equal(postDiagnosticCase(diagnostic, expected), POST_CASES[0]); assert.throws(() => assertPostReport(diagnostic, expected));
+  for (const detail of [null, {}, { ...diagnostic.failureDetail, route: 'https://untrusted.invalid' }, { ...diagnostic.failureDetail, attempt: 3 },
+    { ...diagnostic.failureDetail, rejection: 'private error text' }, { ...diagnostic.failureDetail, raw: 'body' }]) {
+    assert.equal(validPostFailureDetail(detail), false); assert.equal(postDiagnosticCase({ ...diagnostic, failureDetail: detail }, expected), undefined);
+  }
 });
 test('host rejects missing/different digests, request counts and lost-response or close evidence', () => {
   assert(validAudit);
@@ -62,12 +67,50 @@ test('body rewrite, wrong headers and accidental automatic retry fail the native
       const changed = async (url, init) => {
         if (mode === 'body') return native(url, { ...init, body: String(init.body) + ' ' });
         if (mode === 'header') return native(url, { ...init, headers: { ...init.headers, 'Content-Type': 'text/plain' } });
-        try { return await native(url, init); } catch { return native(url, init); }
+        if (!url.includes('/post-lost?')) return native(url, init);
+        try {
+          const response = await native(url, init);
+          // Model a hidden full-response retry, including failure after headers.
+          await response.clone().arrayBuffer(); return response;
+        } catch { return native(url, init); }
       };
       await assert.rejects(qualifyNativePost(options(fixture, changed)));
       // Hidden retry can reproduce the final byte counts; the native outcome
       // check must independently reject its falsely successful first attempt.
       if (mode !== 'retry') assert.throws(() => assertPostAudit(fixture.inspectAll(token).post, token, fixture.port));
+    } finally { await fixture.close(); }
+  }
+});
+
+test('bounded diagnostics distinguish size-route errors from explicit retry outcomes', async () => {
+  for (const mode of ['declared-error', 'first-success', 'second-error']) {
+    const fixture = await createHttpFixture(); fixture.begin(token);
+    try {
+      const native = createNativeHttpFetch(fetch); let explicitAttempts = 0;
+      const changed = async (url, init) => {
+        if (mode === 'declared-error' && url.includes('/post-declared?')) throw Error('private transport detail');
+        if (url.includes('/post-lost?')) {
+          explicitAttempts++;
+          if (mode === 'first-success') return new Response(JSON.stringify({ jsonrpc: '2.0', id: 47, result: '0x20000000000001' }),
+            { headers: { 'Content-Type': 'application/json' } });
+          if (mode === 'second-error' && explicitAttempts === 2) throw Error('private transport detail');
+        }
+        return native(url, init);
+      };
+      // Supply the captured response URL to model a valid successful first call.
+      const fetcher = async (url, init) => {
+        const response = await changed(url, init);
+        if (mode === 'first-success' && url.includes('/post-lost?')) Object.defineProperty(response, 'url', { value: url });
+        return response;
+      };
+      await assert.rejects(qualifyNativePost(options(fixture, fetcher)), error => {
+        assert(error instanceof PostQualificationError);
+        assert.deepEqual(error.failureDetail, mode === 'declared-error'
+          ? { route: 'post-declared', attempt: 0, rejection: 'other' }
+          : { route: 'post-lost', attempt: mode === 'first-success' ? 1 : 2, rejection: mode === 'first-success' ? 'none' : 'other' });
+        assert(!JSON.stringify(error).includes('private transport detail')); return true;
+      });
+      if (mode === 'first-success') assert.equal(explicitAttempts, 1);
     } finally { await fixture.close(); }
   }
 });
