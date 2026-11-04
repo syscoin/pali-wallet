@@ -21,6 +21,8 @@ export interface IPrivateNoteRestoreEntry {
 export interface IPrivateNoteRestoreGuard {
   history?: Readonly<INoteBackupHistory>;
   importedAt: number;
+  /** Local password-confirmed review only; never accepted from a backup. */
+  reviewedAt?: number;
   sourceHash: string;
   version: 1;
 }
@@ -82,14 +84,15 @@ export function readPrivateNoteRestoreGuard(
 ): IPrivateNoteRestoreGuard {
   const guard = data(
     value,
-    ['version', 'importedAt', 'sourceHash', 'history'],
+    ['version', 'importedAt', 'sourceHash', 'history', 'reviewedAt'],
     ['version', 'importedAt', 'sourceHash']
   );
   if (
     guard.version !== 1 ||
     !date(guard.importedAt) ||
     typeof guard.sourceHash !== 'string' ||
-    !HASH.test(guard.sourceHash)
+    !HASH.test(guard.sourceHash) ||
+    (guard.reviewedAt !== undefined && !date(guard.reviewedAt))
   )
     return invalid();
   const history =
@@ -101,8 +104,22 @@ export function readPrivateNoteRestoreGuard(
     importedAt: guard.importedAt,
     sourceHash: guard.sourceHash,
     ...(history ? { history } : {}),
+    ...(guard.reviewedAt !== undefined ? { reviewedAt: guard.reviewedAt } : {}),
   };
 }
+
+export const hasImportedWithdrawalHistory = (
+  guard: IPrivateNoteRestoreGuard | undefined
+): boolean => Boolean(guard?.history?.withdrawals?.length);
+
+/** Review is local consent, not evidence of exclusive ownership or proof revocation. */
+export const restoredNoteBlocksWithdrawal = (
+  guard: IPrivateNoteRestoreGuard | undefined
+): boolean =>
+  Boolean(
+    guard &&
+      (guard.reviewedAt === undefined || hasImportedWithdrawalHistory(guard))
+  );
 export function readPrivateNoteRestoreMetadata(
   value: unknown
 ): IPrivateNoteRestoreMetadata {
@@ -286,12 +303,18 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
         const guard = previous.restoreGuard
           ? readPrivateNoteRestoreGuard(previous.restoreGuard)
           : { version: 1 as const, importedAt, sourceHash };
-        const history = mergeNoteBackupHistories(
-          guard.history,
-          privateNoteCurrentHistory(previous),
-          entry.history
-        );
-        const nextGuard = { ...guard, ...(history ? { history } : {}) };
+        const history = mergeNoteBackupHistories(guard.history, entry.history);
+        // Local journals remain in their original fields and are included by
+        // export admission below. Do not turn them into imported blockers.
+        const revokeReview =
+          entry.reconciliationRequired ||
+          Boolean(entry.history?.withdrawals?.length);
+        const unreviewed = { ...guard };
+        if (revokeReview) delete unreviewed.reviewedAt;
+        const nextGuard = {
+          ...(revokeReview ? unreviewed : guard),
+          ...(history ? { history } : {}),
+        };
         if (
           !previous.restoreGuard ||
           JSON.stringify(nextGuard) !== JSON.stringify(previous.restoreGuard)

@@ -1609,11 +1609,11 @@
       "selectFile": "Sicherungsdatei",
       "verifyFile": "Gespeicherte Datei prüfen",
       "verified": "Die ausgewählte Datei stimmt mit dieser verschlüsselten Sicherung überein.",
-      "summary": "Neu: {{added}} · Bereits gespeichert: {{duplicates}} · Neu oder aktualisiert bis zum Abgleich gesperrt: {{guarded}}",
-      "reconciliation": "Wiederhergestellte Notizen müssen vor dem Ausgeben abgeglichen werden. Ihr Verlauf startet keine Auszahlungen erneut. Der Abgleich ist noch nicht verfügbar.",
+      "summary": "Neu: {{added}} · Bereits gespeichert: {{duplicates}} · Neue oder aktualisierte Wiederherstellungsschutzmaßnahmen: {{guarded}}",
+      "reconciliation": "Prüfe wiederhergestellte Notizen vor einer Auszahlung. Aufgezeichnete Auszahlungen müssen zuerst geklärt werden. Der gespeicherte Verlauf startet niemals eine Auszahlung erneut.",
       "expires": "Diese Prüfung läuft nach fünf Minuten ab.",
       "confirmRestore": "Notizen wiederherstellen",
-      "restored": "Wiederherstellung bestätigt. Notizen mit ausstehendem Abgleich können weiterhin nicht ausgegeben werden.",
+      "restored": "Wiederherstellung bestätigt. Prüfe wiederhergestellte Notizen vor einer Auszahlung; Notizen mit aufgezeichneten Auszahlungen bleiben bis zur Klärung gesperrt.",
       "unconfirmed": "Wiederherstellung unbestätigt. Sie könnte bereits gespeichert sein. Prüfe den Beleg; sende den Auftrag nicht erneut.",
       "checkReceipt": "Wiederherstellungsbeleg prüfen",
       "receiptUnavailable": "Kein passender Beleg bestätigt. Das beweist nicht, dass die Wiederherstellung fehlgeschlagen ist. Prüfe deine gespeicherten Notizen, bevor du erneut beginnst.",
@@ -1793,6 +1793,18 @@
       "failed": "Die Wiederherstellung konnte nicht bestätigt werden. Der ursprüngliche Nachweis ist eventuell noch nutzbar, die Notiz bereits ausgegeben oder der Beleg nicht verfügbar. Aktualisiere vor einem erneuten Versuch.",
       "checking": "Endgültige Transaktion und Ablauf des Nachweises werden geprüft…",
       "confirm": "Prüfen und wiederherstellen"
+    },
+    "restoreReview": {
+      "action": "Wiederhergestellte Notiz prüfen",
+      "help": "Bestätige dein Wallet-Passwort, um diese wiederhergestellte Notiz zu prüfen. Eine Auszahlung erfordert eine separate Prüfung.",
+      "disclosure": "Die Wiederherstellung storniert keine früheren Auszahlungen und macht andere Kopien dieser Notiz nicht ungültig.",
+      "snapshot": "Verifizierte Pool-Daten bis Block {{block}}. Dies sind gespeicherte Daten, keine Live-Prüfung.",
+      "noSnapshot": "Bereite die Pool-Daten vor oder aktualisiere sie, bevor du diese Notiz prüfst.",
+      "pending": "Für diese Notiz ist eine Auszahlung erfasst. Kläre ihren Status, bevor du eine weitere Auszahlung startest.",
+      "password": "Wallet-Passwort",
+      "confirm": "Notizprüfung bestätigen",
+      "busy": "Prüfung wird gespeichert…",
+      "failed": "Die Prüfung konnte nicht gespeichert werden. Prüfe Passwort und Pool-Daten und versuche es erneut."
     }
   }
 }

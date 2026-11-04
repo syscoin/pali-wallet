@@ -3,12 +3,24 @@
 The Privacy screen uses the four pinned Tornado Classic ETH pools on Ethereum
 mainnet. It is separate from ordinary wallet accounts: a note is a bearer secret,
 and knowing the wallet recovery phrase is not sufficient to recover a randomly
-generated note. Keep the password-gated note backup before deleting a wallet or
-moving to another installation or starting recovery. While the wallet is unlocked
-and the password is known, use **Reveal for backup** on each saved note and keep
-the backups secret; a forgotten password does not let the user reveal the old
-encrypted vault. Imported notes are accepted only after local
-pool data establishes their commitment; an accepted spent note is labelled spent.
+generated note. Before deleting a wallet, moving to another installation or
+starting recovery, use **Back up all private notes** to save an encrypted file
+with a separate backup password. **Reveal for backup** remains available for an
+individual note after wallet-password confirmation. Keep both backup forms secret;
+a forgotten wallet password does not reveal the old encrypted vault. A restored
+file preserves notes and history, then requires a local review before an ordinary
+note can enter withdrawal. Imported raw notes require locally verified pool data;
+an accepted spent note is labelled spent.
+
+**Review restored note** uses your wallet password and the existing verified pool
+snapshot, labelled with its block number. It does not perform a live chain check
+or a note-specific RPC request. Verified deposit membership and an unspent
+observation permit review for an ordinary note, including one with deposit-only
+history. Missing, spent and unverified notes stay distinct. A withdrawal requires
+its own new review and the normal proof and submission checks. Restoring a bearer
+note does not cancel earlier withdrawals or invalidate other copies. Backups with
+recorded unknown/submitted withdrawals require separate reconciliation and cannot
+be released by this review action. Local review consent is never exported.
 
 ## Custody and transaction admission
 
@@ -51,8 +63,10 @@ accepts at that finalized block. A revert or an elapsed timeout alone never
 releases a note. The RPC receives the transaction hash, proof root and public
 nullifier; confirm this disclosure and your wallet password before checking.
 The original journal and recovery evidence remain encrypted in the vault. A
-new withdrawal requires a fresh review. Relayed, unknown and restored guarded
-attempts remain blocked by this action.
+new withdrawal requires a fresh review. Relayed and unknown attempts, and imported
+withdrawal hints, remain blocked by this action. An exact local failed withdrawal
+can be recovered while preserving its restored-note review guard; ordinary note
+review can then proceed if no imported withdrawal uncertainty remains.
 
 The initial sender integration supports HD and imported software accounts.
 Hardware and smart accounts are rejected before note creation or RPC preflight:

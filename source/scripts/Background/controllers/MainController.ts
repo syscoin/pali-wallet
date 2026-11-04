@@ -2960,6 +2960,12 @@ class MainController {
     );
   }
 
+  public async reviewRestoredPrivateNote(id: string, password: string) {
+    return this.usePrivateVault((vault) =>
+      vault.reviewRestoredNote(id, password)
+    );
+  }
+
   public async preparePrivacyWithdrawal(
     request: Parameters<IPrivacyWithdrawalsController['prepareWithdrawal']>[0]
   ) {

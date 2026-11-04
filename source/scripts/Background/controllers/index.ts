@@ -369,6 +369,8 @@ const MasterController = (
         wallet.verifyNoteBackupExport(id, file, backupPassword),
     },
     privateVault: {
+      reviewRestoredNote: (id, password) =>
+        wallet.reviewRestoredPrivateNote(id, password),
       recoverFailedWithdrawal: (id, password) =>
         wallet.recoverFailedPrivateWithdrawal(id, password),
       clearCompletedNotes: (ids) => wallet.clearPrivateVaultCompletedNotes(ids),

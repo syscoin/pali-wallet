@@ -1609,11 +1609,11 @@
       "selectFile": "Archivo de copia",
       "verifyFile": "Verificar archivo guardado",
       "verified": "El archivo seleccionado coincide con esta copia cifrada.",
-      "summary": "Nuevas: {{added}} · Ya guardadas: {{duplicates}} · Retenciones para conciliación nuevas o actualizadas: {{guarded}}",
-      "reconciliation": "Las notas restauradas requieren conciliación antes de gastarse. Su historial no reinicia retiros. La conciliación aún no está disponible.",
+      "summary": "Nuevas: {{added}} · Ya guardadas: {{duplicates}} · Protecciones de restauración nuevas o actualizadas: {{guarded}}",
+      "reconciliation": "Revisa las notas restauradas antes de retirar. Primero debe resolverse cualquier actividad de retiro registrada. El historial guardado nunca reinicia un retiro.",
       "expires": "Esta revisión caduca a los cinco minutos.",
       "confirmRestore": "Restaurar notas",
-      "restored": "Restauración confirmada. Las notas que requieren conciliación siguen sin poder gastarse.",
+      "restored": "Restauración confirmada. Revisa las notas restauradas antes de retirar; las notas con actividad de retiro registrada siguen bloqueadas hasta resolverla.",
       "unconfirmed": "La restauración no está confirmada. Puede que ya se haya guardado. Consulta el comprobante; no vuelvas a enviarla.",
       "checkReceipt": "Consultar comprobante",
       "receiptUnavailable": "No se confirmó ningún comprobante coincidente. Esto no demuestra que la restauración haya fallado. Revisa tus notas guardadas antes de empezar de nuevo.",
@@ -1793,6 +1793,18 @@
       "failed": "No se pudo confirmar la recuperación. La prueba original puede seguir siendo válida, la nota puede estar gastada o las pruebas pueden no estar disponibles. Actualiza antes de intentarlo de nuevo.",
       "checking": "Comprobando la transacción finalizada y la caducidad de la prueba…",
       "confirm": "Comprobar y recuperar"
+    },
+    "restoreReview": {
+      "action": "Revisar nota restaurada",
+      "help": "Confirma la contraseña de tu cartera para revisar esta nota restaurada. Un retiro requiere una revisión aparte.",
+      "disclosure": "Restaurar no cancela retiros anteriores ni invalida otras copias de esta nota.",
+      "snapshot": "Datos del pool verificados hasta el bloque {{block}}. Son datos guardados, no una comprobación en vivo.",
+      "noSnapshot": "Prepara o actualiza los datos del pool antes de revisar esta nota.",
+      "pending": "Esta nota tiene actividad de retiro registrada. Resuelve su estado antes de iniciar otro retiro.",
+      "password": "Contraseña de la cartera",
+      "confirm": "Confirmar revisión de la nota",
+      "busy": "Guardando revisión…",
+      "failed": "No se pudo guardar la revisión. Comprueba la contraseña y los datos del pool e inténtalo de nuevo."
     }
   }
 }

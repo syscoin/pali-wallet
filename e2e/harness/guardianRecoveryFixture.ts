@@ -1,6 +1,9 @@
 import { AbiCoder, keccak256 } from 'ethers';
 
-import { paliGuardianRecoveryModuleInterface } from '../../source/utils/smartAccount/contracts';
+import {
+  paliGuardianRecoveryModuleInterface,
+  paliSmartAccountInterface,
+} from '../../source/utils/smartAccount/contracts';
 import { PALI_INFRASTRUCTURE_BY_ID } from '../../source/utils/smartAccount/deployment';
 
 import { createSmartAccountHydrationFixture } from './smartAccountHydrationFixture';
@@ -36,10 +39,31 @@ export function createGuardianRecoveryFixture() {
     executed: false,
     failStorage: false,
   };
-  const block = () => ({
-    number: `0x${state.blockNumber.toString(16)}`,
-    hash: word(state.blockNumber),
-    timestamp: `0x${state.timestamp.toString(16)}`,
+  type Snapshot = Omit<typeof state, 'failStorage'> & {
+    guardianInstalled: boolean;
+  };
+  // A refresh can still be reading its pinned block when the test advances
+  // the head. Keep the actual observed state, never today's values at an old tag.
+  const snapshots = new Map<string, Snapshot>();
+  const snapshotAt = (tag: unknown) => {
+    const current = `0x${state.blockNumber.toString(16)}`;
+    if ((tag === 'latest' || tag === current) && !snapshots.has(current)) {
+      snapshots.set(current, {
+        blockNumber: state.blockNumber,
+        timestamp: state.timestamp,
+        activeOperation: state.activeOperation,
+        scheduledAt: state.scheduledAt,
+        canceled: state.canceled,
+        executed: state.executed,
+        guardianInstalled: hydration.state.guardianInstalled,
+      });
+    }
+    return snapshots.get(tag === 'latest' ? current : String(tag));
+  };
+  const block = (snapshot: Snapshot) => ({
+    number: `0x${snapshot.blockNumber.toString(16)}`,
+    hash: word(snapshot.blockNumber),
+    timestamp: `0x${snapshot.timestamp.toString(16)}`,
   });
   const activeSlot = slot('address', hydration.base.smartAccountAddress, 3);
   const scheduleSlot = slot('bytes32', OPERATION, 4);
@@ -76,18 +100,23 @@ export function createGuardianRecoveryFixture() {
         let handled = false;
         let failure = false;
         if (call?.jsonrpc === '2.0' && Array.isArray(call.params)) {
+          const snapshot = snapshotAt(
+            call.method === 'eth_getBlockByNumber'
+              ? call.params[0]
+              : call.params[call.method === 'eth_getStorageAt' ? 2 : 1]
+          );
           if (
             call.method === 'eth_getBlockByNumber' &&
             call.params.length === 2 &&
             call.params[1] === false &&
-            ['latest', block().number].includes(call.params[0])
+            snapshot
           ) {
             handled = true;
-            result = block();
+            result = block(snapshot);
           } else if (
             call.method === 'eth_getCode' &&
             call.params.length === 2 &&
-            ['latest', block().number].includes(call.params[1]) &&
+            snapshot &&
             String(call.params[0]).toLowerCase() ===
               hydration.guardianAddress.toLowerCase()
           ) {
@@ -98,23 +127,25 @@ export function createGuardianRecoveryFixture() {
             call.params.length === 3 &&
             String(call.params[0]).toLowerCase() ===
               hydration.guardianAddress.toLowerCase() &&
-            call.params[2] === block().number
+            snapshot &&
+            call.params[2] !== 'latest'
           ) {
             handled = true;
             storageEntered?.();
             if (storageGate) await storageGate;
             failure = state.failStorage;
-            if (call.params[1] === activeSlot) result = state.activeOperation;
+            if (call.params[1] === activeSlot)
+              result = snapshot.activeOperation;
             else if (call.params[1] === scheduleSlot)
               result = word(
-                BigInt(state.scheduledAt) |
-                  (BigInt(Number(state.executed)) << BigInt(48)) |
-                  (BigInt(Number(state.canceled)) << BigInt(56))
+                BigInt(snapshot.scheduledAt) |
+                  (BigInt(Number(snapshot.executed)) << BigInt(48)) |
+                  (BigInt(Number(snapshot.canceled)) << BigInt(56))
               );
           } else if (
             call.method === 'eth_call' &&
             call.params.length === 2 &&
-            ['latest', block().number].includes(call.params[1]) &&
+            snapshot &&
             String(call.params[0]?.to).toLowerCase() ===
               hydration.guardianAddress.toLowerCase()
           ) {
@@ -132,7 +163,7 @@ export function createGuardianRecoveryFixture() {
                 hydration.base.smartAccountAddress.toLowerCase()
             ) {
               const values: Record<string, unknown[]> = {
-                config: [[600, 1200, 1, hydration.state.guardianInstalled]],
+                config: [[600, 1200, 1, snapshot.guardianInstalled]],
                 guardians: [[hydration.base.address]],
                 policyEpoch: [7],
               };
@@ -144,6 +175,24 @@ export function createGuardianRecoveryFixture() {
                     values[parsed.name]
                   );
               }
+            }
+          } else if (
+            call.method === 'eth_call' &&
+            call.params.length === 2 &&
+            snapshot &&
+            String(call.params[0]?.to).toLowerCase() ===
+              hydration.base.smartAccountAddress.toLowerCase()
+          ) {
+            const data = paliSmartAccountInterface.encodeFunctionData(
+              'isModuleInstalled',
+              [2, hydration.guardianAddress, '0x']
+            );
+            if (call.params[0].data === data) {
+              handled = true;
+              result = paliSmartAccountInterface.encodeFunctionResult(
+                'isModuleInstalled',
+                [snapshot.guardianInstalled]
+              );
             }
           }
         }

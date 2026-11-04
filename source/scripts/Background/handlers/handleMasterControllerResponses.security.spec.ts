@@ -1,5 +1,61 @@
+import { isValidMethod } from '../controllers/message-handler/method-registry';
+
 import { watchApprovalSubmission } from './approvalSubmission';
 import { handleMasterControllerResponses } from './handleMasterControllerResponses';
+
+describe('restored-note review authority', () => {
+  it.each([
+    ['https://example.com', 'pali-extension', false],
+    ['chrome-extension://other/app.html', 'other', false],
+    ['chrome-extension://pali-extension/app.html', 'pali-extension', true],
+  ])(
+    'admits %s only as a trusted extension action',
+    async (url, id, allowed) => {
+      Object.assign(chrome.runtime, {
+        getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
+        id: 'pali-extension',
+      });
+      const reviewRestoredNote = jest.fn(async () => undefined);
+      const sendResponse = jest.fn();
+      const logging = jest.spyOn(console, 'error').mockImplementation();
+      try {
+        handleMasterControllerResponses({
+          privateVault: { reviewRestoredNote },
+        } as any);
+        const add = chrome.runtime.onMessage.addListener as jest.Mock;
+        const listener = add.mock.calls[add.mock.calls.length - 1][0];
+        const result = listener(
+          {
+            type: 'CONTROLLER_ACTION',
+            data: {
+              methods: ['privateVault', 'reviewRestoredNote'],
+              params: ['note', 'synthetic-password'],
+            },
+          },
+          { id, url },
+          sendResponse
+        );
+        expect(result).toBe(allowed);
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        expect(reviewRestoredNote).toHaveBeenCalledTimes(allowed ? 1 : 0);
+        if (allowed)
+          expect(reviewRestoredNote).toHaveBeenCalledWith(
+            'note',
+            'synthetic-password'
+          );
+        else
+          expect(sendResponse).toHaveBeenCalledWith({
+            success: false,
+            error: 'Controller actions are not available from connected sites',
+          });
+        expect(isValidMethod('reviewRestoredNote')).toBe(false);
+        expect(isValidMethod('privateVault.reviewRestoredNote')).toBe(false);
+      } finally {
+        logging.mockRestore();
+      }
+    }
+  );
+});
 
 describe('native approval controller submission lifecycle', () => {
   it.each([true, false, undefined])(

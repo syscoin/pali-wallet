@@ -183,6 +183,7 @@ for (const width of [400, 320]) {
       );
       fixture.hydrationState.deployed = true;
       fixture.hydrationState.guardianInstalled = true;
+      fixture.state.blockNumber++;
       phase = 'hub-first-open';
       await wallet.step(
         'open Hub after the remote account becomes deployed',
