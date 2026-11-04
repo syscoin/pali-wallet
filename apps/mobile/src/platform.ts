@@ -2,6 +2,8 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { createPublicAccountStorage } from './core/publicAccountStorage.ts';
 import { createBalanceReader } from './platformRpc.ts';
+import { createUtxoBalanceReader } from './core/utxoBalanceReader.ts';
+import type { BalanceReader } from './core/watchOnlyAuthority.ts';
 import { walletFetch } from './platform/http';
 
 const STORAGE_OPTIONS: SecureStore.SecureStoreOptions = {
@@ -10,7 +12,12 @@ const STORAGE_OPTIONS: SecureStore.SecureStoreOptions = {
   requireAuthentication: false,
 };
 export const isNativePersistence = Platform.OS === 'ios' || Platform.OS === 'android';
-export const balanceReader = createBalanceReader({ fetch: walletFetch });
+const evmBalanceReader = createBalanceReader({ fetch: walletFetch });
+const utxoBalanceReader = createUtxoBalanceReader({ fetch: walletFetch });
+export const balanceReader: BalanceReader = Object.freeze({
+  readBalance: evmBalanceReader.readBalance,
+  readUtxoBalance: utxoBalanceReader.readBalance,
+});
 // The web review build is ephemeral. It never writes browser storage.
 const memory = new Map<string, string>();
 async function requireNativeStorage(): Promise<void> {

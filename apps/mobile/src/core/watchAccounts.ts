@@ -1,11 +1,12 @@
-import { createEvmWatchAccount, validatePublicAccounts } from './watchOnlyAuthority.ts';
-import type { PublicAccount } from './types.ts';
+import { createWatchAccount, validatePublicAccounts, type WatchAccountNetwork } from './watchOnlyAuthority.ts';
+import type { NetworkId, PublicAccount } from './types.ts';
+import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 export type WatchAccountState = Readonly<{ status: 'opening' | 'ready' | 'unavailable'; accounts: readonly PublicAccount[]; busy: boolean }>;
 export type WatchAccountStorage = Readonly<{
   load(): Promise<readonly PublicAccount[]>;
   compareAndSet(expected: readonly PublicAccount[], accounts: readonly PublicAccount[]): Promise<void>;
 }>;
-export type WatchAccountChange = Readonly<{ kind: 'add'; id: string; name: string; address: string } | { kind: 'rename'; id: string; name: string } | { kind: 'remove'; id: string }>;
+export type WatchAccountChange = Readonly<{ kind: 'add'; id: string; name: string; address: string; network?: WatchAccountNetwork } | { kind: 'rename'; id: string; name: string } | { kind: 'remove'; id: string }>;
 /** The public address store is independent of the encrypted native catalogue. */
 export class WatchAccounts {
   private state: WatchAccountState = Object.freeze({ status: 'opening', accounts: Object.freeze([]), busy: false });
@@ -24,11 +25,22 @@ export class WatchAccounts {
   async change(change: WatchAccountChange): Promise<readonly PublicAccount[]> {
     if (this.state.status !== 'ready') throw new Error('Reopen your saved watch accounts before making changes.');
     if (this.state.busy) throw new Error('Another account change is still saving.');
+    assertJsonWorkBudget(change, 2048, 2, 20);
+    const kind = change && typeof change === 'object' ? Object.getOwnPropertyDescriptor(change, 'kind') : undefined;
+    if (!kind || !kind.enumerable || !('value' in kind)) throw new Error('Invalid watch account change');
+    const fields = change?.kind === 'add' ? ['kind', 'id', 'name', 'address', ...(Object.hasOwn(change, 'network') ? ['network'] : [])]
+      : change?.kind === 'rename' ? ['kind', 'id', 'name'] : change?.kind === 'remove' ? ['kind', 'id'] : [];
+    if (!change || typeof change !== 'object' || Array.isArray(change) || !fields.length ||
+        Reflect.ownKeys(change).length !== fields.length || Object.keys(change).length !== fields.length ||
+        Object.keys(change).some((key) => !fields.includes(key)) || typeof change.id !== 'string' ||
+        ('name' in change && typeof change.name !== 'string') || ('address' in change && typeof change.address !== 'string'))
+      throw new Error('Invalid watch account change');
     const previous = this.state.accounts;
     let next: readonly PublicAccount[];
     if (change.kind === 'add') {
-      const account = createEvmWatchAccount(change.id, change.name.trim(), change.address);
-      if (previous.some((entry) => entry.addresses.ethereum === account.addresses.ethereum)) throw new Error('This address is already being watched.');
+      const account = createWatchAccount(change.id, change.name.trim(), change.address, change.network);
+      if (previous.some((entry) => Object.entries(account.addresses).some(([network, address]) => entry.addresses[network as NetworkId] === address)))
+        throw new Error('This address is already being watched.');
       next = validatePublicAccounts([...previous, account]);
     } else {
       if (!previous.some((entry) => entry.id === change.id)) throw new Error('This watch account is no longer available.');

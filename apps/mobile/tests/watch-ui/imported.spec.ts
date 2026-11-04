@@ -162,7 +162,8 @@ test('a shared-address watch remains public and separate from its imported key a
   await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Imported address watch');
   await page.getByRole('textbox', { name: 'Public EVM address', exact: true }).fill(ADDRESS);
-  await page.getByRole('button', { name: 'Add watch-only account', exact: true }).click();
+  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByText('Imported address watch · Watch-only', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Receive', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);

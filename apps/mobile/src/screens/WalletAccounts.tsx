@@ -6,13 +6,16 @@ import type { WatchAccountState } from '../core/watchAccounts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 import { AddWatchAccount } from './Onboarding';
+import type { WatchAccountNetwork } from '../core/watchOnlyAuthority';
+import { getNetwork } from '../core/networks';
 
 export type WalletAccountsProps = {
   catalogue: NativeWalletCatalogueSnapshot | null;
   watch: WatchAccountState;
   active: AccountSelection | null;
   onSelect(selection: AccountSelection): void | Promise<void>;
-  onAdd(input: { name: string; address: string }): Promise<void>;
+  onAdd(input: { name: string; address: string; network?: WatchAccountNetwork }): Promise<void>;
+  availableWatchNetworks?: readonly WatchAccountNetwork[];
   onRename(id: string, name: string): Promise<void>;
   onRemove(id: string): Promise<void>;
   onRetry(): Promise<void>;
@@ -20,7 +23,7 @@ export type WalletAccountsProps = {
   onManageHd?(): void;
   onOpenWallet?(): void;
 };
-export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry'> & {
+export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry' | 'availableWatchNetworks'> & {
   onSelectWatch(selection: AccountSelection): void;
   onNativeCatalogue(catalogue: NativeWalletCatalogueSnapshot | null): void;
 };
@@ -34,9 +37,9 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const [error, setError] = useState('');
   const active = useRef(true);
   const working = useRef(false);
-  const back = useRef(() => undefined as void);
-  useLayoutEffect(() => { back.current = () => { if (busy) return; if (form) { setForm(null); setError(''); } else onBack(); }; }, [busy, form, onBack]);
-  useEffect(() => { active.current = true; const listener = BackHandler.addEventListener('hardwareBackPress', () => { back.current(); return true; });
+  const back = useRef<() => boolean>(() => false);
+  useLayoutEffect(() => { back.current = () => { if (form === 'add') return false; if (busy) return true; if (form) { setForm(null); setError(''); } else onBack(); return true; }; }, [busy, form, onBack]);
+  useEffect(() => { active.current = true; const listener = BackHandler.addEventListener('hardwareBackPress', () => back.current());
     return () => { active.current = false; listener.remove(); }; }, []);
   const run = async (operation: () => void | Promise<void>) => {
     if (working.current) return;
@@ -49,8 +52,8 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const selected = props.active ? accountIdentity(props.active) : null;
   const canManageWatch = props.watch.status === 'ready' && !props.watch.busy && !busy;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    {form === 'add' ? <AddWatchAccount onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
-      <Header title={form ? form.kind === 'rename' ? 'Rename watch account' : 'Remove watch account' : 'Accounts'} subtitle="Wallet and public EVM addresses" onBack={() => back.current()} />
+    {form === 'add' ? <AddWatchAccount availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
+      <Header title={form ? form.kind === 'rename' ? 'Rename watch account' : 'Remove watch account' : 'Accounts'} subtitle="Wallet and watch accounts" onBack={() => back.current()} />
       {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening saved watch accounts…</Text></View>}
       {props.watch.status === 'unavailable' && <><Notice title="Watch accounts unavailable" body="Your saved watch data has been preserved. Reopen it before making changes." tone="amber" /><Button title="Reopen watch accounts" disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
       {form && typeof form !== 'string' ? <>
@@ -62,7 +65,11 @@ export function WalletAccounts(props: WalletAccountsProps) {
         {entries.map((entry) => <Card key={entry.identity} style={s.account}>
           <Pressable accessibilityRole="button" accessibilityLabel={`Select ${entry.name} (${entry.selection.kind !== 'watch' ? 'wallet' : 'watch-only'})`} disabled={busy || props.watch.busy || entry.selection.kind === 'watch' && props.watch.status !== 'ready'} onPress={() => void run(() => props.onSelect(entry.selection))}>
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
-            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : 'Watch-only · Public EVM address'}</Text>
+            <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : (() => {
+              const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
+              const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0]);
+              return network.kind === 'utxo' ? `Watch-only · ${network.name} · Single address` : 'Watch-only · Public EVM address';
+            })()}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
           </Pressable>
           {entry.selection.kind === 'watch' && <View style={s.actions}>
@@ -73,7 +80,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
         {props.onManageHd && <Button title="Manage wallet accounts" variant="secondary" disabled={busy} onPress={props.onManageHd} />}
         {props.onOpenWallet && <Button title="Open wallet" variant="secondary" disabled={busy} onPress={props.onOpenWallet} />}
         <Button title="Watch an address" disabled={!canManageWatch} onPress={() => { setForm('add'); setError(''); }} />
-        <Text style={s.kind}>EVM public addresses only. Extended public keys and output descriptors are not supported.</Text>
+        <Text style={s.kind}>Public addresses only. Extended public keys and output descriptors are not supported.</Text>
       </>}
       {(busy || props.watch.busy) && <ActivityIndicator accessibilityLabel="Saving account change" color={colors.pink} />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}

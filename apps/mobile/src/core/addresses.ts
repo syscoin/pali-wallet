@@ -1,6 +1,7 @@
 import { getAddress } from 'ethers/address';
 import { getNetwork } from './networks.ts';
 import type { NetworkId } from './types.ts';
+import { normalizeUtxoAddress } from './utxoAddresses.ts';
 
 /** Uses the extension's ethers parser, including mixed-case checksum validation. */
 export function normalizePublicAddress(
@@ -8,6 +9,9 @@ export function normalizePublicAddress(
   networkId: NetworkId
 ): string {
   const network = getNetwork(networkId);
+  // Syntax validation is independent of UI enablement. UTXO records remain
+  // explicit single-network watch data and never grant signing capability.
+  if (network.id === 'syscoin' || network.id === 'bitcoin') return normalizeUtxoAddress(address, network.id);
   if (!network.canWatch || network.kind !== 'evm') {
     throw new Error('Address watching is not available for this network yet');
   }

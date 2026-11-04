@@ -1,4 +1,43 @@
 import { test, expect } from '@playwright/test';
+import { getUtxoNetwork } from '../../src/core/utxoNetworks';
+
+for (const id of ['syscoin', 'bitcoin'] as const) {
+  test(`default App watches one ${id} address through the real public platform`, async ({ page }) => {
+    const network = getUtxoNetwork(id);
+    const address = id === 'syscoin' ? 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58' : 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+    const calls: string[] = [];
+    const responses: Record<string, unknown> = {
+      [`${network.endpoint}/api/`]: { blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 }, backend: { chain: 'main' } },
+      [`${network.endpoint}/api/v2/block-index/0`]: { blockHash: network.genesisHash },
+      [`${network.endpoint}/api/v2/address/${address}?details=tokens`]: { address, balance: '0', unconfirmedBalance: '-123', unconfirmedTxs: 1 },
+    };
+    await page.route('**/*', async (route) => {
+      const request = route.request(), url = request.url();
+      if (new URL(url).origin === 'http://127.0.0.1:4178') { await route.continue(); return; }
+      if (request.method() !== 'GET' || !Object.hasOwn(responses, url)) {
+        await route.abort('blockedbyclient');
+        throw Error('Unexpected external request in public watch test');
+      }
+      calls.push(url);
+      await route.fulfill({ headers: { 'access-control-allow-origin': 'http://127.0.0.1:4178' }, json: responses[url] });
+    });
+    await page.goto('/');
+    await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
+    await page.getByRole('button', { name: network.name, exact: true }).click();
+    await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(`Public ${network.symbol}`);
+    await page.getByRole('textbox', { name: id === 'syscoin' ? 'Public Syscoin address' : 'Public Bitcoin address', exact: true }).fill(address);
+    await page.getByRole('button', { name: 'Review address', exact: true }).click();
+    await expect(page.getByLabel(`Review ${network.name} address ${address}`, { exact: true })).toBeVisible();
+    expect(calls).toEqual([]);
+    await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
+    await expect(page.getByLabel(`${network.name} confirmed balance 0.0 ${network.symbol}`, { exact: true })).toBeVisible();
+    await expect(page.getByLabel(`Pending balance change -0.00000123 ${network.symbol}`, { exact: true })).toBeVisible();
+    expect(calls).toEqual([`${network.endpoint}/api/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokens`]);
+    await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+    await page.getByRole('button', { name: 'Receive', exact: true }).click();
+    await expect(page.getByRole('img', { name: `QR code for ${network.name} address ${address}` })).toBeVisible();
+  });
+}
 test('sample send and receive stay inert and keep their network identity', async ({
   page,
 }) => {
@@ -60,13 +99,14 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
   await page
     .getByRole('textbox', { name: 'Public EVM address' })
     .fill('not an address');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   expect(calls).toEqual([]);
   await page
     .getByRole('textbox', { name: 'Public EVM address' })
     .fill('0x000000000000000000000000000000000000dEaD');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Send', exact: true })
   ).toHaveCount(0);
@@ -107,7 +147,8 @@ test('a new watch-only address can switch across every offered EVM network', asy
   await page.goto('/');
   await page.getByRole('button', { name: 'Watch an address' }).click();
   await page.getByRole('textbox', { name: 'Public EVM address' }).fill('0x000000000000000000000000000000000000dEaD');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Ethereum balance 0.0 ETH', { exact: true })).toBeVisible();
   let selected = 'Ethereum';
   for (const network of networks) {

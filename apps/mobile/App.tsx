@@ -38,6 +38,7 @@ import { NativeWalletScreen } from './src/screens/NativeWallet';
 import { WalletAccounts } from './src/screens/WalletAccounts';
 import { WatchAccountPortfolio } from './src/screens/WatchAccountPortfolio';
 import { WatchAccounts } from './src/core/watchAccounts';
+import type { WatchAccountNetwork } from './src/core/watchOnlyAuthority';
 import { nativeAccountSelection, type AccountSelection } from './src/core/accountDirectory';
 import type { NativeWalletCatalogueSnapshot } from './src/custody/walletCatalogue';
 import { DesignStudio } from './src/design/Studio';
@@ -192,7 +193,8 @@ type Route =
   | 'about'
   | 'locked';
 type Sheet = 'send' | 'receive' | 'filter' | 'accounts';
-function AppContent() {
+type AppProps = { availableWatchNetworks?: readonly WatchAccountNetwork[] };
+function AppContent({ availableWatchNetworks }: AppProps) {
   const [watchAccounts] = useState(() => new WatchAccounts({ load: loadPublicAccounts, compareAndSet: compareAndSetPublicAccounts }));
   const watchState = useSyncExternalStore(watchAccounts.subscribe, watchAccounts.getSnapshot, watchAccounts.getSnapshot);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
@@ -335,7 +337,7 @@ function AppContent() {
     return () => sub.remove();
   }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
-    if (route === 'design' || route === 'native' || route === 'accounts' || Platform.OS === 'web') return;
+    if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);
@@ -418,12 +420,12 @@ function AppContent() {
     if (wasReady && accounts.length && foreground.current && navigation === navigationGeneration.current && lifecycle === lifecycleGeneration.current) {
       next.unlock();
       if (selectedId && accounts.some((entry) => entry.id === selectedId)) next.selectAccount(selectedId);
-      if (selectedNetwork && next.getSnapshot().accounts.find((entry) => entry.id === next.getSnapshot().selectedAccountId)?.addresses[selectedNetwork]) next.selectNetwork(selectedNetwork);
+      if (selectedNetwork && next.getSnapshot().selectedNetworkId !== selectedNetwork && next.getSnapshot().accounts.find((entry) => entry.id === next.getSnapshot().selectedAccountId)?.addresses[selectedNetwork]) next.selectNetwork(selectedNetwork);
       void next.refresh();
     }
     return next;
   };
-  const addAccount = async ({ name, address }: { name: string; address: string }) => {
+  const addAccount = async ({ name, address, network }: { name: string; address: string; network?: WatchAccountNetwork }) => {
     if (addingAccount.current) throw new Error('Another account is still saving. Please wait.');
     addingAccount.current = true;
     const startNavigation = navigationGeneration.current;
@@ -431,7 +433,7 @@ function AppContent() {
     try {
       // IDs are local to the watch store. Authority routing always also checks kind.
       const id = `watch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-      await changeWatch({ kind: 'add', id, name, address });
+      await changeWatch({ kind: 'add', id, name, address, ...(network ? { network } : {}) });
       if (!foreground.current || startNavigation !== navigationGeneration.current || startLifecycle !== lifecycleGeneration.current) return;
       openWatch({ kind: 'watch', id });
     } finally { addingAccount.current = false; }
@@ -494,7 +496,7 @@ function AppContent() {
   const navigateInfo = (s: string) => go(s as Route);
   const back = () => go('home');
   if (route === 'design') return <DesignStudio onExit={exit} />;
-  const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); } };
+  const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
   if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
@@ -555,6 +557,7 @@ function AppContent() {
   else if (route === 'add')
     content = (
       <AddWatchAccount
+        availableNetworks={availableWatchNetworks}
         onCancel={() =>
           go(
             snapshot.status === 'ready'
@@ -1555,10 +1558,10 @@ function TransactionRow({
     </Pressable>
   );
 }
-export default function App() {
+export default function App(props: AppProps = {}) {
   return (
     <SafeAreaProvider>
-      <AppContent />
+      <AppContent {...props} />
     </SafeAreaProvider>
   );
 }

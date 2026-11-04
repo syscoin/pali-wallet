@@ -26,6 +26,8 @@ export type PublicBalance =
   | Readonly<{ status: 'unknown' }>
   | Readonly<{ status: 'loading' }>
   | Readonly<{ status: 'available'; units: string; updatedAt: number }>
+  | Readonly<{ status: 'available'; kind: 'utxo'; units: string; updatedAt: number;
+      pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number }>
   | Readonly<{ status: 'error'; message: string }>;
 
 export type WalletCapabilities = Readonly<{

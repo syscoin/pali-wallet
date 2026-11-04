@@ -5,6 +5,9 @@ import { createEvmWatchAccount } from '../../src/core/watchOnlyAuthority';
 export const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 export const SECOND = '0x1111111111111111111111111111111111111111';
 export const events: string[] = [];
+export const publicShares: string[] = [];
+export let watchBalanceMode: 'value' | 'zero' | 'error' = 'value';
+export function setWatchBalanceMode(value: typeof watchBalanceMode) { watchBalanceMode = value; }
 export const audit = { unlocks: 0, signs: 0, broadcasts: 0, closed: 0, keyReads: 0, keyAttempts: 0, importAttempts: 0, imports: 0, readFailures: 0, writes: 0 };
 let pendingUnlock: (() => void) | null = null;
 let pendingSign: (() => void) | null = null;
