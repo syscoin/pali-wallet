@@ -48,7 +48,9 @@ if (command === 'stat') {
   if (!entry) done('', 1);
   if (args[1] === '%a') done(entry.mode);
   check(args[1] === '%u:%g:%a:%F');
-  done([entry.owner, entry.group, entry.mode, entry.type].join(':'));
+  let type = entry.type === 'regular file' && entry.bytes === '' ? 'regular empty file' : entry.type;
+  if (state.localizedStat && process.env.LC_ALL !== 'C') type = 'localized ' + type;
+  done([entry.owner, entry.group, entry.mode, type].join(':'));
 }
 if (command === 'dpkg-query') {
   if (args[0] === '-W') { check(args.join(' ') === "-W -f=\u0024{Status} google-chrome-stable"); done(state.packageStatus || 'install ok installed'); }
@@ -240,6 +242,14 @@ test('reads the source unprivileged into a private target, verifies it, then ena
     ),
     false
   );
+});
+
+test('stat type checks request the C locale even when the caller locale differs', () => {
+  const result = runFixture((state) => {
+    state.localizedStat = true;
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.exported, `CHROME_DEVEL_SANDBOX=${helper}\n`);
 });
 
 test('a source symlink to root-only content cannot be read by the unprivileged copier', () => {

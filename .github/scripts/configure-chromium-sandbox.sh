@@ -31,9 +31,10 @@ trap cleanup EXIT
 
 protected_path() {
   local path=$1 type=$2 description owner group mode actual_type
-  description=$(stat -c '%u:%g:%a:%F' -- "$path") || fail "cannot inspect $path"
+  description=$(LC_ALL=C stat -c '%u:%g:%a:%F' -- "$path") || fail "cannot inspect $path"
   IFS=: read -r owner group mode actual_type <<< "$description"
-  [[ "$actual_type" == "$type" ]] || fail "$path must be a $type, not a symlink or other file type"
+  # GNU stat distinguishes empty regular files; both labels mean S_ISREG.
+  [[ "$actual_type" == "$type" || ( "$type" == 'regular file' && "$actual_type" == 'regular empty file' ) ]] || fail "$path must be a $type, not a symlink or other file type"
   [[ "$owner:$group" == '0:0' ]] || fail "$path must be owned by root:root"
   [[ "$mode" =~ ^[0-7]{3,4}$ ]] || fail "invalid permissions for $path"
   (( (8#$mode & 8#022) == 0 )) || fail "$path must not be writable by group or others"
@@ -64,18 +65,18 @@ created=1
 protected_path "$directory" directory
 sudo -n install -o 0 -g 0 -m 600 -- /dev/null "$helper" || fail 'cannot create a private helper target'
 protected_path "$helper" 'regular file'
-[[ "$(stat -c '%a' -- "$helper")" == 600 ]] || fail 'helper target must initially have mode 600'
+[[ "$(LC_ALL=C stat -c '%a' -- "$helper")" == 600 ]] || fail 'helper target must initially have mode 600'
 # Never let root resolve the writable source path: a substituted symlink must
 # have only the ordinary user's read authority. tee receives bytes, not a source
 # path; its fixed target stays private and non-executable until verified.
 cat -- "$source_helper" | sudo -n tee -- "$helper" >/dev/null || fail 'cannot read installed helper as the ordinary user'
 protected_path "$helper" 'regular file'
-[[ "$(stat -c '%a' -- "$helper")" == 600 ]] || fail 'copied helper must remain private before verification'
+[[ "$(LC_ALL=C stat -c '%a' -- "$helper")" == 600 ]] || fail 'copied helper must remain private before verification'
 [[ "$(sudo -n md5sum -- "$helper" | cut -d ' ' -f 1)" == "$expected" ]] || fail 'copied helper does not match the installed package manifest'
 
 sudo -n chmod 4755 -- "$helper" || fail 'cannot enable the verified sandbox helper'
 protected_path "$helper" 'regular file'
-[[ "$(stat -c '%a' -- "$helper")" == 4755 ]] || fail 'verified helper must have mode 4755'
+[[ "$(LC_ALL=C stat -c '%a' -- "$helper")" == 4755 ]] || fail 'verified helper must have mode 4755'
 [[ "$(md5sum "$helper" | cut -d ' ' -f 1)" == "$expected" ]] || fail 'helper changed after verification'
 sha256sum "$helper" || fail 'cannot record helper SHA256'
 printf 'CHROME_DEVEL_SANDBOX=%s\n' "$helper" >> "$GITHUB_ENV" || fail 'cannot export the verified sandbox helper'
