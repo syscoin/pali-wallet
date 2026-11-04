@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
-import { NativeTransferJournal, journalRequiresReopen } from '../src/custody/transferJournal.ts';
+import { NativeTransferJournal, journalRequiresReopen, inspectRecoveryJournal, type TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 
 const wallet = Wallet.fromPhrase(
@@ -87,12 +88,20 @@ test('type0 bytes retain their exact generic EVM gas limit across restart', asyn
   const signed = await wallet.signTransaction({ type: 0, chainId: 1, nonce: 0,
     to: '0x1111111111111111111111111111111111111111', value: 1n,
     gasLimit: 17000000n, gasPrice: 2n });
-  const entry = await f.journal.saveSigned(signed);
-  await f.journal.transition(entry.hash, 'attempted');
+  // This is the sole current container shape, populated with an already-signed record.
+  const saved: TransferJournalContainer = { version: 1, revision: 0, walletFingerprint: scope.walletFingerprint,
+    account: { id: 'hd:60:0', index: 0, type: 'HDAccount', slip44: 60, address: wallet.address },
+    entries: [{ registration: getNativeNetwork('ethereum'), phase: 'confirmed', rawTransaction: signed,
+      hash: keccak256(signed), nonce: 0, createdAt: 1000 }] };
+  f.corrupt(structuredClone(saved));
+  const entry = await f.journal.load(); assert(entry);
+  assert.equal(entry.phase, 'confirmed');
+  assert.equal(inspectRecoveryJournal('native-evm-transfer-v1', saved, scope.walletFingerprint).pending, 0);
   const before = structuredClone(f.value());
   const reopened = new NativeTransferJournal(f.port, scope, f.guard, () => 2000);
   assert.equal((await reopened.load())?.rawTransaction, signed);
   assert.deepEqual(f.value(), before);
+  await reopened.transition(entry.hash, 'submitted');
   const terminal = await reopened.transition(entry.hash, 'confirmed');
   assert.equal(terminal.rawTransaction, signed);
   assert.equal(terminal.phase, 'confirmed');
@@ -297,4 +306,18 @@ test('an externally finalized nonce can retire a saved unsubmitted signature wit
   const retired = await f.journal.transition(first.hash, 'nonce-consumed');
   assert.equal(retired.rawTransaction, first.rawTransaction);
   assert.equal((await f.journal.saveSigned(await raw(1))).nonce, 1);
+});
+
+
+test('new over-cap signed bytes are refused without changing a retained current-format record', async () => {
+  const f = fixture();
+  await f.journal.saveSigned(await raw());
+  const before = structuredClone(f.value()), writes = f.writes();
+  for (const type of [0, 2] as const) {
+    const signed = await raw(1, { type, gasLimit: 17000000n,
+      ...(type === 0 ? { gasPrice: 2n, maxFeePerGas: undefined, maxPriorityFeePerGas: undefined } : {}) });
+    assert.throws(() => f.journal.saveSigned(signed), { code: 'CORRUPT' });
+    assert.deepEqual(f.value(), before); assert.equal(f.writes(), writes);
+    assert.equal(journalRequiresReopen(f.port), false);
+  }
 });

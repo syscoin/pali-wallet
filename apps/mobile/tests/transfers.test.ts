@@ -5,7 +5,8 @@ import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
-import { NativeTransferJournal } from '../src/custody/transferJournal.ts';
+import { NativeTransferJournal, type TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 const wallet = Wallet.fromPhrase(
@@ -698,4 +699,25 @@ test('a rejected secret operation revokes custody before a queued cancellation c
   } finally {
     f.close();
   }
+});
+
+
+for (const type of [0, 2] as const) test(`current-format type ${type} terminal bytes above today's gas cap still reconcile`, async () => {
+  const f = fixture();
+  try {
+    const signed = await wallet.signTransaction({ type, chainId: 1, nonce: 0, to, value: 1n, gasLimit: 17000000n,
+      ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
+    const saved: TransferJournalContainer = { version: 1, revision: 0, walletFingerprint: '1'.repeat(64),
+      account: { id: 'hd:60:0', index: 0, type: 'HDAccount', slip44: 60, address: wallet.address },
+      entries: [{ registration: getNativeNetwork('ethereum'), phase: 'confirmed', rawTransaction: signed,
+        hash: keccak256(signed), nonce: 0, createdAt: 1000 }] };
+    f.records['native-evm-transfer-v1'] = saved;
+    const before = JSON.stringify(f.records);
+    f.finalize(); await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
+    assert.equal(f.transfers.getSnapshot().hash, keccak256(signed));
+    assert.equal(JSON.stringify(f.records), before);
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+    assert(!JSON.stringify(f.transfers.getSnapshot()).includes(signed));
+  } finally { f.close(); }
 });

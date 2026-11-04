@@ -5,10 +5,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
-import { NativeTransferJournal, journalRequiresReopen, nativeTransferJournalKey, type TransferJournalContainer, type TransferJournalPhase } from '../src/custody/transferJournal.ts';
+import { NativeTransferJournal, journalRequiresReopen, nativeTransferJournalKey, inspectRecoveryJournal, terminalJournalForRemoval, type TransferJournalContainer, type TransferJournalPhase } from '../src/custody/transferJournal.ts';
 import { getNativeNetwork, NATIVE_NETWORKS, type EvmNetworkId } from '../src/custody/networkContext.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { encodeStorageValue } from '../src/storage/json.ts';
+import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 
@@ -272,5 +273,33 @@ test('terminal journal capacity is reclaimed only after durable archive acknowle
       assert.deepEqual(await f.value(), unresolved);
     }
 
+  } finally { await f.cleanup(); }
+});
+
+
+for (const type of [0, 2] as const) test(`SQLite preserves current-format type ${type} over-cap terminal bytes but refuses new admission`, async () => {
+  const f = await fixture();
+  try {
+    const signed = await wallet.signTransaction({ type, chainId: 1, nonce: 0,
+      to: '0x1111111111111111111111111111111111111111', value: 1n, gasLimit: 17000000n,
+      ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
+    const saved: TransferJournalContainer = { version: 1, revision: 0, walletFingerprint: f.fingerprint,
+      account: { id: 'hd:60:0', index: 0, type: 'HDAccount', slip44: 60, address: wallet.address },
+      entries: [{ registration: getNativeNetwork('ethereum'), phase: 'confirmed', rawTransaction: signed,
+        hash: keccak256(signed), nonce: 0, createdAt: 1000 }] };
+    await f.port.set(nativeTransferJournalKey(0), saved);
+    const before = encodeStorageValue(await f.value());
+    await f.reopen();
+    assert.equal((await f.journal().load())?.rawTransaction, signed);
+    assert.equal((await f.journal().activity())?.maximumFeeUnits, '34000000');
+    assert.equal(inspectRecoveryJournal(nativeTransferJournalKey(0), await f.value(), f.fingerprint).pending, 0);
+    assert.equal(encodeStorageValue(terminalJournalForRemoval(await f.value(), { walletFingerprint: f.fingerprint, address: wallet.address })), encodeStorageValue(saved));
+    assert.equal(encodeStorageValue(await f.value()), before);
+    assert.throws(() => f.journal().saveSigned(signed), { code: 'CORRUPT' });
+    let calls = 0;
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum', fetch: async () => { calls++; throw new Error('Must not dispatch'); } });
+    await assert.rejects(rpc.broadcast(signed, keccak256(signed), new AbortController().signal), { code: 'INVALID_RESPONSE' });
+    assert.equal(calls, 0); assert.equal(journalRequiresReopen(f.port), false);
+    assert.equal(encodeStorageValue(await f.value()), before);
   } finally { await f.cleanup(); }
 });

@@ -87,7 +87,6 @@ function signedIdentity(raw: unknown, scope: TransferJournalScope, intent?: Erc2
     if (!tx.isSigned() || (tx.type !== 0 && tx.type !== 2) || tx.chainId !== BigInt(scope.chainId) ||
         tx.from !== scope.address || !tx.to || tx.accessList?.length ||
         tx.serialized !== raw || !Number.isSafeInteger(tx.nonce)) return corrupt();
-    assertEvmGasLimit(tx.gasLimit, tx.chainId);
     assertTransferIntentEnvelope({ chainId: tx.chainId.toString(), to: tx.to, value: tx.value.toString(), data: tx.data }, intent);
     const hash = keccak256(raw);
     if (tx.hash !== hash) return corrupt();
@@ -283,6 +282,11 @@ export class NativeTransferJournal {
     let intent: Erc20TransferIntent | undefined;
     try { if (inputIntent !== undefined) intent = snapshotErc20TransferIntent(inputIntent); } catch { return Promise.reject(new TransferJournalError('CORRUPT')); }
     const identity = signedIdentity(rawTransaction, this.scope, intent);
+    // Admission applies to new signed bytes, not integrity reads of retained transactions.
+    try {
+      const tx = Transaction.from(rawTransaction);
+      assertEvmGasLimit(tx.gasLimit, tx.chainId);
+    } catch { return corrupt(); }
     const createdAt = this.now();
     if (!Number.isSafeInteger(createdAt) || createdAt < 0) return Promise.reject(new TransferJournalError('CORRUPT'));
     const entry: ContainerEntry = Object.freeze({ registration: this.registration, phase: 'signed', rawTransaction, ...identity, createdAt,
