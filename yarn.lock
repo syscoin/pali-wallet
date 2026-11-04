@@ -2710,7 +2710,8 @@
 
 "@sidhujag/sysweb3-keyring@2.0.0":
   version "2.0.0"
-  resolved "file:vendor/sysweb3-keyring/keyring.tgz#e41da3599515a8e99dbcd59ab95a19dba2873029"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.0.0.tgz#e41da3599515a8e99dbcd59ab95a19dba2873029"
+  integrity sha512-KAi6EQOv150UDf4N7QfIaeEBM1j1Es/MbZREG1je7+q51/0KnngCynIBhYJm20PeK7i4q5FC92NBzIeJnEXnlQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -10941,7 +10942,8 @@ symbol-tree@^3.2.4:
 
 syscoinjs-lib@1.0.276:
   version "1.0.276"
-  resolved "file:vendor/syscoinjs-lib/library.tgz#3c5fa4bae3ce8f16cbdc92a89451b3295877a379"
+  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.276.tgz#3c5fa4bae3ce8f16cbdc92a89451b3295877a379"
+  integrity sha512-tMtopRemMbDL/Oj7RmChZcLD7BlE1BDvy49dumwBKvuJJDtSjr2XLlvgxAxNJuJIKhppsXveW1/U58SMiKKSzQ==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
