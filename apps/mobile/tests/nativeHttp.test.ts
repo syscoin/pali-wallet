@@ -157,9 +157,11 @@ test('public platform and native Portfolio fallback bind platform-owned fetch; N
     'react-native': { Platform: { OS: 'ios' } }, 'expo-secure-store': {},
     './core/publicAccountStorage.ts': { createPublicAccountStorage: () => ({}) },
     './platformRpc.ts': { createBalanceReader: (options: unknown) => { seen.push(options); return {}; } },
+    './core/utxoBalanceReader.ts': { createUtxoBalanceReader: (options: unknown) => { seen.push(options); return {}; } },
     './platform/http': { walletFetch: fetcher },
   });
-  assert.equal((seen[0] as any).fetch, fetcher);
+  assert.equal(seen.length, 2);
+  for (const options of seen) assert.equal((options as any).fetch, fetcher);
   const source = read('../src/screens/NativePortfolio.tsx');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from '([^']+)'/g)].map((match) => [match[1]!, {}]));
   const fallback = { readBalance() {} }, explicit = { readBalance() {} }, readers: unknown[] = [];
