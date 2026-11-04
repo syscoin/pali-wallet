@@ -167,7 +167,6 @@ test('a swallowed native dependency failure keeps bootstrap terminal before prov
     exports: exported, crypto: existingCrypto,
     require(name: string) {
       if (name === 'expo') return {};
-      if (name === './processCompatibility.ts') return { ensureNativeProcessCompatibility() {} };
       if (name === '../crypto/quickCryptoLoad.ts') return { loadQuickCrypto: (fn: () => unknown, observe: (value: CryptoLoadDiagnostic) => void) => loadQuickCrypto(fn, observe, fixture.errorUtils) };
       if (name === '../crypto/quickCryptoInstall.ts') return { installQuickCrypto() { installs++; } };
       if (name === '../crypto/native') return {

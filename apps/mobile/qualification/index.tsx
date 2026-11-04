@@ -7,7 +7,6 @@ import { assertQualificationBuild, parseQualificationLaunch } from './launch-par
 import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from './capture-crypto-load.ts';
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
-import { ensureNativeProcessCompatibility } from '../src/platform/processCompatibility.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -121,9 +120,6 @@ function QualificationApp() {
           forbiddenTransport as unknown as typeof XMLHttpRequest;
         globalThis.WebSocket =
           forbiddenTransport as unknown as typeof WebSocket;
-        await check('native process compatibility', async () => {
-          ensureNativeProcessCompatibility();
-        });
         await check('Hermes text and string capabilities', async () => {
           expect(typeof ''.isWellFormed === 'function');
           expect('Pali'.isWellFormed() && !'\ud800'.isWellFormed());
@@ -150,6 +146,9 @@ function QualificationApp() {
         const nativeCrypto = await check(
           'native crypto bridge and full vectors',
           async () => {
+            const originalProcess = globalThis.process;
+            const originalEnvironment = originalProcess.env;
+            const originalBrowser = Object.getOwnPropertyDescriptor(originalProcess, 'browser');
             // This cold-load preflight is exclusive to the isolated public
             // fixture. A failure is final; no installer or wallet is started.
             await captureQualificationCryptoLoad(
@@ -168,6 +167,13 @@ function QualificationApp() {
               }
             );
             const provider = await ensureNativeCryptoReady();
+            // The installed QuickCrypto owns its nextTick fallback. Neither
+            // production startup nor this fixture should pretend to be a browser.
+            expect(globalThis.process === originalProcess);
+            expect(globalThis.process.env === originalEnvironment);
+            expect(typeof globalThis.process.nextTick === 'function');
+            const currentBrowser = Object.getOwnPropertyDescriptor(originalProcess, 'browser');
+            expect(JSON.stringify(currentBrowser) === JSON.stringify(originalBrowser));
             const { createNativeWalletCrypto } = await import(
               '../src/crypto/native'
             );

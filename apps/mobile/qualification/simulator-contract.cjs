@@ -9,7 +9,6 @@ const REFUSAL_STAGES = Object.freeze([
   'ios-policy-protection-until-auth',
 ]);
 const CHECKS = Object.freeze([
-  'native process compatibility',
   'Hermes text and string capabilities',
   'native crypto bridge and full vectors',
   'native factory handles reject direct construction',
