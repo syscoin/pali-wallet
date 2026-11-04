@@ -3,6 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+// Replay has separate actual consent tests; isolate unrelated detail decoding here.
+jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
+  RetainedTransactionReplay: () => null,
+}));
+
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 import { EvmTransactionsList } from './EvmList';
 

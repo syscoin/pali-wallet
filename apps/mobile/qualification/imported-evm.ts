@@ -14,7 +14,7 @@ export const IMPORTED_REPORT_FIELDS = Object.freeze(['nativeImportedVerified', '
   'importedChainIds', 'importedTransferHashes', 'importedJournalContainerVersion', 'importedSignatures',
   'importedAuthorizations', 'importedInjectedBroadcasts', 'importedRestoredFromJournal', 'importedKeyRevealVerified']);
 export type ImportedQualificationEvidence = Readonly<{
-  nativeImportedVerified: true; importedAccountId: 'imported:60:1'; importedAccountIndex: 1; importedAddress: string;
+  nativeImportedVerified: true; importedAccountId: string; importedAccountIndex: number; importedAddress: string;
   importedChainIds: readonly string[]; importedTransferHashes: readonly string[]; importedJournalContainerVersion: 1;
   importedSignatures: number; importedAuthorizations: number; importedInjectedBroadcasts: 3;
   importedRestoredFromJournal: boolean; importedKeyRevealVerified: true;
@@ -26,7 +26,7 @@ export function isImportedQualificationReport(report: Record<string, unknown>): 
     report.nevmTransferHash, report.nevmEthereumTransferHash, report.zksysTransferHash];
   return report.status === 'passed' && (report.phase === 'create' || report.phase === 'restart') &&
     (report.scenario === 'import' || report.scenario === 'generate') && report.networkCalls === 0 &&
-    report.nativeImportedVerified === true && report.importedAccountId === 'imported:60:1' && report.importedAccountIndex === 1 &&
+    report.nativeImportedVerified === true && Number.isSafeInteger(report.importedAccountIndex) && Number(report.importedAccountIndex) >= 0 && Number(report.importedAccountIndex) <= 4095 && report.importedAccountId === `imported:60:${report.importedAccountIndex}` &&
     report.importedAddress === ADDRESS && ![report.address, report.erc20Address, report.nevmAddress, report.zksysAddress].includes(ADDRESS) &&
     report.importedJournalContainerVersion === 1 && report.importedKeyRevealVerified === true &&
     Array.isArray(chains) && chains.length === 3 && [0, 1, 2].every((i) => chains[i] === CHAINS[i]) &&
@@ -80,20 +80,22 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
       await authority.importEvmAccount({ privateKey: FIXTURE_KEY, expectedAddress: ADDRESS, label: 'Qualification imported key' },
         password, state().revision, catalogue().revision);
     });
-  } else await check('native imported key cold rehydration', () => manage('imported:60:1'));
-  expect(catalogue().active.accountId === 'imported:60:1' && state().account?.address === ADDRESS && state().backup === 'confirmed');
-  const imported = catalogue().accounts.find((account) => account.id === 'imported:60:1');
-  expect(imported?.type === 'Imported' && imported.index === 1 && imported.address === ADDRESS);
+  }
+  const imported = catalogue().accounts.find(account => account.type === 'Imported' && account.address === ADDRESS);
+  expect(imported?.type === 'Imported');
+  if (phase === 'restart') await check('native imported key cold rehydration', () => manage(imported.id));
+  expect(catalogue().active.accountId === imported.id && state().account?.address === ADDRESS && state().backup === 'confirmed');
   const hashes: string[] = []; let signatures = 0, authorizations = 0, broadcasts = 0;
   const transfer = runtime.transfers; expect(transfer);
   for (const [i, network] of NETWORKS.entries()) {
     await authority.selectNetwork(network, state().revision, catalogue().revision);
     const revision = state().revision;
     const guard = () => expect(state().phase === 'ready' && state().revision === revision && state().account?.address === ADDRESS &&
-      state().account?.network === network && catalogue().active.accountId === 'imported:60:1');
+      state().account?.network === network && catalogue().active.accountId === imported.id);
     const registration = getNativeNetwork(network);
     let expectedRaw: string | undefined, requests = 0;
     const wrapped: NativeTransferRuntime = {
+    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
       journal: (assertCurrent) => transfer.journal(assertCurrent),
       async sign(...args) { expect(phase === 'create'); signatures++; return transfer.sign(...args); },
@@ -155,7 +157,7 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
     const flow = new HdKeyExportFlow(authority, () => runtime.keyExport);
     try {
       const shown = await flow.begin(password); const id = shown.id;
-      expect(shown.accountId === 'imported:60:1' && shown.address === ADDRESS && shown.privateKey === FIXTURE_KEY && flow.isCurrent(id));
+      expect(shown.accountId === imported.id && shown.address === ADDRESS && shown.privateKey === FIXTURE_KEY && flow.isCurrent(id));
       flow.cancel(); expect(!flow.isCurrent(id));
     } finally { flow.dispose(); }
   });
@@ -163,14 +165,14 @@ export async function qualifyNativeImportedEvm(options: Readonly<{
   expect(retainedSignedEntries(container.entries, olderAddresses) === older);
   const retained = container.entries.filter(entry => entry.from === ADDRESS.toLowerCase());
   expect(container.version === 1 && retained.length === 3 && retained.every((entry, i) =>
-    entry.signer.type === 'Imported' && entry.signer.id === 1 && entry.chainId === CHAINS[i] &&
+    entry.signer.type === 'Imported' && entry.signer.id === imported.index && entry.chainId === CHAINS[i] &&
     entry.hash === hashes[i] && entry.phase === (phase === 'create' ? 'signed' : 'submitted')));
   expect(await storage.getWalletFingerprint() === fingerprint &&
     JSON.stringify([await storage.keyringStorage.get('vault'), await storage.keyringStorage.get('vault-keys')]) === pair);
   await authority.selectNetwork('ethereum', state().revision, catalogue().revision); await manage(hd1.id);
   expect(state().account?.address === hd1.address && catalogue().active.accountId === hd1.id);
   expect(signatures === (phase === 'create' ? 3 : 0) && authorizations === (phase === 'create' ? 0 : 3) && broadcasts === 3);
-  return Object.freeze({ nativeImportedVerified: true, importedAccountId: 'imported:60:1', importedAccountIndex: 1, importedAddress: ADDRESS,
+  return Object.freeze({ nativeImportedVerified: true, importedAccountId: imported.id, importedAccountIndex: imported.index, importedAddress: ADDRESS,
     importedChainIds: CHAINS, importedTransferHashes: Object.freeze(hashes), importedJournalContainerVersion: 1,
     importedSignatures: signatures, importedAuthorizations: authorizations, importedInjectedBroadcasts: 3,
     importedRestoredFromJournal: phase === 'restart', importedKeyRevealVerified: true });

@@ -9,6 +9,7 @@ import {
   TransactionEventLogs,
   DecodedTransactionParams,
 } from 'components/TransactionDetails';
+import { RetainedTransactionReplay } from 'components/TransactionOptions/RetainedTransactionReplay';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useContextualState } from 'hooks/useContextualState';
 import { useController } from 'hooks/useController';
@@ -892,14 +893,17 @@ export const EvmTransactionDetailsEnhanced = ({
 
   if (!transactionTx && !isLoadingDetails) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-brand-gray200 text-sm mb-4">
-          {t('transactions.transactionNotFoundOrPending')}
-        </p>
-        <p className="text-xs text-brand-gray400">
-          {t('transactions.transactionMayNotExistYet')}
-        </p>
-      </div>
+      <>
+        <div className="p-8 text-center">
+          <p className="text-brand-gray200 text-sm mb-4">
+            {t('transactions.transactionNotFoundOrPending')}
+          </p>
+          <p className="text-xs text-brand-gray400">
+            {t('transactions.transactionMayNotExistYet')}
+          </p>
+        </div>
+        <RetainedTransactionReplay key="retained-replay" hash={hash} />
+      </>
     );
   }
 
@@ -959,6 +963,7 @@ export const EvmTransactionDetailsEnhanced = ({
         details={formattedTransactionDetails}
         onCopy={handleCopy}
       />
+      <RetainedTransactionReplay key="retained-replay" hash={hash} />
 
       {/* Display decoded transaction parameters */}
       <DecodedTransactionParams decodedData={decodedTxData} />

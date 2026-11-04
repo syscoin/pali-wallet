@@ -20,6 +20,7 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
+import { useSavedEvmTransactions } from './components/Transactions/EVM/useSavedEvmTransactions';
 import { UtxoTransactionsList } from './components/Transactions/UTXO/UtxoList';
 
 export const TransactionsPanel = () => {
@@ -43,6 +44,7 @@ export const TransactionsPanel = () => {
       ? historyStatus.state
       : undefined;
   const scopeKey = `${scope.account}:${scope.network}`;
+  const saved = useSavedEvmTransactions(!isBitcoinBased, scopeKey);
   const beginRetry = useRequestScope(scopeKey);
   const retryPending = useRef<() => boolean>();
   const [retryScope, setRetryScope] = useState<string>();
@@ -78,8 +80,20 @@ export const TransactionsPanel = () => {
     }
     const ethTxs =
       accountTransactions[TransactionsType.Ethereum][activeNetwork.chainId];
-    return (ethTxs || []) as unknown as ITransactionInfoEvm[];
-  }, [accountTransactions, activeNetwork.chainId, isBitcoinBased]);
+    const byHash = new Map<string, ITransactionInfoEvm>();
+    for (const row of saved.transactions)
+      byHash.set(row.hash.toLowerCase(), row);
+    for (const row of (ethTxs || []) as unknown as ITransactionInfoEvm[]) {
+      const key = row.hash?.toLowerCase();
+      if (key) byHash.set(key, row);
+    }
+    return Array.from(byHash.values());
+  }, [
+    accountTransactions,
+    activeNetwork.chainId,
+    isBitcoinBased,
+    saved.transactions,
+  ]);
   const transactions = isBitcoinBased ? utxoTransactions : evmTransactions;
 
   const hasTransactions = useMemo(
@@ -255,7 +269,7 @@ export const TransactionsPanel = () => {
 
   return (
     <>
-      {isLoading && !hasTransactions && TransactionSkeleton}
+      {(isLoading || saved.loading) && !hasTransactions && TransactionSkeleton}
       {hasHistoryStatus && historyState !== 'ready' && (
         <div className="mt-8 text-center text-sm text-brand-gray200">
           {historyUnavailable && <p role="status">{t('send.unableToLoad')}</p>}
@@ -269,7 +283,7 @@ export const TransactionsPanel = () => {
           </button>
         </div>
       )}
-      {!isLoading && !hasTransactions && (
+      {!isLoading && !saved.loading && !hasTransactions && (
         <div
           id="activity-panel-empty"
           className="w-full mt-8 text-white bg-brand-blue600"
@@ -293,7 +307,12 @@ export const TransactionsPanel = () => {
           {isBitcoinBased ? (
             <UtxoTransactionsList userTransactions={utxoTransactions} />
           ) : (
-            <EvmTransactionsList userTransactions={evmTransactions} />
+            <EvmTransactionsList
+              userTransactions={evmTransactions}
+              savedHasMore={saved.hasMore}
+              savedLoading={saved.loading}
+              loadMoreSaved={saved.loadMore}
+            />
           )}
           {OpenTransactionExplorer}
         </div>

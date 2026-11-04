@@ -258,6 +258,7 @@ export async function qualifyNativeErc20Transfer(
     return saved;
   };
   const wrapped: NativeTransferRuntime = {
+    replay: (...args) => transfer.replay(...args),
       submit: (...args) => transfer.submit(...args),
     token: (contract, assertCurrent) => {
       tokenLookups++;

@@ -96,10 +96,10 @@ const EvmTransactionItem = React.memo(
     currentAccount: any;
     ensCache?: any;
     getFiatAmount: any;
-    isFiatAvailable: boolean;
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
+    isFiatAvailable: boolean;
     onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
     settlement: EvmSettlementStatus;
     t: any;
@@ -584,7 +584,13 @@ EvmTransactionItem.displayName = 'EvmTransactionItem';
 
 export const EvmTransactionsList = ({
   userTransactions,
+  savedHasMore = false,
+  savedLoading = false,
+  loadMoreSaved,
 }: {
+  loadMoreSaved?: () => Promise<void>;
+  savedHasMore?: boolean;
+  savedLoading?: boolean;
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -877,14 +883,23 @@ export const EvmTransactionsList = ({
       )}
       {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
       {apiUrl
-        ? (hasMoreServer || filteredTransactions.length > visibleCount) && (
+        ? (savedHasMore ||
+            hasMoreServer ||
+            filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                disabled={isLoadingMore || isRestoringPages}
+                disabled={isLoadingMore || isRestoringPages || savedLoading}
                 onClick={async () => {
                   if (filteredTransactions.length > visibleCount) {
                     setVisibleCount((count) => count + 50);
+                    return;
+                  }
+                  if (savedHasMore) {
+                    const isCurrentRequest = beginPageRequest();
+                    await loadMoreSaved?.();
+                    if (!isCurrentRequest()) return;
+                    setVisibleCount((count) => count + 30);
                     return;
                   }
                   const isCurrentRequest = beginPageRequest();
@@ -916,20 +931,30 @@ export const EvmTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore || isRestoringPages
+                {isLoadingMore || isRestoringPages || savedLoading
                   ? t('buttons.loading')
                   : t('buttons.loadMore')}
               </button>
             </div>
           )
-        : filteredTransactions.length > visibleCount && (
+        : (savedHasMore || filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                onClick={() => setVisibleCount((c) => c + 50)}
+                disabled={savedLoading}
+                onClick={async () => {
+                  const isCurrentRequest = beginPageRequest();
+                  if (
+                    filteredTransactions.length <= visibleCount &&
+                    savedHasMore
+                  )
+                    await loadMoreSaved?.();
+                  if (!isCurrentRequest()) return;
+                  setVisibleCount((c) => c + 50);
+                }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
               >
-                {t('buttons.loadMore')}
+                {savedLoading ? t('buttons.loading') : t('buttons.loadMore')}
               </button>
             </div>
           )}

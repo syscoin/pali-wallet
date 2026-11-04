@@ -287,6 +287,7 @@ import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
 } from './evmSignedRecords';
+import { createExtensionEvmReplay } from './evmSignedReplay';
 import {
   freshSdkGasEstimate,
   getSdkGasOverrides,
@@ -319,6 +320,7 @@ import {
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
+import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
@@ -935,10 +937,88 @@ class MainController {
 
   // Initialize a keyring for a specific slip44
   private retainedEvmRecords?: EvmSignedRecords;
+  private retainedEvmReplay?: EvmSignedReplay;
 
   private getRetainedEvmRecords(): EvmSignedRecords {
     this.retainedEvmRecords ??= createChromeEvmSignedRecords();
     return this.retainedEvmRecords;
+  }
+
+  private getRetainedEvmReplay(): EvmSignedReplay {
+    this.retainedEvmReplay ??= createExtensionEvmReplay(
+      this.getRetainedEvmRecords(),
+      () => {
+        this.assertWalletReadyForSigning();
+        const keyring = this.getActiveKeyring();
+        const { vault } = store.getState();
+        const reference = vault.activeAccount;
+        const account = vault.accounts[reference.type]?.[reference.id];
+        // The existing extension represents a view-only import without xprv.
+        if (
+          !account?.address ||
+          vault.isBitcoinBased ||
+          (reference.type === KeyringAccountType.Imported && !account.xprv)
+        )
+          throw new Error('Replay requires a signing account');
+        const context = {
+          account: {
+            id: reference.id,
+            type: reference.type,
+            address: account.address,
+          },
+          network: {
+            kind: vault.activeNetwork.kind,
+            chainId: vault.activeNetwork.chainId,
+            slip44: vault.activeNetwork.slip44,
+            url: vault.activeNetwork.url,
+          },
+          operation: 'send' as const,
+        };
+        const provider = this.ethereumTransaction.web3Provider;
+        const lifecycle = this.captureEvmSignedSubmission(keyring, context);
+        const assertCurrent = () => {
+          lifecycle.assertCurrent();
+          const current =
+            store.getState().vault.accounts[reference.type]?.[reference.id];
+          if (
+            this.ethereumTransaction.web3Provider !== provider ||
+            (reference.type === KeyringAccountType.Imported && !current?.xprv)
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        };
+        assertCurrent();
+        return {
+          context,
+          provider,
+          assertCurrent,
+          recordSession: { keyring, assertCurrent },
+        };
+      }
+    );
+    return this.retainedEvmReplay;
+  }
+  public prepareEvmSignedReplay(hash: string) {
+    return this.getRetainedEvmReplay().prepare(hash);
+  }
+  public confirmEvmSignedReplay(id: string) {
+    return this.getRetainedEvmReplay().confirm(id);
+  }
+  public cancelEvmSignedReplay(id: string) {
+    if (typeof id === 'string') this.retainedEvmReplay?.cancel(id);
+  }
+  public getSavedEvmTransaction(hash: string) {
+    return this.getRetainedEvmReplay().get(hash);
+  }
+  public getSavedEvmTransactions(
+    beforeHash?: string,
+    limit = 30,
+    nonce?: number
+  ) {
+    return this.getRetainedEvmReplay().list({
+      beforeHash,
+      maximum: limit,
+      nonce,
+    });
   }
 
   private captureEvmSignedSubmission(
@@ -947,6 +1027,7 @@ class MainController {
   ) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
     const navigation = getWalletNavigationScope();
     const selected = { ...store.getState().vault.activeAccount };
     const assertCurrent = () => {
@@ -959,6 +1040,7 @@ class MainController {
           context.account.id
         ];
       if (
+        networkRequest !== this.networkRequestGeneration ||
         currentNavigation.account !== navigation.account ||
         currentNavigation.network !== navigation.network ||
         vault.activeAccount.id !== selected.id ||
@@ -2010,6 +2092,8 @@ class MainController {
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
     // A new authenticated session must re-read and authenticate retained bytes.
+    this.retainedEvmReplay?.cancel();
+    this.retainedEvmReplay = undefined;
     this.retainedEvmRecords = undefined;
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.

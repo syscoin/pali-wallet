@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Wallet } from 'ethers/wallet';
@@ -163,7 +163,7 @@ test('actual SQLite admits the16MiB common boundary and refuses a larger value b
     assert.equal(await f.storage.signedRecords.read(PROFILE), raw); const read = performance.now();
     await assert.rejects(f.storage.signedRecords.compareAndSet(PROFILE, raw, `${raw} `, () => undefined), { code: 'STORAGE_CORRUPT' });
     const evidence = { bytes: Buffer.byteLength(raw), writeMilliseconds: written - start, readMilliseconds: read - written, sqlite: process.versions.sqlite };
-    await writeFile('/private/tmp/pali-signed-storage-benchmark.json', JSON.stringify(evidence, null, 2));
+    console.info('Signed-record SQLite benchmark', evidence);
   } finally { await f.close(); }
 });
 

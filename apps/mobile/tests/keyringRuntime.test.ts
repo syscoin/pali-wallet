@@ -1559,7 +1559,7 @@ test('SDK imported gap reuse retains the higher account through cold reopen, exp
       const flow: HdKeyExportFlow = new HdKeyExportFlow(reopened, () => runtime.keyExport);
       try { assert.equal((await flow.begin(PASSWORD)).privateKey, key); } finally { flow.dispose(); }
       const signed = await runtime.transfers!.sign({ type: 2, from: importedAddress(key), to: ADDRESS,
-        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, PASSWORD, () => undefined);
+        chainId: '1', nonce: '0', value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1' }, () => undefined);
       assert.equal(Transaction.from(signed.rawTransaction).from, importedAddress(key));
     }
     assert.deepEqual((f.disk.records.get(WALLET_CATALOGUE_KEY) as { importedAccounts: unknown[] }).importedAccounts[1], retained);

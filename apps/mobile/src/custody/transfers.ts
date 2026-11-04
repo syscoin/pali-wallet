@@ -1,4 +1,6 @@
 import { Transaction } from 'ethers/transaction';
+import { keccak256 } from 'ethers/crypto';
+import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -18,7 +20,6 @@ import {
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import {
   assertTransferIntentEnvelope,
-  equalTransferIntent,
   snapshotErc20TransferIntent,
   type Erc20TransferIntent,
 } from './transferIntent.ts';
@@ -37,6 +38,7 @@ export type NativeTransferReview = Readonly<{
   nonce: string;
   retry: boolean;
   intent?: Erc20TransferIntent;
+  replay?: EvmReplayReview;
 }>;
 export type NativeTransferSnapshot = Readonly<{
   context?: NativeSendContext | null;
@@ -63,6 +65,8 @@ export interface NativeTransferJournalHandle {
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
 export interface NativeTransferRuntime {
+  replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
+    options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
   token?(
     contractAddress: string,
     assertCurrent: () => void
@@ -111,14 +115,15 @@ export type NativeTransferView = Readonly<
     | 'prepareToken'
     | 'confirm'
     | 'recover'
+    | 'loadMorePredecessors'
   >
 >;
 
 type PrivateReview = {
   public: NativeTransferReview;
-  transaction: PreparedEvmTransaction;
+  transaction?: PreparedEvmTransaction;
   expires: number;
-  existing: TransferJournalEntry | null;
+  replay?: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
 };
 const isTerminal = (
   phase: string
@@ -145,16 +150,20 @@ export class NativeTransfers {
     prepareToken: (contract: string, recipient: string, amount: string) =>
       this.prepareToken(contract, recipient, amount),
     confirm: (id: string) => this.confirm(id),
-    recover: (offerRetry?: boolean) => this.recover(offerRetry),
+    recover: (offerRetry?: boolean, hash?: string) => this.recover(offerRetry, hash),
+    loadMorePredecessors: () => this.loadMorePredecessors(),
   });
   private snapshot: NativeTransferSnapshot = initial();
   private listeners = new Set<(snapshot: NativeTransferSnapshot) => void>();
   private review: PrivateReview | null = null;
+  private replay: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'> | null = null;
+  private replayAbort: AbortController | null = null;
   private active = false;
   private activeWork: Promise<void> | null = null;
   private queuedRecovery: {
     generation: number;
     retry: boolean;
+    hash?: string;
     promise: Promise<void>;
   } | null = null;
   private generation = 0;
@@ -224,6 +233,7 @@ export class NativeTransfers {
   cancel(): void {
     if (this.disposed) return;
     this.generation++;
+    this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
     this.revokeSecretOperation();
     this.controller?.abort();
     this.review = null;
@@ -235,6 +245,7 @@ export class NativeTransfers {
     if (this.disposed) return;
     this.disposed = true;
     this.generation++;
+    this.replay?.cancel(); this.replay = null; this.replayAbort?.abort(); this.replayAbort = null;
     this.revokeSecretOperation();
     this.controller?.abort();
     this.review = null;
@@ -404,6 +415,10 @@ export class NativeTransfers {
             });
           throw new NativeTransferError('EXPIRED');
         }
+        if (error instanceof EvmReplayError && ['EXPIRED', 'CONTEXT_CHANGED', 'NOT_FOUND'].includes(error.code)) {
+          this.publish({ phase: 'idle', review: null, message: 'This review expired or changed. Review the saved transaction again.' });
+          throw new NativeTransferError('EXPIRED');
+        }
         if (error instanceof NativeTransferError) throw error;
         if (!(error instanceof NativeTransferRpcError)) this.source.lock();
         this.publish({
@@ -428,11 +443,10 @@ export class NativeTransfers {
   }
   private showReview(
     transaction: PreparedEvmTransaction,
-    existing: TransferJournalEntry | null,
     inputIntent?: Erc20TransferIntent,
     context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks)
   ) {
-    const intent = existing?.intent ?? inputIntent;
+    const intent = inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
     if (transaction.chainId !== context.chainId || intent && !erc20SigningEnabled(context.networkId)) throw new NativeTransferError('FAILED');
     const entropy = this.randomBytes(16);
@@ -462,13 +476,12 @@ export class NativeTransfers {
       priorityFeePerGas:
         transaction.type === 2 ? transaction.maxPriorityFeePerGas : null,
       nonce: transaction.nonce,
-      retry: existing !== null,
+      retry: false,
       ...(intent ? { intent } : {}),
     });
     this.review = {
       public: publicReview,
       transaction,
-      existing,
       expires: this.now() + 90000,
     };
     if (this.expiry !== null) clearTimeout(this.expiry);
@@ -479,10 +492,8 @@ export class NativeTransfers {
       phase: 'review',
       review: publicReview,
       intent: intent ?? null,
-      hash: existing?.hash ?? null,
-      message: existing
-        ? 'This resends the exact same signed transaction. It does not create a second transfer.'
-        : null,
+      hash: null,
+      message: null,
     });
   }
   prepare(recipient: string, amount: string): Promise<void> {
@@ -520,7 +531,7 @@ export class NativeTransfers {
       }
       const quote = await rpc.prepare(address, to, units, signal);
       assertCurrent();
-      this.showReview(quote.transaction, null, undefined, context);
+      this.showReview(quote.transaction, undefined, context);
     });
   }
   prepareToken(
@@ -582,7 +593,7 @@ export class NativeTransfers {
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal);
       assertCurrent();
-      this.showReview(quote.transaction, null, intent, context);
+      this.showReview(quote.transaction, intent, context);
     });
   }
   confirm(reviewId: string): Promise<void> {
@@ -599,6 +610,14 @@ export class NativeTransfers {
     this.review = null;
     if (this.expiry !== null) clearTimeout(this.expiry);
     this.expiry = null;
+    if (approved.replay) return this.perform(async ({ assertCurrent, context, runtime }) => {
+      if (approved.public.context.registrationHash !== context.registrationHash) throw new NativeTransferError('EXPIRED');
+      runtime.assertUnlocked(assertCurrent);
+      this.publish({ phase: 'submitting', review: approved.public, hash: approved.public.replay!.hash, message: null });
+      const result = await approved.replay!.confirm(reviewId); assertCurrent();
+      this.publish({ phase: result.status === 'submitted' ? 'pending' : 'unknown', review: null, hash: result.hash,
+        message: result.status === 'submitted' ? 'Submitted. Waiting for network confirmation.' : 'Submission could not be confirmed. Check this transaction before sending again.' });
+    });
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
       if (approved.public.context.registrationHash !== context.registrationHash) throw new NativeTransferError('EXPIRED');
       let startedSubmission = false;
@@ -616,28 +635,16 @@ export class NativeTransfers {
       });
       let rawTransaction: string;
       let transactionHash: string;
-      if (approved.existing) {
-        const stored = await journal.load();
+      {
+        const latest = await rpc.requote(approved.transaction!, signal, approved.public.intent);
         guard();
         if (
-          !stored ||
-          stored.hash !== approved.existing.hash ||
-          !equalTransferIntent(stored.intent, approved.public.intent)
-        )
-          throw new NativeTransferError('EXPIRED');
-        runtime.assertUnlocked(guard);
-        guard();
-        rawTransaction = stored.rawTransaction; transactionHash = stored.hash;
-      } else {
-        const latest = await rpc.requote(approved.transaction, signal, approved.public.intent);
-        guard();
-        if (
-          latest.transaction.to !== approved.transaction.to ||
-          latest.transaction.value !== approved.transaction.value ||
-          latest.transaction.data !== approved.transaction.data ||
-          latest.transaction.nonce !== approved.transaction.nonce ||
+          latest.transaction.to !== approved.transaction!.to ||
+          latest.transaction.value !== approved.transaction!.value ||
+          latest.transaction.data !== approved.transaction!.data ||
+          latest.transaction.nonce !== approved.transaction!.nonce ||
           BigInt(latest.transaction.gasLimit) >
-            BigInt(approved.transaction.gasLimit) ||
+            BigInt(approved.transaction!.gasLimit) ||
           BigInt(latest.transaction.type === 0 ? latest.transaction.gasPrice : latest.transaction.maxFeePerGas) >
             BigInt(approved.public.maximumFeePerGas)
         )
@@ -653,13 +660,13 @@ export class NativeTransfers {
           throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
         const signed = await this.runSecretOperation(() =>
           runtime.sign(
-            approved.transaction,
+            approved.transaction!,
             guard,
             approved.public.intent
           )
         );
         guard();
-        this.verifySigned(approved.transaction, signed);
+        this.verifySigned(approved.transaction!, signed);
         rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
         this.publish({ hash: transactionHash }); guard();
       }
@@ -739,29 +746,6 @@ export class NativeTransfers {
     )
       throw new Error('Signed transfer differs from review');
   }
-  private transaction(entry: TransferJournalEntry): PreparedEvmTransaction {
-    const tx = Transaction.from(entry.rawTransaction);
-    const common = {
-      from: tx.from!,
-      to: tx.to!,
-      chainId: tx.chainId.toString(),
-      nonce: tx.nonce.toString(),
-      value: tx.value.toString(),
-      gasLimit: tx.gasLimit.toString(),
-      data: tx.data,
-    };
-    assertTransferIntentEnvelope(common, entry.intent);
-    return Object.freeze(
-      tx.type === 0
-        ? { ...common, type: 0, gasPrice: tx.gasPrice!.toString() }
-        : {
-            ...common,
-            type: 2,
-            maxFeePerGas: tx.maxFeePerGas!.toString(),
-            maxPriorityFeePerGas: tx.maxPriorityFeePerGas!.toString(),
-          }
-    );
-  }
   private terminalMessage(phase: string, intent?: Erc20TransferIntent, _context?: NativeSendContext): string {
     if (phase === 'confirmed')
       return intent
@@ -771,14 +755,35 @@ export class NativeTransfers {
       return 'Transfer reverted. Network fees may still apply.';
     return 'The account nonce has advanced, but this transfer’s result is unavailable. Refresh its status before retrying.';
   }
-  recover(offerRetry = false): Promise<void> {
+  loadMorePredecessors(): Promise<void> {
+    const current = this.review;
+    const saved = current?.public.replay;
+    if (!current?.replay || !saved?.missingNonce || saved.predecessors.length >= saved.predecessorCount)
+      return Promise.resolve();
+    return this.perform(async ({ assertCurrent }) => {
+      this.publish({phase:'preparing'});
+      const page = await current.replay!.list({ nonce: Number(saved.missingNonce), maximum: 20,
+        beforeHash: saved.predecessors[saved.predecessors.length - 1]?.hash });
+      assertCurrent();
+      if (this.review !== current) throw new NativeTransferError('CANCELLED');
+      const known = new Set(saved.predecessors.map(candidate => candidate.hash));
+      const extra = page.transactions.filter(candidate => !known.has(candidate.hash)).map(({hash,nonce,operation,originalHash}) =>
+        Object.freeze({hash,nonce,operation,...(originalHash ? {originalHash} : {})}));
+      const replay = Object.freeze({...saved,predecessors:Object.freeze([...saved.predecessors,...extra])});
+      const review = Object.freeze({...current.public,replay});
+      this.review = {...current,public:review};
+      this.publish({review,phase:'review'});
+    });
+  }
+  recover(offerRetry = false, hash?: string): Promise<void> {
     if (this.disposed)
       return Promise.reject(new NativeTransferError('CANCELLED'));
     if (this.activeWork) {
       const generation = this.generation;
       if (
         this.queuedRecovery?.generation === generation &&
-        this.queuedRecovery.retry === offerRetry
+        this.queuedRecovery.retry === offerRetry &&
+        this.queuedRecovery.hash === hash
       )
         return this.queuedRecovery.promise;
       let queued: Promise<void>;
@@ -787,52 +792,51 @@ export class NativeTransfers {
         .then(() => {
           if (this.disposed || generation !== this.generation)
             throw new NativeTransferError('CANCELLED');
-          return this.recover(offerRetry);
+          return this.recover(offerRetry, hash);
         })
         .finally(() => {
           if (this.queuedRecovery?.promise === queued)
             this.queuedRecovery = null;
         });
-      this.queuedRecovery = { generation, retry: offerRetry, promise: queued };
+      this.queuedRecovery = { generation, retry: offerRetry, hash, promise: queued };
       return queued;
     }
-    return this.perform(async ({ assertCurrent, runtime, signal, context, rpc }) => {
+    return this.perform(async ({ assertCurrent, runtime, context, rpc }) => {
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, message: null });
-      const journal = await runtime.journal(assertCurrent);
-      assertCurrent();
-      const entry = await journal.load();
-      assertCurrent();
-      if (!entry) {
-        this.publish(initial());
-        return;
+      let selected = hash;
+      if (!selected) { const entry = await (await runtime.journal(assertCurrent)).load(); assertCurrent(); selected = entry?.hash; }
+      if (!selected) { this.publish(initial()); return; }
+      this.replay?.cancel(); this.replayAbort?.abort();
+      const abort = new AbortController(); this.replayAbort = abort;
+      const generation = this.generation, identity = this.sourceIdentity;
+      const current = () => {
+        if (this.disposed || generation !== this.generation || identity !== this.sourceIdentity || this.runtime() !== runtime || abort.signal.aborted)
+          throw new NativeTransferError('CANCELLED');
+      };
+      const replay = runtime.replay(current, {
+        observe: ({ hash, from, to, nonce }) => rpc.observation({ hash, from, to, nonce }, abort.signal),
+        dispatch: raw => rpc.broadcast(raw, keccak256(raw), abort.signal),
+      }, { now: this.now, randomBytes: this.randomBytes });
+      this.replay = replay;
+      const result = await replay.prepare(selected); assertCurrent();
+      if (result.status !== 'review') {
+        const transfer = result.transaction.tokenTransfer, token = transfer?.token;
+        const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:result.transaction.chainId,token,recipient:transfer!.recipient,amountUnits:transfer!.amountUnits}) : undefined;
+        this.publish({ phase: result.status, hash: result.hash, review: null, intent: intent ?? null, message: this.terminalMessage(result.status, intent, context) }); return;
       }
-      this.publish({ intent: entry.intent ?? null });
-      this.publish({ hash: entry.hash });
-      const tx = this.transaction(entry);
-      const receipt = await rpc.receipt(
-        { hash: entry.hash, from: tx.from, to: tx.to, nonce: tx.nonce },
-        signal
-      );
-      assertCurrent();
-      if (receipt) {
-        await journal.transition(entry.hash, receipt.status);
-        assertCurrent();
-        this.publish({
-          phase: receipt.status,
-          hash: entry.hash,
-          message: this.terminalMessage(receipt.status, entry.intent, context),
-        });
-      } else if (offerRetry) {
-        if (isTerminal(entry.phase)) await journal.transition(entry.hash, 'submitted');
-        assertCurrent();
-        this.showReview(tx, entry, undefined, context);
-      } else {
-        if (isTerminal(entry.phase)) await journal.transition(entry.hash, 'submitted');
-        assertCurrent();
-        this.publish({ phase: 'unknown', hash: entry.hash,
-          message: 'No current receipt was found. The saved transaction remains available; check its status before sending again.' });
-      }
+      const approved = result.review;
+      this.publish({ hash: approved.hash });
+      if (!offerRetry) { replay.cancel(approved.id); this.publish({phase:'unknown',review:null,message:'No current receipt was found. The saved transaction remains available; check its status before sending again.'}); return; }
+      const token = approved.tokenTransfer?.token;
+      const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:approved.chainId,token,recipient:approved.tokenTransfer!.recipient,amountUnits:approved.tokenTransfer!.amountUnits}) : undefined;
+      const publicReview: NativeTransferReview = Object.freeze({ id:approved.id,context,from:approved.from,recipient:approved.tokenTransfer?.recipient ?? approved.to ?? 'Contract creation',
+        amountUnits:intent?.amountUnits ?? approved.value, maximumFeeUnits:approved.maximumFee,totalUnits:(BigInt(approved.value)+BigInt(approved.maximumFee)).toString(),
+        gasLimit:approved.gasLimit,maximumFeePerGas:approved.feePerGas,priorityFeePerGas:approved.priorityFeePerGas,nonce:approved.nonce,retry:true,replay:approved,...(intent?{intent}:{}) });
+      this.review = { public:publicReview,expires:this.now()+approved.validForMs,replay };
+      if (this.expiry !== null) clearTimeout(this.expiry);
+      this.expiry=setTimeout(()=>{if(this.review?.public.id===approved.id&&!this.active)this.cancel();},approved.validForMs);
+      this.publish({phase:'review',review:publicReview,intent:intent??null,message:'Resend the saved signed transaction.'});
     });
   }
 }

@@ -100,11 +100,13 @@ export function NativeActivityScreen({
   accountLabel,
   onBack,
   navigation,
+  onReplay,
 }: {
   controller: NativeActivity;
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
+  onReplay?(hash: string): void;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -120,6 +122,7 @@ export function NativeActivityScreen({
       accountLabel={accountLabel}
       onBack={onBack}
       navigation={navigation}
+      onReplay={onReplay}
     />
   );
 }
@@ -129,12 +132,14 @@ function NativeActivityContent({
   accountLabel,
   onBack,
   navigation,
+  onReplay,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
+  onReplay?(hash: string): void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -553,6 +558,7 @@ function NativeActivityContent({
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
+          {chosen.local && onReplay && <Button title="Review resend" onPress={() => onReplay(chosen.hash)} />}
           {snapshot.explorerUrl && (
             <Button
               title="View on explorer"

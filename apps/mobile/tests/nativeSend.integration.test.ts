@@ -741,3 +741,37 @@ test('canonical receipt confirms without an advanced nonce or settlement-tag rea
     assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
   } finally { await f.close(); }
 });
+
+test('explicit predecessor replay survives a reorg and cold restart without another signature', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const first = (await f.readJournal())!;
+    const receipt = (entry: TransferJournalEntry) => ({transactionHash:entry.hash,from:Transaction.from(entry.rawTransaction).from,to:RECIPIENT,status:'0x1',blockNumber:'0x10',blockHash:'0x'+'1'.repeat(64)});
+    f.setRecovery({receipt:receipt(first),nonce:'0x1',canonicalHash:'0x'+'1'.repeat(64)});
+    await f.transfers.recover();
+    await f.transfers.prepare(RECIPIENT, '0.002');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const second=(await f.readJournal())!, signatures=f.signatures;
+    assert.equal(second.nonce,1);
+    f.setRecovery({receipt:null,nonce:'0x0',canonicalHash:'0x'+'1'.repeat(64)});
+    await f.reopen();
+    await f.transfers.recover(true,second.hash);
+    assert.equal(f.transfers.getSnapshot().review!.replay!.missingNonce,'0');
+    assert.deepEqual(f.transfers.getSnapshot().review!.replay!.predecessors.map(row=>row.hash),[first.hash]);
+    await f.transfers.recover(true,first.hash);
+    const review=f.transfers.getSnapshot().review!;
+    assert.equal(review.replay!.hash,first.hash);
+    await f.transfers.confirm(review.id);
+    assert.equal(f.signatures,signatures);
+    assert.equal(f.broadcasts.length,3);
+    assert.equal(f.broadcasts[2],first.rawTransaction);
+    f.setRecovery({receipt:receipt(first),nonce:'0x1',canonicalHash:'0x'+'1'.repeat(64)});
+    await f.transfers.recover(false,first.hash);assert.equal(f.transfers.getSnapshot().phase,'confirmed');
+    f.setRecovery({receipt:receipt(second),nonce:'0x2',canonicalHash:'0x'+'1'.repeat(64)});
+    await f.transfers.recover(false,second.hash);assert.equal(f.transfers.getSnapshot().phase,'confirmed');
+    assert.equal(f.broadcasts.length,3,'observing the later receipt never resends it');
+    assert.equal(inspectEvmSignedBundle((await f.readDurableJournal())!).transactions,2);
+  } finally { await f.close(); }
+});

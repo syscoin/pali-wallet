@@ -178,7 +178,7 @@ test('SDK gap reuse keeps imported zero before a retained imported one across st
     const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { importedAccounts: StoredImportedAccount[] };
     const retained = before.importedAccounts[1];
     state = await model.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
-    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0', journal: null }, current);
+    state = await model.mutate(state.revision, { kind: 'remove', id: 'imported:60:0' }, current);
     delete f.stage.state.accounts.Imported[0];
     const replacementKey = '0x' + '3'.padStart(64, '0');
     const replacement = await importMutation(f, 0, replacementKey), { id: _replacementId, ...replacementInput } = replacement;

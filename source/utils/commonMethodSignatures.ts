@@ -209,9 +209,12 @@ export const formatMethodName = (
  * @returns True if it's a contract interaction
  */
 export const isContractInteraction = (tx: {
+  dataBytes?: number;
   input?: string;
   value?: string | any;
-}): boolean => !!(tx.input && tx.input !== '0x' && tx.input.length > 2);
+}): boolean =>
+  !!(tx.input && tx.input !== '0x' && tx.input.length > 2) ||
+  (Number.isSafeInteger(tx.dataBytes) && tx.dataBytes! > 0);
 
 /**
  * Get transaction type label
@@ -220,7 +223,7 @@ export const isContractInteraction = (tx: {
  * @returns A descriptive label for the transaction type
  */
 export const getTransactionTypeLabel = (
-  tx: { input?: string; to?: string; value?: string | any },
+  tx: { dataBytes?: number; input?: string; to?: string; value?: string | any },
   isSent: boolean
 ): string => {
   if (!tx.to || tx.to === '0x0000000000000000000000000000000000000000') {
