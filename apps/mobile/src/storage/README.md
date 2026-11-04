@@ -63,7 +63,9 @@ record byte. The old authority and storage lease must drain first. Ambiguous com
 are closed and read back, never compensated by deleting data or replaying a reset.
 The native runtime authenticates root/profile and current pair before using a stable
 binding for account, token, Activity and journal data. Backup receipts still bind
-the current encrypted pair. No recovery screen is connected to this capability.
+the current encrypted pair. The native development recovery flow presents the
+saved-data scope, verifies the matching phrase and returns to a fresh locked
+owner. Native-device recovery qualification remains a separate release gate.
 
 Retryable recovery failures retain the recovery-owned connection after locking
 staging secrets. Every retry reads a fresh snapshot and checks the same pair and
