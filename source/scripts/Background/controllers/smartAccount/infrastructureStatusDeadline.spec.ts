@@ -3,8 +3,8 @@ jest.mock('state/store', () => ({
   default: { getState: jest.fn(), dispatch: jest.fn() },
 }));
 jest.mock('utils/security/blacklistService', () => ({ blacklistService: {} }));
-jest.mock('utils/smartAccount', () => ({
-  ...jest.requireActual('utils/smartAccount'),
+jest.mock('utils/smartAccount/deployment', () => ({
+  ...jest.requireActual('utils/smartAccount/deployment'),
   getPaliInfrastructureContracts: () => [
     {
       id: 'factory',

@@ -4,7 +4,7 @@ import {
   paliGuardianRecoveryModuleInterface,
   paliSmartAccountInterface,
 } from './contracts';
-import { PALI_INFRASTRUCTURE_BY_ID } from './deployment';
+import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from './deploymentMetadata';
 
 const ZERO = `0x${'00'.repeat(32)}`;
 const MAX_BLOCK_AGE_MS = 420000;
@@ -203,7 +203,7 @@ export async function readGuardianRecoveryObservation({
     typeof code !== 'string' ||
     !/^0x(?:[0-9a-f]{2})+$/i.test(code) ||
     keccak256(code) !==
-      PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.runtimeCodeHash
+      PALI_INFRASTRUCTURE_METADATA_BY_ID.guardianRecoveryModule.runtimeCodeHash
   )
     throw new Error('Guardian recovery module runtime is unsupported');
   const decode = (iface: any, fn: string, data: unknown) => {
