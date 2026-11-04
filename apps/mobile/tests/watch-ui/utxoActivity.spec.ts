@@ -1,5 +1,19 @@
 import { test, expect, type Page } from '@playwright/test';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
+declare global {
+  interface Window {
+    __activityDelayedCopy: { calls: string[]; release(): void };
+  }
+}
+async function delayClipboard(page: Page) {
+  await page.evaluate(() => {
+    const delayed = window.__activityDelayedCopy = { calls: [] as string[], release: () => undefined as void };
+    Object.defineProperty(navigator.clipboard, 'writeText', { configurable: true, value: (text: string) => {
+      delayed.calls.push(text);
+      return new Promise<void>(resolve => { delayed.release = resolve; });
+    } });
+  });
+}
 async function open(page: Page, network = 'bitcoin') {
   await page.goto(`/?utxo-activity=${network}`);
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
@@ -102,4 +116,43 @@ test('narrow and scaled text keeps the active activity and detail usable', async
   await expect(page.getByRole('button', { name: 'Copy transaction ID', exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('btc-watch-activity-large-text.png'), fullPage: true });
+});
+
+test('pending copy completion stays bound to its transaction after detail navigation', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await open(page); await load(page); await delayClipboard(page);
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Copy transaction ID', exact: true }).click();
+  expect(await page.evaluate(() => window.__activityDelayedCopy.calls)).toEqual([ID(1)]);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).nth(1).click();
+  const copy = page.getByRole('button', { name: 'Copy transaction ID', exact: true });
+  // The old native action may still be draining; do not overlap clipboard writes.
+  await expect(copy).toBeDisabled();
+  await page.evaluate(() => window.__activityDelayedCopy.release());
+  await expect(copy).toBeEnabled();
+  await expect(page.getByText('Transaction ID copied.', { exact: true })).toHaveCount(0);
+  await copy.click();
+  expect(await page.evaluate(() => window.__activityDelayedCopy.calls)).toEqual([ID(1), ID(2)]);
+  await page.evaluate(() => window.__activityDelayedCopy.release());
+  await expect(page.getByText('Transaction ID copied.', { exact: true })).toBeVisible();
+});
+
+test('pending copy drains and releases actions after refreshing the list', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await open(page); await load(page); await delayClipboard(page);
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first().click();
+  await page.getByRole('button', { name: 'Copy transaction ID', exact: true }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh confirmed activity', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Refresh confirmed activity', exact: true })).toBeEnabled();
+  await page.evaluate(() => window.__activityDelayedCopy.release());
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).nth(1).click();
+  await expect(page.getByRole('button', { name: 'Copy transaction ID', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Open transaction in explorer', exact: true })).toBeEnabled();
+  await expect(page.getByText('Transaction ID copied.', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Copy transaction ID', exact: true }).click();
+  expect(await page.evaluate(() => window.__activityDelayedCopy.calls)).toEqual([ID(1), ID(2)]);
+  await page.evaluate(() => window.__activityDelayedCopy.release());
+  await expect(page.getByText('Transaction ID copied.', { exact: true })).toBeVisible();
 });

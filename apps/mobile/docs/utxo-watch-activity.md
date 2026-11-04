@@ -12,6 +12,8 @@ Amounts use exact integers. `received` sums native outputs to this address; `spe
 
 Details expose the validated transaction ID, watched address, exact native breakdown, captured confirmations and block information. Only the transaction ID is copied. The explorer URL is locally constructed from the fixed provider and validated hash, opened only after a foreground/current-context user action. Details preserve the mounted list and its scroll position. Refresh is manual and starts a new sampled range. The end of a loaded page is never called a complete wallet history.
 
+Back, detail selection and refresh retire action feedback synchronously. A previously dispatched copy or browser action still drains; only its own operation may release the mounted view's action gate. Completion cannot confirm another selected transaction, leave actions stuck after row replacement, or release a newer owner's pending action. This does not cancel or undo an external action already dispatched.
+
 ## API evidence and qualification
 
 The contract was traced statically against local Blockbook source `4cea9ff4cb071dbf7475a4d43344830ba0348f68`:

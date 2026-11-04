@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, AppState, FlatList, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
@@ -17,12 +17,17 @@ function signed(units: string, symbol: string): string {
 export function WatchActivity({ authority, reader, navigation, onBack }: {
   authority: WatchOnlyAuthority; reader: UtxoActivityReader; navigation: ShellLeafNavigation; onBack(): void;
 }) {
-  const lifetime = useRef({ alive: true, busy: false, action: 0 });
+  const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null });
   const controller = useMemo(() => new UtxoWatchActivity(authority, reader, () => AppState.currentState === 'active'), [authority, reader]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
+  const selectTransaction = useCallback((txid: string | null) => {
+    lifetime.current.selected = txid;
+    lifetime.current.action++;
+    setSelected(txid); setFeedback('');
+  }, []);
   const list = useRef<FlatList<UtxoActivityRow>>(null);
   const scrollOffset = useRef(0);
   const chosen = state.rows.find((row) => row.txid === selected);
@@ -30,33 +35,39 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
   const account = authority.getSnapshot().accounts.find((row) => row.id === state.context?.accountId);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
-    const clear = controller.subscribe(() => { if (controller.getSnapshot().status === 'consent') { setSelected(null); setFeedback(''); setBusy(false); life.busy = false; scrollOffset.current = 0; life.action++; } });
+    const clear = controller.subscribe(() => { if (controller.getSnapshot().status === 'consent') { selectTransaction(null); setBusy(false); life.busy = false; life.pending = null; scrollOffset.current = 0; } });
     controller.activate();
-    const revoke = () => { lifetime.current.action++; lifetime.current.busy = false; setFeedback(''); setBusy(false); controller.revoke(); };
+    const revoke = () => { selectTransaction(null); life.busy = false; life.pending = null; setBusy(false); controller.revoke(); };
     const change = AppState.addEventListener('change', (value) => { if (value !== 'active') revoke(); });
     const blur = AppState.addEventListener('blur', () => { controller.setFocused(false); revoke(); });
     const focus = AppState.addEventListener('focus', () => { controller.setFocused(true); });
-    return () => { life.alive = false; life.action++; clear(); controller.dispose(); change.remove(); blur.remove(); focus.remove(); };
-  }, [controller]);
-  useLayoutEffect(() => navigation.registerBack(() => { if (chosen) setSelected(null); else onBack(); return true; }), [navigation, chosen, onBack]);
+    return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; clear(); controller.dispose(); change.remove(); blur.remove(); focus.remove(); };
+  }, [controller, selectTransaction]);
+  useLayoutEffect(() => navigation.registerBack(() => { if (chosen) selectTransaction(null); else onBack(); return true; }), [navigation, chosen, onBack, selectTransaction]);
   useLayoutEffect(() => navigation.registerLeave((navigate) => { controller.revoke(); navigate(); }), [navigation, controller]);
   useLayoutEffect(() => { navigation.setImmersive(!!chosen); return () => navigation.setImmersive(false); }, [navigation, chosen]);
   useLayoutEffect(() => { if (!chosen) list.current?.scrollToOffset({ offset: scrollOffset.current, animated: false }); }, [chosen]);
-  const back = () => { if (chosen) setSelected(null); else onBack(); };
+  const back = () => { if (chosen) selectTransaction(null); else onBack(); };
   const act = async (kind: 'copy' | 'explorer') => {
-    if (!chosen || !network || lifetime.current.busy || !controller.isCurrent()) return;
-    const context = state.context, row = chosen, action = ++lifetime.current.action;
-    const current = () => action === lifetime.current.action && controller.isCurrent(context) && controller.getSnapshot().rows.includes(row);
-    lifetime.current.busy = true; setBusy(true); setFeedback('');
+    const life = lifetime.current;
+    if (!chosen || !network || !life.alive || life.busy || !controller.isCurrent()) return;
+    const context = state.context, row = chosen, action = ++life.action, pending = {};
+    life.pending = pending; life.busy = true; setBusy(true); setFeedback('');
+    const current = () => life.alive && life.pending === pending && action === life.action && life.selected === row.txid &&
+      controller.isCurrent(context) && controller.getSnapshot().rows.includes(row);
     try {
       if (!current()) return;
       if (kind === 'copy') { if (await Clipboard.setStringAsync(row.txid) === false) throw Error(); }
       else await Linking.openURL(`${network.endpoint}/tx/${row.txid}`);
       if (current()) setFeedback(kind === 'copy' ? 'Transaction ID copied.' : 'Explorer opened.');
     } catch { if (current()) setFeedback(kind === 'copy' ? 'Could not copy the transaction ID.' : 'Could not open the explorer.'); }
-    finally { if (current()) { lifetime.current.busy = false; setBusy(false); } }
+    finally {
+      // A dispatched action still drains after Back/Refresh. Only its owner may
+      // release admission; feedback additionally requires the same selected row.
+      if (life.pending === pending) { life.pending = null; life.busy = false; if (life.alive) setBusy(false); }
+    }
   };
-  const refresh = () => { setSelected(null); setFeedback(''); scrollOffset.current = 0; list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
+  const refresh = () => { selectTransaction(null); scrollOffset.current = 0; list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
     <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Confirmed activity'} subtitle={`${account?.name ?? 'Watch account'} · ${network?.name ?? 'Public account'}`} onBack={back} /></View>
     {!network || !state.context ? <ScrollView contentContainerStyle={s.content}><Notice title="Public activity hidden" body="Open a supported watch account to view its activity." /></ScrollView> : <>
@@ -73,7 +84,7 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
             </>}
             {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading confirmed activity" color={colors.pink} />}
           </View>}
-          renderItem={({ item }) => <View style={s.row}><Button title={`Net change ${signed(item.netUnits, network.symbol)}`} variant="quiet" disabled={state.status === 'loading'} onPress={() => { if (controller.isCurrent()) { setSelected(item.txid); setFeedback(''); } }} />
+          renderItem={({ item }) => <View style={s.row}><Button title={`Net change ${signed(item.netUnits, network.symbol)}`} variant="quiet" disabled={state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
             <Text style={styles.muted}>{item.observedConfirmations} confirmation{item.observedConfirmations === 1 ? '' : 's'} at block {state.anchor?.height}</Text>
             <Text style={s.hash}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
             {item.hasUnsupportedAssetData && <Text style={styles.muted}>Additional asset activity is not shown.</Text>}
@@ -99,6 +110,7 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
           {chosen.block.timestamp !== null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toISOString()}</Text>}
         </Card>
         {chosen.hasUnsupportedAssetData && <Notice title="Additional asset activity" body="This transaction also contains asset activity that is not shown. The amounts above are native coin only." />}
+        {busy && <ActivityIndicator accessibilityLabel="Completing transaction action" color={colors.pink} />}
         <Button title="Copy transaction ID" variant="secondary" disabled={busy} onPress={() => void act('copy')} />
         <Text style={styles.muted}>Opening the explorer shares your transaction interest and IP address with {network.endpoint.replace('https://', '')} in your browser.</Text>
         <Button title="Open transaction in explorer" variant="quiet" disabled={busy} onPress={() => void act('explorer')} />
