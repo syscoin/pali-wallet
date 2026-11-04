@@ -19,8 +19,8 @@ const TABS = [
 
 export function UnavailableActivity({ accountLabel, watchOnly, onBack }: { accountLabel: string; watchOnly: boolean; onBack(): void }) {
   return <SafeAreaView edges={['top']} style={s.shell}><Screen><Header title="Activity" subtitle={accountLabel} onBack={onBack} />
-    <Notice title={watchOnly ? 'Activity unavailable for watch accounts' : 'Activity unavailable on this network'}
-      body={watchOnly ? 'This public account can show balances and receive addresses. Its transaction history is not available in Pali yet.' : 'Wallet transaction history is currently available on Ethereum. Balance and receive remain available on this network.'} />
+    <Notice title="Activity unavailable"
+      body={watchOnly ? 'Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.' : 'Transaction history is unavailable right now. Your account and receive address remain available.'} />
   </Screen></SafeAreaView>;
 }
 

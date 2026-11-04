@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation } from 'react-router-dom';
 
 import packageJson from '../../../package.json';
+import { PALI_INFORMATION } from '../../shared/paliInformation';
 import { PaliWhiteSmallIconSvg } from 'components/Icon/Icon';
 import {
   Icon,
@@ -30,7 +31,7 @@ const AboutView: FC = () => {
   const [copied, copy] = useCopyClipboard();
   const copySupportUrl = async () => {
     try {
-      await copy('https://discord.com/invite/syscoin');
+      await copy(PALI_INFORMATION.supportUrl);
     } catch {
       alert.error(t('transactions.copyFailed'));
     }
@@ -56,7 +57,7 @@ const AboutView: FC = () => {
         <Button
           type="submit"
           className="bg-transparent border-2 border-white rounded-[100px] w-[150px] h-10 flex items-center justify-center cursor-pointer transition-all duration-200 mt-6 py-2 px-[13px]"
-          onClick={() => handleRedirect('https://docs.paliwallet.com/')}
+          onClick={() => handleRedirect(PALI_INFORMATION.documentationUrl)}
         >
           Pali API
         </Button>
@@ -71,7 +72,7 @@ const AboutView: FC = () => {
           <a
             id="user-support-btn"
             className="inline-flex text-brand-white text-xs rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
-            href="https://discord.com/invite/syscoin"
+            href={PALI_INFORMATION.supportUrl}
             target="_blank"
             rel="noopener noreferrer"
           >
@@ -81,11 +82,11 @@ const AboutView: FC = () => {
           <div className="flex items-center">
             <a
               className="min-w-0 break-all text-xs underline rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
-              href="https://discord.com/invite/syscoin"
+              href={PALI_INFORMATION.supportUrl}
               target="_blank"
               rel="noopener noreferrer"
             >
-              https://discord.com/invite/syscoin
+              {PALI_INFORMATION.supportUrl}
             </a>
             <IconButton
               aria-label={`${t('buttons.copy')} ${t('settings.userSupport')}`}
@@ -101,11 +102,13 @@ const AboutView: FC = () => {
 
         <a
           className="mt-4 text-xs text-brand-gray200 underline hover:text-brand-white"
-          href="https://routescan.io"
+          href={PALI_INFORMATION.dataProvider.url}
           target="_blank"
           rel="noopener noreferrer"
         >
-          {t('settings.tokenDataProvider', { provider: 'Routescan' })}
+          {t('settings.tokenDataProvider', {
+            provider: PALI_INFORMATION.dataProvider.name,
+          })}
         </a>
 
         <PageActionFooter>
