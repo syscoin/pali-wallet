@@ -12,12 +12,13 @@ import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
 import { nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
+import { NativeActivityScreen } from './NativeActivity';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'networks';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'networks' | 'activity';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -51,6 +52,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
+  const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
@@ -89,7 +91,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     });
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setTokenView(local.tokens); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setTokenView(local.tokens); setActivityView(local.activity); setNetworkView(networks);
       setCatalogue(local.authority.getCatalogue());
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
@@ -155,6 +157,8 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     return <NativeAccounts controller={accountView} onBack={() => setStage('choose')} />;
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={() => setStage('choose')} />;
+  if (stage === 'activity' && activityView && snapshot.phase === 'ready')
+    return <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   let body: React.ReactNode;
   if (unavailable) body = <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
@@ -215,6 +219,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     onSendToken={snapshot.account?.network === 'ethereum' ? (token) => { setSendToken(token); setStage('send'); } : undefined}
     onManageNetworks={networkView ? () => setStage('networks') : undefined}
     onViewRecovery={() => setStage('backup-auth')}
+    onActivity={snapshot.account?.network === 'ethereum' ? () => setStage('activity') : undefined}
   />;
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
 

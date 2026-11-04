@@ -61,7 +61,9 @@ function fixture() {
   const guard = () => {
     if (!current) throw new Error('Locked');
   };
-  const journal = new NativeTransferJournal(port, scope, guard, () => 1000);
+  // This unit fixture isolates journal transitions; real archive durability has
+  // separate SQLite coverage in activityHistoryStorage.test.ts.
+  const journal = new NativeTransferJournal(port, scope, guard, () => 1000, 0, undefined, async () => undefined);
   return {
     port,
     journal,

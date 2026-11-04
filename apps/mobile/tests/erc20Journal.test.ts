@@ -8,6 +8,7 @@ import {
 import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { snapshotErc20TransferIntent } from '../src/custody/transferIntent.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
+import { NativeActivityHistory } from '../src/activity/historyStore.ts';
 
 const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
@@ -76,7 +77,8 @@ const signed = (
   });
 test('journal requires exact token intent for nonempty calldata and preserves it through transitions', async () => {
   const f = storage();
-  const journal = new NativeTransferJournal(f.port, scope, () => undefined);
+  const history = new NativeActivityHistory(f.port);
+  const journal = new NativeTransferJournal(f.port, scope, () => undefined, Date.now, 0, undefined, (record, guard) => history.archiveTerminal(record, guard));
   const raw = await signed();
   assert.throws(() => journal.saveSigned(raw), /CORRUPT/);
   for (const change of [

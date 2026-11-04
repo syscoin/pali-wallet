@@ -1,5 +1,6 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { INetworkType, retryableFetch } from '@sidhujag/sysweb3-network';
+import { buildAccountHistoryUrl as accountApiUrl } from '../../../../shared/evmExplorer';
 
 import store from 'state/store';
 import { setActiveAccountProperty } from 'state/vault';
@@ -22,28 +23,6 @@ const fetchExplorerApi = (url: string, options?: RequestInit) =>
   new URL(url).origin === 'https://api.routescan.io'
     ? fetchRoutescan(url, options)
     : retryableFetch(url, options);
-
-const accountApiUrl = (
-  apiUrl: string,
-  address: string,
-  action: string,
-  page?: number,
-  offset = 30
-) => {
-  const url = new URL(apiUrl);
-  const apiKey =
-    url.searchParams.get('apikey') || url.searchParams.get('apiKey');
-  url.searchParams.set('module', 'account');
-  url.searchParams.set('action', action);
-  url.searchParams.set('address', address);
-  if (action !== 'pendingtxlist') url.searchParams.set('sort', 'desc');
-  if (page !== undefined) {
-    url.searchParams.set('page', String(page));
-    url.searchParams.set('offset', String(offset));
-  }
-  if (apiKey) url.searchParams.set('apikey', apiKey);
-  return url;
-};
 
 const mapExplorerReceiptStatus = (item: any) => {
   const binaryStatus = (value: unknown): '0' | '1' | null => {

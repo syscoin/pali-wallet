@@ -1,0 +1,445 @@
+import { getAddress } from 'ethers/address';
+import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
+import type { KeyringStoragePort } from '../storage/types.ts';
+import {
+  ActivityError,
+  DEFAULT_ACTIVITY_VIEW,
+  localScopeKey,
+  type ActivityCandidate,
+  type ActivityScope,
+  type ActivityViewState,
+  type TerminalActivityRecord,
+} from './types.ts';
+
+export const ACTIVITY_STORAGE_KEY = 'native-activity-v1';
+const BYTE_LIMIT = 60 * 1024;
+const queues = new WeakMap<KeyringStoragePort, Promise<unknown>>();
+type Cached = Readonly<{
+  sourceId: string;
+  scopeKey: string;
+  candidates: readonly ActivityCandidate[];
+}>;
+type SavedView = Readonly<{ sourceId: string; view: ActivityViewState }>;
+type Document = Readonly<{
+  version: 1;
+  walletFingerprint: string;
+  revision: number;
+  truncated: boolean;
+  archived: readonly TerminalActivityRecord[];
+  cached: readonly Cached[];
+  views: readonly SavedView[];
+}>;
+export type ActivityHistorySnapshot = Readonly<{
+  archived: readonly TerminalActivityRecord[];
+  candidates: readonly ActivityCandidate[];
+  view: ActivityViewState;
+  truncated: boolean;
+}>;
+const copy = <T>(value: T): T =>
+  decodeStorageValue(encodeStorageValue(value)) as T;
+const invalid = (): never => {
+  throw new ActivityError('INVALID');
+};
+function exact(
+  value: unknown,
+  fields: readonly string[]
+): Record<string, unknown> {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    ![Object.prototype, null].includes(Object.getPrototypeOf(value))
+  )
+    return invalid();
+  const names = Object.keys(value);
+  if (
+    names.length !== fields.length ||
+    names.some((name) => !fields.includes(name))
+  )
+    return invalid();
+  return value as Record<string, unknown>;
+}
+export function validateTerminalActivity(
+  value: unknown
+): TerminalActivityRecord {
+  const data = exact(copy(value), [
+    'walletFingerprint',
+    'accountId',
+    'address',
+    'networkId',
+    'registrationHash',
+    'chainId',
+    'hash',
+    'phase',
+    'nonce',
+    'createdAt',
+    'recipient',
+    'amountUnits',
+    'maximumFeeUnits',
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'token')
+      ? ['token']
+      : []),
+  ]);
+  if (
+    typeof data.walletFingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(data.walletFingerprint) ||
+    typeof data.accountId !== 'string' ||
+    !/^hd:60:(0|[1-9][0-9]{0,3})$/.test(data.accountId) ||
+    typeof data.address !== 'string' ||
+    getAddress(data.address) !== data.address ||
+    typeof data.recipient !== 'string' ||
+    getAddress(data.recipient) !== data.recipient ||
+    typeof data.networkId !== 'string' ||
+    data.networkId.length > 64 ||
+    typeof data.registrationHash !== 'string' ||
+    !/^0x[0-9a-f]{64}$/.test(data.registrationHash) ||
+    typeof data.chainId !== 'string' ||
+    !/^[1-9][0-9]{0,77}$/.test(data.chainId) ||
+    typeof data.hash !== 'string' ||
+    !/^0x[0-9a-f]{64}$/.test(data.hash) ||
+    !['confirmed', 'reverted', 'nonce-consumed'].includes(
+      data.phase as string
+    ) ||
+    !Number.isSafeInteger(data.nonce) ||
+    (data.nonce as number) < 0 ||
+    !Number.isSafeInteger(data.createdAt) ||
+    (data.createdAt as number) < 0 ||
+    [data.amountUnits, data.maximumFeeUnits].some(
+      (v) => typeof v !== 'string' || !/^(0|[1-9][0-9]{0,77})$/.test(v)
+    )
+  )
+    return invalid();
+  if (data.token !== undefined) {
+    const token = exact(data.token, [
+      'contractAddress',
+      'decimals',
+      'symbol',
+      'name',
+    ]);
+    if (
+      typeof token.contractAddress !== 'string' ||
+      getAddress(token.contractAddress) !== token.contractAddress ||
+      !Number.isSafeInteger(token.decimals) ||
+      (token.decimals as number) < 0 ||
+      (token.decimals as number) > 255 ||
+      typeof token.symbol !== 'string' ||
+      token.symbol.length > 32 ||
+      typeof token.name !== 'string' ||
+      token.name.length > 128 ||
+      /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(
+        token.symbol + token.name
+      )
+    )
+      return invalid();
+  }
+  return Object.freeze(data as unknown as TerminalActivityRecord);
+}
+function view(value: unknown): ActivityViewState {
+  const data = exact(value, ['filter', 'showZero', 'anchor', 'offset']);
+  if (
+    !['all', 'sent', 'received'].includes(data.filter as string) ||
+    typeof data.showZero !== 'boolean' ||
+    !(
+      data.anchor === null ||
+      (typeof data.anchor === 'string' && /^0x[0-9a-f]{64}$/.test(data.anchor))
+    ) ||
+    typeof data.offset !== 'number' ||
+    !Number.isFinite(data.offset) ||
+    data.offset < 0 ||
+    data.offset > 10000
+  )
+    return invalid();
+  return Object.freeze(data as unknown as ActivityViewState);
+}
+function candidate(value: unknown): ActivityCandidate {
+  const data = exact(value, ['hash', 'blockNumber', 'timestamp', 'tokenHint']);
+  if (
+    typeof data.hash !== 'string' ||
+    !/^0x[0-9a-f]{64}$/.test(data.hash) ||
+    typeof data.blockNumber !== 'string' ||
+    !/^(0|[1-9][0-9]{0,77})$/.test(data.blockNumber) ||
+    typeof data.tokenHint !== 'boolean' ||
+    !(
+      data.timestamp === null ||
+      (Number.isSafeInteger(data.timestamp) && (data.timestamp as number) >= 0)
+    )
+  )
+    return invalid();
+  return Object.freeze(data as unknown as ActivityCandidate);
+}
+function decode(value: unknown, fingerprint: string): Document {
+  const data = exact(copy(value), [
+    'version',
+    'walletFingerprint',
+    'revision',
+    'truncated',
+    'archived',
+    'cached',
+    'views',
+  ]);
+  if (
+    data.version !== 1 ||
+    data.walletFingerprint !== fingerprint ||
+    !Number.isSafeInteger(data.revision) ||
+    (data.revision as number) < 0 ||
+    typeof data.truncated !== 'boolean' ||
+    !Array.isArray(data.archived) ||
+    data.archived.length > 48 ||
+    !Array.isArray(data.cached) ||
+    data.cached.length > 24 ||
+    !Array.isArray(data.views) ||
+    data.views.length > 20
+  )
+    return invalid();
+  const archived = data.archived.map(validateTerminalActivity);
+  if (
+    archived.some((r) => r.walletFingerprint !== fingerprint) ||
+    new Set(archived.map((r) => `${localScopeKey(r)}:${r.hash}`)).size !==
+      archived.length
+  )
+    return invalid();
+  const cached = data.cached.map((raw) => {
+    const c = exact(raw, ['sourceId', 'scopeKey', 'candidates']);
+    if (
+      typeof c.sourceId !== 'string' ||
+      !/^0x[0-9a-f]{64}$/.test(c.sourceId) ||
+      typeof c.scopeKey !== 'string' ||
+      !/^0x[0-9a-f]{64}$/.test(c.scopeKey) ||
+      !Array.isArray(c.candidates) ||
+      c.candidates.length > 24
+    )
+      return invalid();
+    return {
+      sourceId: c.sourceId,
+      scopeKey: c.scopeKey,
+      candidates: c.candidates.map(candidate),
+    };
+  });
+  if (
+    cached.reduce((count, c) => count + c.candidates.length, 0) > 24 ||
+    new Set(cached.map((c) => c.sourceId)).size !== cached.length
+  )
+    return invalid();
+  const views = data.views.map((raw) => {
+    const v = exact(raw, ['sourceId', 'view']);
+    if (typeof v.sourceId !== 'string' || !/^0x[0-9a-f]{64}$/.test(v.sourceId))
+      return invalid();
+    return { sourceId: v.sourceId, view: view(v.view) };
+  });
+  if (new Set(views.map((v) => v.sourceId)).size !== views.length)
+    return invalid();
+  return {
+    version: 1,
+    walletFingerprint: fingerprint,
+    revision: data.revision as number,
+    truncated: data.truncated,
+    archived,
+    cached,
+    views,
+  };
+}
+function fresh(fingerprint: string): Document {
+  return {
+    version: 1,
+    walletFingerprint: fingerprint,
+    revision: 0,
+    truncated: false,
+    archived: [],
+    cached: [],
+    views: [],
+  };
+}
+function packed(input: Document, protect?: string): Document {
+  const next = {
+    ...input,
+    archived: [...input.archived],
+    cached: [...input.cached],
+    views: [...input.views],
+  };
+  while (next.archived.length > 48) {
+    next.archived.shift();
+    next.truncated = true;
+  }
+  while (next.cached.reduce((sum, c) => sum + c.candidates.length, 0) > 24) {
+    next.cached.pop();
+    next.truncated = true;
+  }
+  while (next.views.length > 20) next.views.pop();
+  for (;;) {
+    try {
+      if (
+        new TextEncoder().encode(encodeStorageValue(next)).length <= BYTE_LIMIT
+      )
+        return next;
+    } catch {
+      /* prune public cache before refusing */
+    }
+    next.truncated = true;
+    if (next.cached.length) next.cached.pop();
+    else {
+      const removable = next.archived.findIndex(
+        (r) => `${localScopeKey(r)}:${r.hash}` !== protect
+      );
+      if (removable >= 0) next.archived.splice(removable, 1);
+      else if (next.views.length) next.views.pop();
+      else throw new ActivityError('INVALID');
+    }
+  }
+}
+/** One bounded encrypted public-history document. It never authorizes a spend. */
+export class NativeActivityHistory {
+  requiresReopen = false;
+  private readonly storage: KeyringStoragePort;
+  constructor(storage: KeyringStoragePort) {
+    this.storage = storage;
+  }
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const prior = queues.get(this.storage) ?? Promise.resolve();
+    const next = prior.catch(() => undefined).then(work);
+    queues.set(
+      this.storage,
+      next.catch(() => undefined)
+    );
+    return next;
+  }
+  private async read(fingerprint: string, guard: () => void) {
+    guard();
+    const raw = await this.storage.get(ACTIVITY_STORAGE_KEY);
+    guard();
+    return {
+      raw,
+      data: raw === undefined ? fresh(fingerprint) : decode(raw, fingerprint),
+    };
+  }
+  private mutate(
+    fingerprint: string,
+    guard: () => void,
+    change: (data: Document) => Document
+  ): Promise<void> {
+    return this.exclusive(async () => {
+      if (this.requiresReopen) throw new ActivityError('REOPEN_REQUIRED');
+      for (let i = 0; i < 3; i++) {
+        const { raw, data } = await this.read(fingerprint, guard);
+        if (data.revision === Number.MAX_SAFE_INTEGER)
+          throw new ActivityError('INVALID');
+        const next = change(data);
+        guard();
+        if (encodeStorageValue(next) === encodeStorageValue(data)) return;
+        const stored = { ...next, revision: data.revision + 1 };
+        let committed: boolean;
+        try {
+          committed =
+            raw === undefined
+              ? await this.storage.createManyIfAbsent({
+                  [ACTIVITY_STORAGE_KEY]: stored,
+                })
+              : await this.storage.compareAndSet(
+                  ACTIVITY_STORAGE_KEY,
+                  raw,
+                  stored
+                );
+        } catch {
+          this.requiresReopen = true;
+          throw new ActivityError('REOPEN_REQUIRED');
+        }
+        if (typeof committed !== 'boolean') {
+          this.requiresReopen = true;
+          throw new ActivityError('REOPEN_REQUIRED');
+        }
+        if (!committed) {
+          guard();
+          continue;
+        }
+        guard();
+        let checked: unknown;
+        try {
+          checked = await this.storage.get(ACTIVITY_STORAGE_KEY);
+        } catch {
+          this.requiresReopen = true;
+          throw new ActivityError('REOPEN_REQUIRED');
+        }
+        guard();
+        if (encodeStorageValue(checked) !== encodeStorageValue(stored)) {
+          this.requiresReopen = true;
+          throw new ActivityError('REOPEN_REQUIRED');
+        }
+        decode(checked, fingerprint);
+        return;
+      }
+      throw new ActivityError('CONFLICT');
+    });
+  }
+  archiveTerminal(
+    record: TerminalActivityRecord,
+    guard: () => void
+  ): Promise<void> {
+    const checked = validateTerminalActivity(record);
+    const id = `${localScopeKey(checked)}:${checked.hash}`;
+    return this.mutate(checked.walletFingerprint, guard, (data) => {
+      const old = data.archived.find(
+        (r) => `${localScopeKey(r)}:${r.hash}` === id
+      );
+      if (old) {
+        if (encodeStorageValue(old) !== encodeStorageValue(checked))
+          throw new ActivityError('INVALID');
+        return data;
+      }
+      return packed({ ...data, archived: [...data.archived, checked] }, id);
+    });
+  }
+  async load(
+    scope: ActivityScope,
+    guard: () => void
+  ): Promise<ActivityHistorySnapshot> {
+    const { data } = await this.read(scope.walletFingerprint, guard);
+    return Object.freeze({
+      archived: Object.freeze(
+        data.archived.filter((r) => localScopeKey(r) === scope.key)
+      ),
+      candidates:
+        data.cached.find((c) => c.sourceId === scope.sourceId)?.candidates ??
+        [],
+      view:
+        data.views.find((v) => v.sourceId === scope.sourceId)?.view ??
+        DEFAULT_ACTIVITY_VIEW,
+      truncated: data.truncated,
+    });
+  }
+  saveCache(
+    scope: ActivityScope,
+    candidates: readonly ActivityCandidate[],
+    guard: () => void
+  ): Promise<void> {
+    const admitted = candidates.slice(0, 24).map(candidate);
+    return this.mutate(scope.walletFingerprint, guard, (data) =>
+      packed({
+        ...data,
+        truncated: data.truncated || candidates.length > 24,
+        cached: [
+          {
+            sourceId: scope.sourceId,
+            scopeKey: scope.key,
+            candidates: admitted,
+          },
+          ...data.cached.filter((c) => c.sourceId !== scope.sourceId),
+        ],
+      })
+    );
+  }
+  saveView(
+    scope: ActivityScope,
+    input: ActivityViewState,
+    guard: () => void
+  ): Promise<void> {
+    const checked = view(input);
+    return this.mutate(scope.walletFingerprint, guard, (data) =>
+      packed({
+        ...data,
+        views: [
+          { sourceId: scope.sourceId, view: checked },
+          ...data.views.filter((v) => v.sourceId !== scope.sourceId),
+        ],
+      })
+    );
+  }
+}

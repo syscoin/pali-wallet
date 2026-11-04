@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test tests/*.test.ts",
     "test:ui": "playwright test",
+    "test:activity-ui": "node scripts/build-native-activity-ui.cjs && playwright test --config playwright.activity.config.ts",
     "lint": "eslint . --max-warnings 0"
   },
   "dependencies": {
