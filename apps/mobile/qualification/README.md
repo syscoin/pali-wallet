@@ -76,6 +76,16 @@ with no new signature or fee estimate. Both phases preserve the complete HD0–3
 journal rows and finish on HD1/Ethereum. Reports require HD4 identity/hash,
 chain/version, and fixed per-phase signing, authorization, estimate and injected
 submission counters. Both host runners match this evidence across restart.
+After all five account cases return to HD1, each full launch uses the real
+`HdKeyExportFlow`, native authority and installed SDK runtime to authenticate
+and reveal HD1's private key. It derives and compares the public address
+internally, cancels/disposes the presentation and clears local references.
+The catalogue, fingerprint and complete HD0–4 journal rows must remain unchanged.
+Only `nativeHdKeyRevealVerified: true` is added to the report, bound to its existing
+selected HD1 identity. No key, seed, raw key hash or clipboard output is emitted.
+Full Android and physical-iPhone validators require this proof on both create
+and restart; the limited iOS refusal rejects it. This code is qualification
+support, not evidence of a native run until the corresponding artifact passes.
 These are development qualification cases. They do not establish deployed
 zkSYS fee/finality behavior, native execution without an artifact run, or live
 transaction acceptance; those remain separate pre-merge and pre-broadcast gates.
@@ -149,7 +159,7 @@ Binary database output is never included in that artifact.
 `run-physical-ios.cjs` is a separate host runner. It never falls back to
 Simulator, changes production storage policy, or accepts a caller-selected app
 identifier. It runs the same native creation/import, backup, wrong-password,
-HD-account, offline ERC20 journal/retry and chain-5700/57057 signing/restart checks described above. It does not
+HD-account, private-HD-key reveal, offline ERC20 journal/retry and chain-5700/57057 signing/restart checks described above. It does not
 qualify the normal app's UI, Activity, physical privacy behavior, or live-network
 transactions.
 

@@ -51,6 +51,7 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.failedStage = 'load software SDK'; },
     (r) => { r.address = 'unexpected wallet evidence'; },
     (r) => { r.nativeHdAccountsVerified = true; },
+    (r) => { r.nativeHdKeyRevealVerified = true; },
     (r) => { r.journalContainerVersion = 2; },
     (r) => { r.nativeErc20Verified = true; },
     (r) => { r.erc20TransferHash = '0x' + 'd'.repeat(64); },

@@ -6,6 +6,7 @@ import { Transaction } from 'ethers/transaction';
 import { qualifyNativeHdAccounts } from '../qualification/hd-accounts.ts';
 import { qualifyNativeErc20Transfer } from '../qualification/erc20-transfer.ts';
 import { qualifyNativeNevmTransfer } from '../qualification/nevm-transfer.ts';
+import { qualifyNativeHdKeyReveal, matchesHdKeyRevealRestartEvidence } from '../qualification/hd-key-reveal.ts';
 import {
   qualifyNativeZksysTransfer,
   isZksysQualificationReport,
@@ -285,6 +286,10 @@ for (const scenario of ['import', 'generate'] as const) {
         assert.equal(signed.value, 789n);
         assert.equal(stored.entries[0]!.phase, 'attempted');
         const fingerprint = await disk.storage.getWalletFingerprint();
+        const beforeKeyReveal = JSON.stringify([...disk.records]);
+        const keyReveal = await qualifyNativeHdKeyReveal({ ...options(), expectedAddress: hd.address });
+        assert.deepEqual(keyReveal, { nativeHdKeyRevealVerified: true });
+        assert(JSON.stringify([...disk.records]) === beforeKeyReveal, 'Key reveal must preserve all stored records');
         const firstReport = {
           status: 'passed',
           phase: 'create',
@@ -295,6 +300,7 @@ for (const scenario of ['import', 'generate'] as const) {
           ...erc20,
           ...nevm,
           ...created,
+          ...keyReveal,
         };
         assert(isZksysQualificationReport(firstReport));
         assert(!JSON.stringify(firstReport).includes(words.join(' ')));
@@ -384,6 +390,11 @@ for (const scenario of ['import', 'generate'] as const) {
         assert.deepEqual(rows(), oldAfterEarlierRetries);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
+        const beforeRestartKeyReveal = JSON.stringify([...disk.records]);
+        const keyRevealAgain = await qualifyNativeHdKeyReveal({ ...options(), expectedAddress: hdAgain.address });
+        assert.deepEqual(keyRevealAgain, keyReveal);
+        assert(JSON.stringify([...disk.records]) === beforeRestartKeyReveal, 'Restart key reveal must preserve all stored records');
+        assert(matchesHdKeyRevealRestartEvidence(firstReport, { status: 'passed', phase: 'restart', ...hdAgain, ...keyRevealAgain }));
         assert(
           matchesZksysRestartEvidence(firstReport, {
             status: 'passed',
