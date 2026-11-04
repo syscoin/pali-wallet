@@ -29,7 +29,10 @@ Backup confirmation hashes the exact stored wallet tuple with a domain-separated
 SHA-256 digest. It compares the tuple again under the write transaction before
 committing a receipt. Only the trusted authority's verified phrase challenge may
 call it. Password backoff is durable: after five explicit SDK rejections, delays
-start at 30 seconds and rise to five minutes. Clock rollback cannot reduce them.
+start at 30 seconds and rise to five minutes. Admission uses the native monotonic
+clock; changing system wall time cannot shorten the delay. Reopening a throttled
+wallet starts its complete stored delay again because elapsed time while closed
+is not trusted. The existing authenticated failure metadata format is retained.
 Operational errors must never be counted as wrong passwords.
 
 Node tests exercise real SQLite transactions and SDK values. They do not establish

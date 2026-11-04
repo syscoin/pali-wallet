@@ -115,15 +115,20 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private readonly db: SqlConnection;
   private readonly digest: StorageDigest;
   private readonly now: () => number;
+  private readonly monotonicMilliseconds: () => number;
+  private lastMonotonic: number | null = null;
+  private authenticationWindow: { raw: string | undefined; notBefore: number } | null = null;
 
   private constructor(
     db: SqlConnection,
     digest: StorageDigest,
-    now: () => number
+    now: () => number,
+    monotonicMilliseconds: () => number
   ) {
     this.db = db;
     this.digest = digest;
     this.now = now;
+    this.monotonicMilliseconds = monotonicMilliseconds;
     this.keyringStorage = Object.freeze({
       get: (key: string) => this.get(key),
       set: (key: string, value: unknown) => this.set(key, value),
@@ -143,11 +148,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     digest: StorageDigest,
     installationId: string,
     initialize: boolean,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    monotonicMilliseconds: () => number = () => performance.now()
   ): Promise<SqliteWalletStorage> {
     if (!/^[0-9a-f]{32}$/.test(installationId) || typeof digest !== 'function')
       throw failure();
-    const storage = new SqliteWalletStorage(db, digest, now);
+    const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
         "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 3"
@@ -383,7 +389,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const pair = await this.pair();
       if (validatePair(pair) === 'empty')
         return Object.freeze({ presence: 'empty', backup: 'unconfirmed' });
-      this.authenticationRecord(pair.auth);
+      const auth = this.authenticationRecord(pair.auth);
+      this.authenticationNotBefore(pair.auth, auth, this.monotonicTimestamp());
       if (pair.backup === undefined)
         return Object.freeze({ presence: 'existing', backup: 'unconfirmed' });
       const backup = decodeStorageValue(pair.backup);
@@ -439,44 +446,67 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     return now;
   }
 
+  private monotonicTimestamp(): number {
+    try {
+      const value = this.monotonicMilliseconds();
+      if (!Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER - 300000 ||
+          (this.lastMonotonic !== null && value < this.lastMonotonic)) throw failure();
+      this.lastMonotonic = value;
+      return value;
+    } catch {
+      // A clock failure must not let this connection reuse an expired window.
+      this.poisoned = true;
+      throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+    }
+  }
+
+  private authenticationNotBefore(raw: string | undefined, record: AuthRecord, monotonic: number): number {
+    if (!this.authenticationWindow || this.authenticationWindow.raw !== raw) {
+      const delay = record.notBefore ? record.notBefore - record.lastAttempt : 0;
+      // No trustworthy offline elapsed clock exists here. Every reopened
+      // connection waits the complete persisted delay, capped at five minutes.
+      this.authenticationWindow = { raw, notBefore: delay ? monotonic + delay : 0 };
+    }
+    return this.authenticationWindow.notBefore;
+  }
+
+  private requireAuthenticationAllowed(raw: string | undefined, record: AuthRecord): void {
+    const monotonic = this.monotonicTimestamp();
+    if (monotonic < this.authenticationNotBefore(raw, record, monotonic))
+      throw new WalletStorageError('AUTH_THROTTLED');
+  }
+
   private checkAllowed(): Promise<void> {
     return this.queued(async () => {
       const pair = await this.pair();
       if (validatePair(pair) !== 'existing') throw failure();
-      const auth = this.authenticationRecord(pair.auth);
-      const now = this.timestamp();
-      // Clock rollback cannot shorten a persisted delay, including after restart.
-      if (now < auth.lastAttempt || now < auth.notBefore)
-        throw new WalletStorageError('AUTH_THROTTLED');
+      this.requireAuthenticationAllowed(pair.auth, this.authenticationRecord(pair.auth));
     });
   }
 
   private recordAuthentication(success: boolean): Promise<void> {
-    return this.queued(() =>
-      this.transaction(async () => {
+    return this.queued(async () => {
+      const committed = await this.transaction(async () => {
         const pair = await this.pair();
         if (validatePair(pair) !== 'existing') throw failure();
         const previous = this.authenticationRecord(pair.auth);
+        this.requireAuthenticationAllowed(pair.auth, previous);
         const now = this.timestamp();
-        if (now < previous.lastAttempt || now < previous.notBefore)
-          throw new WalletStorageError('AUTH_THROTTLED');
         const failures = success ? 0 : Math.min(64, previous.failures + 1);
-        const delay =
-          failures < 5
-            ? 0
-            : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
-        const record = encodeStorageValue({
-          version: 1,
-          failures,
-          lastAttempt: now,
-          notBefore: delay ? now + delay : 0,
-        });
+        const delay = failures < 5 ? 0 : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
+        const record: AuthRecord = { version: 1, failures, lastAttempt: now, notBefore: delay ? now + delay : 0 };
+        const raw = encodeStorageValue(record);
         await this.db.runAsync(
           'INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value',
-          ['auth', record]
+          ['auth', raw]
         );
-      })
-    );
+        return { raw, record };
+      });
+      // Every acknowledged outcome is fresh, even if a saturated counter and
+      // repeated wall timestamp serialize identically to the previous record.
+      this.authenticationWindow = null;
+      this.authenticationNotBefore(committed.raw, committed.record, this.monotonicTimestamp());
+    });
   }
 
   confirmBackup(expectedFingerprint: string): Promise<void> {

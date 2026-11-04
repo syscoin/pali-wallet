@@ -38,7 +38,10 @@ export interface NativeStoragePorts {
   ): Promise<SqlConnection>;
   randomBytes(length: number): Uint8Array;
   digest: StorageDigest;
+  /** Wall time is retained only in the existing metadata format. */
   now?: () => number;
+  /** Trusted elapsed clock, independent of user-adjustable wall time. */
+  monotonicMilliseconds?: () => number;
   /** Optional value-free qualification checkpoints; never a storage policy. */
   observeOpen?: StorageOpenObserver;
 }
@@ -144,7 +147,8 @@ export async function openWalletStorage(
       ports.digest,
       record.installationId,
       record.status === 'provisioning',
-      ports.now
+      ports.now,
+      ports.monotonicMilliseconds
     );
     if (record.status === 'provisioning') {
       // An uncommitted bootstrap has never been exposed to an SDK authority.

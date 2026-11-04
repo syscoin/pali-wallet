@@ -319,6 +319,8 @@ test('durable password failure delays persist across restart and clock rollback 
   const f = await setup();
   let now = 1000000;
   f.ports.now = () => now;
+  let monotonic = 0;
+  f.ports.monotonicMilliseconds = () => monotonic;
   try {
     const first = await openWalletStorage(f.ports);
     await first.keyringStorage.createManyIfAbsent(validPair());
@@ -333,11 +335,14 @@ test('durable password failure delays persist across restart and clock rollback 
     now -= 1;
     await assert.rejects(reopened.authGuard.checkAllowed(), /AUTH_THROTTLED/);
     now += 30001;
+    monotonic += 30000;
     await reopened.authGuard.checkAllowed();
     await reopened.authGuard.recordFailure();
     now += 59999;
+    monotonic += 59999;
     await assert.rejects(reopened.authGuard.checkAllowed(), /AUTH_THROTTLED/);
     now += 1;
+    monotonic += 1;
     await reopened.authGuard.recordSuccess();
     await reopened.authGuard.checkAllowed();
     await reopened.close();
@@ -367,6 +372,8 @@ test('password backoff saturates at five minutes and successful authentication r
   const f = await setup();
   let now = 2000000;
   f.ports.now = () => now;
+  let monotonic = 0;
+  f.ports.monotonicMilliseconds = () => monotonic;
   try {
     const storage = await openWalletStorage(f.ports);
     await storage.keyringStorage.createManyIfAbsent(validPair());
@@ -379,11 +386,13 @@ test('password backoff saturates at five minutes and successful authentication r
           : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
       if (delay) {
         now += delay - 1;
+        monotonic += delay - 1;
         await assert.rejects(
           storage.authGuard.checkAllowed(),
           /AUTH_THROTTLED/
         );
         now += 1;
+        monotonic += 1;
       }
     }
     await storage.authGuard.recordSuccess();
@@ -423,4 +432,155 @@ test('stored failure counters require the exact corresponding backoff, not an ar
       await f.cleanup();
     }
   }
+});
+
+test('forward wall-clock changes cannot shorten the active password cooldown', async () => {
+  const f = await setup();
+  let wall = 1000000;
+  let monotonic = 0.25;
+  f.ports.now = () => wall;
+  f.ports.monotonicMilliseconds = () => monotonic;
+  try {
+    const storage = await openWalletStorage(f.ports);
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    for (let failures = 0; failures < 5; failures++) {
+      await storage.authGuard.checkAllowed();
+      await storage.authGuard.recordFailure();
+    }
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    wall += 86400000;
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    await assert.rejects(storage.authGuard.recordFailure(), /AUTH_THROTTLED/);
+    await assert.rejects(storage.authGuard.recordSuccess(), /AUTH_THROTTLED/);
+    monotonic += 29999;
+    await storage.readState();
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    monotonic += 1;
+    await storage.authGuard.checkAllowed();
+    await storage.authGuard.recordSuccess();
+    await storage.close();
+  } finally { await f.cleanup(); }
+});
+
+
+test('reopen re-arms the stored delay even after a forward clock change or a long closure', async () => {
+  const f = await setup();
+  let wall = 1000000, monotonic = 10.5;
+  f.ports.now = () => wall;
+  f.ports.monotonicMilliseconds = () => monotonic;
+  try {
+    let storage = await openWalletStorage(f.ports);
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    for (let i = 0; i < 5; i++) await storage.authGuard.recordFailure();
+    await storage.close();
+    wall += 86400000; monotonic = 0.75;
+    storage = await openWalletStorage(f.ports);
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    monotonic += 29999;
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    monotonic += 1;
+    await storage.authGuard.recordFailure();
+    await storage.close();
+    wall += 86400000; monotonic = 0;
+    storage = await openWalletStorage(f.ports);
+    monotonic = 59999;
+    await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+    monotonic = 60000;
+    await storage.authGuard.checkAllowed();
+    await storage.authGuard.recordSuccess();
+    await storage.close();
+    monotonic = 0;
+    storage = await openWalletStorage(f.ports);
+    await storage.authGuard.checkAllowed();
+    await storage.close();
+  } finally { await f.cleanup(); }
+});
+
+test('wall rollback does not discard a definitive rejection and monotonic clock faults latch closed', async () => {
+  for (const invalid of [NaN, Infinity, -1, Number.MAX_SAFE_INTEGER, 9.5]) {
+    const f = await setup();
+    let wall = 1000000, monotonic = 10.5;
+    f.ports.now = () => wall;
+    f.ports.monotonicMilliseconds = () => monotonic;
+    try {
+      const storage = await openWalletStorage(f.ports);
+      await storage.keyringStorage.createManyIfAbsent(validPair());
+      for (let i = 0; i < 4; i++) await storage.authGuard.recordFailure();
+      wall -= 100000;
+      await storage.authGuard.recordFailure();
+      await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+      monotonic = invalid;
+      await assert.rejects(storage.authGuard.checkAllowed(), /STORAGE_REOPEN_REQUIRED/);
+      monotonic = 900000;
+      await assert.rejects(storage.authGuard.checkAllowed(), /STORAGE_REOPEN_REQUIRED/);
+      await storage.close();
+    } finally { await f.cleanup(); }
+  }
+});
+
+
+for (const boundary of ['lost acknowledgement', 'invalid post-commit clock'] as const) {
+  test(`password failure remains durable and closed after ${boundary}`, async () => {
+    const f = await setup();
+    let monotonic = 5.5, inject = false;
+    f.ports.now = () => 1000000;
+    f.ports.monotonicMilliseconds = () => monotonic;
+    const open = f.ports.openDatabase;
+    f.ports.openDatabase = async (...args) => {
+      const connection = await open(...args);
+      const exec = connection.execAsync.bind(connection);
+      connection.execAsync = async (sql) => {
+        await exec(sql);
+        if (inject && sql === 'COMMIT') {
+          inject = false;
+          if (boundary === 'lost acknowledgement') throw Error('commit acknowledgement lost');
+          monotonic = NaN;
+        }
+      };
+      return connection;
+    };
+    try {
+      let storage = await openWalletStorage(f.ports);
+      await storage.keyringStorage.createManyIfAbsent(validPair());
+      for (let i = 0; i < 4; i++) await storage.authGuard.recordFailure();
+      inject = true;
+      await assert.rejects(storage.authGuard.recordFailure());
+      monotonic = 900000;
+      await assert.rejects(storage.authGuard.checkAllowed(), /STORAGE_REOPEN_REQUIRED/);
+      await storage.close();
+      monotonic = 0.5;
+      storage = await openWalletStorage(f.ports);
+      await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+      monotonic += 29999;
+      await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+      monotonic += 1;
+      await storage.authGuard.recordSuccess();
+      await storage.close();
+    } finally { await f.cleanup(); }
+  });
+}
+
+test('every rejected password re-arms the cooldown after the persistent counter saturates', async () => {
+  const f = await setup();
+  let monotonic = 0.25;
+  // A repeated wall reading must not make a committed rejection disappear.
+  f.ports.now = () => 1000000;
+  f.ports.monotonicMilliseconds = () => monotonic;
+  try {
+    const storage = await openWalletStorage(f.ports);
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    for (let failures = 1; failures <= 64; failures++) {
+      await storage.authGuard.checkAllowed();
+      await storage.authGuard.recordFailure();
+      monotonic += failures < 5 ? 0 : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
+    }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await storage.authGuard.checkAllowed();
+      await storage.authGuard.recordFailure();
+      await assert.rejects(storage.authGuard.checkAllowed(), /AUTH_THROTTLED/);
+      monotonic += 300000;
+    }
+    await storage.authGuard.recordSuccess();
+    await storage.close();
+  } finally { await f.cleanup(); }
 });
