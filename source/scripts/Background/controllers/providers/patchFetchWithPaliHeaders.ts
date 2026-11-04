@@ -1,139 +1,102 @@
-/**
- * Patches the global fetch function to add Pali headers to RPC requests
- * This ensures all web3 provider requests include identification headers
- */
+import { paliHttpHeaders } from '../../../../shared/paliHttpIdentity';
+
+import { walletHttpIdentity } from './walletHttpIdentity';
 
 let originalFetch: typeof fetch | null = null;
 
-/**
- * Gets the extension version in a cross-browser compatible way
- */
-function getExtensionVersion(): string {
-  try {
-    // Try browser API first (Firefox, Safari)
-    if (
-      typeof (globalThis as any).browser !== 'undefined' &&
-      (globalThis as any).browser.runtime &&
-      (globalThis as any).browser.runtime.getManifest
-    ) {
-      return (globalThis as any).browser.runtime.getManifest().version;
-    }
-    // Fall back to chrome API
-    if (
-      typeof chrome !== 'undefined' &&
-      chrome.runtime &&
-      chrome.runtime.getManifest
-    ) {
-      return chrome.runtime.getManifest().version;
-    }
-  } catch (error) {
-    console.warn('Could not get extension version:', error);
-  }
-  // Default version if APIs are not available
-  return '1.0.0';
-}
-
 export function getPaliHeaders(): Record<string, string> {
-  const version = getExtensionVersion();
-  return {
+  const headers: Record<string, string> = {
     'X-Pali-Wallet': 'true',
-    'X-Pali-Version': version,
-    'X-Requested-With': 'XMLHttpRequest', // Hints to server this is AJAX (may prevent WWW-Authenticate)
-    'User-Agent': `PaliWallet/${version}`,
+    'X-Requested-With': 'XMLHttpRequest',
   };
+  const version =
+    typeof chrome !== 'undefined'
+      ? chrome.runtime?.getManifest?.().version
+      : undefined;
+  if (version) headers['X-Pali-Version'] = version;
+  return headers;
 }
-
-/**
- * Checks if a request is likely a JSON-RPC request based on the body
- */
-function isJsonRpcRequest(init?: RequestInit): boolean {
-  if (!init?.body) return false;
-
+function isJsonRpcBody(body: BodyInit | null | undefined): boolean {
+  if (typeof body !== 'string' || body.length > 1024 * 1024) return false;
   try {
-    const bodyStr = typeof init.body === 'string' ? init.body : '';
-    if (!bodyStr) return false;
-
-    const parsed = JSON.parse(bodyStr);
-    // Check for JSON-RPC structure
-    return (
-      parsed.jsonrpc === '2.0' &&
-      typeof parsed.method === 'string' &&
-      ('params' in parsed || 'id' in parsed)
-    );
+    const value = JSON.parse(body);
+    const request = (item: any) =>
+      item &&
+      typeof item === 'object' &&
+      !Array.isArray(item) &&
+      item.jsonrpc === '2.0' &&
+      typeof item.method === 'string' &&
+      ('params' in item || 'id' in item);
+    return Array.isArray(value)
+      ? value.length > 0 && value.every(request)
+      : request(value);
   } catch {
     return false;
   }
 }
+type Identity = Pick<
+  ReturnType<typeof walletHttpIdentity>,
+  'isBackend' | 'isReady' | 'prepare'
+>;
 
-export function patchFetchWithPaliHeaders(): void {
-  // Store the original fetch if not already stored
-  if (!originalFetch) {
-    originalFetch = global.fetch || window.fetch;
-  }
-
-  // Create the patched fetch function
-  const patchedFetch = async (
-    input: RequestInfo | URL,
-    init?: RequestInit
-  ): Promise<Response> => {
-    // Add headers to:
-    // 1. All POST requests that look like JSON-RPC
-    // 2. Requests to known RPC endpoints (common patterns)
-    const requestUrl =
-      typeof input === 'string'
+/** Keep Request streams intact; the Chrome network layer supplies the authoritative UA. */
+export function createPaliFetch(
+  fetcher: typeof fetch,
+  identity: Identity
+): typeof fetch {
+  return async (input, init) => {
+    const request =
+      typeof Request !== 'undefined' && input instanceof Request
         ? input
-        : input instanceof Request
-        ? input.url
-        : input.toString();
-
-    const isPostRequest =
-      init?.method === 'POST' || (!init?.method && init?.body);
-
-    // Check if this is likely a web3 RPC request
-    const shouldAddHeaders = isPostRequest && isJsonRpcRequest(init);
-
-    if (shouldAddHeaders) {
-      init = init || {};
-      init.headers = {
-        ...init.headers,
-        ...getPaliHeaders(),
-      };
-
-      // Prevent browser authentication dialogs by omitting credentials
-      // This tells the browser not to include cookies or HTTP auth
-      init.credentials = 'omit';
-
-      console.log('Adding Pali headers to request:', requestUrl);
-    }
-
-    try {
-      return await originalFetch!(input, init);
-    } catch (error) {
-      // If we get a TypeError that might be from auth cancellation, wrap it
-      if (
-        error instanceof TypeError &&
-        error.message.includes('Failed to fetch')
-      ) {
-        throw new Error(
-          'Network request failed - authentication may be required'
+        : undefined;
+    const url = request?.url ?? String(input);
+    const signal = init?.signal !== undefined ? init.signal : request?.signal;
+    const check = () => {
+      if (signal?.aborted)
+        throw (
+          signal.reason ??
+          new DOMException('The operation was aborted', 'AbortError')
         );
-      }
-      throw error;
-    }
+    };
+    const method = (init?.method ?? request?.method ?? 'GET').toUpperCase();
+    const rpc = method === 'POST' && isJsonRpcBody(init?.body);
+    check();
+    if (!identity.isBackend(url)) return fetcher(input, init);
+    const headers = paliHttpHeaders(
+      init?.headers !== undefined ? init.headers : request?.headers
+    );
+    if (rpc)
+      for (const [key, value] of Object.entries(getPaliHeaders()))
+        headers.set(key, value);
+    // Match fetch's synchronous Request snapshot before waiting for rule setup.
+    // This owns body bytes/headers and consumes an incoming Request only once.
+    const captured = new Request(input, {
+      ...init,
+      headers,
+      credentials: 'omit',
+    });
+    if (identity.isReady(url)) return fetcher(captured);
+    // Never insert a new async gap after the SDK's final guard for a POST.
+    // Startup and explicit candidate probes install the rule before calling it.
+    if (method !== 'GET' && method !== 'HEAD')
+      throw new Error('Wallet HTTP identification is unavailable');
+    if (!(await identity.prepare(url)))
+      throw new Error('Wallet HTTP identification is unavailable');
+    check();
+    return fetcher(captured);
   };
-
-  // Replace global fetch
-  (global as any).fetch = patchedFetch;
-  if (typeof window !== 'undefined') {
-    (window as any).fetch = patchedFetch;
-  }
 }
 
+export function patchFetchWithPaliHeaders(): void {
+  if (originalFetch) return;
+  const identity = walletHttpIdentity();
+  const fetcher = globalThis.fetch;
+  globalThis.fetch = createPaliFetch(fetcher.bind(globalThis), identity);
+  originalFetch = fetcher;
+}
 export function unpatchFetch(): void {
   if (originalFetch) {
-    (global as any).fetch = originalFetch;
-    if (typeof window !== 'undefined') {
-      (window as any).fetch = originalFetch;
-    }
+    globalThis.fetch = originalFetch;
+    originalFetch = null;
   }
 }

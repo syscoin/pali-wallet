@@ -1,3 +1,5 @@
+import { paliHttpHeaders } from '../../../../source/shared/paliHttpIdentity.ts';
+
 export type WalletHttpFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 /** Native transport policy. Pass the captured URL directly, never through RN Request. */
@@ -6,7 +8,7 @@ export function createNativeHttpFetch(transport: WalletHttpFetch): WalletHttpFet
     if (typeof url !== 'string' || !url) throw new Error('Invalid wallet request URL');
     if (!init || typeof init !== 'object' || Array.isArray(init)) throw new Error('Invalid wallet request options');
     let headers: Headers;
-    try { headers = new Headers(init.headers); }
+    try { headers = paliHttpHeaders(init.headers); }
     catch { throw new Error('Invalid wallet request headers'); }
     headers.delete('Cookie');
     headers.delete('Cookie2');

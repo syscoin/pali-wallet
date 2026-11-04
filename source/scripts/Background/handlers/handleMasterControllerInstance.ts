@@ -1,3 +1,7 @@
+import {
+  walletBackendUrls,
+  walletHttpIdentity,
+} from '../controllers/providers/walletHttpIdentity';
 import { readWalletPresence } from '../utils/readWalletPresence';
 import MasterController from 'scripts/Background/controllers';
 import MigrationController from 'scripts/Background/controllers/MigrationController';
@@ -13,6 +17,30 @@ import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 let hasCreatedController = false;
+let observesHttpEndpoints = false;
+let httpEndpointKey: string | undefined;
+let httpEndpointReady: Promise<void> = Promise.resolve();
+let httpNetworks: unknown;
+let httpActiveNetwork: unknown;
+const updateHttpEndpoints = async (): Promise<void> => {
+  const state = store.getState();
+  if (
+    httpNetworks === state.vaultGlobal.networks &&
+    httpActiveNetwork === state.vault.activeNetwork
+  )
+    return httpEndpointReady;
+  httpNetworks = state.vaultGlobal.networks;
+  httpActiveNetwork = state.vault.activeNetwork;
+  const urls = walletBackendUrls(
+    state.vaultGlobal.networks,
+    state.vault.activeNetwork
+  );
+  const key = JSON.stringify(urls);
+  if (key === httpEndpointKey) return httpEndpointReady;
+  httpEndpointKey = key;
+  httpEndpointReady = walletHttpIdentity().configure(urls);
+  return httpEndpointReady;
+};
 
 export const handleMasterControllerInstance = async () => {
   // Add performance timing
@@ -99,6 +127,15 @@ export const handleMasterControllerInstance = async () => {
     store.dispatch(resetLoadingStates());
   }
 
+  // Attempt identification before RPC starts. A failed browser capability blocks
+  // HTTP in the adapter, while local custody and settings remain accessible.
+  await updateHttpEndpoints().catch(() => undefined);
+  if (!observesHttpEndpoints) {
+    store.subscribe(() => {
+      void updateHttpEndpoints().catch(() => undefined);
+    });
+    observesHttpEndpoints = true;
+  }
   const controller = MasterController(store);
   // Construction is synchronous: a failed constructor remains recoverable on
   // retry, and a successfully created controller is never normalized again.

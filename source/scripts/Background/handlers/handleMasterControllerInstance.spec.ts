@@ -7,6 +7,7 @@ import vaultGlobal, {
 
 let mockState: any;
 const mockGetItem = jest.fn();
+const mockConfigureHttp = jest.fn();
 const mockGetItems = jest.fn();
 const mockReadWalletPresence = jest.fn();
 const mockMasterController = jest.fn();
@@ -20,6 +21,15 @@ const controller = {
   },
 };
 
+jest.mock('../controllers/providers/walletHttpIdentity', () => ({
+  walletBackendUrls: (...args: any[]) =>
+    jest
+      .requireActual('../controllers/providers/walletHttpIdentity')
+      .walletBackendUrls(...args),
+  walletHttpIdentity: () => ({
+    configure: (...args: any[]) => mockConfigureHttp(...args),
+  }),
+}));
 jest.mock('scripts/Background/controllers', () => ({
   __esModule: true,
   default: (...args: any[]) => mockMasterController(...args),
@@ -52,6 +62,7 @@ jest.mock('state/store', () => ({
       mockState.vaultGlobal = reducer(mockState.vaultGlobal, action);
     },
     getState: () => mockState,
+    subscribe: jest.fn(() => () => undefined),
   },
   loadAndActivateSlip44Vault: jest.fn(),
 }));
@@ -68,6 +79,7 @@ describe('cold background transient state recovery', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockConfigureHttp.mockReset().mockResolvedValue(undefined);
     jest.spyOn(console, 'log').mockImplementation(() => undefined);
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     const initial = vaultGlobal(undefined, { type: '@@INIT' });
@@ -111,6 +123,59 @@ describe('cold background transient state recovery', () => {
         './handleMasterControllerInstance'
       ).handleMasterControllerInstance;
     });
+  });
+
+  it('awaits HTTP setup then preserves offline controller access when identification fails', async () => {
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let reject!: (error: Error) => void;
+    mockConfigureHttp.mockImplementationOnce(() => {
+      entered();
+      return new Promise<void>((_resolve, fail) => {
+        reject = fail;
+      });
+    });
+    const initializing = initialize();
+    await started;
+    expect(mockMasterController).not.toHaveBeenCalled();
+    reject(new Error('HTTP rules unavailable'));
+    await expect(initializing).resolves.toBe(controller);
+    await expect(initialize()).resolves.toBe(controller);
+    expect(mockMasterController).toHaveBeenCalledTimes(2);
+    expect(mockReadWalletPresence).toHaveBeenCalledTimes(2);
+    expect(controller.wallet.cleanupMainStateVault).toHaveBeenCalled();
+  });
+
+  it('mixed invalid backend configuration keeps local startup available while valid RPC traffic is blocked', async () => {
+    const { createWalletHttpIdentity } = jest.requireActual(
+      '../controllers/providers/walletHttpIdentity'
+    );
+    const { createPaliFetch } = jest.requireActual(
+      '../controllers/providers/patchFetchWithPaliHeaders'
+    );
+    const updateDynamicRules = jest.fn(async () => undefined);
+    const identity = createWalletHttpIdentity('a'.repeat(32), {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      getDynamicRules: async () => [],
+      updateDynamicRules,
+    });
+    const valid = 'https://mixed-public-fixture.invalid/rpc';
+    mockConfigureHttp.mockImplementation((urls) =>
+      identity.configure([...urls, 'malformed', valid])
+    );
+    await expect(initialize()).resolves.toBe(controller);
+    expect(mockMasterController).toHaveBeenCalledTimes(1);
+    expect(identity.isBackend(valid)).toBe(true);
+    const transport = jest.fn(async () => new Response('ok'));
+    const fetcher = createPaliFetch(transport, identity);
+    await expect(fetcher(valid)).rejects.toThrow('configuration is invalid');
+    await expect(
+      fetcher(valid, { method: 'POST', body: '010203' })
+    ).rejects.toThrow('identification is unavailable');
+    expect(transport).not.toHaveBeenCalled();
+    expect(updateDynamicRules).not.toHaveBeenCalled();
   });
 
   it('starts an ordinary wallet with one batched storage read without loading recovery crypto', async () => {
