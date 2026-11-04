@@ -878,15 +878,19 @@ export const runWalletSetup = async (
       // unrelated wallet must never receive this operation's old snapshot.
       const observed = snapshot(current);
       const keys = Object.keys(observed);
-      const admittedKeys = Object.keys(before);
+      const beforeKeys = Object.keys(before);
+      const afterKeys = Object.keys(after);
+      const hasKeys = (expected: string[]) =>
+        keys.length === expected.length &&
+        keys.every((key) => expected.includes(key));
       const admittedPartialWrite =
-        keys.length === admittedKeys.length &&
-        keys.every(
-          (key) =>
-            admittedKeys.includes(key) &&
-            [before[key], after[key]].some((value) =>
-              jsonStorageEqual(value, observed[key])
-            )
+        (hasKeys(beforeKeys) || hasKeys(afterKeys)) &&
+        keys.every((key) =>
+          [before, after].some(
+            (records) =>
+              Object.prototype.hasOwnProperty.call(records, key) &&
+              jsonStorageEqual(records[key], observed[key])
+          )
         );
       if (durableJournal.checksum !== journal.checksum || !admittedPartialWrite)
         throw new Error('Reload the extension to finish wallet recovery');

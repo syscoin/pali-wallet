@@ -29,41 +29,55 @@ const invalid = (): never => {
   throw new Error('Saved wallet recovery data is incomplete');
 };
 
-/** Read the same isolated full SDK account maps used by ordinary startup. */
+const recoveryVaultSource = (records: Records, key: string): any => {
+  const isolated = records[key];
+  if (isolated !== undefined && isolated !== null) return isolated;
+  const active = records.state?.vaultGlobal?.activeSlip44;
+  return key === `state-vault-${active}` ? records.state?.vault : undefined;
+};
+
+/** Use ordinary startup's isolated precedence, including its active inline fallback. */
 export function recoveryAccountGroups(
   records: Records
 ): RecoveryAccountGroup[] {
-  const groups = Object.entries(records)
-    .filter(
-      ([key, value]) =>
-        /^state-vault-(0|[1-9][0-9]*)$/.test(key) &&
-        value !== null &&
-        value !== undefined
+  const entries = Object.entries(records).filter(
+    ([key, value]) =>
+      /^state-vault-(0|[1-9][0-9]*)$/.test(key) &&
+      value !== null &&
+      value !== undefined
+  );
+  const active = records.state?.vaultGlobal?.activeSlip44;
+  if (Number.isSafeInteger(active) && active >= 0) {
+    const key = `state-vault-${active}`;
+    if (records[key] === undefined || records[key] === null) {
+      const inline = recoveryVaultSource(records, key);
+      if (inline !== undefined && inline !== null) entries.push([key, inline]);
+    }
+  }
+  const groups = entries.map(([key, value]) => {
+    const slip44 = Number(key.slice('state-vault-'.length));
+    if (
+      !Number.isSafeInteger(slip44) ||
+      value?.activeNetwork?.slip44 !== slip44 ||
+      !value.activeAccount ||
+      !value.accounts
     )
-    .map(([key, value]) => {
-      const slip44 = Number(key.slice('state-vault-'.length));
-      if (
-        !Number.isSafeInteger(slip44) ||
-        value?.activeNetwork?.slip44 !== slip44 ||
-        !value.activeAccount ||
-        !value.accounts
-      )
-        return invalid();
-      if (
-        Object.keys(value.accounts).sort().join(',') !==
-        'HDAccount,Imported,Ledger,SmartAccount,Trezor'
-      )
-        return invalid();
-      assertCompleteHDAccountData(value.accounts.HDAccount);
-      if (!value.accounts[value.activeAccount.type]?.[value.activeAccount.id])
-        return invalid();
-      return {
-        key,
-        accounts: value.accounts,
-        activeAccount: value.activeAccount,
-        activeNetwork: value.activeNetwork,
-      } as RecoveryAccountGroup;
-    });
+      return invalid();
+    if (
+      Object.keys(value.accounts).sort().join(',') !==
+      'HDAccount,Imported,Ledger,SmartAccount,Trezor'
+    )
+      return invalid();
+    assertCompleteHDAccountData(value.accounts.HDAccount);
+    if (!value.accounts[value.activeAccount.type]?.[value.activeAccount.id])
+      return invalid();
+    return {
+      key,
+      accounts: value.accounts,
+      activeAccount: value.activeAccount,
+      activeNetwork: value.activeNetwork,
+    } as RecoveryAccountGroup;
+  });
   if (
     !groups.length ||
     !groups.some(
@@ -183,7 +197,10 @@ export async function prepareExtensionAccountRecovery(
     'sysweb3-vault-keys': staged.pair.keys,
   };
   for (const group of staged.groups)
-    after[group.key] = { ...before[group.key], accounts: group.accounts };
+    after[group.key] = {
+      ...recoveryVaultSource(before, group.key),
+      accounts: group.accounts,
+    };
   // The isolated vault remains authoritative, as in normal startup. If the
   // saved main state also carries its active vault, keep the copy coherent.
   const active = `state-vault-${before.state.vaultGlobal.activeSlip44}`;

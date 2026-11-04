@@ -1,3 +1,5 @@
+jest.unmock('syscoinjs-lib');
+
 jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: {
