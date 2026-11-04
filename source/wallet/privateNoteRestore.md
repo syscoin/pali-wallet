@@ -16,14 +16,34 @@ rechecks the current profile and complete inventory under the persistence mutex.
 A change to capacity, receipt, notes or journals invalidates that preview. Failed
 or cancelled tokens cannot be replayed.
 
-Every newly restored note has a durable reconciliation guard, including backups
+Every newly restored note starts with a durable review guard, including backups
 without history. An existing local record keeps its ID, timestamp, origin and
-journals; imported evidence or an explicit reconciliation marker can only add a
-guard and retain a union of data-only hints. Hints never recreate reservations,
-proofs, relay endpoints or active jobs. There is no guard-clear capability. A
-chain view reporting an unspent note is insufficient to authorize withdrawal.
-Guarded notes cannot enter proof preparation, withdrawal reservation or deposit
-reuse. Recording the outcome of an existing local attempt remains permitted.
+journals. Imported hints remain separate from local journals; both contribute
+to the combined export and admission budget. Hints never recreate reservations,
+proofs, relay endpoints or active jobs.
+
+**Review restored note** requires a fresh wallet password. The authority reloads
+the note under the shared persistence mutex and requires an existing verified
+public-pool observation before and immediately before the write. That observation
+is the verifier-owned local snapshot, subject to its existing 45-minute freshness
+policy; this action does not make a live or note-specific RPC request. Missing,
+spent or unverified notes do not gain review consent. The local-only `reviewedAt`
+field records this consent, not exclusive ownership or cancellation of another
+proof. It is strictly validated in encrypted storage and never accepted from or
+exported in a portable backup.
+
+A reviewed note with no imported withdrawal hints may enter the ordinary
+withdrawal flow, which still requires its own current snapshot, proof, explicit
+review and submission guards. Deposit-only history does not block this review.
+Imported unknown/submitted withdrawal hints and unresolved local withdrawals
+remain blocked. Exact known failed-local-withdrawal recovery may run without
+clearing the restore guard; it preserves all metadata and uses its existing
+transaction/proof checks. Restored notes can never be reused as new deposits.
+
+Importing new withdrawal evidence or an explicit reconciliation marker revokes
+local review consent. Recording the outcome of an existing local attempt remains
+permitted and does not itself revoke consent. A copied bearer note may still be
+held or used elsewhere; restoring it does not cancel previous withdrawals.
 
 The one canonical version-1 writer always authenticates a required `restore`
 root field, even when empty. The prior pre-release five-field root is accepted
@@ -60,9 +80,9 @@ source digest, timestamp and token ID, not bearer notes. Export freshly
 authenticates and reads only the current profile's exact storage key; retained
 keys from other wallets are never enumerated as ownership.
 
-This foundation deliberately does not implement UI, guard reconciliation,
-user-facing controller messages, or file import/export orchestration. A full
-bulk-restoration UX still requires an explicit reconciliation/recovery journey
-before any guarded note becomes spendable, independently verifiable history
-where available, and a distinct unresolved state. The existing single raw-note
-import policy is unchanged; duplicate raw import preserves an existing guard.
+The extension implements encrypted whole-note backup/restore and the explicit
+ordinary-note review action. Imported withdrawal histories still need a separate,
+evidence-specific reconciliation path; this review cannot clear them. The
+single raw-note import policy is unchanged, and a duplicate raw import preserves
+the existing restore metadata and history. Mobile file and review integration
+remain separate implementation work.

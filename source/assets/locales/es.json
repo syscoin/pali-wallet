@@ -1793,6 +1793,18 @@
       "failed": "No se pudo confirmar la recuperación. La prueba original puede seguir siendo válida, la nota puede estar gastada o las pruebas pueden no estar disponibles. Actualiza antes de intentarlo de nuevo.",
       "checking": "Comprobando la transacción finalizada y la caducidad de la prueba…",
       "confirm": "Comprobar y recuperar"
+    },
+    "restoreReview": {
+      "action": "Revisar nota restaurada",
+      "help": "Confirma la contraseña de tu cartera para revisar esta nota restaurada. Un retiro requiere una revisión aparte.",
+      "disclosure": "Restaurar no cancela retiros anteriores ni invalida otras copias de esta nota.",
+      "snapshot": "Datos del pool verificados hasta el bloque {{block}}. Son datos guardados, no una comprobación en vivo.",
+      "noSnapshot": "Prepara o actualiza los datos del pool antes de revisar esta nota.",
+      "pending": "Esta nota tiene actividad de retiro registrada. Resuelve su estado antes de iniciar otro retiro.",
+      "password": "Contraseña de la cartera",
+      "confirm": "Confirmar revisión de la nota",
+      "busy": "Guardando revisión…",
+      "failed": "No se pudo guardar la revisión. Comprueba la contraseña y los datos del pool e inténtalo de nuevo."
     }
   }
 }

@@ -1793,6 +1793,18 @@
       "failed": "Die Wiederherstellung konnte nicht bestätigt werden. Der ursprüngliche Nachweis ist eventuell noch nutzbar, die Notiz bereits ausgegeben oder der Beleg nicht verfügbar. Aktualisiere vor einem erneuten Versuch.",
       "checking": "Endgültige Transaktion und Ablauf des Nachweises werden geprüft…",
       "confirm": "Prüfen und wiederherstellen"
+    },
+    "restoreReview": {
+      "action": "Wiederhergestellte Notiz prüfen",
+      "help": "Bestätige dein Wallet-Passwort, um diese wiederhergestellte Notiz zu prüfen. Eine Auszahlung erfordert eine separate Prüfung.",
+      "disclosure": "Die Wiederherstellung storniert keine früheren Auszahlungen und macht andere Kopien dieser Notiz nicht ungültig.",
+      "snapshot": "Verifizierte Pool-Daten bis Block {{block}}. Dies sind gespeicherte Daten, keine Live-Prüfung.",
+      "noSnapshot": "Bereite die Pool-Daten vor oder aktualisiere sie, bevor du diese Notiz prüfst.",
+      "pending": "Für diese Notiz ist eine Auszahlung erfasst. Kläre ihren Status, bevor du eine weitere Auszahlung startest.",
+      "password": "Wallet-Passwort",
+      "confirm": "Notizprüfung bestätigen",
+      "busy": "Prüfung wird gespeichert…",
+      "failed": "Die Prüfung konnte nicht gespeichert werden. Prüfe Passwort und Pool-Daten und versuche es erneut."
     }
   }
 }

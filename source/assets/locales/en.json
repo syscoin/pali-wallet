@@ -1793,6 +1793,18 @@
       "failed": "Recovery could not be confirmed. The original proof may still be usable, the note may be spent, or the evidence may be unavailable. Refresh before trying again.",
       "checking": "Checking finalized transaction and proof expiry…",
       "confirm": "Check and recover"
+    },
+    "restoreReview": {
+      "action": "Review restored note",
+      "help": "Confirm your wallet password to review this restored note. A withdrawal requires a separate review.",
+      "disclosure": "Restoring does not cancel earlier withdrawals or invalidate other copies of this note.",
+      "snapshot": "Verified pool data as of block {{block}}. This is saved data, not a live chain check.",
+      "noSnapshot": "Prepare or refresh pool data before reviewing this note.",
+      "pending": "This note has recorded withdrawal activity. Resolve its status before starting another withdrawal.",
+      "password": "Wallet password",
+      "confirm": "Confirm note review",
+      "busy": "Saving review…",
+      "failed": "The review could not be saved. Check your password and pool data, then try again."
     }
   }
 }

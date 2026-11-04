@@ -3009,7 +3009,7 @@ it('preserves existing live journals and timestamps while adding imported eviden
   const after = (await decryptedVault(f)).notes[0];
   const { restoreGuard, ...rest } = after;
   expect(rest).toEqual(before);
-  expect(restoreGuard.history.withdrawals).toHaveLength(2);
+  expect(restoreGuard.history.withdrawals).toHaveLength(1);
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { transactionHash: TX_HASH },
@@ -3026,7 +3026,7 @@ it('preserves existing live journals and timestamps while adding imported eviden
     createdAt: before.createdAt,
     reconciliationRequired: true,
   });
-  expect(backup.notes[0].history!.withdrawals).toHaveLength(3);
+  expect(backup.notes[0].history!.withdrawals).toHaveLength(2);
   expect(JSON.stringify(backup)).not.toContain('proofHash');
   expect(JSON.stringify(backup)).not.toContain('endpoint');
 });
@@ -3549,7 +3549,7 @@ it('rejects a valid extreme-history merge before preview when its authenticated 
       mode: 'direct' as const,
       outcome: 'submitted' as const,
       from,
-      nonce: String(index),
+      nonce: String(BigInt('18446744073709551615') - BigInt(index)),
       transactionHash: hash,
     })),
   };
@@ -3875,7 +3875,7 @@ it('failed withdrawal recovery retains the blocking journal when final proof rev
   ).rejects.toThrow('privacy_withdrawal_attempt_exists');
 });
 
-it('failed withdrawal recovery cannot clear a restore guard added while RPC proof is pending', async () => {
+it('a new restore invalidates an in-flight recovery while a fresh exact recovery preserves its guard', async () => {
   const { f, note, session } = await failedWithdrawalFixture();
   const entered = deferred(),
     release = deferred();
@@ -3910,9 +3910,10 @@ it('failed withdrawal recovery cannot clear a restore guard added while RPC proo
   await rejected;
   expect(f.records).toEqual(guarded);
   expect(f.revalidateRecovery).not.toHaveBeenCalled();
-  await expect(
-    f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
-  ).rejects.toThrow('privacy_note_restore_required');
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  const recovered = (await decryptedVault(f)).notes[0];
+  expect(recovered.restoreGuard.reviewedAt).toBeUndefined();
+  expect(recovered.withdrawal.recovery).toBeDefined();
 });
 
 it('failed withdrawal recovery refuses a session change during encryption before writing', async () => {
@@ -3993,3 +3994,287 @@ it.each([
     );
   }
 );
+
+async function restoredReviewFixture(history?: any) {
+  const f = fixture();
+  const session = f.captureSession();
+  const entries = [
+    { note: NOTE, createdAt: 12, ...(history ? { history } : {}) },
+  ];
+  const plan = await f.controller.prepareRestore(entries, session);
+  await f.controller.commitRestore(plan, entries, 'correct-password', session);
+  const note = (await f.controller.getNotes()).notes[0];
+  return { f, session, note };
+}
+
+it.each([
+  ['without history', undefined],
+  [
+    'with deposit history',
+    {
+      deposits: [
+        {
+          outcome: 'submitted',
+          from: '0x' + '11'.repeat(20),
+          nonce: '7',
+          transactionHash: TX_HASH,
+        },
+      ],
+    },
+  ],
+])(
+  'reviews an ordinary restored note %s without transferring review consent through backup',
+  async (_label, history) => {
+    const { f, session, note } = await restoredReviewFixture(history);
+    expect(note).toMatchObject({
+      phase: 'waiting',
+      restoration: 'review-required',
+    });
+    const before = structuredClone(f.records);
+    await expect(
+      f.controller.reviewRestoredNote(note.id, 'wrong')
+    ).rejects.toThrow('Invalid password');
+    expect(f.records).toEqual(before);
+    await f.controller.reviewRestoredNote(note.id, 'correct-password');
+    const reviewed = (await decryptedVault(f)).notes[0];
+    expect(reviewed).toMatchObject({
+      id: note.id,
+      createdAt: 12,
+      note: NOTE,
+      restoreGuard: { reviewedAt: 456 },
+    });
+    expect(reviewed.restoreGuard.history).toEqual(history);
+    expect((await f.create().getNotes()).notes[0]).toMatchObject({
+      phase: 'verified',
+      restoration: 'reviewed',
+    });
+    await expect(
+      f.create().withWithdrawalNote(note.id, session, (raw) => raw)
+    ).resolves.toBe(NOTE);
+    await expect(
+      f.controller.prepareDepositNote('eth-1', note.id, session)
+    ).rejects.toThrow('privacy_note_restore_required');
+    const backup = await f.controller.exportBackupSnapshot(
+      'correct-password',
+      session
+    );
+    expect(JSON.stringify(backup)).not.toContain('reviewedAt');
+    expect(backup.notes[0].history).toEqual(history);
+    const second = fixture();
+    const target = second.captureSession();
+    const plan = await second.controller.prepareRestore(backup.notes, target);
+    await second.controller.commitRestore(
+      plan,
+      backup.notes,
+      'correct-password',
+      target
+    );
+    expect((await second.controller.getNotes()).notes[0]).toMatchObject({
+      phase: 'waiting',
+      restoration: 'review-required',
+    });
+    expect(f.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+  }
+);
+
+it.each(['waiting', 'not-found', 'spent'] as const)(
+  'refuses restored-note review for %s pool data without changing the note',
+  async (phase) => {
+    const { f, note } = await restoredReviewFixture();
+    f.setStatus({ phase, blockNumber: 123 });
+    const before = structuredClone(f.records);
+    await expect(
+      f.controller.reviewRestoredNote(note.id, 'correct-password')
+    ).rejects.toThrow();
+    expect(f.records).toEqual(before);
+  }
+);
+
+it.each(['status', 'session'] as const)(
+  'rechecks %s after review encryption before saving consent',
+  async (change) => {
+    const { f, note } = await restoredReviewFixture();
+    const before = structuredClone(f.records);
+    const encrypt = f.getKeyring().encryptPrivateRecord.bind(f.getKeyring());
+    jest
+      .spyOn(f.getKeyring(), 'encryptPrivateRecord')
+      .mockImplementationOnce(async (request) => {
+        const result = await encrypt(request);
+        if (change === 'session') f.lock();
+        else f.setStatus({ phase: 'spent', blockNumber: 124 });
+        return result;
+      });
+    await expect(
+      f.controller.reviewRestoredNote(note.id, 'correct-password')
+    ).rejects.toThrow();
+    expect(f.records).toEqual(before);
+  }
+);
+
+it.each([
+  {
+    mode: 'direct',
+    outcome: 'unknown',
+    from: '0x' + '11'.repeat(20),
+    nonce: '7',
+  },
+  {
+    mode: 'direct',
+    outcome: 'submitted',
+    from: '0x' + '11'.repeat(20),
+    nonce: '7',
+    transactionHash: TX_HASH,
+  },
+  { mode: 'relayed', outcome: 'unknown' },
+  { mode: 'relayed', outcome: 'submitted', jobId: 'saved-job' },
+])(
+  'keeps imported $mode/$outcome withdrawal evidence blocked and inert',
+  async (withdrawal) => {
+    const { f, note, session } = await restoredReviewFixture({
+      withdrawals: [withdrawal],
+    });
+    const before = structuredClone(f.records);
+    expect(note).toMatchObject({
+      phase: 'waiting',
+      restoration: 'withdrawal-pending',
+    });
+    await expect(
+      f.controller.reviewRestoredNote(note.id, 'correct-password')
+    ).rejects.toThrow('privacy_note_restore_required');
+    await expect(
+      f.controller.withWithdrawalNote(note.id, session, () => undefined)
+    ).rejects.toThrow('privacy_note_restore_required');
+    await expect(
+      f.controller.recoverFailedWithdrawal(note.id, 'correct-password')
+    ).rejects.toThrow('privacy_note_restore_required');
+    expect(f.prepareWithdrawalRecovery).not.toHaveBeenCalled();
+    expect(f.records).toEqual(before);
+  }
+);
+
+it('preserves exact local failed-withdrawal recovery after a duplicate deposit-only backup adds an unreviewed guard', async () => {
+  const { f, note, session, attempt } = await failedWithdrawalFixture();
+  const entries = [
+    {
+      note: NOTE,
+      createdAt: 1,
+      history: {
+        deposits: [
+          {
+            outcome: 'submitted' as const,
+            from: '0x' + '11'.repeat(20),
+            nonce: '7',
+            transactionHash: TX_HASH,
+          },
+        ],
+      },
+    },
+  ];
+  const plan = await f.controller.prepareRestore(entries, session);
+  await f.controller.commitRestore(plan, entries, 'correct-password', session);
+  const guarded = (await decryptedVault(f)).notes[0];
+  expect(guarded.restoreGuard.reviewedAt).toBeUndefined();
+  expect(guarded.restoreGuard.history.withdrawals).toBeUndefined();
+  expect(
+    (await f.controller.getNotes()).notes[0].withdrawal?.canCheckRecovery
+  ).toBe(true);
+  await expect(
+    f.controller.reviewRestoredNote(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_note_restore_required');
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  const recovered = (await decryptedVault(f)).notes[0];
+  expect(recovered.restoreGuard).toEqual(guarded.restoreGuard);
+  expect(recovered.withdrawal.recovery).toBeDefined();
+  expect((await f.controller.getNotes()).notes[0]).toMatchObject({
+    phase: 'waiting',
+    restoration: 'review-required',
+  });
+  await f.controller.reviewRestoredNote(note.id, 'correct-password');
+  await expect(
+    f.controller.withWithdrawalNote(note.id, session, (raw) => raw)
+  ).resolves.toBe(NOTE);
+  if (attempt.mode !== 'direct') throw new Error('Expected direct fixture');
+  const next = {
+    ...attempt,
+    intentId: UUID,
+    transaction: { ...attempt.transaction, nonce: '0x8' },
+  };
+  await f.controller.reserveWithdrawalAttempt(next, session);
+  await f.controller.recordWithdrawalSubmission(
+    next,
+    { transactionHash: '0x' + 'cd'.repeat(32) },
+    session
+  );
+  expect(
+    (await f.controller.getNotes()).notes[0].withdrawal?.canCheckRecovery
+  ).toBe(true);
+  await f.controller.recoverFailedWithdrawal(note.id, 'correct-password');
+  expect((await f.controller.getNotes()).notes[0].phase).toBe('verified');
+});
+
+it.each(['history', 'marker'] as const)(
+  'new imported %s revokes restored-note consent and an in-flight note use',
+  async (kind) => {
+    const { f, note, session } = await restoredReviewFixture();
+    await f.controller.reviewRestoredNote(note.id, 'correct-password');
+    const entered = deferred(),
+      release = deferred();
+    const use = f.controller.withWithdrawalNote(note.id, session, async () => {
+      entered.resolve();
+      await release.promise;
+    });
+    const rejected = expect(use).rejects.toThrow(
+      'privacy_note_restore_required'
+    );
+    await entered.promise;
+    const entries = [
+      {
+        note: NOTE,
+        createdAt: 1,
+        ...(kind === 'marker'
+          ? { reconciliationRequired: true as const }
+          : {
+              history: {
+                withdrawals: [
+                  { mode: 'relayed' as const, outcome: 'unknown' as const },
+                ],
+              },
+            }),
+      },
+    ];
+    const plan = await f.controller.prepareRestore(entries, session);
+    await f.controller.commitRestore(
+      plan,
+      entries,
+      'correct-password',
+      session
+    );
+    release.resolve();
+    await rejected;
+    expect(
+      (await decryptedVault(f)).notes[0].restoreGuard.reviewedAt
+    ).toBeUndefined();
+    const before = structuredClone(f.records);
+    await f.controller.importNote(NOTE);
+    expect(f.records).toEqual(before);
+  }
+);
+
+it('a lost review acknowledgement preserves durable consent and a retry does not rewrite it', async () => {
+  const { f, note } = await restoredReviewFixture();
+  const write = f.storage.setItem.getMockImplementation()!;
+  f.storage.setItem.mockImplementationOnce(async (key, value) => {
+    await write(key, value);
+    throw new Error('acknowledgement lost');
+  });
+  await expect(
+    f.controller.reviewRestoredNote(note.id, 'correct-password')
+  ).rejects.toThrow('privacy_vault_unavailable');
+  expect((await f.create().getNotes()).notes[0]).toMatchObject({
+    phase: 'verified',
+    restoration: 'reviewed',
+  });
+  const writes = f.storage.setItem.mock.calls.length;
+  await f.create().reviewRestoredNote(note.id, 'correct-password');
+  expect(f.storage.setItem).toHaveBeenCalledTimes(writes);
+});

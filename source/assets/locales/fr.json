@@ -1793,6 +1793,18 @@
       "failed": "La récupération n’a pas pu être confirmée. La preuve peut rester utilisable, la note peut être dépensée ou les données indisponibles. Actualisez avant de réessayer.",
       "checking": "Vérification de la transaction finalisée et de l’expiration de la preuve…",
       "confirm": "Vérifier et récupérer"
+    },
+    "restoreReview": {
+      "action": "Examiner la note restaurée",
+      "help": "Confirmez le mot de passe de votre portefeuille pour examiner cette note restaurée. Un retrait nécessite un examen distinct.",
+      "disclosure": "La restauration n’annule pas les retraits antérieurs et n’invalide pas les autres copies de cette note.",
+      "snapshot": "Données du pool vérifiées au bloc {{block}}. Il s’agit de données enregistrées, pas d’une vérification en direct.",
+      "noSnapshot": "Préparez ou actualisez les données du pool avant d’examiner cette note.",
+      "pending": "Cette note comporte une activité de retrait enregistrée. Vérifiez son état avant de lancer un autre retrait.",
+      "password": "Mot de passe du portefeuille",
+      "confirm": "Confirmer l’examen de la note",
+      "busy": "Enregistrement de l’examen…",
+      "failed": "Impossible d’enregistrer l’examen. Vérifiez le mot de passe et les données du pool, puis réessayez."
     }
   }
 }

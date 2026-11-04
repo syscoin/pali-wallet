@@ -1793,6 +1793,18 @@
       "failed": "Não foi possível confirmar a recuperação. A prova original pode continuar válida, a nota pode ter sido gasta ou as evidências podem estar indisponíveis. Atualize antes de tentar novamente.",
       "checking": "Verificando a transação finalizada e a expiração da prova…",
       "confirm": "Verificar e recuperar"
+    },
+    "restoreReview": {
+      "action": "Revisar nota restaurada",
+      "help": "Confirme a senha da carteira para revisar esta nota restaurada. Um saque exige uma revisão separada.",
+      "disclosure": "Restaurar não cancela saques anteriores nem invalida outras cópias desta nota.",
+      "snapshot": "Dados do pool verificados até o bloco {{block}}. São dados salvos, não uma consulta em tempo real.",
+      "noSnapshot": "Prepare ou atualize os dados do pool antes de revisar esta nota.",
+      "pending": "Esta nota tem atividade de saque registrada. Resolva seu status antes de iniciar outro saque.",
+      "password": "Senha da carteira",
+      "confirm": "Confirmar revisão da nota",
+      "busy": "Salvando revisão…",
+      "failed": "Não foi possível salvar a revisão. Confira a senha e os dados do pool e tente novamente."
     }
   }
 }

@@ -11,10 +11,12 @@ import { getPrivacyPool } from '../utils/privacy/registry';
 import { NOTE_BACKUP_MAX_HISTORY_HINTS } from './noteBackupHistory';
 import {
   planPrivateNoteRestore,
+  hasImportedWithdrawalHistory,
   privateNoteRestoreDigest,
   privateNoteExportHistory,
   readPrivateNoteRestoreGuard,
   readPrivateNoteRestoreMetadata,
+  restoredNoteBlocksWithdrawal,
   snapshotPrivateNoteRestoreEntries,
 } from './privateNoteRestore';
 import type {
@@ -1413,7 +1415,7 @@ export function createPrivateVaultController(
           withdrawal: {
             mode: note.withdrawal.mode,
             phase: note.withdrawal.phase,
-            ...(!note.restoreGuard &&
+            ...(!hasImportedWithdrawalHistory(note.restoreGuard) &&
             note.withdrawal.mode === 'direct' &&
             note.withdrawal.phase === 'submitted' &&
             note.withdrawal.transactionHash
@@ -1426,7 +1428,19 @@ export function createPrivateVaultController(
           },
         }
       : {}),
-    ...(note.restoreGuard && status.phase !== 'spent'
+    ...(note.restoreGuard
+      ? {
+          restoration:
+            hasImportedWithdrawalHistory(note.restoreGuard) ||
+            Boolean(note.withdrawal && !note.withdrawal.recovery)
+              ? ('withdrawal-pending' as const)
+              : restoredNoteBlocksWithdrawal(note.restoreGuard)
+              ? ('review-required' as const)
+              : ('reviewed' as const),
+        }
+      : {}),
+    ...(restoredNoteBlocksWithdrawal(note.restoreGuard) &&
+    status.phase !== 'spent'
       ? { phase: 'waiting' as const }
       : note.withdrawal && !note.withdrawal.recovery && status.phase !== 'spent'
       ? { phase: 'waiting' as const }
@@ -1630,7 +1644,8 @@ export function createPrivateVaultController(
     return note.deposit;
   };
   const assertWithdrawable = async (context: IContext, note: IStoredNote) => {
-    if (note.restoreGuard) throw new Error('privacy_note_restore_required');
+    if (restoredNoteBlocksWithdrawal(note.restoreGuard))
+      throw new Error('privacy_note_restore_required');
     if (note.withdrawal && !note.withdrawal.recovery)
       throw new Error('privacy_withdrawal_attempt_exists');
     const identity = identify(note.note);
@@ -2217,6 +2232,56 @@ export function createPrivateVaultController(
           recordId
         );
       }),
+    reviewRestoredNote: async (id, password) => {
+      try {
+        if (typeof id !== 'string' || !UUID.test(id))
+          throw new Error('privacy_note_missing');
+        const context = await capture();
+        await host.authenticate(password, context.session, () =>
+          mutex.runExclusive(async () => {
+            context.session.assertCurrent();
+            const { manifest, recordId } = await load(context);
+            const note = findNote(manifest, id);
+            if (
+              !note.restoreGuard ||
+              hasImportedWithdrawalHistory(note.restoreGuard) ||
+              (note.withdrawal && !note.withdrawal.recovery)
+            )
+              throw new Error('privacy_note_restore_required');
+            // This is the verifier-owned, age-bounded local pool snapshot. It
+            // is not a new RPC observation or evidence of exclusive ownership.
+            const requireVerified = async () => {
+              const status = await readStatus(context, identify(note.note));
+              if (status.phase === 'spent')
+                throw new Error('privacy_note_spent');
+              if (status.phase === 'not-found')
+                throw new Error('privacy_note_not_found');
+              if (status.phase !== 'verified')
+                throw new Error('privacy_verification_pending');
+              await assertProfile(context);
+            };
+            await requireVerified();
+            if (note.restoreGuard.reviewedAt !== undefined) return '';
+            const restoreGuard = readPrivateNoteRestoreGuard({
+              ...note.restoreGuard,
+              reviewedAt: now(),
+            });
+            await persist(
+              context,
+              manifest.notes.map((entry) =>
+                entry.id === id ? { ...entry, restoreGuard } : entry
+              ),
+              recordId,
+              requireVerified
+            );
+            return '';
+          })
+        );
+        await assertProfile(context);
+      } catch (error) {
+        throw publicError(error);
+      }
+    },
     recoverFailedWithdrawal: async (id, password) => {
       try {
         if (typeof id !== 'string' || !UUID.test(id))
@@ -2236,7 +2301,7 @@ export function createPrivateVaultController(
           const candidate = await mutex.runExclusive(async () => {
             const { manifest } = await load(context);
             const note = findNote(manifest, id);
-            if (note.restoreGuard)
+            if (hasImportedWithdrawalHistory(note.restoreGuard))
               throw new Error('privacy_note_restore_required');
             if (
               !note.withdrawal ||

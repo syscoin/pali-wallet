@@ -3,6 +3,7 @@ import {
   privateNoteCurrentHistory,
   privateNoteExportHistory,
   readPrivateNoteRestoreGuard,
+  restoredNoteBlocksWithdrawal,
   snapshotPrivateNoteRestoreEntries,
 } from './privateNoteRestore';
 import type { IRestorableNote } from './privateNoteRestore';
@@ -100,7 +101,8 @@ test('imported uncertainty only adds a guard, retaining local journals byte for 
     id: id(1),
     origin: 'generated',
   });
-  expect(merged.restoreGuard?.history?.withdrawals).toHaveLength(2);
+  expect(merged.restoreGuard?.history?.withdrawals).toHaveLength(1);
+  expect(privateNoteExportHistory(merged)?.withdrawals).toHaveLength(2);
   const projection = JSON.stringify(privateNoteCurrentHistory(merged));
   expect(projection).not.toContain('endpoint');
   expect(projection).not.toContain('proofHash');
@@ -184,13 +186,13 @@ test('reserves two relayed slots so job-only and final hash acknowledgments rema
       jobId: 'known-job',
     },
   };
-  expect(privateNoteExportHistory(job)?.withdrawals).toHaveLength(15);
+  expect(privateNoteExportHistory(job)?.withdrawals).toHaveLength(14);
   expect(
     privateNoteExportHistory({
       ...job,
       withdrawal: { ...job.withdrawal, transactionHash: HASH },
     })?.withdrawals
-  ).toHaveLength(15);
+  ).toHaveLength(14);
 });
 test('projects before asynchronous admission without invoking getters or accepting sparse arrays', () => {
   const getter = jest.fn(() => 'one');
@@ -219,4 +221,97 @@ test('rejects malformed durable guards and never treats absence of hints as clea
   expect(() =>
     readPrivateNoteRestoreGuard({ ...guard, history: {} })
   ).toThrow();
+});
+
+test('a local review is strictly validated and cannot be supplied by a backup', () => {
+  const guard = {
+    version: 1 as const,
+    importedAt: 1,
+    sourceHash: HASH,
+    reviewedAt: 2,
+  };
+  expect(readPrivateNoteRestoreGuard(guard)).toEqual(guard);
+  expect(restoredNoteBlocksWithdrawal(guard)).toBe(false);
+  expect(restoredNoteBlocksWithdrawal({ ...guard, reviewedAt: 0 })).toBe(false);
+  expect(restoredNoteBlocksWithdrawal({ ...guard, history: history(1) })).toBe(
+    true
+  );
+  for (const reviewedAt of [
+    -1,
+    0.5,
+    NaN,
+    Infinity,
+    8_640_000_000_000_001,
+    '2',
+    null,
+  ])
+    expect(() =>
+      readPrivateNoteRestoreGuard({ ...guard, reviewedAt })
+    ).toThrow();
+  expect(() =>
+    snapshotPrivateNoteRestoreEntries([{ ...entry(), reviewedAt: 2 }])
+  ).toThrow();
+});
+
+test('new withdrawal evidence or a reconciliation marker revokes a local review', () => {
+  const local = {
+    ...entry(),
+    id: id(1),
+    restoreGuard: {
+      version: 1 as const,
+      importedAt: 1,
+      sourceHash: HASH,
+      reviewedAt: 2,
+    },
+  };
+  expect(plan([entry()], [local]).notes[0]).toBe(local);
+  const marked = plan([{ ...entry(), reconciliationRequired: true }], [local])
+    .notes[0];
+  expect(marked.restoreGuard?.reviewedAt).toBeUndefined();
+  const imported = plan([{ ...entry(), history: history(1) }], [local])
+    .notes[0];
+  expect(imported.restoreGuard?.reviewedAt).toBeUndefined();
+  expect(imported.restoreGuard?.history?.withdrawals).toHaveLength(1);
+  expect(local.restoreGuard.reviewedAt).toBe(2);
+});
+
+test('a duplicate deposit-only backup keeps local withdrawal journals separate from imported evidence', () => {
+  const local = {
+    ...entry(),
+    id: id(1),
+    restoreGuard: {
+      version: 1 as const,
+      importedAt: 1,
+      sourceHash: HASH,
+      reviewedAt: 2,
+    },
+    withdrawal: {
+      phase: 'unknown' as const,
+      mode: 'direct' as const,
+      from: FROM,
+      nonce: '7',
+    },
+  };
+  const imported = plan(
+    [
+      {
+        ...entry(),
+        history: {
+          deposits: [
+            {
+              outcome: 'submitted',
+              from: FROM,
+              nonce: '2',
+              transactionHash: HASH,
+            },
+          ],
+        },
+      },
+    ],
+    [local]
+  ).notes[0];
+  expect(imported.restoreGuard?.reviewedAt).toBe(2);
+  expect(imported.restoreGuard?.history?.withdrawals).toBeUndefined();
+  expect((imported as IRestorableNote).withdrawal).toBe(local.withdrawal);
+  expect(privateNoteExportHistory(imported)?.withdrawals).toHaveLength(1);
 });
