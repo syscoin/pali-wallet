@@ -79,7 +79,7 @@ export default function PrivateNoteRestoreReview({
     }
   };
   const action =
-    'rounded p-1 text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
+    'rounded p-1 text-xs text-brand-royalbluemedium underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white disabled:opacity-50';
   if (!open)
     return (
       <button
