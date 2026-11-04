@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { mergeEvmExplorerTransactions } from '../../../../../../shared/evmHistory';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -672,32 +673,17 @@ export const EvmTransactionsList = ({
     true,
     apiUrl ? fetchHistoryPage : undefined
   );
-  const combinedTransactions = useMemo(() => {
-    if (!extraTransactions.length) return userTransactions;
-    // Prefer base txlist entries over earlier tokentx placeholders when hashes collide
-    const byHash = new Map<string, ITransactionInfoEvm>();
-    // Seed with base list
-    for (const tx of userTransactions) {
-      const key = (tx as any).hash || (tx as any).txid || '';
-      if (!key) continue;
-      byHash.set(key, tx);
-    }
-    // Merge extras, allowing base entries (no tokenRecipient) to replace token-only ones
-    for (const tx of extraTransactions) {
-      const key = (tx as any).hash || (tx as any).txid || '';
-      if (!key) continue;
-      const existing = byHash.get(key) as any;
-      const isCurrentBase = (tx as any)?.tokenRecipient === undefined;
-      const isExistingTokenOnly =
-        existing && (existing as any)?.tokenRecipient !== undefined;
-      if (!existing) {
-        byHash.set(key, tx);
-      } else if (isCurrentBase && isExistingTokenOnly) {
-        byHash.set(key, tx);
-      }
-    }
-    return Array.from(byHash.values());
-  }, [userTransactions, extraTransactions]);
+  const combinedTransactions = useMemo(
+    () =>
+      mergeEvmExplorerTransactions(
+        userTransactions,
+        [],
+        chainId,
+        false,
+        extraTransactions
+      ),
+    [userTransactions, extraTransactions, chainId]
+  );
 
   const {
     filteredTransactions,

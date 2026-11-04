@@ -2,6 +2,7 @@ export const EVM_TRANSACTION_HISTORY_SOURCE = {
   ExplorerPending: 'explorer-pendingtxlist',
   ExplorerTokenTransfer: 'explorer-tokentx',
   ExplorerTransaction: 'explorer-txlist',
+  LocalSigned: 'local-signed',
 } as const;
 
 export type EvmTransactionHistorySource =
@@ -139,6 +140,40 @@ export function explorerApiError(
     : undefined;
 }
 
+/** Merge normalized display rows; never use source priority for signing authority. */
+function mergeNormalizedEvmHistory<
+  T extends { hash: string; timestamp?: number }
+>(base: readonly T[], additional: readonly T[]): T[] {
+  const byHash = new Map<string, T>();
+  const key = (tx: T) =>
+    String(tx.hash || (tx as any).txid || '').toLowerCase();
+  const priority = (tx: T): number => {
+    const source = (tx as any).historySource;
+    if (source === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) return 1;
+    if (
+      source === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer ||
+      (source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction &&
+        source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending &&
+        (tx as any).tokenRecipient !== undefined)
+    )
+      return 0;
+    return 2;
+  };
+  for (const tx of base) {
+    const hash = key(tx);
+    if (hash) byHash.set(hash, tx);
+  }
+  for (const tx of additional) {
+    const hash = key(tx);
+    if (!hash) continue;
+    const existing = byHash.get(hash);
+    // Real explorer bodies replace local summaries and token placeholders.
+    // Equal-priority rows retain the established initial-page precedence.
+    if (!existing || priority(tx) > priority(existing)) byHash.set(hash, tx);
+  }
+  return Array.from(byHash.values());
+}
+
 /** Prefer the real transaction body over token-event placeholders. */
 export function mergeEvmExplorerTransactions<
   T extends { hash: string; timestamp?: number }
@@ -146,8 +181,12 @@ export function mergeEvmExplorerTransactions<
   base: readonly T[],
   tokenEvents: readonly any[],
   chainId: number,
-  annotateBase = false
+  annotateBase = false,
+  additionalBase?: readonly T[]
 ): T[] {
+  const baseRows = additionalBase
+    ? mergeNormalizedEvmHistory(base, additionalBase)
+    : base;
   const byHash = new Map<string, any>();
   for (const event of tokenEvents) {
     const hash = String(
@@ -155,11 +194,11 @@ export function mergeEvmExplorerTransactions<
     ).toLowerCase();
     if (hash && !byHash.has(hash)) byHash.set(hash, event);
   }
-  const merged = base.map((tx) => {
+  const merged = baseRows.map((tx) => {
     const event = byHash.get(String(tx.hash || '').toLowerCase());
     return annotateBase && event ? { ...tx, tokenRecipient: event.to } : tx;
   });
-  const seen = new Set(base.map((tx) => String(tx.hash).toLowerCase()));
+  const seen = new Set(baseRows.map((tx) => String(tx.hash).toLowerCase()));
   for (const [hash, event] of byHash) {
     if (seen.has(hash)) continue;
     merged.push(mapEvmExplorerTokenTransfer(event, chainId));

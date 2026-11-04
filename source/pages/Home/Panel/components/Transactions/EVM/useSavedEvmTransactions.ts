@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../../../../../shared/evmHistory';
 import { useContextualState } from 'hooks/useContextualState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { ITransactionInfoEvm } from 'types/useTransactionsInfo';
@@ -22,6 +23,7 @@ export const savedTransactionHistoryRow = (
 ): ITransactionInfoEvm =>
   ({
     hash: tx.hash,
+    historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
     chainId: Number(tx.chainId),
     from: tx.from,
     to: tx.to,

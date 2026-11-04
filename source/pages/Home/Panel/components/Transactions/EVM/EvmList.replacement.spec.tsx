@@ -10,6 +10,7 @@ jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';
 import { EvmTransactionsList } from './EvmList';
+import { savedTransactionHistoryRow } from './useSavedEvmTransactions';
 
 const ACCOUNT = `0x${'11'.repeat(20)}`;
 const TARGET = `0x${'22'.repeat(20)}`;
@@ -493,5 +494,71 @@ it.each([
     render(<EvmTransactionsList userTransactions={mockRows} />);
     await screen.findByText('Replacement pending');
     expect(screen.queryByText('Replaced')).toBeNull();
+  }
+);
+
+it.each([
+  { receipt: '1', error: '0', label: 'Confirmed' },
+  { receipt: '0', error: '1', label: 'Failed' },
+])(
+  'promotes a saved local row from an older explorer page to $label without pending actions',
+  async ({ receipt, error, label }) => {
+    const exactValue = '9007199254740993000000001';
+    const local = savedTransactionHistoryRow({
+      hash: hash('d'),
+      chainId: '1',
+      from: ACCOUNT,
+      to: TARGET,
+      value: exactValue,
+      nonce: 8,
+      type: 2,
+      createdAt: 1791655200000,
+      gasLimit: '21000',
+      feePerGas: '7',
+      maximumFee: '147000',
+      dataBytes: 0,
+      selector: null,
+      phase: 'submitted',
+      operation: 'send',
+    });
+    expect(local.blockNumber).toBeUndefined();
+    expect(local.confirmations).toBeUndefined();
+    mockRows = [local];
+    mockApiUrl = 'https://explorer.example/api';
+    const observed = transaction('d', {
+      hash: hash('d').toUpperCase(),
+      value: exactValue,
+      blockNumber: 42,
+      blockHash: hash('b'),
+      confirmations: 3,
+      // eslint-disable-next-line camelcase
+      txreceipt_status: receipt,
+      isError: error,
+      historySource: 'explorer-txlist',
+      gas: '23000',
+      gasUsed: '21000',
+    });
+    mockEmitter.mockImplementation(async (_method: string[], args: any[]) => ({
+      transactions: args[3] === 2 ? [observed] : [],
+      hasMore: false,
+    }));
+    render(<EvmTransactionsList userTransactions={mockRows} />);
+    expect(await screen.findByText('Pending')).toBeTruthy();
+    expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
+    await waitFor(() => {
+      expect(screen.queryByText('Pending')).toBeNull();
+      expect(screen.getByText(label)).toBeTruthy();
+    });
+    expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
+    expect(screen.queryByText(`Options:${observed.hash}`)).toBeNull();
+    expect(screen.getAllByText(`${exactValue} ETH`)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
+      state: expect.objectContaining({ hash: observed.hash, tx: observed }),
+    });
+    expect(local.value).toBe(exactValue);
+    expect(local.blockNumber).toBeUndefined();
+    expect(local.confirmations).toBeUndefined();
   }
 );
