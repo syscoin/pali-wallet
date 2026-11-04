@@ -1,4 +1,5 @@
 import {
+  assertImportedRecoveryAccount,
   importedRecoveryStorageKey,
   IMPORTED_RECOVERY_DOMAIN,
   type ImportedRecoveryEntry,
@@ -66,7 +67,7 @@ describe('atomic private imported-recovery records', () => {
       KeyringAccountType.Imported,
       guard,
       () => true,
-      value
+      { assertAccount: assertImportedRecoveryAccount, entry: value }
     );
   const remove = (id: number, value = entry(id)) =>
     persistAccountRemoval(
@@ -76,7 +77,11 @@ describe('atomic private imported-recovery records', () => {
         grants: [],
         isSameWallet: () => true,
         retireSessions: jest.fn(),
-        importedRecovery: { identity: value.identity, profileId },
+        importedRecovery: {
+          assertAccount: assertImportedRecoveryAccount,
+          identity: value.identity,
+          profileId,
+        },
       },
       guard
     );
@@ -147,6 +152,74 @@ describe('atomic private imported-recovery records', () => {
     await expect(add()).rejects.toThrow('Storage refusal');
     expect(store.getState().vault.accounts.Imported[0]).toBeUndefined();
     expect(disk[importedRecoveryStorageKey(entry(0))]).toBeUndefined();
+  });
+
+  it('captures the existing account validator before reading a retained copy', async () => {
+    await add();
+    store.dispatch({
+      type: 'vault/setActiveAccount',
+      payload: { id: 0, type: KeyringAccountType.HDAccount },
+    });
+    const assertAccount = jest.fn(assertImportedRecoveryAccount);
+    const replaced = jest.fn(() => {
+      throw Error('Replaced validator');
+    });
+    const recovery: {
+      assertAccount: typeof assertImportedRecoveryAccount;
+      identity: ImportedRecoveryEntry['identity'];
+      profileId: string;
+    } = { assertAccount, identity: entry(0).identity, profileId };
+    const read = jest.mocked(chromeStorage.getItems).getMockImplementation()!;
+    jest.mocked(chromeStorage.getItems).mockImplementationOnce(async (keys) => {
+      recovery.assertAccount = replaced;
+      return read(keys);
+    });
+    await persistAccountRemoval(
+      {
+        accountId: 0,
+        accountType: KeyringAccountType.Imported,
+        grants: [],
+        isSameWallet: () => true,
+        retireSessions: jest.fn(),
+        importedRecovery: recovery,
+      },
+      guard
+    );
+    expect(assertAccount).toHaveBeenCalledTimes(1);
+    expect(assertAccount).toHaveBeenCalledWith(entry(0), entry(0).identity);
+    expect(replaced).not.toHaveBeenCalled();
+    expect(disk[vaultKey].accounts.Imported[0]).toBeUndefined();
+  });
+
+  it('refuses the same account validator failure without writing either record', async () => {
+    await add();
+    store.dispatch({
+      type: 'vault/setActiveAccount',
+      payload: { id: 0, type: KeyringAccountType.HDAccount },
+    });
+    const before = structuredClone(disk);
+    writes.mockClear();
+    const wrongIdentity = { ...entry(0).identity, xpub: 'different-key' };
+    await expect(
+      persistAccountRemoval(
+        {
+          accountId: 0,
+          accountType: KeyringAccountType.Imported,
+          grants: [],
+          isSameWallet: () => true,
+          retireSessions: jest.fn(),
+          importedRecovery: {
+            assertAccount: assertImportedRecoveryAccount,
+            identity: wrongIdentity,
+            profileId,
+          },
+        },
+        guard
+      )
+    ).rejects.toThrow('IMPORTED_RECOVERY_INVALID');
+    expect(writes).not.toHaveBeenCalled();
+    expect(disk).toEqual(before);
+    expect(store.getState().vault.accounts.Imported[0]).toBeDefined();
   });
 
   it('a commit-then-reject cannot let an unrelated rename orphan the private copy', async () => {
@@ -289,7 +362,7 @@ describe('atomic private imported-recovery records', () => {
         KeyringAccountType.Imported,
         guard,
         () => sameWallet,
-        entry(0)
+        { assertAccount: assertImportedRecoveryAccount, entry: entry(0) }
       )
     ).rejects.toThrow('Old acknowledgement');
     expect(disk[vaultKey]).toEqual(replacement);

@@ -9,12 +9,9 @@ import isEqual from 'lodash/isEqual';
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
 import {
-  assertImportedRecoveryAccount,
   importedRecoveryStorageKeyForIdentity,
   snapshotImportedRecoveryEntry,
-  type ImportedRecoveryEntry,
-  type ImportedRecoveryIdentity,
-} from '../wallet/importedAccountRecovery';
+} from '../wallet/importedAccountRecoveryFormat';
 import {
   IKeyringAccountState,
   INetwork,
@@ -60,6 +57,10 @@ import vaultGlobal, {
   setNetwork,
   removeNetwork,
 } from './vaultGlobal';
+import type {
+  ImportedRecoveryEntry,
+  ImportedRecoveryIdentity,
+} from '../wallet/importedAccountRecoveryFormat';
 
 // Define RootState earlier if possible, or use a more generic type for ThunkMiddleware initially
 // For now, let's assume RootState will be defined later and use 'any' for the thunk state type.
@@ -413,11 +414,17 @@ export function persistNetworkRemoval(
   });
 }
 
+type ImportedRecoveryValidator = (
+  entry: ImportedRecoveryEntry,
+  current: ImportedRecoveryIdentity
+) => void;
+
 type AccountRemovalCommit = {
   accountId: number;
   accountType: KeyringAccountType;
   grants: IDApp[];
   importedRecovery?: {
+    assertAccount: ImportedRecoveryValidator;
     identity: ImportedRecoveryIdentity;
     profileId: string;
   };
@@ -426,8 +433,17 @@ type AccountRemovalCommit = {
 };
 
 type ImportedRecoveryMutation =
-  | { entry: ImportedRecoveryEntry; kind: 'add' }
-  | { identity: ImportedRecoveryIdentity; kind: 'remove'; profileId: string };
+  | {
+      assertAccount: ImportedRecoveryValidator;
+      entry: ImportedRecoveryEntry;
+      kind: 'add';
+    }
+  | {
+      assertAccount: ImportedRecoveryValidator;
+      identity: ImportedRecoveryIdentity;
+      kind: 'remove';
+      profileId: string;
+    };
 
 type VaultMutationAction =
   | ReturnType<typeof setAccountLabel>
@@ -469,6 +485,11 @@ function persistVaultMutation(
     let recoveryBeforeKeys: string[] | undefined;
     const priorLastPersistedState = lastPersistedState;
     if (importedRecovery) {
+      // The private caller supplies the existing UTXO-aware account validator;
+      // the UI store imports only the shared, dependency-free record format.
+      const assertAccount = importedRecovery.assertAccount;
+      if (typeof assertAccount !== 'function')
+        throw new Error('Imported recovery account validation is unavailable');
       const expected =
         importedRecovery.kind === 'add'
           ? snapshotImportedRecoveryEntry(importedRecovery.entry)
@@ -491,7 +512,7 @@ function persistVaultMutation(
       assertCommitCurrent();
       if (saved !== undefined && saved !== null) {
         const previous = snapshotImportedRecoveryEntry(saved);
-        assertImportedRecoveryAccount(previous, identity);
+        assertAccount(previous, identity);
         if (previous.envelope.profileId !== profileId || expected)
           throw new Error('Imported recovery record already exists or changed');
       }
@@ -756,7 +777,10 @@ export function persistAccountCreation(
     | KeyringAccountType.Ledger,
   assertCurrent: () => void,
   isSameWallet: () => boolean,
-  importedRecovery?: ImportedRecoveryEntry
+  importedRecovery?: {
+    assertAccount: ImportedRecoveryValidator;
+    entry: ImportedRecoveryEntry;
+  }
 ): Promise<void> {
   return persistVaultMutation(
     [
@@ -766,7 +790,7 @@ export function persistAccountCreation(
     assertCurrent,
     undefined,
     isSameWallet,
-    importedRecovery ? { kind: 'add', entry: importedRecovery } : undefined
+    importedRecovery ? { kind: 'add', ...importedRecovery } : undefined
   );
 }
 

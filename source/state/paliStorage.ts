@@ -1,4 +1,4 @@
-import { IMPORTED_RECOVERY_STORAGE_PREFIX } from '../wallet/importedAccountRecovery';
+import { IMPORTED_RECOVERY_STORAGE_PREFIX } from '../wallet/importedAccountRecoveryFormat';
 import { chromeStorage } from 'utils/storageAPI';
 
 // Recovery owns the durable snapshot until the restored Redux vault is usable.

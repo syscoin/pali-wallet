@@ -41,6 +41,7 @@ import {
   EVM_SIGNED_RECORD_PREFIX,
 } from '../../../wallet/evmSignedRecords';
 import {
+  assertImportedRecoveryAccount,
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
@@ -5150,10 +5151,14 @@ class MainController {
     try {
       let result;
       if (data.isSyscoinRpc) {
-        const sysRpcResult = await withWalletBackend(data.url, () => getSysRpc(data));
+        const sysRpcResult = await withWalletBackend(data.url, () =>
+          getSysRpc(data)
+        );
         result = sysRpcResult?.rpc?.formattedNetwork;
       } else {
-        const ethRpcResult = await withWalletBackend(data.url, () => getEthRpc(data, false));
+        const ethRpcResult = await withWalletBackend(data.url, () =>
+          getEthRpc(data, false)
+        );
         result = ethRpcResult?.formattedNetwork;
       }
 
@@ -5711,6 +5716,7 @@ class MainController {
         await this.getActiveKeyring().getPrivateRecordProfileId();
       assertCurrent();
       importedRecovery = {
+        assertAccount: assertImportedRecoveryAccount,
         profileId,
         identity: {
           kind: sourceNetwork.kind,
@@ -5889,7 +5895,10 @@ class MainController {
         accountType,
         assertCreationCurrent,
         () => generation === this.walletStateGeneration,
-        importedRecovery
+        {
+          assertAccount: assertImportedRecoveryAccount,
+          entry: importedRecovery,
+        }
       );
     }
     return persistAccountCreation(
