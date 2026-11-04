@@ -69,6 +69,55 @@ afterEach(() => {
   global.fetch = originalFetch;
 });
 
+describe('ERC20 shared metadata boundary', () => {
+  const load = (overrides: Record<string, unknown> = {}) => {
+    const fields = {
+      name: 'Example token',
+      symbol: 'EXAMPLE',
+      decimals: BigInt(255),
+      balanceOf: BigInt('9007199254740993'),
+      ...overrides,
+    };
+    (Contract as unknown as jest.Mock).mockImplementation(() =>
+      Object.fromEntries(
+        Object.entries(fields).map(([key, value]) => [
+          key,
+          jest.fn().mockResolvedValue(value),
+        ])
+      )
+    );
+    return EvmAssetsController().getERC20TokenInfo(TOKEN, ACCOUNT, {} as any);
+  };
+  it('shares exact unit and full uint8 precision validation with native token reads', async () => {
+    await expect(load()).resolves.toEqual({
+      name: 'Example token',
+      symbol: 'EXAMPLE',
+      decimals: 255,
+      balance: '9007199254740993',
+    });
+  });
+  it.each([{ decimals: BigInt(256) }, { balanceOf: 9007199254740992 }])(
+    'rejects invalid numbers instead of defaulting or losing precision: %o',
+    async (fields) => {
+      await expect(load(fields)).rejects.toThrow('Invalid ERC20 data');
+    }
+  );
+  it.each([
+    { name: '', symbol: '' },
+    { name: 'N'.repeat(1024), symbol: 'S'.repeat(1024) },
+    { name: 'Existing\u202etoken', symbol: 'Existing\u200bsymbol' },
+  ])(
+    'keeps existing token text balance-verifiable without the native import text policy: %o',
+    async (fields) => {
+      await expect(load(fields)).resolves.toEqual({
+        ...fields,
+        decimals: 255,
+        balance: '9007199254740993',
+      });
+    }
+  );
+});
+
 describe('discovery availability is not an empty wallet', () => {
   it.each([
     '0',

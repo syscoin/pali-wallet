@@ -924,3 +924,48 @@ test('journal ambiguity retires an already-running secret operation before it re
     await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
+
+test('native token capability uses authenticated account/network, preserves restore data and never authenticates/signs', async () => {
+  const f = await readyAccounts();
+  const token = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 255, name: 'Untrusted token', symbol: 'TOKEN' };
+  try {
+    const credentials = f.disk.successWrites;
+    const initial = await f.runtime.tokens!.load(() => undefined);
+    await f.runtime.tokens!.add(initial.revision, token, () => undefined);
+    assert.equal(f.disk.successWrites, credentials);
+    const stored = JSON.stringify(f.disk.records.get('native-token-registry-v1'));
+    assert(!stored.includes(PASSWORD)); assert(!stored.includes(PHRASE)); assert(!stored.includes('units'));
+    await f.execute({ kind: 'create', label: 'Savings', password: PASSWORD });
+    assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, []);
+    await f.execute({ kind: 'select', id: 'hd:60:0' });
+    assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, [token]);
+    const catalogue = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('base', f.authority.getSnapshot().revision, catalogue.revision);
+    assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, []);
+    const base = f.authority.getCatalogue()!;
+    await f.authority.selectNetwork('ethereum', f.authority.getSnapshot().revision, base.revision);
+    assert.deepEqual((await f.runtime.tokens!.load(() => undefined)).items, [token]);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});
+
+test('token storage admission blocks account switching and lost commit acknowledgement quarantines runtime', async () => {
+  const f = await readyAccounts();
+  const token = { contractAddress: '0x1111111111111111111111111111111111111111', decimals: 18, name: 'Token', symbol: 'TOKEN' };
+  try {
+    await f.runtime.tokens!.load(() => undefined);
+    let release!: () => void; let entered!: () => void;
+    const holding = new Promise<void>((resolve) => { release = resolve; });
+    const pending = new Promise<void>((resolve) => { entered = resolve; });
+    f.disk.onRecord(async (kind, key) => { if (kind === 'get' && key === 'native-token-registry-v1') { entered(); await holding; } });
+    const reading = f.runtime.tokens!.load(() => undefined); await pending;
+    await assert.rejects(f.execute({ kind: 'create', label: 'Blocked', password: PASSWORD }), /BUSY/);
+    release(); await reading; f.disk.onRecord();
+    f.disk.loseNextAcknowledgement(); await assert.rejects(f.runtime.tokens!.add(0, token, () => undefined), /CLEANUP_FAILED/);
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    assert.equal(f.runtime.accounts!.getSnapshot(), null);
+    assert.equal(f.runtime.networks!.getSelectedId(), null);
+    const records = JSON.stringify([...f.disk.records]);
+    await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /CLEANUP_FAILED|CANCELLED/);
+    assert.equal(JSON.stringify([...f.disk.records]), records);
+  } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
+});

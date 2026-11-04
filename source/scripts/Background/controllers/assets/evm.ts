@@ -11,6 +11,7 @@ import {
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 
+import { parseErc20Decimals, parseErc20Units } from '../../../../shared/erc20';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
@@ -738,13 +739,11 @@ const EvmAssetsController = (): IEvmAssetsController => {
       contract.decimals(),
       contract.balanceOf(accountAddress),
     ]);
-    const safeDecimals = toSafeNumber(decimals, 18);
-
     return {
       name,
       symbol: cleanTokenSymbol(symbol),
-      decimals: safeDecimals,
-      balance: balance.toString(),
+      decimals: parseErc20Decimals(decimals),
+      balance: parseErc20Units(balance),
     };
   };
 

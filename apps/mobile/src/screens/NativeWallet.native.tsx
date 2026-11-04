@@ -49,6 +49,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const [networkView, setNetworkView] = useState<NativeNetworkView<EvmNetworkId> | null>(null);
   const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
+  const [tokenView, setTokenView] = useState<Controllers['tokens'] | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -86,7 +87,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     });
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers); setTokenView(local.tokens); setNetworkView(networks);
       setCatalogue(local.authority.getCatalogue());
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
@@ -104,7 +105,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', revoke) : null;
     return () => {
       mounted.current = false; lifecycleEpoch.current++; unsubscribe(); clear(); lifecycle.remove(); blur?.remove();
-      local.disposeTransfers(); local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
+      local.disposeTokens(); local.disposeTransfers(); local.backup.dispose(); local.authority.lock(); void local.authority.dispose().catch(() => undefined);
       if (controllers.current === local) controllers.current = null;
     };
   }, [clearSecrets, revoke]);
@@ -206,6 +207,7 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   </>;
   else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
+    tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accountView ? () => setStage('accounts') : undefined} onExit={exit} onLock={revoke}
     onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => setStage('send') : undefined}
     onManageNetworks={networkView ? () => setStage('networks') : undefined}

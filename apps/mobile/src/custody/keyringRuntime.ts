@@ -12,6 +12,9 @@ import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime }
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeTransferRuntime } from './transfers.ts';
+import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
+import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
+import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -33,6 +36,8 @@ export type KeyringRuntimeDependencies = Readonly<{
 
 /** Internal capability consumed by the epoch-bound backup controller only. */
 export interface KeyringRuntime extends CustodyRuntime {
+  /** Local public token descriptors only; never exposes the underlying store. */
+  readonly tokens?: NativeTokenRuntime;
   /** Native transfer host only; never exposed directly to a screen. */
   readonly transfers?: NativeTransferRuntime;
   /** Public metadata only; no selection/signing authority. Cleared on lock. */
@@ -94,6 +99,7 @@ export function createKeyringRuntimeFactory(
         };
         keyring.setVaultStateGetter(() => state);
         const catalogue = new NativeWalletCatalogue(storage.keyringStorage);
+        const tokens = new NativeTokenRegistry(storage.keyringStorage);
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
         let closed = false;
@@ -103,7 +109,7 @@ export function createKeyringRuntimeFactory(
 
         const current = (captured: number) => {
           if (closed || captured !== generation) throw new Error('CANCELLED');
-          if (catalogue.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
+          if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
         };
         const lock = (): Promise<void> => {
           generation++;
@@ -114,12 +120,12 @@ export function createKeyringRuntimeFactory(
           // Retire secrets synchronously, then report quarantine asynchronously.
           // storage.close() must still install its cleanup promise and drain work.
           return pending.then(() => {
-            if (catalogue.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
           });
         };
         const run = <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
           if (closed) return Promise.reject(new Error('CANCELLED'));
-          if (catalogue.requiresReopen || journalRequiresReopen(storage.keyringStorage)) {
+          if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) {
             void lock().catch(() => undefined);
             return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
           }
@@ -285,11 +291,11 @@ export function createKeyringRuntimeFactory(
         };
         const accounts: NativeAccountRuntime = {
           supported: () => typeof keyring.deriveEvmHdRuntimeAccount === 'function',
-          getSnapshot: () => closed || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot,
+          getSnapshot: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot,
           reserve: (input, expectedRevision) => reserveContext(input, expectedRevision),
         };
         const networks: NativeNetworkRuntime = {
-          getSelectedId: () => closed || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
+          getSelectedId: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
           reserve: (id, expectedRevision) => {
             if (typeof id !== 'string') throw new KeyringRuntimeError('INVALID_INPUT');
             const network = getNativeNetwork(id);
@@ -297,10 +303,47 @@ export function createKeyringRuntimeFactory(
           },
         };
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
+        const tokenOperation = <T>(assertCurrent: () => void, action: (scope: NativeTokenScope, guard: () => void) => Promise<T>): Promise<T> => {
+          if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
+          const captured = generation;
+          const check = () => {
+            current(captured); checkGuard(assertCurrent);
+            if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+          };
+          try { check(); } catch (error) { return Promise.reject(error); }
+          // Reserve before any await so account/network/authentication cannot race admission.
+          const task = Promise.resolve().then(async () => {
+            check();
+            const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
+            const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
+            const walletFingerprint = await storage.getWalletFingerprint(); check();
+            const result = await action(Object.freeze({ walletFingerprint, accountId: selected.id, address: selected.address,
+              network: network.id, chainId: network.chainId, registrationHash: network.registrationHash }), check);
+            check(); return result;
+          }).catch(async (error: unknown) => {
+            if (tokens.requiresReopen) {
+              try { await lock(); } catch { /* Quarantine remains visible to authority cleanup. */ }
+              throw new KeyringRuntimeError('CLEANUP_FAILED');
+            }
+            throw error;
+          }).finally(() => { if (active === task) active = null; });
+          active = task;
+          return task;
+        };
         return {
           accounts,
           networks,
-          catalogue: { getSnapshot: () => closed || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot },
+          tokens: {
+            load: async (guard) => {
+              // Connection replay may retire a read while its storage call is draining.
+              // Wait for that reservation, then validate the new caller before reading.
+              while (active) { await active.catch(() => undefined); checkGuard(guard); }
+              return tokenOperation(guard, (scope, check) => tokens.load(scope, check));
+            },
+            add: (revision, metadata, guard) => tokenOperation(guard, (scope, check) => tokens.add(scope, revision, metadata, check)),
+            remove: (revision, contract, guard) => tokenOperation(guard, (scope, check) => tokens.remove(scope, revision, contract, check)),
+          },
+          catalogue: { getSnapshot: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot },
           session: {
             createWallet: (password) => run(async (captured) => {
               validPassword(password, true);
@@ -327,7 +370,7 @@ export function createKeyringRuntimeFactory(
               return { authenticated };
             }),
             async readEthereumAddress() {
-              if (closed || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked()) throw new Error('NOT_READY');
+              if (closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked()) throw new Error('NOT_READY');
               const account = state.accounts.HDAccount[state.activeAccount.id];
               if (!account) throw new Error('NOT_READY');
               return normalizePublicAddress(account.address, 'ethereum');
