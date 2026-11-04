@@ -6,14 +6,14 @@ import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { EvmSignedRecords, inspectEvmSignedBundle, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
-function fixture() {
+function fixture(now: () => number = () => 1000) {
   const keyring: any = Object.create(SoftwareKeyring.prototype);
   keyring.sessionPassword = { isCleared: () => false }; keyring.sessionMnemonic = { isCleared: () => false };
   keyring.privateRecordSessionRevision = 0; keyring.getDecryptedMnemonic = () => 'synthetic shared signed-record root';
   let stored: string | undefined, revision = 0, writes = 0;
   const port: EvmSignedRecordStorage = { async read() { return stored; }, async compareAndSet(_id, expected, next, check) { check(); if (stored !== expected) return false; stored=next; writes++; return true; } };
   const session = (): EvmSignedRecordSession => { const captured=revision; return { keyring, assertCurrent() { if (revision!==captured) throw Error('revoked'); } }; };
-  return { store:new EvmSignedRecords(port,()=>1000),session,value:()=>stored,replace(value:string|undefined){stored=value;},writes:()=>writes,revoke(){revision++;},port };
+  return { store:new EvmSignedRecords(port,now),session,value:()=>stored,replace(value:string|undefined){stored=value;},writes:()=>writes,revoke(){revision++;},port };
 }
 async function signed(nonce=0,type=2,data='0x',alias='HDAccount') {
   const rawTransaction=await signer.signTransaction({ type,chainId:7654321,nonce,to:signer.address,value:123,gasLimit:42000,
@@ -131,6 +131,53 @@ test('bounded batch reads and native alias Activity include contract creation an
  assert.deepEqual(b.records.map(row=>row.hash),a.records.map(row=>row.hash));
  assert.equal(a.records[1]!.recipient,null);assert.equal(a.records[0]!.amountUnits,'123');
  assert.equal(a.truncated,false);assert.equal(b.records[0]!.accountId,'imported:60:9');
+});
+
+for (const phase of ['signed', 'attempted', 'submitted'] as const) {
+  test(`shared current query keeps ${phase} visible after clock rollback, later terminal writes and alias reopen`, async () => {
+    const { createNativeSignedRecordView } = await import('../src/custody/sharedSignedRecords.ts');
+    const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+    let clock = 1000;
+    const f = fixture(() => clock);
+    const older = await signed(7), pending = await signed(1, 2, '0x', 'Imported'), later = await signed(2);
+    await f.store.append(f.session(), older);
+    await f.store.updatePhase(f.session(), '7654321', signer.address, older.hash, 'confirmed');
+    clock = 100;
+    await f.store.append(f.session(), pending);
+    if (phase !== 'signed') await f.store.updatePhase(f.session(), '7654321', signer.address, pending.hash, phase);
+    // A later completed alternative cannot conceal unresolved work either.
+    clock = 50;
+    await f.store.append(f.session(), later);
+    await f.store.updatePhase(f.session(), '7654321', signer.address, later.hash, 'reverted');
+    const reopened = new EvmSignedRecords(f.port);
+    assert.equal((await reopened.readCurrent(f.session(), '7654321', signer.address))?.hash, pending.hash);
+    const network = createNativeNetwork({ id:'custom:7654321', name:'Custom', kind:'evm', chainId:'7654321', slip44:60, rpcUrl:'https://offline.invalid', symbol:'ANY', decimals:18, testnet:true });
+    for (const account of [{type:'HDAccount' as const,index:0}, {type:'Imported' as const,index:9}]) {
+      const view = createNativeSignedRecordView(reopened, f.session(), '1'.repeat(64), {...account,address:signer.address}, network);
+      const current = await view.load();
+      assert.equal(current?.hash, pending.hash);
+      assert.equal(current?.rawTransaction, pending.rawTransaction);
+      assert.equal(current?.createdAt, 100);
+    }
+    await reopened.updatePhase(f.session(), '7654321', signer.address, pending.hash, 'confirmed');
+    assert.equal((await reopened.readCurrent(f.session(), '7654321', signer.address))?.hash, later.hash, 'all-terminal fallback follows append order, not timestamp or nonce');
+    assert.equal(await reopened.readCurrent(f.session(), '1', signer.address), null);
+  });
+}
+
+test('current selection follows committed append order across unresolved alternatives and later phase updates', async () => {
+  let clock = 2000;
+  const f = fixture(() => clock), first = await signed(3, 2, '0x01'), second = await signed(3, 2, '0x02');
+  assert.equal(await f.store.readCurrent(f.session(), '7654321', signer.address), null);
+  await f.store.append(f.session(), first);
+  clock = 1000;
+  await f.store.append(f.session(), second);
+  await f.store.updatePhase(f.session(), '7654321', signer.address, first.hash, 'attempted');
+  assert.equal((await f.store.readCurrent(f.session(), '7654321', signer.address))?.hash, second.hash);
+  await f.store.updatePhase(f.session(), '7654321', signer.address, second.hash, 'confirmed');
+  assert.equal((await f.store.readCurrent(f.session(), '7654321', signer.address))?.hash, first.hash);
+  await f.store.updatePhase(f.session(), '7654321', signer.address, first.hash, 'nonce-consumed');
+  assert.equal((await f.store.readCurrent(f.session(), '7654321', signer.address))?.hash, second.hash);
 });
 
 test('near-limit append reserves space for every phase and the largest supported revision', async () => {
