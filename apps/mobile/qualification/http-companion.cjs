@@ -179,10 +179,13 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     },
     async postDiagnostic(read = () => undefined) {
       if (!active) return undefined;
-      let failedPostCase = 'unavailable';
+      let failedPostCase = 'unavailable', failureDetail = null;
       try {
         const text = read(`pali-native-post-${active.token}.json`);
-        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192) failedPostCase = postDiagnosticCase(JSON.parse(text), active) ?? failedPostCase;
+        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192) {
+          const value = JSON.parse(text), validCase = postDiagnosticCase(value, active);
+          if (validCase) { failedPostCase = validCase; failureDetail = { ...value.failureDetail }; }
+        }
       } catch { /* Missing sidecar remains unavailable. */ }
       let server = partialPostAudit(finalPostAudit, active.token, port);
       if (!server) {
@@ -190,7 +193,7 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
         catch { /* Diagnostics never replace the primary failure. */ }
       }
       return { version: 1, kind: 'native-post-diagnostic', status: 'failed', diagnosticOnly: true,
-        ...active, failedCase: failedPostCase, server };
+        ...active, failedCase: failedPostCase, failureDetail, server };
     },
     assertComplete(expected) {
       const phases = expected === 1 ? ['import:create'] : expected === 4
