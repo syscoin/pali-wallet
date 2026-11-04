@@ -55,6 +55,7 @@ export type NativeTokenView = Readonly<
   >
 >;
 type Request = {
+  kind: 'refresh' | 'preview' | 'mutation';
   epoch: number;
   connection: object;
   account: NativePortfolioAccount;
@@ -279,13 +280,17 @@ export class NativeTokens {
       this.emit();
     }
   }
-  private begin(expected = this.state.account): Request | null {
+  private begin(
+    kind: Request['kind'],
+    expected = this.state.account
+  ): Request | null {
     this.synchronize(true);
     const connection = this.connection;
     const account = this.state.account;
     if (!connection || !account || !same(expected, account)) return null;
     this.cancel();
     const request = {
+      kind,
       epoch: this.epoch,
       connection,
       account,
@@ -365,7 +370,7 @@ export class NativeTokens {
       !this.state.items.some((item) => item.metadata.contractAddress === target)
     )
       return;
-    const request = this.begin();
+    const request = this.begin('refresh');
     if (!request) return;
     this.publish({
       status: target ? 'ready' : 'loading',
@@ -473,7 +478,7 @@ export class NativeTokens {
       this.inventoryRevision === null
     )
       return;
-    const request = this.begin();
+    const request = this.begin('preview');
     if (!request) return;
     this.publish({
       preview: null,
@@ -534,7 +539,8 @@ export class NativeTokens {
   };
   cancelPreview = (): void => {
     if (this.state.busy) return;
-    this.cancel();
+    // Opening or leaving Import clears its state without retiring balance reads.
+    if (this.request?.kind === 'preview') this.cancel();
     this.publish({ preview: null, previewStatus: 'idle', error: null });
   };
   confirmPreview = async (): Promise<void> => {
@@ -586,7 +592,7 @@ export class NativeTokens {
     ) => Promise<NativeTokenInventory>
   ): Promise<void> {
     const revision = this.inventoryRevision;
-    const request = this.begin(account);
+    const request = this.begin('mutation', account);
     if (!request || revision === null) return;
     this.publish({ busy: true, error: null });
     try {

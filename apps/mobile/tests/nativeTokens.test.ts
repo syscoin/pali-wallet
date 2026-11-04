@@ -252,6 +252,48 @@ test('new refresh cannot resurrect a removed row from an old balance read', asyn
   assert.deepEqual(f.model.getSnapshot().items, []);
 });
 
+for (const refresh of ['list', 'selected'] as const)
+  test(`opening and leaving import preserves a pending ${refresh} balance refresh`, async () => {
+    const other = { ...metadata, contractAddress: B };
+    const pending = deferred<{ units: string }>();
+    let hold = false;
+    const f = fixture({
+      items: [metadata, other],
+      reader: {
+        async readToken() {
+          throw Error('Opening import must not read token metadata');
+        },
+        readBalance() {
+          return hold ? pending.promise : Promise.resolve({ units: '0' });
+        },
+      },
+    });
+    const disconnect = f.model.connect();
+    await tick();
+    hold = true;
+    const refreshing = f.model.refresh(
+      refresh === 'selected' ? metadata.contractAddress : undefined
+    );
+    await tick();
+    assert.equal(f.model.getSnapshot().items[0]?.status, 'loading');
+
+    // The screen clears preview state both when opening Import and on Back.
+    f.model.cancelPreview();
+    f.model.cancelPreview();
+    pending.resolve({ units: '42' });
+    await refreshing;
+
+    const snapshot = f.model.getSnapshot();
+    assert.equal(snapshot.items[0]?.status, 'available');
+    assert.equal(snapshot.items[0]?.units, '42');
+    assert.equal(snapshot.items[1]?.status, 'available');
+    assert.equal(snapshot.items[1]?.units, refresh === 'list' ? '42' : '0');
+    assert.equal(snapshot.preview, null);
+    assert.equal(snapshot.previewStatus, 'idle');
+    assert.equal(f.mutations.length, 0);
+    disconnect();
+  });
+
 test('connection replay drains an old registry read before starting the new scope', async () => {
   const f = fixture();
   const hold = deferred<void>();

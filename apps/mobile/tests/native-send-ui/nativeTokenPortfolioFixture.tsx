@@ -81,6 +81,8 @@ const scope = (): NativeTokenScope => {
   };
 };
 let failBalances = false;
+let holdBalances = false;
+const pendingBalances = new Set<() => void>();
 let holdPreview = false;
 let releasePreview: (() => void) | undefined;
 const requests: string[] = [];
@@ -111,6 +113,10 @@ const reader: Erc20Reader = {
   },
   async readBalance(network, address, metadata) {
     requests.push(`balance:${network}:${address}:${metadata.contractAddress}`);
+    if (holdBalances)
+      await new Promise<void>((resolve) => {
+        pendingBalances.add(resolve);
+      });
     if (failBalances) throw Error('PUBLIC_FIXTURE_UNAVAILABLE');
     return {
       units: metadata.contractAddress.endsWith('2')
@@ -140,6 +146,8 @@ declare global {
     __nativeTokenPortfolio: {
       select(network: EvmNetworkId): void;
       failBalances(value: boolean): void;
+      holdBalances(): void;
+      releaseBalances(): void;
       holdPreview(): void;
       releasePreview(): void;
       lock(): void;
@@ -162,6 +170,14 @@ window.__nativeTokenPortfolio = {
   },
   failBalances(value) {
     failBalances = value;
+  },
+  holdBalances() {
+    holdBalances = true;
+  },
+  releaseBalances() {
+    holdBalances = false;
+    for (const resolve of pendingBalances) resolve();
+    pendingBalances.clear();
   },
   holdPreview() {
     holdPreview = true;

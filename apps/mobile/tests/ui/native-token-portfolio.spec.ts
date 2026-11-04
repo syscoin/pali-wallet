@@ -245,6 +245,64 @@ test('Back cancels an in-flight preview and leaves the current token list reacha
   await expect(page.getByTestId('native-token-import')).toBeEnabled();
 });
 
+for (const refresh of ['list', 'selected'] as const)
+  test(`Import and Back preserve a pending ${refresh} balance refresh`, async ({
+    page,
+  }) => {
+    await page.goto('/?token-portfolio');
+    await add(page, token);
+    await expect(page.getByTestId('native-token-detail-balance')).toHaveText(
+      '90071992547409.93 FIXTURE'
+    );
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await add(page, zero);
+    await expect(page.getByTestId('native-token-detail-balance')).toHaveText(
+      '0.0 ZERO'
+    );
+    await page.evaluate(() => window.__nativeTokenPortfolio.holdBalances());
+    if (refresh === 'selected') {
+      await page
+        .getByRole('button', { name: 'Refresh token balance', exact: true })
+        .click();
+      await expect(page.getByTestId('native-token-detail-balance')).toHaveText(
+        'Loading…'
+      );
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+    } else {
+      await page.getByRole('button', { name: 'Back', exact: true }).click();
+      await page
+        .getByRole('button', { name: 'Refresh tokens', exact: true })
+        .click();
+      await expect(page.getByTestId('native-token-row-balance')).toHaveText([
+        'Loading…',
+        'Loading…',
+      ]);
+    }
+
+    await page.getByTestId('native-token-import').click();
+    await expect(
+      page.getByRole('heading', { name: 'Import token', exact: true })
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Back', exact: true }).click();
+    await page.evaluate(() => window.__nativeTokenPortfolio.releaseBalances());
+    await expect(page.getByTestId('native-token-row-balance')).toHaveText([
+      '90071992547409.93',
+      '0.0',
+    ]);
+    await page
+      .getByRole('button', {
+        name: `View token contract ${zero} on Ethereum`,
+        exact: true,
+      })
+      .click();
+    await expect(page.getByTestId('native-token-detail-balance')).toHaveText(
+      '0.0 ZERO'
+    );
+    await expect(
+      page.getByRole('button', { name: 'Refresh token balance', exact: true })
+    ).toBeEnabled();
+  });
+
 test('unreadable saved configuration stays unavailable and is preserved on retry', async ({
   page,
 }) => {
