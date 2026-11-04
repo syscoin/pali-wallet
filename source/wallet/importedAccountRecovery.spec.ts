@@ -1,6 +1,7 @@
 import { webcrypto } from 'crypto';
 
 import {
+  assertImportedRecoveryAccount,
   importAccountWithRecovery,
   importedRecoveryStorageKey,
   readImportedRecoverySecret,
@@ -122,6 +123,40 @@ for (const mode of [
       expect(importedRecoveryStorageKey(imported.recovery)).toContain(
         imported.recovery.envelope.profileId
       );
+      const advanced = {
+        ...imported.recovery.identity,
+        address:
+          mode === 'extended'
+            ? jest
+                .requireActual('syscoinjs-lib')
+                .utils.bitcoinjs.payments.p2wpkh({
+                  pubkey: node.derive(0).derive(7).publicKey,
+                  network,
+                }).address
+            : 'different address',
+      };
+      if (mode === 'extended') {
+        expect(advanced.address).not.toBe(imported.account.address);
+        expect(() =>
+          assertImportedRecoveryAccount(imported.recovery, advanced)
+        ).not.toThrow();
+      } else {
+        expect(() =>
+          assertImportedRecoveryAccount(imported.recovery, advanced)
+        ).toThrow('IMPORTED_RECOVERY_INVALID');
+      }
+      expect(() =>
+        assertImportedRecoveryAccount(imported.recovery, {
+          ...advanced,
+          id: advanced.id + 1,
+        })
+      ).toThrow('IMPORTED_RECOVERY_INVALID');
+      expect(() =>
+        assertImportedRecoveryAccount(imported.recovery, {
+          ...advanced,
+          xpub: 'different key',
+        })
+      ).toThrow('IMPORTED_RECOVERY_INVALID');
       const restored = await readImportedRecoverySecret(
         f.keyring,
         imported.recovery,

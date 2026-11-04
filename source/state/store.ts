@@ -9,6 +9,7 @@ import isEqual from 'lodash/isEqual';
 import { thunk, ThunkMiddleware } from 'redux-thunk';
 
 import {
+  assertImportedRecoveryAccount,
   importedRecoveryStorageKeyForIdentity,
   snapshotImportedRecoveryEntry,
   type ImportedRecoveryEntry,
@@ -489,7 +490,8 @@ function persistVaultMutation(
       const saved = recoveryBefore[key];
       assertCommitCurrent();
       if (saved !== undefined && saved !== null) {
-        const previous = snapshotImportedRecoveryEntry(saved, identity);
+        const previous = snapshotImportedRecoveryEntry(saved);
+        assertImportedRecoveryAccount(previous, identity);
         if (previous.envelope.profileId !== profileId || expected)
           throw new Error('Imported recovery record already exists or changed');
       }
