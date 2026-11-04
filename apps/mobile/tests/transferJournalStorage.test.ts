@@ -225,8 +225,8 @@ test('terminal journal capacity is reclaimed only after durable archive acknowle
     const history = new (await import('../src/activity/historyStore.ts')).NativeActivityHistory(f.port);
     const network = (index: number) => createNativeNetwork({ id: `chain-${index}`, name: `Chain ${index}`, kind: 'evm', chainId: String(index), slip44: 60,
       rpcUrl: `https://chain-${index}.example`, symbol: 'GAS', decimals: 18, testnet: true });
-    const make = (index: number, archive = (record: import('../src/activity/types.ts').TerminalActivityRecord, check: () => void) => history.archiveTerminal(record, check)) =>
-      new NativeTransferJournal(f.port, { walletFingerprint: f.fingerprint, address: wallet.address, chainId: String(index) }, () => undefined,
+    const make = (index: number, archive = (record: import('../src/activity/types.ts').TerminalActivityRecord, check: () => void) => history.archiveTerminal(record, check), port = f.port) =>
+      new NativeTransferJournal(port, { walletFingerprint: f.fingerprint, address: wallet.address, chainId: String(index) }, () => undefined,
         () => index, 0, network(index), archive);
     const sign = (index: number) => wallet.signTransaction({ type: 2, chainId: index, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 1n,
       gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
@@ -244,5 +244,33 @@ test('terminal journal capacity is reclaimed only after durable archive acknowle
     assert.equal(after.entries.some((entry) => entry.registration.chainId === '100'), false);
     const scope = (await import('../src/activity/types.ts')).createActivityScope(f.fingerprint, 'hd:60:0', wallet.address, network(100));
     assert.equal((await history.load(scope, () => undefined)).archived[0]!.hash, before.entries[0]!.hash);
+    // A competing writer revives the initially selected terminal record before CAS.
+    // The retry must retain it and choose another confirmed record instead.
+    let raced = false;
+    const revived = after.entries.find((entry) => entry.phase === 'confirmed')!;
+    const wrapped = { ...f.port, async compareAndSet(key: string, expected: unknown, next: unknown) {
+      if (!raced) {
+        raced = true;
+        const updated = structuredClone(expected) as TransferJournalContainer;
+        const changed = { ...updated, revision: updated.revision + 1,
+          entries: updated.entries.map((entry) => entry.hash === revived.hash ? { ...entry, phase: 'submitted' as const } : entry) };
+        assert.equal(await f.port.compareAndSet(key, expected, changed), true);
+      }
+      return f.port.compareAndSet(key, expected, next);
+    } };
+    await make(113, (record, check) => history.archiveTerminal(record, check), wrapped).saveSigned(await sign(113));
+    assert.equal(raced, true);
+    const racedRow = await f.value();
+    assert.equal(racedRow.entries.find((entry) => entry.hash === revived.hash)!.phase, 'submitted');
+    assert.equal(racedRow.entries.find((entry) => entry.hash === revived.hash)!.rawTransaction, revived.rawTransaction);
+    assert.equal(racedRow.entries.length, 12);
+    for (const phase of ['submitted', 'nonce-consumed'] as const) {
+      const unresolved = { ...racedRow, revision: racedRow.revision + 1,
+        entries: racedRow.entries.map((entry) => ({ ...entry, phase })) };
+      await f.port.set(nativeTransferJournalKey(0), unresolved);
+      await assert.rejects(make(114).saveSigned(await sign(114)), { code: 'CAPACITY' });
+      assert.deepEqual(await f.value(), unresolved);
+    }
+
   } finally { await f.cleanup(); }
 });
