@@ -17,6 +17,9 @@ import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
+import { NativeActivityHistory } from '../activity/historyStore.ts';
+import { createActivityScope, type ActivityScope } from '../activity/types.ts';
+import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -38,6 +41,7 @@ export type KeyringRuntimeDependencies = Readonly<{
 
 /** Internal capability consumed by the epoch-bound backup controller only. */
 export interface KeyringRuntime extends CustodyRuntime {
+  readonly activity?: NativeActivityRuntime;
   /** Local public token descriptors only; never exposes the underlying store. */
   readonly tokens?: NativeTokenRuntime;
   /** Native transfer host only; never exposed directly to a screen. */
@@ -102,6 +106,7 @@ export function createKeyringRuntimeFactory(
         keyring.setVaultStateGetter(() => state);
         const catalogue = new NativeWalletCatalogue(storage.keyringStorage);
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
+        const activityHistory = new NativeActivityHistory(storage.keyringStorage);
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
         let closed = false;
@@ -272,7 +277,7 @@ export function createKeyringRuntimeFactory(
                       if (!account) throw new KeyringRuntimeError('CANCELLED');
                       const fingerprint = await storage.getWalletFingerprint();
                       current(captured); checkGuard(assertCurrent);
-                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index);
+                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard));
                       const pending = await journal.removalSnapshot();
                       current(captured); checkGuard(assertCurrent);
                       mutation = { kind: 'remove' as const, id: request.id, journal: pending };
@@ -305,6 +310,20 @@ export function createKeyringRuntimeFactory(
           },
         };
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
+        const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number }> => {
+          const captured = generation;
+          const guard = () => { current(captured); checkGuard(assertCurrent); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
+          guard();
+          const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
+          const networkId = catalogueSnapshot!.active.networkId;
+          const fingerprint = await storage.getWalletFingerprint(); guard();
+          return { scope: createActivityScope(fingerprint, selected.id, selected.address, networkId), guard, index: selected.index };
+        };
+        const checkActivityContext = async (scope: ActivityScope, assertCurrent: () => void) => {
+          const context = await activityContext(assertCurrent);
+          if (context.scope.key !== scope.key || context.scope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
+          return context;
+        };
         const tokenOperation = <T>(assertCurrent: () => void, action: (scope: NativeTokenScope, guard: () => void) => Promise<T>): Promise<T> => {
           if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
           const captured = generation;
@@ -379,6 +398,23 @@ export function createKeyringRuntimeFactory(
             },
             lock,
           },
+          activity: {
+            async load(assertCurrent) {
+              const { scope, guard, index } = await activityContext(assertCurrent);
+              const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: scope.walletFingerprint, address: scope.address, chainId: scope.network.chainId }, guard, Date.now, index, scope.network, (record, check) => activityHistory.archiveTerminal(record, check));
+              const local = await journal.activity(); guard();
+              const saved = await activityHistory.load(scope, guard); guard();
+              return { scope, local, saved };
+            },
+            async saveCache(scope, candidates, assertCurrent) {
+              const { guard } = await checkActivityContext(scope, assertCurrent);
+              await activityHistory.saveCache(scope, candidates, guard);
+            },
+            async saveView(scope, view, assertCurrent) {
+              const { guard } = await checkActivityContext(scope, assertCurrent);
+              await activityHistory.saveView(scope, view, guard);
+            },
+          },
           transfers: {
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);
@@ -400,7 +436,7 @@ export function createKeyringRuntimeFactory(
               const fingerprint = await storage.getWalletFingerprint();
               current(captured); checkGuard(assertCurrent);
               const address = normalizePublicAddress(state.accounts.HDAccount[state.activeAccount.id]!.address, 'ethereum');
-              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, state.activeAccount.id);
+              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, state.activeAccount.id, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard));
             },
             authorize: (password, assertCurrent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));

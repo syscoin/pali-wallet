@@ -7,6 +7,7 @@ import { computeAddress } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 import { NativeTransferJournal, nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
 import { SigningKey } from 'ethers/crypto';
+import { NativeActivityHistory } from '../src/activity/historyStore.ts';
 
 import { NativeWalletCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -252,7 +253,8 @@ test('terminal-only removal keeps storage bounded through more than 64 HD accoun
     for (let index = 1; index <= 70; index++) {
       state = await catalogue.mutate(state.revision, { kind: 'create', index, ...derived(index), label: `Account ${index + 1}` }, current);
       const signer = new Wallet('0x' + (index + 2).toString(16).padStart(64, '0'));
-      const journal = new NativeTransferJournal(f.storage.keyringStorage, { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' }, current, () => 1, index);
+      const history = new NativeActivityHistory(f.storage.keyringStorage);
+      const journal = new NativeTransferJournal(f.storage.keyringStorage, { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' }, current, () => 1, index, undefined, (record, guard) => history.archiveTerminal(record, guard));
       const signed = await journal.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }));
       state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
       await assert.rejects(catalogue.mutate(state.revision, { kind: 'remove', id: `hd:60:${index}`, journal: signed }, current), /PENDING_TRANSFER/);
@@ -430,7 +432,8 @@ test('a new pending chain after terminal-container validation prevents account c
     state = await catalogue.mutate(state.revision, { kind: 'select', id: 'hd:60:0' }, current);
     const signer = new Wallet('0x' + '3'.padStart(64, '0'));
     const scope = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
-    const ethereum = new NativeTransferJournal(f.storage.keyringStorage, scope, current, () => 1, 1);
+    const history = new NativeActivityHistory(f.storage.keyringStorage);
+    const ethereum = new NativeTransferJournal(f.storage.keyringStorage, scope, current, () => 1, 1, undefined, (record, guard) => history.archiveTerminal(record, guard));
     const first = await ethereum.saveSigned(await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: ADDRESS, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 }));
     await ethereum.transition(first.hash, 'nonce-consumed');
     const terminal = await ethereum.removalSnapshot();

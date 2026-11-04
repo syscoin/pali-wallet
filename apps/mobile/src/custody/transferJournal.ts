@@ -5,6 +5,7 @@ import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import { getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from './networkContext.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
+import type { LocalActivityRecord, TerminalActivityRecord } from '../activity/types.ts';
 
 const STORAGE_KEY = 'native-evm-transfer-v1';
 const MAX_RAW_CHARACTERS = 4096;
@@ -37,7 +38,7 @@ export type TransferJournalContainer = Readonly<{
 }>;
 export type JournalRemovalSnapshot = TransferJournalContainer | TransferJournalEntry;
 export class TransferJournalError extends Error {
-  readonly code: 'CORRUPT' | 'CONTEXT_CHANGED' | 'PENDING_TRANSFER' | 'INVALID_TRANSITION' | 'CAPACITY' | 'CONFLICT' | 'REOPEN_REQUIRED';
+  readonly code: 'CORRUPT' | 'CONTEXT_CHANGED' | 'PENDING_TRANSFER' | 'INVALID_TRANSITION' | 'CAPACITY' | 'CONFLICT' | 'REOPEN_REQUIRED' | 'HISTORY_UNAVAILABLE';
   constructor(code: TransferJournalError['code']) { super(code); this.name = 'TransferJournalError'; this.code = code; }
 }
 const corrupt = (): never => { throw new TransferJournalError('CORRUPT'); };
@@ -156,14 +157,17 @@ export class NativeTransferJournal {
   private readonly storageKey: string;
   private readonly index: number;
   private readonly registration: NativeNetworkRegistration;
+  private readonly archiveTerminal?: (record: TerminalActivityRecord, guard: () => void) => Promise<void>;
   constructor(storage: KeyringStoragePort, scope: TransferJournalScope, assertCurrent: () => void,
-    now = Date.now, accountIndex = 0, registration?: NativeNetworkRegistration) {
+    now = Date.now, accountIndex = 0, registration?: NativeNetworkRegistration,
+    archiveTerminal?: (record: TerminalActivityRecord, guard: () => void) => Promise<void>) {
     this.storageKey = nativeTransferJournalKey(accountIndex);
     this.index = accountIndex;
     this.scope = scopeSnapshot(scope);
     this.registration = registrationSnapshot(registration ?? NATIVE_NETWORKS.find((network) => network.chainId === this.scope.chainId));
     if (this.registration.chainId !== this.scope.chainId) corrupt();
     this.storage = storage; this.assertCurrent = assertCurrent; this.now = now;
+    this.archiveTerminal = archiveTerminal;
   }
   private guard() {
     const result: unknown = this.assertCurrent();
@@ -215,11 +219,11 @@ export class NativeTransferJournal {
     } catch { return this.quarantine(); }
     return true;
   }
-  private update(operation: (value: TransferJournalContainer | null) => { next?: TransferJournalContainer; result: TransferJournalEntry | null }): Promise<TransferJournalEntry | null> {
+  private update(operation: (value: TransferJournalContainer | null) => { next?: TransferJournalContainer; result: TransferJournalEntry | null } | Promise<{ next?: TransferJournalContainer; result: TransferJournalEntry | null }>): Promise<TransferJournalEntry | null> {
     return this.exclusive(async () => {
       for (let attempt = 0; attempt < CAS_ATTEMPTS; attempt++) {
         const old = await this.read();
-        const change = operation(old?.value ?? null);
+        const change = await operation(old?.value ?? null);
         const next = change.next ?? (old?.legacy ? old.value : undefined);
         if (!next) return change.result;
         if (next.entries.length > MAX_JOURNAL_ENTRIES) throw new TransferJournalError('CAPACITY');
@@ -231,11 +235,41 @@ export class NativeTransferJournal {
   load(): Promise<TransferJournalEntry | null> {
     return this.update((value) => ({ result: value && this.selected(value) ? hostEntry(this.selected(value)!, this.scope) : null }));
   }
+  private publicRecord(entry: ContainerEntry): LocalActivityRecord {
+    const tx = Transaction.from(entry.rawTransaction);
+    const fee = tx.maxFeePerGas ?? tx.gasPrice;
+    if (!tx.to || fee === null) return corrupt();
+    return Object.freeze({ walletFingerprint: this.scope.walletFingerprint, accountId: `hd:60:${this.index}`, address: this.scope.address,
+      networkId: entry.registration.id, registrationHash: entry.registration.registrationHash, chainId: entry.registration.chainId,
+      hash: entry.hash, phase: entry.phase, nonce: entry.nonce, createdAt: entry.createdAt,
+      recipient: entry.intent?.recipient ?? tx.to, amountUnits: entry.intent?.amountUnits ?? tx.value.toString(),
+      maximumFeeUnits: (tx.gasLimit * fee).toString(), ...(entry.intent ? { token: entry.intent.token } : {}) });
+  }
+  /** Public projection only. Raw signed bytes remain inside the recovery journal. */
+  activity(): Promise<LocalActivityRecord | null> {
+    return this.exclusive(async () => {
+      const old = await this.read(); const entry = old && this.selected(old.value);
+      return entry ? this.publicRecord(entry) : null;
+    });
+  }
+  private async archive(entry: ContainerEntry): Promise<void> {
+    this.guard();
+    if (!terminal(entry.phase) || !this.archiveTerminal) throw new TransferJournalError('HISTORY_UNAVAILABLE');
+    try { await this.archiveTerminal(this.publicRecord(entry) as TerminalActivityRecord, () => this.guard()); }
+    catch (error) {
+      this.guard();
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'REOPEN_REQUIRED') return this.quarantine();
+      throw new TransferJournalError('HISTORY_UNAVAILABLE');
+    }
+    this.guard();
+  }
   removalSnapshot(): Promise<JournalRemovalSnapshot | null> {
     return this.exclusive(async () => {
       const old = await this.read();
       if (!old) return null;
-      return terminalJournalForRemoval(old.raw as JournalRemovalSnapshot, this.scope, this.index);
+      const snapshot = terminalJournalForRemoval(old.raw as JournalRemovalSnapshot, this.scope, this.index);
+      for (const entry of old.value.entries) await this.archive(entry);
+      this.guard(); return snapshot;
     });
   }
   saveSigned(rawTransaction: string, inputIntent?: Erc20TransferIntent): Promise<TransferJournalEntry> {
@@ -247,11 +281,14 @@ export class NativeTransferJournal {
     if (!Number.isSafeInteger(createdAt) || createdAt < 0) return Promise.reject(new TransferJournalError('CORRUPT'));
     const entry: ContainerEntry = Object.freeze({ registration: this.registration, phase: 'signed', rawTransaction, ...identity, createdAt,
       ...(intent ? { intent } : {}) });
-    return this.update((value) => {
+    return this.update(async (value) => {
       const old = value && this.selected(value);
       if (old) {
         if (!terminal(old.phase)) throw new TransferJournalError('PENDING_TRANSFER');
         if (entry.nonce <= old.nonce) throw new TransferJournalError('INVALID_TRANSITION');
+        // Archive and acknowledge BEFORE replacing the sole signed-byte record.
+        // A crash leaves either the old journal or an idempotent public duplicate.
+        await this.archive(old);
       }
       if (value?.revision === Number.MAX_SAFE_INTEGER) throw new TransferJournalError('CAPACITY');
       const entries = [...(value?.entries ?? []).filter((item) => item.registration.chainId !== this.scope.chainId), entry];

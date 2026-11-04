@@ -24,7 +24,13 @@ malformed or foreign account/registration data is preserved and rejected.
 The container admits at most 12 entries and 64 KiB of encoded JSON; signed bytes
 remain bounded to 4096 characters. Current registered chains fit within one row
 per account, avoiding account-times-network exhaustion of the 64-row store.
-No terminal history eviction is added in this phase.
+Before replacing a terminal entry, the journal now requires a host archive hook.
+It projects a public summary, idempotently saves and reads it back from the
+bounded wallet Activity document, then CASes the exact old journal row. Archive
+failure leaves the old signed bytes intact and prevents the new broadcast. A
+crash between archive and replacement leaves a harmless duplicate, identified
+by wallet/account/registration and transaction hash. The journal format remains
+version 2; raw signed bytes never enter the Activity document.
 
 Every existing-row mutation uses exact-snapshot compare-and-set, never `set`.
 Independent stale readers retry a definite false up to three times and preserve
@@ -61,8 +67,11 @@ arbitrary token contract delivered the requested units without fees.
 Removal validates every entry and refuses any unresolved, malformed or unknown
 outcome. The exact fully-terminal row (or required absence) participates in the
 catalogue removal transaction. A new or changed pending chain before commit
-prevents deletion. Restoring an HD index restores the address, not pruned terminal
-history. Cross-process exclusion remains unqualified; supported ownership is one
+prevents deletion. The same archive hook saves every terminal chain summary
+before returning a removal snapshot. Restoring an HD index also exposes its
+retained public summaries. The global archive is bounded by count and encoded
+bytes and discloses pruning; it does not promise full historical retention.
+Cross-process exclusion remains unqualified; supported ownership is one
 wallet authority process with one storage capability.
 
 Phase A changes persistence and recovery only. Runtime signing and submission

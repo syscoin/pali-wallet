@@ -324,6 +324,11 @@ export class NativeTransfers {
         } catch {
           throw new NativeTransferError('CANCELLED');
         }
+        if (error instanceof TransferJournalError && error.code === 'HISTORY_UNAVAILABLE') {
+          this.publish({ phase: 'unavailable', review: null,
+            message: 'Your previous transfer could not be safely saved to local activity. No new transfer was broadcast. Close and reopen Pali, then try again.' });
+          throw new NativeTransferError('FAILED');
+        }
         if (
           error instanceof NativeTransferRpcError &&
           ['INSUFFICIENT_BALANCE', 'INSUFFICIENT_TOKEN_BALANCE'].includes(

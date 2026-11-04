@@ -48,6 +48,7 @@ jobs:
       - run: npm run build:web
       - run: npx --no-install playwright install --with-deps chromium
       - run: npm run test:ui
+      - run: npm run test:activity-ui
       # These validate the platform dependency graphs, not native binaries or
       # device custody. Actual native custody is checked by its separate workflow.
       - run: npx --no-install expo export --platform android --max-workers 2 --output-dir dist-android
