@@ -9,6 +9,7 @@
     "declaration": false,
     "isolatedModules": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     /* Additional Checks */
     "useDefineForClassFields": true,
     "skipLibCheck": true,

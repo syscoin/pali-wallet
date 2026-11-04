@@ -18,15 +18,14 @@ copy, private method or caller-provided `validated` flag. Both methods are captu
 at construction. Accessors, extra fields, asynchronous/thenable output and invalid
 output shapes are rejected; callback errors do not expose their payloads.
 
-With the adapter, the same repository exposes `records.load()`,
+The repository exposes `records.load()`,
 `records.compareAndSet(snapshot, nextRecords)` and
 `records.saveCheckpoint(snapshot, id, checkpoint)`. These are internal APIs; their
 snapshots contain stored public identifiers. Ordinary `PublicAccount` projections
 contain only id/name/receiving-address maps and never keys or checkpoints.
 
-The existing storage key `pali.mobile.public-accounts.v1` contains either its
-unchanged version1 `{ version, accounts }` document or a version2
-`{ version, records }` document. Version2 records discriminate `address` from
+The storage key `pali.mobile.public-accounts.v1` contains one canonical
+`{ version: 1, records }` document. Its records discriminate `address` from
 `bip84-public`. Address records retain explicit saved network mappings. BIP84
 records contain id/name, fixed network, `bip84-p2wpkh` policy, canonical public
 account key and a nullable advisory discovery checkpoint. Existing IDs cannot
@@ -34,14 +33,14 @@ change kind, address source, key, network or policy in a retained record. Renami
 and checkpoint updates preserve those fields. Canonical aliases deduplicate on
 network plus key; BTC and SYS scopes remain separate.
 
-Version1 loads never rewrite. An explicit record mutation is the only operation
-that writes version2. Every version2 read validates every key and derives its
-public projection through the adapter. Existing address-only APIs deliberately
-refuse all version2 documents, even on an adapter-equipped repository, so a legacy
-save cannot silently discard a key or checkpoint. The adapter-free production
-repository therefore refuses future/unknown records while retaining their bytes.
-Both versions retain the 20-account and 32KiB document limits. Invalid or unknown
-data is not treated as a missing/empty store and is never truncated or repaired.
+Every read uses the same codec. Address records do not need the SDK adapter;
+account-key records require it and derive their public projection through it.
+The address-only editor uses this same document format but refuses documents
+containing account-key records, so it cannot discard a key or checkpoint. There
+are no readers or conversion writers for intermediate development formats.
+Unknown shapes and versions remain untouched and fail closed. The document limit
+is 20 accounts and 32 KiB; invalid data is never treated as a missing store,
+truncated or silently repaired.
 
 Record snapshots are frozen and bound to the issuing repository through internal
 WeakMap state. They admit one write attempt; successful writes and ambiguous
@@ -49,7 +48,7 @@ attempts retire all older tokens. The repository detaches proposed input before
 queueing, then validates it through the adapter while holding its existing serial
 queue. It compares the **entire original raw document**, validates current data,
 writes one document and checks both the readback bytes and decoded record data.
-Record, legacy-account and selection operations use one queue. This is
+Record, address-account and selection operations use one queue. This is
 same-process serialization plus read/compare/write/read-back, **not a cross-process
 transactional CAS**; callers must retain one owner for the underlying store.
 

@@ -1,3 +1,13 @@
+export {
+  PRIVATE_VAULT_STORAGE_PREFIX,
+  PRIVATE_VAULT_DOMAIN,
+  PRIVATE_VAULT_FORMAT,
+} from './privateVaultInspection';
+export type {
+  IPrivateVaultSession,
+  IPrivateVaultDepositJournal,
+} from './privateVaultInspection';
+
 import {
   AbiCoder,
   Interface,
@@ -8,7 +18,6 @@ import {
 
 import { getPrivacyPool } from '../utils/privacy/registry';
 
-import { NOTE_BACKUP_MAX_HISTORY_HINTS } from './noteBackupHistory';
 import {
   planPrivateNoteRestore,
   hasImportedWithdrawalHistory,
@@ -21,10 +30,40 @@ import {
 } from './privateNoteRestore';
 import type {
   IPrivateNoteRestoreEntry,
-  IPrivateNoteRestoreGuard,
   IPrivateNoteRestoreMetadata,
   IPrivateNoteRestoreReceipt,
 } from './privateNoteRestore';
+import {
+  PRIVATE_VAULT_STORAGE_PREFIX,
+  PRIVATE_VAULT_DOMAIN,
+  PRIVATE_VAULT_FORMAT,
+  PRIVATE_VAULT_VERSION,
+  DEFAULT_CAPACITY,
+  capacityValid,
+  capacityBudget,
+  MAX_PLAINTEXT_BYTES,
+  MAX_SHARD_BYTES,
+  MAX_SHARD_NOTES,
+  PRIVATE_VAULT_SHARD_DOMAIN,
+  PROFILE,
+  UUID,
+  envelopeHash,
+  recoveryReceipt,
+  withdrawalJournal,
+  checkEnvelope,
+  readPrivateVaultBundle,
+  JOB_ID,
+  publicError,
+  withdrawalRecovery,
+} from './privateVaultInspection';
+import type {
+  IPrivateVaultSession,
+  IPrivateVaultDepositJournal,
+  IStoredNote,
+  IManifest,
+  IShardReference,
+  IVaultBundle,
+} from './privateVaultInspection';
 import type {
   generateClassicNote,
   identifyClassicNote,
@@ -48,28 +87,8 @@ import type {
   IPrivacyRetiredWithdrawal,
   IPrivacyWithdrawalStatusRecord,
 } from '../utils/privacy/withdrawalTransactionTypes';
-import type {
-  IEncryptedPrivateRecord,
-  KeyringManager,
-} from '@sidhujag/sysweb3-keyring';
+import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
-export const PRIVATE_VAULT_STORAGE_PREFIX = 'state-private-vault-v1:';
-export const PRIVATE_VAULT_DOMAIN = 'org.syscoin.pali.privacy.notes.v1';
-export const PRIVATE_VAULT_FORMAT = 'pali-private-note-vault';
-const PRIVATE_VAULT_VERSION = 1;
-const DEFAULT_CAPACITY = 128;
-const MAX_NOTES = 512;
-const capacityValid = (value: unknown): value is PrivateVaultCapacity =>
-  value === 128 || value === 256 || value === 512;
-const capacityBudget = (capacity: PrivateVaultCapacity): number =>
-  (capacity / 128) * 4 * 1024 * 1024;
-const MAX_PLAINTEXT_BYTES = 64 * 1024;
-const MAX_SHARD_BYTES = 32 * 1024;
-const MAX_SHARD_NOTES = 16;
-const PRIVATE_VAULT_SHARD_DOMAIN = 'org.syscoin.pali.privacy.notes.shard.v2';
-const PROFILE = /^0x[0-9a-f]{64}$/;
-const UUID =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const DEPOSIT_ABI = new Interface([
   'function deposit(bytes32 commitment) payable',
@@ -80,60 +99,6 @@ const WITHDRAWAL_ABI = new Interface([
 const HASH = /^0x[0-9a-f]{64}$/;
 const restoreEpochs = new WeakMap<IPrivateVaultMutex, Map<string, object>>();
 const UINT256_MAX = (BigInt(1) << BigInt(256)) - BigInt(1);
-const PUBLIC_ERRORS = new Set([
-  'privacy_note_invalid',
-  'privacy_note_restore_required',
-  'privacy_restore_invalid',
-  'privacy_restore_stale',
-  'privacy_note_limit',
-  'privacy_note_missing',
-  'privacy_note_not_found',
-  'privacy_vault_corrupt',
-  'privacy_vault_unsupported_format',
-  'privacy_vault_locked',
-  'privacy_vault_session_changed',
-  'privacy_vault_unavailable',
-  'privacy_verification_pending',
-  'privacy_deposit_attempt_exists',
-  'privacy_deposit_attempt_invalid',
-  'privacy_deposit_note_ineligible',
-  'privacy_note_spent',
-  'privacy_withdrawal_attempt_exists',
-  'privacy_withdrawal_attempt_invalid',
-  'privacy_withdrawal_recovery_unavailable',
-  'privacy_proof_cancelled',
-  'privacy_proof_failed',
-  'privacy_proof_busy',
-  'privacy_proof_unavailable',
-  'privacy_proof_artifact_invalid',
-  'privacy_proof_verification_failed',
-  'privacy_proof_invalid_input',
-  'privacy_withdrawal_snapshot_invalid',
-  'privacy_withdrawal_invalid',
-]);
-
-export interface IPrivateVaultSession {
-  assertCurrent: () => void;
-  generation: number;
-  keyring: Pick<
-    KeyringManager,
-    | 'getPrivateRecordProfileId'
-    | 'encryptPrivateRecord'
-    | 'decryptPrivateRecord'
-  >;
-}
-
-export interface IPrivateVaultDepositJournal {
-  attemptHash: string;
-  createdAt: number;
-  from: string;
-  intentId: string;
-  nonce: string;
-  phase: 'unknown' | 'submitted';
-  transactionHash?: string;
-}
-
-/** MainController only: never add these methods to the message-facing vault API. */
 export interface IPrivateVaultDepositController {
   clearUnbroadcastDepositAttempt: (
     attempt: IPrivacyDepositAttempt,
@@ -273,37 +238,12 @@ export interface IPrivateVaultHost {
   readNote: IPrivacyNoteReader;
 }
 
-interface IStoredNote {
-  createdAt: number;
-  deposit?: IPrivateVaultDepositJournal;
-  id: string;
-  note: string;
-  origin?: 'generated';
-  restoreGuard?: IPrivateNoteRestoreGuard;
-  withdrawal?: IPrivateVaultWithdrawalJournal;
-}
-interface IManifest {
-  notes: IStoredNote[];
-  version: 1;
-}
 interface IContext {
   capacity: PrivateVaultCapacity;
   profileId: string;
   restore: IPrivateNoteRestoreMetadata;
   session: IPrivateVaultSession;
   storedBytes: number;
-}
-
-interface IShardReference {
-  count: number;
-  hash: string;
-  recordId: string;
-}
-interface IVaultBundle {
-  format: typeof PRIVATE_VAULT_FORMAT;
-  root: IEncryptedPrivateRecord;
-  shards: IEncryptedPrivateRecord[];
-  version: typeof PRIVATE_VAULT_VERSION;
 }
 
 /** Exact fixed-format size planning; no encryption, storage, or random IDs. */
@@ -386,19 +326,6 @@ function planVaultLayout(
   return groups;
 }
 
-const envelopeHash = (value: IEncryptedPrivateRecord): string =>
-  keccak256(
-    new TextEncoder().encode(
-      JSON.stringify([
-        value.version,
-        value.domain,
-        value.recordId,
-        value.profileId,
-        value.nonce,
-        value.ciphertext,
-      ])
-    )
-  );
 /** Raw records remain untrusted until the engine validates their schema. */
 export interface IPrivateVaultStorage {
   // Only null/undefined mean absence. Preserve malformed present values for
@@ -437,42 +364,6 @@ function uint(value: unknown, positive = false): bigint {
   if (parsed > UINT256_MAX || (positive && parsed === BigInt(0)))
     throw new Error('privacy_deposit_attempt_invalid');
   return parsed;
-}
-
-function journal(
-  value: IPrivateVaultDepositJournal
-): IPrivateVaultDepositJournal {
-  if (
-    !value ||
-    typeof value.intentId !== 'string' ||
-    !UUID.test(value.intentId) ||
-    typeof value.attemptHash !== 'string' ||
-    !HASH.test(value.attemptHash) ||
-    !Number.isSafeInteger(value.createdAt) ||
-    value.createdAt < 0 ||
-    typeof value.from !== 'string' ||
-    !ADDRESS.test(value.from) ||
-    typeof value.nonce !== 'string' ||
-    !/^(?:0|[1-9][0-9]{0,19})$/.test(value.nonce) ||
-    BigInt(value.nonce) >= BigInt(1) << BigInt(64) ||
-    !['unknown', 'submitted'].includes(value.phase) ||
-    (value.phase === 'submitted'
-      ? typeof value.transactionHash !== 'string' ||
-        !HASH.test(value.transactionHash)
-      : value.transactionHash !== undefined)
-  )
-    throw new Error('privacy_vault_corrupt');
-  return {
-    intentId: value.intentId,
-    attemptHash: value.attemptHash,
-    createdAt: value.createdAt,
-    from: value.from.toLowerCase(),
-    nonce: value.nonce,
-    phase: value.phase,
-    ...(value.transactionHash
-      ? { transactionHash: value.transactionHash }
-      : {}),
-  };
 }
 
 function depositJournal(
@@ -585,192 +476,6 @@ function depositJournal(
     nonce: String(nonce),
     phase: 'unknown',
     attemptHash: keccak256(toUtf8Bytes(JSON.stringify(normalized))),
-  };
-}
-
-const WITHDRAWAL_JOURNAL_KEYS = [
-  'attemptHash',
-  'createdAt',
-  'endpoint',
-  'ensHash',
-  'from',
-  'inputHash',
-  'intentId',
-  'jobId',
-  'mode',
-  'nonce',
-  'phase',
-  'proofHash',
-  'recovery',
-  'retired',
-  'transactionHash',
-];
-const MAX_RETIRED_WITHDRAWALS = NOTE_BACKUP_MAX_HISTORY_HINTS - 1;
-function recoveryReceipt(value: IPrivacyWithdrawalRecoveryReceipt) {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 3 ||
-    Object.keys(value).some(
-      (key) => !['root', 'blockNumber', 'blockHash'].includes(key)
-    ) ||
-    typeof value.root !== 'string' ||
-    !HASH.test(value.root) ||
-    BigInt(value.root) >=
-      BigInt(
-        '21888242871839275222246405745257275088548364400416034343698204186575808495617'
-      ) ||
-    typeof value.blockHash !== 'string' ||
-    !HASH.test(value.blockHash) ||
-    typeof value.blockNumber !== 'string' ||
-    !/^(?:0|[1-9][0-9]{0,77})$/.test(value.blockNumber) ||
-    BigInt(value.blockNumber) > UINT256_MAX
-  )
-    throw new Error('privacy_vault_corrupt');
-  return {
-    root: value.root,
-    blockNumber: value.blockNumber,
-    blockHash: value.blockHash,
-  };
-}
-function withdrawalRecovery(value: IPrivacyWithdrawalRecovery) {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).length !== 4 ||
-    Object.keys(value).some(
-      (key) =>
-        !['root', 'blockNumber', 'blockHash', 'recoveredAt'].includes(key)
-    ) ||
-    !Number.isSafeInteger(value.recoveredAt) ||
-    value.recoveredAt < 0 ||
-    value.recoveredAt > 8_640_000_000_000_000
-  )
-    throw new Error('privacy_vault_corrupt');
-  return {
-    ...recoveryReceipt({
-      root: value.root,
-      blockNumber: value.blockNumber,
-      blockHash: value.blockHash,
-    }),
-    recoveredAt: value.recoveredAt,
-  };
-}
-const JOB_ID = /^[a-zA-Z0-9_-]{1,128}$/;
-const validRelayEndpoint = (value: unknown) => {
-  try {
-    if (typeof value !== 'string' || value.length > 2048) return false;
-    const url = new URL(value);
-    return (
-      url.protocol === 'https:' &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash
-    );
-  } catch {
-    return false;
-  }
-};
-function withdrawalJournal(
-  value: IPrivateVaultWithdrawalJournal,
-  isRetired = false
-): IPrivateVaultWithdrawalJournal {
-  if (
-    !value ||
-    typeof value !== 'object' ||
-    Array.isArray(value) ||
-    Object.keys(value).some((key) => !WITHDRAWAL_JOURNAL_KEYS.includes(key)) ||
-    (isRetired && value.retired !== undefined) ||
-    typeof value.intentId !== 'string' ||
-    !UUID.test(value.intentId) ||
-    ![value.attemptHash, value.proofHash, value.inputHash].every(
-      (hash) => typeof hash === 'string' && HASH.test(hash)
-    ) ||
-    !Number.isSafeInteger(value.createdAt) ||
-    value.createdAt < 0 ||
-    !['direct', 'relayed'].includes(value.mode) ||
-    !['unknown', 'submitted'].includes(value.phase) ||
-    (value.mode === 'direct'
-      ? typeof value.from !== 'string' ||
-        !ADDRESS.test(value.from) ||
-        typeof value.nonce !== 'string' ||
-        !/^(?:0|[1-9][0-9]{0,19})$/.test(value.nonce) ||
-        BigInt(value.nonce) >= BigInt(1) << BigInt(64) ||
-        value.jobId !== undefined ||
-        value.endpoint !== undefined ||
-        value.ensHash !== undefined
-      : value.from !== undefined ||
-        value.nonce !== undefined ||
-        !validRelayEndpoint(value.endpoint) ||
-        typeof value.ensHash !== 'string' ||
-        !HASH.test(value.ensHash)) ||
-    (value.transactionHash !== undefined &&
-      (typeof value.transactionHash !== 'string' ||
-        !HASH.test(value.transactionHash))) ||
-    (value.jobId !== undefined &&
-      (typeof value.jobId !== 'string' || !JOB_ID.test(value.jobId))) ||
-    (value.phase === 'unknown'
-      ? value.transactionHash !== undefined || value.jobId !== undefined
-      : !value.transactionHash && !value.jobId) ||
-    ((value.recovery !== undefined || isRetired) &&
-      (value.mode !== 'direct' ||
-        value.phase !== 'submitted' ||
-        !value.transactionHash ||
-        value.recovery === undefined))
-  )
-    throw new Error('privacy_vault_corrupt');
-  const recovery =
-    value.recovery === undefined
-      ? undefined
-      : withdrawalRecovery(value.recovery);
-  let retired: IPrivacyRetiredWithdrawal[] | undefined;
-  if (value.retired !== undefined) {
-    if (
-      !Array.isArray(value.retired) ||
-      value.retired.length < 1 ||
-      value.retired.length > MAX_RETIRED_WITHDRAWALS
-    )
-      throw new Error('privacy_vault_corrupt');
-    const intents = new Set([value.intentId]),
-      attempts = new Set([value.attemptHash]),
-      transactions = new Set([value.transactionHash]);
-    retired = value.retired.map((entry) => {
-      const retiredEntry = withdrawalJournal(
-        entry,
-        true
-      ) as IPrivacyRetiredWithdrawal;
-      if (
-        intents.has(retiredEntry.intentId) ||
-        attempts.has(retiredEntry.attemptHash) ||
-        transactions.has(retiredEntry.transactionHash)
-      )
-        throw new Error('privacy_vault_corrupt');
-      intents.add(retiredEntry.intentId);
-      attempts.add(retiredEntry.attemptHash);
-      transactions.add(retiredEntry.transactionHash);
-      return retiredEntry;
-    });
-  }
-  return {
-    intentId: value.intentId,
-    attemptHash: value.attemptHash,
-    proofHash: value.proofHash,
-    inputHash: value.inputHash,
-    createdAt: value.createdAt,
-    mode: value.mode,
-    phase: value.phase,
-    ...(value.mode === 'direct'
-      ? { from: value.from!.toLowerCase(), nonce: value.nonce }
-      : { endpoint: value.endpoint, ensHash: value.ensHash }),
-    ...(value.transactionHash
-      ? { transactionHash: value.transactionHash }
-      : {}),
-    ...(value.jobId ? { jobId: value.jobId } : {}),
-    ...(recovery ? { recovery } : {}),
-    ...(retired ? { retired } : {}),
   };
 }
 
@@ -1027,24 +732,6 @@ function createWithdrawalJournal(
   }
 }
 
-const publicError = (error: unknown): Error => {
-  const message = error instanceof Error ? error.message : '';
-  if (message === 'BACKUP_INVALID_PAYLOAD')
-    return new Error('privacy_restore_invalid');
-  if (PUBLIC_ERRORS.has(message)) return new Error(message);
-  if (message === 'Private record session changed')
-    return new Error('privacy_vault_session_changed');
-  if (
-    message === 'Invalid password' ||
-    /^Too many failed attempts\. Please wait \d+ seconds before trying again\.$/.test(
-      message
-    )
-  )
-    return new Error(message);
-  return new Error('privacy_vault_unavailable');
-};
-
-/** Local-only custody. No plaintext manifest is retained between operations. */
 export function createPrivateVaultController(
   host: IPrivateVaultHost,
   dependencies: IPrivateVaultDependencies
@@ -1134,250 +821,23 @@ export function createPrivateVaultController(
     return id;
   };
 
-  const checkEnvelope = (
-    context: IContext,
-    value: IEncryptedPrivateRecord,
-    domain: string,
-    limit: number
-  ) => {
-    if (
-      !value ||
-      typeof value !== 'object' ||
-      Array.isArray(value) ||
-      Object.keys(value).length !== 6 ||
-      value.version !== 1 ||
-      value.domain !== domain ||
-      value.profileId !== context.profileId ||
-      typeof value.recordId !== 'string' ||
-      !UUID.test(value.recordId) ||
-      typeof value.nonce !== 'string' ||
-      value.nonce.length !== 16 ||
-      typeof value.ciphertext !== 'string' ||
-      value.ciphertext.length > Math.ceil((limit + 16) / 3) * 4
-    )
-      throw new Error('privacy_vault_corrupt');
-  };
-
-  const decrypt = async (
-    context: IContext,
-    envelope: IEncryptedPrivateRecord,
-    domain: string,
-    limit: number
-  ): Promise<any> => {
-    checkEnvelope(context, envelope, domain, limit);
-    let plaintext: Uint8Array;
-    try {
-      plaintext = await checked(
-        context,
-        context.session.keyring.decryptPrivateRecord({
-          domain,
-          recordId: envelope.recordId,
-          envelope,
-        })
-      );
-    } catch (error) {
-      throw publicError(error);
-    }
-    try {
-      if (!(plaintext instanceof Uint8Array) || plaintext.length > limit)
-        throw new Error('privacy_vault_corrupt');
-      return JSON.parse(
-        new TextDecoder('utf-8', { fatal: true }).decode(plaintext)
-      );
-    } finally {
-      plaintext.fill(0);
-    }
-  };
-
   const load = async (
     context: IContext
-  ): Promise<{
-    manifest: IManifest;
-    recordId?: string;
-  }> => {
-    const stored: any = await checked(
+  ): Promise<{ manifest: IManifest; recordId?: string }> => {
+    const stored = await checked(
       context,
       storage.getItem(PRIVATE_VAULT_STORAGE_PREFIX + context.profileId)
     );
-    context.capacity = DEFAULT_CAPACITY;
-    context.storedBytes = 0;
-    context.restore = { version: 1 };
-    if (stored === null || stored === undefined)
-      return { manifest: { version: 1, notes: [] } };
-    try {
-      const serialized = new TextEncoder().encode(JSON.stringify(stored));
-      context.storedBytes = serialized.length;
-      serialized.fill(0);
-      if (!stored || typeof stored !== 'object' || Array.isArray(stored))
-        throw new Error('privacy_vault_corrupt');
-      // Older single-envelope layouts are not inferred as this bundle. Only
-      // the explicit guard-free root compatibility case below is readable.
-      if (
-        stored.format !== PRIVATE_VAULT_FORMAT ||
-        stored.version !== PRIVATE_VAULT_VERSION
-      )
-        throw new Error('privacy_vault_unsupported_format');
-      const bundle = stored as IVaultBundle;
-      if (
-        Object.keys(bundle).length !== 4 ||
-        !Array.isArray(bundle.shards) ||
-        bundle.shards.length < 1 ||
-        bundle.shards.length > MAX_NOTES
-      )
-        throw new Error('privacy_vault_corrupt');
-      checkEnvelope(
-        context,
-        bundle.root,
-        PRIVATE_VAULT_DOMAIN,
-        MAX_PLAINTEXT_BYTES
-      );
-      for (const shard of bundle.shards)
-        checkEnvelope(
-          context,
-          shard,
-          PRIVATE_VAULT_SHARD_DOMAIN,
-          MAX_SHARD_BYTES
-        );
-      if (context.storedBytes > capacityBudget(512))
-        throw new Error('privacy_vault_corrupt');
-      const root = await decrypt(
-        context,
-        bundle.root,
-        PRIVATE_VAULT_DOMAIN,
-        MAX_PLAINTEXT_BYTES
-      );
-      if (
-        !root ||
-        typeof root !== 'object' ||
-        Array.isArray(root) ||
-        root.format !== PRIVATE_VAULT_FORMAT ||
-        root.version !== PRIVATE_VAULT_VERSION ||
-        ![5, 6].includes(Object.keys(root).length) ||
-        (Object.keys(root).length === 5 &&
-          Object.prototype.hasOwnProperty.call(root, 'restore')) ||
-        (Object.keys(root).length === 6 &&
-          !Object.prototype.hasOwnProperty.call(root, 'restore')) ||
-        !capacityValid(root.capacity) ||
-        !Number.isInteger(root.noteCount) ||
-        root.noteCount < 0 ||
-        root.noteCount > root.capacity ||
-        !Array.isArray(root.shards) ||
-        root.shards.length !== bundle.shards.length ||
-        root.shards.length > Math.max(1, root.noteCount) ||
-        context.storedBytes > capacityBudget(root.capacity)
-      )
-        throw new Error('privacy_vault_corrupt');
-      // The only compatibility reader is the guard-free pre-release root.
-      // Every writer emits the required sixth field, which older readers reject.
-      const legacyRoot = Object.keys(root).length === 5;
-      context.restore = legacyRoot
-        ? { version: 1 }
-        : readPrivateNoteRestoreMetadata(root.restore);
-      context.capacity = root.capacity;
-      const recordIds = new Set([bundle.root.recordId]);
-      const storedNotes: IStoredNote[] = [];
-      for (const [index, envelope] of bundle.shards.entries()) {
-        const reference: IShardReference = root.shards[index];
-        if (
-          !reference ||
-          typeof reference !== 'object' ||
-          Array.isArray(reference) ||
-          Object.keys(reference).length !== 3 ||
-          reference.recordId !== envelope.recordId ||
-          recordIds.has(reference.recordId) ||
-          !Number.isInteger(reference.count) ||
-          reference.count < (root.noteCount === 0 ? 0 : 1) ||
-          reference.count > MAX_SHARD_NOTES ||
-          reference.hash !== envelopeHash(envelope)
-        )
-          throw new Error('privacy_vault_corrupt');
-        recordIds.add(reference.recordId);
-        const shard = await decrypt(
-          context,
-          envelope,
-          PRIVATE_VAULT_SHARD_DOMAIN,
-          MAX_SHARD_BYTES
-        );
-        if (
-          !shard ||
-          typeof shard !== 'object' ||
-          Array.isArray(shard) ||
-          shard.version !== 1 ||
-          Object.keys(shard).length !== 2 ||
-          !Array.isArray(shard.notes) ||
-          shard.notes.length !== reference.count
-        )
-          throw new Error('privacy_vault_corrupt');
-        storedNotes.push(...shard.notes);
-        if (storedNotes.length > context.capacity)
-          throw new Error('privacy_vault_corrupt');
-      }
-      if (storedNotes.length !== root.noteCount)
-        throw new Error('privacy_vault_corrupt');
-      const data: IManifest = { version: 1, notes: storedNotes };
-      const recordId = bundle.root.recordId;
-      const ids = new Set<string>();
-      const commitments = new Set<string>();
-      const notes = data.notes.map((entry: IStoredNote) => {
-        if (
-          !entry ||
-          typeof entry.id !== 'string' ||
-          entry.id.length !== 36 ||
-          !UUID.test(entry.id) ||
-          ids.has(entry.id) ||
-          !Number.isSafeInteger(entry.createdAt) ||
-          entry.createdAt < 0 ||
-          entry.createdAt > 8_640_000_000_000_000 ||
-          typeof entry.note !== 'string' ||
-          entry.note.length > 256 ||
-          entry.note !== entry.note.trim().toLowerCase() ||
-          (entry.origin !== undefined && entry.origin !== 'generated') ||
-          (legacyRoot &&
-            Object.prototype.hasOwnProperty.call(entry, 'restoreGuard'))
-        )
-          throw new Error('privacy_vault_corrupt');
-        const restoreGuard =
-          entry.restoreGuard === undefined
-            ? undefined
-            : readPrivateNoteRestoreGuard(entry.restoreGuard);
-        const identity = identify(entry.note);
-        const deposit =
-          entry.deposit === undefined ? undefined : journal(entry.deposit);
-        const withdrawal =
-          entry.withdrawal === undefined
-            ? undefined
-            : withdrawalJournal(entry.withdrawal);
-        if (deposit && entry.origin !== 'generated')
-          throw new Error('privacy_vault_corrupt');
-        const key = `${identity.poolId}:${identity.commitment}`;
-        if (commitments.has(key)) throw new Error('privacy_vault_corrupt');
-        commitments.add(key);
-        ids.add(entry.id);
-        return {
-          id: entry.id,
-          note: entry.note,
-          createdAt: entry.createdAt,
-          ...(entry.origin === 'generated' ? { origin: entry.origin } : {}),
-          ...(deposit ? { deposit } : {}),
-          ...(withdrawal ? { withdrawal } : {}),
-          ...(restoreGuard ? { restoreGuard } : {}),
-        };
-      });
-      for (const note of notes) privateNoteExportHistory(note);
-      return { manifest: { version: 1, notes }, recordId };
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        [
-          'privacy_vault_session_changed',
-          'privacy_vault_unavailable',
-          'privacy_vault_unsupported_format',
-          'Private record session changed',
-        ].includes(error.message)
-      )
-        throw error;
-      throw new Error('privacy_vault_corrupt');
-    }
+    const result = await readPrivateVaultBundle(
+      stored,
+      context.session,
+      identify
+    );
+    context.session.assertCurrent();
+    context.capacity = result.capacity;
+    context.restore = result.restore;
+    context.storedBytes = result.storedBytes;
+    return { manifest: result.manifest, recordId: result.recordId };
   };
 
   const readStatus = async (

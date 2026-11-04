@@ -10,7 +10,7 @@
     "web": "EXPO_NO_TELEMETRY=1 expo start --web",
     "build:web": "EXPO_NO_TELEMETRY=1 expo export --platform web",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/*.test.ts",
+    "test": "node --import ./scripts/register-shared-test-dependencies.mjs --test tests/*.test.ts",
     "test:ui": "playwright test",
     "test:watch-ui": "node scripts/build-native-watch-ui.cjs && playwright test --config playwright.watch.config.ts",
     "test:activity-ui": "node scripts/build-native-activity-ui.cjs && playwright test --config playwright.activity.config.ts",
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
+    "@noble/curves": "1.9.7",
     "@sidhujag/sysweb3-keyring": "2.0.0",
     "assert": "2.1.0",
     "bech32": "2.0.0",

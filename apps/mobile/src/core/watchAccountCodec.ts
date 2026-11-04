@@ -18,7 +18,7 @@ export type StoredWatchAccount =
       policy: 'bip84-p2wpkh'; accountKey: string; checkpoint: Bip84DiscoveryCursor | null }>;
 /** Internal data only. Ordinary public snapshots receive only accounts. */
 export type DecodedWatchRecords = Readonly<{
-  version: 1 | 2;
+  version: 1;
   records: readonly StoredWatchAccount[];
   accounts: readonly PublicAccount[];
 }>;
@@ -77,30 +77,44 @@ export function snapshotWatchRecords(input: unknown): readonly StoredWatchAccoun
 }
 
 /** Shape checks supplement the trusted SDK adapter; they do not parse a key or prove ownership. */
-export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
-  const captured = dataRecord(port, ['canonicalize', 'deriveFirstReceive']);
-  if (typeof captured.canonicalize !== 'function' || typeof captured.deriveFirstReceive !== 'function') return invalid();
-  const canonicalize = captured.canonicalize as PublicBip84ValidationPort['canonicalize'];
-  const derive = captured.deriveFirstReceive as PublicBip84ValidationPort['deriveFirstReceive'];
+export function createWatchAccountCodec(port?: PublicBip84ValidationPort) {
+  const captured = port === undefined ? null : dataRecord(port, ['canonicalize', 'deriveFirstReceive']);
+  if (captured && (typeof captured.canonicalize !== 'function' || typeof captured.deriveFirstReceive !== 'function')) return invalid();
+  const canonicalize = captured?.canonicalize as PublicBip84ValidationPort['canonicalize'] | undefined;
+  const derive = captured?.deriveFirstReceive as PublicBip84ValidationPort['deriveFirstReceive'] | undefined;
   const invoke = <T>(operation: () => T): T => {
     try { return operation(); } catch { return invalid(); }
   };
   const validatedLists = new WeakSet<readonly StoredWatchAccount[]>();
-  function validate(input: unknown): DecodedWatchRecords {
+  function validate(input: unknown, boundary?: () => void): DecodedWatchRecords {
+    const checkBoundary = () => {
+      if (!boundary) return;
+      const result: unknown = boundary();
+      if (result !== undefined) {
+        if (result instanceof Promise) void Promise.prototype.then.call(result, undefined, () => undefined);
+        return invalid();
+      }
+    };
+    const guarded = <T>(operation: () => T): T => {
+      checkBoundary();
+      try { return invoke(operation); }
+      finally { checkBoundary(); }
+    };
     const detached = snapshotWatchRecords(input), accounts: PublicAccount[] = [], keys = new Set<string>();
     const records = detached.map((record): StoredWatchAccount => {
       if (record.kind === 'address') {
         accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: record.addresses })); return record;
       }
+      if (!canonicalize || !derive) return invalid();
       const request = Object.freeze({ networkId: record.networkId, accountKey: record.accountKey });
-      const output = dataRecord(invoke(() => canonicalize(request)), ['canonicalKey']);
+      const output = dataRecord(guarded(() => canonicalize(request)), ['canonicalKey']);
       if (typeof output.canonicalKey !== 'string' || !/^zpub[1-9A-HJ-NP-Za-km-z]{96,108}$/.test(output.canonicalKey)) return invalid();
       const key = output.canonicalKey;
-      if (dataRecord(invoke(() => canonicalize(Object.freeze({ networkId: record.networkId, accountKey: key }))), ['canonicalKey']).canonicalKey !== key) return invalid();
+      if (dataRecord(guarded(() => canonicalize(Object.freeze({ networkId: record.networkId, accountKey: key }))), ['canonicalKey']).canonicalKey !== key) return invalid();
       const identity = `${record.networkId}:${key}`;
       if (keys.has(identity)) return invalid();
       keys.add(identity);
-      const first = dataRecord(invoke(() => derive(Object.freeze({ networkId: record.networkId, canonicalKey: key }))), ['address']);
+      const first = dataRecord(guarded(() => derive(Object.freeze({ networkId: record.networkId, canonicalKey: key }))), ['address']);
       const address = normalizeUtxoAddress(first.address, record.networkId);
       accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: Object.freeze({ [record.networkId]: address }) }));
       return Object.freeze({ ...record, accountKey: key });
@@ -108,28 +122,23 @@ export function createWatchAccountCodec(port: PublicBip84ValidationPort) {
     // Retain existing public projection validation and never include an account key.
     const frozen = Object.freeze(records);
     validatedLists.add(frozen);
-    return Object.freeze({ version: 2, records: frozen, accounts: validatePublicAccounts(accounts) });
+    return Object.freeze({ version: 1, records: frozen, accounts: validatePublicAccounts(accounts) });
   }
   return Object.freeze({
     validate,
-    decode(raw: string | null): DecodedWatchRecords {
-      if (raw === null) return Object.freeze({ version: 1, records: Object.freeze([]), accounts: Object.freeze([]) });
+    decode(raw: string | null, boundary?: () => void): DecodedWatchRecords {
+      if (raw === null) return validate([], boundary);
       assertWatchRecordSize(raw);
       let parsed: unknown;
       try { parsed = JSON.parse(raw); } catch { return invalid(); }
       assertJsonWorkBudget(parsed, WATCH_RECORD_LIMITS.bytes, 9, 1600);
       const version = parsed && typeof parsed === 'object' ? Object.getOwnPropertyDescriptor(parsed, 'version')?.value : undefined;
-      if (version === 1) {
-        const doc = dataRecord(parsed, ['version', 'accounts']);
-        const accounts = validatePublicAccounts(doc.accounts);
-        return Object.freeze({ version: 1, accounts, records: Object.freeze(accounts.map((account) => Object.freeze({ kind: 'address' as const, ...account }))) });
-      }
-      if (version !== 2) return invalid();
-      return validate(dataRecord(parsed, ['version', 'records']).records);
+      if (version !== 1) return invalid();
+      return validate(dataRecord(parsed, ['version', 'records']).records, boundary);
     },
     encode(records: readonly StoredWatchAccount[]): string {
       if (!validatedLists.has(records)) return invalid();
-      const raw = JSON.stringify({ version: 2, records }); assertWatchRecordSize(raw); return raw;
+      const raw = JSON.stringify({ version: 1, records }); assertWatchRecordSize(raw); return raw;
     },
   });
 }

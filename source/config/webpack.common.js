@@ -402,6 +402,9 @@ module.exports = {
               ) ||
               resource.endsWith(
                 '/node_modules/@noble/curves/abstract/edwards.js'
+              ) ||
+              resource.endsWith(
+                '/node_modules/@noble/curves/esm/abstract/edwards.js'
               )
             );
           },

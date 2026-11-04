@@ -17,13 +17,30 @@ function assertSize(raw: string, limit: number): void {
 
 /** Internal snapshot; only this repository can admit it as a compare token. */
 export type WatchRecordSnapshot = DecodedWatchRecords;
+export type WatchRecordRepository = Readonly<{
+  load(): Promise<WatchRecordSnapshot>;
+  saveCheckpoint(expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null, assertCurrent?: () => void): Promise<WatchRecordSnapshot>;
+}>;
+class CheckpointCancelledError extends Error {
+  constructor() { super('Checkpoint save was cancelled before dispatch'); this.name = 'CheckpointCancelledError'; }
+}
+function checkpointGuard(guard: (() => void) | undefined): void {
+  if (!guard) return;
+  try {
+    const result: unknown = guard();
+    if (result !== undefined) {
+      if (result instanceof Promise) void Promise.prototype.then.call(result, undefined, () => undefined);
+      throw new CheckpointCancelledError();
+    }
+  } catch { throw new CheckpointCancelledError(); }
+}
 
 /** One same-process serialized repository. This is not cross-process atomic CAS. */
 export function createPublicAccountStorage(port: PublicStoragePort, bip84?: PublicBip84ValidationPort) {
   let queue: Promise<void> = Promise.resolve();
   let accountsUnavailable = false;
   let recordsEpoch = 0;
-  const codec = bip84 === undefined ? null : createWatchAccountCodec(bip84);
+  const codec = createWatchAccountCodec(bip84);
   const snapshots = new WeakMap<WatchRecordSnapshot, { raw: string | null; used: boolean; epoch: number }>();
   function serialized<T>(operation: () => Promise<T>): Promise<T> {
     const result = queue.then(operation);
@@ -31,15 +48,10 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     return result;
   }
   async function readAccounts(): Promise<readonly PublicAccount[]> {
-    const raw = await port.get(PUBLIC_ACCOUNTS_KEY);
-    // Only an explicit missing key is empty. Corrupt/unknown records are retained.
-    if (raw === null) return Object.freeze([]);
-    assertSize(raw, 32 * 1024);
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Unsupported public account configuration');
-    const record = parsed as Record<string, unknown>;
-    if (record.version !== 1 || Object.keys(record).some((key) => key !== 'version' && key !== 'accounts')) throw new Error('Unsupported public account configuration');
-    return validatePublicAccounts(record.accounts);
+    const decoded = codec.decode(await readRecordRaw());
+    // The address editor cannot discard an account key or discovery checkpoint.
+    if (decoded.records.some((record) => record.kind !== 'address')) throw new Error('Use the public account record editor for account keys');
+    return decoded.accounts;
   }
   async function readSelection(): Promise<AccountSelection | null> {
     const raw = await port.get(ACCOUNT_SELECTION_KEY);
@@ -70,25 +82,33 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
       }
     }
   }
-  function compareAndSetRecords(expected: WatchRecordSnapshot, next: unknown): Promise<WatchRecordSnapshot> {
+  function compareAndSetRecords(expected: WatchRecordSnapshot, next: unknown, guard?: () => void): Promise<WatchRecordSnapshot> {
     // Detach before entering the queue; no host validation callback runs here.
     const detached = snapshotWatchRecords(next);
     return serialized(async () => {
       const ticket = snapshots.get(expected);
-      if (!codec || !ticket || ticket.used) throw new Error('Reopen saved watch records before saving');
+      if (!ticket || ticket.used) throw new Error('Reopen saved watch records before saving');
       if (accountsUnavailable) throw new Error('Saved watch records are unavailable. Reopen them before saving.');
       if (ticket.epoch !== recordsEpoch) throw new Error('Reopen saved watch records before saving');
-      const validated = codec.validate(detached);
+      // A cancelled guarded attempt is consumed without declaring durable data corrupt.
+      if (guard) { ticket.used = true; checkpointGuard(guard); }
+      const boundary = guard ? () => checkpointGuard(guard) : undefined;
+      const validated = codec.validate(detached, boundary);
+      checkpointGuard(guard);
       retainedSources(expected, validated.records);
       const raw = codec.encode(validated.records);
       ticket.used = true;
       try {
         const current = await readRecordRaw();
-        // Validate every v2 read, even when the raw comparison will reject it.
-        const currentDecoded = codec.decode(current);
+        checkpointGuard(guard);
+        // Validate every read, even when the raw comparison will reject it.
+        const currentDecoded = codec.decode(current, boundary);
+        checkpointGuard(guard);
         if (current !== ticket.raw || JSON.stringify(currentDecoded.records) !== JSON.stringify(expected.records) ||
             JSON.stringify(currentDecoded.accounts) !== JSON.stringify(expected.accounts))
           throw new Error('Saved watch accounts changed. Reopen them before saving.');
+        checkpointGuard(guard);
+        // After this dispatch, always drain and verify; revocation cannot undo set.
         try { await port.set(PUBLIC_ACCOUNTS_KEY, raw); }
         catch { throw new Error('Saved watch records could not be verified. Reopen them before saving.'); }
         const persisted = await readRecordRaw();
@@ -98,10 +118,13 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
           throw new Error('Saved watch accounts could not be verified.');
         recordsEpoch++;
         return issue(decoded, persisted);
-      } catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
+      } catch (cause) {
+        if (!(cause instanceof CheckpointCancelledError)) { accountsUnavailable = true; recordsEpoch++; }
+        throw cause;
+      }
     });
   }
-  const records = codec && Object.freeze({
+  const records = Object.freeze({
     load: (): Promise<WatchRecordSnapshot> => serialized(async () => {
       try {
         const raw = await readRecordRaw();
@@ -110,17 +133,18 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
         return issue(decoded, raw);
       } catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
     }),
-    compareAndSet: compareAndSetRecords,
-    saveCheckpoint: (expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null): Promise<WatchRecordSnapshot> => {
+    compareAndSet: (expected: WatchRecordSnapshot, next: unknown) => compareAndSetRecords(expected, next),
+    saveCheckpoint: (expected: WatchRecordSnapshot, id: string, checkpoint: Bip84DiscoveryCursor | null, assertCurrent?: () => void): Promise<WatchRecordSnapshot> => {
+      if (assertCurrent !== undefined && typeof assertCurrent !== 'function') return Promise.reject(new Error('Invalid checkpoint guard'));
       if (!snapshots.has(expected)) return Promise.reject(new Error('Reopen saved watch records before saving'));
       const target = expected.records.find((record) => record.id === id);
       if (!target || target.kind !== 'bip84-public') return Promise.reject(new Error('This public account is no longer available'));
-      return compareAndSetRecords(expected, expected.records.map((record) => record === target ? { ...record, checkpoint } : record));
+      return compareAndSetRecords(expected, expected.records.map((record) => record === target ? { ...record, checkpoint } : record), assertCurrent);
     },
   });
   return Object.freeze({
-    // Legacy calls deliberately refuse every v2 document, including address-only
-    // v2. They must never project away a key record or its checkpoint on save.
+    // Address-only editing uses the same canonical records and codec. It refuses
+    // account-key records rather than projecting away their checkpoints.
     loadAccounts: (): Promise<readonly PublicAccount[]> => serialized(async () => {
       try { const accounts = await readAccounts(); accountsUnavailable = false; return accounts; }
       catch (cause) { accountsUnavailable = true; recordsEpoch++; throw cause; }
@@ -128,8 +152,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
     compareAndSetAccounts: (expected: readonly PublicAccount[], accounts: readonly PublicAccount[]): Promise<void> => {
       const validated = validatePublicAccounts(accounts);
       const expectedJson = JSON.stringify(validatePublicAccounts(expected));
-      const raw = JSON.stringify({ version: 1, accounts: validated });
-      assertSize(raw, 32 * 1024);
+      const raw = codec.encode(codec.validate(validated.map((account) => ({ kind: 'address', ...account }))).records);
       return serialized(async () => {
         if (accountsUnavailable) throw new Error('Saved watch accounts are unavailable. Reopen them before saving.');
         if (JSON.stringify(await readAccounts()) !== expectedJson) throw new Error('Saved watch accounts changed. Reopen them before saving.');
@@ -150,7 +173,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, bip84?: Publ
         if (JSON.stringify(await readSelection()) !== JSON.stringify(checked)) throw new Error('Saved account choice could not be verified.');
       });
     },
-    // No adapter is installed by production platform construction today.
+    // Account-key records additionally require the trusted public SDK adapter.
     records,
   });
 }

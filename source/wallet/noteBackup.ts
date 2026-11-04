@@ -1,21 +1,23 @@
-import { identifyClassicNote } from '../utils/privacy/note';
-import { assertJsonWorkBudget } from '../utils/requestPayloadBudget';
+import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
+import { identifyClassicNote } from '../utils/privacy/note.ts';
+import { assertJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
+
 import {
   snapshotBackupObject as object,
   snapshotBackupArray,
   validateNoteBackupHistory,
-} from './noteBackupHistory';
-import type { INoteBackupHistory } from './noteBackupHistory';
+} from './noteBackupHistory.ts';
+import type { INoteBackupHistory } from './noteBackupHistory.ts';
 export {
   NOTE_BACKUP_MAX_HISTORY_HINTS,
   validateNoteBackupHistory,
   mergeNoteBackupHistories,
-} from './noteBackupHistory';
+} from './noteBackupHistory.ts';
 export type {
   INoteBackupDepositHistory,
   INoteBackupWithdrawalHistory,
   INoteBackupHistory,
-} from './noteBackupHistory';
+} from './noteBackupHistory.ts';
 
 export const NOTE_BACKUP_FORMAT = 'pali-private-notes';
 export const NOTE_BACKUP_HEADER_BYTES = 64;
@@ -154,38 +156,15 @@ export function validateNoteBackupPayload(
 
 /** Bound allocations before JSON.parse. Canonical JSON has no external whitespace. */
 function checkJsonWork(text: string): void {
-  let depth = 0;
-  let nodes = 0;
-  const node = () => {
-    if (++nodes > MAX_JSON_NODES) fail('BACKUP_INVALID_PAYLOAD');
-  };
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (char === '{' || char === '[') {
-      node();
-      if (++depth > MAX_JSON_DEPTH) fail('BACKUP_INVALID_PAYLOAD');
-    } else if (char === '}' || char === ']') {
-      if (--depth < 0) fail('BACKUP_INVALID_PAYLOAD');
-    } else if (char === '"') {
-      const start = ++i;
-      for (; i < text.length; i++) {
-        if (i - start > MAX_JSON_TOKEN_CHARS) fail('BACKUP_INVALID_PAYLOAD');
-        if (text[i] === '\\') i++;
-        else if (text[i] === '"') break;
-      }
-      if (i >= text.length) fail('BACKUP_INVALID_PAYLOAD');
-      if (text[i + 1] !== ':') node();
-    } else if (char === ',' || char === ':') {
-      // Syntax is checked by JSON.parse after this work budget.
-    } else {
-      if (char <= ' ') fail('BACKUP_INVALID_PAYLOAD');
-      node();
-      while (i + 1 < text.length && !',]}:'.includes(text[i + 1])) {
-        if (text[++i] <= ' ') fail('BACKUP_INVALID_PAYLOAD');
-      }
-    }
+  try {
+    assertJsonTextBudget(text, {
+      depth: MAX_JSON_DEPTH,
+      nodes: MAX_JSON_NODES,
+      tokenCharacters: MAX_JSON_TOKEN_CHARS,
+    });
+  } catch {
+    fail('BACKUP_INVALID_PAYLOAD');
   }
-  if (depth !== 0) fail('BACKUP_INVALID_PAYLOAD');
 }
 // Read internal typed-array slots, not overridable subclass/own properties.
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);

@@ -9,12 +9,13 @@ import type { UtxoBalance } from '../src/core/utxoBalanceReader.ts';
 const ETH = '0x52908400098527886E0F7030069857D2E4169EE7';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
 const SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
-const legacy = { id: 'legacy', name: 'Existing', addresses: { ethereum: ETH, base: '0x1111111111111111111111111111111111111111' } };
+const mapped = { id: 'mapped', name: 'Mapped account', addresses: { ethereum: ETH, base: '0x1111111111111111111111111111111111111111' } };
 const sys = createWatchAccount('sys', 'Syscoin watch', SYS, 'syscoin');
 const btc = createWatchAccount('btc', 'Bitcoin watch', BTC, 'bitcoin');
 const observation = (network: UtxoNetworkId): UtxoBalance => ({ networkId: network, kind: 'utxo', chainId: getUtxoNetwork(network).chainId,
   genesisHash: getUtxoNetwork(network).genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123', unconfirmedTransactions: 2, observedHeight: 123 });
-function fixture(raw = JSON.stringify({ version: 1, accounts: [legacy] }), loseAck = false) {
+const document = (accounts: readonly unknown[]) => ({ version: 1, records: accounts.map((account) => ({ kind: 'address', ...(account as object) })) });
+function fixture(raw = JSON.stringify(document([mapped])), loseAck = false) {
   let saved = raw;
   let writes = 0;
   const repository = createPublicAccountStorage({ async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : null; },
@@ -24,9 +25,9 @@ function fixture(raw = JSON.stringify({ version: 1, accounts: [legacy] }), loseA
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>((r) => { resolve = r; }); return { resolve, promise }; }
 
-test('v1 schema admits EVM mappings or a single fixed UTXO address without changing its shape', () => {
-  const rows = validatePublicAccounts([legacy, sys, btc]);
-  assert.deepEqual(rows, [legacy, sys, btc]);
+test('public projection admits EVM mappings or a single fixed UTXO address without changing its shape', () => {
+  const rows = validatePublicAccounts([mapped, sys, btc]);
+  assert.deepEqual(rows, [mapped, sys, btc]);
   assert.deepEqual(Object.keys(sys), ['id', 'name', 'addresses']);
   assert.deepEqual(Object.keys(sys.addresses), ['syscoin']); assert.deepEqual(Object.keys(btc.addresses), ['bitcoin']);
   assert.equal(Object.isFrozen(sys.addresses), true);
@@ -57,25 +58,25 @@ test('untrusted public records reject accessors and nonenumerable/symbol data wi
   assert.equal(reads, 0);
 });
 
-test('existing repository/controller retains exact v1 legacy rows and writes both UTXO families', async () => {
-  const raw = '{ "version": 1, "accounts": ' + JSON.stringify([legacy]) + ' }';
+test('existing repository/controller retains canonical rows and writes both UTXO families', async () => {
+  const raw = JSON.stringify(document([mapped]), null, 2);
   const f = fixture(raw); await f.accounts.load();
   assert.equal(f.raw, raw); assert.equal(f.writes, 0);
   await f.accounts.change({ kind: 'add', id: sys.id, name: sys.name, address: SYS, network: 'syscoin' });
   await f.accounts.change({ kind: 'add', id: btc.id, name: btc.name, address: BTC, network: 'bitcoin' });
-  assert.deepEqual(JSON.parse(f.raw), { version: 1, accounts: [legacy, sys, btc] });
-  assert.deepEqual(await f.repository.loadAccounts(), [legacy, sys, btc]);
+  assert.deepEqual(JSON.parse(f.raw), document([mapped, sys, btc]));
+  assert.deepEqual(await f.repository.loadAccounts(), [mapped, sys, btc]);
   assert.equal(f.accounts.getSnapshot().status, 'ready');
   assert.equal(f.raw.includes('privateKey'), false);
   await f.accounts.change({ kind: 'rename', id: sys.id, name: 'Renamed SYS' });
   await f.accounts.change({ kind: 'remove', id: btc.id });
-  assert.deepEqual((await f.repository.loadAccounts())[0], legacy);
+  assert.deepEqual((await f.repository.loadAccounts())[0], mapped);
   assert.equal((await f.repository.loadAccounts())[1]!.name, 'Renamed SYS');
 });
 
-test('duplicate checks bind address to its actual network mapping and preserve legacy EVM subsets', async () => {
+test('duplicate checks bind address to its actual network mapping and preserve mapped EVM subsets', async () => {
   const f = fixture(); await f.accounts.load();
-  await assert.rejects(f.accounts.change({ kind: 'add', id: 'dup-evm', name: 'Duplicate', address: legacy.addresses.base }), /already/);
+  await assert.rejects(f.accounts.change({ kind: 'add', id: 'dup-evm', name: 'Duplicate', address: mapped.addresses.base }), /already/);
   await f.accounts.change({ kind: 'add', id: sys.id, name: sys.name, address: SYS, network: 'syscoin' });
   const before = f.raw;
   await assert.rejects(f.accounts.change({ kind: 'add', id: 'dup-sys', name: 'Duplicate', address: SYS.toUpperCase(), network: 'syscoin' }), /already/);
@@ -85,7 +86,7 @@ test('duplicate checks bind address to its actual network mapping and preserve l
 });
 
 test('malformed saved mixed-family data cannot be dropped or overwritten', async () => {
-  const raw = JSON.stringify({ version: 1, accounts: [{ ...sys, addresses: { ...sys.addresses, ethereum: ETH } }] });
+  const raw = JSON.stringify(document([{ ...sys, addresses: { ...sys.addresses, ethereum: ETH } }]));
   const f = fixture(raw); await assert.rejects(f.accounts.load());
   assert.equal(f.accounts.getSnapshot().status, 'unavailable');
   await assert.rejects(f.accounts.change({ kind: 'add', id: 'new', name: 'New', address: BTC, network: 'bitcoin' }), /Reopen/);
@@ -96,17 +97,17 @@ test('lost public write acknowledgement requires reopening and recovers committe
   const f = fixture(undefined, true); await f.accounts.load();
   await assert.rejects(f.accounts.change({ kind: 'add', id: sys.id, name: sys.name, address: SYS, network: 'syscoin' }), /verified/);
   assert.equal(f.accounts.getSnapshot().status, 'unavailable');
-  await assert.rejects(f.accounts.change({ kind: 'remove', id: 'legacy' }), /Reopen/);
+  await assert.rejects(f.accounts.change({ kind: 'remove', id: 'mapped' }), /Reopen/);
   assert.equal(f.writes, 1);
-  await f.accounts.load(); assert.deepEqual(f.accounts.getSnapshot().accounts, [legacy, sys]);
+  await f.accounts.load(); assert.deepEqual(f.accounts.getSnapshot().accounts, [mapped, sys]);
 });
 
-test('external v1 changes and competing saves cannot be silently replaced by a stale UTXO snapshot', async () => {
+test('external record changes and competing saves cannot be silently replaced by a stale UTXO snapshot', async () => {
   const f = fixture(); await f.accounts.load(); const expected = f.accounts.getSnapshot().accounts;
-  f.replace(JSON.stringify({ version: 1, accounts: [legacy, btc] }));
+  f.replace(JSON.stringify(document([mapped, btc])));
   await assert.rejects(f.accounts.change({ kind: 'add', id: sys.id, name: sys.name, address: SYS, network: 'syscoin' }), /verified/);
-  assert.equal(f.writes, 0); assert.deepEqual(await f.repository.loadAccounts(), [legacy, btc]);
-  await assert.rejects(f.repository.compareAndSetAccounts(expected, [legacy, sys]), /changed/);
+  assert.equal(f.writes, 0); assert.deepEqual(await f.repository.loadAccounts(), [mapped, btc]);
+  await assert.rejects(f.repository.compareAndSetAccounts(expected, [mapped, sys]), /changed/);
 });
 
 test('optional add-network input rejects coercion, getters and private fields before storage', async () => {
@@ -123,7 +124,7 @@ test('one watch authority routes EVM and UTXO separately and retains confirmed v
   const calls: string[] = [];
   const reader: BalanceReader = { async readBalance(n) { calls.push(n); return { chainId: 1, units: '0' }; },
     async readUtxoBalance(n, address) { calls.push(n); assert.equal(address, n === 'syscoin' ? SYS : BTC); return observation(n); } };
-  const authority = new WatchOnlyAuthority([legacy, sys, btc], reader, () => 500);
+  const authority = new WatchOnlyAuthority([mapped, sys, btc], reader, () => 500);
   authority.unlock(); await authority.refresh(); assert.deepEqual(authority.getSnapshot().balance, { status: 'available', units: '0', updatedAt: 500 });
   for (const account of [sys, btc]) {
     authority.selectAccount(account.id); await authority.refresh();

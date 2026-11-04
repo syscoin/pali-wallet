@@ -1,5 +1,4 @@
-import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
-
+import type { IEvmTransactionContext } from '../evmTransactionContext';
 import type { PrivacyPoolId } from './types';
 
 export interface IPrivacyDepositSession {

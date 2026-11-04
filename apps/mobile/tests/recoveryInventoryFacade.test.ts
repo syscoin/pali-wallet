@@ -27,7 +27,7 @@ const cancelled = (error: unknown) => error instanceof CustodyOperationError &&
 function savedSnapshot(): RecoveryStorageSnapshot {
   return {
     identity: { walletBindingId: BINDING, pairFingerprint: BINDING, root: null, verification: 'requires-unlock' },
-    state: { presence: 'existing', backup: 'confirmed' }, metadata: [],
+    state: { presence: 'existing', backup: 'confirmed' }, metadata: [], notes: [],
     records: [{ key: WALLET_CATALOGUE_KEY, value: JSON.stringify({
       version: 1, revision: 0, walletFingerprint: BINDING, nextIndex: 1, retiredIndices: [],
       nextImportedIndex: 0, retiredImportedIndices: [], importedAccounts: [],

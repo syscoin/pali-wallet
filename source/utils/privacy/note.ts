@@ -1,11 +1,7 @@
-import { getPrivacyPool } from './registry';
-import type { PrivacyPoolId } from './types';
+import { edwards } from '@noble/curves/abstract/edwards';
 
-// The background already carries this package's CommonJS arithmetic. Match
-// that entry point so the note chunk does not add a second ESM copy.
-const edwards: typeof import('@noble/curves/abstract/edwards').edwards =
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  require('@noble/curves/abstract/edwards').edwards;
+import { getPrivacyPool } from './registry.ts';
+import type { PrivacyPoolId } from './types.ts';
 
 const ORDER =
   BigInt(
@@ -44,7 +40,7 @@ const BASES = [
     '5980429700218124965372158798884772646841287887664001482443826541541529227896',
   ],
 ].map(([x, y]) => {
-  const point = Point.fromAffine({ x: BigInt(x), y: BigInt(y) });
+  const point = Point.fromAffine({ x: BigInt(x!), y: BigInt(y!) });
   point.assertValidity();
   if (!point.isTorsionFree()) throw new Error('privacy_protocol_invalid');
   return point;
@@ -66,7 +62,7 @@ function classicPedersenX(bytes: Uint8Array): string {
       offset < Math.min(bits, (segment + 1) * 200);
       offset += 4
     ) {
-      const nibble = (bytes[offset >>> 3] >>> (offset & 7)) & 15;
+      const nibble = (bytes[offset >>> 3]! >>> (offset & 7)) & 15;
       const digit =
         BigInt(1 + (nibble & 7)) * (nibble & 8 ? BigInt(-1) : BigInt(1));
       scalar += digit * power;
@@ -74,7 +70,7 @@ function classicPedersenX(bytes: Uint8Array): string {
     }
     if (scalar < BigInt(0)) scalar += ORDER;
     if (scalar !== BigInt(0))
-      result = result.add(BASES[segment].multiply(scalar));
+      result = result.add(BASES[segment]!.multiply(scalar));
   }
   return `0x${result.toAffine().x.toString(16).padStart(64, '0')}`;
 }
@@ -120,7 +116,7 @@ export function identifyClassicNote(note: string): IClassicNoteIdentity {
   const preimage = new Uint8Array(62);
   try {
     for (let i = 0; i < preimage.length; i++)
-      preimage[i] = Number.parseInt(match[2].slice(i * 2, i * 2 + 2), 16);
+      preimage[i] = Number.parseInt(match[2]!.slice(i * 2, i * 2 + 2), 16);
     return {
       commitment: classicPedersenX(preimage),
       nullifierHash: classicPedersenX(preimage.subarray(0, 31)),

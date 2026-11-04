@@ -1,4 +1,5 @@
-import { keccak256, toUtf8Bytes } from 'ethers';
+import { keccak256 } from 'ethers/crypto';
+import { toUtf8Bytes } from 'ethers/utils';
 
 import {
   mergeNoteBackupHistories,
@@ -6,9 +7,9 @@ import {
   snapshotBackupArray,
   snapshotBackupObject,
   validateNoteBackupHistory,
-} from './noteBackupHistory';
-import type { INoteBackupHistory } from './noteBackupHistory';
-import type { identifyClassicNote } from '../utils/privacy/note';
+} from './noteBackupHistory.ts';
+import type { INoteBackupHistory } from './noteBackupHistory.ts';
+import type { identifyClassicNote } from '../utils/privacy/note.ts';
 
 // Backup decoding and envelope validation belong to the codec. This leaf only
 // projects restored entries, persists conservative evidence, and plans a merge.
@@ -296,7 +297,7 @@ export function planPrivateNoteRestore<T extends IRestorableNote>(input: {
     const position = positions.get(identity);
     if (position !== undefined) {
       duplicates++;
-      const previous = notes[position];
+      const previous = notes[position]!;
       // Never replace a local record or journal. Reconciliation markers and
       // inert imported evidence can only add a block and retain more evidence.
       if (entry.history || entry.reconciliationRequired) {

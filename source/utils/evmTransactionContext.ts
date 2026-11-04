@@ -1,4 +1,4 @@
-import type { KeyringAccountType } from 'types/network';
+import type { KeyringAccountType } from '../types/network';
 
 /** The wallet context selected for an approved EVM transaction. */
 export interface IEvmTransactionContext {
