@@ -1,7 +1,7 @@
-# NativeSend browser fixture
+# Native custody UI browser fixture
 
-This isolated Expo project renders the actual `NativeSend` component with a public
-external-store test double. It never opens wallet storage, signs a transaction or
+This isolated Expo project renders the actual `NativeSend` and `NativeAccounts` components with public
+external-store test doubles. It never opens wallet storage, signs a transaction or
 contacts an RPC endpoint. Its test controls and sample passwords are not imported
 by the production app.
 

@@ -51,6 +51,11 @@ function fixture() {
     },
   };
   const store: KeyringStoragePort = {
+    async compareAndSet(key, expected, value) {
+      if (!(key in records) || JSON.stringify(records[key]) !== JSON.stringify(expected)) return false;
+      if (failWrite) throw Error('Storage unavailable');
+      records[key] = structuredClone(value); return true;
+    },
     async get(key) {
       return records[key] === undefined
         ? undefined

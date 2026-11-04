@@ -48,9 +48,11 @@ const failure = (error: unknown) => {
 export function NativeSend({
   controller,
   onBack,
+  accountLabel = 'Account 1',
 }: {
   controller: NativeTransferView;
   onBack(): void;
+  accountLabel?: string;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -196,7 +198,7 @@ export function NativeSend({
                 ? 'Transfer status'
                 : 'Send ETH'
             }
-            subtitle="Account 1 · Ethereum"
+            subtitle={`${accountLabel} · Ethereum`}
             onBack={close}
           />
           {review ? (

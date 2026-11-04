@@ -1,6 +1,6 @@
 # Pali mobile: full-wallet design
 
-The target is feature equivalence with the existing extension, not a watch-only mobile product. This design phase defines the interface and behavior before native custody and transaction work. The current live implementation remains watch-only; the design explorer never activates those future capabilities.
+The target is feature equivalence with the existing extension. The current native development flow implements wallet creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. Watch-only accounts and the design explorer remain separate modes. The explorer specifies the broader product without activating capabilities. Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified.
 
 ## Review the design
 
@@ -17,7 +17,7 @@ The primary navigation is **Wallet / Activity / Tools / Settings**. Wallet has d
 | [Security-sensitive flows](SECURITY_FLOWS.md)             | Identity, custody, recovery, approval and interruption behavior                            |
 | [Whole-note-vault backup proposal](NOTE_BUNDLE_BACKUP.md) | Explicit shared extension/mobile enhancement, separate from current individual-note reveal |
 | [Executable screen catalogue](../src/design/catalog.ts)   | Exact design IDs, navigation, sample content and feature traceability                      |
-| [Validation record](../VALIDATION.md#full-wallet-design-review) | Design coverage, browser checks and remaining implementation boundaries               |
+| [Validation record](../VALIDATION.md#full-wallet-design-review) | Historical design coverage and browser checks; current scope and qualification boundaries               |
 
 The screen catalogue maps every parity group to one or more proposed surfaces. A screen being present is **design coverage**, not an implemented or validated native feature. Provider reads/subscriptions also need protocol tests; screen count does not measure API parity.
 
@@ -33,8 +33,8 @@ The screen catalogue maps every parity group to one or more proposed surfaces. A
 
 ## Implementation sequence after design review
 
-1. Extract/inject the shared wallet authority and native storage/lifecycle ports; qualify create, import, backup, restore and lock on real devices.
-2. Implement and qualify EVM plus Syscoin/Bitcoin UTXO reads/transfers, token/NFT flows, transaction status and replacements.
+1. Qualify the implemented shared wallet authority and native storage/lifecycle ports for create, import, backup and lock on real devices; implement and qualify remaining recovery flows.
+2. Qualify the Ethereum HD-account flow, including an end-to-end native testnet transfer, then implement and qualify remaining EVM and Syscoin/Bitcoin UTXO reads/transfers, token/NFT flows, transaction status and replacements.
 3. Implement mobile connection transport and the complete source approval/protocol matrix.
 4. Implement smart account/authenticator, guardian, privacy/proof and Sentry capabilities with per-chain/device gates.
 5. Add qualified hardware transports and the portable whole-note-vault backup format; keep both clients interoperable and covered by the same test vectors.

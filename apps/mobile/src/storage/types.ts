@@ -40,6 +40,10 @@ export interface KeyringStoragePort {
   set(key: string, value: unknown): Promise<void>;
   deleteItem(key: string): Promise<void>;
   createManyIfAbsent(items: Record<string, unknown>): Promise<boolean>;
+  /** Atomically replace an exact snapshot. Optional cleanup keys must equal their
+   * snapshots (undefined requires absence); matching present rows are deleted. */
+  compareAndSet(key: string, expected: unknown, value: unknown,
+    removeIfEqual?: Readonly<Record<string, unknown>>): Promise<boolean>;
 }
 
 export type WalletStoredState = Readonly<

@@ -1,3 +1,4 @@
+import type { NativeAccountRuntime } from './accounts.ts';
 /** Public state only. Neither SDK state nor recovery material belongs here. */
 export type CustodySnapshot = Readonly<{
   phase:
@@ -25,11 +26,14 @@ export type CustodyErrorCode =
   | 'CANCELLED'
   | 'OPERATION_FAILED'
   | 'UNAVAILABLE'
-  | 'CLEANUP_FAILED';
+  | 'CLEANUP_FAILED'
+  | 'ACCOUNT_LIMIT'
+  | 'ACCOUNT_NOT_REMOVABLE'
+  | 'PENDING_TRANSFER';
 
 /** Explicit host errors; untyped SDK errors must never supply UI classifications. */
 export class CustodyRuntimeError extends Error {
-  readonly code: 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED';
+  readonly code: 'NOT_READY' | 'INVALID_INPUT' | 'INVALID_CREDENTIAL' | 'OPERATION_FAILED' | 'CANCELLED' | 'AUTH_THROTTLED' | 'CLEANUP_FAILED' | 'BUSY' | 'ACCOUNT_LIMIT' | 'ACCOUNT_NOT_REMOVABLE' | 'PENDING_TRANSFER';
   constructor(code: CustodyRuntimeError['code']) {
     super(code);
     this.name = 'CustodyRuntimeError';
@@ -47,9 +51,10 @@ export type CustodyStoredState =
 /**
  * Internal host boundary, not an application/UI service. A native factory must
  * qualify crypto/storage before returning a runtime. It owns one SDK authority,
- * never rebinds its store, and exposes only the first Ethereum address here.
+ * never rebinds its store, and exposes only the selected Ethereum address here.
  */
 export interface CustodyRuntime {
+  readonly accounts?: NativeAccountRuntime;
   readonly session: {
     createWallet(password: string): Promise<void>;
     importWallet(phrase: string, password: string): Promise<void>;

@@ -457,3 +457,109 @@ test('partial wallet and unsupported schema cannot become onboarding', async () 
     await f.cleanup();
   }
 });
+
+
+test('atomic compare-and-set admits one writer and preserves stale or missing records', async () => {
+  const f = await fixture();
+  try {
+    const original = { revision: 0, accountId: 'hd:60:0' };
+    const first = { revision: 1, accountId: 'hd:60:1' };
+    const second = { revision: 1, accountId: 'hd:60:2' };
+    await f.storage.keyringStorage.set('catalogue-cas', original);
+    const results = await Promise.all([
+      f.storage.keyringStorage.compareAndSet('catalogue-cas', original, first),
+      f.storage.keyringStorage.compareAndSet('catalogue-cas', original, second),
+    ]);
+    assert.deepEqual(results, [true, false]);
+    assert.deepEqual(await f.storage.keyringStorage.get('catalogue-cas'), first);
+    assert.equal(await f.storage.keyringStorage.compareAndSet('absent-cas', original, second), false);
+    assert.equal(await f.storage.keyringStorage.get('absent-cas'), undefined);
+  } finally { await f.cleanup(); }
+});
+
+test('compare-and-set snapshots its arguments before queueing', async () => {
+  const f = await fixture();
+  try {
+    const before = { revision: 0 };
+    const after = { revision: 1 };
+    await f.storage.keyringStorage.set('catalogue-cas', before);
+    const pending = f.storage.keyringStorage.compareAndSet('catalogue-cas', before, after);
+    before.revision = 99; after.revision = 99;
+    assert.equal(await pending, true);
+    assert.deepEqual(await f.storage.keyringStorage.get('catalogue-cas'), { revision: 1 });
+  } finally { await f.cleanup(); }
+});
+
+test('lost compare-and-set commit acknowledgement quarantines until connection reopen', async () => {
+  let fail = false;
+  const f = await fixture({ after: (kind, sql) => {
+    if (fail && kind === 'exec' && sql === 'COMMIT') { fail = false; throw Error('lost CAS acknowledgement'); }
+  } });
+  try {
+    const before = { revision: 0 };
+    const after = { revision: 1 };
+    await f.storage.keyringStorage.set('catalogue-cas', before);
+    fail = true;
+    await assert.rejects(f.storage.keyringStorage.compareAndSet('catalogue-cas', before, after));
+    await assert.rejects(f.storage.keyringStorage.get('catalogue-cas'), /STORAGE_REOPEN_REQUIRED/);
+    await f.storage.close();
+    const reopened = await SqliteWalletStorage.open(nodeConnection(f.file).connection, digest, INSTALLATION, false);
+    try { assert.deepEqual(await reopened.keyringStorage.get('catalogue-cas'), after); }
+    finally { await reopened.close(); }
+  } finally { await f.cleanup(); }
+});
+
+
+test('CAS cleanup snapshots exact predicates and leaves both records on a mismatch', async () => {
+  const f = await fixture();
+  try {
+    const before = { revision: 0 };
+    const terminal = { phase: 'confirmed', hash: 'public transaction' };
+    await f.storage.keyringStorage.set('catalogue-cas', before);
+    await f.storage.keyringStorage.set('journal-cas', terminal);
+    assert.equal(await f.storage.keyringStorage.compareAndSet('catalogue-cas', before, { revision: 1 }, { 'journal-cas': undefined }), false);
+    assert.equal(await f.storage.keyringStorage.compareAndSet('catalogue-cas', before, { revision: 1 }, { 'journal-cas': { phase: 'signed' } }), false);
+    assert.deepEqual(await f.storage.keyringStorage.get('catalogue-cas'), before);
+    assert.deepEqual(await f.storage.keyringStorage.get('journal-cas'), terminal);
+    const predicates = { 'journal-cas': terminal, absent: undefined };
+    const pending = f.storage.keyringStorage.compareAndSet('catalogue-cas', before, { revision: 1 }, predicates);
+    terminal.phase = 'signed';
+    predicates.absent = undefined;
+    assert.equal(await pending, true);
+    assert.deepEqual(await f.storage.keyringStorage.get('catalogue-cas'), { revision: 1 });
+    assert.equal(await f.storage.keyringStorage.get('journal-cas'), undefined);
+    let getterCalled = false;
+    const accessor = Object.defineProperty({}, 'journal-cas', { enumerable: true, get() { getterCalled = true; return null; } });
+    assert.throws(() => f.storage.keyringStorage.compareAndSet('catalogue-cas', { revision: 1 }, {}, accessor), /STORAGE_CORRUPT/);
+    assert.equal(getterCalled, false);
+    assert.throws(() => f.storage.keyringStorage.compareAndSet('catalogue-cas', {}, {}, { 'catalogue-cas': {} }), /STORAGE_CORRUPT/);
+    assert.throws(() => f.storage.keyringStorage.compareAndSet('catalogue-cas', {}, {}, { [Symbol('key')]: {} }), /STORAGE_CORRUPT/);
+    assert.throws(() => f.storage.keyringStorage.compareAndSet('catalogue-cas', {}, {}, Object.fromEntries(Array.from({ length: 17 }, (_, i) => [String(i), {}]))), /STORAGE_CORRUPT/);
+  } finally { await f.cleanup(); }
+});
+
+for (const point of ['delete-failure', 'lost-ack'] as const) {
+  test(`CAS catalogue and cleanup remain atomic after ${point}`, async () => {
+    let enabled = false;
+    const fail: SqlHook = (kind, sql) => {
+      if (enabled && (point === 'delete-failure' ? kind === 'run' && sql.startsWith('DELETE') : kind === 'exec' && sql === 'COMMIT')) {
+        enabled = false; throw Error('simulated cleanup interruption');
+      }
+    };
+    const f = await fixture(point === 'lost-ack' ? { after: fail } : { before: fail });
+    try {
+      const before = { revision: 0 }, after = { revision: 1 }, journal = { phase: 'confirmed' };
+      await f.storage.keyringStorage.set('catalogue-cas', before);
+      await f.storage.keyringStorage.set('journal-cas', journal);
+      enabled = true;
+      await assert.rejects(f.storage.keyringStorage.compareAndSet('catalogue-cas', before, after, { 'journal-cas': journal }));
+      if (point === 'lost-ack') await assert.rejects(f.storage.keyringStorage.get('catalogue-cas'), /STORAGE_REOPEN_REQUIRED/);
+      await f.storage.close();
+      const reopened = await SqliteWalletStorage.open(nodeConnection(f.file).connection, digest, INSTALLATION, false);
+      try {
+        assert.deepEqual(await reopened.keyringStorage.get('catalogue-cas'), point === 'lost-ack' ? after : before);
+        assert.deepEqual(await reopened.keyringStorage.get('journal-cas'), point === 'lost-ack' ? undefined : journal);
+      } finally { await reopened.close(); }
+    } finally { await f.cleanup(); }
+  });
+}

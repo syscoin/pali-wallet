@@ -1,7 +1,13 @@
 // Isolated browser fixture: the production app never imports this entrypoint.
-import React from 'react';
+import React, { useSyncExternalStore } from 'react';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { NativeCustodyFeedback } from '../../src/screens/NativeCustodyFeedback';
+import type { CustodyErrorCode } from '../../src/custody/types';
+import { Text } from '../../src/ui';
+import { NativeAccounts } from '../../src/screens/NativeAccounts';
+import type { NativeAccountView, NativeAccountRequest } from '../../src/custody/accounts';
+import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import { NativeSend } from '../../src/screens/NativeSend';
 import { parseDecimalAmount } from '../../src/core/amounts';
 import type {
@@ -80,7 +86,70 @@ window.__nativeSendFixture = {
   confirmations: () => confirmations,
 };
 
+const accountAddress = (index: number) => '0x' + (index + 1).toString(16).padStart(40, '0');
+let accountSnapshot: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({
+  revision: 0, removed: [], active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+  networks: [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60, rpcUrl: 'https://fixture.invalid', symbol: 'ETH', decimals: 18 }],
+  accounts: [0, 1].map((index) => ({ id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, address: accountAddress(index), label: `Account ${index + 1}` })),
+});
+let accountContext = 0;
+let accountFailure: CustodyErrorCode | null = null;
+let nextIndex = 2;
+const accountListeners = new Set<() => void>();
+const accountRequests: NativeAccountRequest[] = [];
+const accountController: NativeAccountView = {
+  getSnapshot: () => accountSnapshot,
+  getContextRevision: () => accountContext,
+  subscribe(listener) { accountListeners.add(listener); return () => accountListeners.delete(listener); },
+  cancel() {},
+  async execute(request, contextRevision, catalogueRevision) {
+    if (!accountSnapshot || contextRevision !== accountContext || catalogueRevision !== accountSnapshot.revision) throw Error('CANCELLED');
+    accountRequests.push(request);
+    const injectedFailure = new URLSearchParams(window.location.search).get('failure');
+    if (injectedFailure === 'limit') throw Error('ACCOUNT_LIMIT');
+    if (injectedFailure === 'credential' || injectedFailure === 'uncertain') {
+      accountContext++; accountSnapshot = null;
+      accountFailure = injectedFailure === 'credential' ? 'INVALID_CREDENTIAL' : 'UNAVAILABLE';
+      for (const listener of accountListeners) listener();
+      throw Error(accountFailure);
+    }
+    const old = accountSnapshot;
+    accountContext++;
+    accountSnapshot = null;
+    for (const listener of accountListeners) listener();
+    await Promise.resolve();
+    let accounts = [...old.accounts], removed = [...old.removed], active = old.active;
+    if (request.kind === 'create' || request.kind === 'restore') {
+      const index = request.kind === 'create' ? nextIndex++ : request.index;
+      accounts.push({ id: `hd:60:${index}`, index, type: 'HDAccount', slip44: 60, address: accountAddress(index), label: request.label });
+      removed = removed.filter((item) => item.index !== index);
+      active = { accountId: `hd:60:${index}`, networkId: 'ethereum' };
+    } else if (request.kind === 'select') active = { accountId: request.id, networkId: 'ethereum' };
+    else if (request.kind === 'rename') accounts = accounts.map((account) => account.id === request.id ? { ...account, label: request.label } : account);
+    else if (request.kind === 'remove') {
+      const account = accounts.find((item) => item.id === request.id)!;
+      removed.push({ id: account.id, index: account.index });
+      accounts = accounts.filter((item) => item.id !== request.id);
+    }
+    accountSnapshot = Object.freeze({ ...old, revision: old.revision + 1, accounts, removed, active });
+    for (const listener of accountListeners) listener();
+  },
+};
+declare global { interface Window { __nativeAccountsFixture: { requests(): readonly NativeAccountRequest[]; contextRevision(): number; revise(): void }; } }
+window.__nativeAccountsFixture = {
+  requests: () => accountRequests,
+  contextRevision: () => accountContext,
+  revise() {
+    if (accountSnapshot) accountSnapshot = Object.freeze({ ...accountSnapshot, revision: accountSnapshot.revision + 1 });
+    accountContext++;
+    for (const listener of accountListeners) listener();
+  },
+};
+
 function Fixture() {
-  return <SafeAreaProvider><NativeSend controller={controller} onBack={() => undefined} /></SafeAreaProvider>;
+  const failure = useSyncExternalStore(accountController.subscribe, () => accountFailure, () => accountFailure);
+  return <SafeAreaProvider>{new URLSearchParams(window.location.search).has('accounts')
+    ? failure ? <><Text>Wallet locked</Text><NativeCustodyFeedback error={failure} /></> : <NativeAccounts controller={accountController} onBack={() => undefined} />
+    : <NativeSend controller={controller} onBack={() => undefined} />}</SafeAreaProvider>;
 }
 registerRootComponent(Fixture);

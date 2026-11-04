@@ -4,6 +4,10 @@ import { Transaction } from 'ethers/transaction';
 import type { KeyringStoragePort } from '../storage/types.ts';
 
 const STORAGE_KEY = 'native-evm-transfer-v1';
+export function nativeTransferJournalKey(accountIndex: number): string {
+  if (!Number.isSafeInteger(accountIndex) || accountIndex < 0 || accountIndex > 4095) throw new TransferJournalError('CORRUPT');
+  return accountIndex === 0 ? STORAGE_KEY : `${STORAGE_KEY}:hd:60:${accountIndex}`;
+}
 const MAX_RAW_CHARACTERS = 4096;
 const queues = new WeakMap<KeyringStoragePort, Promise<void>>();
 export type TransferJournalPhase =
@@ -166,6 +170,13 @@ function decode(
   });
 }
 
+/** Validate the complete signed entry and scope before atomic account cleanup. */
+export function terminalJournalForRemoval(value: TransferJournalEntry, scope: TransferJournalScope): TransferJournalEntry {
+  const entry = decode(value, scopeSnapshot(scope));
+  if (!['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)) throw new TransferJournalError('PENDING_TRANSFER');
+  return entry;
+}
+
 /**
  * Internal encrypted-storage journal. Never expose signed bytes to a screen.
  * A durable attempted marker is required BEFORE any network submission. After
@@ -178,12 +189,15 @@ export class NativeTransferJournal {
   private readonly storage: KeyringStoragePort;
   private readonly assertCurrent: () => void;
   private readonly now: () => number;
+  private readonly storageKey: string;
   constructor(
     storage: KeyringStoragePort,
     scope: TransferJournalScope,
     assertCurrent: () => void,
-    now = Date.now
+    now = Date.now,
+    accountIndex = 0
   ) {
+    this.storageKey = nativeTransferJournalKey(accountIndex);
     this.scope = scopeSnapshot(scope);
     this.storage = storage;
     this.assertCurrent = assertCurrent;
@@ -217,7 +231,7 @@ export class NativeTransferJournal {
   }
   private async read(): Promise<TransferJournalEntry | null> {
     this.guard();
-    const value = await this.storage.get(STORAGE_KEY);
+    const value = await this.storage.get(this.storageKey);
     this.guard();
     return value === undefined ? null : decode(value, this.scope);
   }
@@ -249,9 +263,9 @@ export class NativeTransferJournal {
       }
       this.guard();
       if (!old) {
-        if (!(await this.storage.createManyIfAbsent({ [STORAGE_KEY]: entry })))
+        if (!(await this.storage.createManyIfAbsent({ [this.storageKey]: entry })))
           throw new TransferJournalError('PENDING_TRANSFER');
-      } else await this.storage.set(STORAGE_KEY, entry);
+      } else await this.storage.set(this.storageKey, entry);
       // Failure/lock after an acknowledged write must never authorize broadcast.
       this.guard();
       const stored = await this.read();
@@ -282,7 +296,7 @@ export class NativeTransferJournal {
       if (!allowed) throw new TransferJournalError('INVALID_TRANSITION');
       const entry = Object.freeze({ ...old, phase });
       this.guard();
-      await this.storage.set(STORAGE_KEY, entry);
+      await this.storage.set(this.storageKey, entry);
       this.guard();
       const stored = await this.read();
       if (!stored || stored.hash !== hash || stored.phase !== phase)

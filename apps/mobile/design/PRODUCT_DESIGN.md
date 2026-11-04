@@ -1,12 +1,12 @@
 # Pali mobile product design
 
-Status: proposed native product specification and review artifact. This describes the full extension-equivalent product, not the capabilities of the initial watch-only implementation.
+Status: proposed native product specification and review artifact. The current native development flow implements wallet creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. This document describes the broader extension-equivalent target. Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified.
 
 Source baseline: `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's `88cc9c9a8959b5dccc7ff43f136d60203782918a` reference adds documentation changes. The supplied 32-screen deck and video inform visual direction and journeys; labels such as “approved” inside those artifacts do not establish approval of this specification, working native custody, or security qualification.
 
 ## Product decision
 
-Build one Pali product with shared wallet/domain behavior and a native mobile presentation. Keep the extension's capabilities, account distinctions, exact amount handling, contextual reviews, recovery rules and localization. Adapt presentation and host services to iOS and Android. Do not reduce the intended product to the watch-only experiment currently in `apps/mobile`.
+Build one Pali product with shared wallet/domain behavior and a native mobile presentation. Keep the extension's capabilities, account distinctions, exact amount handling, contextual reviews, recovery rules and localization. Adapt presentation and host services to iOS and Android. The implemented native flow is one step toward that product; watch-only remains a separate account mode.
 
 The mobile app should feel calm and deliberate: the selected account and network are clear, amounts are readable, primary actions are reachable, and unusual consequences are explained at the decision where they matter. Preserve the Pali navy, pink and blue identity. Avoid adding exchange-style price noise, promotional panels or unrelated financial products to make the screen appear busier.
 
@@ -217,7 +217,7 @@ A mobile release claiming extension equivalence must satisfy the following cover
 | Settings/security        | Localization, currency, auto-lock, disclosure/export, backup scope, hardware setup and equivalent provider controls preserve their consequences                                  |
 | Native behavior          | Physical-device keyboard, safe areas, accessibility, back/gestures, clipboard, camera, background snapshots, biometric/key-store failure and process death have passing evidence |
 
-Do not check a parity item merely because a wrapper screen or fixture exists. The development watch-only/preview modes are useful validation surfaces, but they cannot satisfy custody or signing rows in this table.
+Do not check a parity item merely because a wrapper screen or fixture exists. The implemented native flow needs its own qualification evidence. Watch-only and preview modes cannot validate custody or signing rows in this table.
 
 ## Design acceptance criteria
 

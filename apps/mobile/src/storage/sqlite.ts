@@ -135,6 +135,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       deleteItem: (key: string) => this.deleteItem(key),
       createManyIfAbsent: (items: Record<string, unknown>) =>
         this.createManyIfAbsent(items),
+      compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>) =>
+        this.compareAndSet(key, expected, value, removeIfEqual),
     });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
@@ -343,6 +345,37 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         return true;
       })
     );
+  }
+
+  private compareAndSet(key: string, expected: unknown, value: unknown,
+    removeIfEqual: Readonly<Record<string, unknown>> = {}): Promise<boolean> {
+    validateStorageKey(key);
+    const before = encodeStorageValue(expected);
+    const after = encodeStorageValue(value);
+    if (!removeIfEqual || typeof removeIfEqual !== 'object' || Array.isArray(removeIfEqual) ||
+        ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))) throw failure();
+    const names = Reflect.ownKeys(removeIfEqual);
+    if (names.length > STORAGE_LIMITS.batchKeys) throw failure();
+    const removals = names.map((name) => {
+      if (typeof name !== 'string' || name === key) throw failure();
+      validateStorageKey(name);
+      const descriptor = Object.getOwnPropertyDescriptor(removeIfEqual, name);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw failure();
+      return [name, descriptor.value === undefined ? undefined : encodeStorageValue(descriptor.value)] as const;
+    });
+    return this.queued(() => this.transaction(async () => {
+      const row = await this.db.getFirstAsync<StoredRow>(GET, [STORAGE_LIMITS.valueBytes, key]);
+      if (row === null || admittedRow(row) !== before) return false;
+      for (const [name, snapshot] of removals) {
+        const candidate = await this.db.getFirstAsync<StoredRow>(GET, [STORAGE_LIMITS.valueBytes, name]);
+        if (snapshot === undefined ? candidate !== null : candidate === null || admittedRow(candidate) !== snapshot) return false;
+      }
+      await this.db.runAsync('UPDATE keyring_records SET value = ? WHERE key = ?', [after, key]);
+      for (const [name, snapshot] of removals) {
+        if (snapshot !== undefined) await this.db.runAsync('DELETE FROM keyring_records WHERE key = ?', [name]);
+      }
+      return true;
+    }));
   }
 
   private async pair(): Promise<Pair> {

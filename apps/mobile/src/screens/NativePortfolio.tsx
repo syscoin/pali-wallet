@@ -17,23 +17,25 @@ type Props = {
   onViewRecovery(): void;
   onSend?(): void;
   reader?: BalanceReader;
+  accountLabel?: string;
+  onManageAccounts?(): void;
 };
 type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSend, reader }: Props) {
+export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSend, reader, accountLabel = 'Account 1', onManageAccounts }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader(), [reader]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSend={onSend} />;
+  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSend={onSend} accountLabel={accountLabel} onManageAccounts={onManageAccounts} />;
 }
 
-function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSend }: {
+function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSend, accountLabel, onManageAccounts }: {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot;
-  onExit(): void; onLock(): void; onViewRecovery(): void; onSend?(): void;
+  onExit(): void; onLock(): void; onViewRecovery(): void; onSend?(): void; accountLabel: string; onManageAccounts?(): void;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
@@ -99,9 +101,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <Screen footer={actions}>
-      <Header title={receiving ? 'Receive ETH' : 'Wallet'} subtitle="Account 1 · Ethereum" onBack={back} />
+      <Header title={receiving ? 'Receive ETH' : 'Wallet'} subtitle={`${accountLabel} · Ethereum`} onBack={back} right={!receiving && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its Ethereum account." /> : receiving ? <>
-        <View style={s.identity}><Coin id="ethereum" size={48} /><Text style={s.network}>Ethereum</Text><Text style={styles.muted}>Account 1</Text></View>
+        <View style={s.identity}><Coin id="ethereum" size={48} /><Text style={s.network}>Ethereum</Text><Text style={styles.muted}>{accountLabel}</Text></View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for Ethereum address ${account.address}`} testID="native-receive-qr">
           <QRCode value={account.address} size={204} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
         </View>
@@ -124,7 +126,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         </View>
         {onSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         <Text style={s.privacy}>Refreshing shares this public address with the Ethereum RPC provider.</Text>
-        <Card style={s.accountCard}><Text style={s.label}>ACCOUNT 1 · ETHEREUM</Text><Text selectable style={s.address}>{account.address}</Text></Card>
+        <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · ETHEREUM</Text><Text selectable style={s.address}>{account.address}</Text></Card>
         <Card style={s.tools}><Row title="View recovery phrase" subtitle="Confirm your password to continue" icon="shield" onPress={onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>
       </>}
       {currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>}

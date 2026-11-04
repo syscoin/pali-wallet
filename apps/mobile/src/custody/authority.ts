@@ -1,3 +1,5 @@
+import type { NativeAccountRequest } from './accounts.ts';
+import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { CustodyRuntimeError } from './types.ts';
 import type {
@@ -36,6 +38,7 @@ export class NativeCustodyAuthority {
   private locks: Promise<void> = Promise.resolve();
   private lockFailed = false;
   private revoking = false;
+  private accountOperation = false;
   private snapshot: CustodySnapshot = Object.freeze({
     phase: 'opening',
     revision: 0,
@@ -51,6 +54,64 @@ export class NativeCustodyAuthority {
 
   getSnapshot(): CustodySnapshot {
     return this.snapshot;
+  }
+
+  getCatalogue(): NativeWalletCatalogueSnapshot | null {
+    if (!['ready', 'backup-required'].includes(this.snapshot.phase)) return null;
+    return this.runtime?.accounts?.getSnapshot() ?? null;
+  }
+
+  supportsAccountManagement(): boolean { return this.runtime?.accounts?.supported() === true; }
+
+  cancelAccountOperation(): void { if (this.accountOperation) this.lock(); }
+
+  manageAccounts(request: NativeAccountRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    if (!this.runtime?.accounts || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (this.revision !== expectedRevision) return Promise.reject(new CustodyOperationError('CANCELLED'));
+    const runtime = this.runtime;
+    let reservation: ReturnType<NonNullable<CustodyRuntime['accounts']>['reserve']>;
+    try {
+      // Runtime admission happens before observers can attempt competing work.
+      reservation = runtime.accounts!.reserve(request, expectedCatalogueRevision);
+    } catch (cause) {
+      const code = cause instanceof CustodyRuntimeError ? cause.code : 'INVALID_INPUT';
+      return Promise.reject(new CustodyOperationError(code));
+    }
+    let release!: () => void;
+    this.pending = new Promise<void>((resolve) => { release = resolve; });
+    this.accountOperation = true;
+    const revision = ++this.revision;
+    this.publish({ phase: 'authenticating', account: null, error: null });
+    const current = () => {
+      if (this.revision !== revision || this.snapshot.phase === 'disposed') throw new CustodyOperationError('CANCELLED');
+      if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+    };
+    return (async () => {
+      try {
+        await this.drainLocks(); current();
+        await reservation.execute(current); current();
+        await this.readState(true); current();
+        const address = normalizePublicAddress(await runtime.session.readEthereumAddress(), 'ethereum');
+        current();
+        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network: 'ethereum', address }), error: null });
+        current();
+      } catch (cause) {
+        reservation.cancel();
+        this.requestLock();
+        try { await this.drainLocks(); } catch { /* Unavailable was published by cleanup. */ }
+        if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
+        if (this.revision !== revision || this.snapshot.phase === 'disposed') throw new CustodyOperationError('CANCELLED');
+        const code = cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED';
+        this.publish({ phase: 'locked', account: null, error: code });
+        throw new CustodyOperationError(code);
+      } finally {
+        reservation.cancel();
+        this.accountOperation = false;
+        this.pending = null;
+        release();
+      }
+    })();
   }
 
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void {

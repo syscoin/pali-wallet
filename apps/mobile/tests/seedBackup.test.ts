@@ -19,6 +19,7 @@ async function fixture() {
   let fingerprint = 'wallet-one';
   let confirms = 0;
   const runtime: KeyringRuntime = {
+    catalogue: { getSnapshot: () => null },
     session: {
       async createWallet() { throw new Error('fixture only opens existing wallets'); },
       async importWallet() { throw new Error('fixture only opens existing wallets'); },

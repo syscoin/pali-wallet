@@ -1,8 +1,8 @@
 # Portable backup of the whole private-note vault
 
-**Status: proposed shared extension/mobile enhancement. No code or cryptographic format is implemented by this document.**
+**Status: design proposal for the shared extension/mobile enhancement. This document specifies requirements; it is not implementation or validation evidence.**
 
-Source reviewed: Pali extension `4470e54e8777cca2a4fe7c712409f60eeb4fa401` (4.0.120). The current mobile application is still watch-only. This proposal deliberately adds a capability beyond source parity; it does not reinterpret internal vault records as an existing export feature.
+Source reviewed: Pali extension `4470e54e8777cca2a4fe7c712409f60eeb4fa401` (4.0.120). Descriptions of existing extension behavior below refer to that baseline. The current native development flow implements creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. Mobile whole-note backup/restore integration remains incomplete; see [the current scope](../README.md). Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified. This proposal adds a capability beyond the cited source baseline; it does not reinterpret internal vault records as a portable export format.
 
 ## 1. What exists, and what this adds
 

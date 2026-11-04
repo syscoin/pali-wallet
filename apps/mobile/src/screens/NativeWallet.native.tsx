@@ -7,10 +7,13 @@ import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
 import { NativePortfolio } from './NativePortfolio';
 import { NativeSend } from './NativeSend';
+import { NativeCustodyFeedback } from './NativeCustodyFeedback';
+import { NativeAccounts } from './NativeAccounts';
+import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 
 type Controllers = ReturnType<typeof createNativeWalletControllers>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -39,6 +42,8 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
 export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const controllers = useRef<Controllers | null>(null);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
+  const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
+  const [catalogue, setCatalogue] = useState<NativeWalletCatalogueSnapshot | null>(null);
   const [transferView, setTransferView] = useState<Controllers['transfers'] | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
@@ -77,6 +82,8 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     const unsubscribe = local.authority.subscribe((state) => {
       if (!mounted.current || controllers.current !== local) return;
       setSnapshot(state); setPublicSource(publicView); setTransferView(local.transfers);
+      setCatalogue(local.authority.getCatalogue());
+      setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     });
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
@@ -135,6 +142,9 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
   const title = locked ? 'Welcome back' : snapshot.phase === 'ready' && stage === 'choose' ? 'Your wallet' :
     stage === 'words' ? 'Your recovery phrase' : stage === 'challenge' ? 'Check your backup' :
     stage === 'backup-auth' ? 'Back up your wallet' : stage === 'import' ? 'Restore your wallet' : stage === 'create' ? 'Protect your wallet' : 'Make it yours';
+  const accountLabel = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId)?.label ?? 'Account 1';
+  if (stage === 'accounts' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
+    return <NativeAccounts controller={accountView} onBack={() => setStage('choose')} />;
   let body: React.ReactNode;
   if (unavailable) body = <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
@@ -187,9 +197,9 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView) return <NativeSend controller={transferView} onBack={() => setStage('choose')} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView) return <NativeSend controller={transferView} accountLabel={accountLabel} onBack={() => setStage('choose')} />;
   else if (snapshot.phase === 'ready' && publicSource) return <NativePortfolio
-    source={publicSource} onExit={exit} onLock={revoke}
+    source={publicSource} accountLabel={accountLabel} onManageAccounts={accountView ? () => setStage('accounts') : undefined} onExit={exit} onLock={revoke}
     onSend={() => setStage('send')}
     onViewRecovery={() => setStage('backup-auth')}
   />;
@@ -197,7 +207,9 @@ export function NativeWalletScreen({ onExit }: { onExit(): void }) {
 
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
-      {body}{busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
+      {body}
+      {snapshot.error && <NativeCustodyFeedback error={snapshot.error} />}
+      {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
     </Screen>
   </KeyboardAvoidingView>;

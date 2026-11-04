@@ -33,6 +33,10 @@ function fixture() {
   let current = true;
   let writes = 0;
   const port: KeyringStoragePort = {
+    async compareAndSet(_key, expected, next) {
+      if (value === undefined || JSON.stringify(value) !== JSON.stringify(expected)) return false;
+      value = structuredClone(next); return true;
+    },
     async get() {
       return value === undefined ? undefined : structuredClone(value);
     },

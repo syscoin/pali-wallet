@@ -3,6 +3,7 @@ import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../custody/keyringRuntime.ts';
 import { SeedBackupFlow } from '../custody/seedBackup.ts';
 import { NativeTransfers } from '../custody/transfers.ts';
+import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
 
@@ -31,5 +32,12 @@ export function createNativeWalletControllers() {
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const transfers = new NativeTransfers(authority, () => runtime?.transfers);
-  return { authority, backup, transfers: transfers.view, disposeTransfers: () => transfers.dispose() };
+  const accounts: NativeAccountView = Object.freeze({
+    getSnapshot: () => authority.getCatalogue(),
+    getContextRevision: () => authority.getSnapshot().revision,
+    subscribe: (listener: () => void) => authority.subscribe(() => listener()),
+    execute: (...args: Parameters<NativeAccountView['execute']>) => authority.manageAccounts(...args),
+    cancel: () => authority.cancelAccountOperation(),
+  });
+  return { authority, backup, accounts, transfers: transfers.view, disposeTransfers: () => transfers.dispose() };
 }
