@@ -316,7 +316,8 @@ test('active-account and monotonic highwater limits fail explicitly without trun
 
 
 function legacyV1(record: Record<string, any>): Record<string, any> {
-  return { ...record, version: 1, networks: [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60,
+  const { importedAccounts: _imports, nextImportedIndex: _next, retiredImportedIndices: _retired, ...original } = record;
+  return { ...original, version: 1, networks: [{ id: 'ethereum', kind: 'evm', chainId: '1', slip44: 60,
     rpcUrl: 'https://ethereum-rpc.publicnode.com', symbol: 'ETH', decimals: 18 }], active: { ...record.active, networkId: 'ethereum' } };
 }
 
