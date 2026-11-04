@@ -5,6 +5,7 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { formatBaseUnits } from '../core/amounts';
 import { getNetwork } from '../core/networks';
+import { getUtxoNetwork } from '../core/utxoNetworks';
 import { getWatchNetworks, type WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
@@ -33,9 +34,9 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }:
   const account = snapshot.accounts.find((entry) => entry.id === snapshot.selectedAccountId);
   const network = getNetwork(snapshot.selectedNetworkId);
   const address = account?.addresses[network.id];
-  const current = (generation: number) => lifecycle.current.alive && authority.getSnapshot().generation === generation && authority.getSnapshot().status === 'ready';
+  const current = (generation: number) => lifecycle.current.alive && AppState.currentState === 'active' && authority.getSnapshot().generation === generation && authority.getSnapshot().status === 'ready';
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
-    if (!address || !snapshot.capabilities.receive || lifecycle.current.busy) return;
+    if (!address || !snapshot.capabilities.receive || lifecycle.current.busy || AppState.currentState !== 'active') return;
     if (kind === 'faucet' && AppState.currentState !== 'active') return;
     const generation = snapshot.generation;
     const action = ++lifecycle.current.action;
@@ -52,6 +53,10 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }:
     finally { if (action === lifecycle.current.action) { lifecycle.current.busy = false; if (lifecycle.current.alive) { setBusy(false); setOpeningFaucet(false); } } }
   };
   const amount = snapshot.balance.status === 'available' ? formatBaseUnits(snapshot.balance.units, network.decimals) : null;
+  const utxo = network.id === 'syscoin' || network.id === 'bitcoin' ? getUtxoNetwork(network.id) : null;
+  const pending = snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo'
+    ? snapshot.balance.pendingDeltaUnits : null;
+  const pendingAmount = pending === null ? null : `${pending.startsWith('-') ? '-' : pending === '0' ? '' : '+'}${formatBaseUnits(pending.replace(/^-/, ''), 8)}`;
   const loading = snapshot.balance.status === 'loading';
   const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else onExit(); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
@@ -65,17 +70,19 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock }:
       <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${network.name} address ${address}`}><QRCode value={address} size={204} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
       <Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>
       <Notice title="Check the network" body={`Use ${network.name}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
+      {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
       {faucetCard}
     </> : <>
-      <View style={s.hero}><Coin id={network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()} BALANCE</Text><Text style={s.amount} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{loading && <ActivityIndicator color={colors.pink} />}</View>
-      <Notice title="You’re watching this account" body="This public address can receive funds. Spending and recovery require the wallet that holds its keys." />
+      <View style={s.hero}><Coin id={network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={s.amount} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{loading && <ActivityIndicator color={colors.pink} />}</View>
+      {utxo && <Card style={{ padding: 18, gap: 6 }}><Text style={s.label}>Pending balance change</Text><Text accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`} style={s.name}>{pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text><Text style={styles.muted}>Incoming and outgoing transactions waiting for confirmation.</Text></Card>}
+      <Notice title={utxo ? 'You’re watching one address' : 'You’re watching this account'} body={utxo ? 'This balance covers one address only. Other receive and change addresses are not included. Spending requires the wallet that holds its keys.' : 'This public address can receive funds. Spending and recovery require the wallet that holds its keys.'} />
       {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
       <View style={s.actions}><Button title="Receive" icon="arrow-down-left" onPress={() => { invalidateActions(); setMode('receive'); }} style={s.flex} /><Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} variant="secondary" style={s.flex} /></View>
-      <Text style={s.privacy}>Refreshing shares this public address with the {network.name} RPC provider.</Text>
+      <Text style={s.privacy}>{utxo ? `Refreshing shares this public address and your IP address with ${utxo.endpoint.replace('https://', '')}.` : `Refreshing shares this public address with the ${network.name} RPC provider.`}</Text>
       <Card style={s.identity}><Text style={s.label}>{account.name}</Text><Text selectable style={s.address}>{address}</Text></Card>
       {faucetCard}
-      <Card><Row title="Network" subtitle={network.name} icon="globe" onPress={() => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
-      <Text style={s.privacy}>EVM public address only · No recovery phrase or extended public key is stored.</Text>
+      <Card><Row title="Network" subtitle={`${network.name}${utxo ? ' · Fixed for this address' : ''}`} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
+      <Text style={s.privacy}>{utxo ? 'Single public address' : 'EVM public address only'} · No recovery phrase or extended public key is stored.</Text>
     </>}
     {!!feedback && <Text accessibilityRole={feedback.startsWith('Could not ') ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedback.startsWith('Could not ') && { color: colors.red }]}>{feedback}</Text>}
   </Screen></SafeAreaView>;

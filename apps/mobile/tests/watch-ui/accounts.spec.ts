@@ -241,7 +241,8 @@ test('watch management persists add rename and remove through actual forms', asy
   await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Vacation');
   await page.getByRole('textbox', { name: 'Public EVM address', exact: true }).fill(SECOND);
-  await page.getByRole('button', { name: 'Add watch-only account', exact: true }).click();
+  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByText('Vacation · Watch-only', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Rename Vacation', exact: true }).click();

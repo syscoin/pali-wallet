@@ -1,6 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,6 +13,15 @@ import {
 } from 'react-native';
 
 import { colors, Icon, PaliMark } from '../ui';
+import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
+import { NETWORKS } from '../core/networks';
+import { getUtxoNetwork } from '../core/utxoNetworks';
+const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...NETWORKS.filter((n) => n.canWatch && (n.id === 'syscoin' || n.id === 'bitcoin')).map((n) => n.id as 'syscoin' | 'bitcoin')];
+const WATCH_CHOICES = [
+  { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
+  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public Syscoin address', prefix: 'sys1q', provider: getUtxoNetwork('syscoin').endpoint.replace('https://', ''), scope: 'Watch one supported Syscoin mainnet receive address (sys1q…). Other receive and change addresses in its wallet are not included.' },
+  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public Bitcoin address', prefix: 'bc1q', provider: getUtxoNetwork('bitcoin').endpoint.replace('https://', ''), scope: 'Watch one supported Bitcoin mainnet receive address (bc1q…). Other receive and change addresses in its wallet are not included.' },
+];
 
 type WelcomeProps = {
   onPreview: () => void;
@@ -21,8 +31,9 @@ type WelcomeProps = {
 };
 
 type AddWatchAccountProps = {
-  onAdd: (account: { name: string; address: string }) => Promise<void>;
+  onAdd: (account: { name: string; address: string; network?: WatchAccountNetwork }) => Promise<void>;
   onCancel: () => void;
+  availableNetworks?: readonly WatchAccountNetwork[];
 };
 
 function BrandMark({ small = false }: { small?: boolean }) {
@@ -101,7 +112,7 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
         )}
         <Pressable
           accessibilityRole="button"
-          accessibilityHint="Add a public EVM address to view its balance"
+          accessibilityHint="Add a public address to view its balance"
           onPress={onWatch}
           style={({ pressed }) => [
             styles.primaryButton,
@@ -130,195 +141,98 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
   );
 }
 
-export function AddWatchAccount({ onAdd, onCancel }: AddWatchAccountProps) {
+export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_WATCH_NETWORKS }: AddWatchAccountProps) {
   const [name, setName] = useState('Account 1');
   const [address, setAddress] = useState('');
+  const [network, setNetwork] = useState<WatchAccountNetwork>('evm');
+  const [review, setReview] = useState<{ name: string; address: string; network: WatchAccountNetwork } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const addressInput = useRef<React.ComponentRef<typeof TextInput>>(null);
+  const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const submissionInProgress = useRef(false);
-
-  const submit = async () => {
-    if (submissionInProgress.current) return;
-    const trimmedName = name.trim();
-    const trimmedAddress = address.trim();
-    if (!trimmedName) {
-      setError('Give this account a name so you can recognize it.');
-      return;
-    }
-    if (!trimmedAddress) {
-      setError('Enter the public address you want to watch.');
-      addressInput.current?.focus();
-      return;
-    }
-    submissionInProgress.current = true;
-    setSubmitting(true);
-    setError(null);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    const listener = AppState.addEventListener('change', (state) => { if (state !== 'active') { setReview(null); setError(null); } });
+    return () => { alive.current = false; listener.remove(); };
+  }, []);
+  useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [review]);
+  const info = WATCH_CHOICES.find((choice) => choice.id === network)!;
+  const back = () => { if (submitting) return; if (review) { setReview(null); setError(null); } else onCancel(); };
+  const prepare = () => {
+    if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
-      // The wallet service validates address syntax, checksum and duplicates.
-      // This form never derives keys or treats client validation as authority.
-      await onAdd({ name: trimmedName, address: trimmedAddress });
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'This account could not be added. Please try again.'
-      );
-    } finally {
-      submissionInProgress.current = false;
-      setSubmitting(false);
-    }
+      if (!availableNetworks.includes(network)) throw new Error('This network is not available in this build.');
+      const account = createWatchAccount('review', name.trim(), address.trim(), network);
+      setReview({ name: account.name, address: Object.values(account.addresses)[0]!, network });
+      setError(null);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the public address.'); }
   };
-
-  return (
-    <KeyboardAvoidingView
-      style={styles.screen}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
-        contentContainerStyle={styles.formContent}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.formNavigation}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Back"
-            disabled={submitting}
-            onPress={onCancel}
-            hitSlop={8}
-            style={({ pressed }) => [
-              styles.backButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Icon name="arrow-left" size={24} color={colors.text} />
-          </Pressable>
-          <Text style={styles.navigationLabel}>ADD ACCOUNT</Text>
-          <View style={styles.navigationBalance} />
+  const confirm = async () => {
+    if (!review || submissionInProgress.current || AppState.currentState !== 'active' || !availableNetworks.includes(review.network)) return;
+    submissionInProgress.current = true; setSubmitting(true); setError(null);
+    try { await onAdd(review); }
+    catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : 'This account could not be added. Please try again.'); }
+    finally { submissionInProgress.current = false; if (alive.current) setSubmitting(false); }
+  };
+  return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      <View style={styles.formNavigation}>
+        <Pressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></Pressable>
+        <Text style={styles.navigationLabel}>{review ? 'REVIEW ADDRESS' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
+      </View>
+      <View style={styles.formIntro}><View style={styles.largeEye}><Icon name="eye" size={30} color={colors.blue} /></View>
+        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an address'}</Text>
+        <Text style={styles.formDescription}>{review ? 'Check the network and complete address before saving.' : 'Keep an eye on a public address, without connecting its wallet.'}</Text>
+      </View>
+      {review ? <View style={styles.fields}>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text><Text style={styles.reviewText}>{review.name}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Network</Text><Text style={styles.reviewText}>{info.title}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Complete public address</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
+        <Text style={styles.fieldHint}>{info.scope}</Text>
+      </View> : <View style={styles.fields}>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Address network</Text>
+          <View style={styles.networkChoices}>{WATCH_CHOICES.map((choice) => <Pressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
+            accessibilityState={{ selected: network === choice.id, disabled: !availableNetworks.includes(choice.id) }} disabled={!availableNetworks.includes(choice.id) || submitting}
+            onPress={() => { setNetwork(choice.id); setAddress(''); setReview(null); setError(null); }}
+            style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !availableNetworks.includes(choice.id) && styles.disabled]}>
+            <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!availableNetworks.includes(choice.id) && <Text style={styles.fieldHint}>Not available yet</Text>}
+          </Pressable>)}</View>
         </View>
-
-        <View style={styles.formIntro}>
-          <View style={styles.largeEye}>
-            <Icon name="eye" size={30} color={colors.blue} />
-          </View>
-          <Text accessibilityRole="header" style={styles.formTitle}>
-            Watch an address
-          </Text>
-          <Text style={styles.formDescription}>
-            Keep an eye on your balance, without connecting your wallet.
-          </Text>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text>
+          <TextInput accessibilityLabel="Account name" autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}
+            onChangeText={(value) => { setName(value); setError(null); }} onSubmitEditing={() => addressInput.current?.focus()} placeholder={`e.g. My ${info.shortName} address`}
+            placeholderTextColor={colors.muted} returnKeyType="next" selectionColor={colors.pink} style={styles.input} textContentType="none" value={name} />
         </View>
-
-        <View style={styles.fields}>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Account name</Text>
-            <TextInput
-              accessibilityLabel="Account name"
-              autoCapitalize="words"
-              autoComplete="off"
-              autoCorrect={false}
-              editable={!submitting}
-              importantForAutofill="no"
-              maxLength={40}
-              onChangeText={(value) => {
-                setName(value);
-                setError(null);
-              }}
-              onSubmitEditing={() => addressInput.current?.focus()}
-              placeholder="e.g. My Ethereum account"
-              placeholderTextColor={colors.muted}
-              returnKeyType="next"
-              selectionColor={colors.pink}
-              style={styles.input}
-              textContentType="none"
-              value={name}
-            />
-          </View>
-          <View style={styles.fieldGroup}>
-            <Text style={styles.fieldLabel}>Public EVM address</Text>
-            <TextInput
-              ref={addressInput}
-              accessibilityLabel="Public EVM address"
-              accessibilityHint="Paste a public address beginning with 0x. Never enter a recovery phrase or private key."
-              autoCapitalize="none"
-              autoComplete="off"
-              autoCorrect={false}
-              editable={!submitting}
-              importantForAutofill="no"
-              maxLength={256}
-              onChangeText={(value) => {
-                setAddress(value);
-                setError(null);
-              }}
-              onSubmitEditing={() => void submit()}
-              placeholder="0x…"
-              placeholderTextColor={colors.muted}
-              returnKeyType="done"
-              selectionColor={colors.pink}
-              spellCheck={false}
-              style={[styles.input, styles.addressInput]}
-              textContentType="none"
-              value={address}
-            />
-            <Text style={styles.fieldHint}>
-              Ethereum and compatible networks. Paste only a public address.
-            </Text>
-          </View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{info.inputLabel}</Text>
+          <TextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste a public address beginning with ${info.prefix}. Never enter a recovery phrase or private key.`}
+            autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 90}
+            onChangeText={(value) => { setAddress(value); setError(null); }} onSubmitEditing={prepare} placeholder={`${info.prefix}…`} placeholderTextColor={colors.muted}
+            returnKeyType="done" selectionColor={colors.pink} spellCheck={false} style={[styles.input, styles.addressInput]} textContentType="none" value={address} />
+          <Text style={styles.fieldHint}>{info.scope}</Text>
         </View>
-
-        <View style={styles.safetyCard}>
-          <Icon name="shield" size={21} color={colors.green} />
-          <View style={styles.safetyCopy}>
-            <Text style={styles.safetyTitle}>Your keys are not needed</Text>
-            <Text style={styles.safetyDescription}>
-              Balance lookups share this public address and your IP address with
-              the selected network provider. This app cannot spend funds or
-              recover a wallet. Never enter a recovery phrase or private key.
-            </Text>
-          </View>
-        </View>
-
-        {error ? (
-          <View accessibilityLiveRegion="polite" style={styles.errorCard}>
-            <Text accessibilityRole="alert" style={styles.errorText}>
-              {error}
-            </Text>
-          </View>
-        ) : null}
-
-        <View style={styles.formFooter}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ disabled: submitting, busy: submitting }}
-            disabled={submitting}
-            onPress={() => void submit()}
-            style={({ pressed }) => [
-              styles.primaryButton,
-              pressed && styles.pressed,
-              submitting && styles.disabled,
-            ]}
-          >
-            {submitting ? (
-              <ActivityIndicator color={colors.bg} />
-            ) : (
-              <Icon name="plus" size={21} color={colors.bg} />
-            )}
-            <Text style={styles.primaryButtonText}>
-              {submitting ? 'Adding account…' : 'Add watch-only account'}
-            </Text>
-          </Pressable>
-          <Text style={styles.footerNote}>
-            Public addresses and their transactions are visible on the
-            blockchain.
-          </Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
-  );
+      </View>}
+      <View style={styles.safetyCard}><Icon name="shield" size={21} color={colors.green} /><View style={styles.safetyCopy}>
+        <Text style={styles.safetyTitle}>Your keys are not needed</Text><Text style={styles.safetyDescription}>Balance lookups share this public address and your IP address with {info.provider}. Watching an address does not give Pali permission to spend its funds. Never enter a recovery phrase or private key in this form.</Text>
+      </View></View>
+      {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
+      <View style={styles.formFooter}><Pressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
+        onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
+        {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
+        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review address'}</Text>
+      </Pressable><Text style={styles.footerNote}>Public addresses and their transactions are visible on the blockchain.</Text></View>
+    </ScrollView>
+  </KeyboardAvoidingView>;
 }
 
 const styles = StyleSheet.create({
+  networkChoices: { gap: 8 },
+  networkChoice: { borderWidth: 1, borderColor: colors.border, borderRadius: 14, padding: 14, gap: 4 },
+  networkChoiceSelected: { borderColor: colors.blue, backgroundColor: colors.surface },
+  networkChoiceTitle: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  reviewText: { color: colors.text, fontSize: 17, lineHeight: 26 },
+  reviewAddress: { color: colors.text, fontSize: 16, lineHeight: 26, flexShrink: 1 },
   screen: { flex: 1, backgroundColor: colors.bg },
   welcomeContent: {
     flexGrow: 1,

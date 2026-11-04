@@ -60,13 +60,14 @@ test('watch-only validates before RPC, preserves zero and cannot sign', async ({
   await page
     .getByRole('textbox', { name: 'Public EVM address' })
     .fill('not an address');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
   await expect(page.getByRole('alert')).toBeVisible();
   expect(calls).toEqual([]);
   await page
     .getByRole('textbox', { name: 'Public EVM address' })
     .fill('0x000000000000000000000000000000000000dEaD');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(
     page.getByRole('button', { name: 'Send', exact: true })
   ).toHaveCount(0);
@@ -107,7 +108,8 @@ test('a new watch-only address can switch across every offered EVM network', asy
   await page.goto('/');
   await page.getByRole('button', { name: 'Watch an address' }).click();
   await page.getByRole('textbox', { name: 'Public EVM address' }).fill('0x000000000000000000000000000000000000dEaD');
-  await page.getByRole('button', { name: 'Add watch-only account' }).click();
+  await page.getByRole('button', { name: 'Review address' }).click();
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Ethereum balance 0.0 ETH', { exact: true })).toBeVisible();
   let selected = 'Ethereum';
   for (const network of networks) {
