@@ -1,3 +1,4 @@
+import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../../src/custody/password';
 // Actual leaf with a synthetic flow. This fixture does not perform recovery,
 // authenticate a phrase, access storage, or establish native qualification.
 import React, { useLayoutEffect, useState } from 'react';
@@ -49,7 +50,7 @@ class FixtureFlow {
     const words = phrase.trim().split(/\s+/u).length;
     const errors: Record<string, string> = {};
     if (![12, 24].includes(words)) errors.phrase = 'Enter 12 or 24 words in their original order.';
-    if ([...password].length < 12) errors.password = 'Use a password with at least 12 characters.';
+    if (!isNativeNewPassword(password)) errors.password = NEW_PASSWORD_HELP;
     if (confirmation !== password) errors.confirmation = 'The new passwords do not match.';
     if (Object.keys(errors).length) { this.publish('entry', '', errors); return false; }
     audit.admissions++; audit.admittedWordCounts.push(words); this.publish('verifying'); return true;

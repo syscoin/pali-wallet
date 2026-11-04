@@ -15,7 +15,7 @@ import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC native HD qualification test password';
+const PASSWORD = 'PUBLIC native HD qualification test password 1!';
 
 test('HD restart matching rejects failed and empty reports', () => {
   assert.equal(matchesHdRestartEvidence({ status: 'failed' }, { status: 'failed' }), false);

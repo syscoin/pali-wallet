@@ -22,7 +22,7 @@ delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public ERC20 transfer fixture password';
+const PASSWORD = 'Public ERC20 transfer fixture password!';
 const CONTRACT = '0x2222222222222222222222222222222222222222';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 const TOKEN = {

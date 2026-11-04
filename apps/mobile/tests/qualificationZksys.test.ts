@@ -26,7 +26,7 @@ import type { OpenWalletStorage } from '../src/storage/types.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC zkSYS native qualification password';
+const PASSWORD = 'PUBLIC zkSYS native qualification password 1!';
 const FIFTH_ADDRESS = '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;

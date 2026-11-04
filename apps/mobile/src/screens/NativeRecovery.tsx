@@ -1,4 +1,5 @@
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
+import { NEW_PASSWORD_HELP } from '../custody/password';
 import React, { useCallback, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, BackHandler, findNodeHandle, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text as NativeText, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -119,7 +120,7 @@ export function NativeRecovery({ flow }: { flow: NativeRecoveryFlow }) {
           <Notice title="Keep your phrase private" body="Pali support will never ask for these words." tone="amber" />
           <SecretField name="phrase" label="Matching recovery phrase" value={inputs.phrase} update={update} error={snapshot.fieldErrors.phrase} multiline />
           <Text style={styles.muted}>{inputs.phrase.trim() ? inputs.phrase.trim().split(/\s+/u).length : 0} words entered</Text>
-          <Text style={s.body}>Choose a new password with at least 12 characters.</Text>
+          <Text style={s.body}>{NEW_PASSWORD_HELP}</Text>
           <SecretField name="password" label="New password" value={inputs.password} update={update} error={snapshot.fieldErrors.password} />
           <SecretField name="confirmation" label="Confirm new password" value={inputs.confirmation} update={update} error={snapshot.fieldErrors.confirmation} />
         </>}

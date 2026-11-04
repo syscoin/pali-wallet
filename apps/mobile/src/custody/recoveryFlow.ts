@@ -1,3 +1,4 @@
+import { isNativeNewPassword, NEW_PASSWORD_HELP } from './password.ts';
 import type { RecoveryInventory } from './recoveryInventory.ts';
 import type { NativeRecoveryCoordinator, RecoveryProof } from './recovery.ts';
 
@@ -67,8 +68,8 @@ export class NativeRecoveryFlow {
     const fieldErrors: { phrase?: string; password?: string; confirmation?: string } = {};
     const phrase = typeof input.phrase === 'string' && input.phrase.isWellFormed() ? input.phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ') : '';
     if (!phrase || input.phrase.length > 4096 || ![12, 24].includes(phrase.split(' ').length)) fieldErrors.phrase = 'Enter your 12 or 24 recovery words in order.';
-    if (typeof input.password !== 'string' || !input.password.isWellFormed() || input.password.length > 1024 || [...input.password].length < 12 || new TextEncoder().encode(input.password).length > 1024)
-      fieldErrors.password = 'Use a password with at least 12 characters and no more than 1024 bytes.';
+    if (!isNativeNewPassword(input.password))
+      fieldErrors.password = NEW_PASSWORD_HELP;
     if (input.password !== input.confirmation) fieldErrors.confirmation = 'Your passwords do not match.';
     if (Object.keys(fieldErrors).length) { this.publish({ fieldErrors: Object.freeze(fieldErrors), error: '' }); return false; }
     this.working = true; const request = ++this.request;

@@ -22,7 +22,7 @@ delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public native transfer fixture password';
+const PASSWORD = 'Public native transfer fixture password 1!';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 
 test('shared SDK and SQLite retain exact pending bytes across a process-style authority restart', async () => {

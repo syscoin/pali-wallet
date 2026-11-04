@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 const PHRASE = [...Array(11).fill('abandon'), 'about'].join(' ');
-const PASSWORD = 'public replacement password';
+const PASSWORD = 'Public replacement password 1!';
 async function open(page: Page) {
   await page.goto('/'); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();

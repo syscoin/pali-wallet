@@ -19,6 +19,7 @@ const { dataSlice, hexlify } =
   require('ethers/utils') as typeof import('ethers/utils');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+import { isStrongWalletPassword } from '../../../shared/passwordPolicy';
 import { walletPersistenceGate } from 'state/paliStorage';
 import type { RootState } from 'state/store';
 import type { AsyncMutex } from 'utils/asyncMutex';
@@ -37,8 +38,6 @@ export type WalletRecoveryContext = {
 // This key must stay outside the keys removed by resetWalletStateExclusive.
 const JOURNAL_KEY = 'pali-wallet-recovery-journal:v1';
 const TICKET_LIFETIME_MS = 10 * 60 * 1000;
-const STRONG_PASSWORD =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/;
 type RecoveryHost = {
   authenticationMutex: AsyncMutex;
   createWalletExclusive: (password: string, phrase: string) => Promise<void>;
@@ -761,7 +760,7 @@ export const runWalletSetup = async (
       Date.now() - ticket.createdAt > TICKET_LIFETIME_MS
     )
       throw new Error('Seed recovery expired. Start recovery again');
-    if (typeof password !== 'string' || !STRONG_PASSWORD.test(password))
+    if (!isStrongWalletPassword(password))
       throw new Error(
         'Recovery password does not meet the strong password requirements'
       );

@@ -1,3 +1,4 @@
+import { isNativeNewPassword } from './password.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import { decodeStorageValue } from '../storage/json.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type RecoveryWritePlan } from '../storage/types.ts';
@@ -89,7 +90,7 @@ export class NativeRecoveryCoordinator {
       if (this.disposed || this.completed || this.unavailable || (this.retired && this.ownedPair === null) || (!this.retired && owner.phase !== 'locked')) return reject('NOT_READY');
     } catch { return reject('UNAVAILABLE'); }
     if (typeof phrase !== 'string' || !phrase.isWellFormed() || phrase.length > 4096 ||
-        typeof password !== 'string' || !password.isWellFormed() || password.length > 1024 || new TextEncoder().encode(password).length > 1024 || [...password].length < 12 || typeof assertCurrent !== 'function')
+        !isNativeNewPassword(password) || typeof assertCurrent !== 'function')
       return reject('INVALID_INPUT');
     const normalized = phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ');
     const generation = ++this.generation;
