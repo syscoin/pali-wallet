@@ -70,3 +70,8 @@ The mobile lockfile overrides `glob` to 14.0.3 and `minimatch` to 11.0.4 for the
 ## Temporary dependency staging
 
 This branch uses integrity-pinned local sysweb3-keyring 2.0.0 and syscoinjs-lib 1.0.276 archives while npm publication is deferred. The latter defers legacy Ethereum-proof imports until an explicit proof operation; ordinary wallet initialization does not load that dependency tree. `scripts/verify-staged-keyring.cjs` checks each archive hash, version and every installed package file; CI runs it explicitly even when dependency lifecycle scripts are disabled. Replace the local lockfile source and remove this staging gate only after verifying each published archive has identical integrity.
+
+Native startup uses QuickCrypto's own scheduler without adding `process.browser`
+or a synthetic Node version. Crypto, Buffer and stream adapters remain required
+by the native SDK graph. Unsupported Node transports still fail closed; delaying
+proof initialization does not make those transports available on mobile.

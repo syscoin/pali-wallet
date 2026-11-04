@@ -1,5 +1,4 @@
-// The first custody slice performs local key derivation/storage only. Legacy
-// proof-library Node transports are not React Native transports. Any attempt
+// Proof-library Node transports are not React Native transports. Any attempt
 // to execute them must fail rather than acquire implicit networking authority.
 module.exports = new Proxy({}, {
   get(_target, name) {
