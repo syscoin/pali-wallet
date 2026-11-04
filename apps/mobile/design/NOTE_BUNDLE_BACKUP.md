@@ -1,12 +1,12 @@
 # Portable backup of the whole private-note vault
 
-**Status: design proposal for the shared extension/mobile enhancement. This document specifies requirements; it is not implementation or validation evidence.**
+**Status: original design requirements. The shared codec/controller and extension file flows are now implemented; mobile private-note storage and file integration remain incomplete. This document is not validation evidence.**
 
-Source reviewed: Pali extension `4470e54e8777cca2a4fe7c712409f60eeb4fa401` (4.0.120). Descriptions of existing extension behavior below refer to that baseline. The current native development flow implements creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. Mobile whole-note backup/restore integration remains incomplete; see [the current scope](../README.md). Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified. This proposal adds a capability beyond the cited source baseline; it does not reinterpret internal vault records as a portable export format.
+Original source reviewed: Pali extension `4470e54e8777cca2a4fe7c712409f60eeb4fa401` (4.0.120). The enhancement described here was beyond that baseline. At the [current source basis](PARITY_MATRIX.md#current-implementation-ledger), `source/pages/Privacy/PrivateNoteBundleDialog.tsx` exposes extension export/import/verification; [the shared codec](../../../source/wallet/noteBackup.format.md) and [orchestration contract](../../../source/wallet/noteBackupService.md) define the implemented format and complete-current-profile scope. The original requirements below are retained as design history, not a claim that unrelated or unknown profiles are enumerated. Mobile integration still needs native storage, file, authentication and lifecycle adapters. Internal encrypted vault records are not a substitute for the portable file format.
 
 ## 1. What exists, and what this adds
 
-The extension currently backs up **one raw private note at a time**: choose the note, confirm the wallet password, view its read-only raw text, then Hide. `PrivateNoteBackupDialog` has no app-provided Copy, Download or Share action. Restore currently accepts an individual raw note string through `privateVault.importNote`.
+At the original baseline, the extension backed up **one raw private note at a time**: choose the note, confirm the wallet password, view its read-only raw text, then Hide. That individual-note path remains available alongside the new bundle file flow. `PrivateNoteBackupDialog` has no app-provided Copy, Download or Share action; `PrivateNoteBundleDialog` owns the separate encrypted file flow. Individual raw-note import remains available through `privateVault.importNote`.
 
 The private vault's encrypted root/shards and its 4/8/16 MiB storage budgets are **internal persistence**, bound to a local private-record profile. Copying those ciphertext records is not a portable backup. They are neither this proposed file format nor a promise that another wallet/device can decrypt them.
 
@@ -163,9 +163,9 @@ The release must pass these with synthetic notes on each supported host before r
 - Kill the process at each staged write/commit/cleanup point; successful-but-unacknowledged writes; quota/disk-full/read failures; second concurrent restore; A -> B -> A profile changes. After restart there is one complete prior or committed state, never a partial import or duplicate execution.
 - Verify actual OS task-switcher/screenshot policy, keyboard/autofill behavior, file privacy, low-memory cancellation, KDF latency and temporary-file cleanup on the lowest supported hardware. Browser/simulator success alone does not qualify native secret handling.
 
-## 9. Implementation boundary and rollout
+## 9. Implementation boundary and original rollout requirements
 
-This proposal adds new shared functionality to **both** the extension and mobile. It must not be implemented as a mobile-only serialization of whatever internal encrypted object happens to exist.
+The enhancement adds shared functionality to **both** the extension and mobile. Its format and extension flow are implemented; the remaining mobile work must reuse them rather than serialize internal ciphertext or introduce a second format. The original rollout requirements below remain an acceptance checklist, not a claim that mobile work is complete.
 
 Before code: approve the precise inventory scope, portable schema, cryptographic suite/KDF profile, file/parser limits, duplicate/conflict policy and journal protocol. Security review must cover the format and migration strategy. Record remaining decisions explicitly; this document is not that final cryptographic approval.
 
