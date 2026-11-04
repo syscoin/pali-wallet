@@ -76,3 +76,33 @@ test('network verification and persistence share one detached registration snaps
   finish(); await pending;
   assert.deepEqual(saved, [{ kind: 'save-network', registration: original }]);
 });
+
+test('long padded network text reaches the verified endpoint unchanged and stale or wrong-chain replies never save', async () => {
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const registration = createNativeNetwork({ id: 'custom:31337', name: `  ${'network '.repeat(12)}  `,
+    symbol: ` ${'x'.repeat(32)} `, kind: 'evm', chainId: '31337', rpcUrl: 'https://rpc.example/long', slip44: 60, decimals: 18, testnet: true });
+  for (const mode of ['healthy', 'wrong-chain', 'stale-context', 'stale-catalogue'] as const) {
+    let revision = 1, catalogueRevision = 1;
+    const saved: unknown[] = [], urls: string[] = [];
+    const view = createNativeNetworkView({
+      getSnapshot: () => ({ phase: 'ready', revision, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
+      getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
+      subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+      manageNetwork: async (request) => { saved.push(request); },
+    }, { fetch: async (url, init) => {
+      urls.push(url); const request = JSON.parse(String(init.body));
+      assert.equal(request.method, 'eth_chainId');
+      if (mode === 'stale-context') revision++;
+      if (mode === 'stale-catalogue') catalogueRevision++;
+      return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: mode === 'wrong-chain' ? '0x1' : '0x7a69' }), { headers: { 'content-type': 'application/json' } });
+    } });
+    if (mode === 'healthy') {
+      await view.save!(registration, 1, 1);
+      assert.deepEqual(saved, [{ kind: 'save-network', registration }]);
+    } else {
+      await assert.rejects(view.save!(registration, 1, 1));
+      assert.deepEqual(saved, []);
+    }
+    assert.deepEqual(urls, [registration.rpcUrl]);
+  }
+});

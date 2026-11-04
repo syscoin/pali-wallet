@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 
+import { isNonBlankNetworkText } from '../../shared/networkText';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
 import { Button, Tooltip } from 'components/index';
@@ -1469,7 +1470,12 @@ const CustomRPCView = () => {
               rules={[
                 {
                   required: true,
-                  whitespace: true,
+                  validator: (_rule, value) =>
+                    isNonBlankNetworkText(value)
+                      ? Promise.resolve()
+                      : Promise.reject(
+                          new Error(t('settings.networkNameRequired'))
+                        ),
                   message: t('settings.networkNameRequired'),
                 },
               ]}
@@ -1607,7 +1613,12 @@ const CustomRPCView = () => {
             rules={[
               {
                 required: true,
-                whitespace: true,
+                validator: (_rule, value) =>
+                  isNonBlankNetworkText(value)
+                    ? Promise.resolve()
+                    : Promise.reject(
+                        new Error(t('settings.networkNameRequired'))
+                      ),
                 message: t('settings.networkNameRequired'),
               },
             ]}
@@ -1712,7 +1723,10 @@ const CustomRPCView = () => {
           rules={[
             {
               required: true,
-              whitespace: true,
+              validator: (_rule, value) =>
+                isNonBlankNetworkText(value)
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('settings.symbolRequired'))),
               message: t('settings.symbolRequired'),
             },
           ]}

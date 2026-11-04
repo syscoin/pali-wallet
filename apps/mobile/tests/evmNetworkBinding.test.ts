@@ -4,12 +4,30 @@ import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
-import { createNativeNetwork, getNativeSendContext, getNativeSendCapabilities, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
+import { createNativeNetwork, getNativeSendContext, getNativeSendCapabilities, NATIVE_NETWORKS, snapshotNativeNetwork, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 const owner='0x1111111111111111111111111111111111111111',recipient='0x2222222222222222222222222222222222222222';
 const hash=(number:number)=>`0x${number.toString(16).padStart(64,'0')}`;
 const expected={hash:hash(1),from:owner,to:recipient,nonce:'0'};
 const signal=()=>new AbortController().signal;
 const custom=createNativeNetwork({id:'unlisted-chain',name:'Unlisted chain',kind:'evm',chainId:'454543',slip44:60,rpcUrl:'https://custom-chain.example/rpc',symbol:'TEST',decimals:18,testnet:true});
+test('network text uses the shared nonblank rule without truncating or changing padding', () => {
+ const name = `  ${'Long network '.repeat(8)}🌐  `, symbol = ` ${'x'.repeat(32)} `;
+ const network = createNativeNetwork({ ...custom, name, symbol });
+ assert.equal(snapshotNativeNetwork(network).name, name);
+ assert.equal(snapshotNativeNetwork(network).symbol, symbol);
+ assert.equal(getNativeSendContext(network).name, name);
+ assert.equal(getNativeSendContext(network).symbol, symbol);
+ assert.throws(() => snapshotNativeNetwork({ ...network, name: name + 'changed' }), /fingerprint/);
+ for (const blank of ['', ' ', '\t\n', '\u00a0']) {
+  assert.throws(() => createNativeNetwork({ ...custom, name: blank }), /Invalid EVM registration/);
+  assert.throws(() => createNativeNetwork({ ...custom, symbol: blank }), /Invalid EVM registration/);
+ }
+ for (const bad of [
+  { chainId: '01' }, { chainId: String(BigInt(Number.MAX_SAFE_INTEGER) + 1n) },
+  { rpcUrl: 'http://remote.invalid' }, { rpcUrl: 'https://user:password@remote.invalid' },
+  { rpcUrl: 'https://remote.invalid/#fragment' }, { rpcUrl: 'https://remote.invalid/' + 'x'.repeat(2048) },
+ ]) assert.throws(() => createNativeNetwork({ ...custom, ...bad }));
+});
 type Call={method:string;params:any[];url:string;id:number};
 function fixture(network:NativeNetworkRegistration,options:{block?:number;missing?:boolean;consumed?:boolean;update?:(call:Call,result:unknown)=>unknown;onCall?:(call:Call)=>void}={}){
  const calls:Call[]=[];const fetcher=async(url:string,init:RequestInit)=>{

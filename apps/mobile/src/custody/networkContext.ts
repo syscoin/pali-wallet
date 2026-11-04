@@ -1,6 +1,7 @@
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
+import { isNonBlankNetworkText } from '../../../../source/shared/networkText.ts';
 
 /** A saved registration ID, not a compile-time list of supported EVM chains. */
 export type EvmNetworkId = string;
@@ -22,10 +23,10 @@ export function snapshotNativeNetwork(input: unknown): NativeNetworkRegistration
     raw[key] = descriptor.value;
   }
   if (typeof raw.id !== 'string' || !/^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,63}$/.test(raw.id) ||
-      typeof raw.name !== 'string' || !raw.name.isWellFormed() || raw.name.trim() !== raw.name || !raw.name || raw.name.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(raw.name) ||
+      !isNonBlankNetworkText(raw.name) ||
       raw.kind !== 'evm' || typeof raw.chainId !== 'string' || !/^[1-9][0-9]{0,15}$/.test(raw.chainId) ||
       BigInt(raw.chainId) > BigInt(Number.MAX_SAFE_INTEGER) || raw.slip44 !== 60 || raw.decimals !== 18 ||
-      typeof raw.testnet !== 'boolean' || typeof raw.symbol !== 'string' || !/^[A-Z0-9]{1,12}$/.test(raw.symbol) ||
+      typeof raw.testnet !== 'boolean' || !isNonBlankNetworkText(raw.symbol) ||
       typeof raw.rpcUrl !== 'string' || raw.rpcUrl.length > 2048) throw new Error('Invalid EVM registration');
   const url = new URL(raw.rpcUrl);
   if (url.username || url.password || url.hash || (url.protocol !== 'https:' &&

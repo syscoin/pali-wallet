@@ -21,18 +21,19 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   onEdit?: (registration: NativeNetworkRegistration) => void;
 }) {
   return <View style={[s.network, s.networkRow, selected && s.active]}><IdlePressable accessibilityRole="radio"
-    accessibilityLabel={`${network.name}, ${network.symbol}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
+    accessibilityLabel={`${network.name}, ${network.symbol}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
     accessibilityState={{ checked: selected, disabled: busy }} aria-checked={selected} disabled={busy}
     onPress={() => { void onSelect(network.id); }}
     style={({ pressed }) => [s.networkSelect, pressed && s.pressed]}>
-    <View style={s.details}><Text style={s.name}>{network.name}</Text>
-      <Text style={s.help}>{network.symbol}{network.testnet ? ' · Test network' : ''}</Text>
+    <View style={s.details}><Text style={s.name} numberOfLines={2}>{network.name}</Text>
+      <Text style={s.help} numberOfLines={2}>{network.symbol}{network.testnet ? ' · Test network' : ''}</Text>
+      {network.registration && <Text style={s.help}>Chain ID {network.registration.chainId}</Text>}
       {!network.canSign && <Text style={s.unavailable}>Balance and receive only</Text>}
     </View>
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </IdlePressable>{network.registration && onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
+  </IdlePressable>{network.registration && onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}, Chain ID ${network.registration.chainId}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
 /** Switching requests a guarded context change; this screen never grants signing authority. */
@@ -111,8 +112,8 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
         await controller.remove(form.id as Id, contextRevision, catalogueRevision);
       } else {
         const chainId = form.chainId.trim();
-        const registration = createNativeNetwork({ id: form.id ?? `custom:${chainId}`, name: form.name.trim(), kind: 'evm',
-          chainId, slip44: 60, rpcUrl: form.rpcUrl.trim(), symbol: form.symbol.trim().toUpperCase(), decimals: 18, testnet: form.testnet });
+        const registration = createNativeNetwork({ id: form.id ?? `custom:${chainId}`, name: form.name, kind: 'evm',
+          chainId, slip44: 60, rpcUrl: form.rpcUrl.trim(), symbol: form.symbol, decimals: 18, testnet: form.testnet });
         await controller.save(registration, contextRevision, catalogueRevision);
       }
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) setForm(null);
@@ -128,9 +129,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   };
   const field = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', label: string) => <View style={s.field}>
     <Text style={s.help}>{label}</Text><IdleTextInput accessibilityLabel={label} value={form?.[key] ?? ''}
-      onChangeText={(value) => setForm((old) => old && { ...old, [key]: value })} editable={!busy && !(key === 'chainId' && !!form?.id)}
+      onChangeText={(value) => setForm((old) => old && { ...old, [key]: key === 'symbol' ? value.toUpperCase() : value })} editable={!busy && !(key === 'chainId' && !!form?.id)}
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType={key === 'chainId' ? 'number-pad' : key === 'rpcUrl' ? 'url' : 'default'}
-      maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : key === 'symbol' ? 12 : 64} style={s.search} /></View>;
+      maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : undefined} style={s.search} /></View>;
 
   const search = query.trim().toLocaleLowerCase();
   const matches = snapshot?.networks.filter((network) =>

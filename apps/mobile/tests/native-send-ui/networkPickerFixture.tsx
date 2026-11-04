@@ -66,6 +66,7 @@ declare global {
       restoreController(): void;
       releaseReplacement(): void;
       selected(): string | null;
+      registration(id: string): import('../../src/custody/networkContext').NativeNetworkRegistration | undefined;
     };
   }
 }
@@ -74,6 +75,7 @@ window.__nativeNetworksFixture = {
   cancelled: () => cancelled,
   release: () => release?.(),
   selected: () => snapshot?.selectedId ?? null,
+  registration: (id) => snapshot?.networks.find((network) => network.id === id)?.registration,
   replaceController: () => swapController?.(),
   restoreController: () => swapController?.(true),
   releaseReplacement: () => releaseReplacement?.(),

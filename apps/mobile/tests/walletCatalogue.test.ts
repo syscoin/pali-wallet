@@ -384,6 +384,26 @@ test('custom registration survives reopen, explicit edits and removal without de
   } finally { await f.cleanup(); }
 });
 
+test('padded network text and 32-character symbol survive real storage and cold reopen without weakening its byte limit', async () => {
+  const f = await fixture();
+  try {
+    let catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    let state = await catalogue.reconcile(f.identity, current);
+    const registration = createNativeNetwork({ id: 'custom:31337', name: `  ${'Long network '.repeat(8)}  `,
+      symbol: ` ${'x'.repeat(32)} `, kind: 'evm', chainId: '31337', rpcUrl: 'https://rpc.example/long', slip44: 60, decimals: 18, testnet: true });
+    state = await catalogue.mutate(state.revision, { kind: 'save-network', registration }, current);
+    const before = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+    await f.reopen();
+    catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    state = await catalogue.reconcile(f.identity, current);
+    assert.deepEqual(state.networks.find((network) => network.id === registration.id), registration);
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), before);
+    const oversized = createNativeNetwork({ ...registration, name: 'N'.repeat(4 * 1024 * 1024) });
+    await assert.rejects(catalogue.mutate(state.revision, { kind: 'save-network', registration: oversized }, current));
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), before);
+  } finally { await f.cleanup(); }
+});
+
 test('network selection preserves HD identity and counters while stale writers cannot replace it', async () => {
   const f = await fixture();
   try {

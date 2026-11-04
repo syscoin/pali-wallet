@@ -7,8 +7,8 @@ test('actual network view switches portfolio and Receive with generic Send avail
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText('1.234');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await page.getByText('Network', { exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH', exact: true }).click();
-  await expect(page.getByRole('radio', { name: 'Base, ETH', exact: true })).toBeChecked();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true })).toBeChecked();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Account 1 · Base', { exact: true })).toBeVisible();
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Base balance 1.234 ETH');
