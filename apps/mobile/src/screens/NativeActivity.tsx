@@ -145,6 +145,7 @@ function NativeActivityContent({
   const restoreAttempts = useRef(0);
   const restoreTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstVisible = useRef<string | null>(null);
+  const navigating = useRef(false);
   const visibleItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: { item: ActivityRow }[] }) => {
       firstVisible.current = viewableItems[0]?.item.hash ?? null;
@@ -169,33 +170,57 @@ function NativeActivityContent({
   );
   const chosen = snapshot.rows.find((row) => row.hash === selected);
   const hiddenCount = snapshot.rows.filter((row) => zeroOnly(row)).length;
-  const savePosition = () => {
+  const savePosition = async (): Promise<void> => {
     const first =
       rows.find((row) => row.hash === firstVisible.current) ?? rows[0];
     if (!first) {
-      controller.setView({ anchor: null, offset: 0 });
+      await controller.setView({ anchor: null, offset: 0 });
       return;
     }
     const captured = lifetime.current.epoch;
     const row = rowViews.current.get(first.hash),
       bounds = listBounds.current;
     if (!row || !bounds) return;
-    bounds.measureInWindow((_x, top) =>
-      row.measureInWindow((_rx, y) => {
-        if (lifetime.current.epoch === captured)
-          controller.setView({
-            anchor: first.hash,
-            offset: Math.max(0, Math.min(top - y, 10000)),
-          });
-      })
-    );
+    const position = await new Promise<{
+      anchor: string;
+      offset: number;
+    } | null>((resolve) => {
+      // Native layout callbacks are asynchronous. Keep the screen mounted until
+      // they finish, but a missing callback must not trap Back navigation.
+      const timeout = setTimeout(() => resolve(null), 250);
+      bounds.measureInWindow((_x, top) =>
+        row.measureInWindow((_rx, y) => {
+          clearTimeout(timeout);
+          resolve(
+            lifetime.current.epoch === captured
+              ? {
+                  anchor: first.hash,
+                  offset: Math.max(0, Math.min(top - y, 10000)),
+                }
+              : null
+          );
+        })
+      );
+    });
+    if (position && lifetime.current.epoch === captured)
+      await controller.setView(position);
+  };
+  const afterPositionSaved = async (navigate: () => void): Promise<void> => {
+    if (navigating.current) return;
+    navigating.current = true;
+    const captured = lifetime.current.epoch;
+    try {
+      await savePosition();
+      if (lifetime.current.epoch === captured) navigate();
+    } finally {
+      navigating.current = false;
+    }
   };
   const close = () => {
     setCopyAddress(null);
     if (selected) setSelected(null);
     else {
-      savePosition();
-      onBack();
+      void afterPositionSaved(onBack);
     }
   };
   useEffect(() => {
@@ -355,12 +380,13 @@ function NativeActivityContent({
               accessibilityLabel={`${amount(item)}, ${status(
                 item
               )}. View transaction details`}
-              onPress={() => {
-                savePosition();
-                setFeedback('');
-                setSelected(item.hash);
-                controller.inspect(item.hash);
-              }}
+              onPress={() =>
+                afterPositionSaved(() => {
+                  setFeedback('');
+                  setSelected(item.hash);
+                  controller.inspect(item.hash);
+                })
+              }
               style={s.item}
             >
               <View style={s.itemHeader}>

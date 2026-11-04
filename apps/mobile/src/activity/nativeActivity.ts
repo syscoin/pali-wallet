@@ -19,9 +19,7 @@ import {
 import type { ActivityHistorySnapshot } from './historyStore.ts';
 
 export interface NativeActivityRuntime {
-  load(
-    guard: () => void
-  ): Promise<{
+  load(guard: () => void): Promise<{
     scope: ActivityScope;
     saved: ActivityHistorySnapshot;
     local: LocalActivityRecord | null;
@@ -466,14 +464,14 @@ export class NativeActivity {
         .slice(0, 30)
     );
   }
-  setView(update: Partial<ActivityViewState>) {
+  async setView(update: Partial<ActivityViewState>): Promise<void> {
     const next = Object.freeze({ ...this.snapshot.view, ...update });
     this.publish({ view: next });
     const scope = this.scope,
       generation = this.generation,
       revision = this.source.getSnapshot().revision;
     if (scope)
-      void this.runtime()
+      await this.runtime()
         ?.saveView(scope, next, () => this.guard(generation, revision))
         .catch(() => {
           if (generation === this.generation)

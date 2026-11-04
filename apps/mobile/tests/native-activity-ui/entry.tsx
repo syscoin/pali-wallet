@@ -1,5 +1,5 @@
 // Public synthetic data only. This entrypoint is never imported by the app.
-import React from 'react';
+import React, { useState } from 'react';
 import { registerRootComponent } from 'expo';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NativeActivityScreen } from '../../src/screens/NativeActivity';
@@ -19,8 +19,10 @@ import {
   createActivityScope,
   DEFAULT_ACTIVITY_VIEW,
   type ActivityCandidate,
+  type ActivityViewState,
 } from '../../src/activity/types';
 import type { CustodySnapshot } from '../../src/custody/types';
+import { Button } from '../../src/ui';
 
 const owner = `0x${'11'.repeat(20)}`,
   recipient = `0x${'22'.repeat(20)}`;
@@ -37,6 +39,8 @@ const state: CustodySnapshot = {
 let fail = false,
   delay = false;
 const waiting: (() => void)[] = [];
+let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
+let saveDelay = 0;
 class Explorer extends ActivityExplorerReader {
   async head() {
     return '1000';
@@ -94,13 +98,18 @@ const runtime: NativeActivityRuntime = {
       saved: {
         archived: [],
         candidates: [],
-        view: DEFAULT_ACTIVITY_VIEW,
+        view: savedView,
         truncated: false,
       },
     };
   },
   async saveCache() {},
-  async saveView() {},
+  async saveView(_scope, view, guard) {
+    if (saveDelay)
+      await new Promise((resolve) => setTimeout(resolve, saveDelay));
+    guard();
+    savedView = view;
+  },
 };
 const controller = new NativeActivity(
   { getSnapshot: () => state, subscribe: () => () => undefined },
@@ -114,6 +123,9 @@ declare global {
       fail(value: boolean): void;
       delay(value: boolean): void;
       release(): void;
+      delaySave(milliseconds: number): void;
+      savedView(): ActivityViewState;
+      clearView(): void;
     };
   }
 }
@@ -128,15 +140,29 @@ window.__activityFixture = {
     delay = false;
     for (const resolve of waiting.splice(0)) resolve();
   },
+  delaySave(milliseconds) {
+    saveDelay = milliseconds;
+  },
+  savedView() {
+    return savedView;
+  },
+  clearView() {
+    savedView = DEFAULT_ACTIVITY_VIEW;
+  },
 };
 function Fixture() {
+  const [open, setOpen] = useState(true);
   return (
     <SafeAreaProvider>
-      <NativeActivityScreen
-        controller={controller}
-        accountLabel="Public test account"
-        onBack={() => undefined}
-      />
+      {open ? (
+        <NativeActivityScreen
+          controller={controller}
+          accountLabel="Public test account"
+          onBack={() => setOpen(false)}
+        />
+      ) : (
+        <Button title="Open Activity" onPress={() => setOpen(true)} />
+      )}
     </SafeAreaProvider>
   );
 }

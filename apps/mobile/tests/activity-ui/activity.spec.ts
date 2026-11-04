@@ -125,3 +125,30 @@ test('copy review actions remain reachable on a small screen with enlarged text'
     page.getByText('Copy this address?', { exact: true })
   ).not.toBeVisible();
 });
+test('Back waits for asynchronous position persistence before unmounting', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(
+    page.getByRole('button', { name: /1\.0 ETH, Confirmed/ }).first()
+  ).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).__activityFixture.clearView();
+    (window as any).__activityFixture.delaySave(100);
+  });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(
+    page.getByRole('button', { name: 'Open Activity', exact: true })
+  ).toBeVisible();
+  const saved = await page.evaluate(() =>
+    (window as any).__activityFixture.savedView()
+  );
+  expect(saved.anchor).toMatch(/^0x[0-9a-f]{64}$/);
+  expect(saved.offset).toBeGreaterThanOrEqual(0);
+  await page
+    .getByRole('button', { name: 'Open Activity', exact: true })
+    .click();
+  await expect(
+    page.getByText('Activity', { exact: true }).first()
+  ).toBeVisible();
+});
