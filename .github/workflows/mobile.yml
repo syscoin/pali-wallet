@@ -41,6 +41,8 @@ jobs:
       - run: npm ci --ignore-scripts
       - name: Verify staged shared keyring
         run: node scripts/verify-staged-keyring.cjs
+      - name: Reject moderate and higher dependency advisories
+        run: npm audit --audit-level=moderate
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
