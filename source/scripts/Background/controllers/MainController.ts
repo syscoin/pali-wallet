@@ -35,6 +35,7 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -5679,14 +5680,7 @@ class MainController {
     const assertCreationCurrent = () => {
       assertCurrent();
       const { accounts } = store.getState().vault;
-      if (accountType === KeyringAccountType.HDAccount)
-        assertCompleteHDAccountData(accounts.HDAccount);
-      if (accounts[accountType]?.[account.id])
-        throw new Error(
-          accountType === KeyringAccountType.Imported
-            ? 'Account import conflicted with another import. Please retry.'
-            : 'Account creation conflicted with another request. Please retry.'
-        );
+      assertAccountCreationAvailable(accounts, accountType, account.id);
     };
     this.resetAutoLockTimer();
     return persistAccountCreation(

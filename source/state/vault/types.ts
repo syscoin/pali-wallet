@@ -12,6 +12,11 @@ import {
 import { ITokenEthProps, ITokenSysProps } from 'types/tokens';
 import type { IWalletNavigationScope } from 'utils/navigationState';
 
+import type {
+  AccountRecords,
+  AccountRecordSelection,
+} from '../../wallet/accountRecords';
+
 // Clean account assets structure - NFTs are included in ethereum array as assets with isNft: true
 export interface IAccountAssets {
   ethereum: ITokenEthProps[];
@@ -94,14 +99,9 @@ export interface ISlip44State {
   };
 
   // Network-specific data
-  accounts: {
-    [key in KeyringAccountType]: { [id: number]: IKeyringAccountState };
-  };
+  accounts: AccountRecords;
 
-  activeAccount: {
-    id: number;
-    type: KeyringAccountType;
-  };
+  activeAccount: AccountRecordSelection;
 
   activeChain: INetworkType;
   activeNetwork: INetwork;
