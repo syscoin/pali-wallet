@@ -38,10 +38,13 @@ Ethereum; selecting another network cannot access an Ethereum journal, sign,
 authorize submission or query the hardcoded Ethereum transfer RPC. CAS-protected per-account multi-network journal containers now preserve
 recovery identities; their presence does not enable additional signing.
 
-Seven successful chain/fee RPC probes are not send qualification. Future send
-needs per-chain fee and receipt conformance and native offline signing. OP-stack
-chains need L1-data and possibly operator fee adapters; Rollux's legacy fee API
-must not be replaced with an assumed newer API. Arbitrum estimate semantics and
-zkSYS fees need explicit contracts. An uncapped L1 estimate must never be called
-an absolute maximum total, and RPC method failures must not be interpreted as
-zero fees. No real-fund transactions are required for qualification.
+The additive read-only fee and receipt adapters are described in
+[evmNetworkFees.md](evmNetworkFees.md). Their fee quotes do not change Ethereum signing or broadcast. Ethereum
+receipt recovery now uses the canonical observation checks; no additional chain
+is enabled. Source-pinned Base and Rollux
+oracle queries use unsigned payloads only. Their L1/operator charges remain
+estimates, with no absolute maximum total. Arbitrum's gas estimate includes L1
+publication cost; NEVM finalized tags provide depth observations rather than
+independent ChainLock proof. zkSYS stays unqualified. Further send integration
+requires per-chain conformance, receipt-policy review and native offline signing.
+No real-fund transactions are required for qualification.

@@ -75,6 +75,7 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
         else if (b.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (b.method === 'eth_estimateGas') result = '0x5208';
         else if (b.method === 'eth_getTransactionReceipt') result = null;
+        else if (b.method === 'eth_getBlockByNumber') result = { number: b.params[0] === 'finalized' ? '0x20' : b.params[0], hash: '0x' + 'f'.repeat(64) };
         else if (b.method === 'eth_sendRawTransaction') {
           const persisted = (await storage!.keyringStorage.get(
             'native-evm-transfer-v1'
@@ -220,25 +221,23 @@ async function cancellationFixture() {
   });
   const broadcasts: string[] = [];
   let loseResponse = false;
-  const recovery = {
+  const largeReceipt = {
     oversized: false,
     repeated: false,
     receiptReads: 0,
     consumed: false,
   };
+  let recovery: { receipt: Record<string, unknown> | null; nonce: string; height: string; canonicalHash: string } | undefined;
   const rpc = new NativeTransferRpc({
     fetch: async (_url, init) => {
       const request = JSON.parse(String(init.body));
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
       else if (request.method === 'eth_getTransactionCount') {
-        result =
-          recovery.oversized &&
-          (request.params[1] === 'pending' ||
-            recovery.consumed ||
-            (request.params[1] === 'finalized' && recovery.repeated))
-            ? '0x1'
-            : '0x0';
+        result = largeReceipt.oversized
+          ? (request.params[1] === 'pending' || largeReceipt.consumed ||
+              (largeReceipt.repeated && largeReceipt.receiptReads === 1) ? '0x1' : '0x0')
+          : (request.params[1] === 'pending' ? '0x0' : recovery?.nonce ?? '0x0');
       } else if (request.method === 'eth_getBalance')
         result = '0x10000000000000000';
       else if (request.method === 'eth_feeHistory')
@@ -246,9 +245,9 @@ async function cancellationFixture() {
       else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (request.method === 'eth_estimateGas') result = '0x5208';
       else if (request.method === 'eth_getTransactionReceipt') {
-        if (!recovery.oversized) result = null;
+        if (!largeReceipt.oversized) result = recovery?.receipt ?? null;
         else {
-          recovery.receiptReads++;
+          largeReceipt.receiptReads++;
           const tx = Transaction.from(broadcasts[0]!);
           result = {
             transactionHash: tx.hash,
@@ -257,22 +256,20 @@ async function cancellationFixture() {
             status: '0x1',
             blockNumber: '0xa',
             blockHash: '0x' + '8'.repeat(64),
-            ...(recovery.repeated && recovery.receiptReads % 2 === 1
-              ? {}
-              : {
-                  logs: [
-                    {
-                      address: tx.to,
-                      topics: [],
-                      data: '0x' + 'ab'.repeat(10_000),
-                    },
-                  ],
-                }),
+            ...(largeReceipt.repeated && largeReceipt.receiptReads % 2 === 1 ? {} : {
+              logs: [{ address: tx.to, topics: [], data: '0x' + 'ab'.repeat(10_000) }],
+            }),
           };
         }
       } else if (request.method === 'eth_getBlockByNumber') {
-        const number = request.params[0] === 'finalized' ? '0xb' : request.params[0];
-        result = { number, hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64) };
+        if (largeReceipt.oversized) {
+          const number = request.params[0] === 'finalized' ? '0xb' : request.params[0];
+          result = { number, hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64) };
+        } else {
+          const current = recovery;
+          const number = request.params[0] === 'finalized' ? current?.height ?? '0x20' : request.params[0];
+          result = { number, hash: current && number === current.receipt?.blockNumber ? current.canonicalHash : '0x' + 'f'.repeat(64) };
+        }
       } else if (request.method === 'eth_sendRawTransaction') {
         broadcasts.push(request.params[0]);
         if (loseResponse) throw Error('Lost acknowledgement');
@@ -303,7 +300,7 @@ async function cancellationFixture() {
     authority,
     runtime,
     broadcasts,
-    recovery,
+    recovery: largeReceipt,
     get transfers() { return transfers; },
     rpc,
     get signatures() { return signatures; },
@@ -326,6 +323,7 @@ async function cancellationFixture() {
       } finally { observer.close(); }
     },
     loseResponse() { loseResponse = true; },
+    setRecovery(value: NonNullable<typeof recovery>) { recovery = structuredClone(value); },
     hold(stage: 'password' | 'hydrate') {
       let entered!: () => void;
       let resume!: () => void;
@@ -559,3 +557,72 @@ for (const phase of ['signed', 'attempted'] as const) {
     }
   });
 }
+
+
+for (const [status, phase] of [['0x1', 'confirmed'], ['0x0', 'reverted']] as const) {
+  test(`orphan receipt cannot ${phase === 'confirmed' ? 'confirm' : 'revert'} a real journal even when replacement nonce is finalized`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+      const entry = saved.entries[0]!;
+      const tx = Transaction.from(entry.rawTransaction);
+      f.setRecovery({ receipt: { transactionHash: entry.hash, from: tx.from, to: RECIPIENT, status,
+        blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '2'.repeat(64) });
+      await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'unavailable');
+      assert.equal(f.authority.getSnapshot().phase, 'ready');
+      assert.deepEqual(await f.readJournal(), saved, 'the unresolved exact signed entry must remain recoverable');
+      assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+    } finally { await f.close(); }
+  });
+
+  test(`canonical finalized ${phase} receipt can terminalize the matching real journal`, async () => {
+    const f = await cancellationFixture();
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+      const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+      const entry = saved.entries[0]!;
+      f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status,
+        blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '1'.repeat(64) });
+      await f.transfers.recover();
+      assert.equal(f.transfers.getSnapshot().phase, phase);
+      const next = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
+      assert.equal(next.entries[0]!.phase, phase);
+      assert.equal(next.entries[0]!.rawTransaction, entry.rawTransaction);
+      assert.equal(f.signatures, 1); assert.equal(f.broadcasts.length, 1);
+    } finally { await f.close(); }
+  });
+}
+
+test('missing receipt with a finalized consumed nonce records only nonce-consumed', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    const before = await f.readJournal() as { entries: { rawTransaction: string }[] };
+    f.setRecovery({ receipt: null, nonce: '0x1', height: '0x20', canonicalHash: '0x' + '1'.repeat(64) });
+    await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
+    const after = await f.readJournal() as { entries: { phase: string; rawTransaction: string }[] };
+    assert.equal(after.entries[0]!.phase, 'nonce-consumed');
+    assert.equal(after.entries[0]!.rawTransaction, before.entries[0]!.rawTransaction);
+  } finally { await f.close(); }
+});
+
+test('canonical receipt above finalized height leaves its real journal unresolved', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id, PASSWORD);
+    const saved = await f.readJournal() as { entries: { hash: string; rawTransaction: string }[] };
+    const entry = saved.entries[0]!;
+    f.setRecovery({ receipt: { transactionHash: entry.hash, from: Transaction.from(entry.rawTransaction).from, to: RECIPIENT, status: '0x1',
+      blockNumber: '0x10', blockHash: '0x' + '1'.repeat(64) }, nonce: '0x1', height: '0xf', canonicalHash: '0x' + '1'.repeat(64) });
+    await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.deepEqual(await f.readJournal(), saved);
+  } finally { await f.close(); }
+});

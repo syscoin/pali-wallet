@@ -75,14 +75,14 @@ function fixture(
         result = receipt;
       } else if (request.method === 'eth_getTransactionCount') {
         options.onNonce?.();
-        result =
-          options.consumed === false && request.params[1] !== 'finalized'
-            ? '0x7'
-            : '0x8';
+        // The first complete receipt can be eligible before the repeated
+        // oversized read. The subsequent fallback must query the nonce again.
+        result = options.consumed !== false ||
+          (options.stage === 'repeated' && receipts === 1) ? '0x8' : '0x7';
       } else if (request.method === 'eth_getBlockByNumber') {
         result = options.blockResult
           ? options.blockResult(++blocks)
-          : finalizedBlock;
+          : { ...finalizedBlock, number: request.params[0] === 'finalized' ? finalizedBlock.number : request.params[0] };
       } else throw Error('Unexpected RPC method');
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
@@ -111,7 +111,12 @@ for (const stage of ['initial', 'repeated'] as const) {
       );
       assert.deepEqual(
         blockReads.map((c) => c.params),
-        [
+        stage === 'repeated' ? [
+          ['finalized', false],
+          ['0x8', false],
+          ['finalized', false],
+          ['0xa', false],
+        ] : [
           ['finalized', false],
           ['0xa', false],
         ]

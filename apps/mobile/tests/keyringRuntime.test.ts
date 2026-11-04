@@ -494,6 +494,7 @@ function localTransferRpc() {
     else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
     else if (body.method === 'eth_estimateGas') result = '0x5208';
     else if (body.method === 'eth_getTransactionReceipt') result = null;
+    else if (body.method === 'eth_getBlockByNumber') result = { number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
     else if (body.method === 'eth_sendRawTransaction') {
       broadcasts.push(body.params[0]);
       if (gate) { const current = gate; current.entered.resolve(); await current.released.promise; }

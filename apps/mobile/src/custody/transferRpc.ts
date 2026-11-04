@@ -2,11 +2,12 @@ import { keccak256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
+import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
+import { EvmTransferReadError } from './evmFeeContracts.ts';
 import {
   boundedResponseText,
   parseRpcQuantity,
   RPC_ENDPOINTS,
-  ResponseSizeLimitError,
 } from '../platformRpc.ts';
 
 export type NativeTransferQuote = Readonly<{
@@ -56,8 +57,7 @@ type Method =
   | 'eth_maxPriorityFeePerGas'
   | 'eth_estimateGas'
   | 'eth_sendRawTransaction'
-  | 'eth_getTransactionReceipt'
-  | 'eth_getBlockByNumber';
+  | 'eth_getTransactionReceipt';
 const invalid = (): never => {
   throw new NativeTransferRpcError('INVALID_RESPONSE');
 };
@@ -87,6 +87,7 @@ function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
 export class NativeTransferRpc {
   private readonly fetcher: FetchLike;
   private readonly timeoutMs: number;
+  private readonly receiptRpc: EvmTransferReadRpc;
   private sequence = 0;
   constructor(options: { fetch?: FetchLike; timeoutMs?: number } = {}) {
     this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
@@ -97,6 +98,7 @@ export class NativeTransferRpc {
       this.timeoutMs > 30000
     )
       throw new Error('Invalid transfer RPC timeout');
+    this.receiptRpc = new EvmTransferReadRpc('ethereum', { fetch: this.fetcher, timeoutMs: this.timeoutMs });
   }
   private async operation<T>(
     external: AbortSignal,
@@ -160,13 +162,7 @@ export class NativeTransferRpc {
     )
       return invalid();
     const body = object(
-      JSON.parse(
-        await boundedResponseText(
-          response,
-          signal,
-          method === 'eth_getBlockByNumber' ? 512 * 1024 : undefined
-        )
-      )
+      JSON.parse(await boundedResponseText(response, signal))
     );
     if (
       body.jsonrpc !== '2.0' ||
@@ -180,34 +176,6 @@ export class NativeTransferRpc {
   private async checkChain(signal: AbortSignal): Promise<void> {
     if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== 1n)
       return invalid();
-  }
-  /** A receipt too large to inspect proves no outcome, even after inclusion. */
-  private async consumedAfterOversizedReceipt(
-    from: string,
-    nonce: bigint,
-    signal: AbortSignal
-  ): Promise<NativeTransferReceipt> {
-    const finalized = object(
-      await this.call('eth_getBlockByNumber', ['finalized', false], signal)
-    );
-    const number = parseRpcQuantity(finalized.number);
-    const hash = checkedHash(finalized.hash);
-    const tag = '0x' + number.toString(16);
-    const finalizedNonce = parseRpcQuantity(
-      await this.call('eth_getTransactionCount', [from, tag], signal)
-    );
-    const canonical = object(
-      await this.call('eth_getBlockByNumber', [tag, false], signal)
-    );
-    if (
-      parseRpcQuantity(canonical.number) !== number ||
-      checkedHash(canonical.hash) !== hash
-    )
-      return invalid();
-    await this.checkChain(signal);
-    if (finalizedNonce <= nonce)
-      throw new NativeTransferRpcError('UNAVAILABLE');
-    return Object.freeze({ status: 'nonce-consumed', finalized: true });
   }
   prepare(
     from: string,
@@ -334,73 +302,28 @@ export class NativeTransferRpc {
     }>,
     signal: AbortSignal
   ): Promise<NativeTransferReceipt | null> {
-    const hash = checkedHash(expected.hash);
-    const from = normalizePublicAddress(expected.from, 'ethereum');
-    const to = normalizePublicAddress(expected.to, 'ethereum');
-    const nonce = assertBaseUnits(expected.nonce);
-    if (nonce > BigInt(Number.MAX_SAFE_INTEGER))
-      return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
-    return this.operation(signal, async (local) => {
-      await this.checkChain(local);
-      let result: unknown;
-      try {
-        result = await this.call('eth_getTransactionReceipt', [hash], local);
-      } catch (error) {
-        if (!(error instanceof ResponseSizeLimitError)) throw error;
-        return this.consumedAfterOversizedReceipt(from, nonce, local);
+    return this.receiptRpc.receipt(expected, signal, () => undefined).then((observation) => {
+      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+      if (!observation) return null;
+      if (observation.status === 'nonce-consumed') {
+        if (!observation.settlement.terminalEligible) return invalid();
+        return Object.freeze({ status: 'nonce-consumed' as const, finalized: true as const });
       }
-      if (result === null) {
-        const finalizedNonce = parseRpcQuantity(
-          await this.call('eth_getTransactionCount', [from, 'finalized'], local)
-        );
-        await this.checkChain(local);
-        return finalizedNonce > nonce
-          ? Object.freeze({
-              status: 'nonce-consumed' as const,
-              finalized: true as const,
-            })
-          : null;
-      }
-      const data = object(result);
-      if (
-        checkedHash(data.transactionHash) !== hash ||
-        normalizePublicAddress(data.from as string, 'ethereum') !== from ||
-        normalizePublicAddress(data.to as string, 'ethereum') !== to
-      )
-        return invalid();
-      const status = parseRpcQuantity(data.status);
-      if (status !== 0n && status !== 1n) return invalid();
-      const blockHash = checkedHash(data.blockHash);
-      const blockNumber = parseRpcQuantity(data.blockNumber).toString();
-      // Inclusion and finality are distinct. A nonce consumed in finalized state
-      // plus a still-canonical receipt lets the host release its pending journal.
-      const finalizedNonce = parseRpcQuantity(
-        await this.call('eth_getTransactionCount', [from, 'finalized'], local)
-      );
-      if (finalizedNonce > nonce) {
-        let repeated: Record<string, unknown>;
-        try {
-          repeated = object(
-            await this.call('eth_getTransactionReceipt', [hash], local)
-          );
-        } catch (error) {
-          if (!(error instanceof ResponseSizeLimitError)) throw error;
-          return this.consumedAfterOversizedReceipt(from, nonce, local);
-        }
-        if (
-          checkedHash(repeated.transactionHash) !== hash ||
-          checkedHash(repeated.blockHash) !== blockHash ||
-          parseRpcQuantity(repeated.status) !== status
-        )
-          return invalid();
-      }
-      await this.checkChain(local);
       return Object.freeze({
-        status: status === 1n ? 'confirmed' : 'reverted',
-        blockHash,
-        blockNumber,
-        finalized: finalizedNonce > nonce,
+        status: observation.outcome === 'succeeded' ? 'confirmed' as const : 'reverted' as const,
+        blockHash: observation.block.hash,
+        blockNumber: observation.block.number,
+        finalized: observation.settlement.terminalEligible,
       });
+    }).catch((error: unknown) => {
+      // A read deadline is an unavailable observation, not user cancellation.
+      // Only the caller's actual abort signal admits CANCELLED here.
+      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+      if (error instanceof EvmTransferReadError &&
+          ['INVALID_INPUT', 'INVALID_RESPONSE', 'PROFILE_CHANGED'].includes(error.code))
+        throw new NativeTransferRpcError('INVALID_RESPONSE');
+      if (error instanceof NativeTransferRpcError) throw error;
+      throw new NativeTransferRpcError('UNAVAILABLE');
     });
   }
 }
