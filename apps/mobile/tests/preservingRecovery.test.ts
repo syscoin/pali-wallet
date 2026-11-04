@@ -42,7 +42,8 @@ function latch() {
   let release!: () => void, entered!: () => void;
   return { gate: new Promise<void>((resolve) => { release = resolve; }), reached: new Promise<void>((resolve) => { entered = resolve; }), release: () => release(), enter: () => entered() };
 }
-async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = true) {
+async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = true,
+  clocks?: { wall: () => number; monotonic: () => number }) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-preserving-recovery-'));
   const file = path.join(directory, 'wallet.sqlite');
   let leased = false, initialized = false, opens = 0, retires = 0;
@@ -51,6 +52,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   const dispatched: string[] = [];
   let dispatchHook: ((sql: string) => void) | undefined;
   let failurePause: ReturnType<typeof latch> | undefined;
+  let closeFailure = false;
   let runtime!: KeyringRuntime;
   let store!: SqliteWalletStorage;
   const open = async (): Promise<OpenWalletStorage> => {
@@ -58,7 +60,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
     const owned = nodeConnection(file, { before: (...args) => hook?.(...args), after: (...args) => afterHook?.(...args) });
     const exec = owned.connection.execAsync.bind(owned.connection);
     owned.connection.execAsync = (sql) => { dispatched.push(sql); dispatchHook?.(sql); return exec(sql); };
-    try { store = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, !initialized); initialized = true; }
+    try { store = await SqliteWalletStorage.open(owned.connection, digest, INSTALLATION, !initialized, clocks?.wall, clocks?.monotonic); initialized = true; }
     catch (error) { await owned.connection.closeAsync(); leased = false; throw error; }
     const local = store;
     const recovery = { ...store.recovery, async recordFailureForPair(fingerprint: string) {
@@ -69,7 +71,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
     let closed = false;
     return { keyringStorage: local.keyringStorage, authGuard: local.authGuard, recovery,
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
-      async close() { if (!closed) { await local.close(); closed = true; leased = false; } } };
+      async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
   const factory = createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: open, loadSdk: loadRuntimeSdk });
   const newOwner = async () => {
@@ -79,7 +81,7 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
   let owner = await newOwner(); await owner.importPhrase(PHRASE, OLD);
   if (confirmed) { await runtime.backup.confirm(await runtime.backup.fingerprint()); await owner.refreshAuthenticatedMetadata(); }
   const coordinator = (loadSdk?: () => Promise<typeof sdk>, monotonicMilliseconds?: () => number) => new NativeRecoveryCoordinator({ owner,
-    retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds });
+    retireControllers() { retires++; }, ensureCryptoReady: async () => undefined, openStorage: open, loadSdk, monotonicMilliseconds: monotonicMilliseconds ?? clocks?.monotonic });
   const read = () => {
     const db = new DatabaseSync(file, { readOnly: true });
     try { return { records: db.prepare('SELECT * FROM keyring_records ORDER BY key').all() as { key: string; value: string }[],
@@ -96,7 +98,8 @@ async function fixture(loadRuntimeSdk?: () => Promise<typeof sdk>, confirmed = t
       const db = new DatabaseSync(file);
       try { db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
     },
-    get opens() { return opens; }, get retires() { return retires; }, dispatched,
+    get opens() { return opens; }, get retires() { return retires; }, get leased() { return leased; }, dispatched,
+    failClose() { closeFailure = true; },
     setDispatch(value?: (sql: string) => void) { dispatchHook = value; },
     setHook(value?: SqlHook) { hook = value; }, setAfter(value?: SqlHook) { afterHook = value; }, pauseFailure(value: ReturnType<typeof latch>) { failurePause = value; },
     async reopen() { await owner.dispose(); owner = await newOwner(); return owner; },
@@ -352,10 +355,102 @@ test('missing required vault keys refuse recovery without recreating or erasing 
   } finally { await recovery.dispose(); await f.close(); }
 });
 
+test('recovery retry cooldown elapses on the owned connection despite wall-clock changes', async () => {
+  let monotonic = 0, wall = 1_000_000;
+  const f = await fixture(undefined, false, { wall: () => wall, monotonic: () => monotonic });
+  f.owner.lock(); const recovery = f.coordinator();
+  try {
+    for (let i = 0; i < 5; i++) await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    const saved = f.read(); monotonic = 29999; wall += 86400000;
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    assert.deepEqual(f.read(), saved);
+    assert.equal(f.opens, 2, 'retryable attempts must retain one recovery-owned connection');
+    monotonic = 30000; wall = 1;
+    const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'backup-required');
+    assert.equal(JSON.parse(f.read().metadata.find((row) => row.key === 'auth')!.value).failures, 0);
+  } finally { await recovery.dispose(); await f.close(); }
+});
+
+test('recovery can wait out failures inherited from ordinary password authentication', async () => {
+  let monotonic = 0;
+  const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
+  f.owner.lock(); let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    for (let i = 0; i < 5; i++) await assert.rejects(f.owner.unlock('PUBLIC incorrect password'), { code: 'INVALID_CREDENTIAL' });
+    recovery = f.coordinator();
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    monotonic = 29999;
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    assert.equal(f.opens, 2);
+    monotonic = 30000; const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    await recovery.commit(proof); await f.reopen(); await f.owner.unlock(NEXT);
+    assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('another wrong phrase after waiting preserves escalation and cannot reset the throttle', async () => {
+  let monotonic = 0;
+  const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
+  f.owner.lock(); const recovery = f.coordinator();
+  try {
+    for (let i = 0; i < 5; i++) await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    monotonic = 30000;
+    await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    const saved = f.read(); assert.equal(JSON.parse(saved.metadata.find((row) => row.key === 'auth')!.value).failures, 6);
+    monotonic = 89999;
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'AUTH_THROTTLED' });
+    assert.deepEqual(f.read(), saved); assert.equal(f.opens, 2);
+    monotonic = 90000; const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    await recovery.commit(proof);
+  } finally { await recovery.dispose(); await f.close(); }
+});
+
+test('cancel drains a retained recovery connection and a fresh owner still enforces restart cooldown', async () => {
+  let monotonic = 0;
+  const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
+  f.owner.lock(); const recovery = f.coordinator();
+  try {
+    for (let i = 0; i < 5; i++) await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    assert.equal(f.leased, true); const before = f.read();
+    recovery.cancel(); await recovery.dispose(); assert.equal(f.leased, false); assert.deepEqual(f.read(), before);
+    await f.reopen(); await assert.rejects(f.owner.unlock(OLD), { code: 'AUTH_THROTTLED' });
+    monotonic = 30000; await f.owner.unlock(OLD); assert.equal(f.owner.getSnapshot().phase, 'ready');
+  } finally { await recovery.dispose(); await f.close(); }
+});
+
+test('expiry closes a retryable recovery lease without another submission', async (context) => {
+  context.mock.timers.enable({ apis: ['setTimeout'] });
+  let monotonic = 0;
+  const f = await fixture(undefined, true, { wall: () => 1_000_000, monotonic: () => monotonic });
+  f.owner.lock(); const recovery = f.coordinator();
+  try {
+    await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    assert.equal(f.leased, true); const before = f.read();
+    monotonic = 600001; context.mock.timers.tick(600001);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(f.leased, false); assert.deepEqual(f.read(), before);
+  } finally { await recovery.dispose(); await f.close(); context.mock.timers.reset(); }
+});
+
+test('retained recovery close failure quarantines retries without changing saved bytes', async () => {
+  const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+  try {
+    await assert.rejects(recovery.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    const before = f.read(); f.failClose(); recovery.cancel();
+    await assert.rejects(recovery.dispose(), { code: 'REOPEN_REQUIRED' });
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'NOT_READY' });
+    assert.deepEqual(f.read(), before); assert.equal(f.opens, 2);
+  } finally { await recovery.dispose().catch(() => undefined); await f.close(); }
+});
+
 test('an old recovery coordinator cannot charge or replace a newer recovered pair', async () => {
   const f = await fixture(); f.owner.lock(); const old = f.coordinator(); let next: NativeRecoveryCoordinator | undefined;
   try {
     await assert.rejects(old.prepare(WRONG, NEXT, () => undefined), { code: 'WRONG_PHRASE' });
+    old.cancel(); await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(f.leased, false);
     await f.reopen(); next = f.coordinator();
     await next.commit(await next.prepare(PHRASE, NEXT, () => undefined));
     const committed = f.read();

@@ -64,3 +64,10 @@ are closed and read back, never compensated by deleting data or replaying a rese
 The native runtime authenticates root/profile and current pair before using a stable
 binding for account, token, Activity and journal data. Backup receipts still bind
 the current encrypted pair. No recovery screen is connected to this capability.
+
+Retryable recovery failures retain the recovery-owned connection after locking
+staging secrets. Every retry reads a fresh snapshot and checks the same pair and
+authentication guard; its monotonic cooldown can therefore elapse without a
+reopen restarting it. Cancellation, disposal, expiry and terminal errors close
+that lease. Ordinary connection restarts still impose the complete persisted
+delay; recovery never substitutes an editable wall clock or resets the counter.

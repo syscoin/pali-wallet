@@ -39,6 +39,7 @@ export class NativeRecoveryCoordinator {
   private pending: Promise<unknown> | null = null;
   private closing: Promise<void> | null = null;
   private ready: Ready | null = null;
+  private retryStorage: OpenWalletStorage | null = null;
   private readonly proofs = new WeakMap<RecoveryProof, Ready>();
   private stage: InstanceType<Sdk['SoftwareKeyring']> | null = null;
   private retired = false;
@@ -93,7 +94,9 @@ export class NativeRecoveryCoordinator {
     try { deadline = this.now() + 600000; } catch { return reject('UNAVAILABLE'); }
     const check = () => this.check(generation, deadline, assertCurrent);
     const task = Promise.resolve().then(async () => {
-      let storage: OpenWalletStorage | undefined;
+      let storage: OpenWalletStorage | undefined = this.retryStorage ?? undefined;
+      this.retryStorage = null; this.clearTimer();
+      let retryable = false;
       try {
         check();
         if (!this.retired) {
@@ -107,13 +110,13 @@ export class NativeRecoveryCoordinator {
           this.ownedPair = fingerprint;
         }
         check(); await this.dependencies.ensureCryptoReady(); check();
-        storage = await this.dependencies.openStorage(); check();
+        storage ??= await this.dependencies.openStorage(); check();
         const port = storage.recovery;
         if (!port?.prepareReplacement || !port.plannedSnapshot || !port.commitReplacement || !port.recordFailureForPair) return fail('UNAVAILABLE');
-        await storage.authGuard.checkAllowed(); check();
         const before = await port.readSnapshot(); check();
         if (this.ownedPair !== before.identity?.pairFingerprint) return fail('STATE_CHANGED');
         if (!before.identity || inspectRecoveryInventory(before).status !== 'needs-matching-phrase-verification') return fail('INVALID_SAVED_DATA');
+        await storage.authGuard.checkAllowed(); check();
         const sdk = await (this.dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js')); check();
         const values = new Map<string, unknown>();
         const allowed = (key: string) => { check(); if (!['vault', 'vault-keys'].includes(key)) fail('UNAVAILABLE'); };
@@ -187,10 +190,27 @@ export class NativeRecoveryCoordinator {
         this.ready = ready; this.proofs.set(proof, ready); storage = undefined;
         this.timer = setTimeout(() => { if (this.ready?.generation === generation) this.cancel(); }, remaining);
         return proof;
-      } catch (error) { throw translated(error); }
+      } catch (error) {
+        const failure = translated(error);
+        retryable = ['WRONG_PHRASE', 'AUTH_THROTTLED', 'INVALID_INPUT'].includes(failure.code);
+        throw failure;
+      }
       finally {
         const stage = this.stage; this.stage = null;
         if (stage) await stage.lockWallet().catch(() => { this.unavailable = true; });
+        if (storage && retryable && !this.unavailable) {
+          const held = storage;
+          try {
+            check();
+            // Keep this connection's monotonic cooldown. Reopening would start
+            // the full persisted delay again, regardless of elapsed wall time.
+            const timer = setTimeout(() => { if (this.retryStorage === held) this.cancel(); }, Math.max(1, deadline - this.now()));
+            this.retryStorage = held; this.timer = timer; storage = undefined;
+          } catch (error) {
+            await this.close(held); storage = undefined;
+            throw translated(error);
+          }
+        }
         if (storage) await this.close(storage);
         if (this.unavailable) fail('REOPEN_REQUIRED');
       }
@@ -231,9 +251,10 @@ export class NativeRecoveryCoordinator {
     this.generation++; this.clearTimer();
     void this.stage?.lockWallet().catch(() => { this.unavailable = true; });
     const ready = this.ready; this.ready = null;
-    if (ready) {
-      this.proofs.delete(ready.proof);
-      const closing = this.close(ready.storage); this.closing = closing;
+    const storage = ready?.storage ?? this.retryStorage; this.retryStorage = null;
+    if (ready) this.proofs.delete(ready.proof);
+    if (storage) {
+      const closing = this.close(storage); this.closing = closing;
       void closing.finally(() => { if (this.closing === closing) this.closing = null; }).catch(() => undefined);
     }
   }
