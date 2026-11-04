@@ -73,8 +73,12 @@ function statusIdentity(value: unknown, network: UtxoNetwork): number {
  * Advisory indexer data for one public address. No cache, wallet state, keys,
  * transaction construction or broadcasting. All three reads share one deadline.
  */
-export function createUtxoBalanceReader(options: Readonly<{ fetch?: FetchLike; timeoutMs?: number }> = {}): UtxoBalanceReader {
-  const fetcher = options.fetch ?? ((url: string, init: RequestInit) => fetch(url, init));
+export function createUtxoBalanceReader(options: Readonly<{ fetch: FetchLike; timeoutMs?: number }>): UtxoBalanceReader {
+  // Ambient React Native fetch does not enforce redirect rejection. A host must
+  // explicitly supply a qualified port before this reader can disclose addresses.
+  const port = options && typeof options === 'object' ? Object.getOwnPropertyDescriptor(options, 'fetch') : undefined;
+  if (!port || !('value' in port) || typeof port.value !== 'function') throw new Error('An explicit UTXO fetch port is required');
+  const fetcher: FetchLike = port.value;
   const timeoutMs = options.timeoutMs ?? 12_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
     throw new Error('Invalid UTXO balance timeout');

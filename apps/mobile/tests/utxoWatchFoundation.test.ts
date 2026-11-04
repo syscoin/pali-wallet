@@ -264,5 +264,18 @@ test('one request cancellation does not poison another independent read', async 
 });
 
 test('invalid timeout configuration fails before any work', () => {
-  for (const timeoutMs of [0, -1, 0.5, Infinity, NaN, 30001]) assert.throws(() => createUtxoBalanceReader({ timeoutMs }));
+  for (const timeoutMs of [0, -1, 0.5, Infinity, NaN, 30001]) assert.throws(() => createUtxoBalanceReader({ fetch: async () => json({}), timeoutMs }));
+});
+
+test('reader requires an explicit function port and never falls back to ambient fetch', () => {
+  let calls = 0, getterCalls = 0;
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => { calls++; return json({}); };
+  const accessor = { get fetch() { getterCalls++; return globalThis.fetch; } };
+  try {
+    for (const invalid of [undefined, null, {}, [], { fetch: undefined }, { fetch: null }, { fetch: 1 }, { fetch: {} }, accessor])
+      assert.throws(() => createUtxoBalanceReader(invalid as never), /explicit UTXO fetch port/);
+    createUtxoBalanceReader({ fetch: async () => { calls++; return json({}); } });
+    assert.equal(calls, 0); assert.equal(getterCalls, 0);
+  } finally { globalThis.fetch = original; }
 });
