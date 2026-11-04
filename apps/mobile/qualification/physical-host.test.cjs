@@ -140,9 +140,10 @@ function fixture(changes = {}) {
       PaliQualificationLockfileSHA256: lockHash,
       ...changes.info,
     };
-    fs.writeFileSync(path.join(app, 'Info.plist'), 'public info');
+    fs.writeFileSync(path.join(app, 'Info.plist'), JSON.stringify(infos[app]));
     fs.writeFileSync(path.join(app, executable), 'public executable');
     fs.writeFileSync(path.join(app, 'main.jsbundle'), 'public bundle');
+    fs.writeFileSync(path.join(app, 'resource.txt'), 'public resource');
   }
   let pid = 100;
   let time = 0;
@@ -155,6 +156,9 @@ function fixture(changes = {}) {
   const ok = (stdout = '', stderr = '') => ({ status: 0, stdout, stderr });
   const json = (value) =>
     ok(JSON.stringify({ info: { outcome: 'success' }, result: value }));
+  const appInfo = (app) =>
+    infos[app] ||
+    JSON.parse(fs.readFileSync(path.join(app, 'Info.plist'), 'utf8'));
   const spawn = (command, args, config) => {
     calls.push({ command, args });
     if (command === 'git')
@@ -167,7 +171,7 @@ function fixture(changes = {}) {
       );
     if (command === 'plutil') {
       if (args.at(-1) === '-') return ok(config.input);
-      return ok(JSON.stringify(infos[path.dirname(args.at(-1))]));
+      return ok(JSON.stringify(appInfo(path.dirname(args.at(-1)))));
     }
     if (command === 'lipo') return ok(changes.arch || 'arm64');
     if (command === 'codesign') {
@@ -176,7 +180,7 @@ function fixture(changes = {}) {
           ? { status: 1, stderr: 'private error' }
           : ok();
       const app = args.at(-1);
-      const info = infos[app];
+      const info = appInfo(app);
       const scenario = info.PaliQualificationScenario;
       return ok(
         JSON.stringify({
@@ -203,7 +207,7 @@ function fixture(changes = {}) {
           : [],
       });
     if (a.includes('install')) {
-      installed.add(infos[a.at(-1)].CFBundleIdentifier);
+      installed.add(appInfo(a.at(-1)).CFBundleIdentifier);
       return json({});
     }
     if (a.includes('uninstall')) {
@@ -399,6 +403,229 @@ test('fresh physical fixture run owns exact PIDs and preserves both cold restart
     assert(!JSON.stringify(value).includes(DEVICE));
   } finally {
     f.cleanup();
+  }
+});
+test('device operations install private verified snapshots despite concurrent source rebuilds', async () => {
+  const f = fixture({ reset: true });
+  const original = f.dependencies.spawnSync;
+  const installs = [];
+  let changed = false;
+  f.dependencies.spawnSync = (command, args, options) => {
+    if (command === 'xcrun' && !changed) {
+      changed = true;
+      for (const app of Object.values(f.options.apps)) {
+        fs.writeFileSync(path.join(app, 'main.jsbundle'), 'concurrent rebuild');
+        fs.writeFileSync(
+          path.join(app, f.infos[app].CFBundleExecutable),
+          'different executable'
+        );
+      }
+    }
+    if (command === 'xcrun' && args.includes('install')) {
+      const app = args.at(-1);
+      installs.push({
+        app,
+        bundle: fs.readFileSync(path.join(app, 'main.jsbundle'), 'utf8'),
+      });
+    }
+    return original(command, args, options);
+  };
+  try {
+    const result = await run(f);
+    assert.equal(installs.length, 4);
+    for (const installed of installs) {
+      assert(!Object.values(f.options.apps).includes(installed.app));
+      assert.equal(installed.bundle, 'public bundle');
+    }
+    assert(
+      result.summaries.every(
+        (entry) => entry.bundleSha256 === hash('public bundle')
+      )
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('a staged resource change before install is rejected before device mutation', async () => {
+  const f = fixture();
+  const original = f.dependencies.spawnSync;
+  let lists = 0;
+  f.dependencies.spawnSync = (command, args, options) => {
+    if (command === 'xcrun' && args.includes('devices') && ++lists === 2) {
+      const resource = path.join(
+        f.options.output,
+        '.verified-artifacts',
+        'import.app',
+        'resource.txt'
+      );
+      if (fs.existsSync(resource)) {
+        fs.chmodSync(resource, 0o600);
+        fs.writeFileSync(resource, 'unexpected staged mutation');
+      }
+    }
+    return original(command, args, options);
+  };
+  try {
+    await assert.rejects(run(f), /ARTIFACT_CHANGED/);
+    assert.equal(mutations(f.calls).length, 0);
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('snapshot admission rejects symlink and special resources without following them', async () => {
+  for (const kind of ['symlink', 'fifo', 'oversized']) {
+    const f = fixture();
+    const resource = path.join(f.options.apps.import, 'unsafe-resource');
+    if (kind === 'symlink') fs.symlinkSync('/dev/null', resource);
+    else if (kind === 'fifo')
+      assert.equal(spawnSync('mkfifo', [resource]).status, 0);
+    else {
+      fs.writeFileSync(resource, '');
+      fs.truncateSync(resource, 256 * 1024 * 1024 + 1);
+    }
+    try {
+      await assert.rejects(run(f), /ARTIFACT/);
+      assert.equal(mutations(f.calls).length, 0);
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+
+test('staged mutation after reset cannot reach the reinstall operation', async () => {
+  const f = fixture({ reset: true });
+  const original = f.dependencies.spawnSync;
+  f.dependencies.spawnSync = (command, args, options) => {
+    const result = original(command, args, options);
+    if (command === 'xcrun' && args.includes('uninstall')) {
+      const resource = path.join(
+        f.options.output,
+        '.verified-artifacts',
+        'import.app',
+        'resource.txt'
+      );
+      fs.chmodSync(resource, 0o600);
+      fs.writeFileSync(resource, 'changed after reset');
+    }
+    return result;
+  };
+  try {
+    await assert.rejects(run(f), /ARTIFACT_CHANGED/);
+    assert.equal(
+      f.calls.filter((call) => call.args.includes('install')).length,
+      1
+    );
+  } finally {
+    f.cleanup();
+  }
+});
+
+test('partial, oversized and invalid copied files are removed without deleting symlink targets', async () => {
+  for (const kind of [
+    'partial',
+    'failed-database',
+    'oversized',
+    'symlink',
+    'directory',
+  ]) {
+    const f = fixture();
+    const original = f.dependencies.spawnSync;
+    let injected = false;
+    const target = path.join(path.dirname(f.options.output), 'unrelated.txt');
+    fs.writeFileSync(target, 'preserve unrelated data');
+    f.dependencies.spawnSync = (command, args, options) => {
+      if (
+        command === 'xcrun' &&
+        args.includes('copy') &&
+        !injected &&
+        (kind !== 'failed-database' ||
+          args.includes('Library/Application Support/PaliWallet/wallet.sqlite'))
+      ) {
+        injected = true;
+        const destination = args[args.indexOf('--destination') + 1];
+        if (kind === 'symlink') fs.symlinkSync(target, destination);
+        else if (kind === 'directory') fs.mkdirSync(destination);
+        else
+          fs.writeFileSync(
+            destination,
+            kind === 'partial' ? 'partial copied report' : 'x'.repeat(100001)
+          );
+        return kind === 'partial' || kind === 'failed-database'
+          ? { status: 1, stderr: 'interrupted copy' }
+          : {
+              status: 0,
+              stdout: JSON.stringify({
+                info: { outcome: 'success' },
+                result: {},
+              }),
+            };
+      }
+      return original(command, args, options);
+    };
+    try {
+      if (kind === 'partial') await run(f);
+      else
+        await assert.rejects(
+          run(f),
+          kind === 'failed-database'
+            ? /NATIVE_COMMAND_FAILED/
+            : /INVALID_COPIED_FILE/
+        );
+      assert.equal(fs.readFileSync(target, 'utf8'), 'preserve unrelated data');
+      assert.equal(
+        fs
+          .readdirSync(f.options.output)
+          .some((name) => name.startsWith('.read-') || name === '.database'),
+        false
+      );
+    } finally {
+      f.cleanup();
+    }
+  }
+});
+
+test('copied report and invalid database buffers are cleared on every consumption path', async () => {
+  for (const invalid of ['none', 'database', 'report', 'read']) {
+    const f = fixture();
+    const originalRead = fs.readSync;
+    const copied = [];
+    fs.readSync = (fd, buffer, ...options) => {
+      const value = originalRead(fd, buffer, ...options);
+      const reportBytes =
+        value && buffer.includes(Buffer.from('"physicalRunId"'));
+      const databaseBytes =
+        value &&
+        buffer.length === 4096 &&
+        buffer.every((byte) => byte === 0xa5);
+      if (reportBytes || databaseBytes) {
+        if (invalid === 'database' && databaseBytes)
+          buffer.write('SQLite format 3\0');
+        if (invalid === 'report' && reportBytes) buffer[0] = 0x5b;
+        copied.push(buffer);
+        if (invalid === 'read' && reportBytes)
+          throw Error('partial local read failed');
+      }
+      return value;
+    };
+    try {
+      if (invalid === 'database')
+        await assert.rejects(run(f), /INVALID_ENCRYPTED_DATABASE/);
+      else if (invalid === 'report' || invalid === 'read')
+        await assert.rejects(run(f));
+      else await run(f);
+      assert(copied.length > 0);
+      assert(
+        copied.every(
+          (buffer) =>
+            Buffer.isBuffer(buffer) && buffer.every((byte) => byte === 0)
+        )
+      );
+    } finally {
+      fs.readSync = originalRead;
+      f.cleanup();
+    }
   }
 });
 test('source, bundle, platform, architecture and signature errors precede every device mutation', async () => {

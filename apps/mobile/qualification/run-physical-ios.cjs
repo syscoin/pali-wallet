@@ -21,8 +21,123 @@ const fail = (code) => {
   throw error;
 };
 const own = (value, key) => Object.prototype.hasOwnProperty.call(value, key);
+const MAX_ARTIFACT_BYTES = 1024 * 1024 * 1024;
+const MAX_ARTIFACT_FILE_BYTES = 256 * 1024 * 1024;
+const MAX_ARTIFACT_ENTRIES = 20000;
 function plain(value) {
   return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Copy/read only bounded regular bundle entries; never follow a resource link. */
+function artifactTree(app, destination) {
+  const digest = crypto.createHash('sha256');
+  const files = new Map();
+  let entries = 0;
+  let bytes = 0;
+  const visit = (relative, depth) => {
+    if (++entries > MAX_ARTIFACT_ENTRIES || depth > 32)
+      fail('ARTIFACT_RESOURCE_LIMIT');
+    const source = path.join(app, relative);
+    const stat = fs.lstatSync(source);
+    const target = destination && path.join(destination, relative);
+    if (stat.isSymbolicLink()) fail('ARTIFACT_RESOURCE_UNSUPPORTED');
+    if (stat.isDirectory()) {
+      digest.update(`directory\0${relative}\0`);
+      if (target) fs.mkdirSync(target, { mode: 0o700 });
+      const directory = fs.opendirSync(source);
+      const names = [];
+      try {
+        let entry;
+        while ((entry = directory.readSync()) !== null) {
+          if (names.length + entries >= MAX_ARTIFACT_ENTRIES)
+            fail('ARTIFACT_RESOURCE_LIMIT');
+          names.push(entry.name);
+        }
+      } finally {
+        directory.closeSync();
+      }
+      for (const name of names.sort())
+        visit(path.join(relative, name), depth + 1);
+      return;
+    }
+    if (!stat.isFile()) fail('ARTIFACT_RESOURCE_UNSUPPORTED');
+    bytes += stat.size;
+    if (stat.size > MAX_ARTIFACT_FILE_BYTES || bytes > MAX_ARTIFACT_BYTES)
+      fail('ARTIFACT_RESOURCE_LIMIT');
+    const fileDigest = crypto.createHash('sha256');
+    digest.update(
+      `file\0${relative}\0${stat.mode & 0o111 ? 1 : 0}\0${stat.size}\0`
+    );
+    let input;
+    let output;
+    const chunk = Buffer.alloc(64 * 1024);
+    try {
+      input = fs.openSync(
+        source,
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+      );
+      const opened = fs.fstatSync(input);
+      if (
+        !opened.isFile() ||
+        opened.dev !== stat.dev ||
+        opened.ino !== stat.ino ||
+        opened.size !== stat.size
+      )
+        fail('ARTIFACT_CHANGED');
+      if (target) output = fs.openSync(target, 'wx', 0o600);
+      let read = 0;
+      for (;;) {
+        const length = fs.readSync(input, chunk, 0, chunk.length, null);
+        if (!length) break;
+        read += length;
+        if (read > stat.size) fail('ARTIFACT_CHANGED');
+        digest.update(chunk.subarray(0, length));
+        fileDigest.update(chunk.subarray(0, length));
+        if (output !== undefined) {
+          let written = 0;
+          while (written < length) {
+            const count = fs.writeSync(
+              output,
+              chunk,
+              written,
+              length - written
+            );
+            if (count <= 0) fail('ARTIFACT_COPY_FAILED');
+            written += count;
+          }
+        }
+      }
+      const after = fs.fstatSync(input);
+      if (
+        read !== stat.size ||
+        after.size !== stat.size ||
+        after.mtimeMs !== opened.mtimeMs ||
+        after.ctimeMs !== opened.ctimeMs
+      )
+        fail('ARTIFACT_CHANGED');
+    } finally {
+      chunk.fill(0);
+      if (output !== undefined) fs.closeSync(output);
+      if (input !== undefined) fs.closeSync(input);
+    }
+    if (target) fs.chmodSync(target, stat.mode & 0o111 ? 0o500 : 0o400);
+    files.set(relative, fileDigest.digest('hex'));
+  };
+  visit('', 0);
+  return { sha256: digest.digest('hex'), files };
+}
+
+function sameArtifact(expected, actual) {
+  return [
+    'scenario',
+    'bundle',
+    'executableName',
+    'cdhash',
+    'executableSha256',
+    'bundleSha256',
+    'signingTeamSha256',
+    'artifactSha256',
+  ].every((key) => expected[key] === actual[key]);
 }
 function parseOptions(argv) {
   const flags = new Set([
@@ -222,14 +337,16 @@ function inspectArtifact(app, scenario, options, execute, lockfileSha256) {
     fs.lstatSync(bundleFile).size > 64 * 1024 * 1024
   )
     fail('BUNDLED_JAVASCRIPT_REQUIRED');
+  const tree = artifactTree(app);
   return Object.freeze({
     app,
     scenario,
     bundle,
     executableName: info.CFBundleExecutable,
     cdhash,
-    executableSha256: sha256(fs.readFileSync(executable)),
-    bundleSha256: sha256(fs.readFileSync(bundleFile)),
+    executableSha256: tree.files.get(info.CFBundleExecutable),
+    bundleSha256: tree.files.get('main.jsbundle'),
+    artifactSha256: tree.sha256,
     signingTeamSha256: sha256(team),
   });
 }
@@ -394,32 +511,89 @@ async function runPhysical(options, dependencies = {}) {
     optional = false,
     maximum = 100000
   ) => {
-    checkDevice();
-    const value = dc(
-      [
-        'device',
-        'copy',
-        'from',
-        '--device',
-        device.identifier,
-        '--domain-type',
-        'appDataContainer',
-        '--domain-identifier',
-        artifact.bundle,
-        '--source',
-        source,
-        '--destination',
+    // These exact, newly allocated destinations are ours. Do not follow links
+    // or recursively delete unexpected directory contents during cleanup.
+    try {
+      fs.lstatSync(destination);
+      fail('COPY_DESTINATION_EXISTS');
+    } catch (error) {
+      if (error.code !== 'ENOENT') throw error;
+    }
+    let bytes;
+    let failure;
+    try {
+      checkDevice();
+      const value = dc(
+        [
+          'device',
+          'copy',
+          'from',
+          '--device',
+          device.identifier,
+          '--domain-type',
+          'appDataContainer',
+          '--domain-identifier',
+          artifact.bundle,
+          '--source',
+          source,
+          '--destination',
+          destination,
+        ],
+        optional
+      );
+      if (!value) return null;
+      const stat = fs.lstatSync(destination);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maximum)
+        fail('INVALID_COPIED_FILE');
+      const input = fs.openSync(
         destination,
-      ],
-      optional
-    );
-    if (!value) return null;
-    const stat = fs.lstatSync(destination);
-    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > maximum)
-      fail('INVALID_COPIED_FILE');
-    const bytes = fs.readFileSync(destination);
-    fs.unlinkSync(destination);
-    return bytes;
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW
+      );
+      const extra = Buffer.alloc(1);
+      try {
+        const opened = fs.fstatSync(input);
+        if (
+          !opened.isFile() ||
+          opened.dev !== stat.dev ||
+          opened.ino !== stat.ino ||
+          opened.size !== stat.size
+        )
+          fail('INVALID_COPIED_FILE');
+        bytes = Buffer.alloc(stat.size);
+        let read = 0;
+        while (read < bytes.length) {
+          const length = fs.readSync(
+            input,
+            bytes,
+            read,
+            bytes.length - read,
+            null
+          );
+          if (!length) fail('INVALID_COPIED_FILE');
+          read += length;
+        }
+        if (fs.readSync(input, extra, 0, 1, null)) fail('INVALID_COPIED_FILE');
+      } finally {
+        extra.fill(0);
+        fs.closeSync(input);
+      }
+      return bytes;
+    } catch (error) {
+      bytes?.fill(0);
+      failure = error;
+      throw error;
+    } finally {
+      try {
+        const stat = fs.lstatSync(destination);
+        if (stat.isDirectory()) fs.rmdirSync(destination);
+        else fs.unlinkSync(destination);
+      } catch (error) {
+        if (error.code !== 'ENOENT') {
+          bytes?.fill(0);
+          if (!failure) throw error;
+        }
+      }
+    }
   };
   const awaitReport = async (artifact, phase, runId) => {
     const deadline = now() + 300000;
@@ -433,40 +607,44 @@ async function runPhysical(options, dependencies = {}) {
         true
       );
       if (bytes) {
-        let value;
-        if (phase === 'reset') {
-          value = JSON.parse(bytes.toString('utf8'));
-          const keys = [
-            'keyDeleted',
-            'physicalBundleIdentifier',
-            'physicalRunId',
-            'physicalSourceRevision',
-            'status',
-            'version',
-          ];
-          if (
-            !plain(value) ||
-            Object.keys(value).sort().join(',') !== keys.join(',') ||
-            value.version !== 1 ||
-            value.status !== 'reset' ||
-            value.keyDeleted !== true ||
-            value.physicalRunId !== runId ||
-            value.physicalBundleIdentifier !== artifact.bundle ||
-            value.physicalSourceRevision !== options.sourceRevision
-          )
-            fail('INVALID_RESET_ACKNOWLEDGEMENT');
-        } else {
-          value = decodePhysicalReport(bytes.toString('utf8'), {
-            phase,
-            scenario: artifact.scenario,
-            runId,
-            bundleIdentifier: artifact.bundle,
-            sourceRevision: options.sourceRevision,
-          });
-          if (value.osVersion !== device.osVersion)
-            fail('PHYSICAL_OS_VERSION_CHANGED');
+        try {
+          let value;
+          if (phase === 'reset') {
+            value = JSON.parse(bytes.toString('utf8'));
+            const keys = [
+              'keyDeleted',
+              'physicalBundleIdentifier',
+              'physicalRunId',
+              'physicalSourceRevision',
+              'status',
+              'version',
+            ];
+            if (
+              !plain(value) ||
+              Object.keys(value).sort().join(',') !== keys.join(',') ||
+              value.version !== 1 ||
+              value.status !== 'reset' ||
+              value.keyDeleted !== true ||
+              value.physicalRunId !== runId ||
+              value.physicalBundleIdentifier !== artifact.bundle ||
+              value.physicalSourceRevision !== options.sourceRevision
+            )
+              fail('INVALID_RESET_ACKNOWLEDGEMENT');
+          } else {
+            value = decodePhysicalReport(bytes.toString('utf8'), {
+              phase,
+              scenario: artifact.scenario,
+              runId,
+              bundleIdentifier: artifact.bundle,
+              sourceRevision: options.sourceRevision,
+            });
+            if (value.osVersion !== device.osVersion)
+              fail('PHYSICAL_OS_VERSION_CHANGED');
+          }
+          return value;
+        } finally {
+          bytes.fill(0);
         }
-        return value;
       }
       if (
         !owned ||
@@ -502,7 +680,7 @@ async function runPhysical(options, dependencies = {}) {
   const lockfileSha256 = sha256(
     fs.readFileSync(path.join(mobile, 'package-lock.json'))
   );
-  const artifacts = ['import', 'generate'].map((scenario) =>
+  const originalArtifacts = ['import', 'generate'].map((scenario) =>
     inspectArtifact(
       options.apps[scenario],
       scenario,
@@ -511,10 +689,13 @@ async function runPhysical(options, dependencies = {}) {
       lockfileSha256
     )
   );
-  if (artifacts[0].signingTeamSha256 !== artifacts[1].signingTeamSha256)
+  if (
+    originalArtifacts[0].signingTeamSha256 !==
+    originalArtifacts[1].signingTeamSha256
+  )
     fail('SIGNING_TEAM_CHANGED');
   if (
-    artifacts.some(
+    originalArtifacts.some(
       (a) =>
         options.output === a.app ||
         options.output.startsWith(`${a.app}${path.sep}`)
@@ -527,6 +708,41 @@ async function runPhysical(options, dependencies = {}) {
   let leaseToken;
   let lease;
   try {
+    stage = 'artifact-snapshots';
+    const staging = path.join(options.output, '.verified-artifacts');
+    fs.mkdirSync(staging, { mode: 0o700 });
+    const artifacts = originalArtifacts.map((original) => {
+      const stagedPath = path.join(staging, `${original.scenario}.app`);
+      artifactTree(original.app, stagedPath);
+      const staged = inspectArtifact(
+        stagedPath,
+        original.scenario,
+        options,
+        execute,
+        lockfileSha256
+      );
+      if (!sameArtifact(original, staged)) fail('ARTIFACT_CHANGED');
+      return staged;
+    });
+    const install = (artifact) => {
+      checkDevice();
+      const checked = inspectArtifact(
+        artifact.app,
+        artifact.scenario,
+        options,
+        execute,
+        lockfileSha256
+      );
+      if (!sameArtifact(artifact, checked)) fail('ARTIFACT_CHANGED');
+      dc([
+        'device',
+        'install',
+        'app',
+        '--device',
+        device.identifier,
+        artifact.app,
+      ]);
+    };
     stage = 'physical-device';
     checkDevice();
     leaseFile = path.join(
@@ -576,15 +792,7 @@ async function runPhysical(options, dependencies = {}) {
         )
       )
         fail('FIXTURE_PROCESS_ALREADY_RUNNING');
-      checkDevice();
-      dc([
-        'device',
-        'install',
-        'app',
-        '--device',
-        device.identifier,
-        artifact.app,
-      ]);
+      install(artifact);
       if (options.reset) {
         stage = `${artifact.scenario}-explicit-reset`;
         launch(artifact, 'reset', runId);
@@ -603,15 +811,7 @@ async function runPhysical(options, dependencies = {}) {
           device.identifier,
           artifact.bundle,
         ]);
-        checkDevice();
-        dc([
-          'device',
-          'install',
-          'app',
-          '--device',
-          device.identifier,
-          artifact.app,
-        ]);
+        install(artifact);
       }
       stage = `${artifact.scenario}-create`;
       launch(artifact, 'create', runId);
@@ -625,26 +825,30 @@ async function runPhysical(options, dependencies = {}) {
         false,
         64 * 1024 * 1024
       );
-      if (
-        database.length < 4096 ||
-        database.subarray(0, 16).toString() === 'SQLite format 3\0' ||
-        database.includes(
-          Buffer.from(
-            'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+      let databaseEvidence;
+      try {
+        if (
+          database.length < 4096 ||
+          database.subarray(0, 16).toString() === 'SQLite format 3\0' ||
+          database.includes(
+            Buffer.from(
+              'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about'
+            )
+          ) ||
+          database.includes(
+            Buffer.from('PUBLIC native qualification password 2026')
           )
-        ) ||
-        database.includes(
-          Buffer.from('PUBLIC native qualification password 2026')
         )
-      )
-        fail('INVALID_ENCRYPTED_DATABASE');
-      const databaseEvidence = {
-        bytes: database.length,
-        sha256: sha256(database),
-        plaintextHeader: false,
-        fixtureCredentialsPresent: false,
-      };
-      database.fill(0);
+          fail('INVALID_ENCRYPTED_DATABASE');
+        databaseEvidence = {
+          bytes: database.length,
+          sha256: sha256(database),
+          plaintextHeader: false,
+          fixtureCredentialsPresent: false,
+        };
+      } finally {
+        database.fill(0);
+      }
       stage = `${artifact.scenario}-restart`;
       launch(artifact, 'restart', runId, created.address);
       const restored = await awaitReport(artifact, 'restart', runId);
@@ -657,6 +861,7 @@ async function runPhysical(options, dependencies = {}) {
         cdhash: artifact.cdhash,
         executableSha256: artifact.executableSha256,
         bundleSha256: artifact.bundleSha256,
+        artifactSha256: artifact.artifactSha256,
         database: databaseEvidence,
         processRestartVerified: true,
         hdAccountsRestored: true,

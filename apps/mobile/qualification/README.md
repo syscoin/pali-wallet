@@ -202,6 +202,23 @@ native validators plus complete physical crypto/check evidence. Create/restart
 must preserve account, fingerprint, HD and ERC20 transaction identity while the
 native process session changes.
 
+Before contacting a device, the runner copies the admitted apps into a private
+`.verified-artifacts` directory inside the new evidence directory. It rejects
+symlinks and special files, bounds each file, total bytes, entry count and depth,
+and verifies the copied signatures and complete tree hashes against admission.
+Every install, including reset reinstallation, uses those snapshots and repeats
+signature, identity and tree-hash checks. A concurrent rebuild of the original
+app paths cannot change the installed snapshot. The snapshots are retained with
+the evidence and use owner-only permissions; this is protection against ordinary
+mutable-input races, not a filesystem immutability guarantee against malicious
+code running as the same host user. The operator must keep that host trusted.
+
+Copied reports and database samples use fresh temporary paths. Cleanup is attempted on
+success, command failure and invalid/oversized copies without following symlinks
+or recursively deleting unexpected directories; unexpected nonempty directories
+are preserved and the run fails. In-memory copy buffers are
+cleared after validation, including rejected reports and database samples.
+
 A per-device host lease prevents two local runners from sharing an app process.
 If a runner is killed, its lease remains and blocks another run. Inspect the
 recorded host PID and confirm that no qualification process remains before an
