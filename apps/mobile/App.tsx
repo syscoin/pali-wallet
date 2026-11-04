@@ -337,7 +337,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     return () => sub.remove();
   }, [preview, requestedRoute, setSheet]);
   useEffect(() => {
-    if (route === 'design' || route === 'native' || route === 'accounts' || Platform.OS === 'web') return;
+    if (route === 'design' || route === 'native' || route === 'accounts' || route === 'add' || Platform.OS === 'web') return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (sheet) {
         setSheet(null);

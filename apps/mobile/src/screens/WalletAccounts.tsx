@@ -37,9 +37,9 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const [error, setError] = useState('');
   const active = useRef(true);
   const working = useRef(false);
-  const back = useRef(() => undefined as void);
-  useLayoutEffect(() => { back.current = () => { if (busy) return; if (form) { setForm(null); setError(''); } else onBack(); }; }, [busy, form, onBack]);
-  useEffect(() => { active.current = true; const listener = BackHandler.addEventListener('hardwareBackPress', () => { back.current(); return true; });
+  const back = useRef<() => boolean>(() => false);
+  useLayoutEffect(() => { back.current = () => { if (form === 'add') return false; if (busy) return true; if (form) { setForm(null); setError(''); } else onBack(); return true; }; }, [busy, form, onBack]);
+  useEffect(() => { active.current = true; const listener = BackHandler.addEventListener('hardwareBackPress', () => back.current());
     return () => { active.current = false; listener.remove(); }; }, []);
   const run = async (operation: () => void | Promise<void>) => {
     if (working.current) return;

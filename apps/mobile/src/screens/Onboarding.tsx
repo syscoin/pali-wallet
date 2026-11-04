@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   AppState,
+  BackHandler,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -152,6 +153,7 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const submissionInProgress = useRef(false);
   const alive = useRef(true);
+  const hardwareBack = useRef(() => undefined as void);
   useEffect(() => {
     alive.current = true;
     const listener = AppState.addEventListener('change', (state) => { if (state !== 'active') { setReview(null); setError(null); } });
@@ -159,7 +161,12 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
   }, []);
   useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [review]);
   const info = WATCH_CHOICES.find((choice) => choice.id === network)!;
-  const back = () => { if (submitting) return; if (review) { setReview(null); setError(null); } else onCancel(); };
+  const back = () => { if (submissionInProgress.current) return; if (review) { setReview(null); setError(null); } else onCancel(); };
+  useLayoutEffect(() => { hardwareBack.current = back; });
+  useEffect(() => {
+    const listener = BackHandler.addEventListener('hardwareBackPress', () => { hardwareBack.current(); return true; });
+    return () => listener.remove();
+  }, []);
   const prepare = () => {
     if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
