@@ -60,7 +60,7 @@ export type NativeTransferSnapshot = Readonly<{
   intent: Erc20TransferIntent | null;
 }>;
 export interface NativeTransferJournalHandle {
-  load(): Promise<TransferJournalEntry | null>;
+  load(hash?: string): Promise<TransferJournalEntry | null>;
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
@@ -669,12 +669,10 @@ export class NativeTransfers {
         guard();
         this.verifySigned(approved.transaction!, signed);
         rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
-        this.publish({ hash: transactionHash }); guard();
       }
       guard();
       this.publish({
         phase: 'submitting',
-        hash: transactionHash,
         review: approved.public,
         message: null,
       });
@@ -691,7 +689,20 @@ export class NativeTransfers {
         // storage adapter simultaneously revoked the session.
         if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
         assertCurrent();
-        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) throw error;
+        if (!startedSubmission) {
+          // A signature alone does not prove the signed record was committed.
+          // Check under the wallet owner, since the review may have expired.
+          const recovery = await runtime.journal(assertCurrent);
+          const saved = await recovery.load(transactionHash);
+          assertCurrent();
+          if (saved?.hash === transactionHash && saved.rawTransaction === rawTransaction)
+            this.publish({ hash: transactionHash });
+          throw error;
+        }
+        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) {
+          this.publish({ hash: transactionHash });
+          throw error;
+        }
         this.publish({
           phase: 'unknown',
           review: null,
@@ -704,13 +715,22 @@ export class NativeTransfers {
         return;
       }
       assertCurrent();
-      await journal.transition(transactionHash, 'submitted');
+      // An RPC acknowledgement cannot be undone by a local status write.
+      this.publish({ hash: transactionHash });
+      assertCurrent();
+      let message = 'Submitted. Waiting for network confirmation.';
+      try {
+        await journal.transition(transactionHash, 'submitted');
+      } catch (error) {
+        if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
+        message = 'Submitted. Activity may take longer to update.';
+      }
       assertCurrent();
       this.publish({
         phase: 'pending',
         review: null,
         hash: transactionHash,
-        message: 'Submitted. Waiting for network confirmation.',
+        message,
       });
     });
   }
