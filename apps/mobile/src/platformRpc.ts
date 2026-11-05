@@ -11,6 +11,7 @@ export const RPC_ENDPOINTS: Readonly<Partial<Record<NetworkId, string>>> = Objec
 
 const MAX_RESPONSE_BYTES = 16 * 1024;
 const ABSOLUTE_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+const CATALOGUE_RESPONSE_BYTES = 8 * 1024 * 1024;
 
 /** A byte budget was exceeded; the response content and outcome remain unknown. */
 export class ResponseSizeLimitError extends Error {
@@ -20,7 +21,7 @@ export class ResponseSizeLimitError extends Error {
   }
 }
 
-function cancelResponseBody(response: Response): void {
+export function cancelResponseBody(response: Response): void {
   try {
     void response.body?.cancel().catch(() => undefined);
   } catch {
@@ -40,7 +41,7 @@ function checkAborted(signal: AbortSignal): void {
   if (signal.aborted) throw abortError();
 }
 
-function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+export function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) return Promise.reject(abortError());
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(abortError());
@@ -61,11 +62,27 @@ export function utf8ByteLength(value: string): number {
 }
 
 /** consumeBytes is a synchronous shared budget hook; it receives counts only. */
-export async function boundedResponseText(
+export function boundedResponseText(
   response: Response,
   signal: AbortSignal,
   maxBytes = MAX_RESPONSE_BYTES,
   consumeBytes?: (bytes: number) => void
+): Promise<string> {
+  return readResponseText(response, signal, maxBytes, ABSOLUTE_MAX_RESPONSE_BYTES, consumeBytes);
+}
+
+/** Bound decoded public metadata admission without changing the RPC fallback. */
+export function boundedCatalogueResponseText(response: Response, signal: AbortSignal): Promise<string> {
+  return readResponseText(response, signal, CATALOGUE_RESPONSE_BYTES, CATALOGUE_RESPONSE_BYTES, undefined, true);
+}
+
+async function readResponseText(
+  response: Response,
+  signal: AbortSignal,
+  maxBytes: number,
+  limit: number,
+  consumeBytes?: (bytes: number) => void,
+  requireStream = false
 ): Promise<string> {
   checkAborted(signal);
   if (consumeBytes !== undefined && typeof consumeBytes !== 'function') throw new Error('Invalid byte budget');
@@ -82,7 +99,7 @@ export async function boundedResponseText(
   if (
     !Number.isSafeInteger(maxBytes) ||
     maxBytes < 1 ||
-    maxBytes > ABSOLUTE_MAX_RESPONSE_BYTES
+    maxBytes > limit
   )
     throw new Error('Invalid response size limit');
   const lengthHeader = response.headers.get('content-length');
@@ -99,8 +116,8 @@ export async function boundedResponseText(
   // Streaming fetch implementations can stop reading immediately at the limit.
   // Native fetch may buffer the HTTP body; the parsed response is still bounded.
   if (response.body?.getReader && typeof TextDecoder !== 'undefined') {
-    const reader = response.body.getReader();
     const decoder = new TextDecoder('utf-8', { fatal: true });
+    const reader = response.body.getReader();
     let bytes = 0;
     let result = '';
     try {
@@ -121,6 +138,10 @@ export async function boundedResponseText(
         // Preserve the read/decode/size failure if cancellation itself fails.
       }
     }
+  }
+  if (requireStream) {
+    cancelResponseBody(response);
+    throw new Error('Catalogue response requires a readable UTF-8 stream');
   }
   const text = await abortable(response.text(), signal);
   if (text.length > maxBytes || utf8ByteLength(text) > maxBytes) {

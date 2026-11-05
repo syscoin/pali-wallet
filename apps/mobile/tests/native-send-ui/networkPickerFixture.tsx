@@ -1,4 +1,6 @@
 import { NATIVE_NETWORKS, getNativeSendContext } from '../../src/custody/networkContext';
+import { createNativeChainCatalogue } from '../../src/custody/networkCatalogue';
+import { EVM_CHAIN_CATALOGUE_URL } from '../../../../source/shared/chainCatalogueData';
 // Public deterministic UI fixture. No storage, RPC or signing authority is loaded.
 import React, { useLayoutEffect, useState } from 'react';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../../src/custody/networkView';
@@ -12,17 +14,44 @@ let contextRevision = 19;
 let cancelled = 0;
 let release: (() => void) | undefined;
 let releaseReplacement: (() => void) | undefined;
+let releaseCatalogue: (() => void) | undefined;
+let releaseSave: (() => void) | undefined;
+let catalogueRequests = 0;
+let saveRequests = 0;
 let swapController: ((restore?: boolean) => void) | undefined;
 const listeners = new Set<() => void>();
 const requests: { id: string; contextRevision: number; catalogueRevision: number }[] = [];
 const notify = () => { for (const listener of listeners) listener(); };
+const loadCatalogue = createNativeChainCatalogue(async (url) => {
+  if (url !== EVM_CHAIN_CATALOGUE_URL) throw new Error('Unexpected catalogue URL');
+  catalogueRequests++;
+  const mode = new URLSearchParams(window.location.search).get('catalogue');
+  if (mode === 'held') await new Promise<void>((resolve) => { releaseCatalogue = resolve; });
+  if (mode === 'offline' || (mode === 'retry' && catalogueRequests === 1))
+    return new Response('Forbidden', { status: 403 });
+  return Response.json([
+    { chainId: 31337, name: 'Example test network with an intentionally long label', isTestnet: true,
+      nativeCurrency: { symbol: 'EX', decimals: 18 }, rpc: [
+        { url: 'https://other.example/rpc' },
+        { url: 'https://preferred.example/rpc', tracking: 'none', isOpenSource: true },
+      ] },
+    { chainId: 31338, name: 'Example incompatible network',
+      nativeCurrency: { symbol: 'NOT18', decimals: 6 }, rpc: [{ url: 'https://other.example/rpc' }] },
+  ]);
+});
 const controller: NativeNetworkView = {
   getSnapshot: () => snapshot,
   getContextRevision: () => contextRevision,
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   cancel() { cancelled++; contextRevision++; },
+  loadCatalogue,
   async save(registration, expectedContextRevision, expectedCatalogueRevision) {
     if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    saveRequests++;
+    if (new URLSearchParams(window.location.search).has('holdSave')) {
+      await new Promise<void>((resolve) => { releaseSave = resolve; });
+      throw Error('CANCELLED');
+    }
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1, networks: [...snapshot.networks.filter((network) => network.id !== registration.id),
       { id: registration.id, name: registration.name, symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }] });
     contextRevision++; notify();
@@ -65,6 +94,10 @@ declare global {
       replaceController(): void;
       restoreController(): void;
       releaseReplacement(): void;
+      releaseCatalogue(): void;
+      releaseSave(): void;
+      catalogueRequests(): number;
+      saveRequests(): number;
       selected(): string | null;
       registration(id: string): import('../../src/custody/networkContext').NativeNetworkRegistration | undefined;
     };
@@ -79,6 +112,10 @@ window.__nativeNetworksFixture = {
   replaceController: () => swapController?.(),
   restoreController: () => swapController?.(true),
   releaseReplacement: () => releaseReplacement?.(),
+  releaseCatalogue: () => releaseCatalogue?.(),
+  releaseSave: () => releaseSave?.(),
+  catalogueRequests: () => catalogueRequests,
+  saveRequests: () => saveRequests,
   replace() {
     if (snapshot) snapshot = Object.freeze({ ...snapshot, selectedId: 'ethereum', revision: snapshot.revision + 1 });
     contextRevision++; notify();

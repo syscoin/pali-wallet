@@ -1,6 +1,6 @@
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, bufferedEvmGasLimit, assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
-import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
   rejectRead, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
@@ -56,10 +56,11 @@ export class EvmTransferReadRpc {
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
     if (!Number.isSafeInteger(this.timeoutMs) || this.timeoutMs < 1 || this.timeoutMs > 30000) throw new Error('Invalid read timeout');
   }
-  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>): Promise<T> {
+  private async operation<T>(external: AbortSignal, guard: () => void, work: (read: Reader) => Promise<T>, verifyEndpoint = false): Promise<T> {
     guardedRead(guard);
     if (external.aborted) return rejectRead('CANCELLED');
     const controller = new AbortController();
+    const expectedUrl = verifyEndpoint ? new URL(this.network.rpcUrl).href : undefined;
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, this.timeoutMs);
@@ -75,6 +76,11 @@ export class EvmTransferReadRpc {
         credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
       }), controller.signal);
       guardedRead(guard);
+      if (expectedUrl && (response.redirected ||
+          (response.url && new URL(response.url).href !== expectedUrl))) {
+        cancelResponseBody(response);
+        return rejectRead('PROFILE_CHANGED');
+      }
       if (!response.ok) return rejectRead('UNAVAILABLE');
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) return rejectRead('INVALID_RESPONSE');
@@ -119,7 +125,7 @@ export class EvmTransferReadRpc {
     if (current.number !== expected.number || current.hash !== expected.hash) rejectRead('PROFILE_CHANGED');
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
-    return this.operation(signal, guard, async (read) => { await this.checkChain(read); });
+    return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, true);
   }
   /** One SDK fee policy serves live native/token preparation and exact-envelope requotes. */
   prepare(input: Readonly<{ from: string; to: string; value: string; data: string }>, signal: AbortSignal,

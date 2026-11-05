@@ -160,3 +160,100 @@ test('identical network names and symbols have distinct spoken selection and edi
   await expect(page.getByLabel('Chain ID', { exact: true })).toHaveValue('31338');
   await expect(page.getByLabel('Network name', { exact: true })).toHaveValue('Shared network');
 });
+
+test('Add network searches once, fills an editable draft by keyboard, and saves only on consent', async ({ page }, testInfo) => {
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179'
+    ? route.continue() : route.abort());
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?networks=1&catalogue=held');
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 200% !important; line-height: 1.35 !important; } input { font-size: 32px !important; }' });
+  await page.getByRole('button', { name: 'Add network', exact: true }).click();
+  const search = page.getByLabel('Find a network', { exact: true });
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.catalogueRequests())).toBe(0);
+  await search.fill('Ex');
+  await expect(page.getByText('Searching networks…', { exact: true })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('network-search-loading-320.png') });
+  await search.fill('missing');
+  await page.evaluate(() => window.__nativeNetworksFixture.releaseCatalogue());
+  await expect(page.getByText('No matching networks. Enter network details below.')).toBeVisible();
+  await search.fill('Example');
+  const suggestion = page.getByRole('button', { name: /^Use Example test network/ });
+  await expect(suggestion).toBeVisible();
+  await expect(page.getByText('Example incompatible network')).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('network-search-results-320.png') });
+  await suggestion.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByLabel('RPC URL', { exact: true })).toHaveValue('https://preferred.example/rpc');
+  await expect(page.getByLabel('Chain ID', { exact: true })).toHaveValue('31337');
+  await expect(page.getByRole('checkbox', { name: 'This is a test network' })).toBeChecked();
+  expect(await page.evaluate(() => [window.__nativeNetworksFixture.catalogueRequests(), window.__nativeNetworksFixture.saveRequests()])).toEqual([1, 0]);
+  await page.getByLabel('RPC URL', { exact: true }).fill('https://edited.example/rpc');
+  await page.getByLabel('Network name', { exact: true }).fill('Edited example');
+  await page.getByRole('button', { name: 'Save network', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Edited example, EX, Chain ID 31337, test network', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.registration('custom:31337')?.rpcUrl)).toBe('https://edited.example/rpc');
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.selected())).toBe('ethereum');
+});
+
+test('unavailable catalogue keeps manual Add available without reissuing search', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 680 });
+  await page.goto('/?networks=1&catalogue=offline');
+  await page.getByRole('button', { name: 'Add network', exact: true }).click();
+  const search = page.getByLabel('Find a network', { exact: true });
+  await search.fill('Example');
+  await expect(page.getByText('Search unavailable. Enter network details below.')).toBeVisible();
+  await search.fill('Other');
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.catalogueRequests())).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('network-search-unavailable-320.png') });
+  await page.getByLabel('Network name', { exact: true }).fill('Manual network');
+  await expect(page.getByText('Search unavailable. Enter network details below.')).toHaveCount(0);
+  await page.getByLabel('RPC URL', { exact: true }).fill('https://manual.example/rpc');
+  await page.getByLabel('Chain ID', { exact: true }).fill('31415');
+  await page.getByLabel('Currency symbol', { exact: true }).fill('MAN');
+  await page.getByRole('button', { name: 'Save network', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Manual network, MAN, Chain ID 31415', exact: true })).toBeVisible();
+});
+
+test('catalogue recovers only when Retry is pressed after a failed search', async ({ page }) => {
+  await page.goto('/?networks=1&catalogue=retry');
+  await page.getByRole('button', { name: 'Add network', exact: true }).click();
+  const search = page.getByLabel('Find a network', { exact: true });
+  await search.fill('Example');
+  const retry = page.getByRole('button', { name: 'Retry search', exact: true });
+  await expect(retry).toBeVisible();
+  await search.fill('');
+  await search.fill('Example');
+  await expect(retry).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.catalogueRequests())).toBe(1);
+  await retry.click();
+  await expect(page.getByRole('button', { name: /^Use Example test network/ })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeNetworksFixture.catalogueRequests())).toBe(2);
+});
+
+test('Back retires held catalogue feedback and save errors before the next draft', async ({ page }) => {
+  await page.goto('/?networks=1&catalogue=held&holdSave=1');
+  const add = page.getByRole('button', { name: 'Add network', exact: true });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  await add.click();
+  await page.getByLabel('Find a network', { exact: true }).fill('Example');
+  await expect(page.getByText('Searching networks…', { exact: true })).toBeVisible();
+  await back.click();
+  await add.click();
+  await page.getByLabel('Network name', { exact: true }).fill('Next draft');
+  await page.evaluate(() => window.__nativeNetworksFixture.releaseCatalogue());
+  await expect(page.getByText('Searching networks…', { exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Use Example/ })).toHaveCount(0);
+  await page.getByLabel('RPC URL', { exact: true }).fill('https://manual.example/rpc');
+  await page.getByLabel('Chain ID', { exact: true }).fill('31415');
+  await page.getByLabel('Currency symbol', { exact: true }).fill('MAN');
+  await page.getByRole('button', { name: 'Save network', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Checking network…', exact: true })).toBeVisible();
+  await back.click();
+  await add.click();
+  await page.evaluate(() => window.__nativeNetworksFixture.releaseSave());
+  await expect(page.getByLabel('Network name', { exact: true })).toHaveValue('');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Save network', exact: true })).toBeEnabled();
+});
