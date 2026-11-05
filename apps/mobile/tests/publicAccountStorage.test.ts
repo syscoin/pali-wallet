@@ -7,7 +7,9 @@ const ADDRESS = '0x52908400098527886E0F7030069857D2E4169EE7';
 const OTHER = '0x1111111111111111111111111111111111111111';
 const first = createEvmWatchAccount('watch_1', 'First', ADDRESS);
 const second = createEvmWatchAccount('watch_2', 'Second', OTHER);
-const encode = (accounts: readonly unknown[]) => JSON.stringify({ version: 1, accounts });
+const records = (accounts: readonly unknown[]) => accounts.map((account) => ({ kind: 'address' as const, ...(account as typeof first) }));
+const document = (accounts: readonly unknown[]) => ({ version: 1, records: records(accounts) });
+const encode = (accounts: readonly unknown[]) => JSON.stringify(document(accounts));
 function fixture(raw: string | null = encode([first])) {
   const data: Record<string, string> = raw === null ? {} : { [PUBLIC_ACCOUNTS_KEY]: raw };
   const writes: { key: string; value: string }[] = [];
@@ -18,24 +20,28 @@ function fixture(raw: string | null = encode([first])) {
   return { data, writes, repository };
 }
 
-test('public repository preserves the v1 record format and explicit legacy network mappings', async () => {
-  const legacy = { id: 'old', name: 'Original', addresses: { ethereum: ADDRESS } };
-  const f = fixture(encode([legacy]));
-  assert.deepEqual(await f.repository.loadAccounts(), [legacy]);
-  await f.repository.compareAndSetAccounts([legacy], [legacy, second]);
-  assert.deepEqual(JSON.parse(f.data[PUBLIC_ACCOUNTS_KEY]!), { version: 1, accounts: [legacy, second] });
+test('public repository uses the canonical record format and explicit network mappings', async () => {
+  const mapped = { id: 'old', name: 'Original', addresses: { ethereum: ADDRESS } };
+  const f = fixture(encode([mapped]));
+  assert.deepEqual(await f.repository.loadAccounts(), [mapped]);
+  const loaded = await f.repository.records.load();
+  const saved = await f.repository.records.compareAndSet(loaded, records([mapped, second]));
+  assert.deepEqual(saved.accounts, [mapped, second]);
+  assert.deepEqual(JSON.parse(f.data[PUBLIC_ACCOUNTS_KEY]!), document([mapped, second]));
   assert.deepEqual(Object.keys((await f.repository.loadAccounts())[0]!.addresses), ['ethereum']);
   assert.deepEqual(Object.keys(f.data), [PUBLIC_ACCOUNTS_KEY]);
 });
 
 test('only absent public records are empty; invalid saved records cannot be overwritten', async () => {
   assert.deepEqual(await fixture(null).repository.loadAccounts(), []);
-  for (const raw of ['not json', 'null', '[]', JSON.stringify({ version: 2, accounts: [] }),
+  for (const raw of ['not json', 'null', '[]', JSON.stringify({ version: 2, records: [] }), JSON.stringify({ version: 1, accounts: [] }),
     JSON.stringify({ version: 1, accounts: [], keyring: {} }), encode([{ ...first, privateKey: 'bad' }]),
     JSON.stringify({ version: 1, accounts: [{ ...first, addresses: { bitcoin: ADDRESS } }] }), ' '.repeat(32769)]) {
-    const f = fixture(raw);
+    const f = fixture();
+    const loaded = await f.repository.records.load();
+    f.data[PUBLIC_ACCOUNTS_KEY] = raw;
     await assert.rejects(f.repository.loadAccounts());
-    await assert.rejects(f.repository.compareAndSetAccounts([], [second]));
+    await assert.rejects(f.repository.records.compareAndSet(loaded, records([second])));
     assert.equal(f.data[PUBLIC_ACCOUNTS_KEY], raw);
     assert.equal(f.writes.length, 0);
   }
@@ -43,19 +49,21 @@ test('only absent public records are empty; invalid saved records cannot be over
 
 test('a stale compare-and-set never overwrites independently changed public data', async () => {
   const f = fixture();
-  const loaded = await f.repository.loadAccounts();
+  const loaded = await f.repository.records.load();
   f.data[PUBLIC_ACCOUNTS_KEY] = encode([second]);
-  await assert.rejects(f.repository.compareAndSetAccounts(loaded, [first, second]), /changed/);
+  await assert.rejects(f.repository.records.compareAndSet(loaded, records([first, second])), /changed/);
   assert.equal(f.data[PUBLIC_ACCOUNTS_KEY], encode([second]));
   assert.equal(f.writes.length, 0);
 });
 
 test('serialized competing saves re-read before committing the second stale snapshot', async () => {
   const f = fixture();
-  const firstSave = f.repository.compareAndSetAccounts([first], [first, second]);
-  const staleSave = f.repository.compareAndSetAccounts([first], []);
+  const firstSnapshot = await f.repository.records.load();
+  const staleSnapshot = await f.repository.records.load();
+  const firstSave = f.repository.records.compareAndSet(firstSnapshot, records([first, second]));
+  const staleSave = f.repository.records.compareAndSet(staleSnapshot, []);
   await firstSave;
-  await assert.rejects(staleSave, /changed/);
+  await assert.rejects(staleSave, /Reopen/);
   assert.equal(f.data[PUBLIC_ACCOUNTS_KEY], encode([first, second]));
   assert.equal(f.writes.length, 1);
 });
@@ -68,7 +76,8 @@ test('an acknowledged but missing or wrong write fails readback verification', a
       async get() { if (written && kind === 'throw') throw Error('readback failed'); return raw; },
       async set() { written = true; if (kind === 'different') raw = encode([]); },
     });
-    await assert.rejects(repository.compareAndSetAccounts([first], [second]));
+    const loaded = await repository.records.load();
+    await assert.rejects(repository.records.compareAndSet(loaded, records([second])));
     assert.equal(raw, kind === 'different' ? encode([]) : encode([first]));
   }
 });

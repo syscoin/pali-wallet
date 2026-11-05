@@ -1,7 +1,7 @@
 const { CRYPTO_FULL_CASES, isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 
 const MODE = '--ios-simulator-contract';
-const SIMULATOR_RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
+
 const REFUSAL_STAGES = Object.freeze([
   'ios-policy-protection-missing',
   'ios-policy-protection-none',
@@ -31,13 +31,13 @@ function exactKeys(value, keys) {
 const duration = (value) => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 300000;
 
 /** This recognizes a refusal after real crypto checks; it never recognizes custody success. */
-function assertSimulatorRefusal(report) {
+function assertSimulatorRefusal(report, expectedVersion) {
   const valid = exactKeys(report, [
     'version', 'status', 'phase', 'scenario', 'platform', 'osVersion', 'sessionId',
     'checks', 'networkCalls', 'failedStage', 'cryptoEvidence', 'nativeBridgeExercised',
     'storageDiagnostic', 'cryptoDiagnostic',
   ]) && report.version === 1 && report.status === 'failed' && report.phase === 'create' &&
-    report.scenario === 'import' && report.platform === 'ios' && report.osVersion === '26.5' &&
+    report.scenario === 'import' && report.platform === 'ios' && typeof expectedVersion === 'string' && /^\d+(?:\.\d+){0,2}$/.test(expectedVersion) && report.osVersion === expectedVersion &&
     typeof report.sessionId === 'string' && /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(report.sessionId) &&
     report.failedStage === 'open SQLCipher and device key' && report.networkCalls === 0 &&
     report.nativeBridgeExercised === true &&
@@ -58,9 +58,34 @@ function assertSimulatorRefusal(report) {
   if (!valid) throw Error('Unexpected iOS Simulator refusal evidence');
 }
 
-function assertSimulatorTarget(platformName, runtime) {
-  if (platformName !== 'iphonesimulator' || runtime !== SIMULATOR_RUNTIME)
-    throw Error('Simulator contract requires the pinned Simulator target');
+function assertSimulatorTarget(platformName, runtime, expectedRuntime) {
+  if (platformName !== 'iphonesimulator' ||
+      typeof expectedRuntime !== 'string' ||
+      !/^com\.apple\.CoreSimulator\.SimRuntime\.iOS-[0-9]+(?:-[0-9]+){0,2}$/.test(expectedRuntime) ||
+      runtime !== expectedRuntime)
+    throw Error('Simulator contract requires the selected Simulator target');
 }
 
-module.exports = { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES };
+/** Select once from the actual inventory; an explicit unavailable target never falls back. */
+function selectSimulatorTarget(runtimes, types, requestedRuntime, requestedType) {
+  if (!Array.isArray(runtimes) || runtimes.length > 256 || !Array.isArray(types) || types.length > 1024)
+    throw Error('Invalid Simulator inventory');
+  const available = runtimes.filter(item => item?.isAvailable === true &&
+    typeof item.identifier === 'string' && typeof item.version === 'string' &&
+    /^\d+(?:\.\d+){0,2}$/.test(item.version) &&
+    item.identifier === `com.apple.CoreSimulator.SimRuntime.iOS-${item.version.replace(/\./g, '-')}`);
+  if (new Set(available.map(item => item.identifier)).size !== available.length)
+    throw Error('Ambiguous Simulator inventory');
+  const runtime = requestedRuntime === undefined
+    ? [...available].sort((a, b) => a.version.localeCompare(b.version, undefined, { numeric: true })).at(-1)
+    : available.find(item => item.identifier === requestedRuntime);
+  const type = requestedType === undefined
+    ? types.find(item => item?.identifier === 'com.apple.CoreSimulator.SimDeviceType.iPhone-17') ??
+      types.find(item => typeof item?.identifier === 'string' && item.identifier.startsWith('com.apple.CoreSimulator.SimDeviceType.iPhone-'))
+    : types.find(item => item?.identifier === requestedType && typeof requestedType === 'string' && requestedType.startsWith('com.apple.CoreSimulator.SimDeviceType.iPhone-'));
+  if (!runtime || !type) throw Error('No installed selected iOS Simulator target');
+  return Object.freeze({ runtime: Object.freeze({ identifier: runtime.identifier, version: runtime.version }),
+    type: Object.freeze({ identifier: type.identifier }) });
+}
+
+module.exports = { qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget, REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES };

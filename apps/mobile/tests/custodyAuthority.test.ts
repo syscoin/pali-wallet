@@ -73,6 +73,50 @@ function fixture(existing = false) {
   };
 }
 
+test('recovery retirement reserves before observers and shares ordinary disposal without changing its pair', async () => {
+  const f = fixture(true), gate = deferred<string>(); let reads = 0;
+  f.runtime.storage.retireForRecovery = () => { reads++; f.events.push('retire'); return gate.promise; };
+  await f.authority.initialize();
+  const joined: Promise<string>[] = [], closing: Promise<void>[] = [];
+  f.authority.subscribe((state) => {
+    if (state.phase === 'disposed') { joined.push(f.authority.retireForRecovery()); closing.push(f.authority.dispose()); }
+  });
+  const retiring = f.authority.retireForRecovery();
+  assert.equal(f.authority.getSnapshot().phase, 'disposed');
+  assert.equal(joined[0], retiring); assert.equal(f.authority.retireForRecovery(), retiring);
+  assert.equal(closing[0], f.authority.dispose());
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  assert.equal(reads, 1); assert.equal(f.events.includes('close'), false);
+  const pair = 'ab'.repeat(32); gate.resolve(pair);
+  assert.equal(await retiring, pair); assert.equal(await closing[0], undefined);
+  assert.equal(f.events.filter((event) => event === 'close').length, 1);
+  assert.equal(await f.authority.retireForRecovery(), pair); assert.equal(reads, 1);
+});
+
+test('ordinary disposal cannot be upgraded to recovery after it wins retirement admission', async () => {
+  const f = fixture(true); let reads = 0;
+  f.runtime.storage.retireForRecovery = async () => { reads++; return 'ab'.repeat(32); };
+  await f.authority.initialize();
+  const closing = f.authority.dispose();
+  await rejectsCode(f.authority.retireForRecovery(), 'NOT_READY'); await closing;
+  assert.equal(reads, 0); assert.equal(f.events.filter((event) => event === 'close').length, 1);
+});
+
+for (const failure of ['missing', 'throw', 'uppercase', 'short'] as const) {
+  test(`recovery retirement rejects ${failure} identity and still completes ordinary close`, async () => {
+    const f = fixture(true);
+    if (failure !== 'missing') f.runtime.storage.retireForRecovery = async () => {
+      if (failure === 'throw') throw Error(PHRASE);
+      return failure === 'uppercase' ? 'AB'.repeat(32) : 'ab';
+    };
+    await f.authority.initialize();
+    await rejectsCode(f.authority.retireForRecovery(), 'CLEANUP_FAILED');
+    await rejectsCode(f.authority.dispose(), 'CLEANUP_FAILED');
+    assert.equal(f.events.filter((event) => event === 'close').length, 1);
+    assert.equal(JSON.stringify(f.authority.getSnapshot()).includes(PHRASE), false);
+  });
+}
+
 test('opening is explicit and known empty/complete stores determine onboarding', async () => {
   const fresh = fixture();
   assert.equal(fresh.authority.getSnapshot().phase, 'opening');

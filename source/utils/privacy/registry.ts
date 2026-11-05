@@ -1,4 +1,4 @@
-import { PrivacyPool } from './types';
+import type { PrivacyPool } from './types.ts';
 
 // Tornado Classic ETH pools, pinned to the original deployment registry:
 // tornadocash/tornado-cli@378ddf8b8b92a4924037d7b64a94dbfd5a7dd6e8/config.js

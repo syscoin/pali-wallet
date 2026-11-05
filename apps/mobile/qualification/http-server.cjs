@@ -1,8 +1,10 @@
 const http = require('node:http');
 const { Buffer } = require('node:buffer');
 const { timingSafeEqual } = require('node:crypto');
+const { POST_ROUTES } = require('./post-fixtures.ts');
+const { createPostState, postSnapshot, handlePostRoute } = require('./post-server.cjs');
 
-const ROUTES = Object.freeze(['exact', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
+const ROUTES = Object.freeze(['exact', 'identify', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
   'before', 'before-ready', 'before-closed', 'body', 'body-closed', 'oversize', 'oversize-closed', 'healthy']);
 const equal = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -12,18 +14,35 @@ async function createHttpFixture() {
   let active;
   let port;
   const server = http.createServer((request, response) => {
-    if (!active || request.method !== 'GET' || request.headers['content-length'] !== undefined || request.headers['transfer-encoding'] !== undefined ||
-        request.headers.host !== `127.0.0.1:${port}` ||
+    if (!active || request.headers.host !== `127.0.0.1:${port}` ||
         typeof request.url !== 'string' || request.url.length > 256) {
       if (active) active.invalid++;
       response.writeHead(400); response.end(); return;
     }
     const match = /^\/([0-9a-f]{32})\/([a-z-]+)\?q=exact$/.exec(request.url);
-    if (!match || !equal(match[1], active.token) || !ROUTES.includes(match[2])) {
+    if (!match || !equal(match[1], active.token) || ![...ROUTES, ...POST_ROUTES].includes(match[2])) {
       active.invalid++; response.writeHead(400); response.end(); return;
     }
     const state = active;
     const route = match[2];
+    if (POST_ROUTES.includes(route)) { handlePostRoute(request, response, route, state.post); return; }
+    if (route === 'identify') {
+      state.counts[route]++;
+      const parts = [];
+      let bytes = 0;
+      request.on('data', part => { bytes += part.length; if (bytes > 128) request.destroy(); else parts.push(part); });
+      request.on('end', () => {
+        if (request.method !== 'POST' || request.headers['user-agent'] !== 'PaliWallet' ||
+            request.headers.authorization !== 'Bearer public-http-fixture' || Buffer.concat(parts).toString() !== 'pali-http-identity-fixture') {
+          state.invalid++; response.writeHead(400); response.end(); return;
+        }
+        response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"ok":true}');
+      });
+      return;
+    }
+    if (request.method !== 'GET' || request.headers['content-length'] !== undefined || request.headers['transfer-encoding'] !== undefined) {
+      state.invalid++; response.writeHead(400); response.end(); return;
+    }
     state.counts[route]++;
     const ok = () => { response.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end('{"ok":true}'); };
     const bad = () => { state.invalid++; response.writeHead(400); response.end(); };
@@ -86,7 +105,7 @@ async function createHttpFixture() {
     port,
     begin(token) {
       if (active || typeof token !== 'string' || !/^[0-9a-f]{32}$/.test(token)) throw Error('HTTP_FIXTURE_BEGIN_INVALID');
-      active = { token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])), invalid: 0, closed: { before: false, body: false, oversize: false }, waiters: new Set() };
+      active = { token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])), invalid: 0, closed: { before: false, body: false, oversize: false }, waiters: new Set(), post: createPostState(token, port) };
     },
     inspect(token) {
       if (!active || !equal(token, active.token)) throw Error('HTTP_FIXTURE_TOKEN_INVALID');
@@ -97,6 +116,8 @@ async function createHttpFixture() {
       active = undefined;
       return result;
     },
+    inspectAll(token) { const get = this.inspect(token); return { get, post: postSnapshot(active.post) }; },
+    snapshotAll(token) { const result = this.inspectAll(token); active = undefined; return result; },
     async close() { for (const socket of sockets) socket.destroy(); await new Promise((resolve) => server.close(resolve)); },
   };
 }
@@ -115,7 +136,7 @@ if (require.main === module) {
       try {
         if (!message || !Number.isSafeInteger(message.id)) throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
         if (message.kind === 'begin') { fixture.begin(message.token); process.send({ id: message.id, ok: true }); }
-        else if (message.kind === 'snapshot' || message.kind === 'inspect') process.send({ id: message.id, ok: true, value: fixture[message.kind](message.token) });
+        else if (['snapshot', 'inspect', 'snapshotAll', 'inspectAll'].includes(message.kind)) process.send({ id: message.id, ok: true, value: fixture[message.kind](message.token) });
         else if (message.kind === 'close') void stop();
         else throw Error('HTTP_FIXTURE_MESSAGE_INVALID');
       } catch { process.send({ id: message?.id, ok: false }); }

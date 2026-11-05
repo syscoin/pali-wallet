@@ -1,4 +1,5 @@
-import { buildAccountHistoryUrl } from '../../../../source/shared/evmExplorer.ts';
+import { buildAccountHistoryUrl, createRoutescanFetch } from '../../../../source/shared/evmExplorer.ts';
+import { belongsToEvmHistoryAccount, mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../../source/shared/evmHistory.ts';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 import {
   ActivityError,
@@ -16,7 +17,8 @@ const integer = (value: unknown): string => {
 export function decodeActivityPage(
   value: unknown,
   feed: ActivityFeed,
-  owner: string
+  owner: string,
+  chainId: number
 ): readonly ActivityCandidate[] {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new ActivityError('INVALID');
@@ -49,13 +51,13 @@ export function decodeActivityPage(
           (typeof item.to === 'string' &&
             /^0x[0-9a-fA-F]{40}$/.test(item.to)) ||
           (feed === 'txlist' && (item.to === '' || item.to === null))
-        ) ||
-        ![
-          item.from.toLowerCase(),
-          typeof item.to === 'string' ? item.to.toLowerCase() : '',
-        ].includes(owner.toLowerCase())
+        )
       )
         throw new ActivityError('INVALID');
+      const transaction = feed === 'tokentx'
+        ? mapEvmExplorerTokenTransfer(item, chainId)
+        : mapEvmExplorerTransaction(item, chainId);
+      if (!belongsToEvmHistoryAccount(transaction, owner)) throw new ActivityError('INVALID');
       const blockNumber = integer(item.blockNumber);
       let timestamp: number | null = null;
       if (
@@ -71,7 +73,7 @@ export function decodeActivityPage(
           timestamp = seconds * 1000;
       }
       return Object.freeze({
-        hash: item.hash.toLowerCase(),
+        hash: transaction.hash.toLowerCase(),
         blockNumber,
         timestamp,
         tokenHint: feed === 'tokentx',
@@ -83,11 +85,10 @@ type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 /** Explorer rows discover hashes only. RPC observations supply transaction facts. */
 export class ActivityExplorerReader {
   private sequence = 0;
-  private tail: Promise<unknown> = Promise.resolve();
-  private lastRequest = 0;
   private readonly fetcher: FetchLike;
   constructor(fetcher: FetchLike = (url, init) => fetch(url, init)) {
-    this.fetcher = fetcher;
+    const routescan = createRoutescanFetch(fetcher);
+    this.fetcher = (url, init) => new URL(url).origin === 'https://api.routescan.io' ? routescan(url, init) : fetcher(url, init);
   }
   private async request(
     url: string,
@@ -160,7 +161,7 @@ export class ActivityExplorerReader {
         throw new ActivityError('INVALID');
       return result.result;
     };
-    if (parseRpcQuantity(await call('eth_chainId', [])) !== 1n)
+    if (parseRpcQuantity(await call('eth_chainId', [])) !== BigInt(scope.network.chainId))
       throw new ActivityError('CHANGED');
     return parseRpcQuantity(await call('eth_blockNumber', [])).toString();
   }
@@ -176,8 +177,6 @@ export class ActivityExplorerReader {
       return Promise.reject(new ActivityError('INVALID'));
     integer(endblock);
     const run = async () => {
-      const delay = Math.max(0, this.lastRequest + 550 - Date.now());
-      if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       guard();
       if (signal.aborted) throw new ActivityError('CANCELLED');
       const url = buildAccountHistoryUrl(
@@ -189,7 +188,6 @@ export class ActivityExplorerReader {
       );
       url.searchParams.set('startblock', '0');
       url.searchParams.set('endblock', endblock);
-      this.lastRequest = Date.now();
       return decodeActivityPage(
         await this.request(
           url.toString(),
@@ -198,11 +196,10 @@ export class ActivityExplorerReader {
           guard
         ),
         feed,
-        scope.address
+        scope.address,
+        Number(scope.network.chainId)
       );
     };
-    const result = this.tail.then(run, run);
-    this.tail = result.catch(() => undefined);
-    return result;
+    return run();
   }
 }

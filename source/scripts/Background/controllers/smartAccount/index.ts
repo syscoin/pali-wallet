@@ -69,10 +69,6 @@ import {
   SMART_ACCOUNT_ZERO_GAS_FEES,
   ERC7579_MODULE_TYPE_VALIDATOR,
   ERC7579_MODULE_TYPE_EXECUTOR,
-  PALI_CREATE2_DEPLOYER_ADDRESS,
-  PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
-  getPaliInfrastructureContracts,
-  PaliInfrastructureContractId,
   PALI_ENTRYPOINT_V09_ABI,
   getPaliEntryPointAddress,
   paliCompositeValidatorInterface,
@@ -88,9 +84,15 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
-import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
+import {
+  PALI_CREATE2_DEPLOYER_ADDRESS,
+  PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
+  getPaliInfrastructureContracts,
+  type PaliInfrastructureContractId,
+} from 'utils/smartAccount/deployment';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
+import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
   infrastructurePendingIdentity,

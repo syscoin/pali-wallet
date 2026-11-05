@@ -47,6 +47,7 @@ const AUTH_GUIDANCE =
 const RAW_PROVIDER_BODY =
   'provider-validation-marker: endpoint unavailable for this request';
 const RAW_PROVIDER_ERROR = `HTTP error! Status: 400. Details: ${RAW_PROVIDER_BODY}`;
+const originalChrome = global.chrome;
 const originalFetch = globalThis.fetch;
 const originalMessageChannel = globalThis.MessageChannel;
 const originalMatchMedia = window.matchMedia;
@@ -106,7 +107,10 @@ jest.mock('components/index', () => ({
   Tooltip: ({ children }: any) => children,
 }));
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(() => {
+  httpRules = [];
   jest.clearAllMocks();
   clearRpcCaches();
   clearCustomRpcDrafts();
@@ -132,9 +136,33 @@ beforeEach(() => {
     addListener: jest.fn(),
     removeListener: jest.fn(),
   })) as any;
+  global.chrome = {
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
+  } as any;
   globalThis.fetch = jest.fn(async (input, options) => {
     const url = String(input);
     expect([AUTH, HEALTHY, UNKNOWN]).toContain(url);
+    expect(
+      httpRules.some(
+        (rule) =>
+          rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
+      )
+    ).toBe(true);
     const body = JSON.parse(String(options?.body));
     expect(body.method).toBe('eth_chainId');
     expect(body.params).toEqual([]);
@@ -160,6 +188,7 @@ afterEach(() => {
   cleanup();
   clearRpcCaches();
   clearCustomRpcDrafts();
+  global.chrome = originalChrome;
   globalThis.fetch = originalFetch;
   globalThis.MessageChannel = originalMessageChannel;
   window.matchMedia = originalMatchMedia;

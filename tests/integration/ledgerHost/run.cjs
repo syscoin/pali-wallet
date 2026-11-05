@@ -86,6 +86,7 @@ async function run() {
   try {
     await new Promise((resolve) => proxy.listen(0, '127.0.0.1', resolve));
     context = await chromium.launchPersistentContext(profile, {
+      chromiumSandbox: true,
       headless: false,
       args: [
         '--headless=new',

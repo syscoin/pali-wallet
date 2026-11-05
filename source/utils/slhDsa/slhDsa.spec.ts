@@ -8,6 +8,13 @@ const mockChromeStorage = new Map<string, unknown>();
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: jest.fn(async (key: string) => mockChromeStorage.get(key) ?? null),
+    getItems: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(
+        keys
+          .filter((key) => mockChromeStorage.has(key))
+          .map((key) => [key, mockChromeStorage.get(key)])
+      )
+    ),
     removeItem: jest.fn(async (key: string) => {
       mockChromeStorage.delete(key);
     }),
@@ -28,7 +35,7 @@ import {
   getSLHDSADerivationLabel,
   getSLHDSAPrecomputeCacheKey,
   getSLHDSAStateStorageKey,
-  putRuntimeSLHDSAState,
+  registerRuntimeSLHDSAState,
   signSLHDSAActionHashLocal,
 } from './index';
 
@@ -99,7 +106,7 @@ describe('slhDsa utilities', () => {
       pkSeed: '0x' + '22'.repeat(32),
       secretKeyHex: '0x' + '33'.repeat(64),
     });
-    putRuntimeSLHDSAState({
+    await registerRuntimeSLHDSAState({
       ...state,
       signatureCount: SLH_DSA_SIGNATURE_LIMIT,
     });
@@ -124,6 +131,10 @@ describe('slhDsa utilities', () => {
   });
 
   it('never signs past the absolute SLH-DSA signature limit', async () => {
+    configureSLHDSASessionStateCrypto({
+      decrypt: (cipherText) => cipherText,
+      encrypt: (plainText) => plainText,
+    });
     const state = createSLHDSAProvisionedState({
       accountIndex: 0,
       derivationLabel: getSLHDSADerivationLabel(0),
@@ -132,7 +143,7 @@ describe('slhDsa utilities', () => {
       pkSeed: '0x' + '22'.repeat(32),
       secretKeyHex: '0x' + '33'.repeat(64),
     });
-    putRuntimeSLHDSAState({
+    await registerRuntimeSLHDSAState({
       ...state,
       signatureCount: SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,
     });

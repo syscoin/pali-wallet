@@ -1,1 +1,1 @@
-export { createNativeCustodyAuthority, createNativeWalletControllers } from './nativeFactory.web.ts';
+export { createNativeCustodyAuthority, createNativeWalletControllers, createNativeRecoveryCoordinator } from './nativeFactory.web.ts';

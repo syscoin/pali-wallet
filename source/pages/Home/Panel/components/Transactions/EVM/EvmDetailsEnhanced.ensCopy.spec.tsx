@@ -9,6 +9,11 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+// Replay has separate actual consent tests; isolate unrelated detail decoding here.
+jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
+  RetainedTransactionReplay: () => null,
+}));
+
 import { TransactionDetailsList } from 'components/TransactionDetails';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';

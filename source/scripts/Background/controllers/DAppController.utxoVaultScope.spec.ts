@@ -15,6 +15,9 @@ let mockDisk: Record<string, any> = {};
 const mockClone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
+  ...jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js'
+  ),
   KeyringManager: jest.fn().mockImplementation(() => {
     let unlocked = false;
     const sdk: IFixtureKeyring = {

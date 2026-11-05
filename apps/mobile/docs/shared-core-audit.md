@@ -1,0 +1,23 @@
+# Shared-core audit
+
+Source: `03928b18f6ec6b6d40d7eb300e6e8fd0f5acc9c8`, November 4, 2026. This records implemented code reuse and remaining work, not full feature equivalence or release qualification.
+
+| Area | Implementation and boundary |
+| --- | --- |
+| Accounts | Both hosts use SDK account creation/allocation and shared `source/wallet/accountRecords.ts` transitions. Mobile persists complete SDK maps and restores them on ordinary unlock. It has no separate HD allocator, deleted-account restore engine or per-unlock account rederivation. |
+| Recovery | Both hosts call `source/wallet/accountRecovery.ts` and `importedAccountRecovery.ts`. Chrome supplies its existing journal/storage adapter; mobile supplies atomic SQL replacement. Matching-phrase recovery preserves retained imported copies, recognized notes and signed records. A phrase cannot recreate absent independent secrets. Released extension inline-record support remains extension-only; mobile has one unreleased format. |
+| UTXO discovery | Public input validation/derivation reuses extension/SDK code; balances call SyscoinJS `fetchBackendAccount`. Blockbook owns receive/change discovery. No mobile address-gap scanner remains. Mobile UTXO signing and account-wide history are still unfinished. |
+| EVM fees and limits | Both hosts consume SDK `getEvmFeeData`, `bufferedEvmGasLimit` and `assertEvmGasLimit`, which consumes the shared network protocol registry. Native RPC parsing, bounded reads and cancellation adapt transport; they introduce no per-chain signing or settlement policy. |
+| EVM signing | Both hosts use the SDK software implementation. Native prepared signing and extension formatted sending share the local signer and submission boundary. Native verifies returned bytes with the official SDK `assertSignedEvmTransactionMatches`; it retains host review, size, hash and lifecycle checks. Hardware transports remain separate unfinished native work. |
+| Submission and replay | Both use `source/wallet/evmSignedRecords.ts` and `evmSignedReplay.ts`, with profile/chain/sender ownership across typed aliases. Chrome and SQL adapters acknowledge durable writes. Predecessor bytes survive new sends, account removal and public-cache pruning; capacity refuses new admission. No separate native per-account journal engine remains. |
+| Nonces | Generic sends preserve supplied nonces, including zero; missing nonces may use RPC. Specialized token helpers currently expose no override parameter. Native multiple-pending and replacement/cancel UI remains unfinished and must reuse the extension/shared nonce policy when connected. |
+| ERC20 and history | Both consume shared token amount/metadata/encoding policy and explorer/filter/normalization modules. Hosts own transport, caching and rendering. Native discovery, NFTs/SPT, watch-EVM history and complete UTXO history remain incomplete. |
+| Network text | Actual extension forms and native registration admission use `source/shared/networkText.ts`. Nonblank values remain intact; mobile has no separate 12-character symbol or 64-character name rule. Display ellipsis preserves full edit/storage/accessibility values and chain identity. |
+
+Native-only adapters have concrete platform responsibilities: SQLCipher/SecureStore and protected files; Expo HTTP behavior; foreground/background/focus and monotonic idle handling; and React Native layout, keyboard, accessibility and secret-screen presentation. Native HTTPS restrictions follow its actual iOS ATS and Android cleartext configuration. These adapters must not implement independent derivation, fee, nonce, signing or retention policies.
+
+The native review DTO and quote/cancellation orchestration support its current internal send screen. Different view/controller callgraphs are expected; any duplicated wallet policy must be extracted for both hosts. A smaller implemented UI is an open parity item, not permission to narrow generic SDK behavior.
+
+Both dependency graphs pin official keyring **2.1.2**, network **1.0.111** and SyscoinJS **1.0.277**; installed payloads were checked against official archives. No temporary SDK consumer patch is required. The shared SDK hardware nonce and signed-envelope fixes benefit extension and mobile callers.
+
+Physical iPhone import/create/cold-restart evidence belongs to `59c8a0d` with SDK **2.1.1** and offline RPC fixtures. It does not qualify this newer source/package, normal UI/privacy or live sends. Current-head CI, native execution and each remaining feature's device/transport gates still apply. Dapp permissions/approvals, native hardware, UTXO writers, smart/private/Sentry operations, alerts and remaining settings must not be presented as complete; the parity matrix remains authoritative for those gaps.

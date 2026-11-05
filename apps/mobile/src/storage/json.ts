@@ -1,3 +1,4 @@
+import { assertJsonTextBudget } from '../../../../source/shared/jsonTextBudget.ts';
 import { WalletStorageError } from './types.ts';
 
 export const STORAGE_LIMITS = Object.freeze({
@@ -30,20 +31,25 @@ export function validateStorageKey(key: unknown): asserts key is string {
 }
 
 /** Bounded snapshots: getters, custom prototypes and lossy JSON values reject. */
+export type StorageValueLimits = Readonly<{ valueBytes: number; depth: number; nodes: number }>;
 export function encodeStorageValue(value: unknown): string {
+  return encodeBoundedStorageValue(value, STORAGE_LIMITS);
+}
+/** Internal domain adapter; ordinary keyring values retain STORAGE_LIMITS. */
+export function encodeBoundedStorageValue(value: unknown, limits: StorageValueLimits): string {
   const chunks: string[] = [];
   const seen = new Set<object>();
   let nodes = 0;
   let bytes = 0;
   const append = (text: string) => {
     // Bound before UTF-8 conversion or retention; a JSON escape is at most 6 bytes.
-    if (text.length > STORAGE_LIMITS.valueBytes) throw invalid();
+    if (text.length > limits.valueBytes) throw invalid();
     bytes += encoder.encode(text).length;
-    if (bytes > STORAGE_LIMITS.valueBytes) throw invalid();
+    if (bytes > limits.valueBytes) throw invalid();
     chunks.push(text);
   };
   const visit = (item: unknown, depth: number) => {
-    if (++nodes > STORAGE_LIMITS.nodes || depth > STORAGE_LIMITS.depth)
+    if (++nodes > limits.nodes || depth > limits.depth)
       throw invalid();
     if (item === null) {
       append('null');
@@ -59,7 +65,7 @@ export function encodeStorageValue(value: unknown): string {
       return;
     }
     if (typeof item === 'string') {
-      if (item.length > STORAGE_LIMITS.valueBytes) throw invalid();
+      if (item.length > limits.valueBytes) throw invalid();
       append(JSON.stringify(item));
       return;
     }
@@ -75,13 +81,13 @@ export function encodeStorageValue(value: unknown): string {
     // Obtain names only; do not copy property values/descriptors before fan-out admission.
     const keys = Reflect.ownKeys(item);
     if (
-      keys.length > STORAGE_LIMITS.nodes - nodes + (array ? 1 : 0) ||
+      keys.length > limits.nodes - nodes + (array ? 1 : 0) ||
       keys.some((key) => typeof key !== 'string')
     )
       throw invalid();
     if (array) {
       if (
-        item.length > STORAGE_LIMITS.nodes - nodes ||
+        item.length > limits.nodes - nodes ||
         keys.length !== item.length + 1
       )
         throw invalid();
@@ -102,7 +108,7 @@ export function encodeStorageValue(value: unknown): string {
       append('{');
       for (let i = 0; i < keys.length; i++) {
         const key = keys[i] as string;
-        if (key.length > STORAGE_LIMITS.valueBytes) throw invalid();
+        if (key.length > limits.valueBytes) throw invalid();
         const descriptor = Object.getOwnPropertyDescriptor(item, key);
         if (
           !descriptor ||
@@ -123,15 +129,19 @@ export function encodeStorageValue(value: unknown): string {
 }
 
 export function decodeStorageValue(raw: unknown): unknown {
+  return decodeBoundedStorageValue(raw, STORAGE_LIMITS);
+}
+export function decodeBoundedStorageValue(raw: unknown, limits: StorageValueLimits): unknown {
   if (
     typeof raw !== 'string' ||
-    raw.length > STORAGE_LIMITS.valueBytes ||
-    encoder.encode(raw).length > STORAGE_LIMITS.valueBytes
+    raw.length > limits.valueBytes ||
+    encoder.encode(raw).length > limits.valueBytes
   )
     throw invalid();
   try {
+    assertJsonTextBudget(raw, { depth: limits.depth + 1, nodes: limits.nodes, tokenCharacters: limits.valueBytes, whitespace: true });
     const parsed: unknown = JSON.parse(raw);
-    encodeStorageValue(parsed);
+    encodeBoundedStorageValue(parsed, limits);
     return parsed;
   } catch {
     throw invalid();

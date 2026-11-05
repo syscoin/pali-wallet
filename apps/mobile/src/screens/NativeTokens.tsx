@@ -1,3 +1,4 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
   useEffect,
@@ -10,14 +11,11 @@ import {
   ActivityIndicator,
   BackHandler,
   Keyboard,
-  Pressable,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
-import { getNetwork } from '../core/networks';
 import type {
   NativeTokenSnapshot,
   NativeTokenView,
@@ -70,7 +68,7 @@ function TokenContent({
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });
-  const network = getNetwork(snapshot.account?.network ?? 'ethereum');
+  const network = snapshot.network ?? { name: snapshot.account?.network ?? 'Network', chainId: '', symbol: '', testnet: false };
   const scope = scopeOf(snapshot);
   const token =
     route.kind === 'detail' || route.kind === 'remove'
@@ -81,7 +79,7 @@ function TokenContent({
         )
       : undefined;
   const busy = snapshot.busy || snapshot.previewStatus === 'loading';
-  const canSendToken = !!onSend && snapshot.account?.network === 'ethereum';
+  const canSendToken = !!onSend && !!snapshot.account;
   const title =
     route.kind === 'import'
       ? 'Import token'
@@ -257,7 +255,7 @@ function TokenContent({
                 />
               ) : null}
               {snapshot.items.map((item) => (
-                <Pressable
+                <IdlePressable
                   key={item.metadata.contractAddress}
                   accessibilityRole="button"
                   accessibilityLabel={`View token contract ${item.metadata.contractAddress} on ${network.name}`}
@@ -285,12 +283,9 @@ function TokenContent({
                     <Text style={s.balance} testID="native-token-row-balance">
                       {balance(item)}
                     </Text>
-                    <Text style={s.provenance}>Custom token · Unverified</Text>
-                    <Text style={s.rowContract}>
-                      {item.metadata.contractAddress}
-                    </Text>
+
                   </Card>
-                </Pressable>
+                </IdlePressable>
               ))}
               <Button
                 title="Import token"
@@ -319,7 +314,7 @@ function TokenContent({
               </Text>
               <View style={s.field}>
                 <Text style={s.label}>CONTRACT ADDRESS</Text>
-                <TextInput
+                <IdleTextInput
                   accessibilityLabel="Token contract address"
                   value={contract}
                   editable={!busy}
@@ -525,10 +520,7 @@ function TokenContent({
               {error}
             </Text>
           )}
-          <Text style={s.provenance}>
-            Reading tokens shares this public account and token contracts with
-            the {network.name} RPC provider.
-          </Text>
+
         </>
       )}
     </View>

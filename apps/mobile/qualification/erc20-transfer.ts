@@ -1,3 +1,4 @@
+import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
@@ -101,7 +102,7 @@ export async function qualifyNativeErc20Transfer(
     phase: 'create' | 'restart';
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
-    storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+    storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
     password: string;
     expectedThirdAddress?: string;
     check: Check;
@@ -112,26 +113,20 @@ export async function qualifyNativeErc20Transfer(
   const [
     { NativeTransfers },
     { NativeTransferRpc },
-    { nativeTransferJournalKey },
     { Transaction },
     { keccak256 },
     { toUtf8Bytes },
-    { encodeStorageValue },
     { encodeErc20Transfer },
     { equalTransferIntent },
-    { getNativeNetwork },
     { RPC_ENDPOINTS },
   ] = await Promise.all([
     import('../src/custody/transfers.ts'),
     import('../src/custody/transferRpc.ts'),
-    import('../src/custody/transferJournal.ts'),
     import('ethers/transaction'),
     import('ethers/crypto'),
     import('ethers/utils'),
-    import('../src/storage/json.ts'),
     import('../../../source/shared/erc20.ts'),
     import('../src/custody/transferIntent.ts'),
-    import('../src/custody/networkContext.ts'),
     import('../src/platformRpc.ts'),
   ]);
   const transfer = runtime.transfers;
@@ -148,15 +143,8 @@ export async function qualifyNativeErc20Transfer(
       current().account?.network === 'ethereum' &&
       catalogue().active.accountId === 'hd:60:1'
   );
-  const nativeRows = await Promise.all(
-    [0, 1].map(async (index) => {
-      const value = await storage.keyringStorage.get(
-        nativeTransferJournalKey(index)
-      );
-      expect(value !== undefined);
-      return encodeStorageValue(value);
-    })
-  );
+  const originalAddresses = catalogue().accounts.filter(account => [0, 1].includes(account.index)).map(account => account.address);
+  const nativeRows = retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, originalAddresses);
   const fingerprint = await storage.getWalletFingerprint();
   const manage = (request: NativeAccountRequest) =>
     authority.manageAccounts(request, current().revision, catalogue().revision);
@@ -206,6 +194,7 @@ export async function qualifyNativeErc20Transfer(
   const calldata = encodeErc20Transfer(recipient, amountUnits);
   const expectedIntent = Object.freeze({
     kind: 'erc20-transfer' as const,
+    chainId: '1',
     token,
     recipient,
     amountUnits,
@@ -237,7 +226,7 @@ export async function qualifyNativeErc20Transfer(
     value: '0x0',
     data: calldata,
   });
-  const readSaved = async (expectedPhase: 'attempted' | 'submitted') => {
+  const readSaved = async (expectedPhase: 'signed' | 'submitted') => {
     const journal = await transfer.journal(guard);
     const saved = await journal.load();
     guard();
@@ -259,54 +248,41 @@ export async function qualifyNativeErc20Transfer(
         tx.maxPriorityFeePerGas === 1n &&
         tx.hash === saved.hash
     );
-    const raw = (await storage.keyringStorage.get(
-      nativeTransferJournalKey(2)
-    )) as import('../src/custody/transferJournal.ts').TransferJournalContainer;
-    const registration = getNativeNetwork('ethereum');
-    expect(
-      raw?.version === 2 &&
-        raw.walletFingerprint === fingerprint &&
-        raw.account.id === 'hd:60:2' &&
-        raw.account.index === 2 &&
-        raw.account.address === address &&
-        raw.entries.length === 1 &&
-        raw.entries[0]?.rawTransaction === saved.rawTransaction &&
-        raw.entries[0].hash === saved.hash &&
-        raw.entries[0].phase === expectedPhase &&
-        equalTransferIntent(raw.entries[0].intent, expectedIntent) &&
-        Object.entries(registration).every(
-          ([key, value]) =>
-            raw.entries[0]?.registration[key as keyof typeof registration] ===
-            value
-        )
-    );
+    const raw = await readSignedRecordEvidence(storage);
+    const retained = raw.entries.filter(entry => entry.from === address.toLowerCase());
+    expect(raw.version === 1 && retained.length === 1 && retained[0]?.hash === saved.hash &&
+      retained[0].phase === expectedPhase && retained[0].signer.id === 2 && retained[0].signer.type === 'HDAccount' &&
+      equalTransferIntent(retained[0].metadata?.intent, expectedIntent) && !raw.raw?.includes(saved.rawTransaction));
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
     return saved;
   };
   const wrapped: NativeTransferRuntime = {
+    replay: (...args) => transfer.replay(...args),
+      submit: (...args) => transfer.submit(...args),
     token: (contract, assertCurrent) => {
       tokenLookups++;
       expect(phase === 'create');
       return transfer.token!(contract, assertCurrent);
     },
     journal: (assertCurrent) => transfer.journal(assertCurrent),
-    async sign(transaction, credential, assertCurrent, intent) {
+    async sign(transaction, assertCurrent, intent) {
       signatures++;
       expect(
         signatures <= 1 &&
           phase === 'create' &&
           equalTransferIntent(intent, expectedIntent)
       );
-      return transfer.sign(transaction, credential, assertCurrent, intent);
+      return transfer.sign(transaction, assertCurrent, intent);
     },
-    async authorize(credential, assertCurrent) {
+    // Retain the report field: this counts unlocked-session admission, not a password check.
+    assertUnlocked(assertCurrent) {
       authorizations++;
       expect(authorizations === 1 && phase === 'restart');
-      return transfer.authorize(credential, assertCurrent);
+      return transfer.assertUnlocked(assertCurrent);
     },
   };
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (url, init) => {
       guard();
       expect(
@@ -348,7 +324,7 @@ export async function qualifyNativeErc20Transfer(
             ['latest', 'finalized', '0x123'].includes(params[0] as string) &&
             params[1] === false
         );
-        result = { number: '0x123', hash: '0x' + 'a'.repeat(64) };
+        result = { number: '0x123', hash: '0x' + 'a'.repeat(64), baseFeePerGas: '0x1', gasLimit: '0x1c9c380' };
       } else if (body.method === 'eth_getCode') {
         same([token.contractAddress, '0x123']);
         result = '0x6000';
@@ -356,12 +332,13 @@ export async function qualifyNativeErc20Transfer(
         expect(
           params.length === 2 &&
             params[0] === address &&
-            ['pending', '0x123'].includes(params[1] as string)
+            ['pending', 'latest', '0x123'].includes(params[1] as string)
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         same([address, 'pending']);
         result = '0xde0b6b3a7640000';
+      } else if (body.method === 'eth_gasPrice') { same([]); result = '0x2';
       } else if (body.method === 'eth_feeHistory') {
         same(['0x1', 'latest', []]);
         result = { oldestBlock: '0x123', baseFeePerGas: ['0x1', '0x1'] };
@@ -369,7 +346,7 @@ export async function qualifyNativeErc20Transfer(
         same([]);
         result = '0x1';
       } else if (body.method === 'eth_estimateGas') {
-        same([unsigned, '0x123']);
+        same([{ ...unsigned, type: '0x2', chainId: '0x1', nonce: '0x0', maxFeePerGas: '0x3', maxPriorityFeePerGas: '0x1' }, 'pending']);
         result = '0xc350';
       } else if (body.method === 'eth_call') {
         if (
@@ -402,7 +379,7 @@ export async function qualifyNativeErc20Transfer(
         same([expectedHash]);
         result = null;
       } else if (body.method === 'eth_sendRawTransaction') {
-        const saved = await readSaved('attempted');
+        const saved = await readSaved('signed');
         guard();
         same([saved.rawTransaction]);
         broadcasts++;
@@ -455,7 +432,7 @@ export async function qualifyNativeErc20Transfer(
               review.totalUnits === '180000' &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(
             controller.getSnapshot().phase === 'unknown' &&
@@ -467,14 +444,14 @@ export async function qualifyNativeErc20Transfer(
               broadcasts === 1 &&
               tokenLookups === 1
           );
-          await readSaved('attempted');
+          await readSaved('signed');
         }
       );
     else
       await check(
         'native ERC20 cold restart intent and exact-byte authorized retry',
         async () => {
-          const saved = await readSaved('attempted');
+          const saved = await readSaved('signed');
           expectedHash = saved.hash;
           expectedRaw = saved.rawTransaction;
           await controller.recover(true);
@@ -486,7 +463,7 @@ export async function qualifyNativeErc20Transfer(
               review.amountUnits === amountUnits &&
               equalTransferIntent(review.intent, expectedIntent)
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(
             controller.getSnapshot().phase === 'pending' &&
@@ -508,12 +485,7 @@ export async function qualifyNativeErc20Transfer(
     await check(
       'native ERC20 leaves original HD journals and selection intact',
       async () => {
-        for (const index of [0, 1])
-          expect(
-            encodeStorageValue(
-              await storage.keyringStorage.get(nativeTransferJournalKey(index))
-            ) === nativeRows[index]
-          );
+        expect(retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, originalAddresses) === nativeRows);
         await manage({ kind: 'select', id: 'hd:60:1' });
         expect(
           catalogue().active.accountId === 'hd:60:1' &&

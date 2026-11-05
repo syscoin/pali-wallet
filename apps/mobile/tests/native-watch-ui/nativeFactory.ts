@@ -1,3 +1,4 @@
+import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
 import { SeedBackupFlow } from '../../src/custody/seedBackup';
@@ -7,15 +8,15 @@ import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/t
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
-import { NativeTransferJournal } from '../../src/custody/transferJournal';
 import { NativeActivity } from '../../src/activity/nativeActivity';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeAccountView } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import type { CustodyRuntime } from '../../src/custody/types';
-import type { KeyringStoragePort } from '../../src/storage/types';
 import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
+import { recoveryAudit, recoveryGate } from './recoveryState';
+import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
@@ -23,7 +24,7 @@ const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), '
 const fingerprint = '1'.repeat(64);
 
 let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
-  revision: 0, removed: [], networks: NATIVE_NETWORKS,
+  revision: 0, networks: NATIVE_NETWORKS,
   active: { accountId: 'hd:60:0', networkId: 'ethereum' },
   accounts: [
     { id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, label: 'Account 1', address: ADDRESS },
@@ -37,18 +38,18 @@ export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
-let nextImportedIndex = 0;
-const importedKeys = new Map<string, string>();
-const stored: Record<string, unknown> = {};
-const store: KeyringStoragePort = {
-  async get(key) { return stored[key] === undefined ? undefined : structuredClone(stored[key]); },
-  async set(key, value) { stored[key] = structuredClone(value); },
-  async deleteItem() { throw Error('Fixture never deletes a journal'); },
-  async createManyIfAbsent(values) { if (Object.keys(values).some((key) => key in stored)) return false; Object.assign(stored, structuredClone(values)); return true; },
-  async compareAndSet(key, expected, value) { if (JSON.stringify(stored[key]) !== JSON.stringify(expected)) return false; stored[key] = structuredClone(value); return true; },
+let fixturePassword = 'public-password';
+// Match the pinned SDK allocator: removed slots are reusable within each bucket.
+const nextAccountIndex = (type: 'HDAccount' | 'Imported') => {
+  const used = new Set(catalogue.accounts.filter((account) => account.type === type).map((account) => account.index));
+  let index = 0;
+  while (used.has(index)) index++;
+  return index;
 };
+const importedKeys = new Map<string, string>();
 export function createNativeWalletControllers() {
   const runtime: CustodyRuntime = {
+    security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
       reserve(id, expectedRevision) {
@@ -74,7 +75,7 @@ export function createNativeWalletControllers() {
             let items = [...catalogue.accounts];
             if (request.kind === 'create') {
               if (request.password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
-              const index = Math.max(...items.filter((a) => a.type === 'HDAccount').map((a) => a.index)) + 1;
+              const index = nextAccountIndex('HDAccount');
               const account = { id: `hd:60:${index}`, type: 'HDAccount' as const, index, slip44: 60 as const, label: request.label,
                 address: index === 1 ? SECOND : '0x2222222222222222222222222222222222222222' };
               items.push(account); active = account.id;
@@ -98,17 +99,16 @@ export function createNativeWalletControllers() {
     imports: {
       reserve(input, password, expectedRevision) {
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
-        const key = normalizeImportedKey(input.privateKey), identity = importedKeyIdentity(key, nextImportedIndex);
+        const key = normalizeImportedKey(input.privateKey), identity = importedKeyIdentity(key, nextAccountIndex('Imported'));
         if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
         if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-        if (catalogue.accounts.length >= 20) throw new KeyringRuntimeError('ACCOUNT_LIMIT');
         return { cancel() {}, async execute(guard) {
           guard(); audit.importAttempts++; events.push('import:start');
           await importGate();
           if (importFailure) throw new KeyringRuntimeError(importFailure);
           if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           guard();
-          importedKeys.set(identity.id, key); nextImportedIndex++;
+          importedKeys.set(identity.id, key);
           const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: 60 as const, label: input.label, address: identity.address };
           catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account], revision: catalogue.revision + 1,
             active: { ...catalogue.active, accountId: account.id } });
@@ -122,7 +122,7 @@ export function createNativeWalletControllers() {
       async unlock(password) {
         audit.unlocks++; events.push('unlock:start');
         await unlockGate();
-        sessionUnlocked = password === 'public-password';
+        sessionUnlocked = password === fixturePassword;
         events.push('unlock:finish');
         return { authenticated: sessionUnlocked };
       },
@@ -137,15 +137,19 @@ export function createNativeWalletControllers() {
       async close() { audit.closed++; events.push('close'); },
     },
   };
-  const authority = new NativeCustodyAuthority({ open: async () => runtime });
+  const authority = new NativeCustodyAuthority({ open: async () => runtime }, { preferences: securityPreferences, assertActive: custodyIdle.captureGuard() });
   latestAuthority = authority;
   retiredAuthorities.push(authority);
   const transferRuntime: NativeTransferRuntime = {
-    async journal(guard) { guard(); const account = catalogue.accounts.find((item) => item.id === catalogue.active.accountId)!; return new NativeTransferJournal(store, { walletFingerprint: '1'.repeat(64), address: account.address, chainId: '1' }, guard, Date.now, account.index, undefined, undefined, account.type); },
-    async authorize(_password, guard) { guard(); },
-    async sign(_transaction, _password, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
+    replay() { throw Error("Fixture has no retained signed transactions"); },
+    async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
+    async journal(guard) { guard(); return { async load() { guard(); return null; },
+      async saveSigned() { throw Error('Fixture does not submit signatures'); },
+      async transition() { throw Error('Fixture does not submit signatures'); } }; },
+    assertUnlocked(guard) { guard(); },
+    async sign(_transaction, guard) { audit.signs++; events.push('sign:start'); await signGate(); guard(); events.push('sign:finish'); throw Error('Fixture does not submit signatures'); },
   };
-  const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ fetch: fixtureFetch }) });
+  const transfers = new NativeTransfers(authority, () => transferRuntime, { rpc: new NativeTransferRpc({ networkId: 'ethereum', fetch: fixtureFetch }) });
   latestTransfers = transfers;
   const tokens = new NativeTokens(authority, () => undefined);
   const activity = new NativeActivity(authority, () => undefined);
@@ -190,7 +194,36 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    async readRecoveryInventory(): Promise<RecoveryInventory> {
+      return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
+        counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
+    },
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
+}
+/** This adapter tests real UI ownership, not the already tested storage protocol. */
+export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof createNativeWalletControllers>) {
+  recoveryAudit.created++;
+  const proof = Object.freeze({}); let cancelled = false, replacement = '', pending: Promise<unknown> = Promise.resolve();
+  return {
+    prepare(phrase: string, password: string, guard: () => void) {
+      recoveryAudit.prepared++; cancelled = false;
+      pending = (async () => {
+        guard(); await controllers.authority.dispose(); await recoveryGate('prepare'); guard();
+        if (cancelled) throw Error('CANCELLED');
+        if (phrase !== publicBackupWords.join(' ')) throw Error('WRONG_PHRASE');
+        replacement = password; return proof;
+      })(); return pending;
+    },
+    commit(value: unknown) {
+      pending = (async () => {
+        if (value !== proof || cancelled) throw Error('CANCELLED');
+        fixturePassword = replacement; replacement = ''; recoveryAudit.committed++;
+        await recoveryGate('commit'); if (cancelled) throw Error('CANCELLED'); return 'committed-locked';
+      })(); return pending;
+    },
+    cancel() { cancelled = true; replacement = ''; },
+    async dispose() { await pending.catch(() => undefined); await recoveryGate('dispose'); recoveryAudit.disposed++; },
+  };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {
   const request = JSON.parse(String(init?.body));
@@ -199,8 +232,9 @@ export const fixtureFetch: typeof fetch = async (_url, init) => {
     case 'eth_chainId': result = '0x1'; break;
     case 'eth_getBalance': result = '0x10000000000000000'; break;
     case 'eth_getTransactionCount': result = '0x0'; break;
-    case 'eth_getBlockByNumber': result = { number: '0x20', hash: '0x' + '2'.repeat(64) }; break;
-    case 'eth_feeHistory': result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] }; break;
+    case 'eth_getBlockByNumber': result = { number: '0x20', hash: '0x' + '2'.repeat(64), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' }; break;
+    case 'eth_gasPrice': result = '0x3'; break;
+    case 'eth_feeHistory': result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'], reward: [['0x1', '0x1', '0x1']] }; break;
     case 'eth_maxPriorityFeePerGas': result = '0x1'; break;
     case 'eth_estimateGas': result = '0x5208'; break;
     case 'eth_getTransactionReceipt': result = null; break;

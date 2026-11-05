@@ -1,3 +1,6 @@
+import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
+import { ACCOUNT_RECORD_KEY, ACCOUNT_RECORD_LIMITS, encodeAccountRecord, decodeAccountRecord } from './accountRecordKey.ts';
+import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
 import {
   decodeStorageValue,
   encodeStorageValue,
@@ -5,31 +8,63 @@ import {
   validateStorageKey,
 } from './json.ts';
 import { WalletStorageError } from './types.ts';
+import { readWalletIdentity } from './walletIdentity.ts';
+import { sameRecoverySnapshot } from './recoverySnapshot.ts';
 import type {
   KeyringStoragePort,
   OpenWalletStorage,
   SqlConnection,
   StorageDigest,
   WalletStoredState,
+  WalletIdentityRead,
+  RecoveryStorageSnapshot,
+  RecoveryWritePlan,
+  RecoveryRoot,
+  NoteDomainRow,
+  SignedRecordDomainRow,
 } from './types.ts';
 
-const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 65536))`;
+const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} ELSE 65536 END))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
+const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
+const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
 const boundedColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+// Refuse multiple profiles before any ciphertext crosses the SQL connection.
+const boundedNoteColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM private_note_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedSignedColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM evm_signed_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = '${ACCOUNT_RECORD_KEY}' THEN ? ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
-const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth')`;
+const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
+const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedRecordColumns}, NULL AS wallet_binding FROM keyring_records UNION ALL SELECT 'meta' AS source, CASE WHEN typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256 THEN key ELSE NULL END AS key, ${boundedColumns}, NULL AS wallet_binding FROM wallet_metadata UNION ALL SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records UNION ALL SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY source, key LIMIT 71`;
+
+const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
+const SIGNED_ROWS = `SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY profile_id LIMIT 2`;
+const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : STORAGE_LIMITS.valueBytes;
+const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : encodeStorageValue(value);
+const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : decodeStorageValue(value);
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
 const safeError = (error: unknown) =>
   error instanceof WalletStorageError
     ? error
     : new WalletStorageError('STORAGE_UNAVAILABLE');
+const storageGuard = (assertCurrent: () => void) => () => {
+  const result: unknown = assertCurrent();
+  if (result !== undefined) {
+    if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+    throw new WalletStorageError('STORAGE_CHANGED');
+  }
+};
 type StoredRow = {
   value: unknown;
   storage_type: unknown;
   storage_bytes: unknown;
 };
-type PairRow = StoredRow & { source: string; key: string };
-type Pair = { vault?: string; keys?: string; backup?: string; auth?: string };
+type PairRow = StoredRow & {
+  source: string;
+  key: string;
+  wallet_binding?: unknown;
+};
+type Pair = { vault?: string; keys?: string; backup?: string; auth?: string; identity?: string };
 type AuthRecord = {
   version: 1;
   failures: number;
@@ -68,7 +103,7 @@ function admittedRow(
 
 function validatePair(pair: Pair): 'empty' | 'existing' {
   if (pair.vault === undefined && pair.keys === undefined) {
-    if (pair.backup !== undefined || pair.auth !== undefined) throw failure();
+    if (pair.backup !== undefined || pair.auth !== undefined || pair.identity !== undefined) throw failure();
     return 'empty';
   }
   if (pair.vault === undefined || pair.keys === undefined) throw failure();
@@ -88,7 +123,7 @@ function validatePair(pair: Pair): 'empty' | 'existing' {
     throw failure();
   }
   // First native release creates only the current authenticated SDK envelope.
-  // Legacy CBC/migration metadata is not inferred as a fresh native wallet.
+  // Only the shared SDK authenticated envelope is admitted for native custody.
   if (
     !exact(envelope, ['v', 'alg', 'iv', 'ct']) ||
     envelope.v !== 4 ||
@@ -108,6 +143,9 @@ function validatePair(pair: Pair): 'empty' | 'existing' {
 export class SqliteWalletStorage implements OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly authGuard: OpenWalletStorage['authGuard'];
+  readonly notes: NonNullable<OpenWalletStorage['notes']>;
+  readonly signedRecords: OpenWalletStorage['signedRecords'];
+  readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   private tail: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
   private poisoned = false;
@@ -116,19 +154,31 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private readonly digest: StorageDigest;
   private readonly now: () => number;
   private readonly monotonicMilliseconds: () => number;
+  private readonly installationId: string;
   private lastMonotonic: number | null = null;
   private authenticationWindow: { raw: string | undefined; notBefore: number } | null = null;
+  private readonly recoverySnapshots = new WeakSet<RecoveryStorageSnapshot>();
+  private readonly recoveryWrites = new WeakMap<
+    RecoveryWritePlan,
+    {
+      before: RecoveryStorageSnapshot;
+      after: RecoveryStorageSnapshot;
+      creation?: true;
+    }
+  >();
 
   private constructor(
     db: SqlConnection,
     digest: StorageDigest,
     now: () => number,
-    monotonicMilliseconds: () => number
+    monotonicMilliseconds: () => number,
+    installationId: string
   ) {
     this.db = db;
     this.digest = digest;
     this.now = now;
     this.monotonicMilliseconds = monotonicMilliseconds;
+    this.installationId = installationId;
     this.keyringStorage = Object.freeze({
       get: (key: string) => this.get(key),
       set: (key: string, value: unknown) => this.set(key, value),
@@ -138,10 +188,62 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>) =>
         this.compareAndSet(key, expected, value, removeIfEqual),
     });
+    this.notes = Object.freeze({
+      read: () => this.queued(() => this.readNotes()),
+    });
+    this.signedRecords = Object.freeze({
+      read: (profileId: string) => this.queued(async () => {
+        const identity = await this.signedIdentity(profileId);
+        const rows = await this.readSignedRows();
+        this.inspectSignedRows(rows, identity);
+        return rows[0]?.value;
+      }),
+      compareAndSet: (profileId: string, expected: string | undefined, next: string, assertCurrent: () => void) =>
+        this.compareAndSetSigned(profileId, expected, next, assertCurrent),
+    });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
       recordFailure: () => this.recordAuthentication(false),
       recordSuccess: () => this.recordAuthentication(true),
+    });
+    this.recovery = Object.freeze({
+      readIdentity: () => this.readIdentity(),
+      readSnapshot: () => this.readSnapshot(),
+      fingerprintPair: (
+        candidate: Readonly<{ vault: unknown; keys: unknown }>
+      ) => {
+        const captured = encodeStorageValue(candidate);
+        return this.queued(() => {
+          const value = decodeStorageValue(captured);
+          if (!exact(value, ['vault', 'keys'])) throw failure();
+          return this.fingerprint({
+            vault: encodeStorageValue(value.vault),
+            keys: encodeStorageValue(value.keys),
+          });
+        });
+      },
+      prepareCreation: (
+        snapshot: RecoveryStorageSnapshot,
+        candidate: Readonly<{
+          vault: unknown;
+          keys: unknown;
+          accountRecords: unknown;
+        }>,
+        root: RecoveryRoot
+      ) => this.prepareCreation(snapshot, candidate, root),
+      bindIdentity: (expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void) => this.bindIdentity(expectedPairFingerprint, root, assertCurrent),
+      prepareReplacement: (
+        snapshot: RecoveryStorageSnapshot,
+        pair: Readonly<{
+          vault: unknown;
+          keys: unknown;
+          accountRecords?: unknown;
+        }>,
+        root: RecoveryRoot
+      ) => this.prepareReplacement(snapshot, pair, root),
+      plannedSnapshot: (plan: RecoveryWritePlan) => { const value = this.recoveryWrites.get(plan); if (!value) throw new WalletStorageError('STORAGE_CHANGED'); return value.after; },
+      commitReplacement: (plan: unknown, guard: () => void) => this.commitReplacement(plan, guard),
+      recordFailureForPair: (fingerprint: string) => this.recordAuthentication(false, fingerprint),
     });
   }
 
@@ -155,10 +257,10 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   ): Promise<SqliteWalletStorage> {
     if (!/^[0-9a-f]{32}$/.test(installationId) || typeof digest !== 'function')
       throw failure();
-    const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds);
+    const storage = new SqliteWalletStorage(db, digest, now, monotonicMilliseconds, installationId);
     try {
       const tables = await db.getAllAsync<{ name: string; sql: string }>(
-        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 3"
+        "SELECT CASE WHEN length(name) <= 64 THEN name ELSE NULL END AS name, CASE WHEN length(CAST(sql AS BLOB)) <= 1024 THEN sql ELSE NULL END AS sql FROM sqlite_master WHERE type IN ('table', 'view', 'trigger', 'index') AND name NOT LIKE 'sqlite_%' ORDER BY name LIMIT 5"
       );
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
@@ -167,27 +269,23 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         await storage.transaction(async () => {
           await db.execAsync(TABLE);
           await db.execAsync(META);
+          await db.execAsync(NOTES);
+          await db.execAsync(SIGNED);
           await db.runAsync(
             'INSERT INTO wallet_metadata (key, value) VALUES (?, ?)',
             ['installation', installationId]
           );
           await db.execAsync('PRAGMA user_version = 1');
         });
-      } else if (
-        tables.length !== 2 ||
-        version?.user_version !== 1 ||
-        tables[0]?.name !== 'keyring_records' ||
-        tables[0].sql !== TABLE ||
-        tables[1]?.name !== 'wallet_metadata' ||
-        tables[1].sql !== META
-      )
-        throw failure();
+      } else if (version?.user_version !== 1 || tables.length !== 4 || tables[0]?.name !== 'evm_signed_records' || tables[0].sql !== SIGNED ||
+        tables[1]?.name !== 'keyring_records' || tables[1].sql !== TABLE || tables[2]?.name !== 'private_note_records' || tables[2].sql !== NOTES ||
+        tables[3]?.name !== 'wallet_metadata' || tables[3].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
       );
       if (installation?.value !== installationId) throw failure();
       const metadata = await db.getFirstAsync<{ count: number }>(
-        "SELECT COUNT(*) AS count FROM wallet_metadata WHERE key NOT IN ('installation', 'backup', 'auth')"
+        "SELECT COUNT(*) AS count FROM wallet_metadata WHERE key NOT IN ('installation', 'backup', 'auth', 'identity')"
       );
       const count = await db.getFirstAsync<{ count: number }>(
         'SELECT COUNT(*) AS count FROM keyring_records'
@@ -203,6 +301,15 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       );
       if (health?.quick_check !== 'ok') throw failure();
       await storage.readState();
+      // Reject malformed or orphaned note rows before handing an owner to a runtime.
+      await storage.notes.read();
+      const signed = await storage.readSignedRows();
+      if (signed.length) {
+        const pair = await storage.pair();
+        if (validatePair(pair) !== 'existing') throw failure();
+        const identity = readWalletIdentity(await storage.fingerprint(pair), pair.identity);
+        storage.inspectSignedRows(signed, identity);
+      }
       return storage;
     } catch (error) {
       throw safeError(error);
@@ -228,11 +335,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     return pending;
   }
 
-  private async transaction<T>(operation: () => Promise<T>): Promise<T> {
+  private async transaction<T>(operation: () => Promise<T>, beforeCommit?: () => void): Promise<T> {
     let commitStarted = false;
     try {
       await this.db.execAsync('BEGIN IMMEDIATE');
       const result = await operation();
+      // The awaited operation permits queued cancellation/expiry to run. Check
+      // again in the same turn that dispatches COMMIT, before it can be durable.
+      beforeCommit?.();
       commitStarted = true;
       await this.db.execAsync('COMMIT');
       return result;
@@ -253,16 +363,16 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     validateStorageKey(key);
     return this.queued(async () => {
       const row = await this.db.getFirstAsync<StoredRow>(GET, [
-        STORAGE_LIMITS.valueBytes,
+        recordBytes(key),
         key,
       ]);
-      return row === null ? undefined : decodeStorageValue(admittedRow(row));
+      return row === null ? undefined : decodeRecord(key, admittedRow(row, recordBytes(key)));
     });
   }
 
   private set(key: string, value: unknown): Promise<void> {
     validateStorageKey(key);
-    const raw = encodeStorageValue(value);
+    const raw = encodeRecord(key, value);
     return this.queued(() =>
       this.transaction(async () => {
         const exists = await this.db.getFirstAsync<{ present: number }>(
@@ -316,7 +426,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         !descriptor.enumerable
       )
         throw failure();
-      return [key, encodeStorageValue(descriptor.value)] as const;
+      return [key, encodeRecord(key, descriptor.value)] as const;
     });
     return this.queued(() =>
       this.transaction(async () => {
@@ -350,8 +460,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private compareAndSet(key: string, expected: unknown, value: unknown,
     removeIfEqual: Readonly<Record<string, unknown>> = {}): Promise<boolean> {
     validateStorageKey(key);
-    const before = encodeStorageValue(expected);
-    const after = encodeStorageValue(value);
+    const before = encodeRecord(key, expected);
+    const after = encodeRecord(key, value);
     if (!removeIfEqual || typeof removeIfEqual !== 'object' || Array.isArray(removeIfEqual) ||
         ![Object.prototype, null].includes(Object.getPrototypeOf(removeIfEqual))) throw failure();
     const names = Reflect.ownKeys(removeIfEqual);
@@ -361,14 +471,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       validateStorageKey(name);
       const descriptor = Object.getOwnPropertyDescriptor(removeIfEqual, name);
       if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw failure();
-      return [name, descriptor.value === undefined ? undefined : encodeStorageValue(descriptor.value)] as const;
+      return [name, descriptor.value === undefined ? undefined : encodeRecord(name, descriptor.value)] as const;
     });
     return this.queued(() => this.transaction(async () => {
-      const row = await this.db.getFirstAsync<StoredRow>(GET, [STORAGE_LIMITS.valueBytes, key]);
-      if (row === null || admittedRow(row) !== before) return false;
+      const row = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(key), key]);
+      if (row === null || admittedRow(row, recordBytes(key)) !== before) return false;
       for (const [name, snapshot] of removals) {
-        const candidate = await this.db.getFirstAsync<StoredRow>(GET, [STORAGE_LIMITS.valueBytes, name]);
-        if (snapshot === undefined ? candidate !== null : candidate === null || admittedRow(candidate) !== snapshot) return false;
+        const candidate = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(name), name]);
+        if (snapshot === undefined ? candidate !== null : candidate === null || admittedRow(candidate, recordBytes(name)) !== snapshot) return false;
       }
       await this.db.runAsync('UPDATE keyring_records SET value = ? WHERE key = ?', [after, key]);
       for (const [name, snapshot] of removals) {
@@ -383,7 +493,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       STORAGE_LIMITS.valueBytes,
       1024,
     ]);
-    if (rows.length > 4) throw failure();
+    if (rows.length > 5) throw failure();
     const result: Pair = {};
     for (const row of rows) {
       const raw = admittedRow(
@@ -396,8 +506,10 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       else if (row.source === 'meta' && row.key === 'backup')
         result.backup = raw;
       else if (row.source === 'meta' && row.key === 'auth') result.auth = raw;
+      else if (row.source === 'meta' && row.key === 'identity') result.identity = raw;
       else throw failure();
     }
+    if (result.identity !== undefined) readWalletIdentity(await this.fingerprint(result), result.identity);
     return result;
   }
 
@@ -417,23 +529,419 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     }
   }
 
+  private async storedState(pair: Pair): Promise<WalletStoredState> {
+    if (validatePair(pair) === 'empty')
+      return Object.freeze({ presence: 'empty', backup: 'unconfirmed' });
+    if (pair.identity !== undefined) readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    const auth = this.authenticationRecord(pair.auth);
+    this.authenticationNotBefore(pair.auth, auth, this.monotonicTimestamp());
+    if (pair.backup === undefined)
+      return Object.freeze({ presence: 'existing', backup: 'unconfirmed' });
+    const backup = decodeStorageValue(pair.backup);
+    if (
+      !exact(backup, ['version', 'fingerprint']) ||
+      backup.version !== 1 ||
+      backup.fingerprint !== (await this.fingerprint(pair))
+    )
+      throw failure();
+    return Object.freeze({ presence: 'existing', backup: 'confirmed' });
+  }
+
   readState(): Promise<WalletStoredState> {
+    return this.queued(async () => this.storedState(await this.pair()));
+  }
+
+  private readIdentity(): Promise<WalletIdentityRead | null> {
     return this.queued(async () => {
       const pair = await this.pair();
-      if (validatePair(pair) === 'empty')
-        return Object.freeze({ presence: 'empty', backup: 'unconfirmed' });
-      const auth = this.authenticationRecord(pair.auth);
-      this.authenticationNotBefore(pair.auth, auth, this.monotonicTimestamp());
-      if (pair.backup === undefined)
-        return Object.freeze({ presence: 'existing', backup: 'unconfirmed' });
-      const backup = decodeStorageValue(pair.backup);
+      return validatePair(pair) === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    });
+  }
+
+  private bindIdentity(
+    expectedPairFingerprint: string,
+    root: RecoveryRoot,
+    assertCurrent: () => void
+  ): Promise<void> {
+    if (typeof assertCurrent !== 'function' || typeof expectedPairFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(expectedPairFingerprint))
+      return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    const check = storageGuard(assertCurrent);
+    // Use the existing identity decoder to admit a detached canonical root.
+    const checkedRoot = readWalletIdentity(expectedPairFingerprint, encodeStorageValue({ version: 1,
+      walletBindingId: expectedPairFingerprint, pairFingerprint: expectedPairFingerprint, root })).root!;
+    return this.queued(async () => {
+      let expectedRaw: string | undefined;
+      await this.transaction(async () => {
+        check();
+        const pair = await this.pair();
+        check();
+        if (
+          validatePair(pair) !== 'existing' ||
+          (await this.fingerprint(pair)) !== expectedPairFingerprint
+        )
+          throw new WalletStorageError('STORAGE_CHANGED');
+        check();
+        const identity = readWalletIdentity(
+          expectedPairFingerprint,
+          pair.identity
+        );
+        if (identity.root && JSON.stringify(identity.root) !== JSON.stringify(checkedRoot))
+          throw new WalletStorageError('STORAGE_CHANGED');
+        expectedRaw = encodeStorageValue({ version: 1, walletBindingId: identity.walletBindingId,
+          pairFingerprint: expectedPairFingerprint, root: checkedRoot });
+        if (pair.identity !== expectedRaw) await this.db.runAsync(
+          'INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['identity', expectedRaw]);
+        check();
+      }, check).catch((error) => this.signedFailure(error));
+      check();
+      try {
+        const after = await this.pair();
+        if (
+          after.identity !== expectedRaw ||
+          (await this.fingerprint(after)) !== expectedPairFingerprint
+        )
+          throw failure();
+      } catch (error) {
+        this.poisoned = true;
+        this.signedFailure(error);
+      }
+      check();
+    });
+  }
+
+  private signedFailure(error: unknown): never {
+    if (this.poisoned) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+    throw error;
+  }
+
+  private async signedIdentity(profileId: string): Promise<WalletIdentityRead> {
+    const pair = await this.pair();
+    if (validatePair(pair) !== 'existing') throw new WalletStorageError('STORAGE_CHANGED');
+    const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
+    if (!identity.root || identity.root.profileId !== profileId) throw new WalletStorageError('STORAGE_CHANGED');
+    return identity;
+  }
+
+  private async readSignedRows(): Promise<readonly SignedRecordDomainRow[]> {
+    const rows = await this.db.getAllAsync<PairRow>(SIGNED_ROWS, [EVM_SIGNED_RECORD_LIMITS.bytes]);
+    if (rows.length > 1) throw failure();
+    return Object.freeze(rows.map((row) => {
+      if (typeof row.key !== 'string' || typeof row.wallet_binding !== 'string') throw failure();
+      return Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding,
+        value: admittedRow(row, EVM_SIGNED_RECORD_LIMITS.bytes) });
+    }));
+  }
+
+  private inspectSignedRows(rows: readonly SignedRecordDomainRow[], identity: WalletIdentityRead | null): void {
+    if (rows.length > 1) throw failure();
+    for (const row of rows) {
+      if (!identity?.root || row.profileId !== identity.root.profileId || row.walletBindingId !== identity.walletBindingId) throw failure();
+      try { inspectEvmSignedBundle(row.value, row.profileId); } catch { throw failure(); }
+    }
+  }
+
+  private compareAndSetSigned(profileId: string, expected: string | undefined, next: string, assertCurrent: () => void): Promise<boolean> {
+    if (typeof assertCurrent !== 'function') return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    const check = storageGuard(assertCurrent);
+    check();
+    try {
+      if (expected !== undefined) inspectEvmSignedBundle(expected, profileId);
+      inspectEvmSignedBundle(next, profileId);
+    } catch { return Promise.reject(failure()); }
+    return this.queued(async () => {
+      let binding: string | undefined;
+      const committed = await this.transaction(async () => {
+        check();
+        const identity = await this.signedIdentity(profileId); check();
+        binding = identity.walletBindingId;
+        const before = await this.readSignedRows(); check();
+        this.inspectSignedRows(before, identity);
+        if (before[0]?.value !== expected) return false;
+        await this.db.runAsync('INSERT INTO evm_signed_records (profile_id, wallet_binding, value) VALUES (?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET wallet_binding = excluded.wallet_binding, value = excluded.value', [profileId, binding, next]);
+        check();
+        return true;
+      }, check).catch((error) => this.signedFailure(error));
+      if (!committed) return false;
+      check();
+      try {
+        const identity = await this.signedIdentity(profileId);
+        const after = await this.readSignedRows();
+        this.inspectSignedRows(after, identity);
+        if (identity.walletBindingId !== binding || after[0]?.value !== next) throw failure();
+      } catch (error) { this.poisoned = true; this.signedFailure(error); }
+      check();
+      return true;
+    });
+  }
+
+  private async readNotes(): Promise<readonly NoteDomainRow[]> {
+    const rows = await this.db.getAllAsync<PairRow>(NOTE_ROWS, [NOTE_DOMAIN_MAX_BYTES]);
+    if (rows.length > 1) throw failure();
+    const notes = rows.map((row) => {
+      if (typeof row.key !== 'string' || typeof row.wallet_binding !== 'string') throw failure();
+      return Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value: admittedRow(row, NOTE_DOMAIN_MAX_BYTES) });
+    });
+    if (notes.length) {
+      const pair = await this.pair();
+      if (validatePair(pair) !== 'existing') throw failure();
+      const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
+      inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
+    }
+    return Object.freeze(notes);
+  }
+
+  /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */
+  private async captureSnapshot(): Promise<RecoveryStorageSnapshot> {
+      const rows = await this.db.getAllAsync<PairRow>(SNAPSHOT, [ACCOUNT_RECORD_LIMITS.valueBytes, STORAGE_LIMITS.valueBytes, 1024, NOTE_DOMAIN_MAX_BYTES, EVM_SIGNED_RECORD_LIMITS.bytes]);
+      if (rows.length > STORAGE_LIMITS.records + 6) throw failure();
+      const records: { key: string; value: string }[] = [], metadata: { key: string; value: string }[] = [];
+      const seen = new Set<string>(), pair: Pair = {};
+      const notes: NoteDomainRow[] = [];
+      const signedRecords: SignedRecordDomainRow[] = [];
+      for (const row of rows) {
+        if (!['record', 'meta', 'note', 'signed'].includes(row.source)) throw failure();
+        validateStorageKey(row.key);
+        const id = `${row.source}:${row.key}`;
+        if (seen.has(id)) throw failure();
+        seen.add(id);
+        const value = admittedRow(row, row.source === 'meta' ? 1024 : row.source === 'note' ? NOTE_DOMAIN_MAX_BYTES : row.source === 'signed' ? EVM_SIGNED_RECORD_LIMITS.bytes : recordBytes(row.key));
+        if (row.source === 'note' || row.source === 'signed') {
+          if (typeof row.wallet_binding !== 'string') throw failure();
+          (row.source === 'note' ? notes : signedRecords).push(Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value })); continue;
+        }
+        if (row.source === 'meta' && !['installation', 'backup', 'auth', 'identity'].includes(row.key)) throw failure();
+        (row.source === 'record' ? records : metadata).push(Object.freeze({ key: row.key, value }));
+        if (row.source === 'record' && row.key === 'vault') pair.vault = value;
+        if (row.source === 'record' && row.key === 'vault-keys') pair.keys = value;
+        if (row.source === 'meta' && row.key === 'backup') pair.backup = value;
+        if (row.source === 'meta' && row.key === 'auth') pair.auth = value;
+        if (row.source === 'meta' && row.key === 'identity') pair.identity = value;
+      }
+      if (records.length > STORAGE_LIMITS.records || metadata.length > 4 ||
+          !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
+      const state = await this.storedState(pair);
+      const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
+      if (notes.length && !identity) throw failure();
+      if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
+      this.inspectSignedRows(signedRecords, identity);
+      return Object.freeze({ identity, state, records: Object.freeze(records), metadata: Object.freeze(metadata), notes: Object.freeze(notes), signedRecords: Object.freeze(signedRecords) });
+  }
+
+  private readSnapshot(): Promise<RecoveryStorageSnapshot> {
+    return this.queued(async () => { const snapshot = await this.captureSnapshot(); this.recoverySnapshots.add(snapshot); return snapshot; });
+  }
+
+  private prepareReplacement(
+    before: RecoveryStorageSnapshot,
+    candidate: Readonly<{
+      vault: unknown;
+      keys: unknown;
+      accountRecords?: unknown;
+    }>,
+    root: RecoveryRoot
+  ): Promise<RecoveryWritePlan> {
+    if (!this.recoverySnapshots.has(before)) return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    this.recoverySnapshots.delete(before);
+    const capturedCandidate = {
+      vault: decodeStorageValue(encodeStorageValue(candidate.vault)),
+      keys: decodeStorageValue(encodeStorageValue(candidate.keys)),
+      accountRecords:
+        candidate.accountRecords === undefined
+          ? undefined
+          : decodeAccountRecord(encodeAccountRecord(candidate.accountRecords)),
+    };
+    const capturedRoot = decodeStorageValue(
+      encodeStorageValue(root)
+    ) as RecoveryRoot;
+    return this.queued(async () => {
+      if (!before.identity || before.state.presence !== 'existing')
+        throw failure();
+      const pair: Pair = {
+        vault: encodeStorageValue(capturedCandidate.vault),
+        keys: encodeStorageValue(capturedCandidate.keys),
+      };
+      const accounts =
+        capturedCandidate.accountRecords === undefined
+          ? undefined
+          : encodeAccountRecord(capturedCandidate.accountRecords);
       if (
-        !exact(backup, ['version', 'fingerprint']) ||
-        backup.version !== 1 ||
-        backup.fingerprint !== (await this.fingerprint(pair))
+        accounts !== undefined &&
+        !before.records.some((row) => row.key === ACCOUNT_RECORD_KEY)
       )
         throw failure();
-      return Object.freeze({ presence: 'existing', backup: 'confirmed' });
+      const fingerprint = await this.fingerprint(pair);
+      const identity = encodeStorageValue({
+        version: 1,
+        walletBindingId: before.identity.walletBindingId,
+        pairFingerprint: fingerprint,
+        root: capturedRoot,
+      });
+      const checkedIdentity = readWalletIdentity(fingerprint, identity);
+      const auth = encodeStorageValue({ version: 1, failures: 0, lastAttempt: this.timestamp(), notBefore: 0 });
+      const metadata = new Map(
+        before.metadata.map((row) => [row.key, row.value])
+      );
+      metadata.set('identity', identity);
+      metadata.set('auth', auth);
+      if (before.state.backup === 'confirmed') metadata.set('backup', encodeStorageValue({ version: 1, fingerprint }));
+      this.inspectSignedRows(before.signedRecords, checkedIdentity);
+      const after: RecoveryStorageSnapshot = Object.freeze({
+        identity: checkedIdentity,
+        state: before.state,
+        notes: before.notes,
+        signedRecords: before.signedRecords,
+        records: Object.freeze(
+          before.records.map((row) =>
+            Object.freeze({
+              key: row.key,
+              value:
+                row.key === 'vault'
+                  ? pair.vault!
+                  : row.key === 'vault-keys'
+                  ? pair.keys!
+                  : row.key === ACCOUNT_RECORD_KEY && accounts !== undefined
+                  ? accounts
+                  : row.value,
+            })
+          )
+        ),
+        metadata: Object.freeze(
+          [...metadata]
+            .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+            .map(([key, value]) => Object.freeze({ key, value }))
+        ),
+      });
+      const plan = Object.freeze({}) as RecoveryWritePlan;
+      this.recoveryWrites.set(plan, { before, after });
+      return plan;
+    });
+  }
+
+  private prepareCreation(
+    before: RecoveryStorageSnapshot,
+    candidate: Readonly<{
+      vault: unknown;
+      keys: unknown;
+      accountRecords: unknown;
+    }>,
+    root: RecoveryRoot
+  ): Promise<RecoveryWritePlan> {
+    if (!this.recoverySnapshots.has(before)) return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    this.recoverySnapshots.delete(before);
+    const capturedCandidate = {
+      vault: decodeStorageValue(encodeStorageValue(candidate.vault)),
+      keys: decodeStorageValue(encodeStorageValue(candidate.keys)),
+      accountRecords:
+        candidate.accountRecords === undefined
+          ? undefined
+          : decodeAccountRecord(encodeAccountRecord(candidate.accountRecords)),
+    };
+    const capturedRoot = decodeStorageValue(
+      encodeStorageValue(root)
+    ) as RecoveryRoot;
+    return this.queued(async () => {
+      if (
+        before.identity ||
+        before.state.presence !== 'empty' ||
+        before.notes.length ||
+        before.signedRecords.length ||
+        before.metadata.some((row) => row.key !== 'installation') ||
+        before.records.some((row) => row.key !== 'utf8Error')
+      )
+        throw failure();
+      for (const row of before.records) {
+        const value = decodeStorageValue(row.value);
+        if (
+          !exact(value, ['hasUtf8Error']) ||
+          typeof value.hasUtf8Error !== 'boolean'
+        )
+          throw failure();
+      }
+      const pair: Pair = {
+        vault: encodeStorageValue(capturedCandidate.vault),
+        keys: encodeStorageValue(capturedCandidate.keys),
+      };
+      const fingerprint = await this.fingerprint(pair);
+      const accounts = encodeAccountRecord(capturedCandidate.accountRecords);
+      const record = decodeAccountRecord(accounts) as {
+        walletFingerprint?: unknown;
+      };
+      if (!record || record.walletFingerprint !== fingerprint) throw failure();
+      const identity = encodeStorageValue({
+        version: 1,
+        walletBindingId: fingerprint,
+        pairFingerprint: fingerprint,
+        root: capturedRoot,
+      });
+      const checkedIdentity = readWalletIdentity(fingerprint, identity);
+      const records = [
+        ...before.records,
+        { key: 'vault', value: pair.vault! },
+        { key: 'vault-keys', value: pair.keys! },
+        { key: ACCOUNT_RECORD_KEY, value: accounts },
+      ].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      const metadata = [
+        ...before.metadata,
+        { key: 'identity', value: identity },
+        {
+          key: 'auth',
+          value: encodeStorageValue({ version: 1, failures: 0, lastAttempt: this.timestamp(), notBefore: 0 }),
+        },
+      ].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+      const after: RecoveryStorageSnapshot = Object.freeze({
+        identity: checkedIdentity,
+        state: Object.freeze({ presence: 'existing', backup: 'unconfirmed' }),
+        records: Object.freeze(records.map((row) => Object.freeze(row))),
+        metadata: Object.freeze(metadata.map((row) => Object.freeze(row))),
+        notes: before.notes,
+        signedRecords: before.signedRecords,
+      });
+      const plan = Object.freeze({}) as RecoveryWritePlan;
+      this.recoveryWrites.set(plan, { before, after, creation: true });
+      return plan;
+    });
+  }
+
+  private commitReplacement(input: unknown, guard: () => void): Promise<void> {
+    const plan = input as RecoveryWritePlan;
+    const value = plan && typeof plan === 'object' ? this.recoveryWrites.get(plan) : undefined;
+    if (!value || typeof guard !== 'function') return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    this.recoveryWrites.delete(plan);
+    const check = () => {
+      const result: unknown = guard();
+      if (result !== undefined) {
+        if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+        throw new WalletStorageError('STORAGE_CHANGED');
+      }
+    };
+    return this.queued(() =>
+      this.transaction(async () => {
+        check();
+        const current = await this.captureSnapshot();
+        check();
+      if (!sameRecoverySnapshot(current, value.before)) throw new WalletStorageError('STORAGE_CHANGED');
+        for (const row of value.after.records.filter(
+          (row) =>
+            row.key === 'vault' ||
+            row.key === 'vault-keys' ||
+            row.key === ACCOUNT_RECORD_KEY
+        )) {
+          if (value.creation)
+            await this.db.runAsync(
+              'INSERT INTO keyring_records (key, value) VALUES (?, ?)',
+              [row.key, row.value]
+            );
+          else
+        await this.db.runAsync('UPDATE keyring_records SET value = ? WHERE key = ?', [row.value, row.key]);
+          check();
+        }
+      for (const row of value.after.metadata.filter((row) => ['identity', 'auth', 'backup'].includes(row.key))) {
+        await this.db.runAsync('INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [row.key, row.value]); check();
+      }
+        check();
+      }, check)
+    ).then(() => {
+      this.authenticationWindow = null;
     });
   }
 
@@ -517,16 +1025,27 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     });
   }
 
-  private recordAuthentication(success: boolean): Promise<void> {
+  private recordAuthentication(
+    success: boolean,
+    expectedFingerprint?: string
+  ): Promise<void> {
     return this.queued(async () => {
       const committed = await this.transaction(async () => {
         const pair = await this.pair();
         if (validatePair(pair) !== 'existing') throw failure();
+        if (
+          expectedFingerprint !== undefined &&
+          expectedFingerprint !== (await this.fingerprint(pair))
+        )
+          throw new WalletStorageError('STORAGE_CHANGED');
         const previous = this.authenticationRecord(pair.auth);
         this.requireAuthenticationAllowed(pair.auth, previous);
         const now = this.timestamp();
         const failures = success ? 0 : Math.min(64, previous.failures + 1);
-        const delay = failures < 5 ? 0 : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
+        const delay =
+          failures < 5
+            ? 0
+            : Math.min(300000, 30000 * 2 ** Math.min(4, failures - 5));
         const record: AuthRecord = { version: 1, failures, lastAttempt: now, notBefore: delay ? now + delay : 0 };
         const raw = encodeStorageValue(record);
         await this.db.runAsync(
@@ -538,7 +1057,11 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       // Every acknowledged outcome is fresh, even if a saturated counter and
       // repeated wall timestamp serialize identically to the previous record.
       this.authenticationWindow = null;
-      this.authenticationNotBefore(committed.raw, committed.record, this.monotonicTimestamp());
+      this.authenticationNotBefore(
+        committed.raw,
+        committed.record,
+        this.monotonicTimestamp()
+      );
     });
   }
 

@@ -77,6 +77,7 @@ describe('extension launch recording privacy contract', () => {
     expect(fs.statSync(profile).isDirectory()).toBe(true);
     expect(options).toEqual({
       args: extensionArgs(),
+      chromiumSandbox: true,
       deviceScaleFactor: undefined,
       headless: false,
       recordVideo: {
@@ -99,6 +100,7 @@ describe('extension launch recording privacy contract', () => {
     });
     expect(launch.mock.calls[0][1]).toEqual({
       args: [...extensionArgs(), '--disable-quic'],
+      chromiumSandbox: true,
       ignoreDefaultArgs: ['--disable-extensions'],
       proxy: { server: proxy, bypass: '<-loopback>' },
       deviceScaleFactor: undefined,
@@ -158,6 +160,7 @@ describe('extension launch recording privacy contract', () => {
     expect(fs.statSync(profile).isDirectory()).toBe(true);
     expect(options).toEqual({
       args: [...extensionArgs(), '--disable-quic'],
+      chromiumSandbox: true,
       ignoreDefaultArgs: ['--disable-extensions'],
       proxy: { server: proxy, bypass: '<-loopback>' },
       deviceScaleFactor: 1,

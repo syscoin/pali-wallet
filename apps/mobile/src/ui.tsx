@@ -1,7 +1,7 @@
+import { IdlePressable } from './screens/IdleActivityBoundary';
 import React from 'react';
 import {
   Image,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text as NativeText,
@@ -263,7 +263,7 @@ export function Button({
       ? colors.blue
       : colors.text;
   return (
-    <Pressable
+    <IdlePressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
@@ -305,7 +305,7 @@ export function Button({
       >
         {title}
       </Text>
-    </Pressable>
+    </IdlePressable>
   );
 }
 
@@ -361,7 +361,7 @@ export function Header({
   return (
     <View style={styles.header}>
       {onBack ? (
-        <Pressable
+        <IdlePressable
           onPress={onBack}
           accessibilityRole="button"
           accessibilityLabel="Back"
@@ -372,7 +372,7 @@ export function Header({
           ]}
         >
           <Icon name="arrow-left" />
-        </Pressable>
+        </IdlePressable>
       ) : null}
       <View style={{ flex: 1, gap: 3 }}>
         <Text
@@ -448,7 +448,7 @@ export function Row({
   ];
   if (onPress)
     return (
-      <Pressable
+      <IdlePressable
         accessibilityRole="button"
         onPress={onPress}
         style={({ pressed }) => [
@@ -457,7 +457,7 @@ export function Row({
         ]}
       >
         {content}
-      </Pressable>
+      </IdlePressable>
     );
   return <View style={rowStyle}>{content}</View>;
 }

@@ -3,6 +3,11 @@ import { retryableFetch } from '@sidhujag/sysweb3-network';
 import { act, cleanup, render, screen } from '@testing-library/react';
 import React from 'react';
 
+// Replay has separate actual consent tests; isolate unrelated detail decoding here.
+jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
+  RetainedTransactionReplay: () => null,
+}));
+
 import WalletErrorBoundary from 'components/WalletErrorBoundary/WalletErrorBoundary';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
 

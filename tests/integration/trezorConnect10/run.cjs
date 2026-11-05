@@ -281,6 +281,7 @@ async function run() {
 
     profile = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-trezor-connect10-'));
     context = await chromium.launchPersistentContext(profile, {
+      chromiumSandbox: true,
       headless: false,
       args: [
         '--headless=new',

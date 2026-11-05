@@ -73,100 +73,16 @@ jest.mock('components/Dialog/Dialog', () => ({
 }));
 
 const locales = [
-  {
-    language: 'en',
-    translations: enTranslations,
-    consequences: [
-      'only the first seed-derived (HD) account',
-      'deletes saved private notes and locally encrypted imported private keys',
-      'Without separate key backups, you may permanently lose access',
-    ],
-  },
-  {
-    language: 'es',
-    translations: esTranslations,
-    consequences: [
-      'solo la primera cuenta derivada de la semilla (HD)',
-      'elimina las notas privadas guardadas y las claves privadas importadas cifradas localmente',
-      'Sin copias separadas de esas claves, puedes perder para siempre el acceso',
-    ],
-  },
-  {
-    language: 'fr',
-    translations: frTranslations,
-    consequences: [
-      'uniquement le premier compte dérivé de la phrase (HD)',
-      'supprime les notes privées enregistrées et les clés privées importées chiffrées localement',
-      'Sans sauvegarde séparée de ces clés, vous risquez de perdre définitivement l’accès',
-    ],
-  },
-  {
-    language: 'pt',
-    translations: ptTranslations,
-    consequences: [
-      'apenas a primeira conta derivada da seed (HD)',
-      'exclui notas privadas salvas e chaves privadas importadas criptografadas localmente',
-      'Sem backups separados dessas chaves, você pode perder permanentemente o acesso',
-    ],
-  },
-  {
-    language: 'de',
-    translations: deTranslations,
-    consequences: [
-      'nur das erste vom Seed abgeleitete Konto (HD)',
-      'löscht gespeicherte private Notizen und lokal verschlüsselte importierte private Schlüssel',
-      'Ohne separate Schlüsselsicherungen kannst du den Zugriff',
-    ],
-  },
-  {
-    language: 'ru',
-    translations: ruTranslations,
-    consequences: [
-      'только первый аккаунт, полученный из сид-фразы (HD)',
-      'удаляет сохранённые приватные заметки и локально зашифрованные импортированные приватные ключи',
-      'Без отдельных копий этих ключей вы можете навсегда потерять доступ',
-    ],
-  },
-  {
-    language: 'ja',
-    translations: jaTranslations,
-    consequences: [
-      'シードから派生した最初のアカウント（HD）のみを復元',
-      '保存済みのプライベートノートと、ローカルに暗号化保存されたインポート済み秘密鍵が削除',
-      '鍵を別途バックアップしないと、それらのアカウントへのアクセスを永久に失う',
-    ],
-  },
-  {
-    language: 'zh',
-    translations: zhTranslations,
-    consequences: [
-      '仅恢复由助记词派生的第一个账户（HD）',
-      '删除已保存的私密票据和本地加密的导入私钥',
-      '没有私钥的独立备份，您可能永久失去',
-    ],
-  },
-  {
-    language: 'ko',
-    translations: koTranslations,
-    consequences: [
-      '시드에서 파생된 첫 번째 계정(HD)만 복원',
-      '저장된 비공개 노트와 로컬에 암호화된 가져온 개인 키가 삭제',
-      '키를 별도 백업하지 않으면 해당 계정에 대한 접근을 영구적으로 잃을',
-    ],
-  },
+  { language: 'en', translations: enTranslations },
+  { language: 'es', translations: esTranslations },
+  { language: 'fr', translations: frTranslations },
+  { language: 'de', translations: deTranslations },
+  { language: 'pt', translations: ptTranslations },
+  { language: 'ru', translations: ruTranslations },
+  { language: 'zh', translations: zhTranslations },
+  { language: 'ja', translations: jaTranslations },
+  { language: 'ko', translations: koTranslations },
 ];
-
-const privateNoteDeletion: Record<string, string> = {
-  en: 'Recovery deletes saved private notes',
-  de: 'löscht gespeicherte private Notizen',
-  es: 'elimina las notas privadas guardadas',
-  fr: 'supprime les notes privées enregistrées',
-  ja: '保存済みのプライベートノートと、ローカルに暗号化保存されたインポート済み秘密鍵が削除されます。',
-  ko: '저장된 비공개 노트와 로컬에 암호화된 가져온 개인 키가 삭제됩니다.',
-  pt: 'exclui notas privadas salvas',
-  ru: 'удаляет сохранённые приватные заметки',
-  zh: '删除已保存的私密票据',
-};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -174,8 +90,8 @@ beforeEach(() => {
 });
 
 it.each(locales)(
-  'shows the account limit, local deletion and permanent-loss warning before recovery in $language',
-  async ({ language, translations, consequences }) => {
+  'shows local preservation and separate-backup guidance before recovery in $language',
+  async ({ language, translations }) => {
     const i18n = createInstance();
     await i18n.use(initReactI18next).init({
       lng: language,
@@ -214,27 +130,18 @@ it.each(locales)(
     expect(paragraphs).toEqual([
       translations.settings.recoveryIntro,
       translations.settings.recoverySeedHelp,
-      `${translations.settings.recoveryLimitations} ${translations.forgetWalletPage.privateNotesBackupWarning}`,
+      translations.settings.recoveryLimitations,
     ]);
     const observed = paragraphs.join(' ');
-    expect(observed).toContain(privateNoteDeletion[language]);
-    expect(observed).toContain(
-      translations.forgetWalletPage.privateNotesBackupWarning
-    );
-    consequences.forEach((consequence) => {
-      expect(observed).toContain(consequence);
-    });
     if (language === 'en') {
       expect(observed).toContain(
-        'Re-add other accounts derived from the same phrase.'
+        'Your saved accounts and settings stay on this device.'
       );
       expect(observed).toContain(
-        'Enter the phrase for this wallet. A different phrase cannot restore its accounts.'
+        'Keep separate backups of imported keys and notes for a new or lost device.'
       );
-      expect(observed).toContain(
-        'Hardware connections, custom settings and smart-account/passkey setup need separate backups or reconnection.'
-      );
-      expect(observed).toContain('Recovery does not move your funds.');
+      expect(observed).toContain('Recovery does not move funds.');
+      expect(observed).not.toContain('deletes saved private notes');
     }
     expect(mockEmitter).not.toHaveBeenCalled();
   }

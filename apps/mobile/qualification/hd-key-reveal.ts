@@ -1,3 +1,4 @@
+import { readSignedRecordEvidence } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { HdKeyExportPresentation } from '../src/custody/hdKeyExport.ts';
@@ -28,14 +29,14 @@ function requireEvidence(value: unknown): asserts value {
 export async function qualifyNativeHdKeyReveal(options: Readonly<{
   authority: NativeCustodyAuthority;
   runtime: KeyringRuntime;
-  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
   password: string;
   expectedAddress: string;
   check: <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 }>): Promise<HdKeyRevealEvidence> {
   const { authority, runtime, storage, password, expectedAddress, check } = options;
-  const [{ HdKeyExportFlow }, { computeAddress }, { nativeTransferJournalKey }] = await Promise.all([
-    import('../src/custody/hdKeyExport.ts'), import('ethers/transaction'), import('../src/custody/transferJournal.ts'),
+  const [{ HdKeyExportFlow }, { computeAddress }] = await Promise.all([
+    import('../src/custody/hdKeyExport.ts'), import('ethers/transaction'),
   ]);
   const captured = authority.getSnapshot();
   const catalogue = authority.getCatalogue();
@@ -51,8 +52,7 @@ export async function qualifyNativeHdKeyReveal(options: Readonly<{
       now.account?.address === expectedAddress && now.account.network === captured.account?.network &&
       JSON.stringify(authority.getCatalogue()) === catalogueBefore);
   };
-  const journals = async () => Promise.all([0, 1, 2, 3, 4].map(async (index) =>
-    JSON.stringify(await storage.keyringStorage.get(nativeTransferJournalKey(index)))));
+  const journals = async () => (await readSignedRecordEvidence(storage)).raw;
   const flow = new HdKeyExportFlow(authority, () => runtime.keyExport);
   let presentation: HdKeyExportPresentation | undefined;
   try {

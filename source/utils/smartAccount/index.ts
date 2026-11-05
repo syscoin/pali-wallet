@@ -4,7 +4,7 @@ export * from './aggregate';
 export * from './authenticators';
 export * from './contracts';
 export * from './custom';
-export * from './deployment';
+export * from './deploymentMetadata';
 export * from './erc7739';
 export * from './execution';
 export * from './gas';

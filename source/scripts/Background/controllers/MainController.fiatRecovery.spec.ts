@@ -19,6 +19,9 @@ jest.mock('state/store', () => ({
   saveMainState: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
+  ...jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js'
+  ),
   KeyringAccountType: {
     HDAccount: 'HDAccount',
     Imported: 'Imported',

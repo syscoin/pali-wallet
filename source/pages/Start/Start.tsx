@@ -53,9 +53,7 @@ export const Start = (props: any) => {
         title={t('settings.recoveryTitle')}
         phraseOne={t('settings.recoveryIntro')}
         phraseTwo={t('settings.recoverySeedHelp')}
-        phraseThree={`${t('settings.recoveryLimitations')} ${t(
-          'forgetWalletPage.privateNotesBackupWarning'
-        )}`}
+        phraseThree={t('settings.recoveryLimitations')}
         onClose={setIsOpenValidation}
         show={isOpenValidation}
       />

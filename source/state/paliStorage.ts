@@ -1,3 +1,4 @@
+import { IMPORTED_RECOVERY_STORAGE_PREFIX } from '../wallet/importedAccountRecoveryFormat';
 import { chromeStorage } from 'utils/storageAPI';
 
 // Recovery owns the durable snapshot until the restored Redux vault is usable.
@@ -35,10 +36,19 @@ export const saveSlip44State = async (slip44: number, vaultState: any) => {
 export const saveCommittedWalletState = async (
   slip44: number,
   vaultState: any,
-  mainState?: any
+  mainState?: any,
+  importedRecoveryWrites?: Readonly<Record<string, unknown>>
 ) => {
   assertWalletPersistenceAllowed();
+  if (
+    importedRecoveryWrites &&
+    Object.keys(importedRecoveryWrites).some(
+      (key) => !key.startsWith(IMPORTED_RECOVERY_STORAGE_PREFIX)
+    )
+  )
+    throw new Error('Invalid imported recovery storage key');
   const items: Record<string, any> = {
+    ...importedRecoveryWrites,
     [`state-vault-${slip44}`]: vaultState,
   };
 

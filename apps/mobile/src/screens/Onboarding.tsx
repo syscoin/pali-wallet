@@ -1,3 +1,4 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -5,7 +6,6 @@ import {
   BackHandler,
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,12 +16,12 @@ import {
 import { colors, Icon, PaliMark } from '../ui';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { NETWORKS } from '../core/networks';
-import { getUtxoNetwork } from '../core/utxoNetworks';
+import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
 const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...NETWORKS.filter((n) => n.canWatch && (n.id === 'syscoin' || n.id === 'bitcoin')).map((n) => n.id as 'syscoin' | 'bitcoin')];
 const WATCH_CHOICES = [
   { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
-  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public Syscoin address', prefix: 'sys1q', provider: getUtxoNetwork('syscoin').endpoint.replace('https://', ''), scope: 'Watch one supported Syscoin mainnet receive address (sys1q…). Other receive and change addresses in its wallet are not included.' },
-  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public Bitcoin address', prefix: 'bc1q', provider: getUtxoNetwork('bitcoin').endpoint.replace('https://', ''), scope: 'Watch one supported Bitcoin mainnet receive address (bc1q…). Other receive and change addresses in its wallet are not included.' },
+  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public address, account key or descriptor', prefix: 'sys1, zpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
+  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public address, account key or descriptor', prefix: 'bc1, xpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
 ];
 
 type WelcomeProps = {
@@ -91,13 +91,13 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
       </View>
 
       <View style={styles.welcomeActions}>
-        {onWallet && <Pressable accessibilityRole="button" onPress={onWallet}
+        {onWallet && <IdlePressable accessibilityRole="button" onPress={onWallet}
           style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}>
           <Text style={styles.primaryButtonText}>Set up your wallet</Text>
           <Icon name="arrow-right" size={21} color={colors.bg} />
-        </Pressable>}
+        </IdlePressable>}
         {onDesign && (
-          <Pressable
+          <IdlePressable
             accessibilityRole="button"
             onPress={onDesign}
             style={({ pressed }) => [
@@ -109,21 +109,21 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
               Review full wallet design
             </Text>
             <Icon name="arrow-right" size={21} color={colors.bg} />
-          </Pressable>
+          </IdlePressable>
         )}
-        <Pressable
+        <IdlePressable
           accessibilityRole="button"
-          accessibilityHint="Add a public address to view its balance"
+          accessibilityHint="Add a public address or account key to view its balance"
           onPress={onWatch}
           style={({ pressed }) => [
             styles.primaryButton,
             pressed && styles.pressed,
           ]}
         >
-          <Text style={styles.primaryButtonText}>Watch an address</Text>
+          <Text style={styles.primaryButtonText}>Watch an account</Text>
           <Icon name="arrow-right" size={21} color={colors.bg} />
-        </Pressable>
-        <Pressable
+        </IdlePressable>
+        <IdlePressable
           accessibilityRole="button"
           accessibilityHint="Open a separate interactive preview using sample balances"
           onPress={onPreview}
@@ -133,7 +133,7 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
           ]}
         >
           <Text style={styles.secondaryButtonText}>Explore the design</Text>
-        </Pressable>
+        </IdlePressable>
         <Text style={styles.previewNote}>
           The design preview uses sample balances.
         </Text>
@@ -171,8 +171,9 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
     if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
       if (!availableNetworks.includes(network)) throw new Error('This network is not available in this build.');
-      const account = createWatchAccount('review', name.trim(), address.trim(), network);
-      setReview({ name: account.name, address: Object.values(account.addresses)[0]!, network });
+      const source = network === 'evm' ? null : parseUtxoPublicIdentifier(address.trim(), network);
+      const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network);
+      setReview({ name: account.name, address: source?.identifier ?? Object.values(account.addresses)[0]!, network });
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the public address.'); }
   };
@@ -186,49 +187,46 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></Pressable>
-        <Text style={styles.navigationLabel}>{review ? 'REVIEW ADDRESS' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
+        <IdlePressable accessibilityRole="button" accessibilityLabel="Back" disabled={submitting} onPress={back} hitSlop={8} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Icon name="arrow-left" size={22} color={colors.text} /></IdlePressable>
+        <Text style={styles.navigationLabel}>{review ? 'REVIEW ACCOUNT' : 'ADD ACCOUNT'}</Text><View style={styles.navigationBalance} />
       </View>
       <View style={styles.formIntro}><View style={styles.largeEye}><Icon name="eye" size={30} color={colors.blue} /></View>
-        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an address'}</Text>
-        <Text style={styles.formDescription}>{review ? 'Check the network and complete address before saving.' : 'Keep an eye on a public address, without connecting its wallet.'}</Text>
+        <Text accessibilityRole="header" style={styles.formTitle}>{review ? 'Check your watch account' : 'Watch an account'}</Text>
+        <Text style={styles.formDescription}>{review ? 'Check the network and public account before saving.' : 'Keep an eye on a wallet using only its public information.'}</Text>
       </View>
       {review ? <View style={styles.fields}>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text><Text style={styles.reviewText}>{review.name}</Text></View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Network</Text><Text style={styles.reviewText}>{info.title}</Text></View>
-        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Complete public address</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
+        <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Public account</Text><Text selectable accessibilityLabel={`Review ${info.title} address ${review.address}`} style={styles.reviewAddress}>{review.address}</Text></View>
         <Text style={styles.fieldHint}>{info.scope}</Text>
       </View> : <View style={styles.fields}>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Address network</Text>
-          <View style={styles.networkChoices}>{WATCH_CHOICES.map((choice) => <Pressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
+          <View style={styles.networkChoices}>{WATCH_CHOICES.map((choice) => <IdlePressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
             accessibilityState={{ selected: network === choice.id, disabled: !availableNetworks.includes(choice.id) }} disabled={!availableNetworks.includes(choice.id) || submitting}
             onPress={() => { setNetwork(choice.id); setAddress(''); setReview(null); setError(null); }}
             style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !availableNetworks.includes(choice.id) && styles.disabled]}>
             <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!availableNetworks.includes(choice.id) && <Text style={styles.fieldHint}>Not available yet</Text>}
-          </Pressable>)}</View>
+          </IdlePressable>)}</View>
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text>
-          <TextInput accessibilityLabel="Account name" autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}
+          <IdleTextInput accessibilityLabel="Account name" autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}
             onChangeText={(value) => { setName(value); setError(null); }} onSubmitEditing={() => addressInput.current?.focus()} placeholder={`e.g. My ${info.shortName} address`}
             placeholderTextColor={colors.muted} returnKeyType="next" selectionColor={colors.pink} style={styles.input} textContentType="none" value={name} />
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>{info.inputLabel}</Text>
-          <TextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste a public address beginning with ${info.prefix}. Never enter a recovery phrase or private key.`}
-            autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 90}
+          <IdleTextInput ref={addressInput} accessibilityLabel={info.inputLabel} accessibilityHint={`Paste public information for ${info.title}. Never enter a recovery phrase or private key.`}
+            autoCapitalize="none" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={network === 'evm' ? 256 : 4096}
             onChangeText={(value) => { setAddress(value); setError(null); }} onSubmitEditing={prepare} placeholder={`${info.prefix}…`} placeholderTextColor={colors.muted}
             returnKeyType="done" selectionColor={colors.pink} spellCheck={false} style={[styles.input, styles.addressInput]} textContentType="none" value={address} />
           <Text style={styles.fieldHint}>{info.scope}</Text>
         </View>
       </View>}
-      <View style={styles.safetyCard}><Icon name="shield" size={21} color={colors.green} /><View style={styles.safetyCopy}>
-        <Text style={styles.safetyTitle}>Your keys are not needed</Text><Text style={styles.safetyDescription}>Balance lookups share this public address and your IP address with {info.provider}. Watching an address does not give Pali permission to spend its funds. Never enter a recovery phrase or private key in this form.</Text>
-      </View></View>
       {error && <View accessibilityLiveRegion="polite" style={styles.errorCard}><Text accessibilityRole="alert" style={styles.errorText}>{error}</Text></View>}
-      <View style={styles.formFooter}><Pressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
+      <View style={styles.formFooter}><IdlePressable accessibilityRole="button" accessibilityState={{ disabled: submitting, busy: submitting }} disabled={submitting}
         onPress={() => review ? void confirm() : prepare()} style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed, submitting && styles.disabled]}>
         {submitting ? <ActivityIndicator color={colors.bg} /> : <Icon name={review ? 'plus' : 'eye'} size={21} color={colors.bg} />}
-        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review address'}</Text>
-      </Pressable><Text style={styles.footerNote}>Public addresses and their transactions are visible on the blockchain.</Text></View>
+        <Text style={styles.primaryButtonText}>{submitting ? 'Adding account…' : review ? 'Confirm watch account' : 'Review account'}</Text>
+      </IdlePressable><Text style={styles.footerNote}>Use public information only. Never enter a recovery phrase or private key.</Text></View>
     </ScrollView>
   </KeyboardAvoidingView>;
 }

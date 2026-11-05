@@ -12,8 +12,8 @@ const TOKEN = '0x3333333333333333333333333333333333333333';
 const FP = 'a'.repeat(64);
 const hash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
 const candidate = (index: number, block = 1000 - index, tokenHint = false): ActivityCandidate => ({ hash: hash(index), blockNumber: String(block), timestamp: 1700000000000 - index * 1000, tokenHint });
-const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'finalized'): ActivityTransactionObservation => ({
-  hash: id, from: owner, to: OTHER, valueUnits: '1', nonce: '0', timestamp: 1700000000000,
+const observation = (id: string, owner = OWNER, status: ActivityTransactionObservation['status'] = 'confirmed'): ActivityTransactionObservation => ({
+  hash: id, from: owner, to: OTHER, valueUnits: '1', nonce: BigInt(id).toString(), timestamp: 1700000000000,
   block: { hash: hash(999), number: '1000' }, status, events: [], feeUnits: '21000',
 });
 const source = () => {
@@ -61,7 +61,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
-  local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState } = {}) {
+  locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState } = {}) {
   const state = source();
   let cached = options.cached ?? [];
   let cachedOwner = OWNER;
@@ -71,7 +71,7 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
     async load(check) {
       check(); const address = state.getSnapshot().account?.address ?? OWNER;
       const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, 'ethereum');
-      return { scope, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, local: options.local ?? null };
+      return { scope, saved: { archived: options.archived ?? [], candidates: address === cachedOwner ? cached : [], view: options.view ?? DEFAULT_ACTIVITY_VIEW, truncated: false }, locals: options.locals ?? (options.local ? [options.local] : []) };
     },
     async saveCache(scope, rows, check) { check(); cacheWrites.push({ scope, rows }); cached = [...rows]; cachedOwner = scope.address; },
     async saveView(scope, view, check) { check(); viewWrites.push({ scope, view }); },
@@ -103,6 +103,23 @@ test('local journal/archive, cached candidates and duplicate ERC20 discovery mer
   assert(f.cacheWrites.length > 0); assert.equal('sign' in f.runtime, false);
 });
 
+test('shared representative selection prefers the mined replacement while retaining the local attempt', async () => {
+  const base = fixture();
+  const explorer = new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1), candidate(2)] : []);
+  const receipts = new FakeReceipts((call) => ({ ...observation(call.hash, call.owner), nonce: '7',
+    block: call.hash === hash(1) ? null : { hash: hash(999), number: '1000' },
+    status: call.hash === hash(1) ? 'pending' : 'confirmed' }));
+  const f = fixture({ explorer, receipts, local: { ...base.local(1, 'submitted'), nonce: 7 } });
+  await f.controller.refresh();
+  await until(() => f.receipts.calls.length === 2 && f.controller.getSnapshot().rows.every((row) => !!row.observation));
+  assert.deepEqual(new Set(f.controller.getSnapshot().rows.map((row) => row.hash)), new Set([hash(1), hash(2)]));
+  assert.equal(f.controller.getSnapshot().rows.find((row) => row.hash === hash(1))?.local?.phase, 'submitted');
+  const remoteOnly = fixture({ explorer, receipts });
+  await remoteOnly.controller.refresh();
+  await until(() => remoteOnly.receipts.calls.length >= 4 && remoteOnly.controller.getSnapshot().rows.length === 1);
+  assert.equal(remoteOnly.controller.getSnapshot().rows[0]?.hash, hash(2));
+});
+
 test('a healthy feed remains visible when the other feed fails, with explicit partial coverage', async () => {
   const explorer = new FakeExplorer(({ feed }) => { if (feed === 'txlist') throw Error('offline'); return [candidate(1, 100, true)]; });
   const f = fixture({ explorer });
@@ -110,7 +127,7 @@ test('a healthy feed remains visible when the other feed fails, with explicit pa
   assert.equal(f.controller.getSnapshot().status, 'ready');
   assert.deepEqual(f.controller.getSnapshot().rows.map((row) => row.hash), [hash(1)]);
   assert.match(f.controller.getSnapshot().error ?? '', /feed.*unavailable/i);
-  assert.match(f.controller.getSnapshot().coverage, /Internal ETH transfers are not included/);
+  assert.match(f.controller.getSnapshot().coverage, /Internal transfers are not included/);
 });
 
 test('both failed feeds preserve cached and locally submitted history instead of saving an empty list', async () => {
@@ -331,12 +348,12 @@ test('conflicting fresh block hints reject the whole page without replacing acce
 
 test('inspect refreshes an existing included observation without losing filter or anchor', async () => {
   let reads = 0;
-  const receipts = new FakeReceipts((call) => observation(call.hash, call.owner, ++reads === 1 ? 'included' : 'finalized'));
+  const receipts = new FakeReceipts((call) => observation(call.hash, call.owner, ++reads === 1 ? 'pending' : 'confirmed'));
   const view: ActivityViewState = { filter: 'sent', showZero: false, anchor: hash(1), offset: 10 };
   const f = fixture({ explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []), receipts, view });
-  await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'included');
+  await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'pending');
   f.controller.inspect(hash(1));
-  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'finalized');
+  await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
   assert.equal(reads, 2); assert.deepEqual(f.controller.getSnapshot().view, view);
 });
 
@@ -346,7 +363,7 @@ test('a failed receipt lookup remains a visible unavailable row and can be retri
   const f = fixture({ explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []), receipts });
   await f.controller.refresh(); await until(() => f.controller.getSnapshot().rows[0]?.unavailable === true);
   assert.equal(f.controller.getSnapshot().rows[0]?.observation, undefined);
-  f.controller.inspect(hash(1)); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'finalized');
+  f.controller.inspect(hash(1)); await until(() => f.controller.getSnapshot().rows[0]?.observation?.status === 'confirmed');
   assert.equal(reads, 2);
 });
 
@@ -379,4 +396,18 @@ test('locking while an explorer page is pending clears the view and rejects its 
     assert.equal(f.controller.getSnapshot().status, 'locked'); assert.deepEqual(f.controller.getSnapshot().rows, []);
     assert.equal(f.cacheWrites.length, 0);
   } finally { disconnect(); }
+});
+
+
+test('multiple retained local sends survive offline refresh and deduplicate indexed hashes', async () => {
+  const base=fixture(), first=base.local(1),second=base.local(2,'submitted');
+  let offline=true;
+  const explorer=new FakeExplorer(({feed})=>{if(offline)throw Error('offline');return feed==='txlist'?[candidate(1),candidate(2)]:[];});
+  const f=fixture({explorer,locals:[first,second]});
+  await f.controller.refresh();
+  assert.deepEqual(new Set(f.controller.getSnapshot().rows.map(row=>row.hash)),new Set([first.hash,second.hash]));
+  offline=false;await f.controller.refresh();
+  await until(()=>f.controller.getSnapshot().rows.every(row=>!!row.observation));
+  assert.equal(f.controller.getSnapshot().rows.length,2);
+  assert.equal(f.controller.getSnapshot().rows.every(row=>!!row.local),true);
 });

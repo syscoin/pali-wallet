@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 import { HDNodeWallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
@@ -16,15 +18,13 @@ import {
   type KeyringRuntime,
 } from '../src/custody/keyringRuntime.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
-import {
-  nativeTransferJournalKey,
-  type TransferJournalContainer,
-} from '../src/custody/transferJournal.ts';
-import type { OpenWalletStorage } from '../src/storage/types.ts';
+import { readSignedRecordEvidence, retainedSignedEntries } from '../qualification/signed-record-evidence.ts';
+import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
+import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC NEVM native qualification test password';
+const PASSWORD = 'PUBLIC NEVM native qualification test password 1!';
 const FOURTH_ADDRESS = '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E';
 process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
@@ -48,7 +48,7 @@ const report = (phase: 'create' | 'restart') => ({
   nevmTransferHash: '0x' + 'd'.repeat(64),
   nevmEthereumTransferHash: '0x' + 'e'.repeat(64),
   nevmChainId: '5700',
-  nevmJournalContainerVersion: 2,
+  nevmJournalContainerVersion: 1,
   nevmRestoredFromJournal: phase === 'restart',
 });
 
@@ -70,7 +70,7 @@ test('NEVM report requires complete bounded evidence and exact restart identity'
     { nevmEthereumTransferHash: report('create').erc20TransferHash },
     { nevmChainId: 5700 },
     { nevmChainId: '1' },
-    { nevmJournalContainerVersion: 1 },
+    { nevmJournalContainerVersion: 2 },
     { nevmRestoredFromJournal: false },
     { phase: ['restart'] },
     { scenario: ['import'] },
@@ -116,97 +116,44 @@ test('NEVM report requires complete bounded evidence and exact restart identity'
   assert.equal(matchesNevmRestartEvidence({}, {}), false);
 });
 
-function memoryDisk() {
-  const records = new Map<string, unknown>();
-  let confirmation: string | undefined;
-  let storage!: OpenWalletStorage;
+async function sqliteDisk() {
+  const directory = await mkdtemp(path.join(tmpdir(), 'pali-qualification-'));
+  const file = path.join(directory, 'wallet.sqlite');
+  let initialized = false;
+  let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const fingerprint = () =>
-    createHash('sha256')
-      .update(JSON.stringify([records.get('vault'), records.get('vault-keys')]))
-      .digest('hex');
   const factory = createKeyringRuntimeFactory({
-    ensureCryptoReady: async () => {
-      assert(globalThis.crypto.subtle);
-    },
+    ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
-      storage = {
-        keyringStorage: {
-          async get(key) {
-            return records.has(key)
-              ? structuredClone(records.get(key))
-              : undefined;
-          },
-          async set(key, value) {
-            records.set(key, structuredClone(value));
-          },
-          async deleteItem(key) {
-            records.delete(key);
-          },
-          async createManyIfAbsent(values) {
-            if (Object.keys(values).some((key) => records.has(key)))
-              return false;
-            for (const [key, value] of Object.entries(values))
-              records.set(key, structuredClone(value));
-            return true;
-          },
-          async compareAndSet(key, expected, value, removals = {}) {
-            if (
-              !records.has(key) ||
-              JSON.stringify(records.get(key)) !== JSON.stringify(expected) ||
-              Object.entries(removals).some(
-                ([name, before]) =>
-                  JSON.stringify(records.get(name)) !== JSON.stringify(before)
-              )
-            )
-              return false;
-            records.set(key, structuredClone(value));
-            for (const name of Object.keys(removals)) records.delete(name);
-            return true;
-          },
-        },
-        authGuard: {
-          async checkAllowed() {},
-          async recordFailure() {},
-          async recordSuccess() {},
-        },
-        async readState() {
-          assert.equal(records.has('vault'), records.has('vault-keys'));
-          return records.has('vault')
-            ? {
-                presence: 'existing',
-                backup:
-                  confirmation === fingerprint() ? 'confirmed' : 'unconfirmed',
-              }
-            : { presence: 'empty', backup: 'unconfirmed' };
-        },
-        async getWalletFingerprint() {
-          assert(records.has('vault'));
-          return fingerprint();
-        },
-        async confirmBackup(expected) {
-          assert.equal(expected, fingerprint());
-          confirmation = expected;
-        },
-        async close() {},
-      };
+      storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);
+      initialized = true;
       return storage;
     },
   });
   return {
-    records,
-    get runtime() {
-      return runtime;
+    get runtime() { return runtime; },
+    get storage() { return storage; },
+    owner: { async open() { runtime = await factory.open() as KeyringRuntime; return runtime; } },
+    async snapshot(excludeSuccessfulAuthentication = false) {
+      const snapshot = await storage.recovery.readSnapshot();
+      if (!excludeSuccessfulAuthentication) return JSON.stringify(snapshot);
+      // Real successful authentication refreshes lastAttempt; private domains
+      // and every other metadata row must remain byte-exact.
+      const row = snapshot.metadata.find(entry => entry.key === 'auth');
+      assert(row);
+      const authentication = JSON.parse(row.value);
+      assert.equal(authentication.version, 1);
+      assert.equal(authentication.failures, 0);
+      assert.equal(authentication.notBefore, 0);
+      return JSON.stringify({ ...snapshot, metadata: snapshot.metadata.filter(entry => entry.key !== 'auth') });
     },
-    get storage() {
-      return storage;
+    async replaceSigned(profile: string, value: string) {
+      // Corrupt the physical fixture directly; do not weaken production admission.
+      const external = nodeConnection(file);
+      try { await external.connection.runAsync('UPDATE evm_signed_records SET value = ? WHERE profile_id = ?', [value, profile]); }
+      finally { await external.connection.closeAsync(); }
     },
-    owner: {
-      async open() {
-        runtime = (await factory.open()) as KeyringRuntime;
-        return runtime;
-      },
-    },
+    async close() { await rm(directory, { recursive: true, force: true }); },
   };
 }
 
@@ -215,7 +162,7 @@ for (const scenario of ['import', 'generate'] as const) {
     `NEVM ${scenario} qualifier signs the same HD3 nonce on two chains and cold-restores exact bytes`,
     { timeout: 90000 },
     async () => {
-      const disk = memoryDisk();
+      const disk = await sqliteDisk();
       let authority = new NativeCustodyAuthority(disk.owner);
       const originalFetch = globalThis.fetch;
       let networkCalls = 0;
@@ -228,10 +175,11 @@ for (const scenario of ['import', 'generate'] as const) {
         checks.push(name);
         return operation();
       };
-      const rows = () =>
-        [0, 1, 2].map((index) =>
-          JSON.stringify(disk.records.get(nativeTransferJournalKey(index)))
-        );
+      const rows = async () => {
+        const evidence = await readSignedRecordEvidence(disk.storage);
+        const addresses = authority.getCatalogue()!.accounts.filter(entry => entry.index < 3).map(entry => entry.address);
+        return retainedSignedEntries(evidence.entries, addresses);
+      };
       try {
         await authority.initialize();
         if (scenario === 'import')
@@ -269,7 +217,7 @@ for (const scenario of ['import', 'generate'] as const) {
           expectedThirdAddress: derived[1],
           check,
         });
-        const older = rows();
+        const older = await rows();
         const fingerprint = await disk.storage.getWalletFingerprint();
         let signatures = 0;
         const realTransfer = disk.runtime.transfers!;
@@ -277,17 +225,17 @@ for (const scenario of ['import', 'generate'] as const) {
           ...disk.runtime,
           transfers: {
             ...realTransfer,
-            async sign(transaction, password, guard, intent) {
+            async sign(transaction, guard, intent) {
               signatures++;
               assert.equal(
                 transaction.chainId,
                 signatures === 1 ? '1' : '5700'
               );
-              return realTransfer.sign(transaction, password, guard, intent);
+              return realTransfer.sign(transaction, guard, intent);
             },
           },
         };
-        const beforeInvalid = JSON.stringify([...disk.records]);
+        const beforeInvalid = await disk.snapshot();
         await assert.rejects(
           qualifyNativeNevmTransfer({
             phase: 'create',
@@ -300,7 +248,7 @@ for (const scenario of ['import', 'generate'] as const) {
           }),
           /QUALIFICATION_NEVM_ASSERTION_FAILED/
         );
-        assert.equal(JSON.stringify([...disk.records]), beforeInvalid);
+        assert.equal(await disk.snapshot(), beforeInvalid);
         const created = await qualifyNativeNevmTransfer({
           phase: 'create',
           authority,
@@ -312,32 +260,33 @@ for (const scenario of ['import', 'generate'] as const) {
         });
         assert.equal(signatures, 2);
         assert.equal(created.nevmAddress, derived[2]);
-        assert.deepEqual(rows(), older);
+        assert.deepEqual(await rows(), older);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
-        const container = structuredClone(
-          disk.records.get(nativeTransferJournalKey(3))
-        ) as TransferJournalContainer;
-        assert.equal(container.version, 2);
-        assert.equal(container.entries.length, 2);
+        const bundle = await readSignedRecordEvidence(disk.storage);
+        const container = bundle.entries.filter(entry => entry.from === created.nevmAddress.toLowerCase());
+        assert.equal(bundle.version, 1);
+        assert.equal(container.length, 2);
+        const signedBytes: string[] = [];
+        await authority.manageAccounts({ kind: 'select', id: 'hd:60:3' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         for (const [index, network, value] of [
-          [0, 'ethereum', 456n],
-          [1, 'syscoin-nevm-testnet', 789n],
+          [0, 'ethereum', 456n], [1, 'syscoin-nevm-testnet', 789n],
         ] as const) {
-          const entry = container.entries[index]!;
-          assert.deepEqual(entry.registration, getNativeNetwork(network));
-          assert.equal(entry.phase, 'attempted');
-          assert.equal(entry.nonce, 0);
-          const signed = Transaction.from(entry.rawTransaction);
-          assert(signed.isSigned());
-          assert.equal(signed.from, created.nevmAddress);
+          await authority.selectNetwork(network, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+          const entry = container[index]!;
+          assert.equal(entry.chainId, getNativeNetwork(network).chainId);
+          assert.equal(entry.phase, 'attempted'); assert.equal(entry.nonce, 0);
+          const saved = await (await disk.runtime.transfers!.journal(() => undefined)).load();
+          assert.equal(saved!.hash, entry.hash); signedBytes.push(saved!.rawTransaction);
+          const signed = Transaction.from(saved!.rawTransaction);
+          assert(signed.isSigned()); assert.equal(signed.from, created.nevmAddress);
           assert.equal(signed.chainId, network === 'ethereum' ? 1n : 5700n);
-          assert.equal(signed.value, value);
-          assert.equal(signed.nonce, 0);
-          assert.equal(signed.gasLimit, 21000n);
-          assert.equal(signed.maxFeePerGas, 3n);
-          assert.equal(signed.maxPriorityFeePerGas, 1n);
+          assert.equal(signed.value, value); assert.equal(signed.nonce, 0); assert.equal(signed.gasLimit, 21000n);
+          assert.equal(signed.maxFeePerGas, 3n); assert.equal(signed.maxPriorityFeePerGas, 1n);
+          assert(!bundle.raw!.includes(saved!.rawTransaction));
         }
+        await authority.selectNetwork('ethereum', authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+        await authority.manageAccounts({ kind: 'select', id: 'hd:60:1' }, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
         const createdReport = {
           status: 'passed',
           phase: 'create',
@@ -353,7 +302,7 @@ for (const scenario of ['import', 'generate'] as const) {
         assert(!JSON.stringify(createdReport).includes(PASSWORD));
         assert(
           !JSON.stringify(createdReport).includes(
-            container.entries[0]!.rawTransaction
+            signedBytes[0]!
           )
         );
         await authority.dispose();
@@ -368,7 +317,7 @@ for (const scenario of ['import', 'generate'] as const) {
             async sign() {
               throw Error('RESTART_MUST_NOT_SIGN');
             },
-            async authorize() {
+            assertUnlocked() {
               throw Error('RESTART_MUST_NOT_AUTHORIZE');
             },
           },
@@ -393,11 +342,8 @@ for (const scenario of ['import', 'generate'] as const) {
             ...restored,
           })
         );
-        assert.deepEqual(
-          disk.records.get(nativeTransferJournalKey(3)),
-          container
-        );
-        assert.deepEqual(rows(), older);
+        assert.equal((await readSignedRecordEvidence(disk.storage)).raw, bundle.raw);
+        assert.deepEqual(await rows(), older);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
         assert.equal(authority.getSnapshot().account?.network, 'ethereum');
         assert.equal(await disk.storage.getWalletFingerprint(), fingerprint);
@@ -407,6 +353,7 @@ for (const scenario of ['import', 'generate'] as const) {
         );
         if (scenario === 'import') {
           const restoreSelection = async () => {
+            if (authority.getSnapshot().phase === 'locked') await authority.unlock(PASSWORD);
             if (authority.getSnapshot().account?.network !== 'ethereum')
               await authority.selectNetwork(
                 'ethereum',
@@ -419,33 +366,16 @@ for (const scenario of ['import', 'generate'] as const) {
               authority.getCatalogue()!.revision
             );
           };
-          for (const corrupt of [
-            { ...container, entries: container.entries.slice(0, 1) },
-            {
-              ...container,
-              entries: [
-                container.entries[0],
-                {
-                  ...container.entries[1],
-                  registration: {
-                    ...container.entries[1]!.registration,
-                    rpcUrl: 'https://wrong.invalid',
-                  },
-                },
-              ],
-            },
-            {
-              ...container,
-              entries: [
-                container.entries[0],
-                {
-                  ...container.entries[1],
-                  rawTransaction: container.entries[0]!.rawTransaction,
-                },
-              ],
-            },
-          ]) {
-            disk.records.set(nativeTransferJournalKey(3), corrupt);
+          const original = JSON.parse(bundle.raw!);
+          const target = original.entries.findIndex((entry: { hash: string }) => entry.hash === container[1]!.hash);
+          const corruptions = [
+            { ...original, entries: original.entries.filter((_: unknown, index: number) => index !== target) },
+            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...container[1], chunks: original.entries[target].chunks, chainId: '999' } : entry) },
+            { ...original, entries: original.entries.map((entry: unknown, index: number) => index === target ? { ...original.entries[target], chunks: original.entries[0].chunks } : entry) },
+          ];
+          const profile = (await disk.storage.recovery!.readIdentity())!.root!.profileId;
+          for (const corrupt of corruptions) {
+            await disk.replaceSigned(profile, JSON.stringify(corrupt));
             await assert.rejects(
               qualifyNativeNevmTransfer({
                 phase: 'restart',
@@ -457,18 +387,16 @@ for (const scenario of ['import', 'generate'] as const) {
                 check,
               })
             );
-            disk.records.set(
-              nativeTransferJournalKey(3),
-              structuredClone(container)
-            );
+            await disk.replaceSigned(profile, bundle.raw!);
             await restoreSelection();
-            assert.deepEqual(rows(), older);
+            assert.deepEqual(await rows(), older);
           }
         }
         assert.equal(networkCalls, 0);
       } finally {
         await authority.dispose().catch(() => undefined);
         globalThis.fetch = originalFetch;
+        await disk.close();
       }
     }
   );

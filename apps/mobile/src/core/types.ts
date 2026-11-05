@@ -1,5 +1,5 @@
-import type { EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
-export type { EvmNetworkId } from '../../../../source/shared/evmNetworks.ts';
+import type { EvmNetworkId } from '../custody/networkContext.ts';
+export type { EvmNetworkId } from '../custody/networkContext.ts';
 
 export type NetworkId = 'syscoin' | 'bitcoin' | EvmNetworkId;
 

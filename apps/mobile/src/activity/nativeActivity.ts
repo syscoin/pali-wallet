@@ -17,12 +17,13 @@ import {
   type LocalActivityRecord,
 } from './types.ts';
 import type { ActivityHistorySnapshot } from './historyStore.ts';
+import { parseEvmInteger, selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
 
 export interface NativeActivityRuntime {
   load(guard: () => void): Promise<{
     scope: ActivityScope;
     saved: ActivityHistorySnapshot;
-    local: LocalActivityRecord | null;
+    locals: readonly LocalActivityRecord[];
   }>;
   saveCache(
     scope: ActivityScope,
@@ -48,6 +49,8 @@ export type NativeActivitySnapshot = Readonly<{
   rows: readonly ActivityRow[];
   view: ActivityViewState;
   accountAddress: string | null;
+  networkName?: string | null;
+  nativeSymbol?: string | null;
   explorerUrl: string | null;
   loadingMore: boolean;
   hasMore: boolean;
@@ -71,13 +74,13 @@ const initial = (): NativeActivitySnapshot =>
     status: 'locked',
     rows: [],
     view: DEFAULT_ACTIVITY_VIEW,
-    accountAddress: null,
+    accountAddress: null, networkName: null, nativeSymbol: null,
     explorerUrl: null,
     loadingMore: false,
     hasMore: false,
     error: null,
     coverage:
-      'Only direct Ethereum transactions and ERC20 transfer events are included.',
+      'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
   });
 
@@ -192,21 +195,27 @@ export class NativeActivity {
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
-      const { scope, saved, local } = await runtime.load(guard);
+      const { scope, saved, locals } = await runtime.load(guard);
       guard();
       this.scope = scope;
       for (const record of saved.archived) this.locals.set(record.hash, record);
-      if (local) this.locals.set(local.hash, local);
+      for (const local of locals) this.locals.set(local.hash, local);
       for (const record of saved.candidates)
         this.candidates.set(record.hash, record);
       this.publish({
         status: 'ready',
         view: saved.view,
-        accountAddress: scope.address,
+        accountAddress: scope.address, networkName: scope.network.name, nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
       });
       this.renderRows(true);
+      if (!scope.apiUrl) {
+        this.feeds.txlist.done = true; this.feeds.tokentx.done = true;
+        this.publish({ coverage: 'Saved transfers only. Add an explorer data source to discover other activity.' });
+        this.renderRows(true);
+        return;
+      }
       const timeout = setTimeout(() => {
         if (generation === this.generation) this.request?.abort();
       }, 30000);
@@ -402,14 +411,25 @@ export class NativeActivity {
         checking: false,
         unavailable: false,
       });
-    const rows = [...records.values()]
+    const observedRows = [...records.values()]
       .map((row) => ({
         ...row,
         observation: this.observations.get(row.hash),
         checking: this.checking.has(row.hash),
         unavailable: this.unavailable.has(row.hash),
-      }))
-      .sort(
+      }));
+    const representatives = selectEvmHistoryRepresentatives(observedRows.map((row) => ({
+      row, hash: row.hash, from: row.observation?.from ?? (row.local ? this.scope?.address : undefined),
+      nonce: parseEvmInteger(row.observation?.nonce ?? row.local?.nonce),
+      confirmations: row.observation?.block ? 1 : 0,
+      blockNumber: row.observation?.block?.number, blockHash: row.observation?.block?.hash,
+      timestamp: row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ?? 0,
+    })), observedRows.length).map(({ row }) => row);
+    // Local attempts remain inspectable, just as the extension retains its
+    // local replacement history after choosing the fetched representative.
+    const retained = new Map(representatives.map((row) => [row.hash, row]));
+    for (const row of observedRows) if (row.local) retained.set(row.hash, row);
+    const rows = [...retained.values()].sort(
         (a, b) =>
           (b.observation?.timestamp ??
             b.candidate?.timestamp ??
@@ -429,8 +449,7 @@ export class NativeActivity {
       truncated:
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
-      coverage:
-        'Direct Ethereum transactions and ERC20 transfer events only. Internal ETH transfers are not included. Explorer data is checked against the RPC; older activity may require loading.',
+      coverage: this.scope?.apiUrl ? 'Direct transactions and ERC20 transfer events only. Internal transfers are not included. Explorer data is checked against the RPC; older activity may require loading.' : 'Saved transfers only. Add an explorer data source to discover other activity.',
     });
     this.hydrate(rows.slice(0, Math.min(rows.length, 20)).map((r) => r.hash));
   }
@@ -459,7 +478,7 @@ export class NativeActivity {
       this.workers++;
       this.checking.add(hash);
       void this.receipts
-        .read(hash, scope.address, signal, guard)
+        .read(hash, scope.address, signal, guard, scope.network)
         .then((observation) => {
           guard();
           if (observation)

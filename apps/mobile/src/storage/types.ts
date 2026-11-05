@@ -1,3 +1,5 @@
+import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
+
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
   | 'STORAGE_UNAVAILABLE'
@@ -51,14 +53,71 @@ export type WalletStoredState = Readonly<
   | { presence: 'existing'; backup: 'unconfirmed' | 'confirmed' }
 >;
 
+/** Read metadata only. The root/profile must still be authenticated by the SDK. */
+export type WalletIdentityRead = Readonly<{
+  walletBindingId: string;
+  pairFingerprint: string;
+  root: Readonly<{ address: string; publicKey: string; profileId: string }> | null;
+  verification: 'requires-unlock';
+}>;
+/** Read-only encrypted note row. No production creation/replacement port exists yet. */
+export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
+/** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
+export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
+/** Private, byte-preserving host snapshot; never a screen or public account DTO. */
+export type RecoveryStorageSnapshot = Readonly<{
+  identity: WalletIdentityRead | null;
+  state: WalletStoredState;
+  records: readonly Readonly<{ key: string; value: string }>[];
+  metadata: readonly Readonly<{ key: string; value: string }>[];
+  notes: readonly NoteDomainRow[];
+  signedRecords: readonly SignedRecordDomainRow[];
+}>;
+/** Opaque, storage-owned one-use replacement; never a UI value. */
+declare const recoveryWriteBrand: unique symbol;
+export type RecoveryWritePlan = Readonly<{ [recoveryWriteBrand]: true }>;
+export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
+
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
+  readonly signedRecords: EvmSignedRecordStorage;
+  /** Read-only domain, sharing this owner’s SQL queue and lease. */
+  readonly notes?: Readonly<{ read(): Promise<readonly NoteDomainRow[]> }>;
   readonly authGuard: Readonly<{
     checkAllowed(): Promise<void>;
     recordFailure(): Promise<void>;
     recordSuccess(): Promise<void>;
   }>;
+  /** Private recovery host ports. Optional capabilities make older synthetic hosts fail closed. */
+  readonly recovery?: Readonly<{
+    /** Exact existing pair fingerprint without writing staged creation data. */
+    fingerprintPair?(
+      candidate: Readonly<{ vault: unknown; keys: unknown }>
+    ): Promise<string>;
+    /** Initial installation of pair, full records and root as one transaction. */
+    prepareCreation?(
+      snapshot: RecoveryStorageSnapshot,
+      candidate: Readonly<{
+        vault: unknown;
+        keys: unknown;
+        accountRecords: unknown;
+      }>,
+      root: RecoveryRoot
+    ): Promise<RecoveryWritePlan>;
+    readIdentity(): Promise<WalletIdentityRead | null>;
+    readSnapshot(): Promise<RecoveryStorageSnapshot>;
+    /** Called only after the SDK authenticates the root/profile for this exact pair. */
+    bindIdentity(expectedPairFingerprint: string, root: RecoveryRoot, assertCurrent: () => void): Promise<void>;
+    prepareReplacement?(snapshot: RecoveryStorageSnapshot, pair: Readonly<{ vault: unknown; keys: unknown;
+        accountRecords?: unknown;
+      }>, root: RecoveryRoot): Promise<RecoveryWritePlan>;
+    plannedSnapshot?(plan: RecoveryWritePlan): RecoveryStorageSnapshot;
+    commitReplacement?(plan: unknown, assertCurrent: () => void): Promise<void>;
+    /** Known credential failure still counts after UI cancellation, but never for another pair. */
+    recordFailureForPair?(pairFingerprint: string): Promise<void>;
+  }>;
   readState(): Promise<WalletStoredState>;
+  /** Digest of the current encrypted pair, not the stable data binding. */
   getWalletFingerprint(): Promise<string>;
   /** Caller must first verify a fresh, epoch-bound recovery-phrase challenge. */
   confirmBackup(expectedFingerprint: string): Promise<void>;

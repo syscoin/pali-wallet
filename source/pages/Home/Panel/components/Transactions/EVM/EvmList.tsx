@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { mergeEvmExplorerTransactions } from '../../../../../../shared/evmHistory';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -96,10 +97,10 @@ const EvmTransactionItem = React.memo(
     currentAccount: any;
     ensCache?: any;
     getFiatAmount: any;
-    isFiatAvailable: boolean;
     getTxOptions: any;
     getTxStatusIcons: any;
     getTxType: any;
+    isFiatAvailable: boolean;
     onDetailsClick: (transaction: ITransactionInfoEvm, idField: string) => void;
     settlement: EvmSettlementStatus;
     t: any;
@@ -584,7 +585,13 @@ EvmTransactionItem.displayName = 'EvmTransactionItem';
 
 export const EvmTransactionsList = ({
   userTransactions,
+  savedHasMore = false,
+  savedLoading = false,
+  loadMoreSaved,
 }: {
+  loadMoreSaved?: () => Promise<void>;
+  savedHasMore?: boolean;
+  savedLoading?: boolean;
   userTransactions: ITransactionInfoEvm[];
 }) => {
   const { t } = useTranslation();
@@ -666,32 +673,17 @@ export const EvmTransactionsList = ({
     true,
     apiUrl ? fetchHistoryPage : undefined
   );
-  const combinedTransactions = useMemo(() => {
-    if (!extraTransactions.length) return userTransactions;
-    // Prefer base txlist entries over earlier tokentx placeholders when hashes collide
-    const byHash = new Map<string, ITransactionInfoEvm>();
-    // Seed with base list
-    for (const tx of userTransactions) {
-      const key = (tx as any).hash || (tx as any).txid || '';
-      if (!key) continue;
-      byHash.set(key, tx);
-    }
-    // Merge extras, allowing base entries (no tokenRecipient) to replace token-only ones
-    for (const tx of extraTransactions) {
-      const key = (tx as any).hash || (tx as any).txid || '';
-      if (!key) continue;
-      const existing = byHash.get(key) as any;
-      const isCurrentBase = (tx as any)?.tokenRecipient === undefined;
-      const isExistingTokenOnly =
-        existing && (existing as any)?.tokenRecipient !== undefined;
-      if (!existing) {
-        byHash.set(key, tx);
-      } else if (isCurrentBase && isExistingTokenOnly) {
-        byHash.set(key, tx);
-      }
-    }
-    return Array.from(byHash.values());
-  }, [userTransactions, extraTransactions]);
+  const combinedTransactions = useMemo(
+    () =>
+      mergeEvmExplorerTransactions(
+        userTransactions,
+        [],
+        chainId,
+        false,
+        extraTransactions
+      ),
+    [userTransactions, extraTransactions, chainId]
+  );
 
   const {
     filteredTransactions,
@@ -877,14 +869,23 @@ export const EvmTransactionsList = ({
       )}
       {/* Load more: API-backed if apiUrl exists; else local slicing fallback */}
       {apiUrl
-        ? (hasMoreServer || filteredTransactions.length > visibleCount) && (
+        ? (savedHasMore ||
+            hasMoreServer ||
+            filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                disabled={isLoadingMore || isRestoringPages}
+                disabled={isLoadingMore || isRestoringPages || savedLoading}
                 onClick={async () => {
                   if (filteredTransactions.length > visibleCount) {
                     setVisibleCount((count) => count + 50);
+                    return;
+                  }
+                  if (savedHasMore) {
+                    const isCurrentRequest = beginPageRequest();
+                    await loadMoreSaved?.();
+                    if (!isCurrentRequest()) return;
+                    setVisibleCount((count) => count + 30);
                     return;
                   }
                   const isCurrentRequest = beginPageRequest();
@@ -916,20 +917,30 @@ export const EvmTransactionsList = ({
                 }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors disabled:opacity-60"
               >
-                {isLoadingMore || isRestoringPages
+                {isLoadingMore || isRestoringPages || savedLoading
                   ? t('buttons.loading')
                   : t('buttons.loadMore')}
               </button>
             </div>
           )
-        : filteredTransactions.length > visibleCount && (
+        : (savedHasMore || filteredTransactions.length > visibleCount) && (
             <div className="flex justify-center py-3">
               <button
                 type="button"
-                onClick={() => setVisibleCount((c) => c + 50)}
+                disabled={savedLoading}
+                onClick={async () => {
+                  const isCurrentRequest = beginPageRequest();
+                  if (
+                    filteredTransactions.length <= visibleCount &&
+                    savedHasMore
+                  )
+                    await loadMoreSaved?.();
+                  if (!isCurrentRequest()) return;
+                  setVisibleCount((c) => c + 50);
+                }}
                 className="px-3 py-1.5 text-xs rounded border border-bkg-white200 text-white hover:bg-alpha-whiteAlpha50 transition-colors"
               >
-                {t('buttons.loadMore')}
+                {savedLoading ? t('buttons.loading') : t('buttons.loadMore')}
               </button>
             </div>
           )}

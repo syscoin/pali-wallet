@@ -12,7 +12,8 @@ function fixture(overrides: Record<string, unknown> = {}) {
   const calls: { method: string; params: unknown[]; init: RequestInit }[] = [];
   const values: Record<string, unknown> = {
     eth_chainId: '0x1',
-    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) }),
+    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: '0x64', gasLimit: '0x1c9c380' }),
+    eth_gasPrice: '0x65',
     eth_getTransactionCount: '0x0',
     eth_getBalance: '0x10000000000000000',
     eth_feeHistory: { oldestBlock: '0x1', baseFeePerGas: ['0x64', '0x6e'] },
@@ -20,7 +21,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
     eth_estimateGas: '0x5208',
     ...overrides,
   };
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       calls.push({ ...body, init });
@@ -37,10 +38,12 @@ function fixture(overrides: Record<string, unknown> = {}) {
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
   const quote = await f.rpc.prepare(sender.address, recipient, '123', signal());
-  assert.equal(quote.transaction.maxFeePerGas, '222');
-  assert.equal(quote.transaction.gasLimit, '21000');
-  assert.equal(quote.maximumFeeUnits, '4662000');
-  assert.equal(quote.totalUnits, '4662123');
+  assert.equal(quote.transaction.type, 2);
+  if (quote.transaction.type !== 2) throw new Error('Expected dynamic-fee fixture');
+  assert.equal(quote.transaction.maxFeePerGas, '252');
+  assert.equal(quote.transaction.gasLimit, '25200');
+  assert.equal(quote.maximumFeeUnits, '6350400');
+  assert.equal(quote.totalUnits, '6350523');
   assert(Object.isFrozen(quote));
   assert(Object.isFrozen(quote.transaction));
   assert.equal(f.calls[0]?.method, 'eth_chainId');
@@ -71,7 +74,7 @@ test('keeps maximum costs within balance and rejects unsafe quotes', async () =>
     { eth_estimateGas: '0x1' },
     { eth_estimateGas: '0xffffffffffff' },
     { eth_getTransactionCount: '0x20000000000000' },
-    { eth_feeHistory: { oldestBlock: '0x1', baseFeePerGas: ['0x1'] } },
+    { eth_gasPrice: null },
   ]) {
     await assert.rejects(
       fixture(override).rpc.prepare(sender.address, recipient, '1', signal())
@@ -86,17 +89,18 @@ test('adds exact bounded gas headroom for a complex native transfer', async () =
     '36000'
   );
 });
-test('new Ethereum quotes reject estimates or padded limits above the EIP-7825 transaction cap', async () => {
-  for (const estimate of ['0x1000001', '0xe00000']) {
-    await assert.rejects(fixture({ eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
+test('quotes reject estimates or padded limits above the selected block gas limit', async () => {
+  const block = (body: {params:string[]}) => ({number:body.params[0]==='latest'?'0x20':body.params[0],hash:'0x'+'2'.repeat(64),baseFeePerGas:'0x64',gasLimit:'0xf4240'});
+  for (const estimate of ['0xf4241', '0xdbba0']) {
+    await assert.rejects(fixture({ eth_getBlockByNumber:block, eth_estimateGas: estimate }).rpc.prepare(sender.address, recipient, '1', signal()), { code: 'INVALID_RESPONSE' });
   }
-  const below = fixture({ eth_estimateGas: '0xd55555' });
-  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '16777216');
+  const below = fixture({ eth_getBlockByNumber:block, eth_estimateGas: '0xc3500' });
+  assert.equal((await below.rpc.prepare(sender.address, recipient, '1', signal())).transaction.gasLimit, '960000');
 });
 test('aborts unresolved sibling requests when one quote component fails', async () => {
   let observed: AbortSignal | undefined;
   const f = fixture({
-    eth_estimateGas: () => {
+    eth_gasPrice: () => {
       throw Error('Unavailable');
     },
     eth_getBalance: (_body: unknown, init: RequestInit) => {
@@ -122,7 +126,7 @@ test('rejects mismatched JSON-RPC id and oversized responses', async () => {
     JSON.stringify({ jsonrpc: '2.0', id: 100, result: '0x1' }),
     'x'.repeat(17000),
   ]) {
-    const rpc = new NativeTransferRpc({
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum',
       fetch: async () => new Response(text),
     });
     await assert.rejects(rpc.prepare(sender.address, recipient, '1', signal()));
@@ -162,32 +166,15 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
   );
   assert.equal(invalid.calls.length, 0);
 });
-test('receipt inclusion remains unresolved until the account nonce is finalized', async () => {
+test('first canonical receipt confirms immediately without nonce or finality gates', async () => {
   const hash = '0x' + '1'.repeat(64);
-  const receipt = {
-    transactionHash: hash,
-    from: sender.address,
-    to: recipient,
-    status: '0x1',
-    blockNumber: '0xa',
-    blockHash: '0x' + '2'.repeat(64),
-  };
-  const expected = { hash, from: sender.address, to: recipient, nonce: '0' };
+  const receipt = { transactionHash: hash, from: sender.address, to: recipient,
+    status: '0x1', blockNumber: '0xa', blockHash: '0x' + '2'.repeat(64) };
   const f = fixture({ eth_getTransactionReceipt: receipt });
-  assert.equal((await f.rpc.receipt(expected, signal()))?.finalized, false);
-  const finalized = fixture({
-    eth_getTransactionReceipt: receipt,
-    eth_getTransactionCount: '0x1',
-  });
-  assert.equal(
-    (await finalized.rpc.receipt(expected, signal()))?.finalized,
-    true
-  );
-  assert.equal(
-    finalized.calls.filter((c) => c.method === 'eth_getTransactionReceipt')
-      .length,
-    2
-  );
+  assert.deepEqual(await f.rpc.receipt({hash,from:sender.address,to:recipient,nonce:'0'}, signal()),
+    {status:'confirmed', blockHash:receipt.blockHash,blockNumber:'10'});
+  assert.equal(f.calls.some(c=>c.method==='eth_getTransactionCount'),false);
+  assert.equal(f.calls.some(c=>c.params.includes('finalized')||c.params.includes('safe')),false);
 });
 test('refuses a receipt for another transaction or a changed canonical block', async () => {
   const hash = '0x' + '1'.repeat(64);
@@ -197,22 +184,14 @@ test('refuses a receipt for another transaction or a changed canonical block', a
       eth_getTransactionReceipt: { transactionHash: '0x' + '2'.repeat(64) },
     }).rpc.receipt(expected, signal())
   );
-  let count = 0;
   const f = fixture({
-    eth_getTransactionCount: '0x1',
-    eth_getTransactionReceipt: () => ({
-      transactionHash: hash,
-      from: sender.address,
-      to: recipient,
-      status: '0x1',
-      blockNumber: '0xa',
-      blockHash: '0x' + (++count === 1 ? '2' : '3').repeat(64),
-    }),
+    eth_getTransactionReceipt: { transactionHash: hash, from:sender.address,to:recipient,status:'0x1',blockNumber:'0xa',blockHash:'0x'+'2'.repeat(64) },
+    eth_getBlockByNumber: () => ({number:'0xa',hash:'0x'+'3'.repeat(64),gasLimit:'0x1c9c380'}),
   });
   await assert.rejects(f.rpc.receipt(expected, signal()));
 });
 
-test('reports only nonce consumption when a different finalized transaction may have used it', async () => {
+test('reports only nonce consumption when another transaction may have used it', async () => {
   const hash = '0x' + '1'.repeat(64);
   const f = fixture({
     eth_getTransactionReceipt: null,
@@ -223,25 +202,26 @@ test('reports only nonce consumption when a different finalized transaction may 
       { hash, from: sender.address, to: recipient, nonce: '1' },
       signal()
     ),
-    { status: 'nonce-consumed', finalized: true }
+    { status: 'nonce-consumed' }
   );
 });
 
-test('receipt canonicality and finalized height both gate terminal eligibility', async () => {
-  const hash = '0x' + '1'.repeat(64);
-  const receipt = { transactionHash: hash, from: sender.address, to: recipient, status: '0x1', blockNumber: '0xa', blockHash: '0x' + '2'.repeat(64) };
-  const expected = { hash, from: sender.address, to: recipient, nonce: '0' };
-  const orphan = fixture({ eth_getTransactionReceipt: receipt, eth_getTransactionCount: '0x1',
-    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x20' : body.params[0], hash: '0x' + '3'.repeat(64) }) });
-  await assert.rejects(orphan.rpc.receipt(expected, signal()), { code: 'INVALID_RESPONSE' });
-  const beforeFinal = fixture({ eth_getTransactionReceipt: receipt, eth_getTransactionCount: '0x1',
-    eth_getBlockByNumber: (body: { params: string[] }) => ({ number: body.params[0] === 'finalized' ? '0x9' : body.params[0], hash: '0x' + '2'.repeat(64) }) });
-  assert.equal((await beforeFinal.rpc.receipt(expected, signal()))?.finalized, false);
+test('receipt reorg observations are revisable and retain canonical block checks', async () => {
+  const hash='0x'+'1'.repeat(64),blockHash='0x'+'2'.repeat(64);
+  const receipt={transactionHash:hash,from:sender.address,to:recipient,status:'0x1',blockNumber:'0xa',blockHash};
+  const expected={hash,from:sender.address,to:recipient,nonce:'0'};
+  const orphan=fixture({eth_getTransactionReceipt:receipt,eth_getBlockByNumber:()=>({number:'0xa',hash:'0x'+'3'.repeat(64),gasLimit:'0x1c9c380'})});
+  await assert.rejects(orphan.rpc.receipt(expected,signal()),{code:'INVALID_RESPONSE'});
+  let observed:unknown=receipt;
+  const f=fixture({eth_getTransactionReceipt:()=>observed});
+  assert.equal((await f.rpc.receipt(expected,signal()))?.status,'confirmed');
+  observed=null;assert.equal(await f.rpc.receipt(expected,signal()),null);
+  observed={...receipt,status:'0x0'};assert.equal((await f.rpc.receipt(expected,signal()))?.status,'reverted');
 });
 
 test('receipt error mapping distinguishes caller cancellation, deadline and malformed responses', async () => {
   const expected = { hash: '0x' + '1'.repeat(64), from: sender.address, to: recipient, nonce: '0' };
-  const timed = new NativeTransferRpc({ timeoutMs: 5, fetch: async () => new Promise(() => undefined) });
+  const timed = new NativeTransferRpc({ networkId: 'ethereum', timeoutMs: 5, fetch: async () => new Promise(() => undefined) });
   await assert.rejects(timed.receipt(expected, signal()), { code: 'UNAVAILABLE' });
   const controller = new AbortController(); controller.abort();
   await assert.rejects(timed.receipt(expected, controller.signal), { code: 'CANCELLED' });

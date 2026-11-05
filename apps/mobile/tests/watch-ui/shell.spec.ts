@@ -192,25 +192,28 @@ test('same-address native to watch switch revokes native owner before public tab
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
 });
 
-test('fixed Bitcoin watch Activity remains unavailable and its Wallet scope survives tab changes', async ({ page }) => {
+test('fixed Bitcoin watch Activity requires consent and its Wallet scope survives tab changes', async ({ page }) => {
   await page.goto('/?empty=1');
-  await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
+  await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('BTC shell fixture');
-  await page.getByRole('textbox', { name: 'Public Bitcoin address', exact: true }).fill(BTC);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(BTC);
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity unavailable for watch accounts', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.activity.calls())).toEqual([]);
   await chooseTab(page, 'Wallet');
-  await expect(page.getByText('Bitcoin · Fixed for this address', { exact: true })).toBeVisible();
+  await expect(page.getByText('Network', { exact: true })).toBeVisible();
+  await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();
+  await expect(page.getByRole('radio')).toHaveCount(0);
   await expect(page.getByLabel('Bitcoin confirmed balance 1.23456789 BTC', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
 });
 
-test('unsupported native network shows honest Activity status and retains the selected registration', async ({ page }) => {
+test('native network without an explorer shows saved-transfer coverage and retains its registration', async ({ page }) => {
   await openNative(page); await unlock(page);
   await chooseTab(page, 'Tools');
   await page.getByRole('button', { name: 'Network', exact: false }).click();
@@ -220,8 +223,9 @@ test('unsupported native network shows honest Activity status and retains the se
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity unavailable on this network', { exact: true })).toBeVisible();
-  await expect(page.getByText(/Wallet transaction history is currently available on Ethereum/)).toBeVisible();
+  await expect(page.getByText('Saved transfers only. Add an explorer data source to discover other activity.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
 });

@@ -49,6 +49,7 @@ export async function launchUpgradeBrowser(
   )
     throw new Error('Upgrade browser requires a loopback deny proxy');
   const context = await chromium.launchPersistentContext(profileDir, {
+    chromiumSandbox: true,
     args: [
       ...(E2E_CONFIG.headless ? ['--headless=new'] : []),
       `--disable-extensions-except=${extensionPath}`,

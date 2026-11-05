@@ -1,3 +1,4 @@
+import * as sharedHistory from '../../../source/shared/evmHistory.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -5,9 +6,11 @@ import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
 
@@ -30,7 +33,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
   }).code : ts.transpileModule(source, { compilerOptions: {
     module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true,
   } }).outputText;
-  runInNewContext(code, { module, exports: module.exports, console, setTimeout, clearTimeout,
+  runInNewContext(code, { module, exports: module.exports, console, setTimeout, clearTimeout, AbortController,
     require(name: string) { assert.ok(Object.hasOwn(dependencies, name), `Unexpected import: ${name}`); return dependencies[name]; },
   });
   return module.exports;
@@ -81,7 +84,7 @@ function renderer() {
   return { api, instance,
     render(owner: Instance, component: Component, props: Record<string, unknown>) {
       current = owner; owner.next = 0;
-      const result = component(props); owner.layouts.splice(0).forEach((run) => run()); return result;
+      const result = component(props); owner.layouts.splice(0).forEach((run) => run()); return expandIdleElements(result);
     },
     flush(owner: Instance) { owner.effects.splice(0).forEach((run) => run()); },
     dispose(owner: Instance) { owner.cells.forEach((hook) => hook.cleanup?.()); },
@@ -110,10 +113,11 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
       const load = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
       const hooks = evaluate(load('src/screens/useRealShell.ts'), { react: render.api, 'react-native': native, '../navigation/tabDeparture': { TabDeparture } });
-      const dependencies = { react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+      const idle = createIdleComponentFixture(render.api, native);
+      const dependencies = { '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
         '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
-        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), nativeSigningEnabled: () => false },
+        '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../../../../source/shared/erc20': {},
@@ -136,7 +140,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
       const props = () => kind === 'native' ? {
-        model: { isCurrent: () => true }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
+        model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }) }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },
@@ -176,7 +180,7 @@ function find(tree: unknown, predicate: (element: Element) => boolean): Element 
 function get(tree: Element, predicate: (element: Element) => boolean): Element {
   const found = find(tree, predicate); assert.ok(found, 'Expected rendered element'); return found;
 }
-function press(element: Element) { return (element.props.onPress as () => void)(); }
+function press(element: Element) { return (element.props.onPress as (event: object) => void)({ nativeEvent: {} }); }
 function control(tree: Element, label: string) { return get(tree, (element) => element.props.accessibilityLabel === label); }
 function named(tree: Element, text: string) {
   return get(tree, (element) => typeof element.props.onPress === 'function' && !!find(element, (child) => child.children.includes(text)));
@@ -202,23 +206,28 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     ...Object.fromEntries(['View', 'Pressable', 'ScrollView', 'TextInput', 'Text', 'Modal', 'KeyboardAvoidingView', 'ActivityIndicator'].map((name) => [name, name])),
   };
   const source = (name: string) => readFileSync(new NodeURL(`../${name}`, import.meta.url), 'utf8');
+  const idle = createIdleComponentFixture(render.api, native);
+  await idle.ready;
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
+    './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, '../ui': ui,
-    '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoNetworks': { getUtxoNetwork },
+    '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
+    './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': ui,
     '../core/accountDirectory': { projectAccounts: () => [], accountIdentity: () => '' }, './Onboarding': onboarding, '../core/networks': core,
   });
   // Only expose the real internal component to this VM; production exports stay unchanged.
   const app = evaluate(`${source('App.tsx')}\nexport { AppContent };`, {
+    './src/platform/security': idle.security, './src/screens/IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView', SafeAreaProvider: 'SafeAreaProvider' },
     'expo-status-bar': { StatusBar: 'StatusBar' }, 'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', './src/ui': ui,
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
-    './src/platform': { loadPublicAccounts: async () => [], compareAndSetPublicAccounts: async () => {},
+    './src/platform': { publicAccountRecords: { load: async () => ({ version: 1, records: [], accounts: [] }), compareAndSet: async () => ({ version: 1, records: [], accounts: [] }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },
   });
   let exited = 0;
@@ -232,7 +241,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   await new Promise<void>((resolve) => setImmediate(resolve));
   parentTree = render.render(parent, parentComponent, parentProps); render.flush(parent);
   if (path === 'app') (get(parentTree, (element) => element.type === onboarding.Welcome).props.onWatch as () => void)();
-  else press(get(parentTree, (element) => element.props.title === 'Watch an address'));
+  else press(get(parentTree, (element) => element.props.title === 'Watch an account'));
   parentTree = render.render(parent, parentComponent, parentProps);
   const nested = get(parentTree, (element) => element.type === AddWatch);
   let finish: (error: Error) => void = () => assert.fail('No pending save');
@@ -261,8 +270,8 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const review = () => {
     press(control(childTree, 'Bitcoin')); update();
     (control(childTree, 'Account name').props.onChangeText as (text: string) => void)('Public BTC');
-    (control(childTree, 'Public Bitcoin address').props.onChangeText as (text: string) => void)('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
-    update(); press(named(childTree, 'Review address')); update();
+    (control(childTree, 'Public address, account key or descriptor').props.onChangeText as (text: string) => void)('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+    update(); press(named(childTree, 'Review account')); update();
     assert.ok(find(childTree, (element) => element.children.includes('Check your watch account')));
   };
   return { back, review, update, isOpen, tree: () => childTree, saves: () => saves, finish: () => finish(new Error('Synthetic save failure')), exited: () => exited,
@@ -278,8 +287,8 @@ for (const path of ['app', 'accounts'] as const) {
         screen.review(); screen.back.dispatch(); const edited = screen.update();
         assert.equal(screen.isOpen(), true, 'Hardware Back must keep the add form open at review');
         assert.equal(control(edited, 'Account name').props.value, 'Public BTC');
-        assert.equal(control(edited, 'Public Bitcoin address').props.value, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
-        assert.ok(find(edited, (element) => element.children.includes('Watch an address')));
+        assert.equal(control(edited, 'Public address, account key or descriptor').props.value, 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+        assert.ok(find(edited, (element) => element.children.includes('Watch an account')));
         screen.back.dispatch(); assert.equal(screen.isOpen(), false, 'Second Back cancels the editable form');
         assert.equal(screen.exited(), 0, 'Accounts itself must remain open'); assert.equal(screen.back.defaults(), 0);
       } finally { screen.dispose(); }
@@ -300,7 +309,7 @@ for (const path of ['app', 'accounts'] as const) {
         assert.equal(screen.saves(), 1); assert.equal(screen.back.defaults(), 0);
         screen.finish(); await new Promise<void>((resolve) => setImmediate(resolve)); screen.update();
         screen.back.dispatch(); const edited = screen.update(); assert.equal(screen.isOpen(), true);
-        assert.ok(find(edited, (element) => element.children.includes('Watch an address')));
+        assert.ok(find(edited, (element) => element.children.includes('Watch an account')));
         screen.back.dispatch(); assert.equal(screen.isOpen(), false);
       } finally { screen.dispose(); }
     });

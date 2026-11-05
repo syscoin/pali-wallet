@@ -22,7 +22,7 @@ delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'Public ERC20 transfer fixture password';
+const PASSWORD = 'Public ERC20 transfer fixture password!';
 const CONTRACT = '0x2222222222222222222222222222222222222222';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 const TOKEN = {
@@ -81,7 +81,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       },
     });
     await authority.initialize();
-    const rpc = new NativeTransferRpc({
+    const rpc = new NativeTransferRpc({ networkId: 'ethereum',
       fetch: async (_url, init) => {
         const b = JSON.parse(String(init.body));
         let result: unknown;
@@ -92,13 +92,14 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               b.params[0] === 'latest' || b.params[0] === 'finalized'
                 ? '0x123'
                 : b.params[0],
-            hash: '0x' + 'a'.repeat(64),
+            hash: '0x' + 'a'.repeat(64), baseFeePerGas: `0x${values.base.toString(16)}`, gasLimit: '0x1c9c380',
           };
         else if (b.method === 'eth_getCode') result = '0x6000';
         else if (b.method === 'eth_getTransactionCount')
           result = values.finalized ? '0x1' : `0x${values.nonce.toString(16)}`;
         else if (b.method === 'eth_getBalance')
           result = `0x${values.eth.toString(16)}`;
+        else if (b.method === 'eth_gasPrice') result = `0x${(values.base + 1).toString(16)}`;
         else if (b.method === 'eth_feeHistory')
           result = {
             oldestBlock: '0x123',
@@ -129,16 +130,12 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               }
             : null;
         else if (b.method === 'eth_sendRawTransaction') {
-          const stored = (await storage!.keyringStorage.get(
-            'native-evm-transfer-v1'
-          )) as any;
-          const entry = stored.entries.find(
-            (entry: any) => entry.registration.chainId === '1'
-          );
+          const entry = await (await runtime!.transfers!.journal(() => undefined)).load();
+          assert.ok(entry);
           assert.equal(entry.rawTransaction, b.params[0]);
-          assert.equal(entry.intent.amountUnits, '123');
-          assert.equal(entry.intent.token.decimals, 2);
-          assert.ok(['attempted', 'submitted'].includes(entry.phase));
+          assert.equal(entry.intent!.amountUnits, '123');
+          assert.equal(entry.intent!.token.decimals, 2);
+          assert.ok(['signed', 'submitted'].includes(entry.phase));
           sent.push(b.params[0]);
           if (values.loseResponse)
             throw Error('Lost acknowledgement after acceptance');
@@ -190,7 +187,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
         values.base = 0;
         values.eth = 100000n;
       }
-      await assert.rejects(transfers!.confirm(review.id, PASSWORD), {
+      await assert.rejects(transfers!.confirm(review.id), {
         code:
           kind === 'token'
             ? 'INSUFFICIENT_TOKEN_BALANCE'
@@ -212,7 +209,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       gas: 50000,
     });
     await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.23');
-    await transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id);
     assert.equal(transfers!.getSnapshot().phase, 'unknown');
     const raw = sent[0]!;
     const hash = keccak256(raw);
@@ -234,21 +231,21 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await transfers!.recover(true);
     assert.equal(transfers!.getSnapshot().review!.intent!.token.decimals, 2);
     assert.equal(transfers!.getSnapshot().review!.intent!.amountUnits, '123');
-    const saved = (await storage!.keyringStorage.get(
-      'native-evm-transfer-v1'
-    )) as any;
-    const tampered = structuredClone(saved);
-    tampered.entries[0].intent.token.decimals = 3;
-    await storage!.keyringStorage.set('native-evm-transfer-v1', tampered);
-    await assert.rejects(
-      transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD),
-      { code: 'EXPIRED' }
-    );
+    const identity = await storage!.recovery!.readIdentity();
+    const profile = identity!.root!.profileId;
+    const saved = (await storage!.signedRecords.read(profile))!;
+    const tampered = JSON.parse(saved);
+    tampered.entries[0].metadata.intent.token.decimals = 3;
+    const changed = JSON.stringify(tampered);
+    assert.equal(await storage!.signedRecords.compareAndSet(profile,saved,changed,()=>undefined),true);
+    await assert.rejects(transfers!.confirm(transfers!.getSnapshot().review!.id));
     assert.equal(sent.length, 1);
-    await storage!.keyringStorage.set('native-evm-transfer-v1', saved);
+    assert.equal(await storage!.signedRecords.read(profile),changed);
+    assert.equal(await storage!.signedRecords.compareAndSet(profile,changed,saved,()=>undefined),true);
+    if(authority!.getSnapshot().phase!=='ready')await authority!.unlock(PASSWORD);
     await transfers!.recover(true);
     values.loseResponse = false;
-    await transfers!.confirm(transfers!.getSnapshot().review!.id, PASSWORD);
+    await transfers!.confirm(transfers!.getSnapshot().review!.id);
     assert.equal(sent.length, 2);
     assert.equal(sent[1], raw);
     assert.equal(transfers!.getSnapshot().hash, hash);

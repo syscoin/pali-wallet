@@ -1,3 +1,4 @@
+import { accountRecordsForPersistence } from '../wallet/accountRecords';
 import { INetwork, INetworkType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 
@@ -58,12 +59,6 @@ function validateVaultSlip44(
   }
 
   return true;
-}
-
-function omitPasskeyCredentialProfile(slip44State: ISlip44State): ISlip44State {
-  const vaultState = { ...slip44State };
-  delete vaultState.passkeyCredentialProfile;
-  return vaultState as ISlip44State;
 }
 
 /**
@@ -142,7 +137,7 @@ class VaultCache {
         `VaultCache.setSlip44Vault: Slip44 validation failed! Cannot save vault with slip44=${slip44}`
       );
     }
-    const vaultState = omitPasskeyCredentialProfile(slip44State);
+    const vaultState = accountRecordsForPersistence(slip44State);
 
     // Staged edits validate without publishing their uncommitted snapshot.
     if (cacheSnapshot) this.slip44Cache.set(slip44, vaultState);
@@ -226,7 +221,7 @@ class VaultCache {
               // Check if we have a cached state for the activeSlip44
               const cachedState = this.slip44Cache.get(activeSlip44);
               if (cachedState) {
-                const vaultState = omitPasskeyCredentialProfile(cachedState);
+                const vaultState = accountRecordsForPersistence(cachedState);
                 // Save the cached state which should be consistent
                 this.slip44Cache.set(activeSlip44, vaultState);
                 await saveSlip44State(activeSlip44, vaultState);
@@ -246,7 +241,7 @@ class VaultCache {
           }
 
           // Normal case - save to the target slip44
-          const vaultState = omitPasskeyCredentialProfile(liveVaultState);
+          const vaultState = accountRecordsForPersistence(liveVaultState);
           this.slip44Cache.set(targetSlip44, vaultState);
           await saveSlip44State(targetSlip44, vaultState);
 

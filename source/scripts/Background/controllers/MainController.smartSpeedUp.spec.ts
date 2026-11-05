@@ -244,7 +244,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     keyring = new KeyringManager();
     keyring.setVaultStateGetter(() => mockState.vault);
     replaceGetter = jest.spyOn(keyring, 'setVaultStateGetter');
-    keyring.sessionPassword = {};
+    keyring.sessionPassword = { isCleared: () => false };
     keyring.withSecureData = (read: (password: string) => unknown) =>
       read('synthetic-session-password');
     aes.decrypt.mockReturnValue({ toString: () => 'mocked-private-key' });

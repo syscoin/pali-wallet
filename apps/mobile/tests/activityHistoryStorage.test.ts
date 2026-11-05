@@ -4,15 +4,12 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Wallet } from 'ethers/wallet';
-import { keccak256 } from 'ethers/crypto';
 import { NativeActivityHistory, ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { createActivityScope, type TerminalActivityRecord } from '../src/activity/types.ts';
-import { NativeTransferJournal, journalRequiresReopen, nativeTransferJournalKey, type TransferJournalContainer } from '../src/custody/transferJournal.ts';
-import { getNativeNetwork, type EvmNetworkId } from '../src/custody/networkContext.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { encodeStorageValue } from '../src/storage/json.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
-import { encodeErc20Transfer } from '../../../source/shared/erc20.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 
 const wallet = new Wallet(`0x${'1'.padStart(64, '0')}`);
@@ -20,10 +17,6 @@ const RECIPIENT = '0x1111111111111111111111111111111111111111';
 const TOKEN = '0x2222222222222222222222222222222222222222';
 const guard = () => undefined;
 const entryHash = (index: number) => `0x${index.toString(16).padStart(64, '0')}`;
-async function raw(nonce: number, network: EvmNetworkId = 'ethereum') {
-  return wallet.signTransaction({ type: 2, chainId: BigInt(getNativeNetwork(network).chainId), nonce,
-    to: RECIPIENT, value: 123n, gasLimit: 21000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
-}
 async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-activity-history-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -43,13 +36,6 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         hash: entryHash(index), phase: 'confirmed', nonce: index, createdAt: 1000 + index,
         recipient: RECIPIENT, amountUnits: '123', maximumFeeUnits: '42000', ...fields };
     },
-    journal(network: EvmNetworkId = 'ethereum', index = 0, port = storage.keyringStorage,
-      archive?: (record: TerminalActivityRecord, check: () => void) => Promise<void>, check = guard) {
-      const registration = getNativeNetwork(network);
-      return new NativeTransferJournal(port, { walletFingerprint: fingerprint, address: wallet.address, chainId: registration.chainId },
-        check, () => 1000, index, registration, archive);
-    },
-    async value(index = 0) { return await storage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer; },
     async reopen() {
       await storage.close().catch(() => undefined);
       owned = nodeConnection(file);
@@ -58,63 +44,6 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
     async cleanup() { await storage.close().catch(() => undefined); await rm(directory, { recursive: true, force: true }); },
   };
 }
-async function terminal(journal: NativeTransferJournal, network: EvmNetworkId = 'ethereum', nonce = 0) {
-  const bytes = await raw(nonce, network);
-  const saved = await journal.saveSigned(bytes);
-  await journal.transition(saved.hash, 'attempted');
-  await journal.transition(saved.hash, 'confirmed');
-  return bytes;
-}
-
-test('missing archive hook refuses terminal replacement and removal without touching signed recovery data', async () => {
-  const f = await fixture();
-  try {
-    const journal = f.journal();
-    await terminal(journal);
-    const before = encodeStorageValue(await f.value());
-    await assert.rejects(journal.saveSigned(await raw(1)), { code: 'HISTORY_UNAVAILABLE' });
-    await assert.rejects(journal.removalSnapshot(), { code: 'HISTORY_UNAVAILABLE' });
-    assert.equal(encodeStorageValue(await f.value()), before);
-    assert.equal(await f.port.get(ACTIVITY_STORAGE_KEY), undefined);
-  } finally { await f.cleanup(); }
-});
-
-test('a public terminal summary is durably archived before the old journal is replaced', async () => {
-  const f = await fixture();
-  try {
-    const oldBytes = await terminal(f.journal());
-    const history = f.history();
-    let callbackRecord: TerminalActivityRecord | undefined;
-    let replacementAttempts = 0;
-    const port: KeyringStoragePort = { ...f.port, async compareAndSet(key, ...rest) {
-      if (key === nativeTransferJournalKey(0)) {
-        replacementAttempts++;
-        const snapshot = await history.load(f.scope(), guard);
-        assert.equal(snapshot.archived.length, 1, 'archive readback must precede journal CAS');
-        assert.equal(snapshot.archived[0]?.hash, keccak256(oldBytes));
-      }
-      return f.port.compareAndSet(key, ...rest);
-    } };
-    const journal = f.journal('ethereum', 0, port, async (record, check) => {
-      callbackRecord = record;
-      check(); await history.archiveTerminal(record, check); check();
-    });
-    const newBytes = await raw(1);
-    await journal.saveSigned(newBytes);
-    assert.equal(replacementAttempts, 1);
-    assert(callbackRecord);
-    assert.equal(callbackRecord.amountUnits, '123');
-    assert.equal(callbackRecord.maximumFeeUnits, '42000');
-    assert.equal(Object.hasOwn(callbackRecord, 'rawTransaction'), false);
-    assert.equal(JSON.stringify(callbackRecord).includes(oldBytes), false);
-    assert.equal(JSON.stringify(await f.port.get(ACTIVITY_STORAGE_KEY)).includes(oldBytes), false);
-    assert.equal((await journal.load())?.rawTransaction, newBytes);
-    await f.reopen();
-    assert.equal((await f.history().load(f.scope(), guard)).archived[0]?.hash, keccak256(oldBytes));
-    assert.equal((await f.journal().load())?.hash, keccak256(newBytes));
-  } finally { await f.cleanup(); }
-});
-
 test('identical archive retries do not rewrite the document and conflicting duplicates are refused', async () => {
   const f = await fixture();
   try {
@@ -128,50 +57,19 @@ test('identical archive retries do not rewrite the document and conflicting dupl
   } finally { await f.cleanup(); }
 });
 
-test('ERC20 archive preserves the reviewed recipient and token units independently of the contract and ETH fee', async () => {
+test('ERC20 archive preserves reviewed full-range metadata without retaining transaction secrets', async () => {
   const f = await fixture();
   try {
-    const token = { contractAddress: TOKEN, decimals: 6, symbol: 'TOK', name: 'Fixture token' };
-    const intent = { kind: 'erc20-transfer' as const, token, recipient: RECIPIENT, amountUnits: '1234567' };
-    const signed = await wallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: TOKEN, value: 0n,
-      gasLimit: 50000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n, data: encodeErc20Transfer(RECIPIENT, intent.amountUnits) });
-    const initial = f.journal();
-    const saved = await initial.saveSigned(signed, intent);
-    await initial.transition(saved.hash, 'attempted'); await initial.transition(saved.hash, 'confirmed');
-    const history = f.history();
-    await f.journal('ethereum', 0, f.port, (record, check) => history.archiveTerminal(record, check)).saveSigned(await raw(1));
-    const [archived] = (await history.load(f.scope(), guard)).archived;
-    assert.equal(archived?.recipient, RECIPIENT);
-    assert.equal(archived?.amountUnits, '1234567');
-    assert.equal(archived?.maximumFeeUnits, '100000');
-    assert.deepEqual(archived?.token, token);
-    assert.equal(JSON.stringify(archived).includes(signed), false);
+    const token = { contractAddress: TOKEN, decimals: 255, symbol: '😀'.repeat(64), name: '😀'.repeat(128) };
+    const record = f.record(1, { recipient: RECIPIENT, amountUnits: '1234567', maximumFeeUnits: '100000', token });
+    await f.history().archiveTerminal(record, guard);
+    await f.reopen();
+    const [archived] = (await f.history().load(f.scope(), guard)).archived;
+    assert.equal(archived?.recipient, RECIPIENT); assert.equal(archived?.amountUnits, '1234567');
+    assert.equal(archived?.maximumFeeUnits, '100000'); assert.deepEqual(archived?.token, token);
+    assert.equal(Object.hasOwn(archived!, 'rawTransaction'), false);
   } finally { await f.cleanup(); }
 });
-
-for (const operation of ['replacement', 'removal'] as const) {
-  test(`full-range reviewed ERC20 metadata survives terminal ${operation}`, async () => {
-    const f = await fixture();
-    try {
-      const token = { contractAddress: TOKEN, decimals: 255, symbol: '😀'.repeat(64), name: '😀'.repeat(128) };
-      const intent = { kind: 'erc20-transfer' as const, token, recipient: RECIPIENT, amountUnits: '1' };
-      const signed = await wallet.signTransaction({ type: 2, chainId: 1, nonce: 0, to: TOKEN, value: 0n,
-        gasLimit: 50000n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n, data: encodeErc20Transfer(RECIPIENT, intent.amountUnits) });
-      const initial = f.journal();
-      const saved = await initial.saveSigned(signed, intent);
-      await initial.transition(saved.hash, 'attempted');
-      await initial.transition(saved.hash, 'confirmed');
-      const before = await f.value();
-      const history = f.history();
-      const journal = f.journal('ethereum', 0, f.port, (record, check) => history.archiveTerminal(record, check));
-      if (operation === 'replacement') await journal.saveSigned(await raw(1));
-      else assert.deepEqual(await journal.removalSnapshot(), before);
-      assert.deepEqual((await history.load(f.scope(), guard)).archived[0]?.token, token);
-      await f.reopen();
-      assert.deepEqual((await f.history().load(f.scope(), guard)).archived[0]?.token, token);
-    } finally { await f.cleanup(); }
-  });
-}
 
 test('archive rejects malformed or unsafe ERC20 metadata without persisting it', async () => {
   const f = await fixture();
@@ -195,119 +93,6 @@ test('archive rejects malformed or unsafe ERC20 metadata without persisting it',
       ...token, get symbol() { accessed = true; return 'TOK'; },
     } }), guard));
     assert.equal(accessed, false);
-    assert.equal(await f.port.get(ACTIVITY_STORAGE_KEY), undefined);
-  } finally { await f.cleanup(); }
-});
-
-for (const failure of ['write', 'readback'] as const) {
-  test(`archive ${failure} failure preserves the old journal and prevents its CAS`, async () => {
-    const f = await fixture();
-    try {
-      await terminal(f.journal()); const before = encodeStorageValue(await f.value());
-      let archiveWritten = false, journalWrites = 0;
-      const port: KeyringStoragePort = { ...f.port,
-        async createManyIfAbsent(items) {
-          if (Object.hasOwn(items, ACTIVITY_STORAGE_KEY)) {
-            if (failure === 'write') throw Error('injected archive write failure');
-            const result = await f.port.createManyIfAbsent(items); archiveWritten = true; return result;
-          }
-          return f.port.createManyIfAbsent(items);
-        },
-        async get(key) {
-          if (key === ACTIVITY_STORAGE_KEY && failure === 'readback' && archiveWritten) throw Error('lost archive readback');
-          return f.port.get(key);
-        },
-        async compareAndSet(key, ...rest) { if (key === nativeTransferJournalKey(0)) journalWrites++; return f.port.compareAndSet(key, ...rest); },
-      };
-      const history = f.history(port);
-      await assert.rejects(f.journal('ethereum', 0, port, (record, check) => history.archiveTerminal(record, check)).saveSigned(await raw(1)), { code: 'REOPEN_REQUIRED' });
-      assert.equal(history.requiresReopen, true);
-      assert.equal(journalWrites, 0);
-      assert.equal(encodeStorageValue(await f.value()), before);
-      assert.equal(!!await f.port.get(ACTIVITY_STORAGE_KEY), failure === 'readback');
-    } finally { await f.cleanup(); }
-  });
-}
-
-test('lost journal commit acknowledgement leaves the old archive and the new signed journal recoverable', async () => {
-  let failNextCommit = false;
-  const hook: SqlHook = (kind, sql) => {
-    if (failNextCommit && kind === 'exec' && sql === 'COMMIT') { failNextCommit = false; throw Error('lost journal commit acknowledgement'); }
-  };
-  const f = await fixture({ after: hook });
-  try {
-    const oldBytes = await terminal(f.journal()); const history = f.history(); const oldPort = f.port;
-    const journal = f.journal('ethereum', 0, f.port, async (record, check) => {
-      await history.archiveTerminal(record, check);
-      failNextCommit = true;
-    });
-    const newBytes = await raw(1);
-    await assert.rejects(journal.saveSigned(newBytes), { code: 'REOPEN_REQUIRED' });
-    assert.equal(journalRequiresReopen(oldPort), true);
-    await f.reopen();
-    const archived = (await f.history().load(f.scope(), guard)).archived;
-    assert.equal(archived[0]?.hash, keccak256(oldBytes));
-    assert.equal((await f.journal().load())?.rawTransaction, newBytes);
-    assert.equal((await f.journal().load())?.phase, 'signed');
-  } finally { await f.cleanup(); }
-});
-
-test('lost archive commit acknowledgement never advances the old journal and remains idempotent after reopen', async () => {
-  let failNextCommit = false;
-  const hook: SqlHook = (kind, sql) => {
-    if (failNextCommit && kind === 'exec' && sql === 'COMMIT') { failNextCommit = false; throw Error('lost archive commit acknowledgement'); }
-  };
-  const f = await fixture({ after: hook });
-  try {
-    const oldBytes = await terminal(f.journal()); const history = f.history();
-    failNextCommit = true;
-    await assert.rejects(f.journal('ethereum', 0, f.port, (record, check) => history.archiveTerminal(record, check)).saveSigned(await raw(1)), { code: 'REOPEN_REQUIRED' });
-    await f.reopen();
-    assert.equal((await f.journal().load())?.hash, keccak256(oldBytes));
-    assert.equal((await f.history().load(f.scope(), guard)).archived[0]?.hash, keccak256(oldBytes));
-    await f.journal('ethereum', 0, f.port, (record, check) => f.history().archiveTerminal(record, check)).saveSigned(await raw(1));
-    assert.equal((await f.history().load(f.scope(), guard)).archived.length, 1);
-  } finally { await f.cleanup(); }
-});
-
-test('context revocation after archive acknowledgement leaves a harmless duplicate and the old journal', async () => {
-  const f = await fixture();
-  try {
-    const oldBytes = await terminal(f.journal()); const history = f.history();
-    let current = true;
-    const journal = f.journal('ethereum', 0, f.port, async (record, check) => {
-      await history.archiveTerminal(record, check); current = false;
-    }, () => { if (!current) throw Error('context revoked'); });
-    await assert.rejects(journal.saveSigned(await raw(1)), /context revoked/);
-    assert.equal((await f.journal().load())?.hash, keccak256(oldBytes));
-    assert.equal((await history.load(f.scope(), guard)).archived[0]?.hash, keccak256(oldBytes));
-  } finally { await f.cleanup(); }
-});
-
-test('removal archives all terminal chain entries before returning the exact removable snapshot', async () => {
-  const f = await fixture();
-  try {
-    await terminal(f.journal('ethereum', 1)); await terminal(f.journal('base', 1), 'base');
-    const before = await f.value(1); const history = f.history(); const seen: string[] = [];
-    const journal = f.journal('ethereum', 1, f.port, async (record, check) => {
-      seen.push(record.chainId); await history.archiveTerminal(record, check);
-    });
-    assert.deepEqual(await journal.removalSnapshot(), before);
-    assert.deepEqual(seen, ['1', '8453']);
-    const stored = await f.port.get(ACTIVITY_STORAGE_KEY) as { archived: TerminalActivityRecord[] };
-    assert.deepEqual(stored.archived.map((record) => record.chainId), ['1', '8453']);
-    assert.equal(stored.archived.every((record) => record.accountId === 'hd:60:1'), true);
-    assert.deepEqual(await f.value(1), before, 'only the catalogue mutation may delete the snapshot');
-  } finally { await f.cleanup(); }
-});
-
-test('a pending sibling chain prevents removal before any terminal archive is written', async () => {
-  const f = await fixture();
-  try {
-    await terminal(f.journal('ethereum', 1)); await f.journal('base', 1).saveSigned(await raw(0, 'base'));
-    let called = false;
-    await assert.rejects(f.journal('ethereum', 1, f.port, async () => { called = true; }).removalSnapshot(), { code: 'PENDING_TRANSFER' });
-    assert.equal(called, false);
     assert.equal(await f.port.get(ACTIVITY_STORAGE_KEY), undefined);
   } finally { await f.cleanup(); }
 });
@@ -437,5 +222,17 @@ test('imported history retains its own identity across retirement and never appe
     assert.deepEqual((await history.load(reimportedScope, guard)).archived, []);
     await f.reopen();
     assert.deepEqual((await f.history().load(importedScope, guard)).archived.map((entry) => entry.hash), [entryHash(2)]);
+  } finally { await f.cleanup(); }
+});
+
+test('revising an observed outcome preserves immutable archived transaction identity', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history(), original = f.record(1);
+    await history.archiveTerminal(original, guard);
+    await history.archiveTerminal({ ...original, phase: 'reverted' }, guard);
+    assert.equal((await history.load(f.scope(), guard)).archived[0]!.phase, 'reverted');
+    await assert.rejects(history.archiveTerminal({ ...original, phase: 'reverted', amountUnits: '999' }, guard), { code: 'INVALID' });
+    assert.equal((await history.load(f.scope(), guard)).archived[0]!.amountUnits, original.amountUnits);
   } finally { await f.cleanup(); }
 });

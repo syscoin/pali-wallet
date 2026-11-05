@@ -1,5 +1,6 @@
+import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../custody/importedAccounts';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
@@ -110,21 +111,21 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         {address ? <>
           <Card style={s.identity}><Text style={s.label}>{name.trim()}</Text><Text style={s.address}>{address}</Text></Card>
           <Text style={styles.muted}>Check the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.</Text>
-          <Pressable accessibilityRole="checkbox" accessibilityState={{ checked: acknowledged, disabled: busy }} aria-checked={acknowledged} accessibilityLabel="I have a separate backup of this private key"
+          <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: acknowledged, disabled: busy }} aria-checked={acknowledged} accessibilityLabel="I have a separate backup of this private key"
             disabled={busy} onPress={() => setAcknowledged((value) => !value)} style={s.checkRow}>
             <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
             <Text style={s.checkLabel}>I have a separate backup of this private key.</Text>
-          </Pressable>
-          <View style={s.field}><Text style={s.label}>Confirm wallet password</Text><TextInput
+          </IdlePressable>
+          <View style={s.field}><Text style={s.label}>Confirm wallet password</Text><IdleTextInput
             accessibilityLabel="Confirm wallet password" value={password} onChangeText={setPassword} editable={!busy} secureTextEntry
             autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off" textContentType="none"
             importantForAutofill="noExcludeDescendants" maxLength={1024} style={s.input} />
           </View>
           {!busy && <Button title="Edit private key" variant="quiet" onPress={() => { setAddress(null); setPassword(''); setAcknowledged(false); setError(''); }} />}
         </> : <>
-          <View style={s.field}><Text style={s.label}>Account name</Text><TextInput accessibilityLabel="Account name" value={name} onChangeText={setName}
+          <View style={s.field}><Text style={s.label}>Account name</Text><IdleTextInput accessibilityLabel="Account name" value={name} onChangeText={setName}
             editable={!busy} maxLength={64} autoCorrect={false} autoComplete="off" style={s.input} /></View>
-          <View style={s.field}><Text style={s.label}>EVM private key</Text><TextInput accessibilityLabel="EVM private key" value={privateKey} onChangeText={setPrivateKey}
+          <View style={s.field}><Text style={s.label}>EVM private key</Text><IdleTextInput accessibilityLabel="EVM private key" value={privateKey} onChangeText={setPrivateKey}
             editable={!busy} secureTextEntry maxLength={1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
             textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} /></View>
           <Text style={styles.muted}>Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.</Text>

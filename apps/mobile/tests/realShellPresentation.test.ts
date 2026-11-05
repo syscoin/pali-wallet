@@ -4,6 +4,7 @@ import test from 'node:test';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 
 type Element = { type: string | ((props: object) => Element); props: Record<string, unknown>; children: unknown[] };
 function shell() {
@@ -24,8 +25,13 @@ function shell() {
     } });
     return module.exports;
   };
+  const react = dependencies.react as Record<string, any>;
+  react.useRef = (current: unknown) => ({ current });
+  const idle = createIdleComponentFixture(react, dependencies['react-native'] as Record<string, unknown>);
+  dependencies['./screens/IdleActivityBoundary'] = idle.components;
+  dependencies['./IdleActivityBoundary'] = idle.components;
   dependencies['../ui'] = load('../src/ui.tsx');
-  return load('../src/screens/RealAppShell.tsx').RealAppShell!({ tab: 'wallet', onTab() {}, children: null });
+  return expandIdleElements(load('../src/screens/RealAppShell.tsx').RealAppShell!({ tab: 'wallet', onTab() {}, children: null }));
 }
 function elements(node: unknown): Element[] {
   if (!node || typeof node !== 'object' || !('children' in node)) return [];

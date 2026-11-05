@@ -205,7 +205,11 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
   });
 
   it('admits a matching authenticated lookup only to the denied unsigned boundary', async () => {
-    await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
+    await expect(run()).resolves.toEqual({
+      isCanceled: false,
+      error: true,
+      transactionNotBroadcast: true,
+    });
     expect(provider.getTransaction).toHaveBeenCalledWith(HASH);
     expect(syntheticCredential).toHaveBeenCalledTimes(1);
     expect(sendLocalEvmTransaction).toHaveBeenCalledTimes(1);
@@ -255,7 +259,11 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     async (kind) => {
       rows()[0] = kind === 'raw' ? original({ raw: RAW }) : original();
       provider.getTransaction.mockResolvedValue(null);
-      await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
+      await expect(run()).resolves.toEqual({
+        isCanceled: false,
+        error: true,
+        transactionNotBroadcast: true,
+      });
       expect(unsignedRequest()).toMatchObject({
         nonce: NONCE,
         from: PAYER,
@@ -299,7 +307,11 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       rpc.nonce += 19;
       return BigNumber.from(1);
     });
-    await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
+    await expect(run()).resolves.toEqual({
+      isCanceled: false,
+      error: true,
+      transactionNotBroadcast: true,
+    });
     expect(unsignedRequest().nonce).toBe(NONCE);
   });
 
@@ -316,7 +328,11 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       });
       return { address: PAYER, decryptedPrivateKey: 'not-a-private-key' };
     });
-    await expect(run()).resolves.toEqual({ isCanceled: false, error: true });
+    await expect(run()).resolves.toEqual({
+      isCanceled: false,
+      error: true,
+      transactionNotBroadcast: true,
+    });
     expect(unsignedRequest().from).toBe(PAYER);
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
     expect(readVault()).toBe(mockState.vault);

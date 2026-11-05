@@ -26,9 +26,9 @@ import CustomRPC from 'pages/Settings/CustomRPC';
 import { clearCustomRpcDrafts } from 'pages/Settings/customRpcDraft';
 import MainController from 'scripts/Background/controllers/MainController';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
+import { setPrices } from 'state/price';
 import store from 'state/store';
 import { restoreVaultSnapshot, setAccountBalanceForNetwork } from 'state/vault';
-import { setPrices } from 'state/price';
 import vaultCache from 'state/vaultCache';
 import * as actions from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
@@ -229,7 +229,10 @@ const saveAndActivateSymbol = async (chainId: number, symbol: string) => {
 const balanceCard = () =>
   screen.getByText('components.currentBalance').parentElement!;
 
+let httpRules: chrome.declarativeNetRequest.Rule[];
+
 beforeEach(async () => {
+  httpRules = [];
   jest.clearAllMocks();
   clearRpcCaches();
   clearCustomRpcDrafts();
@@ -287,6 +290,12 @@ beforeEach(async () => {
   global.fetch = async (target: any, options?: any) => {
     if (String(target) !== url && String(target) !== url + '/api/v2')
       throw Error('Disallowed nonfixture request: ' + String(target));
+    expect(
+      httpRules.some(
+        (rule) =>
+          rule.condition.urlFilter === `|${new URL(String(target)).origin}/`
+      )
+    ).toBe(true);
     return transport(target, { ...options, redirect: 'error' });
   };
   global.MessageChannel = class {
@@ -319,7 +328,22 @@ beforeEach(async () => {
     }),
   });
   global.chrome = {
-    runtime: { id: 'local-currency-native-symbol' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Real HTTP identification uses this acknowledged in-memory Chrome rule store.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => httpRules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        httpRules = httpRules.filter(
+          (rule) => !removeRuleIds.includes(rule.id)
+        );
+        httpRules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], done: any) =>

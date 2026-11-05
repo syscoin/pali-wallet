@@ -1,6 +1,6 @@
 import { EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 import { normalizePublicAddress } from './core/addresses.ts';
-import { getNetwork } from './core/networks.ts';
+import { getNativeNetwork, type NativeNetworkRegistration } from './custody/networkContext.ts';
 import type { NetworkId } from './core/types.ts';
 import type { BalanceReader } from './core/watchOnlyAuthority.ts';
 
@@ -60,12 +60,25 @@ export function utf8ByteLength(value: string): number {
   return length;
 }
 
+/** consumeBytes is a synchronous shared budget hook; it receives counts only. */
 export async function boundedResponseText(
   response: Response,
   signal: AbortSignal,
-  maxBytes = MAX_RESPONSE_BYTES
+  maxBytes = MAX_RESPONSE_BYTES,
+  consumeBytes?: (bytes: number) => void
 ): Promise<string> {
   checkAborted(signal);
+  if (consumeBytes !== undefined && typeof consumeBytes !== 'function') throw new Error('Invalid byte budget');
+  const charge = (bytes: number) => {
+    if (!consumeBytes) return;
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('Invalid byte count');
+    const returned: unknown = consumeBytes(bytes);
+    if (returned !== undefined) {
+      if (returned && (typeof returned === 'object' || typeof returned === 'function')) void Promise.resolve(returned).catch(() => undefined);
+      throw new Error('Byte budget must return synchronously');
+    }
+    checkAborted(signal);
+  };
   if (
     !Number.isSafeInteger(maxBytes) ||
     maxBytes < 1 ||
@@ -96,6 +109,7 @@ export async function boundedResponseText(
         if (chunk.done) break;
         bytes += chunk.value.byteLength;
         if (bytes > maxBytes) throw new ResponseSizeLimitError();
+        charge(chunk.value.byteLength);
         result += decoder.decode(chunk.value, { stream: true });
       }
       result += decoder.decode();
@@ -112,6 +126,7 @@ export async function boundedResponseText(
   if (text.length > maxBytes || utf8ByteLength(text) > maxBytes) {
     throw new ResponseSizeLimitError();
   }
+  charge(utf8ByteLength(text));
   return text;
 }
 
@@ -154,7 +169,7 @@ export function parseRpcResult(text: string, expectedId: number): bigint {
 }
 
 export function createBalanceReader(
-  options: { fetch?: FetchLike; timeoutMs?: number } = {}
+  options: { fetch?: FetchLike; timeoutMs?: number; registrations?: () => readonly NativeNetworkRegistration[] | undefined } = {}
 ): BalanceReader {
   const fetcher: FetchLike = options.fetch ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? REQUEST_TIMEOUT_MS;
@@ -165,9 +180,9 @@ export function createBalanceReader(
   return {
     async readBalance(networkId, address, externalSignal) {
       checkAborted(externalSignal);
-      const network = getNetwork(networkId);
-      const endpoint = RPC_ENDPOINTS[networkId];
-      if (network.kind !== 'evm' || !network.chainId || !endpoint)
+      const network = getNativeNetwork(networkId, options.registrations?.());
+      const endpoint = network.rpcUrl;
+      if (!endpoint)
         throw new Error('This network is not available for balance lookup');
       const canonicalAddress = normalizePublicAddress(address, networkId);
       const controller = new AbortController();
@@ -221,7 +236,7 @@ export function createBalanceReader(
           canonicalAddress,
           'latest',
         ]);
-        return { chainId: network.chainId, units: units.toString() };
+        return { chainId: Number(network.chainId), units: units.toString() };
       } finally {
         controller.abort();
         clearTimeout(timer);

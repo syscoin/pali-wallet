@@ -1,3 +1,5 @@
+import { assertWalletPersistenceAllowed } from 'state/paliStorage';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
 import {
@@ -10,6 +12,7 @@ import {
 } from './constants';
 import { normalizeSLHDSAPublicKeyField } from './hex';
 import type { SLHDSAProvisionedState } from './types';
+import type { SlhDsaStateCrypto } from '../../wallet/slhDsaStateCrypto';
 
 export const validateSLHDSAProvisionedState = (
   state: SLHDSAProvisionedState
@@ -46,10 +49,7 @@ type EncryptedSLHDSAStateEnvelope = {
   version: number;
 };
 
-export type SLHDSASessionStateCrypto = {
-  decrypt: (cipherText: string) => Promise<string> | string;
-  encrypt: (plainText: string) => Promise<string> | string;
-};
+export type SLHDSASessionStateCrypto = SlhDsaStateCrypto;
 
 export const createSLHDSAProvisionedState = ({
   accountIndex,
@@ -83,6 +83,43 @@ export const createSLHDSAProvisionedState = ({
   };
 };
 
+const readEnvelope = async (
+  keyId: string
+): Promise<EncryptedSLHDSAStateEnvelope | null> => {
+  const storageKey = getSLHDSAStateStorageKey(keyId);
+  const records = await chromeStorage.getItems([storageKey]);
+  if (!Object.hasOwn(records, storageKey)) return null;
+  const value = records[storageKey];
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid SLH-DSA encrypted state; usage history is unsafe');
+  const fields = ['cipherText', 'keyId', 'updatedAt', 'version'];
+  const own = Reflect.ownKeys(value);
+  if (
+    own.length !== fields.length ||
+    own.some((field) => typeof field !== 'string' || !fields.includes(field))
+  )
+    throw new Error('Invalid SLH-DSA encrypted state; usage history is unsafe');
+  const snapshot: Record<string, unknown> = {};
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor || !descriptor.enumerable || !('value' in descriptor))
+      throw new Error(
+        'Invalid SLH-DSA encrypted state; usage history is unsafe'
+      );
+    snapshot[field] = descriptor.value;
+  }
+  if (
+    snapshot.keyId !== keyId ||
+    snapshot.version !== SLH_DSA_STATE_VERSION ||
+    typeof snapshot.cipherText !== 'string' ||
+    !snapshot.cipherText ||
+    !Number.isSafeInteger(snapshot.updatedAt) ||
+    (snapshot.updatedAt as number) < 0
+  )
+    throw new Error('Invalid SLH-DSA encrypted state; usage history is unsafe');
+  return snapshot as EncryptedSLHDSAStateEnvelope;
+};
+
 export const saveEncryptedSLHDSAState = async (
   state: SLHDSAProvisionedState,
   crypto: Pick<SLHDSASessionStateCrypto, 'encrypt'>,
@@ -90,31 +127,37 @@ export const saveEncryptedSLHDSAState = async (
 ) => {
   assertCurrentSession?.();
   validateSLHDSAProvisionedState(state);
-  const storageKey = getSLHDSAStateStorageKey(state.keyId);
-  const cipherText = await crypto.encrypt(JSON.stringify(state));
+  const keyId = state.keyId;
+  const storageKey = getSLHDSAStateStorageKey(keyId);
+  const plainText = JSON.stringify(state);
+  const cipherText = await crypto.encrypt(plainText, keyId);
   assertCurrentSession?.();
+  if (typeof cipherText !== 'string' || !cipherText)
+    throw new Error('Invalid SLH-DSA encrypted state; usage history is unsafe');
   const envelope: EncryptedSLHDSAStateEnvelope = {
     cipherText,
-    keyId: state.keyId,
+    keyId,
     updatedAt: Date.now(),
     version: SLH_DSA_STATE_VERSION,
   };
-  await chromeStorage.setItem(storageKey, envelope);
-  assertCurrentSession?.();
-  const savedEnvelope = (await chromeStorage.getItem(
-    storageKey
-  )) as EncryptedSLHDSAStateEnvelope | null;
-  assertCurrentSession?.();
-  if (
-    !savedEnvelope ||
-    savedEnvelope.keyId !== state.keyId ||
-    savedEnvelope.version !== SLH_DSA_STATE_VERSION ||
-    savedEnvelope.cipherText !== cipherText
-  ) {
-    throw new Error(
-      `Failed to persist SLH-DSA encrypted local signer state at ${storageKey}`
-    );
-  }
+  // Share the existing wallet reset/snapshot barrier, without holding it during
+  // encryption or signing. A retired session cannot write after recovery.
+  await walletPersistenceMutex.runExclusive(async () => {
+    assertWalletPersistenceAllowed();
+    assertCurrentSession?.();
+    await chromeStorage.setItem(storageKey, envelope);
+    assertCurrentSession?.();
+    const savedEnvelope = await readEnvelope(keyId);
+    assertWalletPersistenceAllowed();
+    assertCurrentSession?.();
+    if (
+      !savedEnvelope ||
+      JSON.stringify(savedEnvelope) !== JSON.stringify(envelope)
+    )
+      throw new Error(
+        `Failed to persist SLH-DSA encrypted local signer state at ${storageKey}`
+      );
+  });
 };
 
 export const loadEncryptedSLHDSAState = async ({
@@ -124,21 +167,9 @@ export const loadEncryptedSLHDSAState = async ({
   crypto: Pick<SLHDSASessionStateCrypto, 'decrypt'>;
   keyId: string;
 }): Promise<SLHDSAProvisionedState | null> => {
-  const envelope = (await chromeStorage.getItem(
-    getSLHDSAStateStorageKey(keyId)
-  )) as EncryptedSLHDSAStateEnvelope | null;
-  if (!envelope) {
-    return null;
-  }
-  if (
-    envelope.keyId !== keyId ||
-    envelope.version !== SLH_DSA_STATE_VERSION ||
-    typeof envelope.cipherText !== 'string' ||
-    !envelope.cipherText
-  ) {
-    throw new Error('Invalid SLH-DSA encrypted state; usage history is unsafe');
-  }
-  const state = JSON.parse(await crypto.decrypt(envelope.cipherText));
+  const envelope = await readEnvelope(keyId);
+  if (!envelope) return null;
+  const state = JSON.parse(await crypto.decrypt(envelope.cipherText, keyId));
   validateSLHDSAProvisionedState(state);
   if (state.keyId !== keyId) {
     throw new Error('SLH-DSA local signer state belongs to a different key');

@@ -1,3 +1,4 @@
+import { IdleTextInput } from './IdleActivityBoundary';
 import React, {
   useEffect,
   useLayoutEffect,
@@ -12,7 +13,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,7 +23,6 @@ import {
 } from '../../../../source/shared/erc20';
 import type { NativeTransferView } from '../custody/transfers';
 import {
-  getNativeSendContext,
   type NativeSendContext,
 } from '../custody/networkContext';
 import {
@@ -72,13 +71,15 @@ export function NativeSend({
   onBack,
   accountLabel = 'Account 1',
   token,
-  context = getNativeSendContext('ethereum'),
+  context,
+  savedHash,
 }: {
   controller: NativeTransferView;
   onBack(): void;
   accountLabel?: string;
   token?: Erc20Metadata;
-  context?: NativeSendContext;
+  context: NativeSendContext;
+  savedHash?: string;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -87,14 +88,7 @@ export function NativeSend({
   );
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState('');
-  const [password, setPassword] = useState('');
-  const [passwordReviewId, setPasswordReviewId] = useState(snapshot.review?.id);
   const [error, setError] = useState('');
-  if (passwordReviewId !== snapshot.review?.id) {
-    // Reset before React commits a replacement or expired review to the screen.
-    setPasswordReviewId(snapshot.review?.id);
-    setPassword('');
-  }
   const lifetime = useRef({ alive: true, epoch: 0 });
   const latestBack = useRef(onBack);
   useLayoutEffect(() => {
@@ -106,10 +100,6 @@ export function NativeSend({
   const networkLabel = `${capturedContext.name}${
     capturedContext.testnet ? ' · Test network' : ''
   }`;
-  const depthConfirmed = capturedContext.settlement.kind === 'nevm-depth-12';
-  const zkSysSettlement =
-    capturedContext.settlement.kind === 'zkos-finalized-executed';
-  const networkArticle = capturedContext.networkId === 'ethereum' ? 'an' : 'a';
   const reviewedToken = review?.intent?.token;
   const outcomeToken = snapshot.intent?.token;
   const amountText = review
@@ -135,7 +125,6 @@ export function NativeSend({
   );
   const close = () => {
     lifetime.current.epoch++;
-    setPassword('');
     controller.cancel();
     Keyboard.dismiss();
     onBack();
@@ -168,30 +157,22 @@ export function NativeSend({
     }
   };
   useEffect(() => {
-    void controller.recover().catch(() => undefined);
-  }, [controller]);
+    void controller.recover(!!savedHash, savedHash).catch(() => undefined);
+  }, [controller, savedHash]);
   const submit = () => {
-    if (!review || !password || busy) return;
-    let entered = password;
-    setPassword('');
+    if (!review || busy) return;
     Keyboard.dismiss();
-    void run(async () => {
-      try {
-        await controller.confirm(review.id, entered);
-      } finally {
-        entered = '';
-      }
-    });
+    void run(() => controller.confirm(review.id));
   };
   const input = (
     label: string,
     value: string,
     change: (value: string) => void,
-    options: { secret?: boolean; decimal?: boolean; max?: number } = {}
+    options: { decimal?: boolean; max?: number } = {}
   ) => (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
-      <TextInput
+      <IdleTextInput
         accessibilityLabel={label}
         value={value}
         onChangeText={change}
@@ -202,7 +183,6 @@ export function NativeSend({
         autoComplete="off"
         importantForAutofill="noExcludeDescendants"
         textContentType="none"
-        secureTextEntry={options.secret}
         keyboardType={options.decimal ? 'decimal-pad' : 'default'}
         maxLength={options.max ?? 1024}
         placeholderTextColor={colors.muted}
@@ -226,8 +206,8 @@ export function NativeSend({
     ].includes(snapshot.phase);
   const footer = review ? (
     <Button
-      title={review.retry ? 'Confirm retry' : 'Confirm and send'}
-      disabled={busy || !password}
+      title={review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+      disabled={busy}
       onPress={submit}
       testID="native-send-confirm"
     />
@@ -259,7 +239,7 @@ export function NativeSend({
           <Header
             title={
               review
-                ? 'Review transfer'
+                ? (review.retry ? 'Review resend' : 'Review transfer')
                 : hasOutcome
                 ? 'Transfer status'
                 : token
@@ -297,6 +277,15 @@ export function NativeSend({
                 </Text>
               </View>
               {reviewedToken && tokenIdentity(reviewedToken)}
+              {!!review.replay?.predecessorCount && <Card style={s.summary}>
+                <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
+                <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
+                {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
+                  title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
+                  onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
+                {review.replay.predecessors.length < review.replay.predecessorCount && <Button title="Load more saved transactions" variant="quiet" disabled={busy}
+                  onPress={() => void run(() => controller.loadMorePredecessors())} />}
+              </Card>}
               <Card style={s.summary}>
                 <Text style={s.label}>TO</Text>
                 <Text
@@ -307,20 +296,18 @@ export function NativeSend({
                   {review.recipient}
                 </Text>
                 <View style={s.separator} />
-                <Text style={s.label}>MAXIMUM NETWORK FEE</Text>
+                <Text style={s.label}>EXECUTION FEE LIMIT</Text>
                 <Text testID="native-send-fee">
                   {formatBaseUnits(review.maximumFeeUnits, 18)}{' '}
                   {capturedContext.symbol}
                 </Text>
                 <Text style={s.hint}>
-                  {zkSysSettlement
-                    ? 'This limit includes execution, proving and data costs. The final network fee may be lower.'
-                    : 'The final network fee may be lower. It cannot exceed this limit.'}
+                  The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
                 </Text>
                 {!reviewedToken && (
                   <>
                     <View style={s.separator} />
-                    <Text style={s.label}>MAXIMUM TOTAL</Text>
+                    <Text style={s.label}>AMOUNT + EXECUTION FEE LIMIT</Text>
                     <Text>
                       {formatBaseUnits(review.totalUnits, 18)}{' '}
                       {capturedContext.symbol}
@@ -331,42 +318,28 @@ export function NativeSend({
               {reviewedToken && (
                 <Notice
                   title="Token transfer"
-                  body="The token amount and ETH network fee are separate. Token contracts may deduct fees or apply other rules, so the received amount can differ."
+                  body={`The token amount and ${capturedContext.symbol} network fee are separate. Token contracts may deduct fees or apply other rules, so the received amount can differ.`}
                   tone="amber"
                 />
               )}
-              {depthConfirmed && (
-                <Notice
-                  title="12-confirmation depth policy"
-                  body="Pali marks this transfer depth confirmed after 12 confirmations. Depth confirmation is not protocol finality."
-                />
-              )}
-              {zkSysSettlement && (
-                <Notice
-                  title="zkSYS settlement policy"
-                  body="Settlement confirmation uses the zkSYS RPC's finalized execution boundary. A receipt alone does not establish settlement."
-                />
-              )}
-              {review.retry && (
-                <Notice
-                  title="Retry the same transaction"
-                  body="The network may already have this transaction. Retrying sends the same signed bytes and hash, without creating another transfer."
-                  tone="amber"
-                />
-              )}
-              {input('Confirm your wallet password', password, setPassword, {
-                secret: true,
-              })}
+              {review.replay && <Card style={s.summary}>
+                <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>
+                <Text selectable style={s.address}>{review.replay.hash}</Text>
+                <Text style={s.hint}>Connection: {new URL(capturedContext.rpcUrl).host}</Text>
+                <Text>{review.replay.operation === 'cancel' ? 'Cancellation' : review.replay.operation === 'speed-up' ? 'Fee replacement' : review.replay.to === null ? 'Contract creation' : review.replay.dataBytes ? 'Contract interaction' : 'Transfer'}</Text>
+                {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? 'Contract data'} · {review.replay.dataBytes} bytes</Text>}
+                {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
+                {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
+              </Card>}
               <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>
               <Button
-                title="Edit transfer"
+                title={review.retry ? 'Close review' : 'Edit transfer'}
                 variant="quiet"
                 disabled={busy}
                 onPress={() => {
-                  setPassword('');
                   controller.cancel();
                 }}
               />
@@ -380,19 +353,11 @@ export function NativeSend({
                 />
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
-                    ? depthConfirmed
-                      ? 'Depth confirmed'
-                      : zkSysSettlement
-                      ? 'Settlement confirmed'
-                      : outcomeToken
+                    ? outcomeToken
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
-                    ? depthConfirmed
-                      ? 'Reverted · depth confirmed'
-                      : zkSysSettlement
-                      ? 'Reverted · settlement confirmed'
-                      : 'Transfer reverted'
+                    ? 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
@@ -447,7 +412,6 @@ export function NativeSend({
                   onPress={() => {
                     setRecipient('');
                     setAmount('');
-                    setPassword('');
                     setError('');
                     controller.cancel();
                   }}
@@ -473,18 +437,7 @@ export function NativeSend({
                   max: token ? 334 : 100,
                 }
               )}
-              <Notice
-                title={`${capturedContext.name} network`}
-                body={
-                  token
-                    ? 'Send this token only on Ethereum. Check its full contract address. The token amount and ETH network fee are shown separately before you confirm.'
-                    : `Use ${networkArticle} ${capturedContext.name} address. The amount and maximum ${capturedContext.symbol} network fee are shown before you confirm.`
-                }
-              />
-              <Text style={s.hint}>
-                Preparing a transfer shares its addresses and amount with the{' '}
-                {capturedContext.name} RPC provider.
-              </Text>
+
             </>
           )}
           {busy && (

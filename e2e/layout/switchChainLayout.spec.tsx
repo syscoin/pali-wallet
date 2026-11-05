@@ -163,7 +163,7 @@ beforeAll(async () => {
         .toString('base64')}`,
     ])
   );
-  browser = await chromium.launch({ headless: true });
+  browser = await chromium.launch({ headless: true, chromiumSandbox: true });
 }, 30_000);
 afterAll(async () => {
   await browser?.close();

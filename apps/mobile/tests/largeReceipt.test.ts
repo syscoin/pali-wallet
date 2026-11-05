@@ -19,7 +19,7 @@ const largeReceipt = {
   ...receipt,
   logs: [{ address: to, topics: [hash], data: '0x' + 'ab'.repeat(10_000) }],
 };
-const finalizedBlock = { number: '0xa', hash: blockHash };
+const canonicalBlock = { number: '0x8', hash: blockHash, gasLimit: '0x1c9c380' };
 const jsonBody = (body: string) =>
   new Response(body, { headers: { 'content-type': 'application/json' } });
 type Stage = 'initial' | 'repeated';
@@ -39,7 +39,7 @@ function fixture(
   let receipts = 0,
     blocks = 0,
     chains = 0;
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (_url, init) => {
       const request = JSON.parse(String(init.body));
       calls.push(request);
@@ -75,14 +75,11 @@ function fixture(
         result = receipt;
       } else if (request.method === 'eth_getTransactionCount') {
         options.onNonce?.();
-        // The first complete receipt can be eligible before the repeated
-        // oversized read. The subsequent fallback must query the nonce again.
-        result = options.consumed !== false ||
-          (options.stage === 'repeated' && receipts === 1) ? '0x8' : '0x7';
+        result = options.consumed !== false ? '0x8' : '0x7';
       } else if (request.method === 'eth_getBlockByNumber') {
         result = options.blockResult
           ? options.blockResult(++blocks)
-          : { ...finalizedBlock, number: request.params[0] === 'finalized' ? finalizedBlock.number : request.params[0] };
+          : canonicalBlock;
       } else throw Error('Unexpected RPC method');
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: request.id, result }),
@@ -95,116 +92,47 @@ function fixture(
   return { rpc, calls };
 }
 
-for (const stage of ['initial', 'repeated'] as const) {
-  for (const kind of ['stream', 'text', 'declared'] as const) {
-    test(`${stage} oversized ${kind} receipt reports only independently finalized nonce consumption`, async () => {
-      const f = fixture({ stage, kind });
-      assert.deepEqual(
-        await f.rpc.receipt(expected, new AbortController().signal),
-        {
-          status: 'nonce-consumed',
-          finalized: true,
-        }
-      );
-      const blockReads = f.calls.filter(
-        (c) => c.method === 'eth_getBlockByNumber'
-      );
-      assert.deepEqual(
-        blockReads.map((c) => c.params),
-        stage === 'repeated' ? [
-          ['finalized', false],
-          ['0x8', false],
-          ['finalized', false],
-          ['0xa', false],
-        ] : [
-          ['finalized', false],
-          ['0xa', false],
-        ]
-      );
-      assert(
-        f.calls.some(
-          (c) => c.method === 'eth_getTransactionCount' && c.params[1] === '0xa'
-        )
-      );
-      assert.equal(f.calls.at(-1)?.method, 'eth_chainId');
-      assert(!f.calls.some((c) => c.method === 'eth_sendRawTransaction'));
-    });
-  }
-  test(`${stage} oversized receipt with an unconsumed nonce is unavailable, never absent or confirmed`, async () => {
-    const f = fixture({ stage, consumed: false });
-    await assert.rejects(
-      f.rpc.receipt(expected, new AbortController().signal),
-      { code: 'UNAVAILABLE' }
-    );
+for (const stage of ['initial', 'repeated'] as const) for (const kind of ['stream', 'text', 'declared'] as const) for (const consumed of [true, false]) {
+  test(`${stage} oversized ${kind} receipt is unavailable with ${consumed ? 'used' : 'unused'} nonce`, async () => {
+    const f = fixture({ stage, kind, consumed });
+    if (stage === 'repeated') assert.deepEqual(await f.rpc.receipt(expected, new AbortController().signal), { status: 'confirmed', blockHash, blockNumber: '8' });
+    const before = f.calls.length;
+    await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'UNAVAILABLE' });
+    assert.deepEqual(f.calls.slice(before).map(c => c.method), ['eth_chainId', 'eth_getTransactionReceipt']);
+    assert(!f.calls.some(c => c.method === 'eth_sendRawTransaction' || c.params.includes('finalized')));
   });
 }
 
-test('oversized receipt fallback accepts separately bounded block responses above the ordinary 16 KiB budget', async () => {
-  const block = { ...finalizedBlock, transactions: Array(300).fill(hash) };
-  assert(JSON.stringify(block).length > 16 * 1024);
-  const f = fixture({ blockResult: () => block });
-  assert.deepEqual(
-    await f.rpc.receipt(expected, new AbortController().signal),
-    { status: 'nonce-consumed', finalized: true }
-  );
+test('ordinary inclusion accepts a separately bounded canonical block above 16KiB', async () => {
+  const largeBlock = { ...canonicalBlock, transactions: Array(300).fill(hash) };
+  assert(JSON.stringify(largeBlock).length > 16 * 1024);
+  const f = fixture({ stage: 'repeated', blockResult: () => largeBlock });
+  assert.deepEqual(await f.rpc.receipt(expected, new AbortController().signal), { status: 'confirmed', blockHash, blockNumber: '8' });
+  assert.deepEqual(f.calls.filter(c => c.method === 'eth_getBlockByNumber').map(c => c.params), [['0x8', false]]);
+  assert(!f.calls.some(c => c.method === 'eth_getTransactionCount'));
 });
 
-test('oversized receipt fallback rejects malformed, mismatched or changed canonical anchors', async () => {
-  for (const blockResult of [
-    () => null,
-    () => ({ ...finalizedBlock, number: '0x00a' }),
-    () => ({ ...finalizedBlock, hash: 'invalid' }),
-    (read: number) => ({
-      ...finalizedBlock,
-      number: read === 1 ? '0xa' : '0xb',
-    }),
-    (read: number) => ({
-      ...finalizedBlock,
-      hash: read === 1 ? blockHash : hash,
-    }),
-  ]) {
-    const f = fixture({ blockResult });
-    await assert.rejects(
-      f.rpc.receipt(expected, new AbortController().signal),
-      (error: unknown) =>
-        error instanceof Error &&
-        ['INVALID_RESPONSE', 'UNAVAILABLE'].includes(
-          (error as { code?: string }).code ?? ''
-        )
-    );
+test('malformed, mismatched or oversized canonical blocks cannot confirm a valid receipt', async () => {
+  for (const value of [null, { ...canonicalBlock, number: '0x08' }, { ...canonicalBlock, number: '0x9' }, { ...canonicalBlock, hash: 'invalid' }, { ...canonicalBlock, hash }, { ...canonicalBlock, extra: 'x'.repeat(512 * 1024) }]) {
+    const f = fixture({ stage: 'repeated', blockResult: () => value });
+    await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), (error: unknown) => error instanceof Error && ['INVALID_RESPONSE', 'UNAVAILABLE'].includes((error as { code?: string }).code ?? ''));
+    assert(!f.calls.some(c => c.method === 'eth_getTransactionCount'));
   }
-  const tooLarge = fixture({
-    blockResult: () => ({ ...finalizedBlock, extra: 'x'.repeat(512 * 1024) }),
-  });
-  await assert.rejects(
-    tooLarge.rpc.receipt(expected, new AbortController().signal),
-    { code: 'UNAVAILABLE' }
-  );
 });
 
-test('oversized receipt fallback retains chain and cancellation guards', async () => {
-  const changed = fixture({
-    chainResult: (read) => (read === 1 ? '0x1' : '0x2'),
-  });
-  await assert.rejects(
-    changed.rpc.receipt(expected, new AbortController().signal),
-    { code: 'INVALID_RESPONSE' }
-  );
+test('ordinary receipt observations retain chain binding and cancellation', async () => {
+  const changed = fixture({ stage: 'repeated', chainResult: read => read === 1 ? '0x1' : '0x2' });
+  await assert.rejects(changed.rpc.receipt(expected, new AbortController().signal), { code: 'INVALID_RESPONSE' });
   const wrong = fixture({ chainResult: () => '0x2' });
-  await assert.rejects(
-    wrong.rpc.receipt(expected, new AbortController().signal),
-    { code: 'INVALID_RESPONSE' }
-  );
+  await assert.rejects(wrong.rpc.receipt(expected, new AbortController().signal), { code: 'INVALID_RESPONSE' });
   assert.equal(wrong.calls.length, 1);
   const controller = new AbortController();
-  const cancelled = fixture({ onNonce: () => controller.abort() });
-  await assert.rejects(cancelled.rpc.receipt(expected, controller.signal), {
-    code: 'CANCELLED',
-  });
-  assert.equal(cancelled.calls.at(-1)?.method, 'eth_getTransactionCount');
+  const canceled = fixture({ stage: 'repeated', blockResult: () => { controller.abort(); return canonicalBlock; } });
+  await assert.rejects(canceled.rpc.receipt(expected, controller.signal), { code: 'CANCELLED' });
+  assert.equal(canceled.calls.at(-1)?.method, 'eth_getBlockByNumber');
 });
 
-test('ordinary receipt failures never use the size-limit nonce fallback', async () => {
+test('ordinary receipt failures cannot become nonce-used evidence', async () => {
   const responses = [
     () => {
       throw Error('Network unavailable');
@@ -241,13 +169,8 @@ test('ordinary receipt failures never use the size-limit nonce fallback', async 
   }
 });
 
-test('opaque oversized bodies establish no receipt outcome but permit independent nonce-consumed evidence', async () => {
+test('opaque oversized bodies establish no receipt or nonce-used outcome', async () => {
   const f = fixture({ receiptResponse: () => jsonBody('x'.repeat(17000)) });
-  assert.deepEqual(
-    await f.rpc.receipt(expected, new AbortController().signal),
-    {
-      status: 'nonce-consumed',
-      finalized: true,
-    }
-  );
+  await assert.rejects(f.rpc.receipt(expected, new AbortController().signal), { code: 'UNAVAILABLE' });
+  assert(!f.calls.some(c => c.method === 'eth_getTransactionCount'));
 });

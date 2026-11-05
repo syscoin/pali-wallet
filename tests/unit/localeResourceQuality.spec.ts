@@ -32,6 +32,7 @@ const flat = Object.fromEntries(
 // shared with English in one language is valid; this catches all-eight copies.
 const identicalTechnicalNames = {
   'transactionDisplay.nonce': 'Nonce',
+  'transactions.replay.nonce': 'Nonce',
   'send.batchId': 'ID',
   'tokens.assetGuid': 'GUID',
   'transactions.methodNames.uri': 'URI',

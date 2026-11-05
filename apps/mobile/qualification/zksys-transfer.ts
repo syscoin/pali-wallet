@@ -1,8 +1,8 @@
+import { readSignedRecordEvidence, retainedSignedEntries } from './signed-record-evidence.ts';
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { NativeTransferRuntime } from '../src/custody/transfers.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 
 type Check = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
@@ -28,7 +28,7 @@ export type ZksysQualificationEvidence = Readonly<{
   zksysAddress: string;
   zksysTransferHash: string;
   zksysChainId: '57057';
-  zksysJournalContainerVersion: 2;
+  zksysJournalContainerVersion: 1;
   zksysSignatures: number;
   zksysAuthorizations: number;
   zksysInjectedBroadcasts: 1;
@@ -71,7 +71,7 @@ export function isZksysQualificationReport(
     ) &&
     new Set(hashes).size === hashes.length &&
     report.zksysChainId === '57057' &&
-    report.zksysJournalContainerVersion === 2 &&
+    report.zksysJournalContainerVersion === 1 &&
     report.zksysSignatures === (report.phase === 'create' ? 1 : 0) &&
     report.zksysAuthorizations === (report.phase === 'create' ? 0 : 1) &&
     report.zksysInjectedBroadcasts === 1 &&
@@ -115,7 +115,7 @@ export async function qualifyNativeZksysTransfer(
     phase: 'create' | 'restart';
     authority: NativeCustodyAuthority;
     runtime: KeyringRuntime;
-    storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+    storage: Pick<OpenWalletStorage, 'keyringStorage' | 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
     password: string;
     expectedFifthAddress?: string;
     check: Check;
@@ -131,16 +131,12 @@ export async function qualifyNativeZksysTransfer(
   const [
     { NativeTransfers },
     { NativeTransferRpc },
-    { nativeTransferJournalKey },
     { Transaction },
-    { encodeStorageValue },
     { getNativeNetwork },
   ] = await Promise.all([
     import('../src/custody/transfers.ts'),
     import('../src/custody/transferRpc.ts'),
-    import('../src/custody/transferJournal.ts'),
     import('ethers/transaction'),
-    import('../src/storage/json.ts'),
     import('../src/custody/networkContext.ts'),
   ]);
   const transfer = runtime.transfers;
@@ -173,24 +169,14 @@ export async function qualifyNativeZksysTransfer(
     );
   const fingerprint = await storage.getWalletFingerprint();
   initialGuard();
-  const olderRows: string[] = [];
-  for (const index of [0, 1, 2, 3]) {
-    expect(
-      catalogue().accounts.some((account) => account.id === `hd:60:${index}`)
-    );
-    const row = await storage.keyringStorage.get(
-      nativeTransferJournalKey(index)
-    );
-    initialGuard();
-    expect(row !== undefined);
-    olderRows.push(encodeStorageValue(row));
-  }
+  const olderAddresses = [0, 1, 2, 3].map(index => {
+    const account = catalogue().accounts.find(item => item.id === `hd:60:${index}`); expect(account); return account.address;
+  });
+  const before = await readSignedRecordEvidence(storage);
+  const olderRows = retainedSignedEntries(before.entries, olderAddresses);
   if (phase === 'create') {
-    expect(!catalogue().accounts.some((account) => account.index === 4));
-    expect(
-      (await storage.keyringStorage.get(nativeTransferJournalKey(4))) ===
-        undefined
-    );
+    expect(!catalogue().accounts.some(account => account.index === 4));
+    expect(!before.entries.some(entry => entry.signer.type === 'HDAccount' && entry.signer.id === 4));
     initialGuard();
     await check('native zkSYS dedicated HD4 account', () =>
       manage({ kind: 'create', label: 'Qualification zkSYS account', password })
@@ -225,7 +211,7 @@ export async function qualifyNativeZksysTransfer(
   guard();
   const registration = getNativeNetwork('zksys-testnet');
   const recipient = '0x1111111111111111111111111111111111111111';
-  const readSaved = async (expectedPhase: 'attempted' | 'submitted') => {
+  const readSaved = async (expectedPhase: 'signed' | 'submitted') => {
     const entry = await (await transfer.journal(guard)).load();
     guard();
     expect(
@@ -245,32 +231,17 @@ export async function qualifyNativeZksysTransfer(
         tx.value === 789n &&
         tx.data === '0x' &&
         tx.gasLimit === 36000n &&
-        tx.maxFeePerGas === 20n &&
+        tx.maxFeePerGas === 25n &&
         tx.maxPriorityFeePerGas === 0n &&
         tx.hash === entry.hash &&
         tx.serialized === entry.rawTransaction
     );
-    const row = (await storage.keyringStorage.get(
-      nativeTransferJournalKey(4)
-    )) as TransferJournalContainer;
-    guard();
-    expect(
-      row?.version === 2 &&
-        row.walletFingerprint === fingerprint &&
-        row.account.id === account.id &&
-        row.account.index === 4 &&
-        row.account.address === address &&
-        row.entries.length === 1 &&
-        row.entries[0]?.rawTransaction === entry.rawTransaction &&
-        row.entries[0].hash === entry.hash &&
-        row.entries[0].phase === expectedPhase &&
-        row.entries[0].intent === undefined &&
-        Object.entries(registration).every(
-          ([key, value]) =>
-            row.entries[0]?.registration[key as keyof typeof registration] ===
-            value
-        )
-    );
+    const row = await readSignedRecordEvidence(storage); guard();
+    const retained = row.entries.filter(item => item.from === address.toLowerCase());
+    expect(row.version === 1 && retained.length === 1 && retained[0]?.hash === entry.hash &&
+      retained[0].phase === expectedPhase && retained[0].chainId === '57057' &&
+      retained[0].signer.type === 'HDAccount' && retained[0].signer.id === 4 &&
+      retained[0].metadata?.intent === undefined && !row.raw?.includes(entry.rawTransaction));
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
     return entry;
@@ -282,14 +253,17 @@ export async function qualifyNativeZksysTransfer(
     requests = 0;
   let expectedRaw: string | undefined, expectedHash: string | undefined;
   const wrapped: NativeTransferRuntime = {
+    replay: (...args) => transfer.replay(...args),
+      submit: (...args) => transfer.submit(...args),
     journal: (checkCurrent) => transfer.journal(checkCurrent),
-    async sign(transaction, credential, checkCurrent, intent) {
+    async sign(transaction, checkCurrent, intent) {
       expect(phase === 'create' && ++signatures === 1 && intent === undefined);
-      return transfer.sign(transaction, credential, checkCurrent, intent);
+      return transfer.sign(transaction, checkCurrent, intent);
     },
-    async authorize(credential, checkCurrent) {
+    // Retain the report field: this counts unlocked-session admission, not a password check.
+    assertUnlocked(checkCurrent) {
       expect(phase === 'restart' && ++authorizations === 1);
-      return transfer.authorize(credential, checkCurrent);
+      return transfer.assertUnlocked(checkCurrent);
     },
   };
   const rpc = new NativeTransferRpc({
@@ -351,13 +325,14 @@ export async function qualifyNativeZksysTransfer(
         expect(
           params.length === 2 &&
             params[0] === address &&
-            ['pending', '0x5a'].includes(params[1] as string)
+            ['pending', 'latest', '0x5a'].includes(params[1] as string)
         );
         result = '0x0';
       } else if (body.method === 'eth_getBalance') {
         expect(phase === 'create');
         same([address, 'pending']);
         result = '0xde0b6b3a7640000';
+      } else if (body.method === 'eth_gasPrice') { same([]); result = '0xa';
       } else if (body.method === 'eth_feeHistory') {
         expect(phase === 'create');
         same(['0x1', 'latest', []]);
@@ -370,14 +345,14 @@ export async function qualifyNativeZksysTransfer(
         expect(phase === 'create' && ++estimates <= 2);
         same([
           {
-            type: '0x2',
-            chainId: '0xdee1',
             from: address,
             to: recipient,
-            nonce: '0x0',
             value: '0x315',
             data: '0x',
-            maxFeePerGas: '0x14',
+            type: '0x2',
+            chainId: '0xdee1',
+            nonce: '0x0',
+            maxFeePerGas: '0x19',
             maxPriorityFeePerGas: '0x0',
           },
           'pending',
@@ -387,7 +362,7 @@ export async function qualifyNativeZksysTransfer(
         same([expectedHash]);
         result = null;
       } else if (body.method === 'eth_sendRawTransaction') {
-        const entry = await readSaved('attempted');
+        const entry = await readSaved('signed');
         same([entry.rawTransaction]);
         expect(++broadcasts === 1);
         if (expectedRaw)
@@ -430,9 +405,9 @@ export async function qualifyNativeZksysTransfer(
             review &&
               !review.retry &&
               review.context.chainId === '57057' &&
-              review.totalUnits === '720789'
+              review.totalUnits === '900789'
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(controller.getSnapshot().phase === 'unknown');
         }
@@ -441,7 +416,7 @@ export async function qualifyNativeZksysTransfer(
       await check(
         'native zkSYS exact-byte retry after cold restart',
         async () => {
-          const entry = await readSaved('attempted');
+          const entry = await readSaved('signed');
           expectedRaw = entry.rawTransaction;
           expectedHash = entry.hash;
           await controller.recover(true);
@@ -452,13 +427,13 @@ export async function qualifyNativeZksysTransfer(
               review.context.chainId === '57057' &&
               controller.getSnapshot().hash === entry.hash
           );
-          await controller.confirm(review.id, password);
+          await controller.confirm(review.id);
           guard();
           expect(controller.getSnapshot().phase === 'pending');
         }
       );
     const saved = await readSaved(
-      phase === 'create' ? 'attempted' : 'submitted'
+      phase === 'create' ? 'signed' : 'submitted'
     );
     expect(
       signatures === (phase === 'create' ? 1 : 0) &&
@@ -466,13 +441,7 @@ export async function qualifyNativeZksysTransfer(
         broadcasts === 1 &&
         estimates === (phase === 'create' ? 2 : 0)
     );
-    for (const index of [0, 1, 2, 3]) {
-      const row = await storage.keyringStorage.get(
-        nativeTransferJournalKey(index)
-      );
-      guard();
-      expect(encodeStorageValue(row) === olderRows[index]);
-    }
+    expect(retainedSignedEntries((await readSignedRecordEvidence(storage)).entries, olderAddresses) === olderRows);
     expect((await storage.getWalletFingerprint()) === fingerprint);
     guard();
     const evidence: ZksysQualificationEvidence = Object.freeze({
@@ -482,7 +451,7 @@ export async function qualifyNativeZksysTransfer(
       zksysAddress: address,
       zksysTransferHash: saved.hash,
       zksysChainId: '57057',
-      zksysJournalContainerVersion: 2,
+      zksysJournalContainerVersion: 1,
       zksysSignatures: signatures,
       zksysAuthorizations: authorizations,
       zksysInjectedBroadcasts: 1,

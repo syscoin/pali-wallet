@@ -14,6 +14,8 @@ jobs:
       - run: yarn install --frozen-lockfile
       - run: yarn type-check
       - run: yarn test-all
+      - name: Validate Chromium sandbox helper admission
+        run: node --test .github/scripts/tests/configure-chromium-sandbox.test.cjs
   recovery-enrollment:
     name: Pali recovery enrollment interoperability
     runs-on: ubuntu-latest
@@ -128,6 +130,13 @@ jobs:
           key: ${{ steps.apt-cache.outputs.cache-primary-key }}
       - name: Build extension
         run: yarn build:chrome
+      - name: Verify installed Chromium sandbox helper
+        run: bash .github/scripts/configure-chromium-sandbox.sh
+      - name: Verify wallet HTTP identity on the wire
+        if: matrix.shard == 1
+        env:
+          PALI_HTTP_WIRE_REPORT: ${{ github.workspace }}/http-identity-wire.json
+        run: node scripts/test-wallet-http-identity.cjs
       - name: Enforce production bundle budgets
         # Check the shipped artifact, not late-emitted build-only metadata.
         run: |
@@ -157,6 +166,7 @@ jobs:
           path: |
             e2e/visual/__screenshots__/
             e2e/artifacts/
+            http-identity-wire.json
           retention-days: 14
   visual-result:
     name: visual regression suite
@@ -222,6 +232,8 @@ jobs:
       - name: Remove temporary apt configuration
         if: always()
         run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
+      - name: Verify installed Chromium sandbox helper
+        run: bash .github/scripts/configure-chromium-sandbox.sh
       - name: Install local conformance chain fixture
         uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1
         with:

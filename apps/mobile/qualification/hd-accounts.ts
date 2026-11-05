@@ -2,7 +2,7 @@ import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { NativeAccountRequest } from '../src/custody/accounts.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence } from './signed-record-evidence.ts';
 
 type Check = <T>(name: string, operation: () => Promise<T>) => Promise<T>;
 export type HdQualificationEvidence = Readonly<{
@@ -13,14 +13,14 @@ export type HdQualificationEvidence = Readonly<{
   nativeHdAccountsVerified: true;
   selectedAccountId: 'hd:60:1';
   selectedAccountIndex: 1;
-  journalContainerVersion: 2;
+  journalContainerVersion: 1;
 }>;
 
 export function isHdQualificationReport(report: Record<string, unknown>): boolean {
   const fields = ['nativeHdAccountsVerified', 'selectedAccountId', 'selectedAccountIndex', 'firstTransferHash', 'journalContainerVersion'];
   if (report.status === 'failed') return fields.every((field) => !Object.hasOwn(report, field));
   return report.status === 'passed' && report.nativeHdAccountsVerified === true &&
-    report.selectedAccountId === 'hd:60:1' && report.selectedAccountIndex === 1 && report.journalContainerVersion === 2 &&
+    report.selectedAccountId === 'hd:60:1' && report.selectedAccountIndex === 1 && report.journalContainerVersion === 1 &&
     typeof report.address === 'string' && /^0x[0-9a-fA-F]{40}$/.test(report.address) &&
     (report.scenario !== 'import' || report.address === '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0') &&
     typeof report.firstTransferHash === 'string' && /^0x[0-9a-f]{64}$/.test(report.firstTransferHash) &&
@@ -44,7 +44,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   phase: 'create' | 'restart';
   authority: NativeCustodyAuthority;
   runtime: KeyringRuntime;
-  storage: Pick<OpenWalletStorage, 'keyringStorage' | 'getWalletFingerprint'>;
+  storage: Pick<OpenWalletStorage, 'signedRecords' | 'recovery' | 'getWalletFingerprint'>;
   password: string;
   expectedSecondAddress?: string;
   expectedRestartAddress?: string | null;
@@ -56,8 +56,6 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   );
   const { CustodyOperationError } = await import('../src/custody/authority.ts');
   const { Transaction } = await import('ethers/transaction');
-  const { nativeTransferJournalKey } = await import('../src/custody/transferJournal.ts');
-  const { getNativeNetwork } = await import('../src/custody/networkContext.ts');
   const transfer = runtime.transfers;
   requireEvidence(transfer && authority.supportsAccountManagement());
   const catalogue = () => {
@@ -97,20 +95,17 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       signed.chainId === 1n && signed.nonce === 0 && signed.value === 123n &&
       signed.gasLimit === 21000n && signed.to === '0x1111111111111111111111111111111111111111' &&
       signed.data === '0x' && signed.maxFeePerGas === 3n && signed.maxPriorityFeePerGas === 1n);
-    // Inspect the real encrypted store through its private fixture handle.
-    // The host DTO above intentionally remains version 1; the persisted row
-    // must be the version-2 account/registration container on both launches.
-    const row = await storage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer | undefined;
+    // Inspect the canonical encrypted profile bundle as well as the authenticated
+    // exact-byte view. Historical records for other senders remain in the bundle.
+    const identity = await storage.recovery?.readIdentity();
+    const row = await readSignedRecordEvidence(storage);
     const fingerprint = await storage.getWalletFingerprint();
     guard();
-    const registration = getNativeNetwork('ethereum');
-    requireEvidence(row?.version === 2 && Number.isSafeInteger(row.revision) && row.revision >= 1 &&
-      row.walletFingerprint === fingerprint && row.account.id === `hd:60:${index}` && row.account.index === index &&
-      row.account.type === 'HDAccount' && row.account.slip44 === 60 && row.account.address === address &&
-      row.entries.length === 1 && row.entries[0]?.phase === 'attempted' && row.entries[0].hash === stored.hash &&
-      row.entries[0].rawTransaction === stored.rawTransaction &&
-      Object.entries(registration).every(([name, value]) =>
-        row.entries[0]?.registration[name as keyof typeof registration] === value));
+    const entry = row.entries.find((value) => value.hash === stored.hash);
+    requireEvidence(row.version === 1 && row.entries.length >= 1 &&
+      identity?.pairFingerprint === fingerprint && identity.walletBindingId === stored.scope.walletFingerprint &&
+      entry?.phase === 'attempted' && entry.chainId === '1' && entry.from === address.toLowerCase() && entry.nonce === 0 &&
+      entry.signer.id === index && entry.signer.type === 'HDAccount' && !row.raw?.includes(stored.rawTransaction));
     return stored.hash;
   };
   const sign = async (address: string, index: number) => {
@@ -118,7 +113,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       type: 2, from: address, to: '0x1111111111111111111111111111111111111111',
       chainId: '1', nonce: '0', value: '123', gasLimit: '21000', data: '0x',
       maxFeePerGas: '3', maxPriorityFeePerGas: '1',
-    }, password, guardFor(address));
+    }, guardFor(address));
     const journal = await transfer.journal(guardFor(address));
     const stored = await journal.saveSigned(signed.rawTransaction);
     requireEvidence(stored.hash === signed.hash);
@@ -131,7 +126,7 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   let transferHash: string;
   if (options.phase === 'create') {
     firstTransferHash = await check('native first-account prepared signature and durable container', () => sign(firstAddress, 0));
-    address = await check('native HD create select remove and restore', async () => {
+    address = await check('native HD create select remove and SDK gap reuse', async () => {
       requireEvidence(catalogue().active.accountId === first.id && selected() === firstAddress);
       await manage({ kind: 'create', label: 'Qualification account 2', password });
       const second = catalogue().accounts.find((account) => account.index === 1);
@@ -142,11 +137,9 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
       await manage({ kind: 'select', id: first.id });
       await manage({ kind: 'remove', id: second.id, password });
       requireEvidence(!catalogue().accounts.some((account) => account.id === second.id));
-      requireEvidence(catalogue().removed.some((account) => account.id === second.id && account.index === 1));
-      await manage({ kind: 'restore', index: 1, label: 'Qualification restored account 2', password });
+      await manage({ kind: 'create', label: 'Qualification reused account 2', password });
       const restored = catalogue().accounts.find((account) => account.index === 1);
       requireEvidence(restored?.id === second.id && restored.address === second.address && selected() === second.address);
-      requireEvidence(!catalogue().removed.some((account) => account.index === 1));
       return second.address;
     });
     transferHash = await check('native selected-HD prepared signature and durable container', () => sign(address, 1));
@@ -176,5 +169,5 @@ export async function qualifyNativeHdAccounts(options: Readonly<{
   }
   requireEvidence(transferHash !== firstTransferHash && catalogue().active.accountId === 'hd:60:1' && selected() === address);
   return Object.freeze({ address, transferHash, firstTransferHash, nativeSigningVerified: true,
-    nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 2 });
+    nativeHdAccountsVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1 });
 }

@@ -101,6 +101,7 @@ let mockProposal: any = {};
 let wallet: any;
 let records: Record<string, any>;
 let reads: any[];
+let rules: chrome.declarativeNetRequest.Rule[];
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 const calls = () =>
   mockEmitter.mock.calls.filter(([[, method]]) => method === 'addCustomRpc');
@@ -135,10 +136,16 @@ beforeEach(async () => {
   }));
   records = {};
   reads = [];
+  rules = [];
   globalThis.fetch = jest.fn(async (url, options) => {
     const body = JSON.parse(String(options?.body));
     // A closed allowlist: no HTTP call escapes the synthetic transport.
     expect(url).toBe(RPC);
+    expect(
+      rules.some(
+        (rule) => rule.condition.urlFilter === `|${new URL(RPC).origin}/`
+      )
+    ).toBe(true);
     expect(options?.method).toBe('POST');
     expect(body).toMatchObject({
       jsonrpc: '2.0',
@@ -153,7 +160,21 @@ beforeEach(async () => {
     } as Response;
   });
   global.chrome = {
-    runtime: { id: 'synthetic-network-whitespace' },
+    runtime: {
+      id: 'a'.repeat(32),
+      getURL: (path: string) => `chrome-extension://${'a'.repeat(32)}/${path}`,
+    },
+    // Exercise the real candidate-endpoint barrier with an acknowledged local
+    // rule store. The closed fetch fixture still forbids non-synthetic HTTP.
+    declarativeNetRequest: {
+      MAX_NUMBER_OF_UNSAFE_DYNAMIC_RULES: 5000,
+      MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
+      getDynamicRules: async () => rules,
+      updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        rules = rules.filter((rule) => !removeRuleIds.includes(rule.id));
+        rules.push(...addRules);
+      },
+    },
     storage: {
       local: {
         get: (keys: string[], callback: (value: any) => void) =>

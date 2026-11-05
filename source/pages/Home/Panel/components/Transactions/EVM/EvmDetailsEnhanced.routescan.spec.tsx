@@ -1,6 +1,11 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 
+// Replay has separate actual consent tests; isolate unrelated detail decoding here.
+jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
+  RetainedTransactionReplay: () => null,
+}));
+
 import { useController } from 'hooks/useController';
 
 import { EvmTransactionDetailsEnhanced } from './EvmDetailsEnhanced';

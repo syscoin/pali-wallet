@@ -30,6 +30,7 @@ jest.mock('state/store', () => ({
   }),
 }));
 
+import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import store, { persistAccountCreation } from 'state/store';
 import { KeyringAccountType } from 'types/network';
 
@@ -91,6 +92,7 @@ describe('account mutation wallet setup reservation', () => {
     jest.useFakeTimers();
     mockState = {
       vault: {
+        activeNetwork: { kind: 'syscoin', slip44: 57 },
         accounts: {
           HDAccount: {},
           Imported: {},
@@ -108,6 +110,7 @@ describe('account mutation wallet setup reservation', () => {
       importTrezorAccount: jest.fn(async () => account),
       importLedgerAccount: jest.fn(async () => account),
     };
+    attachImportedRecoveryCryptoFixture(keyring);
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 0;
     wallet.isCreatingWallet = false;
@@ -133,14 +136,27 @@ describe('account mutation wallet setup reservation', () => {
       expect(store.dispatch).not.toHaveBeenCalled();
       expect(persistAccountCreation).not.toHaveBeenCalled();
       wallet.isCreatingWallet = false;
-      await expect(wallet[method](...args)).resolves.toEqual(account);
+      const expected =
+        sdkMethod === 'importAccount'
+          ? { ...account, isImported: true, xprv: 'encrypted-fixture' }
+          : account;
+      keyring[sdkMethod].mockResolvedValueOnce(expected);
+      await expect(wallet[method](...args)).resolves.toEqual(expected);
       expect(keyring[sdkMethod]).toHaveBeenCalledTimes(1);
       expect(persistAccountCreation).toHaveBeenCalledTimes(1);
       expect(persistAccountCreation).toHaveBeenCalledWith(
-        account,
+        expected,
         accountType,
         expect.any(Function),
-        expect.any(Function)
+        expect.any(Function),
+        ...(sdkMethod === 'importAccount'
+          ? [
+              expect.objectContaining({
+                assertAccount: expect.any(Function),
+                entry: expect.objectContaining({ version: 1 }),
+              }),
+            ]
+          : [])
       );
       expect(wallet.saveWalletState).not.toHaveBeenCalled();
     }

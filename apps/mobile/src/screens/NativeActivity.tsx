@@ -1,3 +1,4 @@
+import { IdlePressable } from './IdleActivityBoundary';
 import React, {
   useCallback,
   useEffect,
@@ -12,7 +13,6 @@ import {
   FlatList,
   Linking,
   Modal,
-  Pressable,
   ScrollView,
   StyleSheet,
   View,
@@ -22,6 +22,7 @@ import * as Clipboard from 'expo-clipboard';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 import { formatBaseUnits } from '../core/amounts';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { getEvmHistoryDirection } from '../../../../source/shared/evmHistory';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type {
   ActivityRow,
@@ -30,14 +31,10 @@ import type {
 } from '../activity/nativeActivity';
 
 const status = (row: ActivityRow) =>
-  row.observation?.status === 'finalized'
+  row.observation?.status === 'confirmed'
     ? 'Confirmed'
-    : row.observation?.status === 'finalized-reverted'
-    ? 'Reverted · finalized'
-    : row.observation?.status === 'included'
-    ? 'Included · awaiting finality'
     : row.observation?.status === 'reverted'
-    ? 'Reverted · awaiting finality'
+    ? 'Reverted'
     : row.observation?.status === 'pending'
     ? 'Pending'
     : row.local?.phase === 'nonce-consumed'
@@ -56,24 +53,10 @@ function direction(
   owner: string
 ): 'sent' | 'received' | 'self' | 'unknown' {
   if (row.local)
-    return row.local.recipient.toLowerCase() === owner.toLowerCase()
-      ? 'self'
-      : 'sent';
+    return getEvmHistoryDirection({ from: owner, to: row.local.recipient }, owner);
   const tx = row.observation;
   if (!tx) return 'unknown';
-  const incoming =
-    tx.to?.toLowerCase() === owner.toLowerCase() ||
-    tx.events.some((event) => event.to.toLowerCase() === owner.toLowerCase());
-  const outgoing =
-    tx.from.toLowerCase() === owner.toLowerCase() ||
-    tx.events.some((event) => event.from.toLowerCase() === owner.toLowerCase());
-  return incoming && outgoing
-    ? 'self'
-    : outgoing
-    ? 'sent'
-    : incoming
-    ? 'received'
-    : 'unknown';
+  return getEvmHistoryDirection(tx, owner, tx.events);
 }
 function zeroOnly(row: ActivityRow) {
   return (
@@ -84,28 +67,28 @@ function zeroOnly(row: ActivityRow) {
     row.observation.events.every((event) => event.amountUnits === '0')
   );
 }
-function amount(row: ActivityRow): string {
+function amount(row: ActivityRow, symbol: string): string {
   if (row.local)
     return row.local.token
       ? `${formatTokenUnits(row.local.amountUnits, row.local.token.decimals)} ${
           row.local.token.symbol
         }`
-      : `${formatBaseUnits(row.local.amountUnits, 18)} ETH`;
+      : `${formatBaseUnits(row.local.amountUnits, 18)} ${symbol}`;
   if (!row.observation)
-    return row.candidate?.tokenHint ? 'ERC20 activity' : 'Ethereum activity';
+    return row.candidate?.tokenHint ? 'ERC20 activity' : 'Network activity';
   if (row.observation.events.length)
     return `${row.observation.events.length} token transfer event${
       row.observation.events.length === 1 ? '' : 's'
     }`;
-  return `${formatBaseUnits(row.observation.valueUnits, 18)} ETH`;
+  return `${formatBaseUnits(row.observation.valueUnits, 18)} ${symbol}`;
 }
-function fee(row: ActivityRow): string {
+function fee(row: ActivityRow, symbol: string): string {
   try {
     if (
       row.observation?.feeUnits !== null &&
       row.observation?.feeUnits !== undefined
     )
-      return `${formatBaseUnits(row.observation.feeUnits, 18)} ETH`;
+      return `${formatBaseUnits(row.observation.feeUnits, 18)} ${symbol}`;
   } catch {
     // A malformed observation must not prevent navigation or hide other details.
   }
@@ -117,11 +100,13 @@ export function NativeActivityScreen({
   accountLabel,
   onBack,
   navigation,
+  onReplay,
 }: {
   controller: NativeActivity;
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
+  onReplay?(hash: string): void;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -137,6 +122,7 @@ export function NativeActivityScreen({
       accountLabel={accountLabel}
       onBack={onBack}
       navigation={navigation}
+      onReplay={onReplay}
     />
   );
 }
@@ -146,12 +132,14 @@ function NativeActivityContent({
   accountLabel,
   onBack,
   navigation,
+  onReplay,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
+  onReplay?(hash: string): void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -309,7 +297,7 @@ function NativeActivityContent({
       <View style={s.header}>
         <Header
           title={chosen ? 'Transaction details' : 'Activity'}
-          subtitle={`${accountLabel} · Ethereum`}
+          subtitle={`${accountLabel}${snapshot.networkName ? ` · ${snapshot.networkName}` : ''}`}
           onBack={close}
         />
       </View>
@@ -406,13 +394,13 @@ function NativeActivityContent({
             </View>
           }
           renderItem={({ item }) => (
-            <Pressable
+            <IdlePressable
               ref={(node) => {
                 if (node) rowViews.current.set(item.hash, node);
                 else rowViews.current.delete(item.hash);
               }}
               accessibilityRole="button"
-              accessibilityLabel={`${amount(item)}, ${status(
+              accessibilityLabel={`${amount(item, snapshot.nativeSymbol ?? 'ETH')}, ${status(
                 item
               )}. View transaction details`}
               onPress={() =>
@@ -425,7 +413,7 @@ function NativeActivityContent({
               style={s.item}
             >
               <View style={s.itemHeader}>
-                <Text style={s.amount}>{amount(item)}</Text>
+                <Text style={s.amount}>{amount(item, snapshot.nativeSymbol ?? 'ETH')}</Text>
                 <Text style={s.direction}>
                   {direction(item, owner) === 'unknown'
                     ? 'Activity'
@@ -439,7 +427,7 @@ function NativeActivityContent({
               {item.unavailable && (
                 <Text style={styles.muted}>RPC details unavailable</Text>
               )}
-            </Pressable>
+            </IdlePressable>
           )}
           ListEmptyComponent={
             snapshot.status !== 'loading' ? (
@@ -476,7 +464,7 @@ function NativeActivityContent({
       </View>
       {chosen && (
         <ScrollView contentContainerStyle={s.content}>
-          <Text style={s.detailAmount}>{amount(chosen)}</Text>
+          <Text style={s.detailAmount}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
           <Text style={styles.muted}>{status(chosen)}</Text>
           {chosen.local?.token && (
             <Notice
@@ -529,7 +517,7 @@ function NativeActivityContent({
               </>
             )}
             <Text style={s.label}>NETWORK FEE</Text>
-            <Text>{fee(chosen)}</Text>
+            <Text>{fee(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
             {chosen.observation?.block && (
               <>
                 <Text style={s.label}>BLOCK</Text>
@@ -570,6 +558,7 @@ function NativeActivityContent({
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
+          {chosen.local && onReplay && <Button title="Review resend" onPress={() => onReplay(chosen.hash)} />}
           {snapshot.explorerUrl && (
             <Button
               title="View on explorer"

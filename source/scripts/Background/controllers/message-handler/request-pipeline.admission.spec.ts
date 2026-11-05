@@ -7,12 +7,14 @@ jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({ PsbtUtils: {} }));
 jest.mock('./method-handlers', () => ({ clearProviderCache: jest.fn() }));
 
+import { getMethodConfig } from './method-registry';
 import {
   MAX_PENDING_REQUESTS,
   MAX_REQUESTS_PER_ORIGIN,
   NETWORK_READY_TIMEOUT_MS,
   RequestPipeline,
   networkStatusMiddleware,
+  requestCoordinator,
 } from './request-pipeline';
 
 const context = (host: string, signal?: AbortSignal) =>
@@ -189,5 +191,296 @@ describe('provider request admission', () => {
     await expect(waiting).rejects.toMatchObject({ code: 4001 });
     expect(next).not.toHaveBeenCalled();
     expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+const recoveryMethods = [
+  'wallet_addEthereumChain',
+  'wallet_switchEthereumChain',
+  'sys_switchChain',
+  'eth_changeUTXOEVM',
+  'sys_changeUTXOEVM',
+];
+const recoveryContext = (method: string, signal?: AbortSignal) => ({
+  ...context('https://recovery.example', signal),
+  methodConfig:
+    getMethodConfig(method) ?? context('https://recovery.example').methodConfig,
+  originalRequest: {
+    ...context('https://recovery.example', signal).originalRequest,
+    method,
+    sender: { url: 'https://recovery.example/page', tab: { id: 8 } },
+    params: [{ chainId: '0x1644' }],
+  },
+});
+
+describe('network-control recovery admission', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it.each(recoveryMethods)(
+    'allows %s to reach its existing handler from error only',
+    async (method) => {
+      mockGetState.mockReturnValue({
+        vaultGlobal: { networkStatus: 'error', error: null },
+      });
+      const next = jest.fn().mockResolvedValue('handler');
+      const waiting = networkStatusMiddleware(
+        recoveryContext(method),
+        next
+      ).then(
+        (value) => ({ value }),
+        (error) => ({ error })
+      );
+      await jest.advanceTimersByTimeAsync(0);
+      const callsBeforeTimeout = next.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+      const result = await waiting;
+      expect(callsBeforeTimeout).toBe(1);
+      expect(result).toEqual({ value: 'handler' });
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
+
+  it.each(recoveryMethods)(
+    'allows waiting %s once a connection attempt has settled as error',
+    async (method) => {
+      let status = 'connecting';
+      mockGetState.mockImplementation(() => ({
+        vaultGlobal: { networkStatus: status },
+      }));
+      const next = jest.fn().mockResolvedValue('handler');
+      const waiting = networkStatusMiddleware(
+        recoveryContext(method),
+        next
+      ).then(
+        (value) => ({ value }),
+        (error) => ({ error })
+      );
+      await jest.advanceTimersByTimeAsync(100);
+      expect(next).not.toHaveBeenCalled();
+      status = 'error';
+      await jest.advanceTimersByTimeAsync(100);
+      const callsAfterError = next.mock.calls.length;
+      await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+      const result = await waiting;
+      expect(callsAfterError).toBe(1);
+      expect(result).toEqual({ value: 'handler' });
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
+
+  it.each(['connecting', 'switching'])(
+    'does not allow a recovery action while %s',
+    async (status) => {
+      mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: status } });
+      const next = jest.fn();
+      const waiting = networkStatusMiddleware(
+        recoveryContext('wallet_switchEthereumChain'),
+        next
+      );
+      const rejected = expect(waiting).rejects.toMatchObject({ code: -32603 });
+      await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+      await rejected;
+      expect(next).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
+
+  it.each([
+    'personal_sign',
+    'eth_sendTransaction',
+    'eth_signTypedData_v4',
+    'wallet_sendCalls',
+    'wallet_getBalance',
+    'fake_wallet_switchEthereumChain',
+  ])('does not admit %s on a failed network', async (method) => {
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+    const next = jest.fn();
+    const waiting = networkStatusMiddleware(recoveryContext(method), next);
+    const rejected = expect(waiting).rejects.toMatchObject({ code: -32603 });
+    await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+    await rejected;
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it.each(recoveryMethods)(
+    'retains document cancellation before %s recovery',
+    async (method) => {
+      mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+      const abort = new AbortController();
+      abort.abort();
+      const next = jest.fn();
+      await expect(
+        networkStatusMiddleware(recoveryContext(method, abort.signal), next)
+      ).rejects.toMatchObject({ code: 4001 });
+      expect(next).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
+
+  it('still admits ordinary methods after the existing idle transition', async () => {
+    let status = 'error';
+    mockGetState.mockImplementation(() => ({
+      vaultGlobal: { networkStatus: status },
+    }));
+    const next = jest.fn().mockResolvedValue('handler');
+    const waiting = networkStatusMiddleware(
+      recoveryContext('personal_sign'),
+      next
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    expect(next).not.toHaveBeenCalled();
+    status = 'idle';
+    await jest.advanceTimersByTimeAsync(100);
+    await expect(waiting).resolves.toBe('handler');
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
+});
+
+describe('recovery approval remains explicit', () => {
+  afterEach(() => {
+    requestCoordinator.clearQueue();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+  it('reaches the held popup but still requires its existing approval result', async () => {
+    jest.useFakeTimers();
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+    let rejectApproval!: (error: { code: number }) => void;
+    const opening = jest.fn(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectApproval = reject;
+        })
+    );
+    const pipeline = new RequestPipeline()
+      .use(networkStatusMiddleware)
+      .use((request) =>
+        requestCoordinator.coordinatePopupRequest(request, opening)
+      );
+    let settled = false;
+    const result = pipeline
+      .execute(recoveryContext('wallet_switchEthereumChain'))
+      .finally(() => {
+        settled = true;
+      });
+    const rejected = expect(result).rejects.toMatchObject({ code: 4001 });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(opening).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+    rejectApproval({ code: 4001 });
+    await rejected;
+    expect(pipeline.isCurrentlyProcessing()).toBe(false);
+    expect(pipeline.getQueueLength()).toBe(0);
+  });
+});
+
+describe('queued network-control recovery', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => {
+    requestCoordinator.clearQueue();
+    jest.clearAllTimers();
+    jest.useRealTimers();
+  });
+
+  it('routes an already queued network recovery after the previous popup settles in error', async () => {
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+    let release!: () => void;
+    const first = requestCoordinator.coordinatePopupRequest(
+      recoveryContext('wallet_addEthereumChain'),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    const executor = jest.fn().mockResolvedValue('rechecked');
+    requestCoordinator.setRequestExecutor(executor);
+    const queuedContext = recoveryContext('wallet_switchEthereumChain');
+    const queued = requestCoordinator
+      .coordinatePopupRequest(queuedContext, jest.fn())
+      .then(
+        (value) => ({ value }),
+        (error) => ({ error })
+      );
+    release();
+    await first;
+    await jest.advanceTimersByTimeAsync(100);
+    const calls = executor.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(30000);
+    const result = await queued;
+    expect(calls).toBe(1);
+    expect(result).toEqual({ value: 'rechecked' });
+    expect(executor).toHaveBeenCalledWith(
+      queuedContext.originalRequest.host,
+      {
+        method: 'wallet_switchEthereumChain',
+        params: queuedContext.originalRequest.params,
+        network: undefined,
+      },
+      { sender: queuedContext.originalRequest.sender, signal: undefined }
+    );
+  });
+
+  it.each(['connecting', 'switching'])(
+    'keeps queued recovery blocked while %s',
+    async (initial) => {
+      let status = initial;
+      mockGetState.mockImplementation(() => ({
+        vaultGlobal: { networkStatus: status },
+      }));
+      let release!: () => void;
+      const first = requestCoordinator.coordinatePopupRequest(
+        recoveryContext('wallet_addEthereumChain'),
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          })
+      );
+      await jest.advanceTimersByTimeAsync(100);
+      const executor = jest.fn().mockResolvedValue('rechecked');
+      requestCoordinator.setRequestExecutor(executor);
+      const queued = requestCoordinator.coordinatePopupRequest(
+        recoveryContext('wallet_switchEthereumChain'),
+        jest.fn()
+      );
+      release();
+      await first;
+      await jest.advanceTimersByTimeAsync(300);
+      expect(executor).not.toHaveBeenCalled();
+      status = 'idle';
+      await jest.advanceTimersByTimeAsync(200);
+      await queued;
+      expect(executor).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  it('never routes a queued signing request from an error state', async () => {
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+    let release!: () => void;
+    const first = requestCoordinator.coordinatePopupRequest(
+      recoveryContext('wallet_addEthereumChain'),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        })
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    const executor = jest.fn();
+    requestCoordinator.setRequestExecutor(executor);
+    const queued = requestCoordinator.coordinatePopupRequest(
+      recoveryContext('personal_sign'),
+      jest.fn()
+    );
+    const rejected = expect(queued).rejects.toMatchObject({ code: 4001 });
+    release();
+    await first;
+    await jest.advanceTimersByTimeAsync(30000);
+    await rejected;
+    expect(executor).not.toHaveBeenCalled();
   });
 });

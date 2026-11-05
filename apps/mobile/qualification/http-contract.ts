@@ -1,6 +1,6 @@
 /** Public, fixed-loopback qualification only; never a wallet network registration. */
 export const HTTP_CASES = Object.freeze([
-  'exact-get-url', 'redirect-refused', 'seeded-cookie-omitted',
+  'exact-get-url', 'client-identification', 'redirect-refused', 'seeded-cookie-omitted',
   'abort-before-headers', 'abort-stream', 'limit-stream', 'healthy-after-cancel',
 ] as const);
 export type HttpCase = typeof HTTP_CASES[number];

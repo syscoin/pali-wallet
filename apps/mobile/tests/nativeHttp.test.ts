@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
+import { createSecurityTestFixture } from './idleComponentFixture.ts';
 import { createNativeHttpFetch, type WalletHttpFetch } from '../src/platform/httpPolicy.ts';
 import { createBalanceReader } from '../src/platformRpc.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
@@ -60,6 +61,7 @@ test('installed RN Request rewrites GET and drops redirect policy; native Expo f
   assert.equal(f.calls[0]!.init.credentials, 'omit'); assert.equal(f.calls[0]!.init.redirect, 'error');
   assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'cache-control')[1], 'no-store, no-cache');
   assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'pragma')[1], 'no-cache');
+  assert.equal(f.calls[0]!.init.headers.find(([key]: string[]) => key === 'user-agent')[1], 'PaliWallet');
   assert.equal(Object.hasOwn(f.calls[0]!.init, 'cache'), false); assert.equal(Object.hasOwn(f.calls[0]!.init, 'referrerPolicy'), false);
   signal.abort(); assert.equal(f.cancelled(), 1);
 });
@@ -86,6 +88,7 @@ test('native policy strips explicit cookies/referrer, preserves caller headers a
   const sent = new Headers(f.calls[0]!.init.headers);
   for (const key of ['Cookie', 'Cookie2', 'Referer']) assert.equal(sent.has(key), false);
   assert.equal(sent.get('Authorization'), 'fixture-api-key');
+  assert.equal(sent.get('User-Agent'), 'PaliWallet');
   assert.equal(headers.Cookie, 'fixture-cookie');
   await assert.rejects(f.fetch('https://public.example/', null as unknown as RequestInit), /Invalid wallet request options/);
   await assert.rejects(f.fetch('https://public.example/', { headers: { 'bad\nname': 'fixture' } }), /Invalid wallet request headers/);
@@ -122,14 +125,20 @@ test('owned native transport propagates fetch rejection without retry or fallbac
   assert.equal(calls, 1);
 });
 
-test('native factory explicitly wires one owned transport to all network consumers', () => {
+test('native factory explicitly wires one owned transport to all network consumers', async () => {
+  const security = createSecurityTestFixture(); await security.securityPreferences.load();
+  security.custodyIdle.begin({}, () => undefined);
   const captures: Record<string, any[]> = {};
-  const capture = (name: string) => class { view = {}; constructor(...args: any[]) { (captures[name] ??= []).push(args); } };
+  const retired: string[] = [];
+  const capture = (name: string) => class { view = {}; constructor(...args: any[]) { (captures[name] ??= []).push(args); } dispose() { retired.push(name); } };
   const fetcher: WalletHttpFetch = async () => { throw Error('no HTTP in wiring test'); };
   const balance = { readBalance() {} };
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
+    './security': security,
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
     '../custody/keyringRuntime.ts': { createKeyringRuntimeFactory: () => ({ open() {} }) },
+    '../custody/recovery.ts': { NativeRecoveryCoordinator: capture('recovery') },
+    '../custody/recoveryInventory.ts': { readRecoveryInventory() { assert.fail('unexpected inventory read'); } },
     '../custody/seedBackup.ts': { SeedBackupFlow: capture('backup') },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: capture('key') },
     '../custody/transfers.ts': { NativeTransfers: capture('transfers') },
@@ -149,6 +158,12 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.explorer![0][0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
   assert.equal(captures.activity![0].length, 4);
+  factory.createNativeRecoveryCoordinator(bundle);
+  const recovery = captures.recovery![0][0];
+  assert.equal(recovery.owner, bundle.authority);
+  assert.equal(typeof recovery.openStorage, 'function');
+  recovery.retireControllers();
+  assert.deepEqual(retired, ['tokens', 'transfers', 'key', 'backup']);
 });
 
 test('public platform and native Portfolio fallback bind platform-owned fetch; NativeWallet passes the explicit reader', () => {

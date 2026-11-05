@@ -19,7 +19,8 @@
     "unlimitedStorage",
     "offscreen",
     "scripting",
-    "notifications"
+    "notifications",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "http://*/*",

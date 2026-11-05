@@ -60,6 +60,7 @@ export interface CustodyRuntime {
   readonly accounts?: NativeAccountRuntime;
   readonly imports?: NativeImportRuntime;
   readonly networks?: NativeNetworkRuntime;
+  readonly security?: { reauthenticateIdlePolicy(password: string, assertCurrent: () => void): Promise<void> };
   readonly session: {
     createWallet(password: string): Promise<void>;
     importWallet(phrase: string, password: string): Promise<void>;
@@ -76,6 +77,8 @@ export interface CustodyRuntime {
      * must be bound to this wallet; creation/import starts unconfirmed.
      */
     readState(): Promise<CustodyStoredState>;
+    /** Drain and revoke the runtime; capture its pair while the original lease is held, then close. */
+    retireForRecovery?(): Promise<string>;
     /** Wait for pending commits; never delete records as cleanup. */
     close(): Promise<void>;
   };

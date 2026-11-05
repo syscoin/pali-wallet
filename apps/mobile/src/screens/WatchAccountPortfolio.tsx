@@ -84,14 +84,12 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     </> : <>
       <View style={s.hero}><Coin id={network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={s.amount} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{loading && <ActivityIndicator color={colors.pink} />}</View>
       {utxo && <Card style={{ padding: 18, gap: 6 }}><Text style={s.label}>Pending balance change</Text><Text accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`} style={s.name}>{pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text><Text style={styles.muted}>Incoming and outgoing transactions waiting for confirmation.</Text></Card>}
-      <Notice title={utxo ? 'You’re watching one address' : 'You’re watching this account'} body={utxo ? 'This balance covers one address only. Other receive and change addresses are not included. Spending requires the wallet that holds its keys.' : 'This public address can receive funds. Spending and recovery require the wallet that holds its keys.'} />
+
       {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
       <View style={s.actions}><Button title="Receive" icon="arrow-down-left" onPress={() => { invalidateActions(); setMode('receive'); }} style={s.flex} /><Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" disabled={loading} onPress={() => void authority.refresh()} variant="secondary" style={s.flex} /></View>
-      <Text style={s.privacy}>{utxo ? `Refreshing shares this public address and your IP address with ${utxo.endpoint.replace('https://', '')}.` : `Refreshing shares this public address with the ${network.name} RPC provider.`}</Text>
       <Card style={s.identity}><Text style={s.label}>{account.name}</Text><Text selectable style={s.address}>{address}</Text></Card>
       {faucetCard}
-      <Card><Row title="Network" subtitle={`${network.name}${utxo ? ' · Fixed for this address' : ''}`} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
-      <Text style={s.privacy}>{utxo ? 'Single public address' : 'EVM public address only'} · No recovery phrase or extended public key is stored.</Text>
+      <Card><Row title="Network" subtitle={`${network.name}`} icon="globe" onPress={utxo ? undefined : () => { invalidateActions(); setMode('networks'); }} /><Row title="Hide public account" icon="lock" onPress={onLock} last /></Card>
     </>}
     {!!feedback && <Text accessibilityRole={feedback.startsWith('Could not ') ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, feedback.startsWith('Could not ') && { color: colors.red }]}>{feedback}</Text>}
   </Screen></SafeAreaView>;

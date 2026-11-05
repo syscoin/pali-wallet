@@ -36,6 +36,23 @@ test('the shared codec loads without an extension dependency installation', asyn
       '90071992547409.93'
     );
     assert.equal(codec.parseErc20Decimals(255n), 255);
+    const address = '0x' + '11'.repeat(20);
+    assert.deepEqual(
+      codec
+        .createErc20Policy(() => address)
+        .parseMetadata({
+          contractAddress: address,
+          decimals: 18,
+          name: 'Isolated token',
+          symbol: 'ISO',
+        }),
+      {
+        contractAddress: address,
+        decimals: 18,
+        name: 'Isolated token',
+        symbol: 'ISO',
+      }
+    );
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

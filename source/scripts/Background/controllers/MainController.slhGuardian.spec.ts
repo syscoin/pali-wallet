@@ -17,6 +17,13 @@ jest.mock('state/store', () => ({
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: jest.fn(async (key: string) => mockStorage.get(key) ?? null),
+    getItems: jest.fn(async (keys: string[]) =>
+      Object.fromEntries(
+        keys
+          .filter((key) => mockStorage.has(key))
+          .map((key) => [key, mockStorage.get(key)])
+      )
+    ),
     setItem: jest.fn(async (key: string, value: unknown) => {
       mockStorage.set(key, value);
     }),
@@ -26,6 +33,7 @@ jest.mock('utils/slhDsa/offscreenClient', () => ({
   signSLHDSAInOffscreen: jest.fn(),
 }));
 
+import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import { KeyringAccountType } from 'types/network';
 import {
   SLH_DSA_PARAMETER_SET,
@@ -59,11 +67,27 @@ const OTHER_KEY = {
 };
 // Deliberately synthetic crypto/offscreen fixtures: these checks exercise
 // controller account selection and durable counters, not SLH cryptography.
-const stateCrypto = {
-  encrypt: (plainText: string) => `unit-test-envelope:${plainText}`,
-  decrypt: (cipherText: string) =>
-    cipherText.slice('unit-test-envelope:'.length),
+const profileCrypto = {
+  encryptPrivateRecord: async (input: {
+    domain: string;
+    plaintext: Uint8Array;
+    recordId: string;
+  }) => ({
+    version: 1 as const,
+    profileId: `0x${'aa'.repeat(32)}`,
+    domain: input.domain,
+    recordId: input.recordId,
+    nonce: 'AAAAAAAAAAAAAAAA',
+    ciphertext: Buffer.from(input.plaintext).toString('base64'),
+  }),
+  decryptPrivateRecord: async (input: { envelope: { ciphertext: string } }) =>
+    new Uint8Array(Buffer.from(input.envelope.ciphertext, 'base64')),
 };
+const stateCrypto = createSlhDsaProfileStateCrypto(
+  profileCrypto,
+  () => undefined
+);
+
 const SIGNATURE = `0x${'77'.repeat(SLH_DSA_SIGNATURE_LENGTH)}`;
 
 const provisioned = (
@@ -119,8 +143,8 @@ describe('non-active SLH smart guardian signer hydration', () => {
       },
     };
     keyring = {
-      decryptSLHDSASessionState: jest.fn(stateCrypto.decrypt),
-      encryptSLHDSASessionState: jest.fn(stateCrypto.encrypt),
+      decryptPrivateRecord: jest.fn(profileCrypto.decryptPrivateRecord),
+      encryptPrivateRecord: jest.fn(profileCrypto.encryptPrivateRecord),
       isUnlocked: jest.fn(() => true),
     };
     wallet = Object.create(MainController.prototype);
@@ -190,7 +214,7 @@ describe('non-active SLH smart guardian signer hydration', () => {
         wallet.signSLHDSAActionHash({ ...params(), accountId })
       ).rejects.toThrow('metadata does not match');
       expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
-      expect(keyring.decryptSLHDSASessionState).not.toHaveBeenCalled();
+      expect(keyring.decryptPrivateRecord).not.toHaveBeenCalled();
     }
   );
 
@@ -246,7 +270,7 @@ describe('non-active SLH smart guardian signer hydration', () => {
         'metadata does not match'
       );
       expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
-      expect(keyring.decryptSLHDSASessionState).not.toHaveBeenCalled();
+      expect(keyring.decryptPrivateRecord).not.toHaveBeenCalled();
     }
   );
 });

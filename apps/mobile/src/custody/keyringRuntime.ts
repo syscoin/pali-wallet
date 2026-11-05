@@ -1,13 +1,23 @@
+import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
+import { assertNativeRecordDomains } from './recoveryInventory.ts';
+import { createNativeSignedRecordView } from './sharedSignedRecords.ts';
+import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
+import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { RPC_ENDPOINTS } from '../platformRpc.ts';
-import type { OpenWalletStorage } from '../storage/types.ts';
-import { WalletStorageError } from '../storage/types.ts';
+import { WalletStorageError, type OpenWalletStorage, type WalletIdentityRead } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
-import { type JournalRemovalSnapshot, NativeTransferJournal, TransferJournalError, journalRequiresReopen } from './transferJournal.ts';
-import { NativeWalletCatalogue, WalletCatalogueError, MAX_HD_ACCOUNTS, MAX_HD_ACCOUNT_INDEX } from './walletCatalogue.ts';
-import { getNativeNetwork, nativeSigningEnabled, type EvmNetworkId } from './networkContext.ts';
+import { TransferJournalError } from './transferJournal.ts';
+import { NativeWalletCatalogue, WalletCatalogueError,
+  createNativeAccountRecord,
+  recoveryVerificationRecords,
+  WALLET_CATALOGUE_KEY,
+} from './walletCatalogue.ts';
+import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from './networkContext.ts';
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -21,11 +31,13 @@ import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
-import { computeAddress } from 'ethers/transaction';
+import { computeAddress, Transaction } from 'ethers/transaction';
 import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
-import { decryptImportedKey, encryptImportedKey, importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import { importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import { importAccountWithRecovery } from '../../../../source/wallet/importedAccountRecovery.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
+import { stageInitialWallet } from '../../../../source/wallet/accountRecovery.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -43,6 +55,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   ensureCryptoReady(): Promise<void>;
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
+  assertActive?: () => void;
 }>;
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
@@ -65,9 +78,7 @@ export interface KeyringRuntime extends CustodyRuntime {
 
 function validPassword(password: unknown, creating: boolean): asserts password is string {
   if (
-    typeof password !== 'string' || !password.isWellFormed() ||
-    password.length === 0 || new TextEncoder().encode(password).length > 1024 ||
-    (creating && [...password].length < 12)
+    !(creating ? isNativeNewPassword(password) : isNativePasswordInput(password))
   ) throw new KeyringRuntimeError('INVALID_INPUT');
 }
 
@@ -94,7 +105,8 @@ export function createKeyringRuntimeFactory(
       const storage = await dependencies.openStorage();
       try {
         const sdk = await (dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js'));
-        const host = sdk.createSoftwareKeyringHost(storage.keyringStorage);
+        if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
+        const host = sdk.createSoftwareKeyringHost(storage.keyringStorage, { captureEvmSubmission: (context) => captureSignedSubmission(context) });
         const keyring = new sdk.SoftwareKeyring(host) as IndexedKeyring;
         const state = {
           activeAccount: { id: 0, type: sdk.KeyringAccountType.HDAccount },
@@ -115,16 +127,31 @@ export function createKeyringRuntimeFactory(
         const catalogue = new NativeWalletCatalogue(storage.keyringStorage);
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
+        const signedRecords = new EvmSignedRecords(storage.signedRecords, Date.now, () => { void lock().catch(() => undefined); });
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
         let closed = false;
         let active: Promise<unknown> | null = null;
+        const pendingSubmissions = new Set<Promise<unknown>>();
         let reserved: object | null = null;
         let closing: Promise<void> | null = null;
+        let recoveryRetirement: Promise<string> | null = null;
+        let authenticatedPair: string | null = null;
+        let verifiedIdentity: WalletIdentityRead | null = null;
+        const readIdentity = async (): Promise<WalletIdentityRead> => {
+          if (storage.recovery) {
+            const identity = await storage.recovery.readIdentity();
+            if (!identity) throw new KeyringRuntimeError('NOT_READY');
+            return identity;
+          }
+          const pairFingerprint = await storage.getWalletFingerprint();
+          return { walletBindingId: pairFingerprint, pairFingerprint, root: null, verification: 'requires-unlock' };
+        };
 
         const current = (captured: number) => {
           if (closed || captured !== generation) throw new Error('CANCELLED');
-          if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
+          if (dependencies.assertActive) { try { checkGuard(dependencies.assertActive); } catch { throw new KeyringRuntimeError('CANCELLED'); } }
+          if (catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen) throw new KeyringRuntimeError('CLEANUP_FAILED');
         };
         const lock = (): Promise<void> => {
           generation++;
@@ -133,15 +160,46 @@ export function createKeyringRuntimeFactory(
           state.accounts.HDAccount = {};
           state.accounts.Imported = {};
           catalogueSnapshot = null;
+          authenticatedPair = null; verifiedIdentity = null;
           // Retire secrets synchronously, then report quarantine asynchronously.
           // storage.close() must still install its cleanup promise and drain work.
           return pending.then(() => {
-            if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            if (catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen) throw new KeyringRuntimeError('CLEANUP_FAILED');
           });
+        };
+        const closeRuntime = (capturePair: boolean): Promise<void> => {
+          if (closing) return closing;
+          let resolveClose!: () => void, rejectClose!: (error: KeyringRuntimeError) => void;
+          let pairFingerprint: string | undefined;
+          // Install both admissions before lock can invoke any injected callback.
+          closing = new Promise<void>((resolve, reject) => { resolveClose = resolve; rejectClose = reject; });
+          if (capturePair) recoveryRetirement = closing.then(() => {
+            if (!pairFingerprint) throw new KeyringRuntimeError('CLEANUP_FAILED');
+            return pairFingerprint;
+          });
+          closed = true;
+          const work = active;
+          let revocation: Promise<void>;
+          try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
+          void (async () => {
+            await Promise.allSettled([work, revocation, ...pendingSubmissions]);
+            let failed = false;
+            try { await keyring.lockWallet(); } catch { failed = true; }
+            if (capturePair && !failed) {
+              try {
+                const fingerprint = await storage.getWalletFingerprint();
+                if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
+                pairFingerprint = fingerprint;
+              } catch { failed = true; }
+            }
+            try { await storage.close(); } catch { failed = true; }
+            if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
+          })().then(resolveClose, () => rejectClose(new KeyringRuntimeError('CLEANUP_FAILED')));
+          return closing;
         };
         const run = <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
           if (closed) return Promise.reject(new Error('CANCELLED'));
-          if (catalogue.requiresReopen || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage)) {
+          if (catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen) {
             void lock().catch(() => undefined);
             return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
           }
@@ -171,17 +229,10 @@ export function createKeyringRuntimeFactory(
           normalizePublicAddress(account.address, 'ethereum');
           return account;
         };
-        const deriveAt = async (index: number, captured: number, assertCurrent: () => void = () => undefined) => {
-          current(captured); checkGuard(assertCurrent);
-          if (typeof keyring.deriveEvmHdRuntimeAccount !== 'function') throw new KeyringRuntimeError('NOT_READY');
-          const account = await keyring.deriveEvmHdRuntimeAccount({ index }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });
-          current(captured); checkGuard(assertCurrent);
-          return checkedAccount(account, index);
-        };
         const checkedImported = (value: IKeyringAccountState, key: string, index: number) => {
           const expected = importedKeyIdentity(key, index);
           if (!value || value.isImported !== true || value.isLedgerWallet || value.isTrezorWallet || value.isSmartAccount ||
-              !Number.isSafeInteger(value.id) || value.id < 0 || value.id > MAX_HD_ACCOUNT_INDEX ||
+              !Number.isSafeInteger(value.id) || value.id < 0 ||
               normalizePublicAddress(value.address, 'ethereum') !== expected.address ||
               typeof value.xpub !== 'string' || !/^0x(?:(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/.test(value.xpub) || computeAddress(value.xpub) !== expected.address ||
               typeof value.xprv !== 'string' || value.xprv.length < 32 || value.xprv.length > 1024)
@@ -190,45 +241,130 @@ export function createKeyringRuntimeFactory(
           return { ...value, id: index, address: expected.address };
         };
         const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
-          state.accounts.HDAccount = Object.fromEntries(next.accounts.filter((a) => a.type === 'HDAccount').map((a) =>
-            [a.index, { ...state.accounts.HDAccount[a.index]!, label: a.label }]));
-          state.accounts.Imported = Object.fromEntries(next.accounts.filter((a) => a.type === 'Imported').map((a) =>
-            [a.index, { ...state.accounts.Imported[a.index]!, label: a.label }]));
-          const selected = next.accounts.find((a) => a.id === next.active.accountId)!;
+          const records = catalogue.privateRecords;
+          const group = records.groups.find(
+            (group) => group.activeNetwork.slip44 === 60
+          )!;
+          state.accounts = group.accounts as typeof state.accounts;
+          const selected = next.accounts.find((account) => account.id === next.active.accountId)!;
           state.activeAccount = { id: selected.index, type: selected.type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported };
-          const network = getNativeNetwork(next.active.networkId);
+          const network = getNativeNetwork(next.active.networkId, next.networks);
           state.activeNetwork = { ...state.activeNetwork, chainId: Number(network.chainId), slip44: network.slip44,
             url: network.rpcUrl, currency: network.symbol, label: network.id };
           catalogueSnapshot = next;
         };
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void = () => undefined, metadata?: Readonly<Record<string, unknown>>) {
+          const captured = generation;
+          const check = () => {
+            current(captured); checkGuard(externalGuard);
+            const selected = selectedAccount();
+            const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+            if (selected.index !== context.account.id || selected.type !== context.account.type ||
+                selected.address.toLowerCase() !== context.account.address.toLowerCase() ||
+                context.network.chainId !== Number(network.chainId) || context.network.url !== network.rpcUrl)
+              throw new KeyringRuntimeError('CANCELLED');
+          };
+          check();
+          if (!metadata) return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check });
+          return Object.freeze({ assertCurrent: check, persistSigned: async (record: Parameters<typeof signedRecords.append>[1]) => { await signedRecords.append({ keyring, assertCurrent: check },record,metadata); check(); } });
+        }
+        const signedView = (captured: number, externalGuard: () => void, walletBindingId: string, account = selectedAccount()) => {
+          const check = () => { current(captured); checkGuard(externalGuard); };
+          const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+          return createNativeSignedRecordView(signedRecords,{keyring,assertCurrent:check},walletBindingId,account,network);
+        };
         const hydrate = async (captured: number) => {
           current(captured);
-          state.accounts.Imported = {};
-          const first = checkedAccount(await keyring.createFirstAccount(), 0);
-          current(captured);
-          const derived = new Map<number, IKeyringAccountState>([[0, first]]);
-          const walletFingerprint = await storage.getWalletFingerprint();
-          current(captured);
-          const nextCatalogue = await catalogue.reconcile({ walletFingerprint, address: first.address, publicKey: first.xpub },
-            () => current(captured), async (index) => {
-              const account = await deriveAt(index, captured); derived.set(index, account);
-              return { address: account.address, publicKey: account.xpub };
-            }, async (record) => {
-              state.accounts.HDAccount = Object.fromEntries(derived);
-              const guard = () => current(captured);
-              const key = await decryptImportedKey(keyring, walletFingerprint, { id: record.id, index: record.index, address: record.address, publicKey: record.publicKey }, record.envelope, guard); guard();
-              const imported = checkedImported(await keyring.importAccount(key, record.label), key, record.index); guard();
-              state.accounts.Imported[record.index] = imported;
-              return { address: imported.address, publicKey: importedKeyIdentity(key, record.index).publicKey };
-            });
-          current(captured);
-          state.accounts.HDAccount = Object.fromEntries(derived);
-          for (const account of nextCatalogue.accounts) {
-            await new NativeTransferJournal(storage.keyringStorage, { walletFingerprint, address: account.address, chainId: '1' },
-              () => current(captured), Date.now, account.index, undefined, undefined, account.type).load();
+          verifiedIdentity = null;
+          const identity = await readIdentity(); current(captured);
+          const admitted = await storage.recovery!.readSnapshot(); current(captured);
+          assertNativeRecordDomains(admitted.records);
+          if (
+            !identity.root ||
+            (authenticatedPair !== null && authenticatedPair !== identity.pairFingerprint)
+          )
+            throw new KeyringRuntimeError('CANCELLED');
+          const profileId = await keyring.getPrivateRecordProfileId(); current(captured);
+            if (profileId !== identity.root.profileId) throw new KeyringRuntimeError('OPERATION_FAILED');
+          const next = await catalogue.reconcile(
+            {
+              walletFingerprint: identity.walletBindingId,
+              address: identity.root.address, publicKey: identity.root.publicKey,
+            }, () => current(captured));
             current(captured);
-          }
-          publishAccounts(nextCatalogue);
+          if (
+            catalogue.privateRecords.recovery.some(
+              (entry) => entry.envelope.profileId !== profileId
+            )
+          )
+            throw new KeyringRuntimeError('OPERATION_FAILED');
+          publishAccounts(next);
+          if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+          current(captured);
+          await signedRecords.validate({keyring,assertCurrent:()=>current(captured)}); current(captured);
+          authenticatedPair = identity.pairFingerprint;
+          verifiedIdentity = identity;
+        };
+        const createStoredWallet = async (
+          phrase: string,
+          password: string,
+          captured: number
+        ) => {
+          const guard = () => current(captured);
+              const before = await storage.readState();
+          guard();
+          if (
+            before.presence !== 'empty' ||
+            !storage.recovery?.fingerprintPair ||
+            !storage.recovery.prepareCreation ||
+            !storage.recovery.plannedSnapshot ||
+            !storage.recovery.commitReplacement
+          )
+            throw new KeyringRuntimeError('NOT_READY');
+          const admitted = await storage.recovery.readSnapshot();
+          guard();
+          assertNativeRecordDomains(admitted.records);
+          if (
+            admitted.records.some((row) => row.key !== 'utf8Error') ||
+            admitted.notes.length ||
+            admitted.signedRecords.length
+          )
+            throw new KeyringRuntimeError('NOT_READY');
+          const staged = await stageInitialWallet(
+            { key: '60', network: state.activeNetwork, password, phrase },
+            { assertCurrent: guard, loadSdk: dependencies.loadSdk }
+          );
+          guard();
+          const fingerprint = await storage.recovery.fingerprintPair(
+            staged.pair
+          );
+          guard();
+          const records = createNativeAccountRecord(staged, fingerprint);
+          const first = staged.groups[0]!.accounts.HDAccount[0]!;
+          const plan = await storage.recovery.prepareCreation(
+            admitted,
+            { ...staged.pair, accountRecords: records },
+            {
+              address: first.address,
+              publicKey: first.xpub.toLowerCase(),
+              profileId: staged.profileId,
+            }
+          );
+          guard();
+          const expected = storage.recovery.plannedSnapshot(plan);
+          await storage.recovery.commitReplacement(plan, guard); guard();
+              const observed = await storage.recovery.readSnapshot(); guard();
+          if (!sameRecoverySnapshot(observed, expected))
+            throw new KeyringRuntimeError('CLEANUP_FAILED');
+          state.accounts = records.groups.find(
+            (group) => group.activeNetwork.slip44 === 60
+          )!.accounts as typeof state.accounts;
+          const unlocked = await keyring.unlock(password);
+          guard();
+          if (!unlocked.canLogin)
+            throw new KeyringRuntimeError('CLEANUP_FAILED');
+          await hydrate(captured);
+          guard();
         };
         const selectedAccount = () => {
           if (!catalogueSnapshot || !keyring.isUnlocked()) throw new KeyringRuntimeError('NOT_READY');
@@ -245,44 +381,78 @@ export function createKeyringRuntimeFactory(
           validPassword(password, false);
           await storage.authGuard.checkAllowed();
           current(captured);
+          const identity = await readIdentity(); current(captured);
+          const records = recoveryVerificationRecords(
+            await storage.keyringStorage.get(WALLET_CATALOGUE_KEY),
+            identity.walletBindingId
+          );
+          current(captured);
+          const group = records.groups.find(
+            (group) => group.activeNetwork.slip44 === 60
+          )!;
+          state.accounts = group.accounts as typeof state.accounts;
+          const selection = parseNativeAccountId(records.active.accountId);
+          state.activeAccount = {
+            id: selection.index,
+            type:
+              selection.type === 'HDAccount'
+                ? sdk.KeyringAccountType.HDAccount
+                : sdk.KeyringAccountType.Imported,
+          };
+          const selectedNetwork = getNativeNetwork(
+            records.active.networkId,
+            records.networks
+          );
+          state.activeNetwork = {
+            ...state.activeNetwork,
+            chainId: Number(selectedNetwork.chainId),
+            url: selectedNetwork.rpcUrl,
+            currency: selectedNetwork.symbol,
+            label: selectedNetwork.name,
+          };
           const result = await keyring.unlock(password);
           if (!result || typeof result.canLogin !== 'boolean') throw new Error('UNAVAILABLE');
           if (!result.canLogin) {
             // A definitive rejected credential still counts when lock/background
             // revokes the session while its unabortable KDF is finishing.
-            await storage.authGuard.recordFailure();
+            if (storage.recovery?.recordFailureForPair) await storage.recovery.recordFailureForPair(identity.pairFingerprint);
+            else await storage.authGuard.recordFailure();
             current(captured);
             return false;
           }
           current(captured);
+          if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
+          current(captured);
           await storage.authGuard.recordSuccess();
           current(captured);
+          authenticatedPair = identity.pairFingerprint; verifiedIdentity = null;
           return true;
         };
-        const reserveContext = (input: NativeAccountRequest | { kind: 'select-network'; id: EvmNetworkId }, expectedRevision: number, networkSelection = false) => {
+        const dataBinding = async (captured: number, guard: () => void = () => undefined): Promise<string> => {
+          current(captured); checkGuard(guard);
+          const identity = await readIdentity(); current(captured); checkGuard(guard);
+          if (!keyring.isUnlocked() || !verifiedIdentity || JSON.stringify(identity) !== JSON.stringify(verifiedIdentity))
+            throw new KeyringRuntimeError('CANCELLED');
+          return verifiedIdentity.walletBindingId;
+        };
+        const reserveContext = (input:
+            | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
-            if (typeof keyring.deriveEvmHdRuntimeAccount !== 'function' || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
-            const request = decodeStorageValue(encodeStorageValue(input)) as NativeAccountRequest | { kind: 'select-network'; id: EvmNetworkId };
-            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && request.kind === 'select-network')) throw new KeyringRuntimeError('INVALID_INPUT');
-            const fields = request.kind === 'create' ? ['kind', 'label', 'password'] : request.kind === 'restore'
-              ? ['kind', 'index', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
-              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'select' || request.kind === 'select-network' ? ['kind', 'id'] : [];
+            if (catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
+            const request = decodeStorageValue(encodeStorageValue(input)) as NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest;
+            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && ['select-network', 'save-network', 'remove-network'].includes(request.kind))) throw new KeyringRuntimeError('INVALID_INPUT');
+            const fields = request.kind === 'create' ? ['kind', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
+              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
-                ('id' in request && request.kind !== 'select-network' && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
-                ('index' in request && (!Number.isSafeInteger(request.index) || request.index < 1 || request.index > 4095)) ||
+                ('id' in request && !['select-network', 'remove-network'].includes(request.kind) && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
                 ('label' in request && (typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label || request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))))
               throw new KeyringRuntimeError('INVALID_INPUT');
             if ('password' in request) validPassword(request.password, false);
             // Expected eligibility failures leave the current authority/reviews intact.
-            if ((request.kind === 'create' || request.kind === 'restore') && catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS)
-              throw new KeyringRuntimeError('ACCOUNT_LIMIT');
-            if (request.kind === 'create' && catalogue.nextIndex > MAX_HD_ACCOUNT_INDEX)
-              throw new KeyringRuntimeError('ACCOUNT_LIMIT');
-            if (request.kind === 'restore' && !catalogueSnapshot.removed.some((account) => account.index === request.index))
-              throw new KeyringRuntimeError('INVALID_INPUT');
-            if (request.kind === 'select-network') getNativeNetwork(request.id);
-            if ('id' in request && request.kind !== 'select-network') {
+          if (request.kind === 'select-network' || request.kind === 'remove-network') getNativeNetwork(request.id, catalogueSnapshot.networks);
+            if (request.kind === 'save-network') snapshotNativeNetwork(request.registration);
+            if ('id' in request && !['select-network', 'remove-network'].includes(request.kind)) {
               const target = catalogueSnapshot.accounts.find((account) => account.id === request.id);
               if (!target) throw new KeyringRuntimeError('INVALID_INPUT');
               if (request.kind === 'remove' && ((target.type === 'HDAccount' && target.index === 0) || target.id === catalogueSnapshot.active.accountId || catalogueSnapshot.accounts.length <= 1))
@@ -303,7 +473,7 @@ export function createKeyringRuntimeFactory(
                 return run(async (captured) => {
                   current(captured); checkGuard(assertCurrent);
                   if ('password' in request) {
-                    if (!await authenticate(request.password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                    if (!(await authenticate(request.password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                     current(captured); checkGuard(assertCurrent);
                     await hydrate(captured);
                     current(captured); checkGuard(assertCurrent);
@@ -312,22 +482,27 @@ export function createKeyringRuntimeFactory(
                   if (!before || before.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
                   let derived: IKeyringAccountState | undefined;
                   let mutation;
-                  if (request.kind === 'create' || request.kind === 'restore') {
-                    const index = request.kind === 'create' ? catalogue.nextIndex : request.index;
-                    derived = await deriveAt(index, captured, assertCurrent);
-                    current(captured); checkGuard(assertCurrent);
-                    mutation = { kind: request.kind, index, address: derived.address, publicKey: derived.xpub, label: request.label } as const;
+                  if (request.kind === 'create') {
+                  const created = await keyring.addNewAccount(request.label);
+                      current(captured); checkGuard(assertCurrent);
+                      if (!created || !Number.isSafeInteger(created.id) || created.id < 1 ||
+                          before.accounts.some((account) => account.type === 'HDAccount' && account.index === created.id))
+                        throw new KeyringRuntimeError('CANCELLED');
+                      derived = checkedAccount(created, created.id);
+                  mutation = { kind: 'create', account: derived } as const;
                   } else {
-                    mutation = request.kind === 'remove' ? { kind: 'remove' as const, id: request.id, journal: null as JournalRemovalSnapshot | null } : request;
+                    mutation = request.kind === 'remove' ? { kind: 'remove' as const, id: request.id } : request;
                     if (request.kind === 'remove') {
                       const account = before.accounts.find((a) => a.id === request.id);
                       if (!account) throw new KeyringRuntimeError('CANCELLED');
-                      const fingerprint = await storage.getWalletFingerprint();
+                      const fingerprint = await dataBinding(captured, assertCurrent);
                       current(captured); checkGuard(assertCurrent);
-                      const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address: account.address, chainId: '1' }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, account.index, undefined, (record, guard) => activityHistory.archiveTerminal(record, guard), account.type);
-                      const pending = await journal.removalSnapshot();
+                      void fingerprint;
+                      const retained = await signedRecords.listAddress({ keyring, assertCurrent: () => { current(captured); checkGuard(assertCurrent); } }, account.address);
+                      const hasAlias = before.accounts.some((candidate) => candidate.id !== account.id && candidate.address.toLowerCase() === account.address.toLowerCase());
+                      if (!hasAlias && retained.some((entry) => !['confirmed','reverted','nonce-consumed'].includes(entry.phase))) throw new TransferJournalError('PENDING_TRANSFER');
                       current(captured); checkGuard(assertCurrent);
-                      mutation = { kind: 'remove' as const, id: request.id, journal: pending };
+                      mutation = { kind: 'remove' as const, id: request.id };
                     }
                   }
                   const next = await catalogue.mutate(expectedRevision, mutation, () => { current(captured); checkGuard(assertCurrent); });
@@ -356,8 +531,6 @@ export function createKeyringRuntimeFactory(
               request = Object.freeze({ ...request, privateKey: key });
               validPassword(password, false);
             } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
-            if (catalogueSnapshot.accounts.length >= MAX_HD_ACCOUNTS || catalogue.nextImportedIndex > MAX_HD_ACCOUNT_INDEX)
-              throw new KeyringRuntimeError('ACCOUNT_LIMIT');
             if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
               throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
             const token = {}; reserved = token; const generationAtAdmission = ++generation; let used = false;
@@ -372,17 +545,17 @@ export function createKeyringRuntimeFactory(
                 return run(async (captured) => {
                   const guard = () => { current(captured); checkGuard(assertCurrent); current(captured); };
                   guard();
-                  if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                  if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                   guard(); await hydrate(captured); guard();
                   if (!catalogueSnapshot || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
                   if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
                     throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-                  const index = catalogue.nextImportedIndex;
-                  const imported = checkedImported(await keyring.importAccount(request.privateKey, request.label), request.privateKey, index); guard();
-                  const walletFingerprint = await storage.getWalletFingerprint(); guard();
-                  const sealed = await encryptImportedKey(keyring, walletFingerprint, index, request.privateKey, guard); guard();
-                  const next = await catalogue.mutate(expectedRevision, { kind: 'import', index, address: sealed.identity.address,
-                    publicKey: sealed.identity.publicKey, label: request.label, envelope: sealed.envelope }, guard); guard();
+                  const prepared = await importAccountWithRecovery(keyring, { secret: request.privateKey, label: request.label,
+                    network: { kind: 'ethereum', slip44: 60 } }, guard); guard();
+                  const index = prepared.account.id;
+                  const imported = checkedImported(prepared.account, request.privateKey, index);
+                  const next = await catalogue.mutate(expectedRevision, { kind: 'import',
+                      account: imported, recovery: prepared.recovery }, guard); guard();
                   state.accounts.Imported[index] = imported;
                   publishAccounts(next);
                 });
@@ -391,16 +564,15 @@ export function createKeyringRuntimeFactory(
           },
         };
         const accounts: NativeAccountRuntime = {
-          supported: () => typeof keyring.deriveEvmHdRuntimeAccount === 'function',
-          getSnapshot: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot,
+          supported: () => typeof keyring.addNewAccount === 'function',
+          getSnapshot: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot,
           reserve: (input, expectedRevision) => reserveContext(input, expectedRevision),
         };
         const networks: NativeNetworkRuntime = {
-          getSelectedId: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
-          reserve: (id, expectedRevision) => {
-            if (typeof id !== 'string') throw new KeyringRuntimeError('INVALID_INPUT');
-            const network = getNativeNetwork(id);
-            return reserveContext({ kind: 'select-network', id: network.id }, expectedRevision, true);
+          getSelectedId: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
+          reserve: (input, expectedRevision) => {
+            const request = typeof input === 'string' ? { kind: 'select-network' as const, id: input } : input;
+            return reserveContext(request, expectedRevision, true);
           },
         };
         const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
@@ -410,8 +582,8 @@ export function createKeyringRuntimeFactory(
           guard();
           const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
           const networkId = catalogueSnapshot!.active.networkId;
-          const fingerprint = await storage.getWalletFingerprint(); guard();
-          return { scope: createActivityScope(fingerprint, selected.id, selected.address, networkId), guard, index: selected.index, type: selected.type };
+          const fingerprint = await dataBinding(captured, guard); guard();
+          return { scope: createActivityScope(fingerprint, selected.id, selected.address, getNativeNetwork(networkId, catalogueSnapshot!.networks)), guard, index: selected.index, type: selected.type };
         };
         const checkActivityContext = async (scope: ActivityScope, assertCurrent: () => void) => {
           const context = await activityContext(assertCurrent);
@@ -430,8 +602,8 @@ export function createKeyringRuntimeFactory(
           const task = Promise.resolve().then(async () => {
             check();
             const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
-            const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
-            const walletFingerprint = await storage.getWalletFingerprint(); check();
+            const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+            const walletFingerprint = await dataBinding(captured, check); check();
             const result = await action(Object.freeze({ walletFingerprint, accountId: selected.id, address: selected.address,
               network: network.id, chainId: network.chainId, registrationHash: network.registrationHash }), check);
             check(); return result;
@@ -447,6 +619,15 @@ export function createKeyringRuntimeFactory(
         };
         return {
           accounts,
+          security: {
+            reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {
+              current(captured); checkGuard(assertCurrent);
+              if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
+              if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              current(captured); checkGuard(assertCurrent);
+              await hydrate(captured); current(captured); checkGuard(assertCurrent);
+            }),
+          },
           imports,
           networks,
           tokens: {
@@ -459,7 +640,7 @@ export function createKeyringRuntimeFactory(
             add: (revision, metadata, guard) => tokenOperation(guard, (scope, check) => tokens.add(scope, revision, metadata, check)),
             remove: (revision, contract, guard) => tokenOperation(guard, (scope, check) => tokens.remove(scope, revision, contract, check)),
           },
-          catalogue: { getSnapshot: () => closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked() ? null : catalogueSnapshot },
+          catalogue: { getSnapshot: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot },
           keyExport: {
             readSelected: (input, password, assertCurrent) => {
               let scope;
@@ -477,14 +658,14 @@ export function createKeyringRuntimeFactory(
                   if (catalogue.revision !== scope.catalogueRevision || selected.type !== parseNativeAccountId(scope.accountId).type ||
                       selected.slip44 !== 60 || selected.id !== scope.accountId || selected.index !== scope.index ||
                       selected.address !== scope.address || catalogue.active.networkId !== scope.networkId ||
-                      getNativeNetwork(catalogue.active.networkId).registrationHash !== scope.registrationHash ||
+                      getNativeNetwork(catalogue.active.networkId, catalogue.networks).registrationHash !== scope.registrationHash ||
                       state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
                 };
                 check();
                 const stored = await storage.readState(); check();
                 if (stored.presence !== 'existing' || stored.backup !== 'confirmed') throw new KeyringRuntimeError('NOT_READY');
-                if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+                if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                 check();
                 await hydrate(captured); check();
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
@@ -504,9 +685,7 @@ export function createKeyringRuntimeFactory(
               current(captured);
               const phrase = keyring.createNewSeed(12);
               if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase)) throw new Error('UNAVAILABLE');
-              await keyring.initializeSession(phrase, password);
-              current(captured);
-              await hydrate(captured);
+              await createStoredWallet(phrase, password, captured);
             }),
             importWallet: (phrase, password) => run(async (captured) => {
               validPassword(password, true);
@@ -514,9 +693,7 @@ export function createKeyringRuntimeFactory(
               const normalized = phrase.normalize('NFKD').trim().replace(/\s+/gu, ' ');
               if (![12, 24].includes(normalized.split(' ').length) || !keyring.isSeedValid(normalized)) throw new KeyringRuntimeError('INVALID_INPUT');
               current(captured);
-              await keyring.initializeSession(normalized, password);
-              current(captured);
-              await hydrate(captured);
+              await createStoredWallet(normalized, password, captured);
             }),
             unlock: (password) => run(async (captured) => {
               const authenticated = await authenticate(password, captured);
@@ -524,7 +701,7 @@ export function createKeyringRuntimeFactory(
               return { authenticated };
             }),
             async readEthereumAddress() {
-              if (closed || tokens.requiresReopen || journalRequiresReopen(storage.keyringStorage) || !keyring.isUnlocked()) throw new Error('NOT_READY');
+              if (closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked()) throw new Error('NOT_READY');
               return normalizePublicAddress(selectedAccount().address, 'ethereum');
             },
             lock,
@@ -532,10 +709,10 @@ export function createKeyringRuntimeFactory(
           activity: {
             async load(assertCurrent) {
               const { scope, guard, index, type } = await activityContext(assertCurrent);
-              const journal = new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: scope.walletFingerprint, address: scope.address, chainId: scope.network.chainId }, guard, Date.now, index, scope.network, (record, check) => activityHistory.archiveTerminal(record, check), type);
-              const local = await journal.activity(); guard();
+              const journal = createNativeSignedRecordView(signedRecords,{keyring,assertCurrent:guard},scope.walletFingerprint,{index,type,address:scope.address},scope.network);
+              const recent = await journal.activities(); guard();
               const saved = await activityHistory.load(scope, guard); guard();
-              return { scope, local, saved };
+              return { scope, locals: recent.records, saved: { ...saved, truncated: saved.truncated || recent.truncated } };
             },
             async saveCache(scope, candidates, assertCurrent) {
               const { guard } = await checkActivityContext(scope, assertCurrent);
@@ -547,6 +724,21 @@ export function createKeyringRuntimeFactory(
             },
           },
           transfers: {
+            replay(assertCurrent, transport, options) {
+              if (active || reserved || closed || !canSign()) throw new KeyringRuntimeError('NOT_READY');
+              const captured = generation, selected = selectedAccount();
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+              const context: EvmSubmissionContext = { account: { id: selected.index, type: selected.type, address: selected.address },
+                network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl }, operation: 'send' };
+              const lifecycle = captureSignedSubmission(context, assertCurrent);
+              const check = () => { current(captured); lifecycle.assertCurrent(); };
+              const replay = new EvmSignedReplay(signedRecords, () => ({ context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport }), options.now, options.randomBytes);
+              return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
+                const work = replay.confirm(id);
+                const pending = work.finally(() => pendingSubmissions.delete(pending));
+                pendingSubmissions.add(pending); return pending;
+              } };
+            },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);
               while (active) { await active.catch(() => undefined); checkGuard(assertCurrent); }
@@ -565,52 +757,63 @@ export function createKeyringRuntimeFactory(
               current(captured); checkGuard(assertCurrent);
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               const selected = selectedAccount();
-              const fingerprint = await storage.getWalletFingerprint();
+              const fingerprint = await dataBinding(captured, assertCurrent);
               current(captured); checkGuard(assertCurrent);
               const address = normalizePublicAddress(selected.address, 'ethereum');
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
-              return new NativeTransferJournal(storage.keyringStorage, { walletFingerprint: fingerprint, address, chainId: network.chainId }, () => { current(captured); checkGuard(assertCurrent); }, Date.now, selected.index, network, (record, guard) => activityHistory.archiveTerminal(record, guard), selected.type);
+              void address;
+              return signedView(captured,assertCurrent,fingerprint,selected);
             },
-            authorize: (password, assertCurrent) => {
-              if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
-              if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
-              return run(async (captured) => {
-              if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
-              checkGuard(assertCurrent);
-              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent) => {
+              if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
+              const captured = generation;
+              const work = Promise.resolve().then(async () => {
               current(captured); checkGuard(assertCurrent);
-              await hydrate(captured);
-              current(captured); checkGuard(assertCurrent);
-            }); },
-            sign: (transaction, password, assertCurrent, inputIntent) => {
+              const selected = selectedAccount(); const network = getNativeNetwork(catalogueSnapshot!.active.networkId,catalogueSnapshot!.networks);
+              const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
+              const context: EvmSubmissionContext = { account:{id:selected.index,type:selected.type,address:selected.address},network:{kind:'ethereum',chainId:Number(network.chainId),slip44:60,url:network.rpcUrl},operation:intent?'erc20':'send' };
+              const boundary = sdk.captureEvmSubmission(context,() => { current(captured); checkGuard(assertCurrent); },() => captureSignedSubmission(context,assertCurrent,intent?{intent}:undefined));
+              const tx = Transaction.from(rawTransaction);
+              if (tx.to === null) throw new KeyringRuntimeError('INVALID_INPUT');
+              assertTransferIntentEnvelope({chainId:tx.chainId.toString(),to:tx.to,value:tx.value.toString(),data:tx.data},intent);
+              if (tx.hash !== hash) throw new KeyringRuntimeError('INVALID_INPUT');
+              try { await sdk.submitSignedEvmTransaction(rawTransaction,broadcast,boundary); }
+              catch (error) {
+                if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED')) throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                throw error;
+              }
+              });
+              const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+              pendingSubmissions.add(pending); return pending;
+            },
+            assertUnlocked: (assertCurrent) => {
+              const captured = generation;
+              current(captured); checkGuard(assertCurrent); current(captured);
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+              if (!keyring.isUnlocked() || !canSign()) throw new KeyringRuntimeError('NOT_READY');
+            },
+            sign: (transaction, assertCurrent, inputIntent) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
               if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
               let intent;
+              let prepared: typeof transaction;
               try {
                 intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-                assertTransferIntentEnvelope(transaction, intent);
-                if (transaction.chainId !== getNativeNetwork(catalogueSnapshot!.active.networkId).chainId)
-                  throw new KeyringRuntimeError('INVALID_INPUT');
-                if (catalogueSnapshot!.active.networkId === 'zksys-testnet')
-                  snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork('zksys-testnet'));
+                prepared = snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
+                assertTransferIntentEnvelope(prepared, intent);
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               checkGuard(assertCurrent);
-              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
               current(captured); checkGuard(assertCurrent);
-              await hydrate(captured);
-              current(captured); checkGuard(assertCurrent);
-              assertTransferIntentEnvelope(transaction, intent);
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId);
-              if (!nativeSigningEnabled(network.id) || transaction.chainId !== network.chainId)
+              assertTransferIntentEnvelope(prepared, intent);
+              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+              if (!nativeSigningEnabled(network.id) || prepared.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
-              if (network.id === 'zksys-testnet')
-                snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], network);
+              snapshotUnsignedTransfer(prepared as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
-                account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: transaction.from },
+                account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: prepared.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },
-                transaction,
+                transaction: prepared,
               }, { assertCurrent: () => { current(captured); checkGuard(assertCurrent); } });
               current(captured); checkGuard(assertCurrent);
               return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
@@ -618,26 +821,19 @@ export function createKeyringRuntimeFactory(
           },
           storage: {
             readState: () => storage.readState(),
-            close() {
-              if (!closing) {
-                closed = true;
-                const work = active;
-                const revocation = lock();
-                closing = (async () => {
-                  await Promise.allSettled([work, revocation]);
-                  let failed = false;
-                  try { await keyring.lockWallet(); } catch { failed = true; }
-                  try { await storage.close(); } catch { failed = true; }
-                  if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
-                })();
-              }
-              return closing;
+            retireForRecovery() {
+              if (recoveryRetirement) return recoveryRetirement;
+              if (closing) return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
+              closeRuntime(true);
+              return recoveryRetirement!;
             },
+            close: () => closeRuntime(false),
           },
           backup: {
             readPhrase: (password) => run(async (captured) => {
               if (!keyring.isUnlocked()) throw new Error('NOT_READY');
-              if (!await authenticate(password, captured)) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+              await hydrate(captured); current(captured);
               const phrase = await keyring.getSeed(password);
               current(captured);
               if (typeof phrase !== 'string' || !keyring.isSeedValid(phrase)) throw new Error('UNAVAILABLE');

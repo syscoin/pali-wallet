@@ -2708,10 +2708,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
   integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
 
-"@sidhujag/sysweb3-keyring@2.0.0":
-  version "2.0.0"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.0.0.tgz#e41da3599515a8e99dbcd59ab95a19dba2873029"
-  integrity sha512-KAi6EQOv150UDf4N7QfIaeEBM1j1Es/MbZREG1je7+q51/0KnngCynIBhYJm20PeK7i4q5FC92NBzIeJnEXnlQ==
+"@sidhujag/sysweb3-keyring@2.1.2":
+  version "2.1.2"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.2.tgz#a562a52196b569a692e54d8b6a591f90c49982e1"
+  integrity sha512-RG/TYDDOtkz/GKSPluCGeFzL++41jWDCjT43Hn1yy5+9/5fld9W2ONRWKiWPUW+IzX1J1ozZMNStbR1wC6BdTg==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -2720,7 +2720,7 @@
     "@ledgerhq/device-transport-kit-web-hid" "1.2.4"
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "^1.0.29"
-    "@sidhujag/sysweb3-network" "^1.0.109"
+    "@sidhujag/sysweb3-network" "^1.0.111"
     "@sidhujag/sysweb3-utils" "^1.1.280"
     "@trezor/connect-webextension" "10.0.1"
     bip32 "^5.0.1"
@@ -2728,15 +2728,16 @@
     bitcoin-ops "^1.4.1"
     bitcoinjs-lib "^7.0.5"
     bs58check "^3.0.1"
+    buffer "^6.0.3"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
     rxjs "7.8.2"
     varuint-bitcoin "^2.0.0"
 
-"@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.110":
-  version "1.0.110"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.110.tgz#a22ca7eb525bef2f5ed7dcab93669be8e7208eac"
-  integrity sha512-VBBlP7X1ThIFwf3HYXtgL3lEbvr+ZV7uFFuD+2jwhisdOyadmBQJ2Kkl9cY/oLhJB4zU5cHiZnjfZkF4OHRGpQ==
+"@sidhujag/sysweb3-network@1.0.111", "@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.111":
+  version "1.0.111"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.111.tgz#ae1cb05f1db48a1ecd11142ccf6b39dc211a5cff"
+  integrity sha512-DcjJMO+F222UA4UPm4T+OWDOxbFolO6SW8WW9RLIE0yBhkU8qexGEJ14beXeuqTpIK9Feg3NVricyV413B+q7A==
   dependencies:
     eth-chains "^1.0.0"
     ethers "^6.17.0"
@@ -4725,7 +4726,7 @@ chrome-trace-event@^1.0.2:
   resolved "https://registry.yarnpkg.com/chrome-trace-event/-/chrome-trace-event-1.0.4.tgz#05bffd7ff928465093314708c93bdfa9bd1f0f5b"
   integrity sha512-rNjApaLzuwaOTjCiT8lSDdGN1APCiqkChLMJxJPWLunPAt5fy8xgU9/jNOchV84wfIxrA0lRQB7oCT8jrn/wrQ==
 
-ci-info@^3.2.0, ci-info@^3.7.0:
+ci-info@^3.2.0:
   version "3.9.0"
   resolved "https://registry.yarnpkg.com/ci-info/-/ci-info-3.9.0.tgz#4279a62028a7b1f262f3473fc9605f5e218c59b4"
   integrity sha512-NIxF55hv4nSqQswkAeiOi1r83xy8JldOFDTWiug55KBu9Jnblncd2U6ViHmYgHf01TPZS77NJBhBMKdWj9HQMQ==
@@ -6130,7 +6131,7 @@ eth-chains@^1.0.0:
   resolved "https://registry.yarnpkg.com/eth-chains/-/eth-chains-1.0.0.tgz#1386496ee1aa231a4d050fde6a87fe36741ecb83"
   integrity sha512-SnJrJPSr5I3rKpW6RZT/qhX8qbmE5bsMeeHoRWBXkvbifudfi3YLKHXZMdLsg+Yv+PP8oqSyPxOvQxKwjNVqmQ==
 
-eth-object@^1.0.3, "eth-object@https://github.com/syscoin/eth-object.git":
+eth-object@^1.0.3, "eth-object@git+https://github.com/syscoin/eth-object.git":
   version "1.0.3"
   resolved "git+https://github.com/syscoin/eth-object.git#b5ff300f57c136138b31d6e570c816a147e0f1c9"
   dependencies:
@@ -6748,7 +6749,7 @@ gopd@^1.0.1, gopd@^1.2.0:
   resolved "https://registry.yarnpkg.com/gopd/-/gopd-1.2.0.tgz#89f56b8217bdbc8802bd299df6d7f1081d7e51a1"
   integrity sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==
 
-graceful-fs@^4.1.11, graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.2.0, graceful-fs@^4.2.11, graceful-fs@^4.2.4, graceful-fs@^4.2.6, graceful-fs@^4.2.9:
+graceful-fs@^4.1.2, graceful-fs@^4.1.6, graceful-fs@^4.2.0, graceful-fs@^4.2.11, graceful-fs@^4.2.4, graceful-fs@^4.2.6, graceful-fs@^4.2.9:
   version "4.2.11"
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.11.tgz#4183e4e8bf08bb6e05bbb2f7d2e0c8f712ca40e3"
   integrity sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==
@@ -10860,10 +10861,10 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@1.0.276:
-  version "1.0.276"
-  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.276.tgz#3c5fa4bae3ce8f16cbdc92a89451b3295877a379"
-  integrity sha512-tMtopRemMbDL/Oj7RmChZcLD7BlE1BDvy49dumwBKvuJJDtSjr2XLlvgxAxNJuJIKhppsXveW1/U58SMiKKSzQ==
+syscoinjs-lib@1.0.277:
+  version "1.0.277"
+  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.277.tgz#ce04a163391343fcd474f14a4de7f94c21b880e0"
+  integrity sha512-TxbaCP4pTKMAXbrKThiWoLO6QCOOP0+Ujry1uwkDVW6HYSXi7WbNwahgUE1xmj1jRnofUDf8VVqRGDKFNX2WHA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"

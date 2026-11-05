@@ -1,39 +1,25 @@
-import { Interface } from 'ethers/abi';
-import { keccak256 } from 'ethers/crypto';
 import { getAddress } from 'ethers/address';
-import { boundedResponseText, parseRpcQuantity, ResponseSizeLimitError } from '../platformRpc.ts';
-import { getNativeNetwork, type EvmNetworkId } from './networkContext.ts';
-import { getEvmTransferProfile } from './evmTransferProfiles.ts';
-import {
-  assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
-  rejectRead, snapshotUnsignedTransfer, units, unsignedTransferBytes,
-} from './evmFeeContracts.ts';
-import type { EvmFeeExtra, EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
-
-const CODE_BYTES = 32 * 1024;
+import { getEvmFeeData, bufferedEvmGasLimit, assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
+import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
+  rejectRead, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
+import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
+import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 const BLOCK_BYTES = 512 * 1024;
-const IMPLEMENTATION_SLOT = '0x360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc';
-const ABI = new Interface([
-  'function version() view returns (string)',
-  'function isFjord() view returns (bool)',
-  'function isIsthmus() view returns (bool)',
-  'function isJovian() view returns (bool)',
-  'function getL1FeeUpperBound(uint256) view returns (uint256)',
-  'function getOperatorFee(uint256) view returns (uint256)',
-  'function getL1Fee(bytes) view returns (uint256)',
-]);
-type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_getStorageAt' | 'eth_call' |
-  'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount';
-const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_getStorageAt',
-  'eth_call', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount']);
+const CODE_BYTES = 32 * 1024;
+type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_gasPrice' |
+  'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount';
+const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_gasPrice',
+  'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount']);
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & { assertCurrent(): void };
-type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null }>;
-type ReceiptRequest = Readonly<{ hash: string; from: string; to: string; nonce: string }>;
-type Settlement = Readonly<{ kind: 'ethereum-finalized' | 'nevm-depth-observation' | 'nevm-depth-12' | 'zkos-finalized-executed' | 'unqualified'; observedHeight: string | null; terminalEligible: boolean }>;
+type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
+type ReceiptRequest = Readonly<{ hash: string; from: string; to: string | null; nonce: string }>;
 export type EvmReceiptObservation = Readonly<
-  | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock; settlement: Settlement }
-  | { status: 'nonce-consumed'; settlement: Settlement }
+  | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock }
+  | { status: 'nonce-consumed' }
 >;
+export type EvmPreparedQuote = Readonly<{ transaction: EvmUnsignedTransfer; balanceUnits: string; maximumFeeUnits: string; totalUnits: string }>;
 function quantity(value: unknown): bigint {
   try { return parseRpcQuantity(value); } catch { return rejectRead('INVALID_RESPONSE'); }
 }
@@ -45,7 +31,7 @@ const hex = (value: bigint) => `0x${value.toString(16)}`;
 function block(value: unknown): ReadBlock {
   const raw = object(value);
   return Object.freeze({ number: quantity(raw.number).toString(), hash: checkedReadHash(raw.hash),
-    baseFee: raw.baseFeePerGas === undefined ? null : quantity(raw.baseFeePerGas) });
+    baseFee: raw.baseFeePerGas == null ? null : quantity(raw.baseFeePerGas), gasLimit: quantity(raw.gasLimit) });
 }
 async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
   if (signal.aborted) { void promise.catch(() => undefined); return rejectRead('CANCELLED'); }
@@ -55,19 +41,16 @@ async function cancellable<T>(promise: Promise<T>, signal: AbortSignal): Promise
     promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
   });
 }
-
 /** Read-only capability: no method can transmit a signed envelope or broadcast. */
 export class EvmTransferReadRpc {
   private readonly network;
-  private readonly profile;
   private readonly fetcher: (url: string, init: RequestInit) => Promise<Response>;
   private readonly timeoutMs: number;
   private readonly monotonicMilliseconds: () => number;
   private sequence = 0;
   /** Custom clocks must be monotonic milliseconds with one stable origin, never Date.now(). */
-  constructor(id: EvmNetworkId, options: { fetch?: (url: string, init: RequestInit) => Promise<Response>; timeoutMs?: number; monotonicMilliseconds?: () => number } = {}) {
-    this.network = getNativeNetwork(id);
-    this.profile = getEvmTransferProfile(id);
+  constructor(id: EvmNetworkId | NativeNetworkRegistration, options: { fetch?: (url: string, init: RequestInit) => Promise<Response>; timeoutMs?: number; monotonicMilliseconds?: () => number } = {}) {
+    this.network = typeof id === 'string' ? getNativeNetwork(id) : snapshotNativeNetwork(id);
     this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
     this.timeoutMs = options.timeoutMs ?? 12000;
     this.monotonicMilliseconds = options.monotonicMilliseconds ?? (() => Math.floor(performance.now()));
@@ -99,7 +82,15 @@ export class EvmTransferReadRpc {
       const text = await cancellable(boundedResponseText(response, controller.signal, limit), controller.signal);
       guardedRead(guard);
       const result = object(JSON.parse(text));
-      if (result.jsonrpc !== '2.0' || result.id !== id || Object.hasOwn(result, 'error') || !Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
+      if (result.jsonrpc !== '2.0' || result.id !== id) return rejectRead('INVALID_RESPONSE');
+      if (Object.hasOwn(result, 'error')) {
+        const error = object(result.error);
+        // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
+        if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200))
+          throw Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
+        return rejectRead('INVALID_RESPONSE');
+      }
+      if (!Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
       return result.result;
     }, { assertCurrent: () => { guardedRead(guard); if (controller.signal.aborted) rejectRead('CANCELLED'); } });
     try {
@@ -127,276 +118,107 @@ export class EvmTransferReadRpc {
     read.assertCurrent();
     if (current.number !== expected.number || current.hash !== expected.hash) rejectRead('PROFILE_CHANGED');
   }
-  private async oracle(read: Reader, sampled: ReadBlock) {
-    read.assertCurrent();
-    const oracle = this.profile.oracle;
-    if (!oracle) return rejectRead('UNQUALIFIED_PROFILE');
-    const tag = hex(BigInt(sampled.number));
-    const [proxyCode, slot, implementationCode] = await Promise.all([
-      read('eth_getCode', [oracle.address, tag]), read('eth_getStorageAt', [oracle.address, IMPLEMENTATION_SLOT, tag]),
-      read('eth_getCode', [oracle.implementation, tag]),
-    ]);
-    read.assertCurrent();
-    const codeHash = (value: unknown) => {
-      if (typeof value !== 'string' || !/^0x(?:[0-9a-fA-F]{2})+$/.test(value)) return rejectRead('PROFILE_CHANGED');
-      return keccak256(value);
-    };
-    if (codeHash(proxyCode) !== oracle.proxyCodeHash || codeHash(implementationCode) !== oracle.implementationCodeHash ||
-        typeof slot !== 'string' || slot.toLowerCase() !== `0x${'0'.repeat(24)}${oracle.implementation.slice(2)}`) rejectRead('PROFILE_CHANGED');
-    const call = async (method: string, args: readonly unknown[] = []) => {
+  verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
+    return this.operation(signal, guard, async (read) => { await this.checkChain(read); });
+  }
+  /** One SDK fee policy serves live native/token preparation and exact-envelope requotes. */
+  prepare(input: Readonly<{ from: string; to: string; value: string; data: string }>, signal: AbortSignal,
+    guard: () => void, approved?: EvmUnsignedTransfer): Promise<EvmPreparedQuote> {
+    let request: { from: string; to: string; value: string; data: string };
+    try {
+      const raw = readOwnData(input, ['from', 'to', 'value', 'data']);
+      request = { from: getAddress(raw.from as string), to: getAddress(raw.to as string), value: units(raw.value).toString(), data: raw.data as string };
+      if (/^0x0{40}$/i.test(request.from) || /^0x0{40}$/i.test(request.to) || typeof request.data !== 'string' ||
+          !/^0x(?:[0-9a-f]{2})*$/.test(request.data) || request.data.length > 138 || (request.data === '0x' && request.value === '0')) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+      if (approved) approved = snapshotUnsignedTransfer(approved, this.network);
+    } catch { return Promise.reject(new EvmTransferReadError('INVALID_INPUT')); }
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const [rawNonce, rawBalance, fees] = await Promise.all([
+        read('eth_getTransactionCount', [request.from, 'pending']), read('eth_getBalance', [request.from, 'pending']),
+        getEvmFeeData({ getGasPrice: async () => quantity(await read('eth_gasPrice', [])),
+          getBlock: async () => ({ baseFeePerGas: sampled.baseFee }),
+          send: async (method, params) => {
+            const value = await read(method, params);
+            if (method === 'eth_maxPriorityFeePerGas') return quantity(value);
+            const history = object(value);
+            if (!Array.isArray(history.reward) || history.reward.length < 1 || history.reward.length > 5) return rejectRead('INVALID_RESPONSE');
+            return { reward: history.reward.map((row) => {
+              if (!Array.isArray(row) || row.length !== 3) return rejectRead('INVALID_RESPONSE');
+              return row.map(quantity);
+            }) };
+          } }, { signal, assertCurrent: () => read.assertCurrent() }),
+      ]);
       read.assertCurrent();
-      const raw = await read('eth_call', [{ to: oracle.address, data: ABI.encodeFunctionData(method, args) }, tag]);
+      const nonce = quantity(rawNonce), balance = quantity(rawBalance);
+      if (nonce > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
+      const selectedFees = approved
+        ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }
+          : { type: 2 as const, maxFeePerGas: approved.maxFeePerGas, maxPriorityFeePerGas: approved.maxPriorityFeePerGas }
+        : fees.baseFeePerGas === undefined ? { type: 0 as const, gasPrice: fees.gasPrice.toString() }
+          : { type: 2 as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
+      if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');
+      if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
+      const rpcFees = selectedFees.type === 0 ? { gasPrice: hex(BigInt(selectedFees.gasPrice)) }
+        : { maxFeePerGas: hex(BigInt(selectedFees.maxFeePerGas)), maxPriorityFeePerGas: hex(BigInt(selectedFees.maxPriorityFeePerGas)) };
+      const estimate = quantity(await read('eth_estimateGas', [{ ...request, value: hex(BigInt(request.value)),
+        type: hex(BigInt(selectedFees.type)), chainId: hex(BigInt(this.network.chainId)), nonce: hex(nonce), ...rpcFees }, 'pending']));
       read.assertCurrent();
-      if (typeof raw !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(raw)) return rejectRead('INVALID_RESPONSE');
-      let values;
-      try { values = ABI.decodeFunctionResult(method, raw); }
+      if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
+      const gas = bufferedEvmGasLimit(estimate);
+      try { assertEvmGasLimit(gas, BigInt(this.network.chainId), sampled.gasLimit); }
       catch { return rejectRead('INVALID_RESPONSE'); }
-      if (ABI.encodeFunctionResult(method, values).toLowerCase() !== raw.toLowerCase()) return rejectRead('INVALID_RESPONSE');
-      return values[0] as unknown;
-    };
-    const version = await call('version');
-    read.assertCurrent();
-    if (version !== oracle.version) return rejectRead('PROFILE_CHANGED');
-    if (this.profile.feeModel === 'op-jovian') {
-      for (const flag of ['isFjord', 'isIsthmus', 'isJovian']) {
-        const enabled = await call(flag);
-        read.assertCurrent();
-        if (enabled !== true) rejectRead('PROFILE_CHANGED');
+      if (approved && gas > BigInt(approved.gasLimit)) return rejectRead('REVIEW_REQUIRED');
+      if (approved) {
+        try { assertEvmGasLimit(BigInt(approved.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
+        catch { return rejectRead('REVIEW_REQUIRED'); }
       }
-    }
-    return call;
+      const tx = snapshotUnsignedTransfer({ ...request, ...selectedFees, chainId: this.network.chainId,
+        nonce: nonce.toString(), gasLimit: (approved ? BigInt(approved.gasLimit) : gas).toString() }, this.network);
+      const rate = tx.type === 0 ? tx.gasPrice : tx.maxFeePerGas;
+      const maximumFee = units((BigInt(tx.gasLimit) * BigInt(rate)).toString(), 'INVALID_RESPONSE');
+      const total = units((BigInt(request.value) + maximumFee).toString(), 'INVALID_RESPONSE');
+      await this.canonical(read, sampled); await this.checkChain(read); read.assertCurrent();
+      return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: maximumFee.toString(), totalUnits: total.toString() });
+    });
   }
   quoteFees(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void): Promise<EvmFeeQuote> {
-    let transaction: EvmUnsignedTransfer;
-    try {
-      guardedRead(guard);
-      transaction = snapshotUnsignedTransfer(input, this.network);
-      if (!this.profile.feeSourceQualified) return Promise.reject(new EvmTransferReadError('UNQUALIFIED_PROFILE'));
-    } catch (error) { return Promise.reject(error instanceof EvmTransferReadError ? error : new EvmTransferReadError('INVALID_INPUT')); }
+    const transaction = snapshotUnsignedTransfer(input, this.network);
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
-      read.assertCurrent();
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
-      read.assertCurrent();
-      if (sampled.baseFee === null) return rejectRead('INVALID_RESPONSE');
-      const cap = BigInt(transaction.maxFeePerGas);
-      if (cap < sampled.baseFee) return rejectRead('REVIEW_REQUIRED');
-      const price = sampled.baseFee + BigInt(transaction.maxPriorityFeePerGas);
-      const extras: EvmFeeExtra[] = [];
-      if (this.profile.feeModel === 'nitro-inclusive-gas' || this.profile.feeModel === 'zkos-inclusive-gas') {
-        const estimated = quantity(await read('eth_estimateGas', [{ from: transaction.from, to: transaction.to, data: '0x',
-          value: hex(BigInt(transaction.value)), maxFeePerGas: hex(cap), maxPriorityFeePerGas: hex(BigInt(transaction.maxPriorityFeePerGas)),
-          ...(this.profile.feeModel === 'zkos-inclusive-gas' ? { type: '0x2', chainId: hex(BigInt(transaction.chainId)), nonce: hex(BigInt(transaction.nonce)) } : {}) }, hex(BigInt(sampled.number))]));
-        read.assertCurrent();
-        if (estimated < 21000n || estimated > BigInt(transaction.gasLimit)) return rejectRead('REVIEW_REQUIRED');
-      } else if (this.profile.feeModel === 'op-jovian' || this.profile.feeModel === 'rollux-legacy') {
-        const call = await this.oracle(read, sampled);
-        read.assertCurrent();
-        const unsigned = unsignedTransferBytes(transaction);
-        const l1 = this.profile.feeModel === 'op-jovian'
-          ? await call('getL1FeeUpperBound', [(unsigned.length - 2) / 2]) : await call('getL1Fee', [unsigned]);
-        read.assertCurrent();
-        extras.push(Object.freeze({ kind: 'l1-data', estimateUnits: units(String(l1), 'INVALID_RESPONSE').toString(), enforceableByEnvelope: false }));
-        if (this.profile.feeModel === 'op-jovian') {
-          const operator = await call('getOperatorFee', [BigInt(transaction.gasLimit)]);
-          read.assertCurrent();
-          extras.push(Object.freeze({ kind: 'operator', estimateUnits: units(String(operator), 'INVALID_RESPONSE').toString(), enforceableByEnvelope: false }));
-        }
-      }
-      await this.canonical(read, sampled);
-      read.assertCurrent();
-      await this.checkChain(read);
-      read.assertCurrent();
-      const monotonicMilliseconds = this.monotonicMilliseconds();
-      if (!Number.isSafeInteger(monotonicMilliseconds) || monotonicMilliseconds < 0) return rejectRead('INVALID_RESPONSE');
-      return assembleFeeQuote(transaction, this.network, this.profile, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, extras, monotonicMilliseconds + 90000);
+      try { assertEvmGasLimit(BigInt(transaction.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
+      catch { return rejectRead('REVIEW_REQUIRED'); }
+      const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
+      const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
+      if (transaction.type === 2 && cap < (sampled.baseFee ?? 0n)) return rejectRead('REVIEW_REQUIRED');
+      const fees = transaction.type === 0 ? { gasPrice: hex(cap) } : { maxFeePerGas: hex(cap), maxPriorityFeePerGas: hex(BigInt(transaction.maxPriorityFeePerGas)) };
+      const gas = quantity(await read('eth_estimateGas', [{ from: transaction.from, to: transaction.to, value: hex(BigInt(transaction.value)), data: transaction.data,
+        type: hex(BigInt(transaction.type)), chainId: hex(BigInt(transaction.chainId)), nonce: hex(BigInt(transaction.nonce)), ...fees }, 'pending']));
+      if (gas < 21000n || gas > BigInt(transaction.gasLimit) || gas > sampled.gasLimit) return rejectRead('REVIEW_REQUIRED');
+      await this.canonical(read, sampled); await this.checkChain(read);
+      const now = this.monotonicMilliseconds();
+      if (!Number.isSafeInteger(now) || now < 0) return rejectRead('INVALID_RESPONSE');
+      return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, now + 90000);
     });
   }
-  private async consumedAfterOversizedReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation> {
-    read.assertCurrent();
-    const kind = this.profile.settlement;
-    if (kind === 'unqualified') return rejectRead('UNAVAILABLE');
-    const finalized = block(await read('eth_getBlockByNumber', ['finalized', false]));
-    read.assertCurrent();
-    const nonce = quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(finalized.number))]));
-    read.assertCurrent();
-    await this.canonical(read, finalized);
-    read.assertCurrent();
-    await this.checkChain(read);
-    read.assertCurrent();
-    if (nonce <= BigInt(expected.nonce)) return rejectRead('UNAVAILABLE');
-    // The oversized body is opaque. This retires only a consumed nonce and
-    // never supplies an execution status or upgrades a settlement profile.
-    return Object.freeze({ status: 'nonce-consumed', settlement: Object.freeze({
-      kind, observedHeight: finalized.number, terminalEligible: kind === 'ethereum-finalized',
-    }) });
-  }
-  /** Fixed testnet policy: canonical depth is an observation, never protocol finality. */
-  private async depthReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation | null> {
-    const head = block(await read('eth_getBlockByNumber', ['latest', false]));
-    read.assertCurrent();
-    const height = BigInt(head.number);
-    const anchor = height >= 11n
-      ? block(await read('eth_getBlockByNumber', [hex(height - 11n), false])) : null;
-    read.assertCurrent();
-    if (anchor && BigInt(anchor.number) !== height - 11n) rejectRead('PROFILE_CHANGED');
-    let raw: unknown, opaque = false;
-    try { raw = await read('eth_getTransactionReceipt', [expected.hash]); }
-    catch (error) { if (!(error instanceof ResponseSizeLimitError)) throw error; opaque = true; }
-    read.assertCurrent();
-    const consumed = anchor !== null && quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(anchor.number))])) > BigInt(expected.nonce);
-    read.assertCurrent();
-    let receipt = !opaque && raw !== null ? this.checkedReceipt(raw, expected) : null;
-    if (receipt) {
-      if (BigInt(receipt.block.number) > height) rejectRead('PROFILE_CHANGED');
-      await this.canonical(read, receipt.block);
-      read.assertCurrent();
-    }
-    const eligible = !!receipt && !!anchor && consumed && BigInt(receipt.block.number) <= BigInt(anchor.number);
-    if (eligible) {
-      try {
-        const repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
-        if (repeated.block.number !== receipt!.block.number || repeated.block.hash !== receipt!.block.hash || repeated.outcome !== receipt!.outcome)
-          rejectRead('PROFILE_CHANGED');
-        await this.canonical(read, repeated.block);
-      } catch (error) {
-        if (!(error instanceof ResponseSizeLimitError)) throw error;
-        opaque = true; receipt = null;
-      }
-      read.assertCurrent();
-    }
-    if (anchor) await this.canonical(read, anchor);
-    await this.canonical(read, head);
-    await this.checkChain(read);
-    read.assertCurrent();
-    const settlement = (terminalEligible: boolean): Settlement => Object.freeze({
-      kind: 'nevm-depth-12', observedHeight: anchor?.number ?? null, terminalEligible,
-    });
-    if (!receipt) {
-      if (consumed) return Object.freeze({ status: 'nonce-consumed', settlement: settlement(true) });
-      if (opaque) return rejectRead('UNAVAILABLE');
-      return null;
-    }
-    return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true,
-      block: receipt.block, settlement: settlement(eligible) });
-  }
-  /** zkOS exposes settlement-layer finalized execution, not an L2 depth rule. */
-  private async zkOsReceipt(read: Reader, expected: ReceiptRequest): Promise<EvmReceiptObservation | null> {
-    const head = block(await read('eth_getBlockByNumber', ['latest', false]));
-    const anchor = block(await read('eth_getBlockByNumber', ['finalized', false]));
-    read.assertCurrent();
-    if (BigInt(anchor.number) > BigInt(head.number)) rejectRead('PROFILE_CHANGED');
-    // Resolve the tag once, then pin nonce and all rechecks to this numeric anchor.
-    await this.canonical(read, anchor);
-    let raw: unknown, opaque = false;
-    try { raw = await read('eth_getTransactionReceipt', [expected.hash]); }
-    catch (error) { if (!(error instanceof ResponseSizeLimitError)) throw error; opaque = true; }
-    read.assertCurrent();
-    const consumed = quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(anchor.number))])) > BigInt(expected.nonce);
-    read.assertCurrent();
-    let receipt = !opaque && raw !== null ? this.checkedReceipt(raw, expected) : null;
-    if (receipt) {
-      if (BigInt(receipt.block.number) > BigInt(head.number)) rejectRead('PROFILE_CHANGED');
-      await this.canonical(read, receipt.block);
-    }
-    const eligible = !!receipt && consumed && BigInt(receipt.block.number) <= BigInt(anchor.number);
-    if (eligible) {
-      try {
-        const repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
-        if (repeated.block.number !== receipt!.block.number || repeated.block.hash !== receipt!.block.hash || repeated.outcome !== receipt!.outcome)
-          rejectRead('PROFILE_CHANGED');
-        await this.canonical(read, repeated.block);
-      } catch (error) {
-        if (!(error instanceof ResponseSizeLimitError)) throw error;
-        opaque = true; receipt = null;
-      }
-    }
-    await this.canonical(read, anchor);
-    await this.canonical(read, head);
-    await this.checkChain(read);
-    read.assertCurrent();
-    const settlement = (terminalEligible: boolean): Settlement => Object.freeze({
-      kind: 'zkos-finalized-executed', observedHeight: anchor.number, terminalEligible,
-    });
-    if (!receipt) {
-      if (consumed) return Object.freeze({ status: 'nonce-consumed', settlement: settlement(true) });
-      if (opaque) return rejectRead('UNAVAILABLE');
-      return null;
-    }
-    return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true,
-      block: receipt.block, settlement: settlement(eligible) });
-  }
-  receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
-    let expected: ReceiptRequest;
-    try {
-      guardedRead(guard);
-      const data = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
-      const nonce = units(data.nonce);
-      if (nonce > BigInt(Number.MAX_SAFE_INTEGER)) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
-      expected = Object.freeze({ hash: checkedReadHash(data.hash), from: getAddress(data.from as string), to: getAddress(data.to as string), nonce: nonce.toString() });
-      if (this.profile.feeModel === 'unqualified') return Promise.reject(new EvmTransferReadError('UNQUALIFIED_PROFILE'));
-    } catch (error) { return Promise.reject(error instanceof EvmTransferReadError ? error : new EvmTransferReadError('INVALID_INPUT')); }
-    return this.operation(signal, guard, async (read) => {
-      await this.checkChain(read);
-      read.assertCurrent();
-      if (this.profile.settlement === 'nevm-depth-12') return this.depthReceipt(read, expected);
-      if (this.profile.settlement === 'zkos-finalized-executed') return this.zkOsReceipt(read, expected);
-      let raw: unknown;
-      try {
-        raw = await read('eth_getTransactionReceipt', [expected.hash]);
-      } catch (error) {
-        read.assertCurrent();
-        if (!(error instanceof ResponseSizeLimitError)) throw error;
-        return this.consumedAfterOversizedReceipt(read, expected);
-      }
-      read.assertCurrent();
-      const kind = this.profile.settlement;
-      let finalized: ReadBlock | null = null;
-      let consumed = false;
-      if (kind !== 'unqualified') {
-        finalized = block(await read('eth_getBlockByNumber', ['finalized', false]));
-        read.assertCurrent();
-        consumed = quantity(await read('eth_getTransactionCount', [expected.from, hex(BigInt(finalized.number))])) > BigInt(expected.nonce);
-        read.assertCurrent();
-      }
-      const settlement = (terminalEligible: boolean): Settlement => Object.freeze({ kind, observedHeight: finalized?.number ?? null,
-        terminalEligible: kind === 'ethereum-finalized' && terminalEligible });
-      if (raw === null) {
-        if (finalized) await this.canonical(read, finalized);
-        read.assertCurrent();
-        await this.checkChain(read);
-        read.assertCurrent();
-        return consumed ? Object.freeze({ status: 'nonce-consumed', settlement: settlement(true) }) : null;
-      }
-      const receipt = this.checkedReceipt(raw, expected);
-      await this.canonical(read, receipt.block);
-      read.assertCurrent();
-      const eligible = !!finalized && consumed && BigInt(receipt.block.number) <= BigInt(finalized.number);
-      if (eligible) {
-        let repeated: ReturnType<EvmTransferReadRpc['checkedReceipt']>;
-        try {
-          repeated = this.checkedReceipt(await read('eth_getTransactionReceipt', [expected.hash]), expected);
-        } catch (error) {
-          read.assertCurrent();
-          if (!(error instanceof ResponseSizeLimitError)) throw error;
-          return this.consumedAfterOversizedReceipt(read, expected);
-        }
-        read.assertCurrent();
-        if (receipt.block.hash !== repeated.block.hash || receipt.block.number !== repeated.block.number || receipt.outcome !== repeated.outcome) rejectRead('PROFILE_CHANGED');
-      }
-      if (finalized) await this.canonical(read, finalized);
-      read.assertCurrent();
-      await this.checkChain(read);
-      read.assertCurrent();
-      return Object.freeze({ status: 'included', outcome: receipt.outcome, canonicalObserved: true, block: receipt.block, settlement: settlement(eligible) });
+  observation(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmTransactionObservation> {
+    guardedRead(guard);
+    const raw = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
+    const expected = { hash: raw.hash as string, from: raw.from as string, to: raw.to as string | null, nonce: raw.nonce as string, chainId: this.network.chainId };
+    return this.operation(signal, guard, async read => {
+      try { return await observeEvmTransaction(expected, read, () => read.assertCurrent()); }
+      catch (error) { if (error instanceof EvmObservationError) throw new EvmTransferReadError(error.code === 'CONTEXT_CHANGED' ? 'PROFILE_CHANGED' : error.code); throw error; }
     });
   }
-  private checkedReceipt(value: unknown, expected: ReceiptRequest) {
-    const raw = object(value);
-    if (checkedReadHash(raw.transactionHash) !== expected.hash || getAddress(raw.from as string) !== expected.from || getAddress(raw.to as string) !== expected.to) return rejectRead('INVALID_RESPONSE');
-    const status = quantity(raw.status);
-    if (status !== 0n && status !== 1n) return rejectRead('INVALID_RESPONSE');
-    return Object.freeze({ outcome: status === 1n ? 'succeeded' as const : 'reverted' as const,
-      block: Object.freeze({ number: quantity(raw.blockNumber).toString(), hash: checkedReadHash(raw.blockHash) }) });
+  /** A canonical receipt confirms now; later reads may revise that observation after a reorg. */
+  async receipt(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmReceiptObservation | null> {
+    guardedRead(guard);
+    const raw = readOwnData(input, ['hash', 'from', 'to', 'nonce']);
+    const expected = { hash: raw.hash as string, from: raw.from as string, to: raw.to as string | null, nonce: raw.nonce as string };
+    const result = await this.observation(expected, signal, guard);
+    if (result.status === 'missing') return BigInt(result.latestNonce) > BigInt(expected.nonce) ? Object.freeze({status:'nonce-consumed'}) : null;
+    return Object.freeze({status:'included',outcome:result.outcome === 'confirmed' ? 'succeeded' : 'reverted',canonicalObserved:true,block:result.block});
   }
 }

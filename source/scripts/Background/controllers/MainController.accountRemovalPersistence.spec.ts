@@ -1,3 +1,4 @@
+jest.unmock('syscoinjs-lib');
 import { getController } from '..';
 import { notificationManager } from 'scripts/Background/notification-manager';
 import { addDApp, rehydrate as rehydrateDapps, removeDApp } from 'state/dapp';
@@ -116,6 +117,7 @@ const configureTarget = async (
     address: TARGET,
     xpub: kind === 'HD' ? 'public-hd-one' : TARGET,
     xprv: kind === 'private import' ? 'synthetic-encrypted-record' : '',
+    isImported: kind !== 'HD',
     label: `Saved ${kind}`,
     balances: { ethereum: '2', syscoin: '0' },
   };
@@ -220,6 +222,9 @@ beforeEach(() => {
   walletPersistenceGate.blocked = false;
   vaultCache.clearCache();
   wallet = Object.create(MainController.prototype);
+  wallet.getActiveKeyring = () => ({
+    getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+  });
   Object.assign(wallet, {
     resetAutoLockTimer: jest.fn(),
     walletSessionGeneration: 0,

@@ -35,6 +35,17 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from '../../../utils/navigationState';
+import { assertAccountCreationAvailable } from '../../../wallet/accountRecords';
+import {
+  createEvmSignedRecordLifecycle,
+  EVM_SIGNED_RECORD_PREFIX,
+} from '../../../wallet/evmSignedRecords';
+import {
+  assertImportedRecoveryAccount,
+  importAccountWithRecovery,
+  type ImportedRecoveryEntry,
+} from '../../../wallet/importedAccountRecovery';
+import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -45,7 +56,10 @@ import {
 import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import { ASSET_PRICE_API } from 'constants/index';
-import { assertWalletPersistenceAllowed } from 'state/paliStorage';
+import {
+  assertWalletPersistenceAllowed,
+  walletPersistenceGate,
+} from 'state/paliStorage';
 import { setPrices } from 'state/price';
 import { rehydrateStore } from 'state/rehydrate';
 import store from 'state/store';
@@ -271,6 +285,11 @@ import {
 import { IBalancesManager } from './balances/types';
 import ChainListService from './chainlist';
 import {
+  assertEvmSignedRecordSdk,
+  createChromeEvmSignedRecords,
+} from './evmSignedRecords';
+import { createExtensionEvmReplay } from './evmSignedReplay';
+import {
   freshSdkGasEstimate,
   getSdkGasOverrides,
 } from './freshNativeGasEstimate';
@@ -289,6 +308,7 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import { withWalletBackend } from './providers/walletHttpIdentity';
 import type { SentryWalletScope } from './sentry';
 import type { SentryController } from './sentry';
 import SmartAccountController from './smartAccount';
@@ -301,6 +321,9 @@ import {
   ITransactionsManager,
 } from './transactions/types';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
+import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
+import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
   SentryAuthorityScheme,
@@ -542,9 +565,7 @@ class MainController {
     }
   }
 
-  private async resetWalletStateExclusive(options?: {
-    resetNetworks?: boolean;
-  }) {
+  private async retireWalletRuntime() {
     this.fiatQuoteGeneration += 1;
     this.advanceWalletSession();
     this.walletStateGeneration += 1;
@@ -560,8 +581,6 @@ class MainController {
     void withdrawals
       ?.then((controller) => controller.close())
       .catch(() => undefined);
-    const { resetNetworks = false } = options || {};
-
     // Clear all timers first to prevent any background operations
     this.clearAllTimers();
     // Receipt jobs have their own queue and in-flight freshness markers. Stop
@@ -613,8 +632,6 @@ class MainController {
     vaultCache.clearCache();
     await cancelSLHDSAWorkerInOffscreen();
     clearRuntimeSLHDSAStates();
-    await clearSLHDSAPublicPrecomputeCache();
-    await clearSLHDSAXmssTreeCache();
 
     // Clear all in-memory caches and session data
     if (this.transactionsManager) {
@@ -623,6 +640,15 @@ class MainController {
     clearProviderCache();
     clearFetchBackendAccountCache();
     clearRpcCaches();
+  }
+
+  private async resetWalletStateExclusive(options?: {
+    resetNetworks?: boolean;
+  }) {
+    await this.retireWalletRuntime();
+    await clearSLHDSAPublicPrecomputeCache();
+    await clearSLHDSAXmssTreeCache();
+    const { resetNetworks = false } = options || {};
 
     await walletPersistenceMutex.runExclusive(async () => {
       // Clear all vault-related storage completely
@@ -659,6 +685,7 @@ class MainController {
           (key) =>
             key.match(/^state-vault-\d+$/) ||
             key.startsWith('sysweb3-vault-') ||
+            key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
             key.startsWith('pali-slh-dsa-state:') ||
             key.startsWith('sentry-operator-v1:') ||
             key.startsWith('sentry-settings-v1:') ||
@@ -914,12 +941,141 @@ class MainController {
   }
 
   // Initialize a keyring for a specific slip44
+  private retainedEvmRecords?: EvmSignedRecords;
+  private retainedEvmReplay?: EvmSignedReplay;
+
+  private getRetainedEvmRecords(): EvmSignedRecords {
+    this.retainedEvmRecords ??= createChromeEvmSignedRecords();
+    return this.retainedEvmRecords;
+  }
+
+  private getRetainedEvmReplay(): EvmSignedReplay {
+    this.retainedEvmReplay ??= createExtensionEvmReplay(
+      this.getRetainedEvmRecords(),
+      () => {
+        this.assertWalletReadyForSigning();
+        const keyring = this.getActiveKeyring();
+        const { vault } = store.getState();
+        const reference = vault.activeAccount;
+        const account = vault.accounts[reference.type]?.[reference.id];
+        // The existing extension represents a view-only import without xprv.
+        if (
+          !account?.address ||
+          vault.isBitcoinBased ||
+          (reference.type === KeyringAccountType.Imported && !account.xprv)
+        )
+          throw new Error('Replay requires a signing account');
+        const context = {
+          account: {
+            id: reference.id,
+            type: reference.type,
+            address: account.address,
+          },
+          network: {
+            kind: vault.activeNetwork.kind,
+            chainId: vault.activeNetwork.chainId,
+            slip44: vault.activeNetwork.slip44,
+            url: vault.activeNetwork.url,
+          },
+          operation: 'send' as const,
+        };
+        const provider = this.ethereumTransaction.web3Provider;
+        const lifecycle = this.captureEvmSignedSubmission(keyring, context);
+        const assertCurrent = () => {
+          lifecycle.assertCurrent();
+          const current =
+            store.getState().vault.accounts[reference.type]?.[reference.id];
+          if (
+            this.ethereumTransaction.web3Provider !== provider ||
+            (reference.type === KeyringAccountType.Imported && !current?.xprv)
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        };
+        assertCurrent();
+        return {
+          context,
+          provider,
+          assertCurrent,
+          recordSession: { keyring, assertCurrent },
+        };
+      }
+    );
+    return this.retainedEvmReplay;
+  }
+  public prepareEvmSignedReplay(hash: string) {
+    return this.getRetainedEvmReplay().prepare(hash);
+  }
+  public confirmEvmSignedReplay(id: string) {
+    return this.getRetainedEvmReplay().confirm(id);
+  }
+  public cancelEvmSignedReplay(id: string) {
+    if (typeof id === 'string') this.retainedEvmReplay?.cancel(id);
+  }
+  public getSavedEvmTransaction(hash: string) {
+    return this.getRetainedEvmReplay().get(hash);
+  }
+  public getSavedEvmTransactions(
+    beforeHash?: string,
+    limit = 30,
+    nonce?: number
+  ) {
+    return this.getRetainedEvmReplay().list({
+      beforeHash,
+      maximum: limit,
+      nonce,
+    });
+  }
+
+  private captureEvmSignedSubmission(
+    keyring: KeyringManager,
+    context: EvmSubmissionContext
+  ) {
+    this.assertWalletReadyForSigning();
+    const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const navigation = getWalletNavigationScope();
+    const selected = { ...store.getState().vault.activeAccount };
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      this.assertCurrentWalletSession(generation, keyring);
+      const { vault, vaultGlobal } = store.getState();
+      const currentNavigation = getWalletNavigationScope();
+      const payer =
+        vault.accounts[context.account.type as KeyringAccountType]?.[
+          context.account.id
+        ];
+      if (
+        networkRequest !== this.networkRequestGeneration ||
+        currentNavigation.account !== navigation.account ||
+        currentNavigation.network !== navigation.network ||
+        vault.activeAccount.id !== selected.id ||
+        vault.activeAccount.type !== selected.type ||
+        vault.isBitcoinBased ||
+        vault.activeNetwork.chainId !== context.network.chainId ||
+        vault.activeNetwork.url !== context.network.url ||
+        vaultGlobal.activeSlip44 !== context.network.slip44 ||
+        payer?.address?.toLowerCase() !== context.account.address.toLowerCase()
+      ) {
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+    };
+    assertCurrent();
+    return createEvmSignedRecordLifecycle(this.getRetainedEvmRecords(), {
+      keyring,
+      assertCurrent,
+    });
+  }
+
   private initializeKeyring(slip44: number): KeyringManager {
     if (!this.keyrings.has(slip44)) {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      const keyring = new KeyringManager(undefined, getLedgerHost());
+      assertEvmSignedRecordSdk();
+      const keyring = new KeyringManager(undefined, getLedgerHost(), {
+        captureEvmSubmission: (context) =>
+          this.captureEvmSignedSubmission(keyring, context),
+      });
       // Set up storage access for each keyring
       keyring.setStorage(chrome.storage.local);
       keyring.setVaultStateGetter(() => store.getState().vault);
@@ -1267,7 +1423,11 @@ class MainController {
   // Create a keyring on demand with storage access
   private createKeyringOnDemand(): KeyringManager {
     // Create new keyring with the wallet state
-    const keyring = new KeyringManager(undefined, getLedgerHost());
+    assertEvmSignedRecordSdk();
+    const keyring = new KeyringManager(undefined, getLedgerHost(), {
+      captureEvmSubmission: (context) =>
+        this.captureEvmSignedSubmission(keyring, context),
+    });
 
     // Set up storage access - this gives it access to the global encrypted vault
     keyring.setStorage(chrome.storage.local);
@@ -1896,6 +2056,7 @@ class MainController {
     keyring?: KeyringManager
   ) {
     if (
+      walletPersistenceGate.blocked ||
       generation !== this.walletSessionGeneration ||
       (keyring &&
         (keyring !== this.getActiveKeyring() || !keyring.isUnlocked()))
@@ -1935,6 +2096,10 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    // A new authenticated session must re-read and authenticate retained bytes.
+    this.retainedEvmReplay?.cancel();
+    this.retainedEvmReplay = undefined;
+    this.retainedEvmRecords = undefined;
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
@@ -3120,7 +3285,8 @@ class MainController {
 
   public getWalletSetupStatus(): 'busy' | 'recovery-required' | undefined {
     if (this.isCreatingWallet || this.isResettingWallet) return 'busy';
-    if (this.recoveryJournalPending) return 'recovery-required';
+    if (this.recoveryJournalPending || walletPersistenceGate.blocked)
+      return 'recovery-required';
     return undefined;
   }
 
@@ -3928,6 +4094,24 @@ class MainController {
       );
     } finally {
       this.isCreatingWallet = false;
+    }
+  }
+
+  private async activateRecoveredWallet(
+    password: string,
+    assertCurrent: () => void
+  ): Promise<void> {
+    assertCurrent();
+    const keyring = this.getActiveKeyring();
+    const result = await keyring.unlock(password);
+    assertCurrent();
+    if (
+      keyring !== this.getActiveKeyring() ||
+      result?.canLogin !== true ||
+      result.needsAccountCreation
+    ) {
+      await keyring.lockWallet();
+      throw new Error('Recovered wallet authentication failed');
     }
   }
 
@@ -4967,10 +5151,14 @@ class MainController {
     try {
       let result;
       if (data.isSyscoinRpc) {
-        const sysRpcResult = await getSysRpc(data);
+        const sysRpcResult = await withWalletBackend(data.url, () =>
+          getSysRpc(data)
+        );
         result = sysRpcResult?.rpc?.formattedNetwork;
       } else {
-        const ethRpcResult = await getEthRpc(data, false);
+        const ethRpcResult = await withWalletBackend(data.url, () =>
+          getEthRpc(data, false)
+        );
         result = ethRpcResult?.formattedNetwork;
       }
 
@@ -5522,6 +5710,23 @@ class MainController {
       }
     };
     assertCurrent();
+    let importedRecovery;
+    if (accountType === KeyringAccountType.Imported && target?.xprv) {
+      const profileId =
+        await this.getActiveKeyring().getPrivateRecordProfileId();
+      assertCurrent();
+      importedRecovery = {
+        assertAccount: assertImportedRecoveryAccount,
+        profileId,
+        identity: {
+          kind: sourceNetwork.kind,
+          slip44: sourceSlip44,
+          id: accountId,
+          address: target.address,
+          xpub: target.xpub,
+        },
+      };
+    }
     const retirement = getController().dapp.captureAccountSessionRetirement(
       accountId,
       accountType
@@ -5534,6 +5739,7 @@ class MainController {
         grants: retirement.grants,
         isSameWallet: () => walletGeneration === this.walletStateGeneration,
         retireSessions: retirement.retire,
+        importedRecovery,
       },
       assertCurrent
     );
@@ -5671,7 +5877,8 @@ class MainController {
       | KeyringAccountType.SmartAccount
       | KeyringAccountType.Trezor
       | KeyringAccountType.Ledger,
-    assertCurrent: () => void
+    assertCurrent: () => void,
+    importedRecovery?: ImportedRecoveryEntry
   ) {
     const generation = this.walletStateGeneration;
     // SDK allocation can race across extension documents. Never replace an
@@ -5679,16 +5886,21 @@ class MainController {
     const assertCreationCurrent = () => {
       assertCurrent();
       const { accounts } = store.getState().vault;
-      if (accountType === KeyringAccountType.HDAccount)
-        assertCompleteHDAccountData(accounts.HDAccount);
-      if (accounts[accountType]?.[account.id])
-        throw new Error(
-          accountType === KeyringAccountType.Imported
-            ? 'Account import conflicted with another import. Please retry.'
-            : 'Account creation conflicted with another request. Please retry.'
-        );
+      assertAccountCreationAvailable(accounts, accountType, account.id);
     };
     this.resetAutoLockTimer();
+    if (importedRecovery) {
+      return persistAccountCreation(
+        account,
+        accountType,
+        assertCreationCurrent,
+        () => generation === this.walletStateGeneration,
+        {
+          assertAccount: assertImportedRecoveryAccount,
+          entry: importedRecovery,
+        }
+      );
+    }
     return persistAccountCreation(
       account,
       accountType,
@@ -5703,16 +5915,35 @@ class MainController {
     options?: { utxoAddressType?: 'p2wpkh' | 'p2pkh' | 'p2tr' }
   ) {
     const { keyring, assertCurrent } = this.accountMutationContext();
-    const importedAccount = await (keyring as any).importAccount(
-      privKey,
-      label,
-      options
+    const network = store.getState().vault.activeNetwork;
+    const checkImportContext = () => {
+      assertCurrent();
+      const current = store.getState().vault.activeNetwork;
+      if (
+        current.kind !== network.kind ||
+        current.slip44 !== network.slip44 ||
+        current.chainId !== network.chainId ||
+        current.url !== network.url
+      )
+        throw new Error('Account import network changed. Please retry.');
+    };
+    const imported = await importAccountWithRecovery(
+      keyring,
+      {
+        secret: privKey,
+        label,
+        options: options ?? undefined,
+        network: { kind: network.kind, slip44: network.slip44 },
+      },
+      checkImportContext
     );
-    assertCurrent();
+    const importedAccount = imported.account;
+    checkImportContext();
     await this.storeCreatedAccount(
       importedAccount,
       KeyringAccountType.Imported,
-      assertCurrent
+      checkImportContext,
+      imported.recovery
     );
 
     setTimeout(() => {
@@ -7619,29 +7850,13 @@ class MainController {
   }
 
   private getSLHDSASessionStateCrypto() {
-    const run = async (method: string, value: string) => {
-      this.assertWalletReadyForSigning();
-      const keyring = this.getActiveKeyring() as any;
-      const generation = this.walletSessionGeneration;
-      if (
-        typeof keyring.encryptSLHDSASessionState !== 'function' ||
-        typeof keyring.decryptSLHDSASessionState !== 'function'
-      ) {
-        throw new Error(
-          'Current sysweb3-keyring build does not support SLH-DSA session state encryption'
-        );
-      }
-      const result = await keyring[method](value);
+    this.assertWalletReadyForSigning();
+    const keyring = this.getActiveKeyring();
+    const generation = this.walletSessionGeneration;
+    return createSlhDsaProfileStateCrypto(keyring, () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation, keyring);
-      return result;
-    };
-    return {
-      decrypt: (cipherText: string) =>
-        run('decryptSLHDSASessionState', cipherText),
-      encrypt: (plainText: string) =>
-        run('encryptSLHDSASessionState', plainText),
-    };
+    });
   }
 
   private configureSLHDSASessionStateCrypto() {
@@ -7896,50 +8111,62 @@ class MainController {
   }
 
   public async getRecommendedEvmNonce(address: string): Promise<number> {
+    let retainedReadFailed = false;
     try {
+      const session = this.capturePrivateVaultSession();
+      const capturedNetwork = { ...store.getState().vault.activeNetwork };
+      const assertNonceContext = () => {
+        session.assertCurrent();
+        const network = store.getState().vault.activeNetwork;
+        if (
+          network.chainId !== capturedNetwork.chainId ||
+          network.url !== capturedNetwork.url
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      };
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
       }
 
       const latestNonce = await provider.getTransactionCount(address, 'latest');
+      assertNonceContext();
 
       const normalizedAddress = address.toLowerCase();
       const { accounts, accountTransactions, activeNetwork } =
         store.getState().vault;
-      let accountType: keyof typeof accounts | undefined;
-      let accountId: number | undefined;
-
-      for (const type of Object.keys(accounts) as Array<
-        keyof typeof accounts
-      >) {
-        const accountsById = accounts[type];
-        for (const [id, account] of Object.entries(accountsById)) {
-          if (
-            account?.address &&
-            account.address.toLowerCase() === normalizedAddress
-          ) {
-            accountType = type;
-            accountId = Number(id);
-            break;
-          }
-        }
-        if (accountType !== undefined) {
-          break;
-        }
-      }
-
+      const localTransactions = Object.entries(accounts).flatMap(
+        ([type, members]) =>
+          Object.entries(members).flatMap(([id, account]) =>
+            account?.address?.toLowerCase() === normalizedAddress
+              ? accountTransactions?.[type as keyof typeof accounts]?.[
+                  Number(id)
+                ]?.ethereum?.[activeNetwork.chainId] || []
+              : []
+          )
+      );
       const localConfirmedTransactions: Array<{
         nonce: number;
         transaction: any;
       }> = [];
       const localPendingNonces = new Set<number>();
-      const localTransactions =
-        accountType !== undefined && accountId !== undefined
-          ? accountTransactions?.[accountType]?.[accountId]?.ethereum?.[
-              activeNetwork.chainId
-            ] || []
-          : [];
+      try {
+        const retained = await this.getRetainedEvmRecords().listSender(
+          { keyring: session.keyring, assertCurrent: assertNonceContext },
+          String(activeNetwork.chainId),
+          address
+        );
+        assertNonceContext();
+        for (const entry of retained)
+          if (
+            !['confirmed', 'reverted'].includes(entry.phase) &&
+            entry.nonce >= latestNonce
+          )
+            localPendingNonces.add(entry.nonce);
+      } catch (error) {
+        retainedReadFailed = true;
+        throw error;
+      }
 
       // Match MetaMask's nonce model: start from canonical/latest chain state
       // plus local confirmed history, then skip nonces Pali has locally pending.
@@ -8002,6 +8229,7 @@ class MainController {
 
       return nextNonce;
     } catch (error) {
+      if (retainedReadFailed) throw error;
       return await this.ethereumTransaction.getRecommendedNonce(address);
     }
   }
@@ -10644,7 +10872,9 @@ class MainController {
   public async testExplorerApi(apiUrl: string) {
     // The evmTransactionsController.testExplorerApi doesn't need a web3Provider
     // It just makes HTTP requests to test the API endpoint
-    return this.evmTransactionsController.testExplorerApi(apiUrl);
+    return withWalletBackend(apiUrl, () =>
+      this.evmTransactionsController.testExplorerApi(apiUrl)
+    );
   }
 
   /**
@@ -11431,12 +11661,14 @@ class MainController {
     minLatency: number = 500
   ): Promise<{ data?: any; error?: string; success: boolean }> {
     try {
-      const result = await validateRpcBatchUniversal(
-        url,
-        networkType,
-        chainId,
-        maxLatency,
-        minLatency
+      const result = await withWalletBackend(url, () =>
+        validateRpcBatchUniversal(
+          url,
+          networkType,
+          chainId,
+          maxLatency,
+          minLatency
+        )
       );
       return result;
     } catch (error: any) {

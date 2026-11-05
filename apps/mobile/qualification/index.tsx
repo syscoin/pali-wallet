@@ -36,7 +36,7 @@ import type { FullCryptoQualification } from '../src/crypto/qualificationFull.ts
 // qualification configuration and never imported by the production entry.
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
 const EXPECTED_ADDRESS = '0x9858EfFD232B4033E47d90003D41EC34EcaEda94';
 const EXPECTED_HD_ADDRESS = '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0';
 const EXPECTED_ERC20_HD_ADDRESS = '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A';
@@ -127,6 +127,7 @@ function QualificationApp() {
       let expectedNevmAddress: string | undefined;
       let expectedZksysAddress: string | undefined;
       let networkCalls = 0;
+      let verifiedSdkVersion: string | undefined;
       const check = async <T,>(
         name: string,
         fn: () => Promise<T>
@@ -282,8 +283,8 @@ function QualificationApp() {
           // Run before protected-storage admission, in a separate report: an
           // iOS Simulator storage refusal must never become custody success.
           stage = 'native HTTP transport';
-          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }] = await Promise.all([
-            import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'),
+          const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }, { qualifyNativePost, PostQualificationError }] = await Promise.all([
+            import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'), import('./post-native.ts'),
           ]);
           if (!FileSystem.documentDirectory) throw Error('HTTP_QUALIFICATION_REPORT_UNAVAILABLE');
           const destination = `${FileSystem.documentDirectory}pali-native-http-${parameters.http.token}.json`;
@@ -294,13 +295,23 @@ function QualificationApp() {
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
             await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            stage = 'native POST transport';
+            const postDestination = `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json`;
+            const postEvidence = await qualifyNativePost({ launch: parameters.http, build, walletFetch,
+              phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
+              sessionId: Constants.sessionId, networkCalls: () => networkCalls });
+            await FileSystem.writeAsStringAsync(`${postDestination}.tmp`, JSON.stringify(postEvidence));
+            await FileSystem.moveAsync({ from: `${postDestination}.tmp`, to: postDestination });
           } catch (error) {
-            if (error instanceof HttpQualificationError) {
-              const diagnostic = { ...build, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+            if (error instanceof HttpQualificationError || error instanceof PostQualificationError) {
+              const isPost = error instanceof PostQualificationError;
+              const failedDestination = isPost ? `${FileSystem.documentDirectory}pali-native-post-${parameters.http.token}.json` : destination;
+              const diagnostic = { ...build, kind: isPost ? 'native-post-diagnostic' : 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
                 failedCase: error.failedCase, token: parameters.http.token, phase: parameters.phase,
-                scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId };
-              await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(diagnostic))
-                .then(() => FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination })).catch(() => undefined);
+                scenario: parameters.scenario, platform: Platform.OS, sessionId: Constants.sessionId,
+                ...(isPost ? { failureDetail: error.failureDetail } : {}) };
+              await FileSystem.writeAsStringAsync(`${failedDestination}.tmp`, JSON.stringify(diagnostic))
+                .then(() => FileSystem.moveAsync({ from: `${failedDestination}.tmp`, to: failedDestination })).catch(() => undefined);
             }
             throw error;
           }
@@ -351,6 +362,10 @@ function QualificationApp() {
               },
               () => undefined
             ));
+            // The embedded package metadata must match the exact locked build pin.
+            const installedVersion = require('@sidhujag/sysweb3-keyring/package.json').version;
+            expect(typeof installedVersion === 'string' && installedVersion === Constants.expoConfig?.extra?.paliQualificationSdkVersion);
+            verifiedSdkVersion = installedVersion;
             stage = 'initialize native custody';
             setStatus(stage);
             return sdk;
@@ -540,7 +555,7 @@ function QualificationApp() {
           },
           mnemonicEntropyVerified,
           nativeBridgeExercised: true,
-          sdkVersion: '2.0.0',
+          sdkVersion: verifiedSdkVersion,
           ...hdEvidence,
           ...erc20Evidence,
           ...nevmEvidence,

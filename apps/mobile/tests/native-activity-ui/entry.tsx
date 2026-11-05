@@ -49,6 +49,7 @@ let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
 let tokenPrecision: number | null = null;
 let invalidFee = false;
+const contractCreation = new URLSearchParams(window.location.search).has('contract-creation');
 let saveRequests = 0;
 let saveSettled = 0;
 class Explorer extends ActivityExplorerReader {
@@ -77,12 +78,12 @@ class Receipts extends ActivityReceiptReader {
     return {
       hash: h,
       from: n % 2 ? owner : recipient,
-      to: n % 2 ? recipient : owner,
+      to: contractCreation && n === 1 ? null : n % 2 ? recipient : owner,
       valueUnits: n === 3 ? '0' : '1000000000000000000',
       nonce: String(n),
       timestamp: 1700000000000 - n * 1000,
       block: { hash: hash(1000), number: '1000' },
-      status: 'finalized',
+      status: 'confirmed',
       feeUnits: invalidFee ? ((1n << 256n) ** 2n).toString() : '21000',
       events:
         n === 3
@@ -104,10 +105,10 @@ const runtime: NativeActivityRuntime = {
   async load() {
     return {
       scope,
-      local:
-        tokenPrecision === null
-          ? null
-          : {
+      locals:
+        tokenPrecision === null && !contractCreation
+          ? []
+          : [{
               walletFingerprint: scope.walletFingerprint,
               accountId: scope.accountId,
               address: owner,
@@ -118,16 +119,13 @@ const runtime: NativeActivityRuntime = {
               phase: 'confirmed',
               nonce: 1,
               createdAt: 1700000000000,
-              recipient,
+              recipient: contractCreation ? null : recipient,
               amountUnits: '1',
               maximumFeeUnits: '21000',
-              token: {
-                contractAddress: recipient,
-                name: 'Precision token',
-                symbol: 'PRECISE',
-                decimals: tokenPrecision,
-              },
-            },
+              ...(tokenPrecision === null ? {} : {token: {
+                contractAddress: recipient, name: 'Precision token', symbol: 'PRECISE', decimals: tokenPrecision,
+              }}),
+            }],
       saved: {
         archived: [],
         candidates: [],

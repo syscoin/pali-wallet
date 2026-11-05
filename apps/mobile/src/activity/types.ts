@@ -5,6 +5,7 @@ import { toUtf8Bytes } from 'ethers/utils';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
 import {
   getNativeNetwork,
+  snapshotNativeNetwork,
   type NativeNetworkRegistration,
 } from '../custody/networkContext.ts';
 
@@ -39,8 +40,10 @@ export type TerminalActivityRecord = Readonly<{
     name: string;
   }>;
 }>;
-export type LocalActivityRecord = Omit<TerminalActivityRecord, 'phase'> &
+export const LOCAL_ACTIVITY_LIMIT = 48;
+export type LocalActivityRecord = Omit<TerminalActivityRecord, 'phase' | 'recipient'> &
   Readonly<{
+    recipient: string | null;
     phase:
       | 'signed'
       | 'attempted'
@@ -84,7 +87,7 @@ export class ActivityError extends Error {
 export function localScopeKey(
   value: Pick<
     TerminalActivityRecord,
-    'walletFingerprint' | 'accountId' | 'address' | 'registrationHash'
+    'walletFingerprint' | 'accountId' | 'address' | 'chainId'
   >
 ): string {
   return keccak256(
@@ -93,7 +96,7 @@ export function localScopeKey(
         value.walletFingerprint,
         value.accountId,
         value.address,
-        value.registrationHash,
+        value.chainId,
       ])
     )
   );
@@ -102,27 +105,23 @@ export function createActivityScope(
   walletFingerprint: string,
   accountId: string,
   address: string,
-  networkId: string
+  networkId: string | NativeNetworkRegistration
 ): ActivityScope {
   if (
     !/^[0-9a-f]{64}$/.test(walletFingerprint) ||
     !isNativeAccountId(accountId)
   )
     throw new ActivityError('INVALID');
-  const network = getNativeNetwork(networkId);
-  if (network.id !== 'ethereum') throw new ActivityError('UNAVAILABLE');
-  const definition = EVM_NETWORK_DEFINITIONS.find(
-    (item) => item.id === 'ethereum'
-  )!;
-  const apiUrl = definition.network.apiUrl;
-  const explorerUrl = definition.network.explorer;
-  if (!apiUrl || !explorerUrl) throw new ActivityError('UNAVAILABLE');
+  const network = typeof networkId === 'string' ? getNativeNetwork(networkId) : snapshotNativeNetwork(networkId);
+  const definition = EVM_NETWORK_DEFINITIONS.find((item) => item.id === network.id && item.network.url === network.rpcUrl && String(item.network.chainId) === network.chainId);
+  const apiUrl = definition?.network.apiUrl ?? '';
+  const explorerUrl = definition?.network.explorer ?? '';
   const normalized = getAddress(address);
   const key = localScopeKey({
     walletFingerprint,
     accountId,
     address: normalized,
-    registrationHash: network.registrationHash,
+    chainId: network.chainId,
   });
   const sourceId = keccak256(
     toUtf8Bytes(JSON.stringify([key, apiUrl, 'etherscan-account-v1']))

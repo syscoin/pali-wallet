@@ -4,6 +4,8 @@ import { assertBaseUnits, loadedBalance } from './amounts.ts';
 import { getNetwork, NETWORKS } from './networks.ts';
 import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import type { UtxoBalance } from './utxoBalanceReader.ts';
+import type { WatchRecordRepository, WatchRecordSnapshot } from './publicAccountStorage.ts';
+import { createWatchAccountCodec, type StoredWatchAccount } from './watchAccountCodec.ts';
 import type {
   NetworkId,
   PublicAccount,
@@ -16,6 +18,42 @@ import type {
   WalletNetwork,
 } from './types.ts';
 
+type RecordOpenOptions = Readonly<{
+  repository: Pick<WatchRecordRepository, 'load'>; reader: BalanceReader;
+  signal: AbortSignal; now?: () => number;
+  idle?: { begin(): void; check(): boolean; stop(): void };
+}>;
+type AccountSource = Extract<StoredWatchAccount, { kind: 'utxo-public' }>;
+type RecordSession = {
+  repository: Pick<WatchRecordRepository, 'load'>; identity: string;
+  sources: ReadonlyMap<string, AccountSource>;
+};
+function ownFields(value: unknown, keys: readonly string[]): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Reflect.ownKeys(value).length !== keys.length)
+    throw new Error('Invalid public account read binding');
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const key of keys) {
+    const d = Object.getOwnPropertyDescriptor(value, key);
+    if (!d?.enumerable || !Object.hasOwn(d, 'value')) throw new Error('Invalid public account read binding');
+    copy[key] = d.value;
+  }
+  return copy;
+}
+function recordView(snapshot: WatchRecordSnapshot) {
+  const data = ownFields(snapshot, ['version', 'records', 'accounts']);
+  if (data.version !== 1) throw new Error('Invalid public account record version');
+  const decoded = createWatchAccountCodec().validate(data.records), records = decoded.records;
+  const accounts = validatePublicAccounts(data.accounts);
+  if (JSON.stringify(decoded.accounts) !== JSON.stringify(accounts)) throw new Error('Public account projection changed');
+  return { records, accounts, identity: JSON.stringify({ version: data.version, records, accounts }) };
+}
+function admissionCancelled(): Error { return new Error('Public account opening was cancelled'); }
+function ownFunction(value: unknown, name: string): (...args: never[]) => unknown {
+  const d = value && typeof value === 'object' ? Object.getOwnPropertyDescriptor(value, name) : undefined;
+  if (!d?.enumerable || !Object.hasOwn(d, 'value') || typeof d.value !== 'function') throw new Error('Missing public account read port');
+  return d.value;
+}
+
 export interface BalanceReader {
   /** Implementations must verify the connected chain before returning an observation. */
   readBalance(
@@ -25,6 +63,7 @@ export interface BalanceReader {
   ): Promise<{ chainId: number; units: string }>;
   /** Separate from the EVM observation contract; amounts are never combined. */
   readUtxoBalance?(networkId: UtxoNetworkId, address: string, signal: AbortSignal): Promise<UtxoBalance>;
+  readUtxoAccount?(networkId: UtxoNetworkId, identifier: string, signal: AbortSignal): Promise<UtxoBalance>;
 }
 
 /** Untrusted persisted public data must not import private keyring records. */
@@ -142,12 +181,42 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
   private cachedSnapshot: PublicSnapshot | null = null;
+  private recordSession: RecordSession | null = null;
+
+  /** Open the canonical saved records; public snapshots expose addresses only. */
+  static async openRecords(options: RecordOpenOptions): Promise<WatchOnlyAuthority> {
+    const load = ownFunction(options.repository, 'load') as WatchRecordRepository['load'];
+    const signal = options.signal;
+    let rejectAdmission!: (error: Error) => void;
+    const stopped = new Promise<never>((_resolve, reject) => { rejectAdmission = reject; });
+    const abort = () => rejectAdmission(admissionCancelled());
+    signal.addEventListener('abort', abort, { once: true });
+    const check = () => { if (signal.aborted) throw admissionCancelled(); };
+    try {
+      check();
+      const snapshot = await Promise.race([Promise.resolve().then(() => { check(); return load(); }), stopped]);
+      check(); const view = recordView(snapshot), sources = new Map<string, AccountSource>();
+      for (const record of view.records) {
+        if (record.kind === 'utxo-public') sources.set(record.id, record);
+      }
+      check();
+      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle);
+      authority.recordSession = { repository: Object.freeze({ load }), identity: view.identity, sources };
+      return authority;
+    } catch { throw signal.aborted ? admissionCancelled() : new Error('Saved public accounts could not be opened'); }
+    finally { signal.removeEventListener('abort', abort); }
+  }
+
+  private readonly idle?: { begin(): void; check(): boolean; stop(): void };
+  private checkingIdle = false;
 
   constructor(
     accounts: readonly PublicAccount[],
     reader: BalanceReader,
-    now: () => number = Date.now
+    now: () => number = Date.now,
+    idle?: { begin(): void; check(): boolean; stop(): void }
   ) {
+    this.idle = idle;
     this.accounts = validatePublicAccounts(accounts);
     this.reader = reader;
     this.now = now;
@@ -157,6 +226,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   getSnapshot(): PublicSnapshot {
+    if (!this.locked && this.idle && !this.checkingIdle) { this.checkingIdle = true; try { if (!this.idle.check()) this.lock(); } finally { this.checkingIdle = false; } }
     if (this.cachedSnapshot) return this.cachedSnapshot;
     const receive =
       !this.locked &&
@@ -187,6 +257,10 @@ export class WatchOnlyAuthority implements WalletAuthority {
     return this.cachedSnapshot;
   }
 
+  private currentSource(): AccountSource | undefined {
+    const source = this.recordSession?.sources.get(this.accountId ?? '');
+    return source?.networkId === this.networkId ? source : undefined;
+  }
   subscribe(listener: (snapshot: PublicSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -207,18 +281,21 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.pending?.abort();
     this.pending = null;
     this.balance = Object.freeze({ status: 'unknown' });
+
   }
 
   /** Privacy lock only. It does not authenticate or unlock any signing key. */
   unlock(): void {
     if (!this.accounts.length) return;
     this.invalidate();
+    this.idle?.begin();
     this.locked = false;
     this.publish();
   }
 
   /** Call on background/inactive as well as explicit lock. */
   lock(): void {
+    this.idle?.stop();
     this.invalidate();
     this.locked = true;
     this.publish();
@@ -242,6 +319,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   selectAccount(id: string): void {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const account = this.accounts.find((entry) => entry.id === id);
     if (!account) throw new Error('Unknown account');
@@ -253,6 +331,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   selectNetwork(id: NetworkId): void {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const network = getNetwork(id);
     if (
@@ -266,6 +345,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   }
 
   async refresh(): Promise<void> {
+    this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
     const account = this.accounts.find((entry) => entry.id === this.accountId);
     const address = account?.addresses[this.networkId];
@@ -278,10 +358,19 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.balance = Object.freeze({ status: 'loading' });
     this.publish();
     try {
+      if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
       const isUtxo = network.id === 'syscoin' || network.id === 'bitcoin';
-      const response = isUtxo
-        ? await this.reader.readUtxoBalance?.(network.id as UtxoNetworkId, address, request.signal)
-        : await this.reader.readBalance(network.id, address, request.signal);
+      const source = this.currentSource(), session = this.recordSession;
+      if (source && session) {
+        const current = recordView(await session.repository.load());
+        if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
+        if (current.identity !== session.identity) throw new Error('Saved watch accounts changed. Reopen them.');
+      }
+      const response = source
+        ? await this.reader.readUtxoAccount?.(source.networkId, source.identifier, request.signal)
+        : isUtxo
+          ? await this.reader.readUtxoBalance?.(network.id as UtxoNetworkId, address, request.signal)
+          : await this.reader.readBalance(network.id, address, request.signal);
       if (
         request.signal.aborted ||
         this.pending !== request ||

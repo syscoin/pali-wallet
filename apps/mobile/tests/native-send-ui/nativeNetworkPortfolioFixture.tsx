@@ -9,7 +9,7 @@ import type { BalanceReader } from '../../src/core/watchOnlyAuthority';
 
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
 let state = Object.freeze<CustodySnapshot>({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null });
-let catalogue = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 1, removed: [], networks: NATIVE_NETWORKS,
+let catalogue = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 1, networks: NATIVE_NETWORKS,
   accounts: [{ id: 'hd:60:0', type: 'HDAccount', index: 0, slip44: 60, address, label: 'Account 1' }],
   active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
 const listeners = new Set<(value: CustodySnapshot) => void>();

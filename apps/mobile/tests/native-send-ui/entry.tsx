@@ -1,3 +1,4 @@
+import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
@@ -47,7 +48,7 @@ let snapshot = idle();
 let sequence = 0;
 let expiry: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<(value: NativeTransferSnapshot) => void>();
-const confirmations: { id: string; password: string }[] = [];
+const confirmations: { id: string }[] = [];
 const publish = (next: NativeTransferSnapshot) => {
   snapshot = Object.freeze(next);
   for (const listener of listeners) listener(snapshot);
@@ -63,6 +64,7 @@ const controller: NativeTransferView = {
     publish(idle());
   },
   async recover() {},
+  async loadMorePredecessors() {},
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
@@ -92,19 +94,26 @@ const controller: NativeTransferView = {
     });
     expiry = setTimeout(() => publish(idle()), 90000);
   },
-  async confirm(id, password) {
-    if (snapshot.review?.id !== id || !password)
-      throw Error('Invalid fixture confirmation');
-    const quoteFailure = new URLSearchParams(window.location.search).get('quoteFailure');
+  async confirm(id) {
+    if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
+    const quoteFailure = new URLSearchParams(window.location.search).get(
+      'quoteFailure'
+    );
     if (quoteFailure) {
       clearTimeout(expiry);
       const expired = quoteFailure === 'base-fee' || quoteFailure === 'nonce';
-      publish({ ...snapshot, phase: expired ? 'idle' : 'unavailable', review: null, hash: null,
-        message: expired ? 'The review expired or network conditions changed. Review the transfer again.'
-          : 'The request could not be completed. Try again or check Activity for an existing transaction.' });
+      publish({
+        ...snapshot,
+        phase: expired ? 'idle' : 'unavailable',
+        review: null,
+        hash: null,
+        message: expired
+          ? 'The review expired or network conditions changed. Review the transfer again.'
+          : 'The request could not be completed. Try again or check Activity for an existing transaction.',
+      });
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
-    confirmations.push({ id, password });
+    confirmations.push({ id });
     const context = snapshot.review.context;
     clearTimeout(expiry);
     publish({
@@ -124,7 +133,7 @@ declare global {
       replaceReview(): Promise<void>;
       refreshReview(): void;
       reviewId(): string | null;
-      confirmations(): readonly { id: string; password: string }[];
+      confirmations(): readonly { id: string }[];
       changeContext(): void;
       settle(status: 'confirmed' | 'reverted' | 'nonce-consumed'): void;
     };
@@ -152,10 +161,9 @@ const accountAddress = (index: number) =>
 let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   Object.freeze<NativeWalletCatalogueSnapshot>({
     revision: 0,
-    removed: [],
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
     networks: NATIVE_NETWORKS,
-    accounts: [0, 1].map((index) => ({
+    accounts: Array.from({length: new URLSearchParams(window.location.search).has('many-accounts') ? 1000 : 2}, (_, index) => ({
       id: `hd:60:${index}`,
       type: 'HDAccount' as const,
       index,
@@ -166,7 +174,6 @@ let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   });
 let accountContext = 0;
 let accountFailure: CustodyErrorCode | null = null;
-let nextIndex = 2;
 const accountListeners = new Set<() => void>();
 const accountRequests: NativeAccountRequest[] = [];
 const accountController: NativeAccountView = {
@@ -202,11 +209,9 @@ const accountController: NativeAccountView = {
     accountSnapshot = null;
     for (const listener of accountListeners) listener();
     await Promise.resolve();
-    let accounts = [...old.accounts],
-      removed = [...old.removed],
-      active = old.active;
-    if (request.kind === 'create' || request.kind === 'restore') {
-      const index = request.kind === 'create' ? nextIndex++ : request.index;
+    let accounts = [...old.accounts], active = old.active;
+    if (request.kind === 'create') {
+      let index = 0; const occupied = new Set(accounts.map((row) => row.index)); while (occupied.has(index)) index++;
       accounts.push({
         id: `hd:60:${index}`,
         index,
@@ -215,7 +220,6 @@ const accountController: NativeAccountView = {
         address: accountAddress(index),
         label: request.label,
       });
-      removed = removed.filter((item) => item.index !== index);
       active = { accountId: `hd:60:${index}`, networkId: 'ethereum' };
     } else if (request.kind === 'select')
       active = { accountId: request.id, networkId: 'ethereum' };
@@ -226,15 +230,12 @@ const accountController: NativeAccountView = {
           : account
       );
     else if (request.kind === 'remove') {
-      const account = accounts.find((item) => item.id === request.id)!;
-      removed.push({ id: account.id, index: account.index });
       accounts = accounts.filter((item) => item.id !== request.id);
     }
     accountSnapshot = Object.freeze({
       ...old,
       revision: old.revision + 1,
       accounts,
-      removed,
       active,
     });
     for (const listener of accountListeners) listener();
@@ -245,6 +246,7 @@ declare global {
     __nativeAccountsFixture: {
       requests(): readonly NativeAccountRequest[];
       contextRevision(): number;
+      count(): number;
       revise(): void;
     };
   }
@@ -252,6 +254,7 @@ declare global {
 window.__nativeAccountsFixture = {
   requests: () => accountRequests,
   contextRevision: () => accountContext,
+  count: () => accountSnapshot?.accounts.length ?? 0,
   revise() {
     if (accountSnapshot)
       accountSnapshot = Object.freeze({

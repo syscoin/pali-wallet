@@ -1,5 +1,8 @@
 import { keccak256 } from 'ethers/crypto';
+import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
+import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
 import {
@@ -13,41 +16,19 @@ import {
   type Erc20TransferIntent,
 } from './transferIntent.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
-import { EvmTransferReadError, snapshotUnsignedTransfer } from './evmFeeContracts.ts';
-import { getNativeNetwork, getNativeSendContext, nativeTransferGasLimit, erc20SigningEnabled, type EvmNetworkId } from './networkContext.ts';
+import { EvmTransferReadError } from './evmFeeContracts.ts';
+import { getNativeNetwork, getNativeSendContext, snapshotNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
 import {
   boundedResponseText,
   parseRpcQuantity,
 } from '../platformRpc.ts';
 
-export type NativeTransferQuote = Readonly<{
-  transaction: Readonly<{
-    type: 2;
-    from: string;
-    to: string;
-    chainId: string;
-    nonce: string;
-    value: string;
-    gasLimit: string;
-    data: string;
-    maxFeePerGas: string;
-    maxPriorityFeePerGas: string;
-  }>;
-  balanceUnits: string;
-  maximumFeeUnits: string;
-  totalUnits: string;
-  tokenBalanceUnits?: string;
-  intent?: Erc20TransferIntent;
+export type NativeTransferQuote = import('./evmTransferReadRpc.ts').EvmPreparedQuote & Readonly<{
+  tokenBalanceUnits?: string; intent?: Erc20TransferIntent;
 }>;
 export type NativeTransferReceipt = Readonly<
-  | {
-      status: 'confirmed' | 'reverted';
-      blockHash: string;
-      blockNumber: string;
-      finalized: boolean;
-      terminalEligible?: boolean;
-    }
-  | { status: 'nonce-consumed'; finalized: boolean; terminalEligible?: boolean }
+  | { status: 'confirmed' | 'reverted'; blockHash: string; blockNumber: string }
+  | { status: 'nonce-consumed' }
 >;
 export class NativeTransferRpcError extends Error {
   readonly code:
@@ -110,8 +91,12 @@ export class NativeTransferRpc {
   private readonly timeoutMs: number;
   private readonly receiptRpc: EvmTransferReadRpc;
   private sequence = 0;
-  constructor(options: { networkId?: EvmNetworkId; fetch?: FetchLike; timeoutMs?: number } = {}) {
-    this.context = getNativeSendContext(options.networkId ?? 'ethereum');
+  constructor(options: ({ networkId: EvmNetworkId; registration?: NativeNetworkRegistration } | { registration: NativeNetworkRegistration; networkId?: EvmNetworkId }) & { fetch?: FetchLike; timeoutMs?: number }) {
+    if (!options || (!options.registration && !options.networkId)) throw new Error('A selected EVM registration is required');
+    const registration = options.registration ?? getNativeNetwork(options.networkId!);
+    if (options.networkId && options.networkId !== registration.id) throw new Error('Mismatched EVM registration');
+    snapshotNativeNetwork(registration);
+    this.context = getNativeSendContext(registration);
     Object.defineProperty(this, 'context', { value: this.context, writable: false, configurable: false });
     this.fetcher = options.fetch ?? ((url, init) => fetch(url, init));
     this.timeoutMs = options.timeoutMs ?? 12000;
@@ -121,7 +106,7 @@ export class NativeTransferRpc {
       this.timeoutMs > 30000
     )
       throw new Error('Invalid transfer RPC timeout');
-    this.receiptRpc = new EvmTransferReadRpc(this.context.networkId, {
+    this.receiptRpc = new EvmTransferReadRpc(registration, {
       fetch: this.fetcher,
       timeoutMs: this.timeoutMs,
     });
@@ -147,6 +132,7 @@ export class NativeTransferRpc {
       if (controller.signal.aborted)
         throw new NativeTransferRpcError('CANCELLED');
       if (error instanceof NativeTransferRpcError) throw error;
+      if (error instanceof EvmTransferReadError) return this.mapReadError(error);
       throw new NativeTransferRpcError('UNAVAILABLE');
     } finally {
       controller.abort();
@@ -213,315 +199,72 @@ export class NativeTransferRpc {
     if (parseRpcQuantity(await this.call('eth_chainId', [], signal)) !== BigInt(this.context.chainId))
       return invalid();
   }
-  prepare(
-    from: string,
-    to: string,
-    valueUnits: string,
-    signal: AbortSignal
-  ): Promise<NativeTransferQuote> {
+  private checkedQuote(quote: NativeTransferQuote): NativeTransferQuote {
+    if (BigInt(quote.totalUnits) > BigInt(quote.balanceUnits)) throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
+    return quote;
+  }
+  private mapReadError(error: unknown): never {
+    if (error instanceof EvmTransferReadError) {
+      if (error.code === 'REVIEW_REQUIRED') throw new NativeTransferRpcError('REVIEW_REQUIRED');
+      if (error.code === 'CANCELLED') throw new NativeTransferRpcError('CANCELLED');
+      if (error.code === 'INVALID_INPUT' || error.code === 'INVALID_RESPONSE' || error.code === 'PROFILE_CHANGED') throw new NativeTransferRpcError('INVALID_RESPONSE');
+    }
+    if (error instanceof NativeTransferRpcError) throw error;
+    throw new NativeTransferRpcError('UNAVAILABLE');
+  }
+  prepare(from: string, to: string, valueUnits: string, signal: AbortSignal): Promise<NativeTransferQuote> {
     const sender = normalizePublicAddress(from, this.context.networkId);
     const recipient = normalizePublicAddress(to, this.context.networkId);
     const value = assertBaseUnits(valueUnits);
-    if (value <= 0n || /^0x0{40}$/i.test(recipient))
-      throw new NativeTransferRpcError('INVALID_RESPONSE');
-    if (this.context.networkId === 'zksys-testnet')
-      return this.prepareZkOs(sender, recipient, value, signal);
-    return this.operation(signal, async (local) => {
-      // Check chain before disclosing an address, then again before admitting the quote.
-      await this.checkChain(local);
-      const [rawNonce, rawBalance, rawHistory, rawPriority, rawGas] =
-        await Promise.all([
-          this.call('eth_getTransactionCount', [sender, 'pending'], local),
-          this.call('eth_getBalance', [sender, 'pending'], local),
-          this.call('eth_feeHistory', ['0x1', 'latest', []], local),
-          this.call('eth_maxPriorityFeePerGas', [], local),
-          this.call(
-            'eth_estimateGas',
-            [
-              {
-                from: sender,
-                to: recipient,
-                value: '0x' + value.toString(16),
-                data: '0x',
-              },
-            ],
-            local
-          ),
-        ]);
-      const nonce = parseRpcQuantity(rawNonce);
-      const balance = parseRpcQuantity(rawBalance);
-      const history = object(rawHistory);
-      if (
-        !Array.isArray(history.baseFeePerGas) ||
-        history.baseFeePerGas.length !== 2
-      )
-        return invalid();
-      parseRpcQuantity(history.oldestBlock);
-      parseRpcQuantity(history.baseFeePerGas[0]);
-      const nextBaseFee = parseRpcQuantity(history.baseFeePerGas[1]);
-      const tip = parseRpcQuantity(rawPriority);
-      const estimate = parseRpcQuantity(rawGas);
-      if (
-        nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
-        estimate < 21000n ||
-        estimate > nativeTransferGasLimit(this.context.networkId)
-      )
-        return invalid();
-      const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
-      const maxFee = nextBaseFee * 2n + tip;
-      const maximumFee = gas * maxFee;
-      const total = value + maximumFee;
-      assertBaseUnits(maxFee.toString());
-      assertBaseUnits(total.toString());
-      if (gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
-      if (total > balance)
-        throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
-      await this.checkChain(local);
-      return Object.freeze({
-        transaction: Object.freeze({
-          type: 2,
-          from: sender,
-          to: recipient,
-          chainId: this.context.chainId,
-          nonce: nonce.toString(),
-          value: value.toString(),
-          gasLimit: gas.toString(),
-          data: '0x',
-          maxFeePerGas: maxFee.toString(),
-          maxPriorityFeePerGas: tip.toString(),
-        }),
-        balanceUnits: balance.toString(),
-        maximumFeeUnits: maximumFee.toString(),
-        totalUnits: total.toString(),
-      });
-    });
+    if (value <= 0n) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
+    return this.receiptRpc.prepare({ from: sender, to: recipient, value: value.toString(), data: '0x' }, signal, () => undefined)
+      .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
-  /** Recheck the exact approved fee envelope; a new tip can change zkOS gas requirements. */
-  requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal): Promise<NativeTransferQuote> {
-    if (this.context.networkId !== 'zksys-testnet') return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
-    let approved;
-    try { approved = snapshotUnsignedTransfer(transaction as Parameters<typeof snapshotUnsignedTransfer>[0], getNativeNetwork(this.context.networkId)); }
-    catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
-    return this.prepareZkOs(approved.from, approved.to, BigInt(approved.value), signal, approved);
+  /** Every EVM rechecks the exact reviewed type, fees, nonce and calldata before signing. */
+  requote(transaction: NativeTransferQuote['transaction'], signal: AbortSignal, intent?: Erc20TransferIntent): Promise<NativeTransferQuote> {
+    if (intent) return this.prepareToken(transaction.from, intent, signal, transaction);
+    try { assertTransferIntentEnvelope(transaction); } catch { return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE')); }
+    return this.receiptRpc.prepare({ from: transaction.from, to: transaction.to, value: transaction.value, data: transaction.data }, signal, () => undefined, transaction)
+      .then((quote) => this.checkedQuote(quote)).catch((error) => this.mapReadError(error));
   }
-  private prepareZkOs(
-    sender: string, recipient: string, value: bigint, signal: AbortSignal,
-    approved?: NativeTransferQuote['transaction']
-  ): Promise<NativeTransferQuote> {
-    const quantity = (value: unknown): bigint => {
-      try { return parseRpcQuantity(value); } catch { return invalid(); }
-    };
-    const validUnits = (value: bigint): void => {
-      try { assertBaseUnits(value.toString()); } catch { return invalid(); }
-    };
-    return this.operation(signal, async (local) => {
-      await this.checkChain(local);
-      const sampled = object(await this.call('eth_getBlockByNumber', ['latest', false], local));
-      const height = quantity(sampled.number);
-      const sampledHash = checkedHash(sampled.hash);
-      const sampledBaseFee = quantity(sampled.baseFeePerGas);
-      const blockGasLimit = quantity(sampled.gasLimit);
-      const [rawNonce, rawBalance, rawHistory, rawPriority] = await Promise.all([
-        this.call('eth_getTransactionCount', [sender, 'pending'], local),
-        this.call('eth_getBalance', [sender, 'pending'], local),
-        this.call('eth_feeHistory', ['0x1', 'latest', []], local),
-        this.call('eth_maxPriorityFeePerGas', [], local),
-      ]);
-      const nonce = quantity(rawNonce), balance = quantity(rawBalance);
-      const history = object(rawHistory);
-      if (!Array.isArray(history.baseFeePerGas) || history.baseFeePerGas.length !== 2 ||
-          nonce > BigInt(Number.MAX_SAFE_INTEGER) || blockGasLimit < 21000n) return invalid();
-      quantity(history.oldestBlock);
-      quantity(history.baseFeePerGas[0]);
-      const nextBaseFee = quantity(history.baseFeePerGas[1]);
-      const selectedTip = quantity(rawPriority);
-      const baseFee = sampledBaseFee > nextBaseFee ? sampledBaseFee : nextBaseFee;
-      const tip = approved ? BigInt(approved.maxPriorityFeePerGas) : selectedTip;
-      const maxFee = approved ? BigInt(approved.maxFeePerGas) : baseFee * 2n + tip;
-      validUnits(maxFee);
-      if (maxFee === 0n || tip > maxFee) return invalid();
-      if (approved && (maxFee < baseFee || BigInt(approved.nonce) !== nonce))
-        throw new NativeTransferRpcError('REVIEW_REQUIRED');
-      if (maxFee < baseFee) return invalid();
-      const hex = (number: bigint) => `0x${number.toString(16)}`;
-      // Bind estimation to the fields that will actually be signed. RPC itself also
-      // supports omitted fees; explicit fields avoid changing the native-resource budget.
-      const rawGas = await this.call('eth_estimateGas', [{
-        type: '0x2', chainId: hex(BigInt(this.context.chainId)), from: sender, to: recipient,
-        nonce: hex(nonce), value: hex(value), data: '0x',
-        maxFeePerGas: hex(maxFee), maxPriorityFeePerGas: hex(tip),
-      }, 'pending'], local);
-      const estimate = quantity(rawGas);
-      if (estimate < 21000n || estimate > blockGasLimit || estimate > nativeTransferGasLimit(this.context.networkId)) return invalid();
-      const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
-      if (gas > blockGasLimit || gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
-      const maximumFee = gas * maxFee, total = value + maximumFee;
-      validUnits(maximumFee); validUnits(total);
-      if (total > balance) throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
-      const repeated = object(await this.call('eth_getBlockByNumber', [hex(height), false], local));
-      if (quantity(repeated.number) !== height || checkedHash(repeated.hash) !== sampledHash) return invalid();
-      await this.checkChain(local);
-      return Object.freeze({
-        transaction: Object.freeze({ type: 2, from: sender, to: recipient, chainId: this.context.chainId,
-          nonce: nonce.toString(), value: value.toString(), gasLimit: gas.toString(), data: '0x',
-          maxFeePerGas: maxFee.toString(), maxPriorityFeePerGas: tip.toString() }),
-        balanceUnits: balance.toString(), maximumFeeUnits: maximumFee.toString(), totalUnits: total.toString(),
-      });
-    });
-  }
-  prepareToken(
-    from: string,
-    input: Erc20TransferIntent,
-    signal: AbortSignal
-  ): Promise<NativeTransferQuote> {
-    if (!erc20SigningEnabled(this.context.networkId)) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
-    const sender = normalizePublicAddress(from, 'ethereum');
+  prepareToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
+    approved?: NativeTransferQuote['transaction']): Promise<NativeTransferQuote> {
+    const sender = normalizePublicAddress(from, this.context.networkId);
     const intent = snapshotErc20TransferIntent(input);
+    if (intent.chainId !== this.context.chainId) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     const data = encodeErc20Transfer(intent.recipient, intent.amountUnits);
-    const call = Object.freeze({
-      from: sender,
-      to: intent.token.contractAddress,
-      value: '0x0',
-      data,
-    });
+    const call = Object.freeze({ from: sender, to: intent.token.contractAddress, value: '0x0', data });
     const word = (value: unknown): bigint => {
-      if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value))
-        return invalid();
+      if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return invalid();
       return BigInt(value);
     };
     const block = (value: unknown) => {
       const raw = object(value);
-      return {
-        number: `0x${parseRpcQuantity(raw.number).toString(16)}`,
-        hash: checkedHash(raw.hash),
-      };
+      return { number: `0x${parseRpcQuantity(raw.number).toString(16)}`, hash: checkedHash(raw.hash) };
     };
     return this.operation(signal, async (local) => {
       await this.checkChain(local);
-      const observed = block(
-        await this.call('eth_getBlockByNumber', ['latest', false], local)
-      );
-      const code = await this.call(
-        'eth_getCode',
-        [intent.token.contractAddress, observed.number],
-        local
-      );
-      if (
-        typeof code !== 'string' ||
-        code.length > 65538 ||
-        !/^0x(?:[0-9a-fA-F]{2})+$/.test(code)
-      )
-        return invalid();
-      const [
-        rawNonce,
-        rawBalance,
-        rawHistory,
-        rawPriority,
-        rawGas,
-        rawDecimals,
-        rawTokens,
-        simulation,
-      ] = await Promise.all([
-        this.call('eth_getTransactionCount', [sender, 'pending'], local),
-        this.call('eth_getBalance', [sender, 'pending'], local),
-        this.call('eth_feeHistory', ['0x1', 'latest', []], local),
-        this.call('eth_maxPriorityFeePerGas', [], local),
-        this.call('eth_estimateGas', [call, observed.number], local),
-        this.call(
-          'eth_call',
-          [
-            { to: intent.token.contractAddress, data: '0x313ce567' },
-            observed.number,
-          ],
-          local
-        ),
-        this.call(
-          'eth_call',
-          [
-            {
-              to: intent.token.contractAddress,
-              data: `0x70a08231${sender
-                .slice(2)
-                .toLowerCase()
-                .padStart(64, '0')}`,
-            },
-            observed.number,
-          ],
-          local
-        ),
+      const observed = block(await this.call('eth_getBlockByNumber', ['latest', false], local));
+      const code = await this.call('eth_getCode', [intent.token.contractAddress, observed.number], local);
+      if (typeof code !== 'string' || code.length > 65538 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(code)) return invalid();
+      const [rawDecimals, rawTokens, simulation, quote] = await Promise.all([
+        this.call('eth_call', [{ to: intent.token.contractAddress, data: '0x313ce567' }, observed.number], local),
+        this.call('eth_call', [{ to: intent.token.contractAddress, data: `0x70a08231${sender.slice(2).toLowerCase().padStart(64, '0')}` }, observed.number], local),
         this.call('eth_call', [call, observed.number], local),
+        this.receiptRpc.prepare({ from: sender, to: intent.token.contractAddress, value: '0', data }, local, () => undefined, approved),
       ]);
-      // Some established tokens return no bytes on success. Explicit false and
-      // every other malformed/noncanonical return remain rejected.
-      if (simulation !== '0x' && word(simulation) !== 1n)
-        throw new NativeTransferRpcError('TOKEN_TRANSFER_REJECTED');
+      if (simulation !== '0x' && word(simulation) !== 1n) throw new NativeTransferRpcError('TOKEN_TRANSFER_REJECTED');
       let decimals: number;
-      try {
-        decimals = parseErc20Decimals(word(rawDecimals));
-      } catch {
-        return invalid();
-      }
-      if (decimals !== intent.token.decimals)
-        throw new NativeTransferRpcError('TOKEN_CHANGED');
+      try { decimals = parseErc20Decimals(word(rawDecimals)); } catch { return invalid(); }
+      if (decimals !== intent.token.decimals) throw new NativeTransferRpcError('TOKEN_CHANGED');
       const tokenBalanceUnits = parseErc20Units(word(rawTokens));
-      if (BigInt(tokenBalanceUnits) < BigInt(intent.amountUnits))
-        throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
-      const nonce = parseRpcQuantity(rawNonce),
-        balance = parseRpcQuantity(rawBalance),
-        history = object(rawHistory);
-      if (
-        !Array.isArray(history.baseFeePerGas) ||
-        history.baseFeePerGas.length !== 2
-      )
-        return invalid();
-      parseRpcQuantity(history.oldestBlock);
-      parseRpcQuantity(history.baseFeePerGas[0]);
-      const nextBaseFee = parseRpcQuantity(history.baseFeePerGas[1]),
-        tip = parseRpcQuantity(rawPriority),
-        estimate = parseRpcQuantity(rawGas);
-      if (
-        nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
-        estimate < 21000n ||
-        estimate > nativeTransferGasLimit(this.context.networkId)
-      )
-        return invalid();
-      const gas = estimate === 21000n ? estimate : (estimate * 12n + 9n) / 10n;
-      const maxFee = nextBaseFee * 2n + tip,
-        maximumFee = gas * maxFee;
-      assertBaseUnits(maxFee.toString());
-      assertBaseUnits(maximumFee.toString());
-      if (gas > nativeTransferGasLimit(this.context.networkId)) return invalid();
-      if (maximumFee > balance)
-        throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
-      const finalBlock = block(
-        await this.call('eth_getBlockByNumber', [observed.number, false], local)
-      );
-      if (
-        finalBlock.number !== observed.number ||
-        finalBlock.hash !== observed.hash
-      )
-        return invalid();
+      if (BigInt(tokenBalanceUnits) < BigInt(intent.amountUnits)) throw new NativeTransferRpcError('INSUFFICIENT_TOKEN_BALANCE');
+      this.checkedQuote(quote);
+      const finalBlock = block(await this.call('eth_getBlockByNumber', [observed.number, false], local));
+      if (finalBlock.number !== observed.number || finalBlock.hash !== observed.hash) return invalid();
       await this.checkChain(local);
-      return Object.freeze({
-        transaction: Object.freeze({
-          type: 2 as const,
-          from: sender,
-          to: intent.token.contractAddress,
-          chainId: '1' as const,
-          nonce: nonce.toString(),
-          value: '0',
-          gasLimit: gas.toString(),
-          data,
-          maxFeePerGas: maxFee.toString(),
-          maxPriorityFeePerGas: tip.toString(),
-        }),
-        balanceUnits: balance.toString(),
-        maximumFeeUnits: maximumFee.toString(),
-        totalUnits: maximumFee.toString(),
-        tokenBalanceUnits,
-        intent,
-      });
-    });
+      return Object.freeze({ ...quote, tokenBalanceUnits, intent });
+    }).catch((error) => this.mapReadError(error));
   }
   broadcast(
     rawTransaction: string,
@@ -532,7 +275,7 @@ export class NativeTransferRpc {
     const hash = checkedHash(expectedHash);
     if (
       typeof rawTransaction !== 'string' ||
-      rawTransaction.length > 4096 ||
+      rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
       !/^0x(?:[0-9a-f]{2})+$/.test(rawTransaction) ||
       keccak256(rawTransaction) !== hash
     )
@@ -542,13 +285,12 @@ export class NativeTransferRpc {
       if (
         !tx.isSigned() ||
         tx.chainId !== BigInt(this.context.chainId) ||
-        (tx.type !== 0 && tx.type !== 2) ||
-        !tx.to
+        tx.serialized !== rawTransaction
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
-      if (this.context.networkId === 'zksys-testnet' &&
-          (tx.type !== 2 || tx.gasLimit < 21000n || tx.gasLimit > nativeTransferGasLimit(this.context.networkId))) return invalid();
-      assertTransferIntentEnvelope(
+      if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
+      assertEvmGasLimit(tx.gasLimit, tx.chainId);
+      if (intent) assertTransferIntentEnvelope(
         {
           chainId: tx.chainId.toString(),
           to: tx.to!,
@@ -557,7 +299,7 @@ export class NativeTransferRpc {
         },
         intent
       );
-      if (intent && !erc20SigningEnabled(this.context.networkId)) return invalid();
+
     } catch {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
@@ -575,7 +317,7 @@ export class NativeTransferRpc {
     expected: Readonly<{
       hash: string;
       from: string;
-      to: string;
+      to: string | null;
       nonce: string;
     }>,
     signal: AbortSignal
@@ -585,24 +327,9 @@ export class NativeTransferRpc {
       .then((observation) => {
         if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
         if (!observation) return null;
-        if (observation.status === 'nonce-consumed') {
-          if (!observation.settlement.terminalEligible) return invalid();
-          return Object.freeze({
-            status: 'nonce-consumed' as const,
-            finalized: observation.settlement.kind === 'ethereum-finalized',
-            ...(this.context.networkId === 'ethereum' ? {} : { terminalEligible: true }),
-          });
-        }
-        return Object.freeze({
-          status:
-            observation.outcome === 'succeeded'
-              ? ('confirmed' as const)
-              : ('reverted' as const),
-          blockHash: observation.block.hash,
-          blockNumber: observation.block.number,
-          finalized: observation.settlement.kind === 'ethereum-finalized' && observation.settlement.terminalEligible,
-          ...(this.context.networkId === 'ethereum' ? {} : { terminalEligible: observation.settlement.terminalEligible }),
-        });
+        if (observation.status === 'nonce-consumed') return Object.freeze({ status: 'nonce-consumed' as const });
+        return Object.freeze({ status: observation.outcome === 'succeeded' ? 'confirmed' as const : 'reverted' as const,
+          blockHash: observation.block.hash, blockNumber: observation.block.number });
       })
       .catch((error: unknown) => {
         // A read deadline is an unavailable observation, not user cancellation.
@@ -618,5 +345,10 @@ export class NativeTransferRpc {
         if (error instanceof NativeTransferRpcError) throw error;
         throw new NativeTransferRpcError('UNAVAILABLE');
       });
+  }
+  observation(expected: Readonly<{ hash: string; from: string; to: string | null; nonce: string }>, signal: AbortSignal): Promise<EvmTransactionObservation> {
+    return this.receiptRpc.observation(expected, signal, () => {
+      if (signal.aborted) throw new NativeTransferRpcError('CANCELLED');
+    }).catch(error => this.mapReadError(error));
   }
 }

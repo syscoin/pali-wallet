@@ -3,6 +3,7 @@ import { useForm } from 'antd/lib/form/Form';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { isNonBlankNetworkText } from '../../shared/networkText';
 import { Button } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useQueryData, useUtils } from 'hooks/index';
@@ -408,7 +409,12 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
-              whitespace: true,
+              validator: (_rule, value) =>
+                isNonBlankNetworkText(value)
+                  ? Promise.resolve()
+                  : Promise.reject(
+                      new Error(t('settings.networkNameRequired'))
+                    ),
               message: t('settings.networkNameRequired'),
             },
           ]}
@@ -468,7 +474,10 @@ const CustomRPCExternal = () => {
           rules={[
             {
               required: true,
-              whitespace: true,
+              validator: (_rule, value) =>
+                isNonBlankNetworkText(value)
+                  ? Promise.resolve()
+                  : Promise.reject(new Error(t('settings.symbolRequired'))),
               message: t('settings.symbolRequired'),
             },
           ]}

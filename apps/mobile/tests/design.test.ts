@@ -7,6 +7,7 @@ import {
   families,
   featureCoverage,
   getScreen,
+  resolveDesignAction,
 } from '../src/design/catalog.ts';
 
 test('every source parity group has an explicitly mapped design surface', () => {
@@ -133,4 +134,18 @@ test('whole-note backup is a separately identified shared enhancement with a res
   assert.equal(inventory('privacy.bundle-export').length, 3);
   assert.deepEqual(inventory('privacy.bundle-review'), inventory('privacy.bundle-export'));
   assert.deepEqual(inventory('privacy.bundle-verified'), inventory('privacy.bundle-export'));
+});
+
+
+test('reviewed software transfers confirm without a password screen while external signers retain their approval', () => {
+  for (const id of ['transfer.review', 'transfer.eth-review', 'transfer.btc-review', 'transfer.nevm-review', 'transfer.nft-review', 'transfer.psbt']) {
+    const review = getScreen(id), approval = getScreen(review.primary!.to);
+    assert.equal(approval.deviceConfirmation, true);
+    assert.equal(approval.fields?.some((field) => field.secret || field.label === 'Wallet password') ?? false, false);
+    assert.equal(resolveDesignAction(review.primary!.to, 'personal'), approval.primary!.to);
+    assert.equal(resolveDesignAction(review.primary!.to, 'hardware'), approval.id);
+    assert.equal(resolveDesignAction(review.primary!.to, 'smart'), approval.id);
+  }
+  const secret = getScreen('settings.phrase');
+  assert.equal(resolveDesignAction(secret.primary!.to, 'personal'), secret.primary!.to);
 });

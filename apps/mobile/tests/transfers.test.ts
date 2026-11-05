@@ -5,9 +5,13 @@ import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
-import { NativeTransferJournal } from '../src/custody/transferJournal.ts';
+import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
+import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
+import { signedRecordTestSession, historicalSignedBundle } from './signedRecordTestSession.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
-import type { KeyringStoragePort } from '../src/storage/types.ts';
+import type { Erc20TransferIntent } from '../src/custody/transferIntent.ts';
 const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
@@ -36,7 +40,7 @@ function fixture() {
   let final = false;
   let receiptMissing = false;
   let signatures = 0;
-  let altered = false;
+  let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
   let failWrite = false;
   const broadcasts: string[] = [];
@@ -57,32 +61,25 @@ function fixture() {
       for (const listener of listeners) listener(state);
     },
   };
-  const store: KeyringStoragePort = {
-    async compareAndSet(key, expected, value) {
-      if (!(key in records) || JSON.stringify(records[key]) !== JSON.stringify(expected)) return false;
+  const signedRecords = new EvmSignedRecords({
+    async read(profile) { return records[profile] as string | undefined; },
+    async compareAndSet(profile, expected, value, check) {
+      check(); if (records[profile] !== expected) return false;
       if (failWrite) throw Error('Storage unavailable');
-      records[key] = structuredClone(value); return true;
+      records[profile] = value; return true;
     },
-    async get(key) {
-      return records[key] === undefined
-        ? undefined
-        : structuredClone(records[key]);
-    },
-    async set(key, value) {
-      if (failWrite) throw Error('Storage unavailable');
-      records[key] = structuredClone(value);
-    },
-    async createManyIfAbsent(values) {
-      if (failWrite) throw Error('Storage unavailable');
-      if (Object.keys(values).some((key) => key in records)) return false;
-      Object.assign(records, structuredClone(values));
-      return true;
-    },
-    async deleteItem() {
-      throw Error('Must not erase a pending transfer');
-    },
-  };
+  });
   const runtime = {
+    replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
+      return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
+        context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
+    },
+    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent) {
+      const journal = await runtime.journal(guard);
+      try { await journal.saveSigned(rawTransaction,intent); guard(); }
+      catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
+      await broadcast();
+    },
     async token(contractAddress: string, guard: () => void) {
       guard();
       assert.equal(contractAddress, token.contractAddress);
@@ -90,41 +87,40 @@ function fixture() {
     },
     async journal(guard: () => void) {
       guard();
-      return new NativeTransferJournal(
-        store,
-        {
-          walletFingerprint: '1'.repeat(64),
-          address: wallet.address,
-          chainId: '1',
-        },
-        guard
-      );
+      return { ...createNativeSignedRecordView(signedRecords, signedRecordTestSession(guard), '1'.repeat(64),
+        { index: 0, type: 'HDAccount', address: wallet.address }, getNativeNetwork('ethereum')) };
     },
-    async authorize(password: string, guard: () => void) {
-      guard();
-      if (password !== 'public-password') throw Error('Bad credential');
-      guard();
-    },
+    assertUnlocked(guard: () => void) { guard(); assert.equal(state.phase, 'ready'); },
     async sign(
       transaction: PreparedEvmTransaction,
-      password: string,
       guard: () => void
     ) {
       guard();
-      if (password !== 'public-password') throw Error('Bad credential');
       signatures++;
       if (signGate) await signGate;
       guard();
-      const raw = await wallet.signTransaction({
+      const signer = altered === 'signer'
+        ? new Wallet(`0x${'22'.repeat(32)}`)
+        : wallet;
+      const raw = await signer.signTransaction({
         ...transaction,
+        ...(altered === 'signer' ? { from: signer.address } : {}),
         nonce: Number(transaction.nonce),
-        ...(altered ? { value: '999' } : {}),
+        ...(altered === 'value' ? { value: '999' } : {}),
       });
       guard();
-      return { rawTransaction: raw, hash: keccak256(raw) };
+      const rawTransaction = altered === 'oversized'
+        ? raw + '0'.repeat(4098 - raw.length)
+        : altered === 'noncanonical'
+        ? `0x${raw.slice(2).toUpperCase()}`
+        : raw;
+      return {
+        rawTransaction,
+        hash: altered === 'hash' ? `0x${'0'.repeat(64)}` : keccak256(rawTransaction),
+      };
     },
   };
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
@@ -146,14 +142,15 @@ function fixture() {
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
       else if (body.method === 'eth_getBlockByNumber')
-        result = { number: ['latest', 'finalized'].includes(body.params[0]) ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64) };
+        result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
+      else if (body.method === 'eth_gasPrice') result = '0x2';
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
       else if (body.method === 'eth_estimateGas') result = '0x5208';
       else if (body.method === 'eth_sendRawTransaction') {
-        const record = (Object.values(records)[0] as { entries: { phase: string }[] }).entries[0]!;
-        assert(['attempted', 'submitted'].includes(record.phase));
+        const record = (JSON.parse(Object.values(records)[0] as string) as { entries: { phase: string }[] }).entries[0]!;
+        assert(['signed', 'submitted'].includes(record.phase));
         broadcasts.push(body.params[0]);
         if (dropped) throw Error('Acknowledgment lost');
         result = keccak256(body.params[0]);
@@ -185,6 +182,7 @@ function fixture() {
   });
   return {
     transfers,
+    signedRecords,
     records,
     broadcasts,
     rpcMethods,
@@ -211,8 +209,8 @@ function fixture() {
       final = true;
       receiptMissing = true;
     },
-    changeSignedFields() {
-      altered = true;
+    changeSignedFields(fault: NonNullable<typeof altered> = 'value') {
+      altered = fault;
     },
     expire() {
       clock += 100000;
@@ -293,7 +291,7 @@ test('invalid ERC20 amount cannot reset or replace an unresolved native journal'
   try {
     f.loseAcknowledgment();
     const approved = await review(f);
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     const hash = f.transfers.getSnapshot().hash;
     const calls = f.rpcMethods.length;
@@ -316,14 +314,14 @@ test('real signed bytes are journaled before one network submission and never ex
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.signatures(), 1);
     assert.equal(f.transfers.getSnapshot().phase, 'pending');
     assert(
       !JSON.stringify(f.transfers.getSnapshot()).includes(f.broadcasts[0]!)
     );
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), {
+    await assert.rejects(f.transfers.confirm(approved.id), {
       code: 'EXPIRED',
     });
     assert.equal(f.broadcasts.length, 1);
@@ -339,7 +337,7 @@ test('an expired review and a changed nonce cannot produce a signature or broadc
       if (expire) f.expire();
       else f.nextNonce();
       await assert.rejects(
-        f.transfers.confirm(approved.id, 'public-password'),
+        f.transfers.confirm(approved.id),
         { code: 'EXPIRED' }
       );
       assert.equal(f.signatures(), 0);
@@ -349,11 +347,13 @@ test('an expired review and a changed nonce cannot produce a signature or broadc
     }
   }
 });
-test('wrong credentials lock the wallet and do not create a pending transaction', async () => {
+test('locking after review prevents a signature or pending transaction', async () => {
   const f = fixture();
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id, 'wrong'));
+    f.source.lock();
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    assert.equal(f.signatures(), 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
     assert.equal(Object.keys(f.records).length, 0);
     assert.equal(f.broadcasts.length, 0);
@@ -371,7 +371,7 @@ test('lock while signing discards the late signature', async () => {
   );
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id, 'public-password');
+    const pending = f.transfers.confirm(approved.id);
     while (!f.signatures())
       await new Promise((resolve) => setImmediate(resolve));
     f.source.lock();
@@ -387,8 +387,8 @@ test('duplicate confirmation cannot trigger a second signing request', async () 
   const f = fixture();
   try {
     const approved = await review(f);
-    const pending = f.transfers.confirm(approved.id, 'public-password');
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), {
+    const pending = f.transfers.confirm(approved.id);
+    await assert.rejects(f.transfers.confirm(approved.id), {
       code: 'BUSY',
     });
     await pending;
@@ -403,7 +403,7 @@ test('a valid signature for different fields is rejected before durable admissio
   try {
     const approved = await review(f);
     f.changeSignedFields();
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'));
+    await assert.rejects(f.transfers.confirm(approved.id));
     assert.equal(Object.keys(f.records).length, 0);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -411,12 +411,28 @@ test('a valid signature for different fields is rejected before durable admissio
     f.close();
   }
 });
+for (const fault of ['signer', 'hash', 'oversized', 'noncanonical'] as const) {
+  test(`a ${fault} signing result is rejected before durable admission`, async () => {
+    const f = fixture();
+    try {
+      const approved = await review(f);
+      f.changeSignedFields(fault);
+      await assert.rejects(f.transfers.confirm(approved.id), { code: 'FAILED' });
+      assert.equal(f.signatures(), 1);
+      assert.equal(Object.keys(f.records).length, 0);
+      assert.equal(f.broadcasts.length, 0);
+      assert.equal(f.source.getSnapshot().phase, 'locked');
+    } finally {
+      f.close();
+    }
+  });
+}
 test('storage failure after signing never reaches the network', async () => {
   const f = fixture();
   try {
     const approved = await review(f);
     f.failStorage();
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'));
+    await assert.rejects(f.transfers.confirm(approved.id));
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -429,7 +445,7 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     assert.equal(f.transfers.getSnapshot().phase, 'unknown');
     await assert.rejects(f.transfers.prepare(to, '0.002'), {
       code: 'PENDING_TRANSFER',
@@ -437,7 +453,7 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     await f.transfers.recover(true);
     const retry = f.transfers.getSnapshot().review;
     assert(retry?.retry);
-    await f.transfers.confirm(retry.id, 'public-password');
+    await f.transfers.confirm(retry.id);
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 2);
     assert.equal(f.broadcasts[0], f.broadcasts[1]);
@@ -449,12 +465,12 @@ test('finalized receipt releases the journal and records the result', async () =
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     f.finalize();
     await f.transfers.recover();
     assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
     assert.equal(
-      (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!.phase,
+      (JSON.parse(Object.values(f.records)[0] as string) as { entries: { phase: string }[] }).entries[0]!.phase,
       'confirmed'
     );
   } finally {
@@ -468,12 +484,11 @@ test('a reentrant observer can lock before submission without leaking signed byt
     f.transfers.subscribe((state) => {
       if (state.phase === 'submitting') f.source.lock();
     });
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), {
+    await assert.rejects(f.transfers.confirm(approved.id), {
       code: 'CANCELLED',
     });
     assert.equal(f.broadcasts.length, 0);
-    const entry = (Object.values(f.records)[0] as { entries: { phase: string }[] }).entries[0]!;
-    assert.equal(entry.phase, 'attempted');
+    assert.deepEqual(f.records, {});
     assert.equal(f.transfers.getSnapshot().hash, null);
   } finally {
     f.close();
@@ -485,7 +500,7 @@ test('effect replay recovers the pending journal after cancellation drains', asy
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     const hash = f.transfers.getSnapshot().hash;
     const first = f.transfers.recover().catch((error) => error.code);
     f.transfers.cancel();
@@ -531,7 +546,7 @@ test('a finalized nonce without the original receipt retires obsolete retries wi
   try {
     const approved = await review(f);
     f.loseAcknowledgment();
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     f.consumeElsewhere();
     await f.transfers.recover(true);
     assert.equal(f.transfers.getSnapshot().phase, 'nonce-consumed');
@@ -578,16 +593,16 @@ test('unexpected post-broadcast journal failure stays truthful after locking cle
   };
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), { code: 'FAILED' });
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'FAILED' });
     assert.equal(f.broadcasts.length, 1);
     assert.equal(f.source.getSnapshot().phase, 'locked');
     const state = f.transfers.getSnapshot();
     assert.equal(state.hash, null);
     assert.match(state.message ?? '', /check Activity for an existing transaction/);
     assert.doesNotMatch(state.message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
-    const row = Object.values(f.records)[0] as { entries: { rawTransaction: string; phase: string }[] };
-    assert.equal(row.entries[0]!.rawTransaction, f.broadcasts[0]);
-    assert.equal(row.entries[0]!.phase, 'attempted');
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved!.rawTransaction, f.broadcasts[0]);
+    assert.equal(saved!.phase, 'signed');
   } finally { f.close(); }
 });
 
@@ -595,18 +610,13 @@ test('unexpected recovery journal failure does not claim an existing submitted t
   const f = fixture();
   try {
     const approved = await review(f);
-    await f.transfers.confirm(approved.id, 'public-password');
+    await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     f.finalize();
-    const open = f.runtime.journal;
-    f.runtime.journal = async (guard) => {
-      const journal = await open(guard);
-      const transition = journal.transition.bind(journal);
-      journal.transition = async (hash, phase) => {
-        if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
-        return transition(hash, phase);
-      };
-      return journal;
+    const transition = f.signedRecords.updatePhase.bind(f.signedRecords);
+    f.signedRecords.updatePhase = async (...args) => {
+      if (args[4] === 'confirmed') throw Error('Unexpected storage failure during recovery');
+      return transition(...args);
     };
     await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -622,7 +632,7 @@ test('unexpected recovery journal failure does not claim an existing submitted t
 test('expiry after a durable signed record preserves its recovery identity without broadcasting', async () => {
   const f = fixture(); const original = f.runtime.journal;
   f.runtime.journal = async (guard) => { const journal = await original(guard); const save = journal.saveSigned.bind(journal); journal.saveSigned = async (raw) => { const entry = await save(raw); f.expire(); return entry; }; return journal; };
-  try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
+  try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
 });
 
 
@@ -630,9 +640,9 @@ test('rechecks the original approved maximum cost when fees and balance decrease
   const f = fixture();
   try {
     const approved = await review(f);
-    assert.equal(approved.totalUnits, '1000000000063000');
+    assert.equal(approved.totalUnits, '1000000000075600');
     f.lowerFeesWithReducedBalance();
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'), { code: 'INSUFFICIENT_BALANCE' });
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'INSUFFICIENT_BALANCE' });
     assert.equal(f.signatures(), 0);
     assert.equal(f.broadcasts.length, 0);
     assert.equal(Object.keys(f.records).length, 0);
@@ -693,7 +703,7 @@ test('a rejected secret operation revokes custody before a queued cancellation c
   };
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id, 'public-password'));
+    await assert.rejects(f.transfers.confirm(approved.id));
     assert.equal(cancellationPhase, 'locked');
     assert.equal(f.source.getSnapshot().phase, 'locked');
     assert.equal(Object.keys(f.records).length, 0);
@@ -701,4 +711,42 @@ test('a rejected secret operation revokes custody before a queued cancellation c
   } finally {
     f.close();
   }
+});
+
+
+for (const type of [0, 2] as const) test(`current-format type ${type} terminal bytes above today's gas cap still reconcile`, async () => {
+  const f = fixture();
+  try {
+    const signed = await wallet.signTransaction({ type, chainId: 1, nonce: 0, to, value: 1n, gasLimit: 17000000n,
+      ...(type === 0 ? { gasPrice: 2n } : { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n }) });
+    const session = signedRecordTestSession();
+    f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, signed);
+    const before = JSON.stringify(f.records);
+    f.finalize(); await f.transfers.recover();
+    assert.equal(f.transfers.getSnapshot().phase, 'confirmed');
+    assert.equal(f.transfers.getSnapshot().hash, keccak256(signed));
+    assert.equal(JSON.stringify(f.records), before);
+    assert.equal(f.signatures(), 0); assert.equal(f.broadcasts.length, 0);
+    assert(!JSON.stringify(f.transfers.getSnapshot()).includes(signed));
+  } finally { f.close(); }
+});
+
+test('predecessor choices page locally without changing consent or making more RPC reads',async()=>{
+ const f=fixture();
+ try {
+  const journal=await f.runtime.journal(()=>undefined);
+  for(let value=1;value<=23;value++){
+   const raw=await wallet.signTransaction({type:2,chainId:1,nonce:value===23?1:0,to,value,gasLimit:21000,maxFeePerGas:2,maxPriorityFeePerGas:1});
+   await journal.saveSigned(raw);
+  }
+  await f.transfers.recover(true);
+  const before=f.transfers.getSnapshot().review!;
+  assert.equal(before.replay!.predecessorCount,22);assert.equal(before.replay!.predecessors.length,20);
+  const requests=f.rpcMethods.length;
+  await f.transfers.loadMorePredecessors();
+  const after=f.transfers.getSnapshot().review!;
+  assert.equal(after.id,before.id);assert.equal(after.replay!.predecessors.length,22);
+  assert.equal(new Set(after.replay!.predecessors.map(row=>row.hash)).size,22);
+  assert.equal(f.rpcMethods.length,requests);assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),0);
+ } finally {f.close();}
 });

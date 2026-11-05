@@ -315,6 +315,23 @@ it('does not turn the presentation format helper into a new controller-validatio
   ).toBe(true);
 });
 
+it.each([
+  `0x${'0'.repeat(40)}`,
+  A.toUpperCase().replace('0X', '0x'),
+  A.slice(2),
+  'XE65GB6LDNXYOFTX0NSV3FUWKOWIXAMJK36',
+])(
+  'keeps existing syntactically valid forms distinct from unavailable reads: %s',
+  async (value) => {
+    mount();
+    edit(value);
+    await advance();
+    await act(async () => response.resolve(null));
+    expectFeedback(en.send.unableToLoad, false);
+    expect(screen.queryByText(en.send.invalidEthAddress)).toBeNull();
+  }
+);
+
 it('removes completed feedback immediately on correction and does not restore it during pending healthy work', async () => {
   mount();
   edit(MALFORMED);

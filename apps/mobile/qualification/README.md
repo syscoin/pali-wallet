@@ -25,7 +25,7 @@ The host starts a separate Node child bound exclusively to `127.0.0.1` on an
 ephemeral port. Android requires the selected target to be an emulator and uses
 a serial-bound, non-replacing `adb reverse` mapping; cleanup removes only that
 owned port. No external service, wallet address or faucet is contacted. The
-fixture serves only a fixed allowlist of token-bound GET routes and has no proxy.
+fixture serves only fixed allowlists of token-bound GET and POST routes and has no proxy.
 
 The actual production `walletFetch` adapter exercises Expo's compiled native
 fetch path while global fetch, XHR and WebSocket remain forbidden. A separate
@@ -46,13 +46,69 @@ Ambiguous reverse-install timeouts or transport loss permit cleanup only after
 prior absence and exact serial/port readback; collisions and unknown ownership
 never authorize removal.
 
-HTTP executes after native crypto qualification and before storage admission.
+GET and POST execute after native crypto qualification and before storage admission.
 The iOS Simulator's original failed storage report and refusal schema remain
 unchanged; its aggregate may claim `nativeHttpQualified: true` while retaining
 `custodyQualified: false`. This proves local HTTP adapter behavior only. It does
 not qualify public RPC availability, production TLS handshakes, fixed-network
 balance semantics, native memory ceilings or physical-device networking. Node
 fixture tests are controls; the compiled native CI run is required evidence.
+
+### Native POST and JSON-RPC gate
+
+The five POST cases are separate from the unchanged seven GET cases and their
+v1 report/audit schemas. `post-native.ts` exercises the actual
+`createBalanceReader` JSON serialization and parsing with a qualification-only
+exact-origin mapping to the owned loopback fixture. It never dispatches to the
+public RPC URL. The host compares complete received UTF-8 bodies against fixed
+literal fixtures, verifies JSON headers/cache policy/cookie omission, and records
+only byte lengths and SHA256 digests rather than raw bodies.
+
+The cases cover an exact large integer and valid zero; mismatched ID, JSON-RPC
+error, malformed JSON and wrong MIME; declared and streamed 16 KiB response
+limits; cancellation after the full request body reaches the host and a healthy
+later POST; and one interrupted response body followed by an explicit replay of identical
+synthetic bytes. No key, signature, signed transaction or live provider is used.
+The replay is a transport check. Real transaction retries preserve signed
+payload bytes while their JSON-RPC IDs can change; this gate does not replace
+the existing journal-backed cold-restart evidence.
+
+The declared-size fixture sends one body byte with its oversized Content-Length:
+Foundation can defer delivering headers until data arrives. The limit remains
+16 KiB and this case must close before consuming an oversized body. The lost-body
+fixture sends valid response headers and a JSON prefix before closing. A
+disconnect before headers can be recovered internally by a native HTTP stack;
+this gate does not claim to disable or detect every such transport retry. It
+requires the first explicit caller attempt to fail and the second to return the
+expected result, with exactly two identical request-body and payload digests.
+
+Each launch requires `pali-native-post-<token>.json`, bound to the same immutable
+source/lock, platform, phase, scenario and native session as its GET sidecar.
+The host takes one final atomic GET+POST audit, validates both, and saves the
+unchanged `<platform>-<scenario>-<phase>-http.json` plus a separate `-post.json`.
+Only then can the aggregate set `nativePostQualified: true`. Old GET-only
+artifacts cannot satisfy the new gate. Failed POST diagnostics use a different
+kind and cannot be accepted as success. They also retain a bounded fixture-route,
+explicit attempt count and rejection category (`none`, `size-limit`, `abort`, or
+`other`). No exception payload, request body or arbitrary URL enters diagnostics.
+
+Request bodies are bounded at 8 KiB, responses retain production 16 KiB limits,
+and all fixture body reads, control waits, paced streams and sockets are bounded
+and closed on failure. Sidecar filenames are fixed token names; iOS host reads
+use no-follow/nonblocking regular-file checks and an 8 KiB consumed limit.
+Android rejects nonregular/symlink paths, caps output and has a 5-second command
+deadline; it does not claim atomic filesystem exclusion against a concurrently
+changing app file. Diagnostics preserve the original failure.
+
+The source-map preservation CLI checks every embedded project source against
+the exact build checkout and retains the prior c960 project modules, the three
+POST modules and the shared wallet modules listed in `post-evidence.cjs`. Native artifact
+review must retain that complete binding, independently hash the lockfile and
+ZIP/map bytes, verify all five launch pairs, and preserve all Android custody
+and restart checks. On iOS the original storage-refusal report stays failed,
+with `custodyQualified: false` and `sdkSmokeVerified: false`, even when both
+transport gates pass. No native pass is claimed by the Node controls alone.
+
 The qualification entry defers all wallet/ethers/BIP39 imports until the native
 crypto gate has completed. During fresh generation, a bounded in-memory observer
 delegates RNG requests to the qualified native provider and verifies that the
@@ -69,11 +125,11 @@ and matching encrypted-vault fingerprint establish the tested cold restart.
 
 After the first account's offline signature, full qualification creates HD index
 1 through the real SDK, verifies active/first-account removal refusal, selects
-index 0, removes index 1 before it has a journal, and restores index 1 to the
-independently derived address. Both accounts retain real `attempted` transactions
-in separate version-2 journal containers. Pending-journal removal must fail and
+index 0, removes index 1 before it has a journal, and uses SDK account creation
+to reuse index 1 with the independently derived address. Both accounts retain real `attempted` transactions
+in the shared sender-owned signed-record bundle. Pending-journal removal must fail and
 lock custody; no terminal receipt is fabricated. The restarted process must
-already select index 1, recover both containers and signatures, and finish on
+already select index 1, recover both senders' records and signatures, and finish on
 index 1. Reports contain only public identities, hashes and fixed success/version
 fields, never seed words or serialized transaction bytes. Imported fixtures use
 a fixed public expected address; generated wallets derive their own expectation.
@@ -85,12 +141,12 @@ network service or real token contract is contacted. The create phase signs the
 fixed zero-ETH-value ERC20 call, verifies its intent and durable bytes before the
 injected submission, and simulates a lost response. The new process selects the
 same HD2 account, checks its retained fingerprint, raw transaction and intent,
-then explicitly reauthenticates and retries those exact signed bytes without a
-new signature or metadata lookup. Both phases return to HD1 and prove that the
+then explicitly confirms retry in the current unlocked session and resends those
+exact signed bytes without a new signature, password check or metadata lookup. Both phases return to HD1 and prove that the
 original HD0/HD1 native journals are unchanged.
 
 Full reports require the ERC20 address, transaction and intent hashes, fixed HD2
-identity, per-phase signature/authorization counters and exactly one injected
+identity, per-phase signature/unlocked-session admission counters and exactly one injected
 submission. Create/restart hashes and the wallet fingerprint must match. These
 checks add native controller/signing/persistence evidence; they do not establish
 live-network token execution or token-delivery behavior.
@@ -98,7 +154,7 @@ live-network token execution or token-delivery behavior.
 A separate native-coin case creates HD index 3 and signs two transactions with
 the installed SDK: one on Ethereum and one on the fixed Syscoin NEVM testnet
 (chain 5700). Both use nonce zero and retain distinct entries in the same
-version-2 account journal. The new process selects HD3, verifies both signed
+shared signed-record bundle. The new process selects HD3, verifies both signed
 envelopes and hashes from durable storage without signing again, and returns to
 HD1 on Ethereum. Both phases compare the complete prior HD0/HD1 native and HD2
 ERC20 journal rows, so chain qualification cannot silently replace that evidence.
@@ -140,8 +196,8 @@ opaque fingerprint, signed-transaction hashes and OS/build hashes; phrases, pass
 contents are never exported into artifacts. A database read after process death
 checks the SQLCipher header and absence of known fixture credential strings.
 The NEVM case is offline signing and persistence evidence. It does not contact
-the testnet, fund an account, broadcast, or qualify live 12-confirmation
-settlement behavior. Passing source tests or building this harness alone does
+the testnet, fund an account, broadcast, or qualify live transaction acceptance
+and receipt handling. Passing source tests or building this harness alone does
 not establish native execution; that requires the recorded native artifact run.
 
 Fresh iOS simulator devices isolate scenarios, including Keychain state. Android
@@ -165,8 +221,8 @@ The backup flag is an advisory [backup policy request](https://developer.apple.c
 not a guarantee that a file will be omitted. SQLCipher and the ThisDeviceOnly
 keychain key are separate controls.
 
-CI invokes `run-native.cjs ios <app> --ios-simulator-contract`. This explicit mode
-requires the pinned Simulator runtime and an `iphonesimulator` application. It
+CI invokes `node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs ios <app> --ios-simulator-contract`. This explicit mode
+binds to the explicitly selected installed Simulator runtime and an `iphonesimulator` application. It
 runs native process/Hermes checks, all native crypto vectors and opaque-handle
 checks, then attempts the unchanged production storage open. Only a specific
 `STORAGE_UNAVAILABLE` refusal classified as missing, none, unless-open or
@@ -313,7 +369,7 @@ Run the harness from the original clean approved checkout, using the signed
 `Release-iphoneos` app paths and an output directory that does not yet exist:
 
 ```sh
-CI=true PALI_NATIVE_QUALIFICATION=1 node qualification/run-physical-ios.cjs \
+CI=true PALI_NATIVE_QUALIFICATION=1 node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-physical-ios.cjs \
   --device "$PALI_DEVICE" --source-revision "$PALI_REVIEWED_COMMIT" \
   --import-app "$PALI_IMPORT_APP" --import-cdhash "$PALI_IMPORT_CDHASH" \
   --generate-app "$PALI_GENERATE_APP" --generate-cdhash "$PALI_GENERATE_CDHASH" \
@@ -391,3 +447,10 @@ is not an acceptable substitute.
 The offline qualification entry creates and retires public fixture Imported ordinal 0, imports a different public fixture at ordinal 1, and uses the actual native authority, SDK private-record AEAD storage, selected-key reveal and NativeTransfers controller. It writes attempted journals on Ethereum, NEVM testnet and zkSYS using injected bounded RPC responses. A cold restart rehydrates the same imported key and retries only the saved signed bytes: three authorizations, no new signatures. All HD0–4 journal bytes and the original SDK vault pair/fingerprint are checked before and after; HD1/Ethereum is restored at the end.
 
 Strict report fields contain only the imported account identity, three chain IDs and transaction hashes, counters and verification flags. They never contain the key, seed, envelope, ciphertext, profile ID or a key hash. Android and physical-iOS runners require this evidence and compare every chain across restart. Simulator storage-refusal evidence still cannot claim custody or imported-account success. Node tests and JavaScript exports do not establish native execution, screen privacy or live transactions. Do not fund these public fixture keys. The RPC is injected, and the harness makes no real balance request or network broadcast.
+
+
+### Exact SDK and simulator selection
+
+Configuration reads the installed mobile keyring package metadata and requires it to match the exact package.json pin. The same version is embedded in the qualification build and verified by the loaded SDK metadata before reporting success. An unreviewed package, version range or mismatched installation cannot satisfy the gate.
+
+The local iOS runner selects the newest available standard iOS runtime and an installed iPhone device type. PALI_IOS_SIMULATOR_RUNTIME and PALI_IOS_SIMULATOR_DEVICE_TYPE can select exact installed identities; an unavailable explicit selection fails instead of falling back. The hosted workflow intentionally pins iOS26.5, while a local27.2 run binds its refusal report to27.2. Simulator refusal still proves no custody. All Node qualification commands use the existing shared-source dependency resolver so the mobile-only npm installation is authoritative.

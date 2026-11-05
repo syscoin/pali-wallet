@@ -219,7 +219,7 @@ test('review and pending signing are revoked before a watch account becomes acti
   await page.getByRole('button', { name: 'Review transfer', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Confirm and send', exact: true })).toBeVisible();
   await page.evaluate(() => window.__watchFixture.delaySign(true));
-  await page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true }).fill('public-password');
+  await expect(page.getByRole('textbox', { name: /password/i })).toHaveCount(0);
   await page.getByRole('button', { name: 'Confirm and send', exact: true }).click();
   await expect.poll(async () => (await fixture(page)).signs).toBe(1);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
@@ -238,10 +238,10 @@ test('review and pending signing are revoked before a watch account becomes acti
 test('watch management persists add rename and remove through actual forms', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await page.getByRole('button', { name: 'Watch an address', exact: true }).click();
+  await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Vacation');
   await page.getByRole('textbox', { name: 'Public EVM address', exact: true }).fill(SECOND);
-  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByText('Vacation · Watch-only', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
@@ -266,12 +266,12 @@ test('read failure is visible, preserves saved records, and prevents an empty re
   await page.goto('/?read-failure=1');
   await expect(page.getByText('Unable to open accounts', { exact: true })).toBeVisible();
   await expect(page.getByText('Your saved data is preserved', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Watch an address', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Watch an account', exact: true })).toHaveCount(0);
   expect((await fixture(page)).writes).toBe(0);
   await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
   await page.getByRole('button', { name: 'View watch accounts', exact: true }).click();
   await expect(page.getByText('Watch accounts unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Watch an address', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Watch an account', exact: true })).toBeDisabled();
   await page.evaluate(() => window.__watchFixture.readFailure(false));
   await page.getByRole('button', { name: 'Reopen watch accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Select Shared address watch (watch-only)', exact: true })).toBeVisible();

@@ -4,6 +4,7 @@ export default defineConfig({
   fullyParallel: true,
   workers: 2,
   use: {
+    launchOptions: { chromiumSandbox: true },
     baseURL: 'http://127.0.0.1:4178',
     viewport: { width: 390, height: 844 },
     trace: 'retain-on-failure',

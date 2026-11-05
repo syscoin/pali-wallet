@@ -38,7 +38,7 @@ test('pinned software SDK creates and reopens its real wallet through SQLite at 
     } = require('@sidhujag/sysweb3-keyring/cjs/software');
     assert.equal(
       require('@sidhujag/sysweb3-keyring/package.json').version,
-      '2.0.0'
+      require('../package.json').dependencies['@sidhujag/sysweb3-keyring']
     );
     storage = await SqliteWalletStorage.open(
       nodeConnection(file).connection,

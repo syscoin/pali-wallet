@@ -240,12 +240,29 @@ const signSLHDSAActionHashLocalUnlocked = async (
     throw new Error('SLH-DSA actionHash must be a bytes32 hex string');
   }
 
-  const state = runtimeStates.get(params.keyId);
-  if (!state) {
+  const runtimeState = runtimeStates.get(params.keyId);
+  if (!runtimeState) {
     throw new Error(
       'SLH-DSA key is not available in this unlocked session. Provision the local PQ signer state before signing.'
     );
   }
+  const crypto = getSessionStateCrypto();
+  const persisted = await loadEncryptedSLHDSAState({
+    crypto,
+    keyId: params.keyId,
+  });
+  assertSession();
+  if (!persisted) {
+    throw new Error(
+      'SLH-DSA persisted signer state is missing; usage history is unsafe'
+    );
+  }
+  // Keep the existing high-water policy while refusing unreadable/replaced
+  // storage before handing any key material to the signing worker.
+  const state = mergeSLHDSAUsageHistory(
+    mergeSLHDSAUsageHistory(runtimeState, runtimeStates.get(params.keyId)),
+    persisted
+  );
   if (
     normalizeSLHDSAPublicKeyField(state.pkRoot).toLowerCase() !==
       normalizeSLHDSAPublicKeyField(params.pkRoot).toLowerCase() ||
@@ -269,7 +286,6 @@ const signSLHDSAActionHashLocalUnlocked = async (
       'SLH-DSA key is missing prepared local signing material. Re-run PQ validator setup before signing.'
     );
   }
-  const crypto = getSessionStateCrypto();
   const signature = await signSLHDSAInOffscreen(
     {
       ...params,
@@ -299,7 +315,9 @@ const signSLHDSAActionHashLocalUnlocked = async (
 export const signSLHDSAActionHashLocal = async (
   params: SLHDSASignActionHashParams,
   expectedGeneration = sessionGeneration
-) =>
-  withSigningQueue(params.keyId, () =>
-    signSLHDSAActionHashLocalUnlocked(params, expectedGeneration)
+) => {
+  const request = Object.freeze({ ...params });
+  return withSigningQueue(request.keyId, () =>
+    signSLHDSAActionHashLocalUnlocked(request, expectedGeneration)
   );
+};

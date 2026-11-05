@@ -9,13 +9,12 @@ import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../src/custody/keyringRuntime.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
-import { nativeTransferJournalKey } from '../src/custody/transferJournal.ts';
-import type { TransferJournalContainer } from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence } from '../qualification/signed-record-evidence.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC native HD qualification test password';
+const PASSWORD = 'PUBLIC native HD qualification test password 1!';
 
 test('HD restart matching rejects failed and empty reports', () => {
   assert.equal(matchesHdRestartEvidence({ status: 'failed' }, { status: 'failed' }), false);
@@ -33,7 +32,7 @@ test('HD fixture guard rejects A-B-A revisions even when address and readiness m
   } as unknown as NativeCustodyAuthority;
   const runtime = {
     transfers: {
-      async sign(_transaction: unknown, _password: string, assertCurrent: () => void) {
+      async sign(_transaction: unknown, assertCurrent: () => void) {
         revision += 2;
         assertCurrent();
         throw Error('UNREACHABLE_STALE_FIXTURE_GUARD');
@@ -83,15 +82,15 @@ for (const scenario of ['import', 'generate'] as const) {
       assert.equal(created.address, expectedSecondAddress);
       assert.equal(created.selectedAccountId, 'hd:60:1');
       assert.notEqual(created.transferHash, created.firstTransferHash);
-      assert.equal(created.journalContainerVersion, 2);
+      assert.equal(created.journalContainerVersion, 1);
       const checkContainers = async () => {
         for (const index of [0, 1]) {
-          const row = await physicalStorage.keyringStorage.get(nativeTransferJournalKey(index)) as TransferJournalContainer;
-          assert.equal(row.version, 2);
-          assert.equal(row.account.id, `hd:60:${index}`);
-          assert.equal(row.entries.length, 1);
-          assert.equal(row.entries[0]!.phase, 'attempted');
-          assert.equal(row.entries[0]!.hash, index === 0 ? created.firstTransferHash : created.transferHash);
+          const row = await readSignedRecordEvidence(physicalStorage);
+          const entries = row.entries.filter(entry => entry.signer.type === 'HDAccount' && entry.signer.id === index);
+          assert.equal(row.version, 1);
+          assert.equal(entries.length, 1);
+          assert.equal(entries[0]!.phase, 'attempted');
+          assert.equal(entries[0]!.hash, index === 0 ? created.firstTransferHash : created.transferHash);
         }
       };
       await checkContainers();
@@ -114,7 +113,7 @@ for (const scenario of ['import', 'generate'] as const) {
         { address: '0x1111111111111111111111111111111111111111' },
         { selectedAccountId: 'hd:60:0' },
         { selectedAccountIndex: 0 },
-        { journalContainerVersion: 1 },
+        { journalContainerVersion: 2 },
         { transferHash: '0x' + 'a'.repeat(64) },
         { firstTransferHash: '0x' + 'b'.repeat(64) },
         { firstTransferHash: created.transferHash },

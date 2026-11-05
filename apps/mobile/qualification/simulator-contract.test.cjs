@@ -4,7 +4,7 @@ const { runInNewContext } = require('node:vm');
 const { Buffer } = require('node:buffer');
 const test = require('node:test');
 const {
-  qualificationMode, assertSimulatorRefusal, assertSimulatorTarget,
+  qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget,
   REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES,
 } = require('./simulator-contract.cjs');
 
@@ -30,16 +30,16 @@ test('limited mode is explicit and restricted to the pinned iOS Simulator target
     ['android', ['--ios-simulator-contract']], ['ios', ['--unknown']],
     ['ios', ['--ios-simulator-contract', '--extra']],
   ]) assert.throws(() => qualificationMode(platform, args), /mode/);
-  assert.doesNotThrow(() => assertSimulatorTarget('iphonesimulator', 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'));
+  assert.doesNotThrow(() => assertSimulatorTarget('iphonesimulator', 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'));
   for (const [target, runtime] of [
     ['iphoneos', 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'],
     ['iphonesimulator', 'com.apple.CoreSimulator.SimRuntime.iOS-26-4'],
-  ]) assert.throws(() => assertSimulatorTarget(target, runtime), /pinned Simulator/);
+  ]) assert.throws(() => assertSimulatorTarget(target, runtime, 'com.apple.CoreSimulator.SimRuntime.iOS-26-5'), /selected Simulator/);
 });
 
 test('only complete native crypto plus a classified strict protection refusal qualifies as limited evidence', () => {
   assert.equal(TIMED_CRYPTO_CASES.length, 29);
-  for (const stage of REFUSAL_STAGES) assert.doesNotThrow(() => assertSimulatorRefusal(refusal(stage)));
+  for (const stage of REFUSAL_STAGES) assert.doesNotThrow(() => assertSimulatorRefusal(refusal(stage), '26.5'));
   const changes = [
     (r) => { r.status = 'passed'; },
     (r) => { r.scenario = 'generate'; },
@@ -52,7 +52,7 @@ test('only complete native crypto plus a classified strict protection refusal qu
     (r) => { r.address = 'unexpected wallet evidence'; },
     (r) => { r.nativeHdAccountsVerified = true; },
     (r) => { r.nativeHdKeyRevealVerified = true; },
-    (r) => { r.journalContainerVersion = 2; },
+    (r) => { r.journalContainerVersion = 1; },
     (r) => { r.nativeErc20Verified = true; },
     (r) => { r.erc20TransferHash = '0x' + 'd'.repeat(64); },
     (r) => { r.nativeNevmVerified = true; },
@@ -82,7 +82,7 @@ test('only complete native crypto plus a classified strict protection refusal qu
   ];
   for (const change of changes) {
     const report = refusal(); change(report);
-    assert.throws(() => assertSimulatorRefusal(report), /Unexpected iOS Simulator refusal/);
+    assert.throws(() => assertSimulatorRefusal(report, '26.5'), /Unexpected iOS Simulator refusal/);
   }
 });
 
@@ -217,4 +217,19 @@ test('real runner records diagnostic-only HTTP evidence before cleanup without r
   assert.equal(unavailable.fakeProcess.exitCode, 1);
   assert(unavailable.writes.find((write) => write.file.endsWith('/ios-failure.json')).data.includes('HTTP_QUALIFICATION_REPORT_INVALID'));
   assert(!unavailable.writes.some((write) => write.file.endsWith('/ios-simulator-limited.json')));
+});
+
+
+test('local Simulator selection uses an available current runtime while an explicit hosted pin fails closed', () => {
+  const runtime = version => ({ isAvailable: true, version, identifier: `com.apple.CoreSimulator.SimRuntime.iOS-${version.replace(/\./g, '-')}` });
+  const types = [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }];
+  assert.equal(selectSimulatorTarget([runtime('26.5'), runtime('27.2')], types).runtime.version, '27.2');
+  assert.equal(selectSimulatorTarget([runtime('26.5'), runtime('27.2')], types, runtime('26.5').identifier).runtime.version, '26.5');
+  assert.throws(() => selectSimulatorTarget([runtime('27.2')], types, runtime('26.5').identifier));
+  assert.throws(() => selectSimulatorTarget([runtime('27.2'), runtime('27.2')], types));
+  assert.throws(() => selectSimulatorTarget([runtime('27.2')], types, undefined, 'unknown'));
+  const current = { ...refusal(), osVersion: '27.2' };
+  assert.doesNotThrow(() => assertSimulatorRefusal(current, '27.2'));
+  assert.throws(() => assertSimulatorRefusal(current, '26.5'));
+  assert.throws(() => assertSimulatorRefusal(current));
 });

@@ -45,7 +45,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
       calls.push({ url, init });
       if (url === `${network.endpoint}/api/`) return json(metadata(id));
       if (url === `${network.endpoint}/api/v2/block-index/0`) return json({ blockHash: network.genesisHash });
-      assert.equal(url, `${network.endpoint}/api/v2/address/${addresses[id]}?details=tokens`);
+      assert.equal(url, `${network.endpoint}/api/v2/address/${addresses[id]}?details=tokenBalances&tokens=nonzero`);
       return json({ address: addresses[id], balance: '0', unconfirmedBalance: '-123', unconfirmedTxs: 1 });
     });
     const account = createWatchAccount(id, id, addresses[id], id);
@@ -62,7 +62,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
       assert.equal(init.signal?.aborted, true, 'Owned native request listeners must be released on completion');
     }
     assert.equal(NATIVE_NETWORKS.some((n) => String(n.id) === id), false);
-    assert.throws(() => nativeSigningEnabled(id as unknown as Parameters<typeof nativeSigningEnabled>[0]), /Unsupported native network/);
+    assert.equal(nativeSigningEnabled(id), false);
   });
 }
 

@@ -7,7 +7,7 @@ import {
   PALI_MODULE_CANONICAL_ADDRESSES,
   getPaliCanonicalEntryPointAddress,
   getPaliCanonicalFactoryAddress,
-} from './deployment';
+} from './deploymentMetadata';
 
 const VALIDATOR_IS_INITIALIZED_ABI =
   'function isInitialized(address account) view returns (bool)';

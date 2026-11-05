@@ -1,3 +1,4 @@
+const EXPECTED_SDK_VERSION = require('../package.json').dependencies['@sidhujag/sysweb3-keyring'];
 const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
@@ -25,7 +26,7 @@ const {
 } = require('./simulator-contract.cjs');
 const PUBLIC_PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026';
+const PUBLIC_PASSWORD = 'PUBLIC native qualification password 2026!';
 const FIELDS = new Set([
   ...IMPORTED_REPORT_FIELDS,
   'version',
@@ -94,7 +95,8 @@ function decodeNativeReport(
   platform,
   phase,
   scenario,
-  simulatorContract = false
+  simulatorContract = false,
+  simulatorVersion
 ) {
   if (
     typeof text !== 'string' ||
@@ -129,7 +131,7 @@ function decodeNativeReport(
     report.version !== 1
   )
     throw Error('Unexpected qualification report schema');
-  if (simulatorContract) assertSimulatorRefusal(report);
+  if (simulatorContract) assertSimulatorRefusal(report, simulatorVersion);
   return report;
 }
 
@@ -141,7 +143,7 @@ function assertFullNativeReport(report) {
     report.nativeSigningVerified !== true ||
     !isHdKeyRevealQualificationReport(report) ||
     !isImportedQualificationReport(report) ||
-    report.sdkVersion !== '2.0.0' ||
+    report.sdkVersion !== EXPECTED_SDK_VERSION ||
     !/^0x[0-9a-f]{64}$/.test(report.transferHash || '') ||
     report.mnemonicEntropyVerified !==
       (report.phase === 'create' && report.scenario === 'generate') ||

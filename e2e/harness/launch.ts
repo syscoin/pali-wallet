@@ -103,6 +103,7 @@ export const launchExtension = async (
 
   const viewport = options.viewport ?? { height: 800, width: 600 };
   const context = await chromium.launchPersistentContext(profileDir, {
+    chromiumSandbox: true,
     args,
     ...(options.offlineHttpProxy
       ? {

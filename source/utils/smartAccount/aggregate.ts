@@ -2,9 +2,9 @@ import { Interface } from 'utils/ethersV6Compat';
 import type { Result } from 'utils/ethersV6Compat';
 
 import {
-  PALI_INFRASTRUCTURE_BY_ID,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
-} from './deployment';
+} from './deploymentMetadata';
 
 /**
  * Read-call aggregation for smart-account RPC traffic.
@@ -70,7 +70,7 @@ const probeMulticall3Address = async (
 ): Promise<string | null> => {
   const candidates = [
     PALI_MULTICALL3_CANONICAL_ADDRESS,
-    PALI_INFRASTRUCTURE_BY_ID.multicall3.address,
+    PALI_INFRASTRUCTURE_METADATA_BY_ID.multicall3.address,
   ];
   for (const candidate of candidates) {
     try {

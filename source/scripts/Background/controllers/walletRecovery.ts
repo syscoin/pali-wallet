@@ -19,12 +19,19 @@ const { dataSlice, hexlify } =
   require('ethers/utils') as typeof import('ethers/utils');
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+import { jsonStorageEqual } from '../../../shared/jsonStorageEqual';
+import { isStrongWalletPassword } from '../../../shared/passwordPolicy';
+import { EVM_SIGNED_RECORD_PREFIX } from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
 import type { RootState } from 'state/store';
 import type { AsyncMutex } from 'utils/asyncMutex';
 import type { chromeStorage } from 'utils/storageAPI';
 
 import type MainController from './MainController';
+import {
+  prepareExtensionAccountRecovery,
+  recoveryAccountGroups,
+} from './walletRecoveryAccounts';
 
 export type WalletRecoveryContext = {
   getState: () => Pick<RootState, 'vault'>;
@@ -37,9 +44,11 @@ export type WalletRecoveryContext = {
 // This key must stay outside the keys removed by resetWalletStateExclusive.
 const JOURNAL_KEY = 'pali-wallet-recovery-journal:v1';
 const TICKET_LIFETIME_MS = 10 * 60 * 1000;
-const STRONG_PASSWORD =
-  /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{12,}$/;
 type RecoveryHost = {
+  activateRecoveredWallet: (
+    password: string,
+    assertCurrent: () => void
+  ) => Promise<void>;
   authenticationMutex: AsyncMutex;
   createWalletExclusive: (password: string, phrase: string) => Promise<void>;
   isAnyKeyringUnlocked: () => boolean;
@@ -50,6 +59,7 @@ type RecoveryHost = {
   recoveryJournalPending: boolean;
   resetRateLimitState: () => void;
   resetWalletState: (options?: { resetNetworks?: boolean }) => Promise<void>;
+  retireWalletRuntime: () => Promise<void>;
   walletSessionGeneration: number;
   walletStateGeneration: number;
 };
@@ -88,6 +98,7 @@ const resetOwnedKey = (key: string) =>
   key === 'sysweb3-vault' ||
   key === 'sysweb3-vault-keys' ||
   key.startsWith('sysweb3-vault-') ||
+  key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
   key.startsWith('state-') ||
   key === 'state' ||
   key.startsWith('pali-slh-dsa-state:') ||
@@ -142,49 +153,6 @@ const assertStoredPair = (records: Records) => {
     throw new Error('Wallet recovery storage is incomplete');
 };
 
-const assertFreshWalletRecords = (records: Records, slip44: number) => {
-  const vaultKey = `state-vault-${slip44}`;
-  const expectedKeys = new Set([
-    'sysweb3-vault',
-    'sysweb3-vault-keys',
-    'state',
-    vaultKey,
-  ]);
-  const hasStoredValue = (value: unknown) =>
-    value !== undefined && value !== null;
-  const hasExtraAccount = (groups: any) =>
-    !groups ||
-    typeof groups !== 'object' ||
-    Array.isArray(groups) ||
-    Object.entries(groups).some(
-      ([type, accounts]) =>
-        !accounts ||
-        typeof accounts !== 'object' ||
-        Array.isArray(accounts) ||
-        Object.keys(accounts).some((id) => type !== 'HDAccount' || id !== '0')
-    );
-  const vault = records[vaultKey];
-  if (
-    Object.keys(records).some(
-      (key) =>
-        resetOwnedKey(key) &&
-        hasStoredValue(records[key]) &&
-        !expectedKeys.has(key)
-    ) ||
-    Object.keys(records.state).some(
-      (key) => !['dapp', 'price', 'vaultGlobal'].includes(key)
-    ) ||
-    hasStoredValue(vault.passkeyCredentialProfile) ||
-    hasStoredValue(vault.accounts.HDAccount[0].smartAccount) ||
-    vault.accounts.HDAccount[0].isSmartAccount ||
-    hasExtraAccount(vault.accounts) ||
-    ['accountAssets', 'accountTransactions'].some(
-      (key) => vault[key] !== undefined && hasExtraAccount(vault[key])
-    )
-  )
-    throw new Error('Recovered wallet contains unexpected wallet data');
-};
-
 const savedCommittedIdentity = (
   records: Records,
   slip44: number = records.state?.vaultGlobal?.activeSlip44
@@ -204,10 +172,9 @@ const savedCommittedIdentity = (
     account.isLedgerWallet
   )
     throw new Error('Recovered wallet account state was not durably saved');
-  // A successful reset creates only the new pair, main state and HD0 vault.
-  // Validate every owned record before dropping the backup, and again if a
-  // committed marker survives cleanup. Null rollback tombstones carry no data.
-  assertFreshWalletRecords(records, slip44);
+  // Validate the complete retained account maps before dropping the backup,
+  // and again if a committed marker survives cleanup.
+  recoveryAccountGroups(records);
   // UTXO receiving addresses advance normally. The HD xpub anchors identity.
   return { slip44, id: 0, xpub: account.xpub };
 };
@@ -215,12 +182,7 @@ const savedCommittedIdentity = (
 const committedFingerprint = (
   records: Records,
   publicIdentity: CommittedIdentity
-) =>
-  digest({
-    vault: records['sysweb3-vault'],
-    keys: records['sysweb3-vault-keys'],
-    identity: publicIdentity,
-  });
+) => digest({ records: snapshot(records), identity: publicIdentity });
 
 const assertCommittedRecords = async (
   records: Records,
@@ -232,8 +194,7 @@ const assertCommittedRecords = async (
     journal.committedIdentity!.slip44
   );
   if (
-    JSON.stringify(publicIdentity) !==
-      JSON.stringify(journal.committedIdentity) ||
+    !jsonStorageEqual(publicIdentity, journal.committedIdentity) ||
     (await committedFingerprint(records, publicIdentity)) !==
       journal.committedFingerprint
   )
@@ -562,8 +523,10 @@ const reconcileWithinLock = async (
   await context.rehydrate(state);
   const restored = context.getState().vault;
   if (
-    JSON.stringify(recoveryAccountRecords(restored.accounts)) !==
-      JSON.stringify(recoveryAccountRecords(vault.accounts)) ||
+    !jsonStorageEqual(
+      recoveryAccountRecords(restored.accounts),
+      recoveryAccountRecords(vault.accounts)
+    ) ||
     restored.activeNetwork?.slip44 !== vault.activeNetwork?.slip44 ||
     restored.activeNetwork?.slip44 !== slip44
   )
@@ -761,7 +724,7 @@ export const runWalletSetup = async (
       Date.now() - ticket.createdAt > TICKET_LIFETIME_MS
     )
       throw new Error('Seed recovery expired. Start recovery again');
-    if (typeof password !== 'string' || !STRONG_PASSWORD.test(password))
+    if (!isStrongWalletPassword(password))
       throw new Error(
         'Recovery password does not meet the strong password requirements'
       );
@@ -776,86 +739,134 @@ export const runWalletSetup = async (
     if (JSON.stringify(identity(context)) !== JSON.stringify(ticket.identity))
       throw new Error('Wallet account changed before recovery');
 
-    let journal: RecoveryJournal | undefined;
+    let before!: Records;
     await context.persistenceMutex.runExclusive(async () => {
       assertCurrent();
       assertLocked(wallet);
       const current = await getAll();
-      if (current[JOURNAL_KEY] !== undefined && current[JOURNAL_KEY] !== null)
+      if (current[JOURNAL_KEY] !== null && current[JOURNAL_KEY] !== undefined)
         throw new Error('Reload the wallet to finish the previous recovery');
       assertStoredPair(current);
       if ((await pairFingerprint(current)) !== ticket.pairFingerprint)
         throw new Error('Wallet storage changed before recovery');
-      const before = snapshot(current);
-      const candidate: RecoveryJournal = {
-        version: 1,
-        before,
-        checksum: await digest(before),
-      };
+      before = snapshot(current);
+    });
+    // Reconstruct only in the memory host. Missing recovery copies or an
+    // unsupported private domain fail before touching the active pair.
+    const after = await prepareExtensionAccountRecovery(
+      before,
+      password,
+      phrase,
+      () => {
+        assertCurrent();
+        assertLocked(wallet);
+      }
+    );
+    assertCurrent();
+    assertLocked(wallet);
+    const journal: RecoveryJournal = {
+      version: 1,
+      before,
+      checksum: await digest(before),
+    };
+    await context.persistenceMutex.runExclusive(async () => {
       assertCurrent();
       assertLocked(wallet);
+      const current = await getAll();
+      if (
+        (current[JOURNAL_KEY] !== null && current[JOURNAL_KEY] !== undefined) ||
+        (await digest(snapshot(current))) !== journal.checksum
+      )
+        throw new Error('Wallet storage changed before recovery');
       wallet.recoveryJournalPending = true;
+      walletPersistenceGate.blocked = true;
       try {
-        await context.storage.setItem(JOURNAL_KEY, candidate);
+        await context.storage.setItem(JOURNAL_KEY, journal);
+        const persisted = (await getAll())[JOURNAL_KEY];
+        if (!jsonStorageEqual(await validateJournal(persisted), journal))
+          throw new Error('Wallet recovery backup was not saved');
       } catch (error) {
-        // A failed acknowledgement may still have saved the backup. Release
-        // admission only after a successful read proves no journal exists.
         const pending = await context.storage.getItems([JOURNAL_KEY]);
-        if (pending[JOURNAL_KEY] === undefined || pending[JOURNAL_KEY] === null)
+        if (
+          pending[JOURNAL_KEY] === null ||
+          pending[JOURNAL_KEY] === undefined
+        ) {
           wallet.recoveryJournalPending = false;
+          walletPersistenceGate.blocked = false;
+        }
         throw error;
       }
-      journal = candidate;
     });
-    try {
-      assertCurrent();
-      await wallet.createWalletExclusive(password, phrase);
-      // The admitted initializer performs exactly one reset; unrelated locks
-      // and resets must not turn this recovery into a successful new session.
+    const assertInstalledSession = () => {
       if (
         wallet.walletStateGeneration !== walletStateGeneration + 1 ||
-        wallet.walletSessionGeneration !== generation + 1 ||
-        !wallet.isUnlocked()
+        wallet.walletSessionGeneration !== generation + 1
       )
         throw new Error('Wallet state changed during recovery');
+    };
+    try {
+      assertCurrent();
+      await wallet.retireWalletRuntime();
+      assertInstalledSession();
       await context.persistenceMutex.runExclusive(async () => {
+        assertInstalledSession();
         const current = await getAll();
-        assertStoredPair(current);
+        if (
+          (await digest(snapshot(current))) !== journal.checksum ||
+          !jsonStorageEqual(
+            await validateJournal(current[JOURNAL_KEY]),
+            journal
+          )
+        )
+          throw new Error('Wallet storage changed during recovery');
+        assertInstalledSession();
+        await context.storage.setItems(after);
+        const committed = snapshot(await getAll());
+        assertInstalledSession();
+        if (!jsonStorageEqual(committed, after))
+          throw new Error('Recovered wallet was not durably saved');
+        const state = { ...after.state };
+        delete state.vault;
+        await context.rehydrate(state);
+        assertInstalledSession();
+        const active =
+          after[`state-vault-${after.state.vaultGlobal.activeSlip44}`];
+        if (
+          !jsonStorageEqual(
+            recoveryAccountRecords(context.getState().vault.accounts),
+            recoveryAccountRecords(active.accounts)
+          )
+        )
+          throw new Error('Recovered account records were not restored');
+      });
+      await wallet.activateRecoveredWallet(password, assertInstalledSession);
+      assertInstalledSession();
+      await context.persistenceMutex.runExclusive(async () => {
+        assertInstalledSession();
+        const current = await getAll();
+        if (!jsonStorageEqual(snapshot(current), after))
+          throw new Error('Recovered wallet storage changed');
         const committedIdentity = savedCommittedIdentity(current);
-        const liveAccount = context.getState().vault.accounts.HDAccount[0];
-        const savedAccount =
-          current[`state-vault-${committedIdentity.slip44}`].accounts
-            .HDAccount[0];
-        if (
-          liveAccount?.address !== savedAccount.address ||
-          liveAccount?.xpub !== committedIdentity.xpub ||
-          liveAccount?.xprv !== savedAccount.xprv
-        )
-          throw new Error(
-            'Recovered wallet account state was not durably saved'
-          );
-        const fingerprint = await committedFingerprint(
-          current,
-          committedIdentity
-        );
-        if (
-          wallet.walletStateGeneration !== walletStateGeneration + 1 ||
-          wallet.walletSessionGeneration !== generation + 1
-        )
-          throw new Error('Wallet state changed during recovery');
-        await context.storage.setItem(JOURNAL_KEY, {
+        const committed = {
           ...journal,
           committedIdentity,
-          committedFingerprint: fingerprint,
-        });
+          committedFingerprint: await committedFingerprint(
+            current,
+            committedIdentity
+          ),
+        };
+        assertInstalledSession();
+        await context.storage.setItem(JOURNAL_KEY, committed);
+        const observed = await getAll();
+        assertInstalledSession();
+        const marker = await validateJournal(observed[JOURNAL_KEY]);
+        if (!jsonStorageEqual(marker, committed))
+          throw new Error('Wallet recovery commit was not saved');
+        await assertCommittedRecords(observed, marker);
       });
     } catch {
-      // Secondary reads/validation can fail too. Invalidate the new session
-      // before any awaited reconciliation, while preserving its ciphertext.
       walletPersistenceGate.blocked = true;
       wallet.lock();
-      // An acknowledgement can fail after the commit marker reached disk.
-      // Check it before teardown; a committed new pair must never be deleted.
       const current = await getAll();
       const durableJournal = await validateJournal(current[JOURNAL_KEY]);
       if (durableJournal.committedFingerprint) {
@@ -863,9 +874,27 @@ export const runWalletSetup = async (
         await cleanupCommittedRecovery(wallet, context);
         return;
       }
-      // Quiesce new sessions/jobs before restoring the encrypted old snapshot.
-      // If cleanup/rollback fails, leave the journal for cold startup recovery.
-      await wallet.resetWalletState({ resetNetworks: true });
+      // Only the exact admitted old/new ciphertext may be compensated. An
+      // unrelated wallet must never receive this operation's old snapshot.
+      const observed = snapshot(current);
+      const keys = Object.keys(observed);
+      const beforeKeys = Object.keys(before);
+      const afterKeys = Object.keys(after);
+      const hasKeys = (expected: string[]) =>
+        keys.length === expected.length &&
+        keys.every((key) => expected.includes(key));
+      const admittedPartialWrite =
+        (hasKeys(beforeKeys) || hasKeys(afterKeys)) &&
+        keys.every((key) =>
+          [before, after].some(
+            (records) =>
+              Object.prototype.hasOwnProperty.call(records, key) &&
+              jsonStorageEqual(records[key], observed[key])
+          )
+        );
+      if (durableJournal.checksum !== journal.checksum || !admittedPartialWrite)
+        throw new Error('Reload the extension to finish wallet recovery');
+      await wallet.retireWalletRuntime();
       await reconcileWalletRecoveryJournal(context);
       wallet.recoveryJournalPending = false;
       throw new Error(
@@ -873,6 +902,7 @@ export const runWalletSetup = async (
       );
     }
     // A committed marker makes a lost cleanup acknowledgement safe on restart.
+    wallet.lock();
     await cleanupCommittedRecovery(wallet, context);
   });
 };

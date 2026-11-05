@@ -1,11 +1,11 @@
+import { createRoutescanFetch, isRoutescanApiUrl } from '../shared/evmExplorer';
+export { isRoutescanApiUrl } from '../shared/evmExplorer';
+
 const ROUTESCAN_ORIGIN = 'https://api.routescan.io';
 const REQUEST_TIMEOUT_MS = 15_000;
-const PAGE_INTERVAL_MS = 550; // Stay below the keyless tier's two requests/second.
 const MAX_PAGES = 10;
 const CACHE_MS = 60_000;
 const MAX_CACHE_ENTRIES = 64;
-let routescanQueue = Promise.resolve();
-let lastRoutescanRequestAt = 0;
 
 type TokenRow = Record<string, unknown>;
 const cache = new Map<
@@ -19,60 +19,7 @@ export class TokenDiscoveryError extends Error {
   }
 }
 
-export const isRoutescanApiUrl = (
-  apiUrl: string | undefined,
-  chainId: number
-) => {
-  try {
-    const url = new URL(apiUrl || '');
-    const path = url.pathname.replace(/\/$/, '');
-    const base = `/v2/network/mainnet/evm/${chainId}`;
-    return (
-      url.origin === ROUTESCAN_ORIGIN &&
-      (path === base || path === `${base}/etherscan/api`)
-    );
-  } catch {
-    return false;
-  }
-};
-
-export const fetchRoutescan = async (
-  url: string,
-  options: RequestInit = {}
-): Promise<Response> => {
-  const requestUrl = new URL(url);
-  const headers = new Headers(options.headers);
-  const apiKey =
-    requestUrl.searchParams.get('apikey') ||
-    requestUrl.searchParams.get('apiKey');
-  if (apiKey) headers.set('apikey', apiKey);
-  requestUrl.searchParams.delete('apikey');
-  requestUrl.searchParams.delete('apiKey');
-  const abort = options.signal ? undefined : new AbortController();
-  const signal = options.signal || abort?.signal;
-  const timeout = abort
-    ? setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS)
-    : undefined;
-  const previous = routescanQueue;
-  let release!: () => void;
-  routescanQueue = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  try {
-    await previous;
-    const delay = Math.max(
-      0,
-      lastRoutescanRequestAt + PAGE_INTERVAL_MS - Date.now()
-    );
-    if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
-    if (signal?.aborted) throw new Error('Explorer API request timed out');
-    lastRoutescanRequestAt = Date.now();
-    return await fetch(requestUrl.toString(), { ...options, headers, signal });
-  } finally {
-    if (timeout) clearTimeout(timeout);
-    release();
-  }
-};
+export const fetchRoutescan = createRoutescanFetch();
 
 const retryAfterMs = (value: string | null): number => {
   if (!value) return 0;

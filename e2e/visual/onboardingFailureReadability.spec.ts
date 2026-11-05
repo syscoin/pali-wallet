@@ -473,6 +473,19 @@ for (const state of ['generation', 'recovery'] as const) {
             await restoreRuntimeReply(page);
           } else {
             await page.locator('#recovery-check-wallet').click();
+            await expect(page.locator('#password')).toBeVisible();
+            await expect(page.locator('#unlock-btn')).toBeVisible();
+            await expect(page.locator('#home-balance')).toHaveCount(0);
+            expect(
+              await page.evaluate(() =>
+                chrome.runtime.sendMessage({
+                  type: 'CONTROLLER_ACTION',
+                  data: { methods: ['wallet', 'isUnlocked'], params: [] },
+                })
+              )
+            ).toBe(false);
+            await page.locator('#password').fill('NewReadableSynthetic!2026');
+            await page.locator('#unlock-btn').click();
             await expect(page).toHaveURL(/#\/home$/, { timeout: 20000 });
           }
           expect(routes.deniedWrites).toEqual([]);

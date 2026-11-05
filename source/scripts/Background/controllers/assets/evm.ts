@@ -11,7 +11,10 @@ import {
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 
-import { parseErc20Decimals, parseErc20Units } from '../../../../shared/erc20';
+import {
+  parseErc20ReadFields,
+  parseErc20Units,
+} from '../../../../shared/erc20';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
@@ -739,10 +742,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
       contract.decimals(),
       contract.balanceOf(accountAddress),
     ]);
+    const metadata = parseErc20ReadFields({ name, symbol, decimals });
     return {
-      name,
-      symbol: cleanTokenSymbol(symbol),
-      decimals: parseErc20Decimals(decimals),
+      ...metadata,
+      symbol: cleanTokenSymbol(metadata.symbol),
       balance: parseErc20Units(balance),
     };
   };

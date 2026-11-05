@@ -21,7 +21,7 @@ test('imported qualification reports require exact kind, three chains and phase-
     { importedChainIds: ['1', '57057', '5700'] }, { importedChainIds: [1, 5700, 57057] },
     { importedTransferHashes: new Array(3) }, { importedTransferHashes: Array(3).fill('0x' + '1'.repeat(64)) },
     { importedKeyRevealVerified: 'true' }, { importedRestoredFromJournal: false }, { importedAuthorizations: 0 },
-    { importedSignatures: 1 }, { importedInjectedBroadcasts: 2 }, { importedJournalContainerVersion: 1 },
+    { importedSignatures: 1 }, { importedInjectedBroadcasts: 2 }, { importedJournalContainerVersion: 2 },
     { networkCalls: 1 }, { scenario: ['import'] }, { fingerprint: 'b'.repeat(64) },
   ]) assert.equal(matchesImportedRestartEvidence(first, { ...second, ...change }), false);
   assert.equal(isImportedQualificationReport({ ...first, transferHash: first.importedTransferHashes[0] }), false);

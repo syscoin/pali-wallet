@@ -334,8 +334,15 @@ describe('advanced settings durable completion and auto-lock timers', () => {
     (chrome.storage.local.get as jest.Mock).mockImplementation((_keys, done) =>
       done(persisted)
     );
+    persisted['pali-evm-signed-v1:0x' + '11'.repeat(32)] =
+      'retained old signed bytes';
+    persisted['pali-evm-signed-v1:0x' + '22'.repeat(32)] =
+      'another old profile';
+    const retiredRecords = { requiresReopen: true };
+    wallet.retainedEvmRecords = retiredRecords;
     await wallet.saveCurrentState('pending-wallet-save', false);
     await wallet.resetWalletState();
+    expect(wallet.retainedEvmRecords).toBeUndefined();
     await jest.advanceTimersByTimeAsync(100);
     expect(wallet.walletStateGeneration).toBe(1);
     expect(wallet.walletSessionGeneration).toBe(1);

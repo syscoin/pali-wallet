@@ -3,6 +3,7 @@ export default defineConfig({
   testDir: './tests/watch-ui',
   workers: 1,
   use: {
+    launchOptions: { chromiumSandbox: true },
     baseURL: 'http://127.0.0.1:4182',
     viewport: { width: 390, height: 844 },
     trace: 'retain-on-failure',

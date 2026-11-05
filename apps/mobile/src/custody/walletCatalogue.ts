@@ -1,17 +1,41 @@
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
-import { nativeTransferJournalKey, terminalJournalForRemoval, type JournalRemovalSnapshot } from './transferJournal.ts';
-import { NATIVE_NETWORKS, getNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
-import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
+import {
+  NATIVE_NETWORKS,
+  getNativeNetwork,
+  snapshotNativeNetwork,
+  type NativeNetworkRegistration,
+  type EvmNetworkId,
+} from './networkContext.ts';
+import { ACCOUNT_RECORD_KEY, decodeAccountRecord as decodeStorageValue, encodeAccountRecord as encodeStorageValue } from '../storage/accountRecordKey.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
-import { nativeAccountId } from './accountIdentity.ts';
-import { snapshotImportedEnvelope, type ImportedKeyEnvelope } from './importedAccounts.ts';
+import { nativeAccountId, parseNativeAccountId } from './accountIdentity.ts';
+import {
+  assertImportedRecoveryAccount,
+  snapshotImportedRecoveryEntry,
+  type ImportedRecoveryEntry,
+} from '../../../../source/wallet/importedAccountRecovery.ts';
+import {
+  assertCompleteHDAccountData,
+  assertAccountCreationAvailable,
+  createAccountRecord,
+  removeAccountRecord,
+  setAccountRecordLabel,
+  setActiveAccountRecord,
+} from '../../../../source/wallet/accountRecords.ts';
+import type {
+  RecoveryAccountGroup,
+  StagedAccountRecovery,
+} from '../../../../source/wallet/accountRecovery.ts';
+import type {
+  IKeyringAccountState,
+  KeyringAccountType as SharedAccountType,
+} from '../../../../source/types/network.ts';
+import { KeyringAccountType as SdkAccountType } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+const KeyringAccountType =
+  SdkAccountType as unknown as typeof import('../../../../source/types/network.ts').KeyringAccountType;
 
-export const WALLET_CATALOGUE_KEY = 'native-wallet-catalogue-v1';
-export const MAX_HD_ACCOUNTS = 20;
-export const MAX_HD_ACCOUNT_INDEX = 4095;
-const accountId = (index: number) => nativeAccountId('HDAccount', index);
-
+export const WALLET_CATALOGUE_KEY = ACCOUNT_RECORD_KEY;
 export type NativeCatalogueAccount = Readonly<{
   id: string;
   type: 'HDAccount' | 'Imported';
@@ -20,316 +44,521 @@ export type NativeCatalogueAccount = Readonly<{
   address: string;
   label: string;
 }>;
-/** Public projection only. No encrypted private keys or session state. */
+/** Public projection. Complete encrypted SDK records remain inside custody. */
 export type NativeWalletCatalogueSnapshot = Readonly<{
   revision: number;
-  removed: readonly Readonly<{ id: string; index: number }>[];
   accounts: readonly NativeCatalogueAccount[];
   networks: readonly NativeNetworkRegistration[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
-/** Supplied only after SDK authentication and account derivation. */
 export type NativeWalletCatalogueIdentity = Readonly<{
-  walletFingerprint: string; address: string; publicKey: string;
+  walletFingerprint: string;
+  address: string;
+  publicKey: string;
 }>;
-export type DerivedCatalogueIdentity = Readonly<{ address: string; publicKey: string }>;
-type CatalogueAccount = NativeCatalogueAccount & { readonly type: 'HDAccount'; readonly publicKey: string };
-/** Private persisted record. Never included in NativeWalletCatalogueSnapshot. */
-export type StoredImportedAccount = NativeCatalogueAccount & { readonly type: 'Imported'; readonly publicKey: string; readonly envelope: ImportedKeyEnvelope };
-type CatalogueRecord = Omit<NativeWalletCatalogueSnapshot, 'accounts' | 'removed'> & Readonly<{
-  version: 2; walletFingerprint: string; nextIndex: number;
-  retiredIndices: readonly number[]; accounts: readonly CatalogueAccount[];
-  nextImportedIndex: number; retiredImportedIndices: readonly number[]; importedAccounts: readonly StoredImportedAccount[];
+export type DerivedCatalogueIdentity = Readonly<{
+  address: string;
+  publicKey: string;
+}>;
+export type NativeAccountRecord = Readonly<{
+  version: 1;
+  revision: number;
+  walletFingerprint: string;
+  groups: readonly RecoveryAccountGroup[];
+  recovery: readonly ImportedRecoveryEntry[];
+  networks: readonly NativeNetworkRegistration[];
+  active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
 export type CatalogueMutation =
-  | Readonly<{ kind: 'create'; index: number; address: string; publicKey: string; label: string }>
-  | Readonly<{ kind: 'restore'; index: number; address: string; publicKey: string; label: string }>
-  | Readonly<{ kind: 'import'; index: number; address: string; publicKey: string; label: string; envelope: ImportedKeyEnvelope }>
+  | Readonly<{ kind: 'create'; account: IKeyringAccountState }>
+  | Readonly<{
+      kind: 'import';
+      account: IKeyringAccountState;
+      recovery: ImportedRecoveryEntry;
+    }>
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'select-network'; id: EvmNetworkId }>
+  | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
+  | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
-  | Readonly<{ kind: 'remove'; id: string; journal: JournalRemovalSnapshot | null }>;
-
+  | Readonly<{ kind: 'remove'; id: string }>;
 export class WalletCatalogueError extends Error {
-  readonly code: 'CATALOGUE_INVALID' | 'CATALOGUE_CONTEXT_CHANGED' | 'CATALOGUE_REOPEN_REQUIRED' | 'CATALOGUE_BUSY' | 'CATALOGUE_LIMIT' | 'CATALOGUE_NOT_REMOVABLE';
-  constructor(code: WalletCatalogueError['code']) { super(code); this.code = code; this.name = 'WalletCatalogueError'; }
-}
-const invalid = (): never => { throw new WalletCatalogueError('CATALOGUE_INVALID'); };
-const changed = (): never => { throw new WalletCatalogueError('CATALOGUE_CONTEXT_CHANGED'); };
-function snapshot(value: unknown): unknown { return decodeStorageValue(encodeStorageValue(value)); }
-function object(value: unknown, fields: readonly string[]): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return invalid();
-  const keys = Object.keys(value);
-  if (keys.length !== fields.length || keys.some((key) => !fields.includes(key))) return invalid();
-  return value as Record<string, unknown>;
-}
-function publicIdentity(value: unknown): DerivedCatalogueIdentity {
-  const raw = object(value, ['address', 'publicKey']);
-  if (typeof raw.address !== 'string' || typeof raw.publicKey !== 'string' ||
-      !/^0x(?:(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/.test(raw.publicKey)) return invalid();
-  let address: string;
-  try {
-    address = getAddress(raw.address);
-    if (computeAddress(raw.publicKey) !== address || /^0x0{40}$/i.test(address)) return invalid();
-  } catch { return invalid(); }
-  return Object.freeze({ address, publicKey: raw.publicKey.toLowerCase() });
-}
-function identity(value: NativeWalletCatalogueIdentity): NativeWalletCatalogueIdentity {
-  const raw = object(snapshot(value), ['walletFingerprint', 'address', 'publicKey']);
-  if (typeof raw.walletFingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(raw.walletFingerprint)) return invalid();
-  return Object.freeze({ walletFingerprint: raw.walletFingerprint,
-    ...publicIdentity({ address: raw.address, publicKey: raw.publicKey }) });
-}
-function label(value: unknown): string {
-  if (typeof value !== 'string' || !value || !value.isWellFormed() || value.trim() !== value ||
-      value.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(value)) return invalid();
-  return value;
-}
-function fresh(expected: NativeWalletCatalogueIdentity): CatalogueRecord {
-  return Object.freeze({
-    version: 2, revision: 0, walletFingerprint: expected.walletFingerprint,
-    nextIndex: 1, retiredIndices: Object.freeze([]),
-    nextImportedIndex: 0, retiredImportedIndices: Object.freeze([]), importedAccounts: Object.freeze([]),
-    accounts: Object.freeze([Object.freeze({ id: accountId(0), type: 'HDAccount', index: 0, slip44: 60,
-      address: expected.address, publicKey: expected.publicKey, label: 'Account 1' })]),
-    networks: NATIVE_NETWORKS,
-    active: Object.freeze({ accountId: accountId(0), networkId: 'ethereum' }),
-  });
-}
-function decode(value: unknown, expected: NativeWalletCatalogueIdentity, allowLegacy = false): CatalogueRecord {
-  const saved = snapshot(value);
-  const expanded = !!saved && typeof saved === 'object' && Object.hasOwn(saved, 'importedAccounts');
-  const raw = object(saved, ['version', 'revision', 'walletFingerprint', 'nextIndex', 'retiredIndices', 'accounts', 'networks', 'active',
-    ...(expanded ? ['nextImportedIndex', 'retiredImportedIndices', 'importedAccounts'] : [])]);
-  const legacy = allowLegacy && raw.version === 1;
-  if (legacy && expanded) return invalid();
-  if ((!legacy && raw.version !== 2) || raw.walletFingerprint !== expected.walletFingerprint ||
-      !Number.isSafeInteger(raw.revision) || (raw.revision as number) < 0 ||
-      !Number.isSafeInteger(raw.nextIndex) || (raw.nextIndex as number) < 1 || (raw.nextIndex as number) > MAX_HD_ACCOUNT_INDEX + 1 ||
-      !Array.isArray(raw.accounts) || raw.accounts.length < 1 || raw.accounts.length > MAX_HD_ACCOUNTS ||
-      !Array.isArray(raw.retiredIndices) || !Array.isArray(raw.networks) || raw.networks.length !== (legacy ? 1 : NATIVE_NETWORKS.length)) return invalid();
-  const used = new Set<number>();
-  const addresses = new Set<string>();
-  const accounts: CatalogueAccount[] = raw.accounts.map((value) => {
-    const a = object(value, ['id', 'type', 'index', 'slip44', 'address', 'publicKey', 'label']);
-    if (!Number.isSafeInteger(a.index) || (a.index as number) < 0 || (a.index as number) >= (raw.nextIndex as number) ||
-        a.id !== accountId(a.index as number) || a.type !== 'HDAccount' || a.slip44 !== 60 || used.has(a.index as number)) return invalid();
-    const key = publicIdentity({ address: a.address, publicKey: a.publicKey });
-    if (key.address !== a.address || key.publicKey !== a.publicKey || addresses.has(key.address)) return invalid();
-    used.add(a.index as number); addresses.add(key.address);
-    return Object.freeze({ id: a.id as string, type: 'HDAccount', index: a.index as number, slip44: 60,
-      ...key, label: label(a.label) });
-  });
-  const retired = raw.retiredIndices.map((index) => {
-    if (!Number.isSafeInteger(index) || index <= 0 || index >= (raw.nextIndex as number) || used.has(index)) return invalid();
-    used.add(index); return index as number;
-  });
-  if (used.size !== raw.nextIndex || !accounts.some((a) => a.index === 0 && a.address === expected.address && a.publicKey === expected.publicKey) ||
-      accounts.some((a, i) => i > 0 && accounts[i - 1]!.index >= a.index) ||
-      retired.some((n, i) => i > 0 && retired[i - 1]! >= n)) return invalid();
-  const nextImportedIndex = expanded ? raw.nextImportedIndex as number : 0;
-  if (!Number.isSafeInteger(nextImportedIndex) || nextImportedIndex < 0 || nextImportedIndex > MAX_HD_ACCOUNT_INDEX + 1 ||
-      (expanded && (!Array.isArray(raw.importedAccounts) || !Array.isArray(raw.retiredImportedIndices)))) return invalid();
-  const importedUsed = new Set<number>();
-  const importedAccounts: StoredImportedAccount[] = (expanded ? raw.importedAccounts as unknown[] : []).map((value) => {
-    const a = object(value, ['id', 'type', 'index', 'slip44', 'address', 'publicKey', 'label', 'envelope']);
-    if (!Number.isSafeInteger(a.index) || (a.index as number) < 0 || (a.index as number) >= nextImportedIndex ||
-        a.id !== nativeAccountId('Imported', a.index as number) || a.type !== 'Imported' || a.slip44 !== 60 || importedUsed.has(a.index as number)) return invalid();
-    const key = publicIdentity({ address: a.address, publicKey: a.publicKey });
-    if (key.address !== a.address || key.publicKey !== a.publicKey || addresses.has(key.address)) return invalid();
-    importedUsed.add(a.index as number); addresses.add(key.address);
-    return Object.freeze({ id: a.id as string, type: 'Imported', index: a.index as number, slip44: 60,
-      ...key, label: label(a.label), envelope: snapshotImportedEnvelope(a.envelope, a.id as string) });
-  });
-  const retiredImportedIndices = (expanded ? raw.retiredImportedIndices as unknown[] : []).map((index) => {
-    if (!Number.isSafeInteger(index) || (index as number) < 0 || (index as number) >= nextImportedIndex || importedUsed.has(index as number)) return invalid();
-    importedUsed.add(index as number); return index as number;
-  });
-  if (accounts.length + importedAccounts.length > MAX_HD_ACCOUNTS || importedUsed.size !== nextImportedIndex ||
-      importedAccounts.some((a, i) => i > 0 && importedAccounts[i - 1]!.index >= a.index) ||
-      retiredImportedIndices.some((n, i) => i > 0 && retiredImportedIndices[i - 1]! >= n)) return invalid();
-  if (legacy) {
-    const network = object(raw.networks[0], ['id', 'kind', 'chainId', 'slip44', 'rpcUrl', 'symbol', 'decimals']);
-    // Historical v1 registration is immutable; current defaults cannot rewrite it.
-    if (network.id !== 'ethereum' || network.kind !== 'evm' || network.chainId !== '1' || network.slip44 !== 60 ||
-        network.rpcUrl !== 'https://ethereum-rpc.publicnode.com' || network.symbol !== 'ETH' || network.decimals !== 18) return invalid();
-  } else {
-    for (const [index, expectedNetwork] of NATIVE_NETWORKS.entries()) {
-      const network = object(raw.networks[index], Object.keys(expectedNetwork));
-      if (Object.entries(expectedNetwork).some(([key, value]) => network[key] !== value)) return invalid();
-    }
+  readonly code:
+    | 'CATALOGUE_INVALID'
+    | 'CATALOGUE_CONTEXT_CHANGED'
+    | 'CATALOGUE_REOPEN_REQUIRED'
+    | 'CATALOGUE_BUSY'
+    | 'CATALOGUE_LIMIT'
+    | 'CATALOGUE_NOT_REMOVABLE';
+  constructor(code: WalletCatalogueError['code']) {
+    super(code);
+    this.code = code;
+    this.name = 'WalletCatalogueError';
   }
-  const active = object(raw.active, ['accountId', 'networkId']);
-  if (typeof active.networkId !== 'string' || (legacy && active.networkId !== 'ethereum') ||
-      !NATIVE_NETWORKS.some((network) => network.id === active.networkId) || ![...accounts, ...importedAccounts].some((a) => a.id === active.accountId) ||
-      (legacy && raw.revision === Number.MAX_SAFE_INTEGER)) return invalid();
-  return Object.freeze({ ...fresh(expected), revision: (raw.revision as number) + (legacy ? 1 : 0), nextIndex: raw.nextIndex as number,
-    retiredIndices: Object.freeze(retired), accounts: Object.freeze(accounts),
-    nextImportedIndex, retiredImportedIndices: Object.freeze(retiredImportedIndices), importedAccounts: Object.freeze(importedAccounts),
-    active: Object.freeze({ accountId: active.accountId as string, networkId: active.networkId as EvmNetworkId }) });
 }
-function projection(record: CatalogueRecord): NativeWalletCatalogueSnapshot {
-  return Object.freeze({ revision: record.revision,
-    removed: Object.freeze(record.retiredIndices.map((index) => Object.freeze({ id: accountId(index), index }))),
-    accounts: Object.freeze([...record.accounts.map(({ publicKey: _publicKey, ...account }) => Object.freeze(account)),
-      ...record.importedAccounts.map(({ publicKey: _publicKey, envelope: _envelope, ...account }) => Object.freeze(account))]),
-    networks: record.networks, active: record.active });
+const invalid = (): never => {
+  throw new WalletCatalogueError('CATALOGUE_INVALID');
+};
+const changed = (): never => {
+  throw new WalletCatalogueError('CATALOGUE_CONTEXT_CHANGED');
+};
+function snapshot<T>(value: T): T {
+  return decodeStorageValue(encodeStorageValue(value)) as T;
+}
+function object(
+  value: unknown,
+  fields: readonly string[]
+): Record<string, any> {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    return invalid();
+  const keys = Object.keys(value);
+  if (
+    keys.length !== fields.length ||
+    keys.some((key) => !fields.includes(key))
+  )
+    return invalid();
+  return value as Record<string, any>;
+}
+function publicIdentity(
+  value: DerivedCatalogueIdentity
+): DerivedCatalogueIdentity {
+  if (
+    typeof value.address !== 'string' ||
+    typeof value.publicKey !== 'string' ||
+    !/^0x(?:(?:02|03)[0-9a-fA-F]{64}|04[0-9a-fA-F]{128})$/.test(value.publicKey)
+  )
+    return invalid();
+  try {
+    const address = getAddress(value.address);
+    if (
+      computeAddress(value.publicKey) !== address ||
+      /^0x0{40}$/i.test(address)
+    )
+      return invalid();
+    return Object.freeze({ address, publicKey: value.publicKey.toLowerCase() });
+  } catch {
+    return invalid();
+  }
+}
+function softwareGroup(record: NativeAccountRecord): RecoveryAccountGroup {
+  const group = record.groups.find(
+    (group) =>
+      group.activeNetwork.kind === 'ethereum' &&
+      group.activeNetwork.slip44 === 60
+  );
+  return group ?? invalid();
+}
+function decode(value: unknown, binding: string): NativeAccountRecord {
+  const raw = object(snapshot(value), [
+    'version',
+    'revision',
+    'walletFingerprint',
+    'groups',
+    'recovery',
+    'networks',
+    'active',
+  ]);
+  if (
+    raw.version !== 1 ||
+    !/^[0-9a-f]{64}$/.test(binding) ||
+    raw.walletFingerprint !== binding ||
+    !Number.isSafeInteger(raw.revision) ||
+    raw.revision < 0 ||
+    !Array.isArray(raw.groups) ||
+    !raw.groups.length ||
+    !Array.isArray(raw.recovery) ||
+    !Array.isArray(raw.networks) ||
+    !raw.networks.length ||
+    raw.networks.length > 256
+  )
+    return invalid();
+  const groupKeys = new Set<string>();
+  for (const group of raw.groups as RecoveryAccountGroup[]) {
+    object(group, ['key', 'activeNetwork', 'activeAccount', 'accounts']);
+    const network = group.activeNetwork;
+    if (
+      !network ||
+      !['ethereum', 'syscoin'].includes(network.kind) ||
+      !Number.isSafeInteger(network.slip44) ||
+      network.slip44 < 0 ||
+      group.key !== String(network.slip44) ||
+      groupKeys.has(group.key)
+    )
+      return invalid();
+    groupKeys.add(group.key);
+    object(group.accounts, Object.values(KeyringAccountType));
+    assertCompleteHDAccountData(group.accounts.HDAccount);
+    for (const [type, accounts] of Object.entries(group.accounts)) {
+      if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts))
+        return invalid();
+      for (const [id, account] of Object.entries(accounts)) {
+        if (
+          !Number.isSafeInteger(account.id) ||
+          account.id < 0 ||
+          String(account.id) !== id ||
+          typeof account.address !== 'string' ||
+          !account.address ||
+          typeof account.xpub !== 'string' ||
+          !account.xpub ||
+          typeof account.xprv !== 'string' ||
+          typeof account.label !== 'string'
+        )
+          return invalid();
+        if (
+          type === 'HDAccount' &&
+          (!account.xprv ||
+            account.isImported ||
+            account.isLedgerWallet ||
+            account.isTrezorWallet ||
+            account.isSmartAccount)
+        )
+          return invalid();
+        if (
+          network.kind === 'ethereum' &&
+          ['HDAccount', 'Imported'].includes(type) &&
+          account.xprv
+        )
+          publicIdentity({ address: account.address, publicKey: account.xpub });
+      }
+    }
+    if (!group.accounts[group.activeAccount.type]?.[group.activeAccount.id])
+      return invalid();
+  }
+  const recoveries = raw.recovery.map((entry: unknown) =>
+    snapshotImportedRecoveryEntry(entry)
+  ) as ImportedRecoveryEntry[];
+  const identities = new Set<string>();
+  for (const entry of recoveries) {
+    const key = `${entry.identity.slip44}:${entry.identity.id}`;
+    if (identities.has(key)) return invalid();
+    identities.add(key);
+    const group = raw.groups.find(
+      (group: RecoveryAccountGroup) =>
+        group.activeNetwork.slip44 === entry.identity.slip44
+    ) as RecoveryAccountGroup | undefined;
+    const account = group?.accounts.Imported[entry.identity.id];
+    if (!group || !account?.xprv || !account.isImported) return invalid();
+    assertImportedRecoveryAccount(entry, {
+      kind: group.activeNetwork.kind,
+      slip44: entry.identity.slip44,
+      id: account.id,
+      address: account.address,
+      xpub: account.xpub,
+    });
+  }
+  for (const group of raw.groups as RecoveryAccountGroup[]) {
+    for (const account of Object.values(group.accounts.Imported))
+      if (
+        account.xprv &&
+        !identities.has(`${group.activeNetwork.slip44}:${account.id}`)
+      )
+        return invalid();
+  }
+  const networks = raw.networks.map(
+    snapshotNativeNetwork
+  ) as NativeNetworkRegistration[];
+  if (
+    new Set(networks.map((network) => network.id)).size !== networks.length ||
+    new Set(networks.map((network) => network.chainId)).size !== networks.length
+  )
+    return invalid();
+  if (!softwareGroup(raw as NativeAccountRecord).accounts.HDAccount[0])
+    return invalid();
+  const active = object(raw.active, ['accountId', 'networkId']);
+  const selected = parseNativeAccountId(active.accountId);
+  const native = softwareGroup(raw as NativeAccountRecord);
+  if (
+    !networks.some((network) => network.id === active.networkId) ||
+    !native.accounts[selected.type]?.[selected.index]
+  )
+    return invalid();
+  return Object.freeze({
+    ...raw,
+    networks: Object.freeze(networks),
+    active: Object.freeze({ ...active }),
+  }) as NativeAccountRecord;
+}
+function projection(
+  record: NativeAccountRecord
+): NativeWalletCatalogueSnapshot {
+  const group = softwareGroup(record);
+  const accounts = (['HDAccount', 'Imported'] as const).flatMap((type) =>
+    Object.values(group.accounts[type]).map((account) =>
+      Object.freeze({
+        id: nativeAccountId(type, account.id),
+        type,
+        index: account.id,
+        slip44: 60 as const,
+        address: account.address,
+        label: account.label,
+      })
+    )
+  );
+  return Object.freeze({
+    revision: record.revision,
+    accounts: Object.freeze(accounts),
+    networks: record.networks,
+    active: record.active,
+  });
+}
+export function createNativeAccountRecord(
+  staged: StagedAccountRecovery,
+  walletFingerprint: string,
+  networks: readonly NativeNetworkRegistration[] = NATIVE_NETWORKS
+): NativeAccountRecord {
+  const groups = staged.groups.map((group) => ({
+    ...group,
+    key: String(group.activeNetwork.slip44),
+  }));
+  const network =
+    networks.find(
+      (network) => network.chainId === String(groups[0]!.activeNetwork.chainId)
+    ) ?? invalid();
+  return decode(
+    {
+      version: 1,
+      revision: 0,
+      walletFingerprint,
+      groups,
+      recovery: [],
+      networks,
+      active: {
+        accountId: nativeAccountId('HDAccount', 0),
+        networkId: network.id,
+      },
+    },
+    walletFingerprint
+  );
+}
+export function recoveryVerificationRecords(
+  value: unknown,
+  binding: string
+): NativeAccountRecord {
+  return decode(value, binding);
+}
+export function inspectRecoveryCatalogue(value: unknown, binding: string) {
+  const record = decode(value, binding),
+    group = softwareGroup(record),
+    first = group.accounts.HDAccount[0]!;
+  return Object.freeze({
+    root: publicIdentity({ address: first.address, publicKey: first.xpub }),
+    accounts: projection(record).accounts,
+    importedProfiles: Object.freeze(
+      record.recovery.map((entry) => entry.envelope.profileId)
+    ),
+  });
+}
+export function replaceRecoveredAccountRecords(
+  value: unknown,
+  binding: string,
+  groups: readonly RecoveryAccountGroup[]
+): NativeAccountRecord {
+  const before = decode(value, binding);
+  return decode({ ...before, revision: before.revision + 1, groups }, binding);
 }
 function guardFor(assertCurrent: () => void): () => void {
   return () => {
-    const result: unknown = assertCurrent();
-    if (result !== undefined) {
-      if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
-      changed();
-    }
+    if (assertCurrent() !== undefined) changed();
   };
 }
 
-/** Current v2 and explicit historical v1 migration; unknown/corrupt records fail closed. */
+/** One private persisted SDK map; unknown records remain intact and fail closed. */
 export class NativeWalletCatalogue {
   private busy = false;
   private uncertain = false;
-  private record: CatalogueRecord | null = null;
+  private record: NativeAccountRecord | null = null;
   private stored: unknown;
   private root: NativeWalletCatalogueIdentity | null = null;
   private readonly storage: KeyringStoragePort;
-  constructor(storage: KeyringStoragePort) { this.storage = storage; }
-  get requiresReopen(): boolean { return this.uncertain; }
-  get nextIndex(): number { if (!this.record) return changed(); return this.record.nextIndex; }
-  get nextImportedIndex(): number { if (!this.record) return changed(); return this.record.nextImportedIndex; }
-
-  reconcile(value: NativeWalletCatalogueIdentity, assertCurrent: () => void,
-    derive?: (index: number) => Promise<DerivedCatalogueIdentity>,
-    restoreImported?: (account: StoredImportedAccount) => Promise<DerivedCatalogueIdentity>): Promise<NativeWalletCatalogueSnapshot> {
-    if (this.busy) return Promise.reject(new WalletCatalogueError('CATALOGUE_BUSY'));
-    if (this.uncertain) return Promise.reject(new WalletCatalogueError('CATALOGUE_REOPEN_REQUIRED'));
-    this.busy = true;
-    const guard = guardFor(assertCurrent);
-    let expected: NativeWalletCatalogueIdentity;
-    try { expected = identity(value); guard(); } catch (error) { this.busy = false; return Promise.reject(error); }
-    let writing = false;
-    return (async () => {
-      try {
-        let raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
-        if (raw === undefined) {
-          writing = true;
-          const created = await this.storage.createManyIfAbsent({ [WALLET_CATALOGUE_KEY]: fresh(expected) }); guard();
-          if (typeof created !== 'boolean') return invalid();
-          raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
-          if (raw === undefined) return invalid();
-        }
-        const legacy = (snapshot(raw) as { version?: unknown }).version === 1;
-        const record = decode(raw, expected, true);
-        for (const account of record.accounts) {
-          if (account.index === 0) continue;
-          if (!derive) return invalid();
-          const actual = publicIdentity(snapshot(await derive(account.index))); guard();
-          if (actual.address !== account.address || actual.publicKey !== account.publicKey) return invalid();
-        }
-        for (const account of record.importedAccounts) {
-          if (!restoreImported) return invalid();
-          const actual = publicIdentity(snapshot(await restoreImported(account))); guard();
-          if (actual.address !== account.address || actual.publicKey !== account.publicKey) return invalid();
-        }
-        if (legacy) {
-          guard(); writing = true;
-          const committed = await this.storage.compareAndSet(WALLET_CATALOGUE_KEY, raw, record);
-          if (typeof committed !== 'boolean') return invalid();
-          if (!committed) { writing = false; return changed(); }
-          guard();
-          raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
-          if (encodeStorageValue(raw) !== encodeStorageValue(record)) return invalid();
-        }
-        this.root = expected; this.record = record; this.stored = snapshot(raw);
-        return projection(record);
-      } catch (error) { if (writing) this.uncertain = true; throw error; }
-      finally { this.busy = false; }
-    })();
+  constructor(storage: KeyringStoragePort) {
+    this.storage = storage;
   }
-
-  mutate(expectedRevision: number, input: CatalogueMutation, assertCurrent: () => void): Promise<NativeWalletCatalogueSnapshot> {
-    if (this.busy) return Promise.reject(new WalletCatalogueError('CATALOGUE_BUSY'));
-    if (this.uncertain) return Promise.reject(new WalletCatalogueError('CATALOGUE_REOPEN_REQUIRED'));
+  get requiresReopen(): boolean {
+    return this.uncertain;
+  }
+  get privateRecords(): NativeAccountRecord {
+    if (!this.record) return changed();
+    return snapshot(this.record);
+  }
+  async reconcile(
+    value: NativeWalletCatalogueIdentity,
+    assertCurrent: () => void
+  ): Promise<NativeWalletCatalogueSnapshot> {
+    if (this.busy) throw new WalletCatalogueError('CATALOGUE_BUSY');
+    if (this.uncertain)
+      throw new WalletCatalogueError('CATALOGUE_REOPEN_REQUIRED');
     this.busy = true;
     const guard = guardFor(assertCurrent);
-    let next: CatalogueRecord;
-    let cleanup: Readonly<Record<string, unknown>> | undefined;
+    try {
+      guard();
+      const raw = await this.storage.get(WALLET_CATALOGUE_KEY);
+      guard();
+      const record = decode(raw, value.walletFingerprint);
+      const first = softwareGroup(record).accounts.HDAccount[0]!;
+      const root = publicIdentity({
+        address: first.address,
+        publicKey: first.xpub,
+      });
+      if (
+        root.address !== value.address ||
+        root.publicKey !== value.publicKey.toLowerCase()
+      )
+        return invalid();
+      this.root = value;
+      this.record = record;
+      this.stored = snapshot(raw);
+      return projection(record);
+    } finally {
+      this.busy = false;
+    }
+  }
+  async mutate(
+    expectedRevision: number,
+    input: CatalogueMutation,
+    assertCurrent: () => void
+  ): Promise<NativeWalletCatalogueSnapshot> {
+    if (this.busy) throw new WalletCatalogueError('CATALOGUE_BUSY');
+    if (this.uncertain)
+      throw new WalletCatalogueError('CATALOGUE_REOPEN_REQUIRED');
+    this.busy = true;
+    const guard = guardFor(assertCurrent);
+    let writing = false;
     try {
       guard();
       const record = this.record;
-      if (!record || !this.root || record.revision !== expectedRevision || record.revision === Number.MAX_SAFE_INTEGER) return changed();
-      const mutation = snapshot(input) as CatalogueMutation;
-      let accounts = [...record.accounts];
-      let importedAccounts = [...record.importedAccounts];
-      let nextImportedIndex = record.nextImportedIndex;
-      let retiredImportedIndices = record.retiredImportedIndices;
-      let active = record.active;
-      let nextIndex = record.nextIndex;
-      let retiredIndices = record.retiredIndices;
-      if (mutation.kind === 'create' || mutation.kind === 'restore') {
-        object(mutation, ['kind', 'index', 'address', 'publicKey', 'label']);
-        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || (mutation.kind === 'create' && nextIndex > MAX_HD_ACCOUNT_INDEX)) throw new WalletCatalogueError('CATALOGUE_LIMIT');
-        if (mutation.kind === 'create' ? mutation.index !== nextIndex : !retiredIndices.includes(mutation.index)) return changed();
-        const key = publicIdentity({ address: mutation.address, publicKey: mutation.publicKey });
-        accounts.push(Object.freeze({ id: accountId(mutation.index), type: 'HDAccount', index: mutation.index, slip44: 60, ...key, label: label(mutation.label) }));
-        accounts.sort((a, b) => a.index - b.index);
-        active = Object.freeze({ accountId: accountId(mutation.index), networkId: record.active.networkId });
-        if (mutation.kind === 'create') nextIndex++;
-        else retiredIndices = Object.freeze(retiredIndices.filter((index) => index !== mutation.index));
-      } else if (mutation.kind === 'import') {
-        object(mutation, ['kind', 'index', 'address', 'publicKey', 'label', 'envelope']);
-        if (accounts.length + importedAccounts.length >= MAX_HD_ACCOUNTS || nextImportedIndex > MAX_HD_ACCOUNT_INDEX)
-          throw new WalletCatalogueError('CATALOGUE_LIMIT');
-        if (mutation.index !== nextImportedIndex) return changed();
-        const key = publicIdentity({ address: mutation.address, publicKey: mutation.publicKey });
-        if ([...accounts, ...importedAccounts].some((account) => account.address === key.address)) return invalid();
-        const id = nativeAccountId('Imported', mutation.index);
-        importedAccounts.push(Object.freeze({ id, type: 'Imported', index: mutation.index, slip44: 60,
-          ...key, label: label(mutation.label), envelope: snapshotImportedEnvelope(mutation.envelope, id) }));
-        nextImportedIndex++;
-        active = Object.freeze({ accountId: id, networkId: record.active.networkId });
+      if (
+        !record ||
+        !this.root ||
+        record.revision !== expectedRevision ||
+        record.revision === Number.MAX_SAFE_INTEGER
+      )
+        return changed();
+      const next = snapshot(record) as NativeAccountRecord;
+      const group = softwareGroup(next);
+      const mutation = snapshot(input);
+      let active = next.active,
+        networks = [...next.networks],
+        recovery = [...next.recovery];
+      if (mutation.kind === 'create' || mutation.kind === 'import') {
+        const type =
+          mutation.kind === 'create'
+            ? KeyringAccountType.HDAccount
+            : KeyringAccountType.Imported;
+        assertAccountCreationAvailable(
+          group.accounts,
+          type,
+          mutation.account.id
+        );
+        createAccountRecord(
+          group.accounts,
+          mutation.account,
+          type,
+          group.activeNetwork.slip44
+        );
+        setActiveAccountRecord(
+          group as { activeAccount: typeof group.activeAccount },
+          { id: mutation.account.id, type }
+        );
+        active = {
+          accountId: nativeAccountId(type, mutation.account.id),
+          networkId: active.networkId,
+        };
+        if (mutation.kind === 'import')
+          recovery.push(snapshotImportedRecoveryEntry(mutation.recovery));
+      } else if (mutation.kind === 'save-network') {
+        const registration = snapshotNativeNetwork(mutation.registration),
+          same = networks.find((network) => network.id === registration.id);
+        if (
+          (same && same.chainId !== registration.chainId) ||
+          networks.some(
+            (network) =>
+              network.id !== registration.id &&
+              network.chainId === registration.chainId
+          ) ||
+          (!same && networks.length >= 256)
+        )
+          return invalid();
+        networks = [
+          ...networks.filter((network) => network.id !== registration.id),
+          registration,
+        ];
+      } else if (mutation.kind === 'remove-network') {
+        if (mutation.id === active.networkId || networks.length <= 1)
+          return invalid();
+        getNativeNetwork(mutation.id, networks);
+        networks = networks.filter((network) => network.id !== mutation.id);
       } else if (mutation.kind === 'select-network') {
-        object(mutation, ['kind', 'id']);
-        getNativeNetwork(mutation.id);
-        active = Object.freeze({ accountId: record.active.accountId, networkId: mutation.id });
+        getNativeNetwork(mutation.id, networks);
+        active = { ...active, networkId: mutation.id };
       } else {
-        object(mutation, mutation.kind === 'rename' ? ['kind', 'id', 'label'] : mutation.kind === 'remove' ? ['kind', 'id', 'journal'] : ['kind', 'id']);
-        const account = [...accounts, ...importedAccounts].find((a) => a.id === mutation.id);
+        const selected = parseNativeAccountId(mutation.id),
+          account = group.accounts[selected.type]?.[selected.index];
         if (!account) return changed();
-        if (mutation.kind === 'select') active = Object.freeze({ accountId: account.id, networkId: record.active.networkId });
-        else if (mutation.kind === 'rename') {
-          accounts = accounts.map((a) => a.id === account.id ? Object.freeze({ ...a, label: label(mutation.label) }) : a);
-          importedAccounts = importedAccounts.map((a) => a.id === account.id ? Object.freeze({ ...a, label: label(mutation.label) }) : a);
-        }
+        if (mutation.kind === 'select') {
+          active = { ...active, accountId: mutation.id };
+          setActiveAccountRecord(
+            group as { activeAccount: typeof group.activeAccount },
+            { id: selected.index, type: selected.type as SharedAccountType }
+          );
+        } else if (mutation.kind === 'rename')
+          setAccountRecordLabel(
+            group.accounts,
+            selected.type as SharedAccountType,
+            selected.index,
+            mutation.label
+          );
         else if (mutation.kind === 'remove') {
-          if ((account.type === 'HDAccount' && account.index === 0) || account.id === active.accountId || accounts.length + importedAccounts.length <= 1) throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
-          const entry = mutation.journal === null ? undefined : terminalJournalForRemoval(mutation.journal, { walletFingerprint: record.walletFingerprint, address: account.address, chainId: '1' }, account.index, account.type);
-          cleanup = { [nativeTransferJournalKey(account.index, account.type)]: entry };
-          if (account.type === 'HDAccount') {
-            accounts = accounts.filter((a) => a.id !== account.id);
-            retiredIndices = Object.freeze([...retiredIndices, account.index].sort((a, b) => a - b));
-          } else {
-            importedAccounts = importedAccounts.filter((a) => a.id !== account.id);
-            retiredImportedIndices = Object.freeze([...retiredImportedIndices, account.index].sort((a, b) => a - b));
-          }
+          if (
+            (selected.type === 'HDAccount' && selected.index === 0) ||
+            active.accountId === mutation.id ||
+            projection(record).accounts.length <= 1
+          )
+            throw new WalletCatalogueError('CATALOGUE_NOT_REMOVABLE');
+          removeAccountRecord(
+            group.accounts,
+            selected.type as SharedAccountType,
+            selected.index
+          );
+          recovery = recovery.filter(
+            (entry) =>
+              !(
+                entry.identity.slip44 === group.activeNetwork.slip44 &&
+                entry.identity.id === selected.index &&
+                selected.type === 'Imported'
+              )
+          );
         } else return invalid();
       }
-      next = decode({ ...record, revision: record.revision + 1, accounts, active, nextIndex, retiredIndices, importedAccounts, nextImportedIndex, retiredImportedIndices }, this.root);
-    } catch (error) { this.busy = false; return Promise.reject(error); }
-    let writing = false;
-    return (async () => {
-      try {
-        guard(); writing = true;
-        const committed = await this.storage.compareAndSet(WALLET_CATALOGUE_KEY, this.stored, next, cleanup);
-        if (typeof committed !== 'boolean') return invalid();
-        if (!committed) { writing = false; this.record = null; return changed(); }
-        guard();
-        const raw = await this.storage.get(WALLET_CATALOGUE_KEY); guard();
-        if (encodeStorageValue(raw) !== encodeStorageValue(next)) return invalid();
-        this.record = next; this.stored = snapshot(raw);
-        return projection(next);
-      } catch (error) { if (writing) this.uncertain = true; throw error; }
-      finally { this.busy = false; }
-    })();
+      const validated = decode(
+        { ...next, revision: next.revision + 1, active, networks, recovery },
+        this.root.walletFingerprint
+      );
+      guard();
+      writing = true;
+      const committed = await this.storage.compareAndSet(
+        WALLET_CATALOGUE_KEY,
+        this.stored,
+        validated
+      );
+      if (typeof committed !== 'boolean') return invalid();
+      if (!committed) {
+        writing = false;
+        this.record = null;
+        return changed();
+      }
+      guard();
+      const raw = await this.storage.get(WALLET_CATALOGUE_KEY);
+      guard();
+      if (encodeStorageValue(raw) !== encodeStorageValue(validated))
+        return invalid();
+      this.record = validated;
+      this.stored = snapshot(raw);
+      return projection(validated);
+    } catch (error) {
+      if (writing) this.uncertain = true;
+      throw error;
+    } finally {
+      this.busy = false;
+    }
   }
 }

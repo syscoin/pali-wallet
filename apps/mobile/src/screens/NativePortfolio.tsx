@@ -3,9 +3,8 @@ import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { getNativeNetwork, nativeSigningEnabled } from '../custody/networkContext';
+import { getNativeSendContext, nativeSigningEnabled } from '../custody/networkContext';
 import { getTestnetFaucet, openTestnetFaucet } from '../custody/testnetFaucet';
-import { getNetwork } from '../core/networks';
 import { formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
@@ -40,7 +39,7 @@ const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${acco
 
 /** Only the custody authority's public account projection reaches this screen. */
 export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
-  const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch }), [reader]);
+  const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
@@ -60,14 +59,15 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const account = snapshot.account;
-  const network = getNetwork(account?.network ?? 'ethereum');
+  const registration = account ? model.getNetworkRegistration(account.network) : null;
+  const network = registration ? getNativeSendContext(registration) : { networkId: '', name: 'Network', symbol: '', decimals: 18, testnet: false };
   const networkName = network.name;
   const symbol = network.symbol;
   const scope = account ? scopeOf(account) : null;
   const receiving = !!scope && receiveScope === scope;
   const loading = snapshot.status === 'loading';
   const canSend = !!account && nativeSigningEnabled(account.network) && !!onSend;
-  const faucet = account ? getTestnetFaucet(getNativeNetwork(account.network)) : null;
+  const faucet = account ? getTestnetFaucet(registration!) : null;
 
   const invalidateActions = useCallback(() => {
     lifecycle.current.epoch++; lifecycle.current.busy = false;
@@ -109,7 +109,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         const result = await Share.share({ title: `${networkName} receive address`, message: `${networkName} (${symbol}) address\n${current.address}` });
         completed = !result || result.action === Share.sharedAction;
       } else {
-        await openTestnetFaucet(getNativeNetwork(current.network), (url) => Linking.openURL(url), () => {
+        await openTestnetFaucet(model.getNetworkRegistration(current.network), (url) => Linking.openURL(url), () => {
           if (!lifecycle.current.alive || lifecycle.current.epoch !== request || AppState.currentState !== 'active' || !model.isCurrent(current))
             throw new Error('CANCELLED');
         });
@@ -127,7 +127,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
-  const faucetCard = faucet && account && <TestnetFaucetCard registration={getNativeNetwork(account.network)} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
+  const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
   const actions = receiving ? <View style={s.actions}>
     <Button title="Copy address" icon="copy" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
     <Button title="Share address" icon="share" variant="secondary" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
@@ -137,7 +137,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
     <Screen footer={actions}>
       <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
-        <View style={s.identity}><Coin id={network.id} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>
+        <View style={s.identity}><Coin id={network.networkId} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>
         <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${networkName} address ${account.address}`} testID="native-receive-qr">
           <QRCode value={account.address} size={204} quietZone={16} backgroundColor="#ffffff" color={colors.bg} ecl="M" />
         </View>
@@ -147,7 +147,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
       </> : <>
         {!tokenTitle && <>
         <View style={s.hero}>
-          <Coin id={network.id} size={46} />
+          <Coin id={network.networkId} size={46} />
           <Text style={s.label}>{networkName.toUpperCase()} BALANCE</Text>
           <Text style={[s.amount, amount !== null && amount.length > 14 && s.longAmount]} accessibilityLabel={amount === null ? statusText : `${networkName} balance ${amount} ${symbol}`} testID="native-portfolio-balance">{amount ?? '—'}</Text>
           <Text style={s.unit}>{amount === null ? statusText : symbol}</Text>
@@ -162,12 +162,11 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
           {!canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="secondary" style={s.flex} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         </View>
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
-        <Text style={s.privacy}>Refreshing shares this public address with the {networkName} RPC provider.</Text>
         <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
         {faucetCard}
         </>}
         {tokenView && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
-          onSend={account?.network === 'ethereum' && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
+          onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
         {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
       </>}

@@ -28,7 +28,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { isAddress } from 'utils/ethersV6Compat';
+import { isEvmAddress } from 'utils/erc20Policy';
 import {
   getCurrentTab,
   getWalletNavigationScope,
@@ -107,7 +107,7 @@ export const ImportToken: React.FC = () => {
     contractValidationFailure?.scope === tokenImportScope &&
     contractValidationFailure.revision === contractValidationRevision.current &&
     contractValidationFailure.value === customContractAddress.trim();
-  const contractFormatInvalid = !isAddress(customContractAddress.trim());
+  const contractFormatInvalid = !isEvmAddress(customContractAddress.trim());
   const contractFeedback = currentContractFailure
     ? {
         invalid: contractFormatInvalid,

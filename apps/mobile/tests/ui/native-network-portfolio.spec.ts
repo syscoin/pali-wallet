@@ -2,18 +2,18 @@ import { test, expect } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
-test('actual network view switches portfolio and Receive while unsupported Send remains hidden', async ({ page }) => {
+test('actual network view switches portfolio and Receive with generic Send available', async ({ page }) => {
   await page.goto('/?network-portfolio');
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText('1.234');
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
   await page.getByText('Network', { exact: true }).click();
-  await page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true }).click();
-  await expect(page.getByRole('radio', { name: 'Base, ETH, balance and receive only', exact: true })).toBeChecked();
+  await page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Base, ETH, Chain ID 8453', exact: true })).toBeChecked();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(page.getByText('Account 1 · Base', { exact: true })).toBeVisible();
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Base balance 1.234 ETH');
-  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
-  await expect(page.getByText('Sending is not available on this network yet.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+  await expect(page.getByText('Sending is not available on this network yet.')).toHaveCount(0);
   await page.getByTestId('native-portfolio-receive').click();
   await expect(page.getByTestId('native-receive-qr')).toHaveAttribute('aria-label', /QR code for Base address/);
   await expect(page.getByText('Use Base for this address.', { exact: false })).toBeVisible();

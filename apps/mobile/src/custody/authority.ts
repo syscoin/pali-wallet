@@ -1,3 +1,5 @@
+import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
+import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
 import type { NativeAccountRequest } from './accounts.ts';
 import type { NativeImportRequest } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -29,12 +31,15 @@ export class CustodyOperationError extends Error {
  */
 export class NativeCustodyAuthority {
   private readonly factory: CustodyRuntimeFactory;
+  private readonly policy?: { preferences: SecurityPreferences; assertActive(): void };
+  private checkingIdle = false;
   private runtime: CustodyRuntime | null = null;
   private listeners = new Set<(snapshot: CustodySnapshot) => void>();
   private revision = 0;
   private initialization: Promise<void> | null = null;
   private pending: Promise<void> | null = null;
   private disposal: Promise<void> | null = null;
+  private recoveryRetirement: Promise<string> | null = null;
   private closing: Promise<void> | null = null;
   private locks: Promise<void> = Promise.resolve();
   private lockFailed = false;
@@ -49,11 +54,20 @@ export class NativeCustodyAuthority {
     error: null,
   });
 
-  constructor(factory: CustodyRuntimeFactory) {
-    this.factory = factory;
+  constructor(factory: CustodyRuntimeFactory, policy?: { preferences: SecurityPreferences; assertActive(): void }) {
+    this.factory = factory; this.policy = policy;
+  }
+
+  private checkIdle(): void {
+    if (!this.policy || this.checkingIdle) return;
+    this.checkingIdle = true;
+    try { const result: unknown = this.policy.assertActive(); if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new Error('CANCELLED'); } }
+    catch { if (!['locked', 'disposed', 'unavailable'].includes(this.snapshot.phase)) this.lock(); throw new CustodyOperationError('CANCELLED'); }
+    finally { this.checkingIdle = false; }
   }
 
   getSnapshot(): CustodySnapshot {
+    if (['ready', 'backup-required', 'authenticating'].includes(this.snapshot.phase)) { try { this.checkIdle(); } catch { /* Return the revoked snapshot. */ } }
     return this.snapshot;
   }
 
@@ -81,11 +95,18 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
-  /** Stage-1 host capability; network UI and non-Ethereum send are separate work. */
+  /** Selection revokes outstanding reviews before changing the saved EVM context. */
   selectNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
       return runtime.networks.reserve(id, expectedCatalogueRevision);
+    }, expectedRevision);
+  }
+
+  manageNetwork(request: import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+    return this.manageContext((runtime) => {
+      if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
+      return runtime.networks.reserve(request, expectedCatalogueRevision);
     }, expectedRevision);
   }
 
@@ -116,6 +137,7 @@ export class NativeCustodyAuthority {
     this.publish({ phase: 'authenticating', account: null, error: null });
     const current = () => {
       if (this.revision !== revision || this.snapshot.phase === 'disposed') throw new CustodyOperationError('CANCELLED');
+      this.checkIdle();
       if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
     };
     return (async () => {
@@ -131,6 +153,7 @@ export class NativeCustodyAuthority {
         reservation.cancel();
         this.requestLock();
         try { await this.drainLocks(); } catch { /* Unavailable was published by cleanup. */ }
+        this.checkIdle();
         if (this.lockFailed || this.snapshot.phase === 'unavailable') throw new CustodyOperationError('UNAVAILABLE');
         if (this.revision !== revision || this.snapshot.phase === 'disposed') throw new CustodyOperationError('CANCELLED');
         const code = cause instanceof CustodyRuntimeError ? cause.code : 'OPERATION_FAILED';
@@ -315,6 +338,7 @@ export class NativeCustodyAuthority {
     const current = () => {
       if (revision !== this.revision || this.snapshot.phase === 'disposed')
         throw new CustodyOperationError('CANCELLED');
+      this.checkIdle();
       if (this.lockFailed || this.snapshot.phase === 'unavailable')
         throw new CustodyOperationError('UNAVAILABLE');
     };
@@ -341,6 +365,37 @@ export class NativeCustodyAuthority {
     })();
   }
 
+  saveIdlePreference(expected: SecurityPreferenceSnapshot, proposed: number, password: string, assertScreen: () => void): Promise<SecurityPreferenceSnapshot> {
+    const minutes = idleMinutes(proposed);
+    if (!this.policy || !this.runtime || this.snapshot.phase !== 'ready') return Promise.reject(new CustodyOperationError('NOT_READY'));
+    if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    const runtime = this.runtime, policy = this.policy, revision = this.revision;
+    const check = () => {
+      this.checkIdle();
+      if (revision !== this.revision || this.snapshot.phase !== 'ready') throw new CustodyOperationError('CANCELLED');
+      const result: unknown = assertScreen();
+      if (result !== undefined) { if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined); throw new CustodyOperationError('CANCELLED'); }
+    };
+    try { check(); policy.preferences.validate(expected); } catch (error) { return Promise.reject(error); }
+    let release!: () => void;
+    this.pending = new Promise<void>(resolve => { release = resolve; });
+    return (async () => {
+      try {
+        check();
+        if (weakensIdlePolicy(expected.custodyIdleMinutes, minutes)) {
+          if (!runtime.security) throw new CustodyOperationError('NOT_READY');
+          await runtime.security.reauthenticateIdlePolicy(password, check); check();
+        }
+        return await policy.preferences.save(expected, 'custody', minutes, check);
+      } catch (cause) {
+        const code = cause instanceof CustodyRuntimeError || cause instanceof CustodyOperationError ? cause.code : 'OPERATION_FAILED';
+        this.lock();
+        if (this.snapshot.phase === 'locked') this.publish({ error: code });
+        throw new CustodyOperationError(code);
+      } finally { this.pending = null; release(); }
+    })();
+  }
+
   private authenticate(
     operation: 'create' | 'import' | 'unlock',
     password: string,
@@ -352,6 +407,7 @@ export class NativeCustodyAuthority {
         (typeof phrase !== 'string' || phrase.length === 0 || phrase.length > 4096))
     ) return Promise.reject(new CustodyOperationError('INVALID_INPUT'));
     if (this.pending) return Promise.reject(new CustodyOperationError('BUSY'));
+    try { this.checkIdle(); } catch (error) { return Promise.reject(error); }
     const expectedPhase = operation === 'unlock' ? 'locked' : 'empty';
     if (!this.runtime || this.snapshot.phase !== expectedPhase)
       return Promise.reject(new CustodyOperationError('NOT_READY'));
@@ -363,6 +419,7 @@ export class NativeCustodyAuthority {
     const assertCurrent = () => {
       if (revision !== this.revision || this.snapshot.phase === 'disposed')
         throw new CustodyOperationError('CANCELLED');
+      this.checkIdle();
       if (this.lockFailed || this.snapshot.phase === 'unavailable')
         throw new CustodyOperationError('UNAVAILABLE');
     };
@@ -423,6 +480,7 @@ export class NativeCustodyAuthority {
           }
           throw new CustodyOperationError('CANCELLED');
         }
+        this.checkIdle();
         if (this.lockFailed || this.snapshot.phase === 'unavailable')
           throw new CustodyOperationError('UNAVAILABLE');
         const code = credentialRejected ? 'INVALID_CREDENTIAL' :
@@ -450,7 +508,18 @@ export class NativeCustodyAuthority {
     return this.closing;
   }
 
-  dispose(): Promise<void> {
+  /** Only this owner's original runtime may supply recovery's freshness identity. */
+  retireForRecovery(): Promise<string> {
+    if (this.recoveryRetirement) return this.recoveryRetirement;
+    if (this.disposal || this.snapshot.phase !== 'locked' || !this.runtime)
+      return Promise.reject(new CustodyOperationError('NOT_READY'));
+    this.startDisposal(true);
+    return this.recoveryRetirement!;
+  }
+
+  dispose(): Promise<void> { return this.startDisposal(false); }
+
+  private startDisposal(capturePair: boolean): Promise<void> {
     if (this.disposal) return this.disposal;
     // Install the promise before notifying observers to make reentrant disposal
     // idempotent, including disposal initiated during an authentication event.
@@ -459,6 +528,11 @@ export class NativeCustodyAuthority {
     this.disposal = new Promise<void>((resolve, reject) => {
       resolveDisposal = resolve;
       rejectDisposal = reject;
+    });
+    let pairFingerprint: string | undefined;
+    if (capturePair) this.recoveryRetirement = this.disposal.then(() => {
+      if (!pairFingerprint) throw new CustodyOperationError('CLEANUP_FAILED');
+      return pairFingerprint;
     });
     this.revision++;
     this.publish({ phase: 'disposed', account: null, error: null });
@@ -471,6 +545,13 @@ export class NativeCustodyAuthority {
       this.requestLock();
       let failed = false;
       try { await this.drainLocks(); } catch { failed = true; }
+      if (capturePair && !failed) {
+        try {
+          const fingerprint = await this.runtime?.storage.retireForRecovery?.();
+          if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
+          pairFingerprint = fingerprint;
+        } catch { failed = true; }
+      }
       try { await this.close(); } catch { failed = true; }
       if (failed) throw new CustodyOperationError('CLEANUP_FAILED');
     })().then(resolveDisposal, () => rejectDisposal(new CustodyOperationError('CLEANUP_FAILED')));

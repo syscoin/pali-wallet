@@ -5,6 +5,7 @@ import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
   ActivityError,
+  LOCAL_ACTIVITY_LIMIT,
   DEFAULT_ACTIVITY_VIEW,
   localScopeKey,
   type ActivityCandidate,
@@ -170,7 +171,7 @@ function decode(value: unknown, fingerprint: string): Document {
     (data.revision as number) < 0 ||
     typeof data.truncated !== 'boolean' ||
     !Array.isArray(data.archived) ||
-    data.archived.length > 48 ||
+    data.archived.length > LOCAL_ACTIVITY_LIMIT ||
     !Array.isArray(data.cached) ||
     data.cached.length > 24 ||
     !Array.isArray(data.views) ||
@@ -235,6 +236,15 @@ function fresh(fingerprint: string): Document {
     views: [],
   };
 }
+/** Validate the complete saved document without packing, pruning or persisting it. */
+export function inspectRecoveryHistory(value: unknown, walletFingerprint: string) {
+  if (new TextEncoder().encode(encodeStorageValue(value)).length > BYTE_LIMIT) return invalid();
+  const record = decode(value, walletFingerprint);
+  return Object.freeze({ summaries: record.archived.length,
+    cachedTransactions: record.cached.reduce((count, group) => count + group.candidates.length, 0),
+    preferences: record.views.length,
+    accounts: Object.freeze(record.archived.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
+}
 function packed(input: Document, protect?: string): Document {
   const next = {
     ...input,
@@ -242,7 +252,7 @@ function packed(input: Document, protect?: string): Document {
     cached: [...input.cached],
     views: [...input.views],
   };
-  while (next.archived.length > 48) {
+  while (next.archived.length > LOCAL_ACTIVITY_LIMIT) {
     next.archived.shift();
     next.truncated = true;
   }
@@ -370,9 +380,11 @@ export class NativeActivityHistory {
           (r) => `${localScopeKey(r)}:${r.hash}` === id
         );
         if (old) {
-          if (encodeStorageValue(old) !== encodeStorageValue(checked))
+          if (encodeStorageValue(old) === encodeStorageValue(checked)) return data;
+          // Receipt outcome can change after a reorg; immutable transaction fields cannot.
+          if (encodeStorageValue({ ...old, phase: checked.phase }) !== encodeStorageValue(checked))
             throw new ActivityError('INVALID');
-          return data;
+          return packed({ ...data, archived: data.archived.map((record) => record === old ? checked : record) }, id);
         }
         return packed({ ...data, archived: [...data.archived, checked] }, id);
       },

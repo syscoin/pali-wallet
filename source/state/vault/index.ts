@@ -2,6 +2,12 @@ import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import take from 'lodash/take';
 
 import {
+  createAccountRecord,
+  removeAccountRecord,
+  setAccountRecordLabel,
+  setActiveAccountRecord,
+} from '../../wallet/accountRecords';
+import {
   IEvmTransaction,
   ISysTransaction,
 } from 'scripts/Background/controllers/transactions/types';
@@ -245,9 +251,7 @@ const VaultState = createSlice({
       }>
     ) {
       const { label, accountId, accountType } = action.payload;
-      if (state.accounts[accountType]?.[accountId]) {
-        state.accounts[accountType][accountId].label = label;
-      }
+      setAccountRecordLabel(state.accounts, accountType, accountId, label);
     },
     setNetworkChange(
       state: IVaultState,
@@ -337,18 +341,12 @@ const VaultState = createSlice({
     ) {
       const { account, accountType, assets, transactions } = action.payload;
 
-      // Override the initial balances to -1 (indicating "no data")
-      const accountWithInitialBalances = {
-        ...account,
-        slip44: state.activeNetwork.slip44,
-        balances: {
-          [INetworkType.Syscoin]: -1,
-          [INetworkType.Ethereum]: -1,
-        },
-      };
-
-      // Set the clean account data
-      state.accounts[accountType][account.id] = accountWithInitialBalances;
+      createAccountRecord(
+        state.accounts,
+        account,
+        accountType,
+        state.activeNetwork.slip44
+      );
 
       // Set up accountAssets
       if (!state.accountAssets[accountType]) {
@@ -375,7 +373,7 @@ const VaultState = createSlice({
         type: KeyringAccountType;
       }>
     ) {
-      state.activeAccount = action.payload;
+      setActiveAccountRecord(state, action.payload);
     },
     setActiveNetwork(state: IVaultState, action: PayloadAction<INetwork>) {
       state.activeNetwork = action.payload;
@@ -561,7 +559,7 @@ const VaultState = createSlice({
       action: PayloadAction<{ id: number; type: KeyringAccountType }>
     ) {
       const { id, type } = action.payload;
-      delete state.accounts[type][id];
+      removeAccountRecord(state.accounts, type, id);
 
       // Also clean up assets and transactions
       if (state.accountAssets[type]) {

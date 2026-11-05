@@ -18,16 +18,13 @@ import {
   createKeyringRuntimeFactory,
   type KeyringRuntime,
 } from '../src/custody/keyringRuntime.ts';
-import {
-  nativeTransferJournalKey,
-  type TransferJournalContainer,
-} from '../src/custody/transferJournal.ts';
+import { readSignedRecordEvidence } from '../qualification/signed-record-evidence.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 
 const PHRASE =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
-const PASSWORD = 'PUBLIC ERC20 native qualification test password';
+const PASSWORD = 'PUBLIC ERC20 native qualification test password!';
 const report = (phase: 'create' | 'restart') => ({
   status: 'passed',
   phase,
@@ -202,20 +199,13 @@ for (const scenario of ['import', 'generate'] as const)
         assert.equal(created.erc20Address, expectedThirdAddress);
         assert.equal(created.erc20Signatures, 1);
         assert.equal(authority.getCatalogue()?.active.accountId, 'hd:60:1');
-        const readRows = async () =>
-          Promise.all(
-            [0, 1, 2].map(
-              async (index) =>
-                (await storage.keyringStorage.get(
-                  nativeTransferJournalKey(index)
-                )) as TransferJournalContainer
-            )
-          );
+        const readRows = async () => (await readSignedRecordEvidence(storage)).entries;
         const before = await readRows();
-        assert.equal(before[0]!.entries[0]!.phase, 'attempted');
-        assert.equal(before[1]!.entries[0]!.phase, 'attempted');
-        assert.equal(before[2]!.entries[0]!.phase, 'attempted');
-        assert.equal(before[2]!.entries[0]!.intent!.token.decimals, 6);
+        assert.equal(before.length, 3);
+        assert.equal(before[0]!.phase, 'attempted');
+        assert.equal(before[1]!.phase, 'attempted');
+        assert.equal(before[2]!.phase, 'signed');
+        assert.equal(before[2]!.metadata!.intent!.token.decimals, 6);
         await authority.dispose();
         authority = new NativeCustodyAuthority(owner);
         await authority.initialize();
@@ -245,10 +235,10 @@ for (const scenario of ['import', 'generate'] as const)
         const after = await readRows();
         assert.deepEqual(after.slice(0, 2), before.slice(0, 2));
         assert.equal(
-          after[2]!.entries[0]!.rawTransaction,
-          before[2]!.entries[0]!.rawTransaction
+          JSON.stringify({ ...after[2], phase: before[2]!.phase }),
+          JSON.stringify(before[2])
         );
-        assert.equal(after[2]!.entries[0]!.phase, 'submitted');
+        assert.equal(after[2]!.phase, 'submitted');
         const createdReport = {
           status: 'passed',
           phase: 'create',

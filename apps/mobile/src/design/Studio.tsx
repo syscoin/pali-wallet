@@ -28,6 +28,7 @@ import {
   featureCoverage,
   getScreen,
   reviewStates,
+  resolveDesignAction,
   screens,
   type DesignRow,
   type FamilyId,
@@ -1188,7 +1189,7 @@ export function DesignStudio({ onExit }: { onExit: () => void }) {
       setFeedback('Design only. No external service or file was opened.');
       return;
     }
-    go(action.to);
+    go(resolveDesignAction(action.to, kind));
   };
   const catalogueProps = {
     selected: selectedId,

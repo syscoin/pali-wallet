@@ -53,7 +53,7 @@ test('special report paths cannot block collection or follow a link outside the 
     const external = path.join(container, 'outside-report.json');
     fs.writeFileSync(external, JSON.stringify(report()));
     fs.symlinkSync(external, path.join(documents, filename('create')));
-    const child = spawnSync(process.execPath, ['-e', `
+    const child = spawnSync(process.execPath, ['--import', require.resolve('../scripts/register-shared-test-dependencies.mjs'), '-e', `
       const assert = require('node:assert/strict');
       const { captureIosLaunchReports } = require(${JSON.stringify(require.resolve('./ios-launch-reports.cjs'))});
       let count = 0;
@@ -121,16 +121,16 @@ test('exact input byte limit is accepted but UTF-8 bytes over it are refused bef
 function passedReport() {
   return report({ status: 'passed', failedStage: undefined, checks: [], networkCalls: 0,
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1,
-    journalContainerVersion: 2, firstTransferHash: '0x' + 'c'.repeat(64), transferHash: '0x' + 'b'.repeat(64),
+    journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), transferHash: '0x' + 'b'.repeat(64),
     address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', storageDiagnostic: { stage: 'ready' },
     nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2, erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
     erc20TransferHash: '0x' + 'd'.repeat(64), erc20IntentHash: '0x' + 'e'.repeat(64), erc20Signatures: 1, erc20Authorizations: 0,
     erc20InjectedBroadcasts: 1, erc20RestoredFromJournal: false,
     nativeNevmVerified: true, nevmAccountId: 'hd:60:3', nevmAccountIndex: 3, nevmAddress: '0xF3f50213C1d2e255e4B2bAD430F8A38EEF8D718E',
     nevmTransferHash: '0x' + '7'.repeat(64), nevmEthereumTransferHash: '0x' + '8'.repeat(64), nevmChainId: '5700',
-    nevmJournalContainerVersion: 2, nevmRestoredFromJournal: false,
+    nevmJournalContainerVersion: 1, nevmRestoredFromJournal: false,
     nativeZksysVerified: true, zksysAccountId: 'hd:60:4', zksysAccountIndex: 4, zksysAddress: '0x51cA8ff9f1C0a99f88E86B8112eA3237F55374cA',
-    zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 2, zksysSignatures: 1,
+    zksysTransferHash: '0x' + '9'.repeat(64), zksysChainId: '57057', zksysJournalContainerVersion: 1, zksysSignatures: 1,
     zksysAuthorizations: 0, zksysInjectedBroadcasts: 1, zksysFeeEstimates: 2, zksysRestoredFromJournal: false,
     ...importedEvidence() });
 }
@@ -314,7 +314,7 @@ test('large discarded fields cannot grow the diagnostic output and public fixtur
   const large = collect({ [filename('create')]: JSON.stringify(report({ sessionId: SECRET.repeat(1500) })) });
   assert.equal(large.evidence.reports[1].availability, 'available');
   assert(Buffer.byteLength(large.text) < 1024); assert(!large.text.includes(SECRET));
-  const credentials = collect({ [filename('create')]: JSON.stringify(report({ sessionId: 'PUBLIC native qualification password 2026' })) });
+  const credentials = collect({ [filename('create')]: JSON.stringify(report({ sessionId: 'PUBLIC native qualification password 2026!' })) });
   assert.equal(credentials.evidence.reports[1].availability, 'invalid');
   assert(!credentials.text.includes('PUBLIC native qualification password'));
 });

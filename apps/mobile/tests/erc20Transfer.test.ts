@@ -18,6 +18,7 @@ const recipient = '0x1111111111111111111111111111111111111111';
 const contract = '0x2222222222222222222222222222222222222222';
 const intent = snapshotErc20TransferIntent({
   kind: 'erc20-transfer',
+  chainId: '1',
   token: {
     contractAddress: contract,
     name: 'Public fixture token',
@@ -42,7 +43,7 @@ function fixture(
 ) {
   const requests: Request[] = [];
   let blocks = 0;
-  const rpc = new NativeTransferRpc({
+  const rpc = new NativeTransferRpc({ networkId: 'ethereum',
     fetch: async (_url, init) => {
       const request = JSON.parse(String(init.body)) as Request;
       requests.push(request);
@@ -54,6 +55,7 @@ function fixture(
         case 'eth_getBlockByNumber':
           result = {
             number: '0x123',
+            gasLimit: '0x1c9c380', baseFeePerGas:'0x1',
             hash:
               '0x' +
               (options.changedBlock && ++blocks > 1 ? 'b' : 'a').repeat(64),
@@ -67,6 +69,9 @@ function fixture(
           break;
         case 'eth_getBalance':
           result = `0x${(options.eth ?? 10n ** 18n).toString(16)}`;
+          break;
+        case 'eth_gasPrice':
+          result='0x1';
           break;
         case 'eth_feeHistory':
           result = { oldestBlock: '0x123', baseFeePerGas: ['0x1', '0x1'] };
@@ -198,8 +203,9 @@ test('token quote simulates and estimates the exact call with separate token and
       to: contract,
       value: '0x0',
       data: encodeErc20Transfer(recipient, '123'),
+      type:'0x2', chainId:'0x1', nonce:'0x0', maxFeePerGas:'0x3',maxPriorityFeePerGas:'0x1',
     },
-    '0x123',
+    'pending',
   ]);
   await fixture({ simulation: '0x' }).rpc.prepareToken(
     sender,
@@ -226,7 +232,7 @@ test('token quote rejects false returns, changed precision, insufficient balance
     );
   }
 });
-test('broadcast accepts only signed native transfers or the exact supplied token intent', async () => {
+test('generic broadcast preserves signed bytes and enforces an explicitly supplied token intent', async () => {
   const signer = Wallet.fromPhrase(
     'test test test test test test test test test test test junk'
   );
@@ -242,11 +248,11 @@ test('broadcast accepts only signed native transfers or the exact supplied token
     maxPriorityFeePerGas: 1,
   });
   const { rpc, requests } = fixture();
-  await assert.rejects(
-    rpc.broadcast(raw, keccak256(raw), new AbortController().signal),
-    { code: 'INVALID_RESPONSE' }
+  assert.equal(
+    await rpc.broadcast(raw, keccak256(raw), new AbortController().signal),
+    keccak256(raw)
   );
-  assert.equal(requests.length, 0);
+  const readsBeforeInvalidIntent = requests.length;
   await assert.rejects(
     rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
       ...intent,
@@ -254,7 +260,7 @@ test('broadcast accepts only signed native transfers or the exact supplied token
     }),
     { code: 'INVALID_RESPONSE' }
   );
-  assert.equal(requests.length, 0);
+  assert.equal(requests.length, readsBeforeInvalidIntent);
   assert.equal(
     await rpc.broadcast(
       raw,
@@ -263,5 +269,9 @@ test('broadcast accepts only signed native transfers or the exact supplied token
       intent
     ),
     keccak256(raw)
+  );
+  assert.deepEqual(
+    requests.filter((request) => request.method === 'eth_sendRawTransaction').map((request) => request.params),
+    [[raw], [raw]]
   );
 });

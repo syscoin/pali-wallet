@@ -6,12 +6,14 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 test('qualification configuration is explicit, isolated, and preserves the production entry bytes', () => {
-  const keyringVersion = JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'];
+  const keyringVersion = '3.9.7'; // Arbitrary exact fixture version, not an SDK release assumption.
   const root = fs.mkdtempSync(
     path.join(os.tmpdir(), 'pali-qualification-config-')
   );
   try {
     fs.mkdirSync(path.join(root, 'scripts'));
+    fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
     fs.copyFileSync(
       require.resolve('../scripts/configure-native-qualification.cjs'),
       path.join(root, 'scripts/configure-native-qualification.cjs')
@@ -50,6 +52,12 @@ test('qualification configuration is explicit, isolated, and preserves the produ
       JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main,
       'index.ts'
     );
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.6' }));
+    assert.notEqual(spawnSync(process.execPath, [command], {
+      env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
+    }).status, 0);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main, 'index.ts');
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
     assert.equal(
       spawnSync(process.execPath, [command], {
         env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
