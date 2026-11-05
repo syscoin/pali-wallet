@@ -188,6 +188,26 @@ describe('smart-account signing and outer broadcast context', () => {
     expect(sign).not.toHaveBeenCalled();
   });
 
+  it('checks the personal-sign approval again at the actual smart owner SDK invocation', async () => {
+    let approvalCurrent = true;
+    const assertApproval = () => {
+      if (!approvalCurrent) throw new Error('Approval retired');
+    };
+    keyring.setVaultStateGetter.mockImplementationOnce(() => {
+      approvalCurrent = false;
+    });
+    await expect(
+      wallet.signSmartAccountActionDigestInternal(
+        [OWNER_ADDRESS, ACTION_HASH],
+        owner,
+        undefined,
+        assertApproval
+      )
+    ).rejects.toThrow('Approval retired');
+    expect(sign).not.toHaveBeenCalled();
+    expect(keyring.setVaultStateGetter).toHaveBeenCalledTimes(2);
+  });
+
   it('preserves the locally derived guardian recovery signing path without an execution token', async () => {
     await expect(
       wallet.signSmartAccountActionDigestInternal(

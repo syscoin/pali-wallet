@@ -508,6 +508,7 @@ export type SmartAccountLocalEcdsaSigner = (params: {
   actionHash: string;
   executionContextId?: string;
   owner: SmartAccountLocalOwner;
+  validator: string;
 }) => Promise<string>;
 
 export type SmartAccountAuthenticatorRuntimeContexts = Partial<
@@ -620,9 +621,11 @@ export class SmartAccountExternalSignatureRequired extends Error {
 export const getSmartAccountLocalOwnerContexts = ({
   accounts,
   controllerEmitter,
+  personalSignValidator,
 }: {
   accounts: Record<string, Record<string, any>>;
   controllerEmitter: ControllerEmitter;
+  personalSignValidator?: string;
 }): SmartAccountAuthenticatorRuntimeContexts => {
   const ownerTypes: KeyringAccountType[] = [
     'HDAccount' as KeyringAccountType,
@@ -651,8 +654,21 @@ export const getSmartAccountLocalOwnerContexts = ({
   return {
     ecdsa: {
       localOwners,
-      signActionHash: ({ actionHash, executionContextId, owner }) =>
-        controllerEmitter(
+      signActionHash: ({
+        actionHash,
+        executionContextId,
+        owner,
+        validator,
+      }: Parameters<SmartAccountLocalEcdsaSigner>[0]) => {
+        const software =
+          owner.type === 'HDAccount' || owner.type === 'Imported';
+        if (software && personalSignValidator !== undefined) {
+          return controllerEmitter(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [owner, personalSignValidator, validator]
+          );
+        }
+        return controllerEmitter(
           ['wallet', 'signSmartAccountActionDigestInternal'],
           [
             [owner.address, actionHash],
@@ -660,7 +676,8 @@ export const getSmartAccountLocalOwnerContexts = ({
             ...(executionContextId ? [executionContextId] : []),
           ],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
-        ) as Promise<string>,
+        );
+      },
     },
     'slh-dsa': {
       signActionHash: (params) =>
@@ -800,6 +817,7 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
               ? { executionContextId: context.executionContextId }
               : {}),
             owner,
+            validator: context.validator.address,
           })
         )
       );

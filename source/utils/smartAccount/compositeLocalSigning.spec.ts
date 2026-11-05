@@ -149,6 +149,7 @@ describe('normal local composite approvals', () => {
         actionHash: ACTION_HASH,
         executionContextId: 'approved-composite-operation',
         owner: { address: OWNER, id: 0, type: 'HDAccount' },
+        validator: ECDSA,
       });
       expect(signatures[0]).toBe(ECDSA_SIGNATURE);
       if (threshold === 2) {

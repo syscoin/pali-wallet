@@ -7847,7 +7847,8 @@ class MainController {
   public async signSmartAccountActionDigestInternal(
     params: string[],
     targetAccount: { id: number; type: KeyringAccountType },
-    executionContextId?: string
+    executionContextId?: string,
+    assertPersonalSignApproval?: () => void
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertContext = () => {
@@ -7855,6 +7856,7 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
+      assertPersonalSignApproval?.();
     };
     assertContext();
     const { accounts, activeAccount } = store.getState().vault;
