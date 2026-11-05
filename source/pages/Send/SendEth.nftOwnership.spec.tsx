@@ -8,6 +8,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AbiCoder, Interface } from 'ethers/abi';
 import React from 'react';
 
 import { verifyERC721OwnershipHelper } from 'scripts/Background/controllers/assets/nft-utils';
@@ -21,6 +22,11 @@ const OTHER_OWNER = '0x4444444444444444444444444444444444444444';
 const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
 const mockOwnerOf = jest.fn();
+const ownerOfAbi = new Interface([
+  'function ownerOf(uint256) view returns (address)',
+]);
+const nonexistentToken = () =>
+  AbiCoder.getBuiltinCallException('call', { to: CONTRACT }, '0x');
 const mockStatus = {
   isUnlocked: true,
   isLoading: false,
@@ -72,10 +78,6 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('hooks/useAdjustedExplorer', () => ({
   useAdjustedExplorer: () => 'https://explorer.invalid',
-}));
-jest.mock('utils/ethersV6Compat', () => ({
-  ...jest.requireActual('utils/ethersV6Compat'),
-  Contract: jest.fn(() => ({ ownerOf: mockOwnerOf })),
 }));
 jest.mock('utils/navigationState', () => ({
   ...jest.requireActual('utils/navigationState'),
@@ -199,7 +201,7 @@ beforeEach(() => {
   mockOwnerOf.mockImplementation(async (id: string) => {
     if (id === '7') return OWNER;
     if (id === '8') return OTHER_OWNER;
-    throw new Error('ERC721: invalid token ID');
+    throw nonexistentToken();
   });
   mockEmitter.mockImplementation((path: string[], args?: any[]) => {
     const method = path.at(-1);
@@ -210,12 +212,15 @@ beforeEach(() => {
         requiresManualEntry: false,
       });
     if (method === 'verifyERC721Ownership')
-      return verifyERC721OwnershipHelper(
-        args![0],
-        args![1],
-        args![2],
-        {} as any
-      );
+      return verifyERC721OwnershipHelper(args![0], args![1], args![2], {
+        async call({ data, to }) {
+          expect(to).toBe(CONTRACT);
+          const [id] = ownerOfAbi.decodeFunctionData('ownerOf', data!);
+          return ownerOfAbi.encodeFunctionResult('ownerOf', [
+            await mockOwnerOf(id.toString()),
+          ]);
+        },
+      });
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return Promise.resolve({
         maxFeePerGas: '1000000000',
@@ -333,7 +338,7 @@ it('does not admit a manual ID while ownership verification is pending', async (
     finish = resolve;
   });
   mockOwnerOf.mockImplementation((id: string) =>
-    id === '7' ? owner : Promise.reject(new Error('ERC721: invalid token ID'))
+    id === '7' ? owner : Promise.reject(nonexistentToken())
   );
   await prepare();
   await verify('7');
@@ -377,7 +382,7 @@ it.each(['NETWORK_ERROR', 'BAD_DATA', 'CALL_EXCEPTION'])(
         throw Object.assign(new Error('Synthetic ownership read failed'), {
           code,
         });
-      throw new Error('ERC721: invalid token ID');
+      throw nonexistentToken();
     });
     await prepare();
     await verify('7');
@@ -418,7 +423,7 @@ it('does not reuse a late positive result for a different manual token ID', asyn
   mockOwnerOf.mockImplementation((id: string) => {
     if (id === '7') return old;
     if (id === '8') return Promise.resolve(OTHER_OWNER);
-    throw new Error('ERC721: invalid token ID');
+    throw nonexistentToken();
   });
   await prepare();
   await verify('7');
