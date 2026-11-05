@@ -61,6 +61,7 @@ import {
   saveAccountSelection,
   balanceReader,
   activityReader,
+  evmActivityReaders,
   isNativePersistence,
 } from './src/platform';
 
@@ -291,7 +292,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     authority.current?.lock();
     let next: WatchOnlyAuthority;
     const owner = {};
-    next = await WatchOnlyAuthority.openRecords({ repository: publicAccountRecords, reader: balanceReader, historyReader: activityReader, signal: opening.signal,
+    next = await WatchOnlyAuthority.openRecords({ repository: publicAccountRecords, reader: balanceReader, historyReader: activityReader, evmActivityReaders, signal: opening.signal,
       idle: { begin: () => watchIdle.begin(owner, () => next.lock()), check: () => watchIdle.check(owner), stop: () => watchIdle.stop(owner) },
     });
     if (opening.signal.aborted || openingWatch.current !== opening || JSON.stringify(next.getSnapshot().accounts) !== JSON.stringify(accounts)) throw new Error('Saved watch accounts changed. Reopen them.');

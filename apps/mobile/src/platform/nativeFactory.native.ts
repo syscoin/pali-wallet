@@ -1,3 +1,4 @@
+import { EvmTransferReadRpc } from '../custody/evmTransferReadRpc.ts';
 import { custodyIdle, securityPreferences } from './security';
 import { CustodyOperationError, NativeCustodyAuthority } from '../custody/authority.ts';
 import { createKeyringRuntimeFactory } from '../custody/keyringRuntime.ts';
@@ -35,6 +36,9 @@ function custodyGuard() {
 function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard()) {
   return createKeyringRuntimeFactory({
     assertActive,
+    observeActivity(network, expected, signal, guard) {
+      return new EvmTransferReadRpc(network, { fetch: walletFetch }).observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
+    },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
       const storage = await openStorage();

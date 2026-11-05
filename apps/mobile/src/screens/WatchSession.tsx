@@ -1,15 +1,17 @@
 import { AutoLockSettings } from './AutoLockSettings';
 import { securityPreferences, watchIdle } from '../platform/security';
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler } from 'react-native';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNetwork } from '../core/networks';
-import { RealAppShell, UnavailableActivity } from './RealAppShell';
+import { RealAppShell } from './RealAppShell';
 import { RealTools } from './RealTools';
 import { RealSettings } from './RealSettings';
 import { WatchAccountPortfolio } from './WatchAccountPortfolio';
 import { useRealShell } from './useRealShell';
 import { WatchActivity } from './WatchActivity';
+import { createWatchEvmActivity } from '../activity/watchActivity';
+import { NativeActivityScreen } from './NativeActivity';
 
 /** Owns public navigation only; the existing App-owned authority remains authoritative. */
 export function WatchSession({ authority, onAccounts, onExit }: {
@@ -18,6 +20,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const subscribe = useCallback((listener: () => void) => authority.subscribe(listener), [authority]);
   const getSnapshot = useCallback(() => authority.getSnapshot(), [authority]);
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const evmActivity = useMemo(() => createWatchEvmActivity(authority), [authority]);
   const currentScope = () => {
     const state = authority.getSnapshot();
     return state.status === 'ready' ? `${state.generation}:${state.selectedAccountId}:${state.selectedNetworkId}` : null;
@@ -44,7 +47,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={onExit} navigation={shell.navigation} />;
   else if (shell.tab === 'activity') content = network.id === 'bitcoin' || network.id === 'syscoin'
     ? <WatchActivity authority={authority} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
-    : <UnavailableActivity accountLabel={`${label} · ${network.name}`} watchOnly onBack={() => shell.select('wallet')} />;
+    : <NativeActivityScreen controller={evmActivity} accountLabel={label} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
   else if (shell.tab === 'tools') content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts} onBack={() => shell.select('wallet')} />;
   else content = <RealSettings navigation={shell.navigation} accountLabel={label} watchOnly onAutoLock={() => setAutoLockScope(currentScope())} onLock={onExit} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;

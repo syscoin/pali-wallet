@@ -1,3 +1,9 @@
+import {
+  validateActivityView as view,
+  validateActivityCandidate as candidate,
+  ACTIVITY_CACHE_LIMIT,
+  ACTIVITY_VIEW_LIMIT,
+} from './cacheValidation.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { parseErc20Metadata } from '../portfolio/erc20Metadata.ts';
@@ -121,39 +127,6 @@ export function validateTerminalActivity(
   }
   return Object.freeze(data as unknown as TerminalActivityRecord);
 }
-function view(value: unknown): ActivityViewState {
-  const data = exact(value, ['filter', 'showZero', 'anchor', 'offset']);
-  if (
-    !['all', 'sent', 'received'].includes(data.filter as string) ||
-    typeof data.showZero !== 'boolean' ||
-    !(
-      data.anchor === null ||
-      (typeof data.anchor === 'string' && /^0x[0-9a-f]{64}$/.test(data.anchor))
-    ) ||
-    typeof data.offset !== 'number' ||
-    !Number.isFinite(data.offset) ||
-    data.offset < 0 ||
-    data.offset > 10000
-  )
-    return invalid();
-  return Object.freeze(data as unknown as ActivityViewState);
-}
-function candidate(value: unknown): ActivityCandidate {
-  const data = exact(value, ['hash', 'blockNumber', 'timestamp', 'tokenHint']);
-  if (
-    typeof data.hash !== 'string' ||
-    !/^0x[0-9a-f]{64}$/.test(data.hash) ||
-    typeof data.blockNumber !== 'string' ||
-    !/^(0|[1-9][0-9]{0,77})$/.test(data.blockNumber) ||
-    typeof data.tokenHint !== 'boolean' ||
-    !(
-      data.timestamp === null ||
-      (Number.isSafeInteger(data.timestamp) && (data.timestamp as number) >= 0)
-    )
-  )
-    return invalid();
-  return Object.freeze(data as unknown as ActivityCandidate);
-}
 function decode(value: unknown, fingerprint: string): Document {
   const data = exact(copy(value), [
     'version',
@@ -173,9 +146,9 @@ function decode(value: unknown, fingerprint: string): Document {
     !Array.isArray(data.archived) ||
     data.archived.length > LOCAL_ACTIVITY_LIMIT ||
     !Array.isArray(data.cached) ||
-    data.cached.length > 24 ||
+    data.cached.length > ACTIVITY_CACHE_LIMIT ||
     !Array.isArray(data.views) ||
-    data.views.length > 20
+    data.views.length > ACTIVITY_VIEW_LIMIT
   )
     return invalid();
   const archived = data.archived.map(validateTerminalActivity);
@@ -193,7 +166,7 @@ function decode(value: unknown, fingerprint: string): Document {
       typeof c.scopeKey !== 'string' ||
       !/^0x[0-9a-f]{64}$/.test(c.scopeKey) ||
       !Array.isArray(c.candidates) ||
-      c.candidates.length > 24
+      c.candidates.length > ACTIVITY_CACHE_LIMIT
     )
       return invalid();
     return {
@@ -203,7 +176,8 @@ function decode(value: unknown, fingerprint: string): Document {
     };
   });
   if (
-    cached.reduce((count, c) => count + c.candidates.length, 0) > 24 ||
+    cached.reduce((count, c) => count + c.candidates.length, 0) >
+      ACTIVITY_CACHE_LIMIT ||
     new Set(cached.map((c) => c.sourceId)).size !== cached.length
   )
     return invalid();
@@ -237,13 +211,26 @@ function fresh(fingerprint: string): Document {
   };
 }
 /** Validate the complete saved document without packing, pruning or persisting it. */
-export function inspectRecoveryHistory(value: unknown, walletFingerprint: string) {
-  if (new TextEncoder().encode(encodeStorageValue(value)).length > BYTE_LIMIT) return invalid();
+export function inspectRecoveryHistory(
+  value: unknown,
+  walletFingerprint: string
+) {
+  if (new TextEncoder().encode(encodeStorageValue(value)).length > BYTE_LIMIT)
+    return invalid();
   const record = decode(value, walletFingerprint);
-  return Object.freeze({ summaries: record.archived.length,
-    cachedTransactions: record.cached.reduce((count, group) => count + group.candidates.length, 0),
+  return Object.freeze({
+    summaries: record.archived.length,
+    cachedTransactions: record.cached.reduce(
+      (count, group) => count + group.candidates.length,
+      0
+    ),
     preferences: record.views.length,
-    accounts: Object.freeze(record.archived.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
+    accounts: Object.freeze(
+      record.archived.map((row) =>
+        Object.freeze({ id: row.accountId, address: row.address })
+      )
+    ),
+  });
 }
 function packed(input: Document, protect?: string): Document {
   const next = {
@@ -256,11 +243,15 @@ function packed(input: Document, protect?: string): Document {
     next.archived.shift();
     next.truncated = true;
   }
-  while (next.cached.length > 24 || next.cached.reduce((sum, c) => sum + c.candidates.length, 0) > 24) {
+  while (
+    next.cached.length > ACTIVITY_CACHE_LIMIT ||
+    next.cached.reduce((sum, c) => sum + c.candidates.length, 0) >
+      ACTIVITY_CACHE_LIMIT
+  ) {
     next.cached.pop();
     next.truncated = true;
   }
-  while (next.views.length > 20) next.views.pop();
+  while (next.views.length > ACTIVITY_VIEW_LIMIT) next.views.pop();
   for (;;) {
     try {
       if (
@@ -322,7 +313,10 @@ export class NativeActivityHistory {
         const next = change(data);
         guard();
         if (encodeStorageValue(next) === encodeStorageValue(data)) return;
-        const stored = packed({ ...next, revision: data.revision + 1 }, protect);
+        const stored = packed(
+          { ...next, revision: data.revision + 1 },
+          protect
+        );
         let committed: boolean;
         try {
           committed =
@@ -380,11 +374,23 @@ export class NativeActivityHistory {
           (r) => `${localScopeKey(r)}:${r.hash}` === id
         );
         if (old) {
-          if (encodeStorageValue(old) === encodeStorageValue(checked)) return data;
+          if (encodeStorageValue(old) === encodeStorageValue(checked))
+            return data;
           // Receipt outcome can change after a reorg; immutable transaction fields cannot.
-          if (encodeStorageValue({ ...old, phase: checked.phase }) !== encodeStorageValue(checked))
+          if (
+            encodeStorageValue({ ...old, phase: checked.phase }) !==
+            encodeStorageValue(checked)
+          )
             throw new ActivityError('INVALID');
-          return packed({ ...data, archived: data.archived.map((record) => record === old ? checked : record) }, id);
+          return packed(
+            {
+              ...data,
+              archived: data.archived.map((record) =>
+                record === old ? checked : record
+              ),
+            },
+            id
+          );
         }
         return packed({ ...data, archived: [...data.archived, checked] }, id);
       },
@@ -414,11 +420,11 @@ export class NativeActivityHistory {
     candidates: readonly ActivityCandidate[],
     guard: () => void
   ): Promise<void> {
-    const admitted = candidates.slice(0, 24).map(candidate);
+    const admitted = candidates.slice(0, ACTIVITY_CACHE_LIMIT).map(candidate);
     return this.mutate(scope.walletFingerprint, guard, (data) =>
       packed({
         ...data,
-        truncated: data.truncated || candidates.length > 24,
+        truncated: data.truncated || candidates.length > ACTIVITY_CACHE_LIMIT,
         cached: [
           {
             sourceId: scope.sourceId,

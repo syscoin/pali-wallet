@@ -1,5 +1,8 @@
 import { createUtxoActivityReader } from '../../src/core/utxoActivity';
 import { activityFetch } from './utxoActivityFixture';
+import { ActivityExplorerReader } from '../../src/activity/explorerReader';
+import { ActivityReceiptReader } from '../../src/activity/receiptReader';
+import { evmActivityFetch } from './evmActivityFixture';
 import { getNetwork } from '../../src/core/networks';
 import { parseAccountSelection, type AccountSelection } from '../../src/core/accountDirectory';
 import { ACCOUNT_SELECTION_KEY, PUBLIC_ACCOUNTS_KEY, createPublicAccountStorage } from '../../src/core/publicAccountStorage';
@@ -46,3 +49,12 @@ export const loadAccountSelection = repository.loadSelection;
 export const saveAccountSelection = (selection: AccountSelection | null) => repository.saveSelection(selection);
 
 export const activityReader = createUtxoActivityReader({ fetch: async (url, init) => { const response = await activityFetch(url, init); if (!response) throw new Error('Unplanned fixture URL'); return response; } });
+const evmFetch = async (url: string, init: RequestInit) => {
+  const response = await evmActivityFetch(url, init);
+  if (!response) throw new Error('Unplanned EVM activity fixture URL');
+  return response;
+};
+export const evmActivityReaders = Object.freeze({
+  explorer: new ActivityExplorerReader(evmFetch),
+  receipts: new ActivityReceiptReader({ fetch: evmFetch }),
+});

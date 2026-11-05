@@ -157,10 +157,14 @@ test('account management, imported-key review and send approval exclude tabs', a
 });
 
 test('watch shell is operational without borrowing native permissions or demo activity', async ({ page }) => {
-  await openWatch(page);
+  await page.goto('/?evm-activity=1');
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
+  await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
-  await expect(page.getByText('Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.', { exact: true })).toBeVisible();
+  await expect(page.getByText('1.000000000000000001 ETH', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('Direct transactions and token transfer events from the selected explorer. Internal transfers are not included; older activity may require loading.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
   await expect(page.getByText(/Starbucks|Spotify|Coffee|Sample transaction/)).toHaveCount(0);
   await chooseTab(page, 'Tools');
   await expect(page.getByRole('button', { name: 'Accounts', exact: false })).toBeVisible();
@@ -172,7 +176,8 @@ test('watch shell is operational without borrowing native permissions or demo ac
   await page.getByRole('button', { name: 'Hide accounts', exact: true }).click();
   await expect(page.getByRole('tab')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(0);
+  const audit = await page.evaluate(() => window.__watchFixture.audit());
+  expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
 });
 
 test('same-address native to watch switch revokes native owner before public tabs render', async ({ page }) => {
@@ -227,7 +232,7 @@ test('native network without an explorer shows saved-transfer coverage and retai
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Saved transfers only. Add an explorer data source to discover other activity.', { exact: true })).toBeVisible();
+  await expect(page.getByText('Activity discovery is unavailable for this network.', { exact: true })).toBeVisible();
   await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No activity yet', { exact: true })).toHaveCount(0);
   expect(await page.evaluate(() => window.__watchFixture.catalogue().active.networkId)).toBe('base');

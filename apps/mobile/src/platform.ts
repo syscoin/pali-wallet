@@ -1,3 +1,5 @@
+import { ActivityExplorerReader } from './activity/explorerReader.ts';
+import { ActivityReceiptReader } from './activity/receiptReader.ts';
 import { createUtxoActivityReader } from './core/utxoActivity.ts';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
@@ -14,6 +16,7 @@ const STORAGE_OPTIONS: SecureStore.SecureStoreOptions = {
 };
 export const isNativePersistence = Platform.OS === 'ios' || Platform.OS === 'android';
 export const activityReader = createUtxoActivityReader({ fetch: walletFetch });
+export const evmActivityReaders = Object.freeze({ explorer: new ActivityExplorerReader(walletFetch), receipts: new ActivityReceiptReader({ fetch: walletFetch }) });
 const evmBalanceReader = createBalanceReader({ fetch: walletFetch });
 const utxoBalanceReader = createUtxoBalanceReader({ fetch: walletFetch });
 export const balanceReader: BalanceReader = Object.freeze({

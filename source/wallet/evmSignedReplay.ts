@@ -177,6 +177,63 @@ export function projectSavedEvmTransaction(
 }
 
 /** Ephemeral explicit consent over existing retained bytes, never a signer or nonce allocator. */
+/** Shared retained-record observation. It does not create a replay review or dispatch.
+ * The caller owns the selected authority; every await retains that captured guard. */
+export async function observeRetainedEvmTransaction(
+  records: EvmSignedRecords,
+  recordSession: EvmSignedRecordSession,
+  chainId: string,
+  from: string,
+  hash: string,
+  observe: EvmReplaySession['observe'],
+  assertCurrent: () => void
+): Promise<
+  Readonly<{
+    entry: EvmRetainedSignedRecord;
+    observation: EvmTransactionObservation;
+    terminalPhase: 'confirmed' | 'reverted' | 'nonce-consumed' | null;
+  }>
+> {
+  const session = Object.freeze({
+    keyring: recordSession.keyring,
+    assertCurrent: recordSession.assertCurrent,
+  });
+  const current = assertCurrent,
+    read = observe;
+  current();
+  const entry = await records.readExact(session, chainId, from, hash);
+  current();
+  if (!entry) throw new EvmReplayError('NOT_FOUND');
+  const observation = await read(request(entry));
+  current();
+  const terminalPhase =
+    observation.status === 'mined'
+      ? observation.outcome
+      : BigInt(observation.latestNonce) > BigInt(entry.nonce)
+      ? 'nonce-consumed'
+      : null;
+  const phase =
+    terminalPhase ??
+    (['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)
+      ? 'submitted'
+      : entry.phase);
+  if (terminalPhase || phase !== entry.phase) {
+    await records.updatePhase(
+      session,
+      entry.chainId,
+      entry.from,
+      entry.hash,
+      phase
+    );
+    current();
+  }
+  return Object.freeze({
+    entry: Object.freeze({ ...entry, phase }),
+    observation,
+    terminalPhase,
+  });
+}
+
 export class EvmSignedReplay {
   private pending: Pending | null = null;
   private ownerId: string | null = null;
@@ -287,49 +344,26 @@ export class EvmSignedReplay {
       session.recordSession
     );
     this.check(state);
-    const entry = await this.records.readExact(
+    const {
+      entry,
+      observation,
+      terminalPhase: phase,
+    } = await observeRetainedEvmTransaction(
+      this.records,
       session.recordSession,
       String(context.network.chainId),
       context.account.address,
-      hash
+      hash,
+      session.observe,
+      () => this.check(state)
     );
     this.check(state);
-    if (!entry) throw new EvmReplayError('NOT_FOUND');
-    const observation = await session.observe(request(entry));
-    this.check(state);
-    const phase =
-      observation.status === 'mined'
-        ? observation.outcome
-        : BigInt(observation.latestNonce) > BigInt(entry.nonce)
-        ? 'nonce-consumed'
-        : null;
-    if (phase) {
-      await this.records.updatePhase(
-        session.recordSession,
-        entry.chainId,
-        entry.from,
-        entry.hash,
-        phase
-      );
-      this.check(state);
+    if (phase)
       return Object.freeze({
         status: phase,
         hash: entry.hash,
-        transaction: projectSavedEvmTransaction({ ...entry, phase }),
+        transaction: projectSavedEvmTransaction(entry),
       });
-    }
-    if (['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)) {
-      // A fresh missing observation revises the old outcome even if the user
-      // closes this review or a later dispatch acknowledgement is lost.
-      await this.records.updatePhase(
-        session.recordSession,
-        entry.chainId,
-        entry.from,
-        entry.hash,
-        'submitted'
-      );
-      this.check(state);
-    }
     const missingNonce =
       observation.status === 'missing' &&
       BigInt(observation.latestNonce) < BigInt(entry.nonce)

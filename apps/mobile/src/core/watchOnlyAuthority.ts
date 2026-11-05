@@ -1,3 +1,9 @@
+import { keccak256 } from 'ethers/crypto';
+import { toUtf8Bytes } from 'ethers/utils';
+import { createActivityReadScope, type EvmActivityReadScope } from '../activity/types.ts';
+import type { EvmActivityReaders } from '../activity/nativeActivity.ts';
+import type { ActivityFeed } from '../activity/explorerReader.ts';
+import { getNativeNetwork } from '../custody/networkContext.ts';
 import type { UtxoActivityReader, UtxoActivityPage } from './utxoActivity.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { normalizePublicAddress } from './addresses.ts';
@@ -21,7 +27,7 @@ import type {
 
 type RecordOpenOptions = Readonly<{
   repository: Pick<WatchRecordRepository, 'load'>; reader: BalanceReader;
-  signal: AbortSignal; now?: () => number; historyReader?: UtxoActivityReader;
+  signal: AbortSignal; now?: () => number; historyReader?: UtxoActivityReader; evmActivityReaders?: EvmActivityReaders;
   idle?: { begin(): void; check(): boolean; stop(): void };
 }>;
 type AccountSource = Extract<StoredWatchAccount, { kind: 'utxo-public' }>;
@@ -174,6 +180,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private readonly accounts: readonly PublicAccount[];
   private readonly reader: BalanceReader;
   private readonly historyReader?: UtxoActivityReader;
+  private readonly evmActivityReaders?: EvmActivityReaders;
   private readonly now: () => number;
   private listeners = new Set<(snapshot: PublicSnapshot) => void>();
   private generation = 0;
@@ -203,7 +210,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
         if (record.kind === 'utxo-public') sources.set(record.id, record);
       }
       check();
-      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle, options.historyReader);
+      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle, options.historyReader, options.evmActivityReaders);
       authority.recordSession = { repository: Object.freeze({ load }), identity: view.identity, sources };
       return authority;
     } catch { throw signal.aborted ? admissionCancelled() : new Error('Saved public accounts could not be opened'); }
@@ -218,12 +225,17 @@ export class WatchOnlyAuthority implements WalletAuthority {
     reader: BalanceReader,
     now: () => number = Date.now,
     idle?: { begin(): void; check(): boolean; stop(): void },
-    historyReader?: UtxoActivityReader
+    historyReader?: UtxoActivityReader,
+    evmActivityReaders?: EvmActivityReaders
   ) {
     this.idle = idle;
     this.accounts = validatePublicAccounts(accounts);
     this.reader = reader;
     this.historyReader = historyReader;
+    this.evmActivityReaders = evmActivityReaders ? Object.freeze({
+      explorer: Object.freeze({ page: evmActivityReaders.explorer.page.bind(evmActivityReaders.explorer) }),
+      receipts: Object.freeze({ read: evmActivityReaders.receipts.read.bind(evmActivityReaders.receipts) }),
+    }) : undefined;
     this.now = now;
     this.accountId = this.accounts[0]?.id ?? null;
     this.networkId = (Object.keys(this.accounts[0]?.addresses ?? {})[0] ??
@@ -414,18 +426,19 @@ export class WatchOnlyAuthority implements WalletAuthority {
     }
   }
 
-  /** Read operation only: the canonical identifier never enters a public snapshot. */
-  async readUtxoActivityPage(input: Readonly<{ page: number }>, external: AbortSignal): Promise<UtxoActivityPage> {
-    const page = input.page, snapshot = this.getSnapshot();
-    if (snapshot.status !== 'ready' || !this.historyReader || external.aborted ||
-        !Number.isSafeInteger(page) || page < 1 ||
-        this.networkId !== 'bitcoin' && this.networkId !== 'syscoin') throw new Error('Account activity unavailable');
+  /** One ownership boundary for public history; each async read rechecks saved records. */
+  private async withActivityRead<T>(kind: 'utxo' | 'evm', external: AbortSignal | undefined,
+    assertCurrent: () => void, action: (owner: { accountId: string; address: string; networkId: NetworkId; generation: number;
+      source: AccountSource | undefined; recordIdentity: string }, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
+    const snapshot = this.getSnapshot();
+    const isUtxo = this.networkId === 'bitcoin' || this.networkId === 'syscoin';
+    if (snapshot.status !== 'ready' || external?.aborted || isUtxo !== (kind === 'utxo')) throw new Error('Account activity unavailable');
     const account = this.accounts.find((row) => row.id === this.accountId), networkId = this.networkId;
     const address = account?.addresses[networkId];
     if (!account || !address) throw new Error('Account activity unavailable');
     const generation = this.generation, session = this.recordSession, source = this.currentSource();
     const request = new AbortController(); this.historyRequests.add(request);
-    const abort = () => request.abort(); external.addEventListener('abort', abort, { once: true });
+    const abort = () => request.abort(); external?.addEventListener('abort', abort, { once: true });
     let stopped!: (reason: Error) => void;
     const cancelled = new Promise<never>((_resolve, reject) => { stopped = reject; });
     void cancelled.catch(() => undefined);
@@ -433,7 +446,12 @@ export class WatchOnlyAuthority implements WalletAuthority {
     request.signal.addEventListener('abort', onAbort, { once: true });
     const check = () => {
       this.getSnapshot();
-      if (external.aborted || request.signal.aborted || this.locked || generation !== this.generation ||
+      const result: unknown = assertCurrent();
+      if (result !== undefined) {
+        if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+        throw new Error('Account activity cancelled');
+      }
+      if (external?.aborted || request.signal.aborted || this.locked || generation !== this.generation ||
           this.accountId !== account.id || this.networkId !== networkId || this.recordSession !== session) throw new Error('Account activity context changed');
     };
     const verifyRecords = async () => {
@@ -445,16 +463,57 @@ export class WatchOnlyAuthority implements WalletAuthority {
     };
     try {
       check(); await verifyRecords(); check();
-      const result = await Promise.race([this.historyReader.readPage({
-        context: Object.freeze({ accountId: account.id, networkId, address, generation }),
+      const owner = { accountId: account.id, address, networkId, generation, source,
+        recordIdentity: session?.identity ?? JSON.stringify(this.accounts) };
+      const result = await Promise.race([action(owner, request.signal, check), cancelled]);
+      check(); await verifyRecords(); check(); return result;
+    } catch { throw new Error(request.signal.aborted ? 'Account activity cancelled' : 'Account activity unavailable'); }
+    finally { external?.removeEventListener('abort', abort); request.signal.removeEventListener('abort', onAbort); this.historyRequests.delete(request); request.abort(); }
+  }
+
+  /** Read operation only: the canonical identifier never enters a public snapshot. */
+  async readUtxoActivityPage(input: Readonly<{ page: number }>, external: AbortSignal): Promise<UtxoActivityPage> {
+    const page = input.page;
+    if (!this.historyReader || !Number.isSafeInteger(page) || page < 1) throw new Error('Account activity unavailable');
+    return this.withActivityRead('utxo', external, () => undefined, async (owner, signal, check) => {
+      const { accountId, address, networkId, generation, source } = owner;
+      const result = await this.historyReader!.readPage({
+        context: Object.freeze({ accountId, networkId: networkId as UtxoNetworkId, address, generation }),
         identifier: source?.identifier ?? address, isAccount: !!source,
-      }, { page }, request.signal), cancelled]);
-      check(); await verifyRecords(); check();
-      if (result.context.accountId !== account.id || result.context.networkId !== networkId || result.context.address !== address || result.context.generation !== generation || result.page !== page)
+      }, { page }, signal);
+      check();
+      if (result.context.accountId !== accountId || result.context.networkId !== networkId || result.context.address !== address || result.context.generation !== generation || result.page !== page)
         throw new Error('Account activity context changed');
       return result;
-    } catch { throw new Error(request.signal.aborted ? 'Account activity cancelled' : 'Account activity unavailable'); }
-    finally { external.removeEventListener('abort', abort); request.signal.removeEventListener('abort', onAbort); this.historyRequests.delete(request); request.abort(); }
+    });
+  }
+
+  private evmScope(owner: { accountId: string; address: string; networkId: NetworkId; recordIdentity: string }): EvmActivityReadScope {
+    const network = getNativeNetwork(owner.networkId);
+    const key = keccak256(toUtf8Bytes(JSON.stringify(['public-watch', owner.recordIdentity, owner.accountId, owner.address, network.chainId])));
+    return createActivityReadScope(key, owner.address, network);
+  }
+  private async withEvmActivity<T>(expected: EvmActivityReadScope | undefined, signal: AbortSignal | undefined,
+    guard: () => void, action: (scope: EvmActivityReadScope, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
+    const expectedKey = expected?.key, expectedSource = expected?.sourceId, expectedRegistration = expected?.network.registrationHash;
+    return this.withActivityRead('evm', signal, guard, async (owner, currentSignal, check) => {
+      const scope = this.evmScope(owner);
+      if (expected && (scope.key !== expectedKey || scope.sourceId !== expectedSource || scope.network.registrationHash !== expectedRegistration))
+        throw new Error('Account activity context changed');
+      return action(scope, currentSignal, check);
+    });
+  }
+  loadEvmActivity(guard: () => void, signal?: AbortSignal): Promise<EvmActivityReadScope> {
+    return this.withEvmActivity(undefined, signal, guard, async (scope) => scope);
+  }
+  readEvmActivityPage(scope: EvmActivityReadScope, feed: ActivityFeed, page: number, signal: AbortSignal, guard: () => void) {
+    if (feed !== 'txlist' && feed !== 'tokentx') return Promise.reject(new Error('Account activity unavailable'));
+    if (!this.evmActivityReaders) return Promise.reject(new Error('Account activity unavailable'));
+    return this.withEvmActivity(scope, signal, guard, (current, currentSignal, check) => this.evmActivityReaders!.explorer.page(current, feed, page, currentSignal, check));
+  }
+  readEvmActivityTransaction(scope: EvmActivityReadScope, hash: string, signal: AbortSignal, guard: () => void) {
+    if (!this.evmActivityReaders) return Promise.reject(new Error('Account activity unavailable'));
+    return this.withEvmActivity(scope, signal, guard, (current, currentSignal, check) => this.evmActivityReaders!.receipts.read(hash, current.address, currentSignal, check, current.network));
   }
 
   async prepareTransfer(_intent: TransferIntent): Promise<TransferReview> {

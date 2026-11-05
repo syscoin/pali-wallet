@@ -31,7 +31,23 @@ import type {
 } from '../activity/nativeActivity';
 
 const status = (row: ActivityRow) =>
-  row.observation?.status === 'confirmed'
+  row.indexedStatus === 'confirmed'
+    ? 'Confirmed'
+    : row.indexedStatus === 'failed'
+    ? 'Reverted'
+    : row.indexedStatus === 'replaced'
+    ? 'Replaced'
+    : row.indexedStatus === 'replacementPending'
+    ? 'Replacement pending'
+    : row.indexedStatus === 'pending'
+    ? 'Pending'
+    : !row.indexed && row.retainedObservation?.status === 'mined'
+    ? row.retainedObservation.outcome === 'confirmed'
+      ? 'Confirmed'
+      : 'Reverted'
+    : !row.indexed && row.retainedObservation?.status === 'missing'
+    ? 'Submission unconfirmed'
+    : row.observation?.status === 'confirmed'
     ? 'Confirmed'
     : row.observation?.status === 'reverted'
     ? 'Reverted'
@@ -52,13 +68,18 @@ function direction(
   row: ActivityRow,
   owner: string
 ): 'sent' | 'received' | 'self' | 'unknown' {
+  if (row.indexed) return getEvmHistoryDirection(row.indexed, owner);
   if (row.local)
-    return getEvmHistoryDirection({ from: owner, to: row.local.recipient }, owner);
+    return getEvmHistoryDirection(
+      { from: owner, to: row.local.recipient },
+      owner
+    );
   const tx = row.observation;
   if (!tx) return 'unknown';
   return getEvmHistoryDirection(tx, owner, tx.events);
 }
 function zeroOnly(row: ActivityRow) {
+  if (row.indexed) return row.zeroValueToken === true;
   return (
     !row.local &&
     row.observation &&
@@ -68,6 +89,12 @@ function zeroOnly(row: ActivityRow) {
   );
 }
 function amount(row: ActivityRow, symbol: string): string {
+  if (row.display) {
+    if (row.display.amountUnavailable) return `? ${row.display.displaySymbol}`;
+    if (row.display.hasUnknownDecimals) return `${row.display.displaySymbol} transfer`;
+    return `${row.display.formattedValue} ${row.display.displaySymbol}`;
+  }
+  if (row.indexed) return 'Amount unavailable';
   if (row.local)
     return row.local.token
       ? `${formatTokenUnits(row.local.amountUnits, row.local.token.decimals)} ${
@@ -95,6 +122,16 @@ function fee(row: ActivityRow, symbol: string): string {
   return 'Actual fee not verified';
 }
 
+function sender(row: ActivityRow, owner: string): string | null {
+  return (
+    row.indexed?.from ?? row.observation?.from ?? (row.local ? owner : null)
+  );
+}
+function recipient(row: ActivityRow): string | null {
+  if (row.indexed) return row.display?.actualRecipient || null;
+  return row.local?.recipient ?? row.observation?.to ?? null;
+}
+
 export function NativeActivityScreen({
   controller,
   accountLabel,
@@ -116,7 +153,7 @@ export function NativeActivityScreen({
   useLayoutEffect(() => controller.connect(), [controller]);
   return (
     <NativeActivityContent
-      key={snapshot.accountAddress ?? 'locked'}
+      key={snapshot.scopeKey ?? 'locked'}
       controller={controller}
       snapshot={snapshot}
       accountLabel={accountLabel}
@@ -158,9 +195,8 @@ function NativeActivityContent({
   const visibleItemsChanged = useCallback(
     ({ viewableItems }: { viewableItems: { item: ActivityRow }[] }) => {
       firstVisible.current = viewableItems[0]?.item.hash ?? null;
-      controller.observeVisible(viewableItems.map((item) => item.item.hash));
     },
-    [controller]
+    []
   );
   useLayoutEffect(() => {
     const local = lifetime.current;
@@ -224,7 +260,12 @@ function NativeActivityContent({
     try {
       // A slow public view-state write must not trap navigation. Its existing
       // context guard still rejects stale completion after this screen leaves.
-      await Promise.race([savePosition(), new Promise<void>((resolve) => { timeout = setTimeout(resolve, 1000); })]);
+      await Promise.race([
+        savePosition(),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(resolve, 1000);
+        }),
+      ]);
       const latest = navigateAfterSave.current;
       navigateAfterSave.current = null;
       if (lifetime.current.epoch === captured) latest?.();
@@ -240,8 +281,17 @@ function NativeActivityContent({
       void afterPositionSaved(onBack);
     }
   };
-  useLayoutEffect(() => navigation?.registerBack(() => { close(); return true; }));
-  useLayoutEffect(() => navigation?.registerLeave((navigate) => { void afterPositionSaved(navigate); }));
+  useLayoutEffect(() =>
+    navigation?.registerBack(() => {
+      close();
+      return true;
+    })
+  );
+  useLayoutEffect(() =>
+    navigation?.registerLeave((navigate) => {
+      void afterPositionSaved(navigate);
+    })
+  );
   useLayoutEffect(() => {
     navigation?.setImmersive(!!selected || !!copyAddress);
     return () => navigation?.setImmersive(false);
@@ -293,11 +343,18 @@ function NativeActivityContent({
     }
   };
   return (
-    <SafeAreaView edges={navigation && !selected && !copyAddress ? ['top'] : ['top', 'bottom']} style={s.root}>
+    <SafeAreaView
+      edges={
+        navigation && !selected && !copyAddress ? ['top'] : ['top', 'bottom']
+      }
+      style={s.root}
+    >
       <View style={s.header}>
         <Header
           title={chosen ? 'Transaction details' : 'Activity'}
-          subtitle={`${accountLabel}${snapshot.networkName ? ` · ${snapshot.networkName}` : ''}`}
+          subtitle={`${accountLabel}${
+            snapshot.networkName ? ` · ${snapshot.networkName}` : ''
+          }`}
           onBack={close}
         />
       </View>
@@ -400,9 +457,10 @@ function NativeActivityContent({
                 else rowViews.current.delete(item.hash);
               }}
               accessibilityRole="button"
-              accessibilityLabel={`${amount(item, snapshot.nativeSymbol ?? 'ETH')}, ${status(
-                item
-              )}. View transaction details`}
+              accessibilityLabel={`${amount(
+                item,
+                snapshot.nativeSymbol ?? 'ETH'
+              )}, ${status(item)}. View transaction details`}
               onPress={() =>
                 afterPositionSaved(() => {
                   setFeedback('');
@@ -413,7 +471,9 @@ function NativeActivityContent({
               style={s.item}
             >
               <View style={s.itemHeader}>
-                <Text style={s.amount}>{amount(item, snapshot.nativeSymbol ?? 'ETH')}</Text>
+                <Text style={s.amount}>
+                  {amount(item, snapshot.nativeSymbol ?? 'ETH')}
+                </Text>
                 <Text style={s.direction}>
                   {direction(item, owner) === 'unknown'
                     ? 'Activity'
@@ -464,9 +524,11 @@ function NativeActivityContent({
       </View>
       {chosen && (
         <ScrollView contentContainerStyle={s.content}>
-          <Text style={s.detailAmount}>{amount(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
+          <Text style={s.detailAmount}>
+            {amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
+          </Text>
           <Text style={styles.muted}>{status(chosen)}</Text>
-          {chosen.local?.token && (
+          {chosen.local?.token && !chosen.indexed && (
             <Notice
               title="Amount approved in Pali"
               body="This is the saved transfer intent. Token fees and other contract behavior can change the amount received. Receipt events are shown separately below."
@@ -479,35 +541,33 @@ function NativeActivityContent({
             </Text>
             <Text style={s.label}>FROM</Text>
             <Text style={s.full}>
-              {chosen.observation?.from ??
-                (chosen.local ? owner : 'Not verified')}
+              {sender(chosen, owner) ?? 'Not available'}
             </Text>
-            {!!(chosen.observation?.from ?? (chosen.local ? owner : null)) && (
+            {!!sender(chosen, owner) && (
               <Button
                 title="Copy sender address"
                 variant="quiet"
-                onPress={() =>
-                  setCopyAddress(chosen.observation?.from ?? owner)
-                }
+                onPress={() => setCopyAddress(sender(chosen, owner))}
               />
             )}
             <Text style={s.label}>
-              {chosen.local?.token ? 'APPROVED TOKEN RECIPIENT' : 'TO'}
+              {chosen.local?.token && !chosen.indexed
+                ? 'APPROVED TOKEN RECIPIENT'
+                : 'TO'}
             </Text>
             <Text style={s.full}>
-              {chosen.local?.recipient ??
-                chosen.observation?.to ??
-                'Not verified or contract creation'}
+              {recipient(chosen) ??
+                (chosen.indexed?.to === null ||
+                chosen.indexed?.to === '' ||
+                chosen.local?.recipient === null
+                  ? 'Contract creation'
+                  : 'Not available')}
             </Text>
-            {!!(chosen.local?.recipient ?? chosen.observation?.to) && (
+            {!!recipient(chosen) && (
               <Button
                 title="Copy recipient address"
                 variant="quiet"
-                onPress={() =>
-                  setCopyAddress(
-                    chosen.local?.recipient ?? chosen.observation?.to ?? null
-                  )
-                }
+                onPress={() => setCopyAddress(recipient(chosen))}
               />
             )}
             {chosen.local?.token && (
@@ -518,13 +578,36 @@ function NativeActivityContent({
             )}
             <Text style={s.label}>NETWORK FEE</Text>
             <Text>{fee(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
-            {chosen.observation?.block && (
+            {(chosen.indexed?.blockNumber || chosen.observation?.block) && (
               <>
                 <Text style={s.label}>BLOCK</Text>
-                <Text>{chosen.observation.block.number}</Text>
+                <Text>
+                  {chosen.indexed?.blockNumber ??
+                    chosen.observation?.block?.number}
+                </Text>
               </>
             )}
           </Card>
+          {chosen.indexed?.tokenTransfer && (
+            <Card style={s.detail}>
+              <Text style={s.label}>INDEXED TOKEN TRANSFER</Text>
+              <Text style={s.full}>
+                {typeof chosen.indexed.tokenTransfer.contractAddress ===
+                'string'
+                  ? chosen.indexed.tokenTransfer.contractAddress
+                  : 'Unavailable'}
+              </Text>
+              <Text>
+                Raw token units:{' '}
+                {chosen.display?.amountUnavailable ||
+                !['string', 'number', 'bigint'].includes(
+                  typeof chosen.indexed.tokenTransfer.value
+                )
+                  ? 'Unavailable'
+                  : String(chosen.indexed.tokenTransfer.value)}
+              </Text>
+            </Card>
+          )}
           {(chosen.observation?.events ?? []).map((event) => (
             <Card key={event.id} style={s.detail}>
               <Text style={s.label}>
@@ -558,7 +641,12 @@ function NativeActivityContent({
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
-          {chosen.local && onReplay && <Button title="Review resend" onPress={() => onReplay(chosen.hash)} />}
+          {chosen.local && onReplay && (
+            <Button
+              title="Review resend"
+              onPress={() => onReplay(chosen.hash)}
+            />
+          )}
           {snapshot.explorerUrl && (
             <Button
               title="View on explorer"

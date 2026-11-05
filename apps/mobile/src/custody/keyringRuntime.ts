@@ -1,6 +1,8 @@
+import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle } from '../../../../source/wallet/evmSignedRecords.ts';
-import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
+import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { createNativeSignedRecordView } from './sharedSignedRecords.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
@@ -29,7 +31,7 @@ import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
-import { createActivityScope, type ActivityScope } from '../activity/types.ts';
+import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress, Transaction } from 'ethers/transaction';
 import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
@@ -56,6 +58,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   assertActive?: () => void;
+  observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
 }>;
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
@@ -585,7 +588,7 @@ export function createKeyringRuntimeFactory(
           const fingerprint = await dataBinding(captured, guard); guard();
           return { scope: createActivityScope(fingerprint, selected.id, selected.address, getNativeNetwork(networkId, catalogueSnapshot!.networks)), guard, index: selected.index, type: selected.type };
         };
-        const checkActivityContext = async (scope: ActivityScope, assertCurrent: () => void) => {
+        const checkActivityContext = async (scope: EvmActivityReadScope, assertCurrent: () => void) => {
           const context = await activityContext(assertCurrent);
           if (context.scope.key !== scope.key || context.scope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
           return context;
@@ -712,15 +715,39 @@ export function createKeyringRuntimeFactory(
               const journal = createNativeSignedRecordView(signedRecords,{keyring,assertCurrent:guard},scope.walletFingerprint,{index,type,address:scope.address},scope.network);
               const recent = await journal.activities(); guard();
               const saved = await activityHistory.load(scope, guard); guard();
-              return { scope, locals: recent.records, saved: { ...saved, truncated: saved.truncated || recent.truncated } };
+              const inventory = await tokens.load({ walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
+                address: scope.address, network: scope.network.id, chainId: scope.network.chainId,
+                registrationHash: scope.network.registrationHash }, guard); guard();
+              return { scope, locals: recent.records, assets: inventory.items,
+                saved: { ...saved, truncated: saved.truncated || recent.truncated } };
+            },
+            async observeLocal(local, assertCurrent, signal) {
+              const { hash, chainId, address, walletFingerprint } = local;
+              const { scope, guard } = await activityContext(assertCurrent);
+              if (chainId !== scope.network.chainId || address !== scope.address || walletFingerprint !== scope.walletFingerprint)
+                throw new KeyringRuntimeError('CANCELLED');
+              if (!dependencies.observeActivity) throw new KeyringRuntimeError('NOT_READY');
+              const observe = dependencies.observeActivity;
+              try {
+                const result = await observeRetainedEvmTransaction(signedRecords, { keyring, assertCurrent: guard },
+                  scope.network.chainId, scope.address, hash,
+                  expected => observe(scope.network, expected, signal, guard), guard);
+                guard(); return result.observation;
+              } catch (error) {
+                if (signedRecords.requiresReopen) {
+                  try { await lock(); } catch { /* The poisoned storage owner must reopen. */ }
+                  throw new KeyringRuntimeError('CLEANUP_FAILED');
+                }
+                throw error;
+              }
             },
             async saveCache(scope, candidates, assertCurrent) {
-              const { guard } = await checkActivityContext(scope, assertCurrent);
-              await activityHistory.saveCache(scope, candidates, guard);
+              const { scope: checkedScope, guard } = await checkActivityContext(scope, assertCurrent);
+              await activityHistory.saveCache(checkedScope, candidates, guard);
             },
             async saveView(scope, view, assertCurrent) {
-              const { guard } = await checkActivityContext(scope, assertCurrent);
-              await activityHistory.saveView(scope, view, guard);
+              const { scope: checkedScope, guard } = await checkActivityContext(scope, assertCurrent);
+              await activityHistory.saveView(checkedScope, view, guard);
             },
           },
           transfers: {
