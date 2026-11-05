@@ -1,11 +1,11 @@
 const http = require('node:http');
 const { Buffer } = require('node:buffer');
 const { timingSafeEqual } = require('node:crypto');
-const { QUOTE_EARLY_REJECTIONS } = require('./http-contract.ts');
+const { QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE } = require('./http-contract.ts');
 const { POST_ROUTES } = require('./post-fixtures.ts');
 const { createPostState, postSnapshot, handlePostRoute } = require('./post-server.cjs');
 
-const QUOTE_ROUTES = QUOTE_EARLY_REJECTIONS.map(({ route }) => route);
+const QUOTE_ROUTES = [...QUOTE_EARLY_REJECTIONS.map(({ route }) => route), STALLED_QUOTE_ROUTE];
 const HELD_ROUTES = Object.freeze(['before', 'body', 'oversize', ...QUOTE_ROUTES]);
 const ROUTES = Object.freeze(['exact', 'identify', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
   'before', 'before-ready', 'before-closed', 'body', 'body-closed', 'oversize', 'oversize-closed',
@@ -23,7 +23,7 @@ async function createHttpFixture() {
       if (active) active.invalid++;
       response.writeHead(400); response.end(); return;
     }
-    const quote = /^\/([0-9a-f]{32})\/(quote-(?:non-ok|oversize))\/api\/v2\/tickers\/currency$/.exec(request.url);
+    const quote = /^\/([0-9a-f]{32})\/(quote-(?:non-ok|oversize|stalled))\/api\/v2\/tickers\/currency$/.exec(request.url);
     const match = quote ?? /^\/([0-9a-f]{32})\/([a-z-]+)\?q=exact$/.exec(request.url);
     if (!match || !equal(match[1], active.token) || ![...ROUTES, ...POST_ROUTES].includes(match[2]) ||
         QUOTE_ROUTES.includes(match[2]) !== !!quote) {
@@ -78,7 +78,9 @@ async function createHttpFixture() {
     if (route.endsWith('-closed')) { wait(() => state.closed[route.slice(0, -7)] === true); return; }
     if (HELD_ROUTES.includes(route)) {
       let selfClosed = false;
-      const timeout = setTimeout(() => { selfClosed = true; response.destroy(); }, 7000);
+      // The production quote deadline is eight seconds. Server retirement
+      // must be later and can never count as proof that the client cancelled.
+      const timeout = setTimeout(() => { selfClosed = true; response.destroy(); }, route === STALLED_QUOTE_ROUTE ? 12_000 : 7000);
       let interval;
       response.once('close', () => {
         clearTimeout(timeout); clearInterval(interval);
@@ -97,9 +99,13 @@ async function createHttpFixture() {
         }, 5);
       }
       if (quote) {
-        const { status, length } = QUOTE_EARLY_REJECTIONS.find((entry) => entry.route === route);
+        const { status, length } = QUOTE_EARLY_REJECTIONS.find((entry) => entry.route === route) ?? { status: 200, length: '64' };
         response.writeHead(status, { 'Content-Type': 'application/json', 'Content-Length': length, 'Cache-Control': 'no-store' });
-        response.flushHeaders();
+        // Foundation may withhold the response callback until a body byte
+        // arrives. Only the stall case withholds every byte; the two early
+        // refusals must see headers while the connection is still held open.
+        if (route === STALLED_QUOTE_ROUTE) response.flushHeaders();
+        else response.write('{');
       }
       notify(); return;
     }
