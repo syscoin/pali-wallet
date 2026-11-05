@@ -57,7 +57,7 @@ function parseAssetValue(info: IAssetInfo, precision?: number): BigNumber {
   if (info.valueStr) {
     if (typeof info.valueStr !== 'string' || info.valueStr.length > 256)
       return invalid();
-    const value = info.valueStr.split(' ')[0];
+    const value = info.valueStr.split(' ')[0]!;
     if (!/^-?\d{1,78}(?:\.\d{1,8})?$/.test(value)) return invalid();
     return BigNumber.from(parseUnits(value, d)).mul(
       BigNumber.from(10).pow(8 - d)
@@ -94,7 +94,7 @@ export function formatSyscoinTokenAmount(
     const divisor = BigNumber.from(10).pow(8 - places);
     const rounded = amount.add(divisor.div(2)).div(divisor);
     const [whole, fraction = ''] = formatUnits(rounded, places).split('.');
-    return places ? `${whole}.${fraction.padEnd(places, '0')}` : whole;
+    return places ? `${whole}.${fraction.padEnd(places, '0')}` : whole!;
   } catch {
     return null;
   }
@@ -129,7 +129,7 @@ export const getSyscoinIntentAmount = (
       ? (transaction as any).accountAssetTransfers
       : [];
     if (accountTransfers.length > 0) {
-      const transfer = accountTransfers.reduce((selected, current) =>
+      const transfer = accountTransfers.reduce((selected: any, current: any) =>
         compareNormalizedTransferValues(current, selected) > 0
           ? current
           : selected
