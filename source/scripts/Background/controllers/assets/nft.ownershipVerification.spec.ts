@@ -1,3 +1,4 @@
+import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 import { Interface } from 'ethers/abi';
 import { JsonRpcProvider } from 'ethers/providers';
 import http from 'http';
@@ -362,6 +363,36 @@ it.each([false, true])(
   }
 );
 
+it.each([[99], [99, 99, 99]].map((balances) => ({ balances })))(
+  'falls back to individual ERC1155 reads for a wrong-length batch $balances',
+  async ({ balances }) => {
+    const runner = runner1155(new Map([['7', BigInt(3)]]));
+    const call = runner.call;
+    const methods: string[] = [];
+    runner.call = async (tx) => {
+      const { name } = abi1155.parseTransaction({ data: tx.data! })!;
+      methods.push(name);
+      return name === 'balanceOfBatch'
+        ? abi1155.encodeFunctionResult(name, [balances])
+        : call(tx);
+    };
+
+    expect(
+      await verifyERC1155OwnershipHelper(CONTRACT, OWNER, ['7', '8'], runner)
+    ).toEqual([
+      { tokenId: '7', balance: 3, rawBalance: '3', verified: true },
+      { tokenId: '8', balance: 0, rawBalance: '0', verified: true },
+    ]);
+    expect(methods).toEqual([
+      'balanceOf',
+      'balanceOfBatch',
+      'balanceOf',
+      'balanceOf',
+    ]);
+    expect(runner.calls).toEqual(['42', '7', '8']);
+  }
+);
+
 it('reads the enumerable interface and limits ERC721 discovery to ten entries', async () => {
   const abi = new Interface([
     'function supportsInterface(bytes4) view returns (bool)',
@@ -417,6 +448,127 @@ it.each([
       await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], runner)
     ).toEqual([{ tokenId: '7', balance: 1, verified: true }]);
     expect(runner.calls).toEqual(['42', '7']);
+  }
+);
+
+function sdkRunner721(
+  probe: Pick<JsonRpcError, 'error'> | { result: string } | Error,
+  status = 200
+) {
+  const url = 'https://rpc.invalid';
+  const provider = new CustomJsonRpcProvider(
+    new AbortController().signal,
+    url,
+    1
+  );
+  const calls: string[] = [];
+  jest.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+    const request = JSON.parse(String(init?.body));
+    expect(input).toBe(url);
+    expect(request).toMatchObject({
+      jsonrpc: '2.0',
+      method: 'eth_call',
+      params: [{ to: CONTRACT, data: expect.any(String) }, 'latest'],
+    });
+    const decoded = abi721.parseTransaction(request.params[0])!;
+    const tokenId = decoded.args[0].toString();
+    calls.push(tokenId);
+    if (tokenId === '42' && probe instanceof Error) throw probe;
+    const response =
+      tokenId === '42'
+        ? probe
+        : { result: abi721.encodeFunctionResult('ownerOf', [OWNER]) };
+    return {
+      ok: status === 200,
+      status,
+      json: async () => ({ jsonrpc: '2.0', id: request.id, ...response }),
+    } as Response;
+  });
+  return { provider, calls };
+}
+
+it.each([
+  { code: 3, message: 'execution reverted', data: '0x' },
+  {
+    code: -32000,
+    message: 'execution reverted: ERC721: invalid token ID',
+    data: abi721.encodeErrorResult('Error', ['ERC721: invalid token ID']),
+  },
+  {
+    code: 3,
+    message: 'execution reverted',
+    data: abi721.encodeErrorResult('ERC721NonexistentToken', [42]),
+  },
+])(
+  'accepts raw execution revert evidence through the installed SDK provider ($code)',
+  async (error) => {
+    const { provider, calls } = sdkRunner721({ error });
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], provider)
+    ).toEqual([{ tokenId: '7', balance: 1, verified: true }]);
+    expect(calls).toEqual(['42', '7']);
+  }
+);
+
+it.each([
+  {
+    label: 'transport rejection',
+    probe: new Error('execution reverted'),
+  },
+  {
+    label: 'HTTP failure with a revert-shaped body',
+    probe: { error: { code: 3, message: 'execution reverted', data: '0x' } },
+    status: 429,
+  },
+  {
+    label: 'rate-limited JSON-RPC error with data',
+    probe: { error: { code: -32000, message: 'rate limited', data: '0x' } },
+  },
+  {
+    label: 'revert wording with an incompatible RPC code',
+    probe: {
+      error: { code: -32603, message: 'execution reverted', data: '0x' },
+    },
+  },
+  {
+    label: 'execution revert without data',
+    probe: { error: { code: 3, message: 'execution reverted' } },
+  },
+  {
+    label: 'execution revert with malformed Error(string)',
+    probe: {
+      error: { code: 3, message: 'execution reverted', data: '0x08c379a0' },
+    },
+  },
+  {
+    label: 'oversized execution revert data',
+    probe: {
+      error: {
+        code: 3,
+        message: 'execution reverted',
+        data: `0xdeadbeef${'00'.repeat(4096)}`,
+      },
+    },
+  },
+  {
+    label: 'execution panic',
+    probe: {
+      error: {
+        code: 3,
+        message: 'execution reverted',
+        data: abi721.encodeErrorResult('Panic', [17]),
+      },
+    },
+  },
+  { label: 'malformed ABI result', probe: { result: '0x' } },
+])(
+  'does not admit $label through the installed SDK provider',
+  async ({ probe, status }) => {
+    const { provider, calls } = sdkRunner721(probe, status);
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], provider)
+    ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+    expect(calls).toEqual(['42']);
   }
 );
 

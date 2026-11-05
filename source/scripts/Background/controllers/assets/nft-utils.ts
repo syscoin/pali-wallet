@@ -1,15 +1,53 @@
+import { AbiCoder } from 'ethers/abi';
 import { Contract } from 'ethers/contract';
-import { hexlify, isCallException } from 'ethers/utils';
+import { hexlify, isCallException, isHexString } from 'ethers/utils';
 
-import type { ContractRunner } from 'ethers/providers';
-
+type ContractRunner = NonNullable<Contract['runner']>;
 export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
   Pick<ContractRunner, 'resolveName'>;
+
+const MAX_REVERT_HEX_LENGTH = 2 + 4096 * 2;
+
+/** Normalize an explicit raw eth_call execution revert for the ethers ABI. */
+export function normalizeNftExecutionRevert(
+  error: unknown,
+  tx: Parameters<NftReadRunner['call']>[0]
+): Error | undefined {
+  if (
+    error === null ||
+    typeof error !== 'object' ||
+    !('code' in error) ||
+    (error.code !== 3 && error.code !== -32000) ||
+    !('message' in error) ||
+    typeof error.message !== 'string' ||
+    !/^execution reverted(?:$|:)/i.test(error.message) ||
+    !('data' in error) ||
+    typeof error.data !== 'string' ||
+    error.data.length > MAX_REVERT_HEX_LENGTH ||
+    !isHexString(error.data, true) ||
+    typeof tx.to !== 'string' ||
+    typeof tx.data !== 'string'
+  ) {
+    return undefined;
+  }
+  return AbiCoder.getBuiltinCallException(
+    'call',
+    { to: tx.to, data: tx.data },
+    error.data
+  );
+}
 
 const readContract = (address: string, abi: string[], runner: NftReadRunner) =>
   new Contract(address, abi, {
     provider: null,
-    call: runner.call.bind(runner),
+    async call(tx) {
+      try {
+        return await runner.call(tx);
+      } catch (error) {
+        // CustomJsonRpcProvider preserves RPC code and data on plain Errors.
+        throw normalizeNftExecutionRevert(error, tx) ?? error;
+      }
+    },
     resolveName: runner.resolveName?.bind(runner),
   });
 
@@ -76,10 +114,10 @@ async function hasNegativeNftProbe(
   try {
     if (tokenStandard === 'ERC-1155') {
       return (
-        (await contract.balanceOf(ownerAddress, invalidTokenId)) === BigInt(0)
+        (await contract.balanceOf!(ownerAddress, invalidTokenId)) === BigInt(0)
       );
     }
-    await contract.ownerOf(invalidTokenId);
+    await contract.ownerOf!(invalidTokenId);
     return false;
   } catch (error) {
     return tokenStandard === 'ERC-721' && isExplicitOwnerOfRevert(error);
@@ -114,7 +152,7 @@ async function supportsInterface(
   interfaceId: string
 ): Promise<boolean> {
   try {
-    return await contract.supportsInterface(interfaceId);
+    return await contract.supportsInterface!(interfaceId);
   } catch {
     return false;
   }
@@ -146,7 +184,7 @@ export async function verifyERC721OwnershipHelper(
       const batch = tokenIds.slice(i, i + batchSize);
       const promises = batch.map(async (tokenId) => {
         try {
-          const owner = await contract.ownerOf(tokenId);
+          const owner = await contract.ownerOf!(tokenId);
           return {
             tokenId,
             isOwner: owner.toLowerCase() === ownerAddress.toLowerCase(),
@@ -174,8 +212,8 @@ export async function verifyERC721OwnershipHelper(
     }
 
     return results;
-  } catch (error) {
-    console.error('[NFT Utils] Error verifying ERC-721 ownership:', error);
+  } catch {
+    console.error('[NFT Utils] ERC-721 ownership check failed');
     return unverifiedHoldings(tokenIds);
   }
 }
@@ -200,28 +238,31 @@ export async function verifyERC1155OwnershipHelper(
 
     try {
       const accounts = new Array(tokenIds.length).fill(ownerAddress);
-      const balances = await contract.balanceOfBatch(accounts, tokenIds);
+      const balances = await contract.balanceOfBatch!(accounts, tokenIds);
+      if (balances.length !== tokenIds.length) {
+        throw new Error('Invalid ERC-1155 batch balance length');
+      }
 
       return tokenIds.map((tokenId, index) =>
         verifiedErc1155Holding(tokenId, balances[index])
       );
-    } catch (error) {
-      console.error('[NFT Utils] ERC-1155 batch balance read failed:', error);
+    } catch {
+      console.error('[NFT Utils] ERC-1155 batch balance read failed');
     }
 
     // Only a failed batch after the negative probe can fall back.
     const results: INftTokenInfo[] = [];
     for (const tokenId of tokenIds) {
       try {
-        const balance = await contract.balanceOf(ownerAddress, tokenId);
+        const balance = await contract.balanceOf!(ownerAddress, tokenId);
         results.push(verifiedErc1155Holding(tokenId, balance));
       } catch {
         results.push({ tokenId, balance: 0, verified: false });
       }
     }
     return results;
-  } catch (error) {
-    console.error('[NFT Utils] Error verifying ERC-1155 ownership:', error);
+  } catch {
+    console.error('[NFT Utils] ERC-1155 ownership check failed');
     return unverifiedHoldings(tokenIds);
   }
 }
@@ -253,7 +294,7 @@ export async function discoverNftTokens(
       );
       if (isEnumerable) {
         // Get balance first
-        const balance = await contract.balanceOf(ownerAddress);
+        const balance = await contract.balanceOf!(ownerAddress);
         const tokenCount = Number(balance);
 
         if (tokenCount === 0) {
@@ -271,7 +312,7 @@ export async function discoverNftTokens(
         // Fetch tokens in parallel (up to limit)
         const promises = [];
         for (let i = 0; i < limit; i++) {
-          promises.push(contract.tokenOfOwnerByIndex(ownerAddress, i));
+          promises.push(contract.tokenOfOwnerByIndex!(ownerAddress, i));
         }
 
         const tokenIds = await Promise.all(promises);
@@ -294,8 +335,8 @@ export async function discoverNftTokens(
           hasMore: tokenCount > limit,
         };
       }
-    } catch (error) {
-      console.error('[NFT Utils] ERC-721 enumeration failed:', error);
+    } catch {
+      console.error('[NFT Utils] ERC-721 enumeration failed');
     }
   }
 
@@ -314,35 +355,4 @@ export async function discoverNftTokens(
     tokens: [],
     requiresManualEntry: true,
   };
-}
-
-/**
- * Parse user input for token IDs
- * Supports formats: "1", "1,2,3", "1-5", "1,3-5,10"
- */
-export function parseTokenIdInput(input: string): string[] {
-  const tokenIds: Set<string> = new Set();
-
-  // Remove whitespace and split by comma
-  const parts = input.replace(/\s/g, '').split(',');
-
-  for (const part of parts) {
-    if (part.includes('-')) {
-      // Handle range
-      const [start, end] = part.split('-').map((n) => parseInt(n));
-      if (!isNaN(start) && !isNaN(end) && start <= end) {
-        for (let i = start; i <= end; i++) {
-          tokenIds.add(i.toString());
-        }
-      }
-    } else {
-      // Handle single number
-      const num = parseInt(part);
-      if (!isNaN(num)) {
-        tokenIds.add(num.toString());
-      }
-    }
-  }
-
-  return Array.from(tokenIds);
 }
