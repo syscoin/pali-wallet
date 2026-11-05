@@ -17,10 +17,11 @@ described below before any protected-storage admission.
 The native workflow also runs a standalone Swift loopback with the selected
 Xcode and the focused Android JVM loopback after Expo prebuild. Each writes
 `public-snapshot-loopback.log` to the existing platform artifact directory.
-These are host checks for the bounded native snapshot producers. App activation
-remains disabled. The observed public snapshots exceed the 2 MiB ceiling.
-Bounded anchor RPCs, exact-owner result delivery through the bridge, and device
-memory qualification are separate gates.
+The loopbacks cover both the bounded snapshot GET and the fixed public anchor
+RPC POSTs. Anchor blocks are limited to 4 MiB and scalars to 64 KiB. App
+activation remains disabled. The observed public snapshots exceed the normal
+2 MiB ceiling. Exact-owner bridge delivery, shared URL canonicalization and
+device memory qualification are separate gates.
 
 ## Offline native HTTP companion
 

@@ -16,10 +16,14 @@ import okhttp3.CookieJar
 import okhttp3.EventListener
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
+import okio.BufferedSink
 
 internal enum class PaliPublicSnapshotError(val code: String) {
   BUSY("PUBLIC_SNAPSHOT_BUSY"),
@@ -41,10 +45,88 @@ internal interface PaliPublicSnapshotOperation {
   fun cancel()
 }
 
+/**
+ * The trusted host captures the saved endpoint and canonical shared-registry pool address.
+ * Block and root come from its validated public snapshot. Reply verification stays shared.
+ */
+internal class PaliPublicSnapshotAnchor private constructor(
+  val endpoint: HttpUrl,
+  private val poolAddress: String,
+  blockNumber: Long,
+  private val root: String
+) {
+  enum class Read(val wire: String) {
+    CHAIN_ID("eth_chainId"),
+    BLOCK("eth_getBlockByNumber"),
+    // Fixed read-only calldata matching the shared verifySnapshotAnchor ABI.
+    NEXT_INDEX("0xfc7e9c6f"),
+    LAST_ROOT("0xba70f757"),
+    LEVELS("0x4ecf518b"),
+    DENOMINATION("0x8bca6d16"),
+    KNOWN_ROOT("0x6d9833e3")
+  }
+
+  constructor(registeredEndpoint: String, poolAddress: String, blockNumber: Long, root: String) :
+    this(httpsEndpoint(registeredEndpoint), poolAddress, blockNumber, root)
+
+  private val blockTag: String
+
+  init {
+    if (!isHex(poolAddress, 40) || !isHex(root, 64) || blockNumber !in 1L..MAX_SAFE_INTEGER) invalid()
+    blockTag = "0x" + blockNumber.toString(16)
+  }
+
+  fun body(read: Read, id: Long): RequestBody {
+    if (id !in 1L..MAX_SAFE_INTEGER) invalid()
+    val method: String
+    val params: String
+    when (read) {
+      Read.CHAIN_ID -> {
+        method = read.wire
+        params = "[]"
+      }
+      Read.BLOCK -> {
+        method = read.wire
+        params = """["$blockTag",false]"""
+      }
+      else -> {
+        method = "eth_call"
+        val data = if (read == Read.KNOWN_ROOT) read.wire + root.drop(2) else read.wire
+        val tag = if (read == Read.KNOWN_ROOT) "latest" else blockTag
+        params = """[{"to":"$poolAddress","data":"$data"},"$tag"]"""
+      }
+    }
+    val bytes = """{"jsonrpc":"2.0","id":$id,"method":"$method","params":$params}""".toByteArray(Charsets.US_ASCII)
+    return object : RequestBody() {
+      override fun contentType() = JSON
+      override fun contentLength() = bytes.size.toLong()
+      override fun isOneShot() = true
+      override fun writeTo(sink: BufferedSink) { sink.write(bytes) }
+    }
+  }
+
+  private companion object {
+    private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
+    private val JSON = "application/json".toMediaType()
+
+    private fun httpsEndpoint(endpoint: String): HttpUrl = endpoint.toHttpUrlOrNull()?.takeIf {
+      it.isHttps && it.username.isEmpty() && it.password.isEmpty() && it.fragment == null
+    } ?: invalid()
+
+    private fun isHex(value: String, digits: Int) =
+      value.length == digits + 2 && value.startsWith("0x") &&
+        (2 until value.length).all { value[it] in '0'..'9' || value[it] in 'a'..'f' }
+
+    private fun invalid(): Nothing = throw PaliPublicSnapshotException(PaliPublicSnapshotError.INVALID)
+  }
+}
+
 /** Internal transport only. The shared engine still parses and verifies every result. */
 internal object PaliPublicSnapshotDownloader {
   private const val SNAPSHOT_BYTES = 2 * 1024 * 1024
   private const val PROGRESS_BYTES = 4 * 1024
+  private const val ANCHOR_BLOCK_BYTES = 4 * 1024 * 1024
+  private const val ANCHOR_SCALAR_BYTES = 64 * 1024
   private const val READ_BYTES = 16 * 1024
   private const val PULL_BYTES = 64 * 1024
   private const val TIMEOUT_SECONDS = 25L
@@ -120,18 +202,31 @@ internal object PaliPublicSnapshotDownloader {
     TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS), SNAPSHOT_BYTES, completion
   )
 
+  fun prepareAnchor(
+    anchor: PaliPublicSnapshotAnchor,
+    read: PaliPublicSnapshotAnchor.Read,
+    id: Long,
+    completion: (Result<Unit>) -> Unit
+  ): PaliPublicSnapshotOperation = reserve(
+    anchor.endpoint, TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS),
+    if (read == PaliPublicSnapshotAnchor.Read.BLOCK) ANCHOR_BLOCK_BYTES else ANCHOR_SCALAR_BYTES,
+    completion, postBody = anchor.body(read, id)
+  )
+
   private fun reserve(
     endpoint: HttpUrl,
     timeoutNanos: Long,
     snapshotLimit: Int,
     completion: (Result<Unit>) -> Unit,
-    observer: EventListener? = null
+    observer: EventListener? = null,
+    postBody: RequestBody? = null
   ): PaliPublicSnapshotOperation {
     val deadline = System.nanoTime() + timeoutNanos
     val operation = synchronized(lock) {
       if (active != null || pendingCompletions >= MAX_PENDING_COMPLETIONS) fail(PaliPublicSnapshotError.BUSY)
       if (expired(deadline)) fail(PaliPublicSnapshotError.TIMEOUT)
-      val request = Request.Builder().url(endpoint).get()
+      val request = Request.Builder().url(endpoint)
+        .apply { if (postBody != null) post(postBody) else get() }
         .header("Accept-Encoding", "identity")
         .header("Accept", "application/json")
         .header("Cache-Control", "no-store, no-cache")
@@ -152,9 +247,10 @@ internal object PaliPublicSnapshotDownloader {
   }
 
   private fun admittedLength(response: Response, snapshotLimit: Int): Int {
-    val limit = when (response.code) {
-      200 -> snapshotLimit
-      202 -> PROGRESS_BYTES
+    val limit = when {
+      response.request.method == "POST" && response.isSuccessful -> snapshotLimit
+      response.request.method == "GET" && response.code == 200 -> snapshotLimit
+      response.request.method == "GET" && response.code == 202 -> PROGRESS_BYTES
       else -> fail(PaliPublicSnapshotError.UNAVAILABLE)
     }
     if (response.headers("Transfer-Encoding").isNotEmpty()) fail(PaliPublicSnapshotError.INVALID)

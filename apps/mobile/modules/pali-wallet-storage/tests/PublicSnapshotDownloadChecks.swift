@@ -22,6 +22,101 @@ private final class Completion: @unchecked Sendable {
 
 @main
 private enum PublicSnapshotDownloadChecks {
+  private static func checkAnchorPosts(
+    port: UInt16, host: PaliPublicSnapshotDownloader, heldReady: String
+  ) throws {
+    typealias Anchor = PaliPublicSnapshotAnchor
+    let pool = "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936"
+    let root = "0x" + String(repeating: "ab", count: 32)
+    let block = 9_117_609
+    for endpoint in ["http://rpc.example/", "http://127.0.0.1:1234/", "https://user:password@rpc.example/",
+                     "https://rpc.example/#fragment", "/relative"] {
+      do {
+        _ = try Anchor(registeredEndpoint: endpoint, poolAddress: pool, blockNumber: block, root: root)
+        preconditionFailure("invalid captured endpoint admitted")
+      } catch PaliPublicSnapshotDownloadError.invalid {}
+    }
+    let endpoint = "https://rpc.example/v1/path?route=ethereum"
+    _ = try Anchor(registeredEndpoint: endpoint, poolAddress: pool, blockNumber: block, root: root)
+    for (address, number, value) in [("0xarbitrary", block, root), (pool, 0, root), (pool, block, "0x1")] {
+      do {
+        _ = try Anchor(registeredEndpoint: endpoint, poolAddress: address, blockNumber: number, root: value)
+        preconditionFailure("invalid anchor facts admitted")
+      } catch PaliPublicSnapshotDownloadError.invalid {}
+    }
+
+    func prepare(_ path: String, _ read: Anchor.Read, _ id: Int) throws -> (PaliPublicSnapshotOperation, Completion) {
+      let anchor = try Anchor.loopback(port: port, path: path, poolAddress: pool, blockNumber: block, root: root)
+      let result = Completion()
+      let handle = try host.prepareAnchor(anchor, read: read, id: id) { result.accept($0) }
+      return (handle, result)
+    }
+
+    do {
+      _ = try prepare("anchor-must-not-hit", .chainId, 0)
+      preconditionFailure("invalid correlation ID admitted")
+    } catch PaliPublicSnapshotDownloadError.invalid {}
+    let (cancelled, wakeup) = try prepare("anchor-must-not-hit", .chainId, 1)
+    cancelled.cancel()
+    cancelled.start()
+    guard case .failure(.cancelled) = wakeup.wait() else { preconditionFailure("late POST after retirement") }
+
+    let reads: [Anchor.Read] = [.chainId, .block, .nextIndex, .lastRoot, .levels, .denomination, .block, .knownRoot]
+    for (index, read) in (reads + reads).enumerated() {
+      let id = index + 1
+      let (handle, result) = try prepare("anchor/captured?route=eth", read, id)
+      handle.start()
+      handle.start()
+      try result.wait().get()
+      let prefix = Data(#"{"jsonrpc":"2.0","id":\#(id),"result":"0x1"}"#.utf8)
+      let count = read == .block ? 4 * 1024 * 1024 : 64 * 1024
+      let info = try handle.info()
+      precondition(info.status == 200 && info.byteCount == count)
+      do {
+        _ = try host.prepare(pool: "eth-1") { _ in preconditionFailure("GET competed with retained anchor") }
+        preconditionFailure("retained anchor did not occupy shared slot")
+      } catch PaliPublicSnapshotDownloadError.busy {}
+      var position = 0
+      while let chunk = try handle.pull() {
+        let expected = position == 0 ? prefix : Data()
+        precondition(chunk.count == min(count - position, 64 * 1024))
+        precondition(chunk.starts(with: expected) && chunk.dropFirst(expected.count).withUnsafeBytes { $0.allSatisfy { $0 == 32 } })
+        position += chunk.count
+      }
+      precondition(position == count && result.count == 1)
+    }
+
+    for (path, read, error) in [
+      ("scalar-length", Anchor.Read.chainId, PaliPublicSnapshotDownloadError.tooLarge),
+      ("block-length", .block, .tooLarge),
+      ("scalar-chunked", .knownRoot, .tooLarge),
+      ("redirect", .chainId, .unavailable),
+      ("challenge", .chainId, .unavailable),
+      ("encoded", .chainId, .invalid),
+      ("dropped", .chainId, .unavailable),
+    ] {
+      let (handle, result) = try prepare("anchor/" + path, read, 17)
+      handle.start()
+      guard case .failure(let actual) = result.wait(), actual == error else {
+        preconditionFailure("unexpected anchor failure for \(path)")
+      }
+    }
+    let (held, result) = try prepare("anchor/held", .chainId, 18)
+    held.start()
+    let waitUntil = DispatchTime.now() + 3
+    while !FileManager.default.fileExists(atPath: heldReady) {
+      precondition(DispatchTime.now() < waitUntil, "fixture did not receive the held POST")
+      Thread.sleep(forTimeInterval: 0.005)
+    }
+    held.cancel()
+    guard case .failure(.cancelled) = result.wait() else { preconditionFailure("active POST did not cancel") }
+    do {
+      _ = try held.pull()
+      preconditionFailure("cancelled POST exposed a body")
+    } catch PaliPublicSnapshotDownloadError.cancelled {}
+    print("fixed anchor POST wire envelopes, block/scalar caps, one slot, cancellation and refusal")
+  }
+
   static func main() throws {
     let port = UInt16(CommandLine.arguments[1])!
     let host = PaliPublicSnapshotDownloader.shared
@@ -38,6 +133,8 @@ private enum PublicSnapshotDownloadChecks {
       } catch PaliPublicSnapshotDownloadError.invalid {}
     }
     print("registered pool allowlist")
+
+    try checkAnchorPosts(port: port, host: host, heldReady: CommandLine.arguments[2])
 
     let qualifiedLimit = 16 * 1024 * 1024
     func prepare(

@@ -1,5 +1,6 @@
 package org.syscoin.pali.storage
 
+import java.io.BufferedReader
 import java.io.ByteArrayOutputStream
 import java.io.Closeable
 import java.io.IOException
@@ -20,6 +21,7 @@ import okhttp3.Call
 import okhttp3.EventListener
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
+import okhttp3.RequestBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -29,6 +31,36 @@ private const val QUALIFIED_BYTES = 16 * 1024 * 1024
 private const val PULL_BYTES = 64 * 1024
 private const val FIXTURE_TIMEOUT_MS = 5000L
 private val LARGE_BODIES = mapOf("/medium" to 6_693_325, "/large" to 13_106_047, "/limit" to QUALIFIED_BYTES)
+
+private typealias AnchorRead = PaliPublicSnapshotAnchor.Read
+
+private const val ANCHOR_POOL = "0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936"
+private const val ANCHOR_BLOCK = 9_117_609L
+private val ANCHOR_ROOT = "0x" + "ab".repeat(32)
+private const val ANCHOR_PATH = "/anchor/captured?route=eth"
+private const val ANCHOR_HELD = "/anchor/held"
+private const val BLOCK_CAP = 4 * 1024 * 1024
+private const val SCALAR_CAP = 64 * 1024
+private val ANCHOR_FAILURES = mapOf(
+  "/anchor/scalar-length" to PaliPublicSnapshotError.TOO_LARGE,
+  "/anchor/block-length" to PaliPublicSnapshotError.TOO_LARGE,
+  "/anchor/chunked" to PaliPublicSnapshotError.INVALID,
+  "/anchor/encoded" to PaliPublicSnapshotError.INVALID,
+  "/anchor/redirect" to PaliPublicSnapshotError.UNAVAILABLE,
+  "/anchor/retry" to PaliPublicSnapshotError.UNAVAILABLE,
+  "/anchor/challenge" to PaliPublicSnapshotError.UNAVAILABLE,
+  "/anchor/dropped" to PaliPublicSnapshotError.UNAVAILABLE
+)
+private val ANCHOR_WIRE = listOf(
+  "eth_chainId" to "[]",
+  "eth_getBlockByNumber" to """["0x8b1fa9",false]""",
+  "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0xfc7e9c6f"},"0x8b1fa9"]""",
+  "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0xba70f757"},"0x8b1fa9"]""",
+  "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x4ecf518b"},"0x8b1fa9"]""",
+  "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x8bca6d16"},"0x8b1fa9"]""",
+  "eth_getBlockByNumber" to """["0x8b1fa9",false]""",
+  "eth_call" to """[{"to":"$ANCHOR_POOL","data":"0x6d9833e3${"ab".repeat(32)}"},"latest"]"""
+)
 
 class PaliPublicSnapshotDownloadTest {
   @Test
@@ -124,6 +156,84 @@ class PaliPublicSnapshotDownloadTest {
     }
   }
 
+  @Test
+  fun boundedOwnedAnchorPostsOverRealOkHttp() {
+    for (url in listOf(
+      "http://rpc.example/", "http://127.0.0.1:1234/", "https://user:password@rpc.example/",
+      "https://rpc.example/#fragment", "/relative"
+    )) {
+      expectThrow(PaliPublicSnapshotError.INVALID) {
+        PaliPublicSnapshotAnchor(url, ANCHOR_POOL, ANCHOR_BLOCK, ANCHOR_ROOT)
+      }
+    }
+    val url = "https://rpc.example/v1/path?route=ethereum"
+    assertEquals(url, PaliPublicSnapshotAnchor(url, ANCHOR_POOL, ANCHOR_BLOCK, ANCHOR_ROOT).endpoint.toString())
+    for ((address, block, root) in listOf(
+      Triple("0xarbitrary", ANCHOR_BLOCK, ANCHOR_ROOT),
+      Triple(ANCHOR_POOL, 0L, ANCHOR_ROOT),
+      Triple(ANCHOR_POOL, ANCHOR_BLOCK, "0x1")
+    )) {
+      expectThrow(PaliPublicSnapshotError.INVALID) { PaliPublicSnapshotAnchor(url, address, block, root) }
+    }
+
+    SnapshotLoopback().use { server ->
+      // Only tests bypass HTTPS when constructing the captured endpoint.
+      val constructor = PaliPublicSnapshotAnchor::class.java.getDeclaredConstructor(
+        HttpUrl::class.java, String::class.java, java.lang.Long.TYPE, String::class.java
+      ).apply { isAccessible = true }
+      fun prepare(path: String, read: AnchorRead, id: Long): Pair<PaliPublicSnapshotOperation, CompletableFuture<Result<Unit>>> {
+        val anchor = constructor.newInstance(server.url(path), ANCHOR_POOL, ANCHOR_BLOCK, ANCHOR_ROOT)
+        val pending = CompletableFuture<Result<Unit>>()
+        val handle = PaliPublicSnapshotDownloader.prepareAnchor(anchor, read, id) { check(pending.complete(it)) }
+        return handle to pending
+      }
+      fun await(pending: CompletableFuture<Result<Unit>>) = pending.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+
+      expectThrow(PaliPublicSnapshotError.INVALID) { prepare("/must-not-hit", AnchorRead.CHAIN_ID, 0) }
+      val (beforeStart, cancelled) = prepare("/must-not-hit", AnchorRead.CHAIN_ID, 1)
+      beforeStart.cancel()
+      beforeStart.start()
+      assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(await(cancelled)))
+
+      val reads = listOf(AnchorRead.CHAIN_ID, AnchorRead.BLOCK, AnchorRead.NEXT_INDEX, AnchorRead.LAST_ROOT,
+        AnchorRead.LEVELS, AnchorRead.DENOMINATION, AnchorRead.BLOCK, AnchorRead.KNOWN_ROOT)
+      for ((index, read) in (reads + reads).withIndex()) {
+        val id = index + 1
+        val (handle, pending) = prepare(ANCHOR_PATH, read, id.toLong())
+        handle.start()
+        handle.start()
+        await(pending).getOrThrow()
+        expectThrow(PaliPublicSnapshotError.BUSY) {
+          PaliPublicSnapshotDownloader.prepare("eth-1") { error("GET competed with retained anchor") }
+        }
+        val prefix = anchorReply(id)
+        checkBody(handle, if (id == 1) 202 else 200, if (read == AnchorRead.BLOCK) BLOCK_CAP else SCALAR_CAP) {
+          prefix.getOrElse(it) { 32.toByte() }
+        }
+      }
+
+      for ((path, expected) in ANCHOR_FAILURES) {
+        val read = if (path == "/anchor/block-length") AnchorRead.BLOCK else AnchorRead.CHAIN_ID
+        val (handle, pending) = prepare(path, read, 17)
+        handle.start()
+        assertEquals(path, expected, errorCode(await(pending)))
+      }
+      val (held, pending) = prepare(ANCHOR_HELD, AnchorRead.CHAIN_ID, 18)
+      held.start()
+      assertTrue(server.heldAnchor.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+      held.cancel()
+      assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(await(pending)))
+      expectThrow(PaliPublicSnapshotError.CANCELLED) { held.pull() }
+
+      assertEquals(emptyList<String>(), server.violations.toList())
+      // The server counts request lines, including any repeated request without a body.
+      assertEquals(
+        ANCHOR_FAILURES.keys.associateWith { 1 } + mapOf(ANCHOR_PATH to 16, ANCHOR_HELD to 1),
+        server.requests.toMap()
+      )
+    }
+  }
+
   private fun checkBlockedDeadlineDelivery(server: SnapshotLoopback) {
     val firstEntered = CountDownLatch(1)
     val secondEntered = CountDownLatch(1)
@@ -209,7 +319,7 @@ class PaliPublicSnapshotDownloadTest {
   ): Pair<PaliPublicSnapshotOperation, CompletableFuture<Result<Unit>>> {
     val method = PaliPublicSnapshotDownloader::class.java.getDeclaredMethod(
       "reserve", HttpUrl::class.java, java.lang.Long.TYPE, java.lang.Integer.TYPE,
-      Function1::class.java, EventListener::class.java
+      Function1::class.java, EventListener::class.java, RequestBody::class.java
     ).apply { isAccessible = true }
     val pending = CompletableFuture<Result<Unit>>()
     val complete: (Result<Unit>) -> Unit = {
@@ -224,7 +334,7 @@ class PaliPublicSnapshotDownloadTest {
     val handle = try {
       method.invoke(
         PaliPublicSnapshotDownloader, server.url(path), TimeUnit.MILLISECONDS.toNanos(timeoutMs),
-        snapshotLimit, complete, observer
+        snapshotLimit, complete, observer, null
       )
     } catch (error: InvocationTargetException) {
       throw error.targetException
@@ -235,12 +345,16 @@ class PaliPublicSnapshotDownloadTest {
 
 private fun patternByte(position: Int): Byte = (position / 16384 % 251).toByte()
 
+private fun anchorReply(id: Int): ByteArray =
+  """{"jsonrpc":"2.0","id":$id,"result":"0x1"}""".toByteArray(Charsets.US_ASCII)
+
 private class SnapshotLoopback : Closeable {
   private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
   private val workers = Executors.newCachedThreadPool()
   val requests = ConcurrentHashMap<String, Int>()
   val violations = CopyOnWriteArrayList<String>()
   val heldBody = CountDownLatch(1)
+  val heldAnchor = CountDownLatch(1)
   val deadlineBody = CountDownLatch(1)
   val bodyStarted = ConcurrentHashMap.newKeySet<String>()
   val refusedFraming = linkedMapOf(
@@ -278,7 +392,7 @@ private class SnapshotLoopback : Closeable {
       val line = input.readLine() ?: return
       val parts = line.split(' ')
       val path = parts.getOrNull(1).orEmpty()
-      requests.merge(path, 1) { total, next -> total + next }
+      val arrival = requests.merge(path, 1) { total, next -> total + next }!!
       val headers = mutableMapOf<String, String>()
       while (true) {
         val header = input.readLine() ?: break
@@ -286,13 +400,19 @@ private class SnapshotLoopback : Closeable {
         headers[header.substringBefore(':').lowercase()] = header.substringAfter(':').trim()
       }
       val output = socket.getOutputStream()
-      if (parts.firstOrNull() != "GET" || parts.getOrNull(2) != "HTTP/1.1" || path !in paths ||
+      val post = path == ANCHOR_PATH || path == ANCHOR_HELD || path in ANCHOR_FAILURES
+      val method = if (post) "POST" else "GET"
+      if (parts.firstOrNull() != method || parts.getOrNull(2) != "HTTP/1.1" || (!post && path !in paths) ||
         headers["accept-encoding"] != "identity" ||
         headers["user-agent"] != "PaliWallet" || headers["cache-control"] != "no-store, no-cache" ||
         listOf("cookie", "authorization", "referer", "proxy-authorization").any(headers::containsKey)
       ) {
         violations.add("Unexpected request policy for $path")
         output.headers(400, "Content-Length: 0")
+        return
+      }
+      if (post) {
+        serveAnchor(path, arrival, headers, input, output)
         return
       }
       refusedFraming[path]?.let { framing ->
@@ -348,6 +468,61 @@ private class SnapshotLoopback : Closeable {
       // The refusing client can close mid-write or before sending headers on a follow-up connection.
     } catch (_: InterruptedException) {
       Thread.currentThread().interrupt()
+    }
+  }
+
+  private fun serveAnchor(
+    path: String, arrival: Int, headers: Map<String, String>, input: BufferedReader, output: OutputStream
+  ) {
+    val id = when (path) {
+      ANCHOR_PATH -> arrival
+      ANCHOR_HELD -> 18
+      else -> 17
+    }
+    val (method, params) = when (path) {
+      ANCHOR_PATH -> ANCHOR_WIRE[(id - 1) % ANCHOR_WIRE.size]
+      "/anchor/block-length" -> ANCHOR_WIRE[1]
+      else -> ANCHOR_WIRE[0]
+    }
+    val expected = """{"jsonrpc":"2.0","id":$id,"method":"$method","params":$params}"""
+    val received = CharArray(expected.length)
+    var offset = 0
+    if (headers["content-type"] == "application/json" && headers["transfer-encoding"] == null &&
+      headers["content-length"] == expected.length.toString()
+    ) {
+      while (offset < received.size) {
+        val count = input.read(received, offset, received.size - offset)
+        if (count <= 0) break
+        offset += count
+      }
+    }
+    if (offset != received.size || String(received) != expected) {
+      violations.add("Unexpected anchor envelope for $path")
+      output.headers(400, "Content-Length: 0")
+      return
+    }
+
+    val cap = if (method == "eth_getBlockByNumber") BLOCK_CAP else SCALAR_CAP
+    when (path) {
+      ANCHOR_PATH -> {
+        val body = ByteArray(cap) { 32 }
+        anchorReply(id).copyInto(body)
+        output.body(if (id == 1) 202 else 200, body, "Set-Cookie: blocked=1")
+      }
+      "/anchor/scalar-length", "/anchor/block-length" -> output.headers(200, "Content-Length: ${cap + 1}")
+      "/anchor/chunked" -> output.headers(200, "Transfer-Encoding: chunked")
+      "/anchor/encoded" -> output.headers(200, "Content-Length: 0", "Content-Encoding: gzip")
+      "/anchor/redirect" -> output.headers(307, "Content-Length: 0", "Location: /must-not-hit")
+      "/anchor/retry" -> output.headers(503, "Content-Length: 0", "Retry-After: 0")
+      "/anchor/challenge" -> output.headers(401, "Content-Length: 0", "WWW-Authenticate: Basic realm=\"fixture\"")
+      "/anchor/dropped" -> Unit
+      ANCHOR_HELD -> {
+        output.headers(200, "Content-Length: 100")
+        output.write(1)
+        output.flush()
+        heldAnchor.countDown()
+        Thread.sleep(2500)
+      }
     }
   }
 

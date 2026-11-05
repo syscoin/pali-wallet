@@ -1,10 +1,13 @@
 import gzip
 import http.server
+import json
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from collections import Counter
+from pathlib import Path
 
 CAP = 2 * 1024 * 1024
 QUALIFIED = 16 * 1024 * 1024
@@ -17,6 +20,22 @@ PATHS = {
     '/oversize-qualified-length', '/oversize-qualified-chunked',
 } | LARGE_BODIES.keys()
 requests = Counter()
+posts = Counter()
+post_routes = Counter()
+ANCHOR_PATH = '/anchor/captured?route=eth'
+POST_FAILURES = {'scalar-length', 'block-length', 'scalar-chunked', 'redirect', 'challenge', 'encoded', 'dropped', 'held'}
+BLOCK_CAP = 4 * 1024 * 1024
+SCALAR_CAP = 64 * 1024
+TAG = hex(9_117_609)
+POOL = '0x47ce0c6ed5b0ce3d3a51fdb1c52dc66a7c3c2936'
+ANCHOR_READS = [
+    ('eth_chainId', []),
+    ('eth_getBlockByNumber', [TAG, False]),
+    *[('eth_call', [{'to': POOL, 'data': selector}, TAG])
+      for selector in ('0xfc7e9c6f', '0xba70f757', '0x4ecf518b', '0x8bca6d16')],
+    ('eth_getBlockByNumber', [TAG, False]),
+    ('eth_call', [{'to': POOL, 'data': '0x6d9833e3' + 'ab' * 32}, 'latest']),
+] * 2
 violations = []
 
 
@@ -45,6 +64,61 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if extra:
             self.wfile.write(b'1\r\nx\r\n')
         self.wfile.write(b'0\r\n\r\n')
+
+    def do_POST(self):
+        post_routes[self.path] += 1
+        self.connection.settimeout(3)
+        try:
+            assert self.path == ANCHOR_PATH or self.path in {'/anchor/' + name for name in POST_FAILURES}
+            assert not any(self.headers.get(h) for h in ('Cookie', 'Authorization', 'Referer', 'Proxy-Authorization'))
+            assert self.headers.get('Accept-Encoding') == 'identity'
+            assert self.headers.get('User-Agent') == 'PaliWallet'
+            assert self.headers.get('Cache-Control') == 'no-store, no-cache'
+            assert self.headers.get('Content-Type') == 'application/json'
+            length = int(self.headers.get('Content-Length', '0'))
+            assert 0 < length <= 256 and not self.headers.get('Transfer-Encoding')
+            body = json.loads(self.rfile.read(length))
+            request_id = body['id']
+            assert type(request_id) is int
+            posts[(self.path, request_id)] += 1
+            if self.path == ANCHOR_PATH:
+                assert 1 <= request_id <= len(ANCHOR_READS)
+                method, params = ANCHOR_READS[request_id - 1]
+            else:
+                route = self.path.removeprefix('/anchor/')
+                assert request_id == (18 if route == 'held' else 17)
+                method, params = {
+                    'block-length': ANCHOR_READS[1], 'scalar-chunked': ANCHOR_READS[7],
+                }.get(route, ANCHOR_READS[0])
+            assert body == {'jsonrpc': '2.0', 'id': request_id, 'method': method, 'params': params}
+            cap = BLOCK_CAP if method == 'eth_getBlockByNumber' else SCALAR_CAP
+            if self.path == ANCHOR_PATH:
+                reply = json.dumps({'jsonrpc': '2.0', 'id': request_id, 'result': '0x1'}, separators=(',', ':')).encode()
+                self.start(200, cap, **{'Set-Cookie': 'blocked=1'})
+                self.wfile.write(reply.ljust(cap))
+            elif route.endswith('-length'):
+                self.start(200, cap + 1)
+            elif route == 'scalar-chunked':
+                self.chunked(extra=True, size=cap)
+            elif route == 'redirect':
+                self.start(307, 0, Location='/anchor-must-not-hit')
+            elif route == 'challenge':
+                self.start(401, 0, **{'WWW-Authenticate': 'Basic realm="fixture"'})
+            elif route == 'encoded':
+                self.start(200, 0, **{'Content-Encoding': 'gzip'})
+            elif route == 'dropped':
+                self.close_connection = True
+            elif route == 'held':
+                self.start(200, 100)
+                self.wfile.write(b'x')
+                self.wfile.flush()
+                held_ready.touch()
+                time.sleep(1)
+        except (AssertionError, ValueError, KeyError, TimeoutError) as error:
+            violations.append((self.path, str(error) or 'wrong wire request'))
+            self.start(400, 0)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def do_GET(self):
         requests[self.path] += 1
@@ -121,14 +195,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             pass
 
 
-with http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+with tempfile.TemporaryDirectory() as fixture, http.server.ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+    held_ready = Path(fixture) / 'anchor-held-ready'
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        subprocess.run([sys.argv[1], str(server.server_address[1])], check=True, timeout=25)
+        subprocess.run([sys.argv[1], str(server.server_address[1]), str(held_ready)], check=True, timeout=25)
     finally:
         server.shutdown()
         thread.join()
     assert not violations, violations
     assert requests == Counter(dict.fromkeys(PATHS, 1)), requests
-    print(f'{sum(requests.values())} exact loopback GETs. No redirect, credentials, or retry.')
+    expected_posts = {(ANCHOR_PATH, request_id): 1 for request_id in range(1, len(ANCHOR_READS) + 1)}
+    expected_posts.update({('/anchor/' + path, 18 if path == 'held' else 17): 1 for path in POST_FAILURES})
+    assert posts == Counter(expected_posts), posts
+    assert post_routes == Counter(path for path, _ in expected_posts), post_routes
+    print(f'{sum(requests.values())} exact loopback GETs and {sum(posts.values())} exact POSTs. No redirect, credentials, or retry.')
