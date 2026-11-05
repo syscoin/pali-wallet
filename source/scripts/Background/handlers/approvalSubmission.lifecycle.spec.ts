@@ -26,6 +26,17 @@ describe('transaction approval submission lifetime', () => {
     slip44: 60,
     sessionGeneration: 6,
   };
+  const utxoPsbt = {
+    psbt: 'reviewed-psbt',
+    assets: '[]',
+    sentryFeeAuthorization: 'fee',
+  };
+  const utxoContext = {
+    ...approvedContext,
+    account: { ...approvedContext.account, xpub: 'approved-xpub' },
+    kind: 'syscoin',
+    slip44: 57,
+  };
   const source = () => ({
     id: 'approval-client',
     url: `chrome-extension://pali/external.html?data=${encodeURIComponent(
@@ -82,6 +93,9 @@ describe('transaction approval submission lifetime', () => {
         removeListener: jest.fn(),
       },
     };
+    (chrome as any).tabs = {
+      onUpdated: { addListener: jest.fn(), removeListener: jest.fn() },
+    };
     (chrome.storage.local.remove as jest.Mock).mockImplementation(
       (_keys, callback) => callback?.()
     );
@@ -89,11 +103,14 @@ describe('transaction approval submission lifetime', () => {
       (_type, listener) => (workerMessage = listener)
     );
     (self as any).removeEventListener = jest.fn();
+    (self as any).clients = { get: jest.fn(async () => source()) };
     handleMasterControllerResponses({
       wallet: {
         sendAndSaveEthTransaction: send,
         submitSmartAccountExecution: send,
         registerSmartAccountOnChain: send,
+        signSendAndSaveTransaction: send,
+        signSyscoinPsbt: send,
       },
     } as any);
     controllerMessage = messages.at(-1);
@@ -109,7 +126,9 @@ describe('transaction approval submission lifetime', () => {
       host: data.host,
       eventName: config.popupEventName!,
       route: config.popupRoute!,
-      data: { approvedContext },
+      data: request.startsWith('sys_sign')
+        ? { ...utxoPsbt, approvedContext: utxoContext }
+        : { approvedContext },
       signal,
     });
     await new Promise(setImmediate);
@@ -139,17 +158,184 @@ describe('transaction approval submission lifetime', () => {
     );
     return { pending };
   };
-  const submit = (method: string, sourceSender: any = sender()) =>
+  const submit = (
+    method: string,
+    sourceSender: any = sender(),
+    params: any[] = [{}]
+  ) =>
     new Promise<any>((resolve) => {
       controllerMessage(
         {
           type: 'CONTROLLER_ACTION',
-          data: { methods: ['wallet', method], params: [{}] },
+          data: { methods: ['wallet', method], params },
         },
         sourceSender,
         resolve
       );
     });
+
+  it('accepts an ordinary internal UTXO confirmation with no external approval', async () => {
+    const input = { ordinaryWalletSend: true, psbt: utxoPsbt };
+    await submit(
+      'signSendAndSaveTransaction',
+      { id: 'pali', url: 'chrome-extension://pali/send/confirm' },
+      [input]
+    );
+    expect(send).toHaveBeenCalledWith(input);
+  });
+
+  it.each([
+    ['UTXO_SUBMISSION_NOT_DISPATCHED', true],
+    ['UTXO_SUBMISSION_UNKNOWN', false],
+  ] as const)(
+    'preserves the SDK %s classification and canonical txid',
+    async (code, transactionNotBroadcast) => {
+      const txid = 'ab'.repeat(32);
+      send.mockRejectedValueOnce(
+        Object.assign(new Error('Fixture submission'), {
+          code,
+          transactionNotBroadcast,
+          txid,
+        })
+      );
+      await expect(
+        submit(
+          'signSendAndSaveTransaction',
+          { id: 'pali', url: 'chrome-extension://pali/app.html#/send/confirm' },
+          [{ ordinaryWalletSend: true, psbt: utxoPsbt }]
+        )
+      ).resolves.toMatchObject({
+        success: false,
+        error: { code, transactionNotBroadcast, txid },
+      });
+    }
+  );
+
+  it('rejects changed PSBT, wrong mode and unbound external approval before a signer can start', async () => {
+    const { pending } = await begin(undefined, 'sys_sign');
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    for (const request of [
+      submit('signSyscoinPsbt', sender(), [
+        { psbt: { ...utxoPsbt, assets: '[1]' } },
+      ]),
+      submit('signSendAndSaveTransaction', sender(), [
+        { psbt: utxoPsbt, ordinaryWalletSend: true },
+      ]),
+      submit('signSyscoinPsbt', { ...sender(), documentId: 'other-document' }, [
+        { psbt: utxoPsbt },
+      ]),
+    ])
+      await expect(request).resolves.toMatchObject({
+        success: false,
+        error: { transactionNotBroadcast: true },
+      });
+    expect(send).not.toHaveBeenCalled();
+    closeWindow(9);
+    await rejected;
+  });
+
+  it('does not enter the signer when the approver reloads during its initial document check', async () => {
+    const { pending } = await begin(undefined, 'sys_sign');
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    let finish!: (client: unknown) => void;
+    const held = new Promise((resolve) => {
+      finish = resolve;
+    });
+    const getClient = (self as any).clients.get as jest.Mock;
+    getClient.mockReturnValueOnce(held).mockResolvedValueOnce(undefined);
+    const submitting = submit('signSyscoinPsbt', sender(), [
+      { psbt: utxoPsbt },
+    ]);
+    await new Promise(setImmediate);
+    expect(getClient).toHaveBeenCalledTimes(1);
+    expect(send).not.toHaveBeenCalled();
+    const onNavigation = (chrome.tabs.onUpdated.addListener as jest.Mock).mock
+      .calls[0][0];
+    onNavigation(19, { status: 'loading', url: source().url });
+    await rejected;
+    finish(source());
+    await expect(submitting).resolves.toMatchObject({
+      success: false,
+      error: { transactionNotBroadcast: true },
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['sys_sign', 'signSyscoinPsbt', 4001],
+    ['sys_signAndSend', 'signSendAndSaveTransaction', -32603],
+  ] as const)(
+    'retires the synchronous %s owner before held work can dispatch',
+    async (request, method, code) => {
+      const abort = new AbortController();
+      const { pending } = await begin(abort.signal, request);
+      const rejected = expect(pending).rejects.toMatchObject({ code });
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const dispatch = jest.fn();
+      send.mockImplementation(async (input, assertCurrent) => {
+        expect(input).toEqual({ psbt: utxoPsbt, expectedContext: utxoContext });
+        assertCurrent();
+        enter();
+        await held;
+        assertCurrent();
+        return dispatch();
+      });
+      const submitted = submit(method, sender(), [
+        { psbt: utxoPsbt, expectedContext: { rpcUrl: 'attacker' } },
+      ]);
+      await entered;
+      abort.abort();
+      await rejected;
+      release();
+      await expect(submitted).resolves.toMatchObject({
+        success: false,
+        error: { transactionNotBroadcast: true },
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['sys_sign', 'signSyscoinPsbt', 4001],
+    ['sys_signAndSend', 'signSendAndSaveTransaction', -32603],
+  ] as const)(
+    'handles %s retirement after the signer or sender returns',
+    async (request, method, code) => {
+      const { pending } = await begin(undefined, request);
+      const rejected = expect(pending).rejects.toMatchObject({ code });
+      let enter!: () => void;
+      let acknowledge!: (value: any) => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const result = new Promise<any>((resolve) => {
+        acknowledge = resolve;
+      });
+      send.mockImplementation((_input, assertCurrent) => {
+        assertCurrent();
+        enter();
+        return result;
+      });
+      const submitted = submit(method, sender(), [{ psbt: utxoPsbt }]);
+      await entered;
+      closeWindow(9);
+      await rejected;
+      const acknowledgement = { txid: 'ab'.repeat(32) };
+      acknowledge(acknowledgement);
+      if (request === 'sys_sign') {
+        await expect(submitted).resolves.toMatchObject({ success: false });
+      } else {
+        await expect(submitted).resolves.toEqual(acknowledgement);
+      }
+    }
+  );
 
   it('healthy control marks an admitted send as uncertain when its popup then closes', async () => {
     const { pending } = await begin();

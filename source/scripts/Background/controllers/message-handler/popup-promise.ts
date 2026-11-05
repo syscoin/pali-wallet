@@ -1,7 +1,11 @@
 import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
-import { watchApprovalSubmission } from '../../handlers/approvalSubmission';
+import {
+  utxoDappApprovalExpired,
+  watchApprovalSubmission,
+  type DappUtxoReview,
+} from '../../handlers/approvalSubmission';
 import {
   bindPersonalSignApproval,
   capturePersonalSignApproval,
@@ -145,6 +149,29 @@ const openApprovalPopup = async (
 
   // URLSearchParams in createPopup escapes the payload without changing it.
   data = data || {};
+  const { psbt, assets, sentryFeeAuthorization, approvedContext } =
+    data as Partial<DappUtxoReview['psbt']> & {
+      approvedContext?: DappUtxoReview['context'];
+    };
+  const utxoMethod =
+    route === MethodRoute.SignTx
+      ? 'signSendAndSaveTransaction'
+      : route === MethodRoute.SignPsbt
+      ? 'signSyscoinPsbt'
+      : undefined;
+  const utxoReview:
+    | Omit<DappUtxoReview, 'assertCurrent' | 'checkDocument'>
+    | undefined =
+    utxoMethod &&
+    approvedContext &&
+    typeof psbt === 'string' &&
+    typeof assets === 'string'
+      ? {
+          method: utxoMethod,
+          context: approvedContext,
+          psbt: { psbt, assets, sentryFeeAuthorization },
+        }
+      : undefined;
 
   let popup = null;
   let approvalClientId: string | null = null;
@@ -152,7 +179,11 @@ const openApprovalPopup = async (
   let approvalTabId: number | undefined;
   let submissionStarted = false;
   let stopWatchingSubmission: (() => void) | undefined;
-  let unbindPersonalSign: (() => void) | undefined;
+  let unbindApprovalDocument: (() => void) | undefined;
+  let utxoApprovalRetired = false;
+  let utxoDocumentCheck = 0;
+  let utxoNavigationPending = false;
+  let onAbort: (() => void) | null = null;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -165,7 +196,8 @@ const openApprovalPopup = async (
   ) => {
     if (
       registrationSender.tab?.windowId !== popup?.id ||
-      (personalSignApproval && registrationSender.tab?.id === undefined) ||
+      ((personalSignApproval || utxoReview) &&
+        registrationSender.tab?.id === undefined) ||
       (approvalDocumentId &&
         registrationSender.documentId !== approvalDocumentId)
     ) {
@@ -221,18 +253,32 @@ const openApprovalPopup = async (
         return;
       const available =
         (!approvalClientId || approvalClientId === source.id) &&
+        (!utxoReview || (!utxoApprovalRetired && !signal?.aborted)) &&
         (!personalSignApproval || personalSignApproval.isCurrent());
       if (available) {
         approvalClientId = source.id;
-        if (personalSignApproval && approvalDocumentId && !unbindPersonalSign) {
-          const clientId = source.id;
-          const approverIsLive = () =>
-            isApprovalClientLive(clientId, approvalId, route);
-          const unbind = bindPersonalSignApproval(
-            approvalDocumentId,
-            personalSignApproval,
-            approverIsLive
-          );
+        const clientId = source.id;
+        const approverIsLive = () =>
+          isApprovalClientLive(clientId, approvalId, route);
+        if (
+          (personalSignApproval || utxoReview) &&
+          approvalDocumentId &&
+          !unbindApprovalDocument
+        ) {
+          const unbind =
+            personalSignApproval &&
+            bindPersonalSignApproval(
+              approvalDocumentId,
+              personalSignApproval,
+              approverIsLive
+            );
+          const retire = () => {
+            if (utxoReview) {
+              utxoApprovalRetired = true;
+              onAbort?.();
+            }
+            personalSignApproval?.retire();
+          };
           const onNavigation = (
             tabId: number,
             change: chrome.tabs.TabChangeInfo
@@ -240,19 +286,25 @@ const openApprovalPopup = async (
             if (tabId !== approvalTabId) return;
             if (change.url) {
               const destination = readApprovalUrl(change.url, approvalId);
-              if (!destination || !isApprovalRoute(destination, route))
-                personalSignApproval.retire();
-            } else if (change.status === 'loading') {
+              if (!destination || !isApprovalRoute(destination, route)) {
+                retire();
+                return;
+              }
+            }
+            if (change.status === 'loading' && (!change.url || utxoReview)) {
               // Chrome can report loading during a same-document transition.
               // Resolve the originally enrolled client before treating it as a reload.
+              const check = ++utxoDocumentCheck;
+              utxoNavigationPending = Boolean(utxoReview);
               void approverIsLive().then((live) => {
-                if (!live) personalSignApproval.retire();
+                if (!live) retire();
+                if (check === utxoDocumentCheck) utxoNavigationPending = false;
               });
             }
           };
-          unbindPersonalSign = () => {
+          unbindApprovalDocument = () => {
             chrome.tabs.onUpdated.removeListener(onNavigation);
-            unbind();
+            unbind?.();
           };
           chrome.tabs.onUpdated.addListener(onNavigation);
         }
@@ -261,7 +313,8 @@ const openApprovalPopup = async (
             route === MethodRoute.SendCalls ||
             route === MethodRoute.SmartAccount ||
             route === MethodRoute.SmartAccountModules ||
-            route === MethodRoute.SignTx) &&
+            route === MethodRoute.SignTx ||
+            utxoReview) &&
           approvalDocumentId &&
           !stopWatchingSubmission
         )
@@ -273,6 +326,26 @@ const openApprovalPopup = async (
             route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
               ? (data as { approvedContext?: IEvmTransactionContext })
                   .approvedContext
+              : undefined,
+            utxoReview
+              ? {
+                  ...utxoReview,
+                  assertCurrent: () => {
+                    if (
+                      signal?.aborted ||
+                      utxoApprovalRetired ||
+                      utxoNavigationPending
+                    )
+                      throw utxoDappApprovalExpired();
+                  },
+                  async checkDocument() {
+                    if (
+                      !(await isRequestDocumentLive(sender)) ||
+                      !(await approverIsLive())
+                    )
+                      throw utxoDappApprovalExpired();
+                  },
+                }
               : undefined
           );
         onClientBound?.();
@@ -319,7 +392,6 @@ const openApprovalPopup = async (
   return new Promise((resolve, reject) => {
     let windowRemovalHandler: any = null;
     let resolved = false;
-    let onAbort: (() => void) | null = null;
     let livenessInterval: ReturnType<typeof setInterval> | null = null;
     let checkingLiveness = false;
     let bindingDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -327,7 +399,7 @@ const openApprovalPopup = async (
 
     // Clean up function to remove listeners
     const cleanup = () => {
-      unbindPersonalSign?.();
+      unbindApprovalDocument?.();
       stopWatchingSubmission?.();
       stopWatchingSubmission = undefined;
       if (livenessInterval) clearInterval(livenessInterval);

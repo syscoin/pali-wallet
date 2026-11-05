@@ -1,9 +1,12 @@
 import { IMasterController } from 'scripts/Background/controllers';
+import { isExternalWalletUrl } from 'utils/extensionContexts';
 import { extractErrorMessage } from 'utils/index';
 
 import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
+  captureDappUtxoSubmission,
+  utxoDappApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
@@ -108,11 +111,22 @@ const controllerErrorResponse = (error: any) => {
     recipientBlockSeverity?: string;
     transactionHash?: string;
     transactionNotBroadcast?: boolean;
+    txid?: string;
   } = {};
   if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
   if (error?.code === 'HARDWARE_REQUEST_CANCELLED')
     submission.code = error.code;
+  if (
+    (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
+      error.transactionNotBroadcast === true) ||
+    (error?.code === 'UTXO_SUBMISSION_UNKNOWN' &&
+      error.transactionNotBroadcast === false)
+  ) {
+    submission.code = error.code;
+    if (typeof error.txid === 'string' && /^[a-f0-9]{64}$/.test(error.txid))
+      submission.txid = error.txid;
+  }
   if (
     error?.code === 'PALI_TOKEN_RECIPIENT_BLOCKED' &&
     error?.transactionNotBroadcast === true &&
@@ -215,6 +229,7 @@ export const handleMasterControllerResponses = (
 
       if (typeof targetMethod === 'function') {
         const finishSubmission = beginApprovalSubmission(sender, methods);
+        let assertUtxoSignatureCurrent: (() => void) | undefined;
         Promise.resolve()
           .then(async () => {
             if (personalSignApproval)
@@ -228,6 +243,24 @@ export const handleMasterControllerResponses = (
             const dappApproval = sendsEvm
               ? captureDappEvmSubmission(sender)
               : undefined;
+            const utxoMethod =
+              route.length === 2 &&
+              route[0] === 'wallet' &&
+              (route[1] === 'signSyscoinPsbt' ||
+                route[1] === 'signSendAndSaveTransaction')
+                ? route[1]
+                : undefined;
+            const utxoApproval = utxoMethod
+              ? captureDappUtxoSubmission(sender, utxoMethod, params?.[0])
+              : undefined;
+            if (utxoApproval) await utxoApproval.checkDocument();
+            else if (
+              utxoMethod &&
+              (utxoMethod === 'signSyscoinPsbt' ||
+                isExternalWalletUrl(sender.url) ||
+                params?.[0]?.ordinaryWalletSend !== true)
+            )
+              throw utxoDappApprovalExpired();
             const argumentsForCall = sendsEvm
               ? [
                   params?.[0],
@@ -245,8 +278,13 @@ export const handleMasterControllerResponses = (
                     }),
                   },
                 ]
+              : utxoApproval
+              ? [utxoApproval.input, utxoApproval.assertCurrent]
+              : utxoMethod
+              ? [params[0]]
               : params;
             // Always execute the method; never attempt to send functions over messaging
+            utxoApproval?.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
                 ? [
@@ -272,9 +310,14 @@ export const handleMasterControllerResponses = (
               assertSetupAdmission();
             if (personalSignApproval)
               await personalSignApproval.checkDocument();
+            if (utxoMethod === 'signSyscoinPsbt' && utxoApproval) {
+              await utxoApproval.checkDocument();
+              assertUtxoSignatureCurrent = utxoApproval.assertCurrent;
+            }
             return response;
           })
           .then((response) => {
+            assertUtxoSignatureCurrent?.();
             if (personalSignApproval) {
               assertSetupAdmission();
               personalSignApproval.assertCurrent();

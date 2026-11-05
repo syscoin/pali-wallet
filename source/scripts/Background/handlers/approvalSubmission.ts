@@ -1,11 +1,25 @@
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
+import type { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+
+export type DappUtxoReview = Readonly<{
+  assertCurrent: () => void;
+  checkDocument: () => Promise<void>;
+  context: IUtxoSigningContext;
+  method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
+  psbt: Readonly<{
+    assets: string;
+    psbt: string;
+    sentryFeeAuthorization?: string;
+  }>;
+}>;
 
 type Watch = {
   attempts: Set<object>;
   evmSend?: IEvmTransactionContext;
   notify: (possible: boolean) => void;
+  utxo?: DappUtxoReview;
 };
 const watches = new Map<string, Set<Watch>>();
 
@@ -13,7 +27,8 @@ const watches = new Map<string, Set<Watch>>();
 export const watchApprovalSubmission = (
   documentId: string,
   notify: Watch['notify'],
-  evmSend?: IEvmTransactionContext
+  evmSend?: IEvmTransactionContext,
+  utxo?: DappUtxoReview
 ): (() => void) => {
   const watch: Watch = {
     attempts: new Set(),
@@ -24,6 +39,16 @@ export const watchApprovalSubmission = (
         account: Object.freeze({ ...evmSend.account }),
       }),
     notify,
+    utxo:
+      utxo &&
+      Object.freeze({
+        ...utxo,
+        context: Object.freeze({
+          ...utxo.context,
+          account: Object.freeze({ ...utxo.context.account }),
+        }),
+        psbt: Object.freeze({ ...utxo.psbt }),
+      }),
   };
   const current = watches.get(documentId) || new Set<Watch>();
   current.add(watch);
@@ -31,6 +56,47 @@ export const watchApprovalSubmission = (
   return () => {
     current.delete(watch);
     if (!current.size) watches.delete(documentId);
+  };
+};
+
+export const utxoDappApprovalExpired = () =>
+  Object.assign(new Error('This transaction approval is no longer current.'), {
+    transactionNotBroadcast: true,
+  });
+
+/** Bind an exact reviewed PSBT to its enrolled browser document and method. */
+export const captureDappUtxoSubmission = (
+  sender: chrome.runtime.MessageSender,
+  method: DappUtxoReview['method'],
+  input: { psbt?: DappUtxoReview['psbt'] } | undefined
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find(
+    (candidate) => candidate.utxo
+  );
+  if (!watch?.utxo) return;
+  const review = watch.utxo;
+  const assertCurrent = () => {
+    if (!watches.get(documentId)?.has(watch)) throw utxoDappApprovalExpired();
+    review.assertCurrent();
+  };
+  assertCurrent();
+  if (
+    method !== review.method ||
+    input?.psbt?.psbt !== review.psbt.psbt ||
+    input.psbt.assets !== review.psbt.assets ||
+    input.psbt.sentryFeeAuthorization !== review.psbt.sentryFeeAuthorization
+  )
+    throw utxoDappApprovalExpired();
+  return {
+    assertCurrent,
+    async checkDocument() {
+      assertCurrent();
+      await review.checkDocument();
+      assertCurrent();
+    },
+    input: { psbt: review.psbt, expectedContext: review.context },
   };
 };
 
