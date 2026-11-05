@@ -1,11 +1,12 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
-import { Interface } from 'ethers/abi';
+import { AbiCoder, Interface } from 'ethers/abi';
 import { JsonRpcProvider } from 'ethers/providers';
 import http from 'http';
 import https from 'https';
 
 import {
   discoverNftTokens,
+  normalizeNftExecutionRevert,
   verifyERC1155OwnershipHelper,
   verifyERC721OwnershipHelper,
 } from './nft-utils';
@@ -494,6 +495,146 @@ it.each(['oversized', 'non-hex', 'accessor'] as const)(
     expect(readData).not.toHaveBeenCalled();
   }
 );
+
+it.each(['accessor', 'inherited'] as const)(
+  'rejects %s raw execution revert data before either ethers ABI decode',
+  async (kind) => {
+    const normalize = jest.spyOn(AbiCoder, 'getBuiltinCallException');
+    const makeError = jest.spyOn(Interface.prototype, 'makeError');
+    const oversized = abi721.encodeErrorResult('Error', ['x'.repeat(4096)]);
+    const readData = jest
+      .fn()
+      .mockReturnValueOnce('0x')
+      .mockReturnValue(oversized);
+    const error = Object.assign(
+      kind === 'inherited' ? Object.create({ data: '0x' }) : {},
+      { code: 3, message: 'execution reverted' }
+    );
+    if (kind === 'accessor')
+      Object.defineProperty(error, 'data', { get: readData });
+    const call = jest.fn(async () => {
+      if (call.mock.calls.length === 1) throw error;
+      return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+    });
+
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+    ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(normalize).not.toHaveBeenCalled();
+    expect(makeError).not.toHaveBeenCalled();
+    expect(readData).not.toHaveBeenCalled();
+  }
+);
+
+it('never re-enters a normalized code getter that changes bounded revert data', async () => {
+  const makeError = jest.spyOn(Interface.prototype, 'makeError');
+  const error = Object.assign(new Error('execution reverted'), { data: '0x' });
+  const readCode = jest.fn(() => {
+    if (readCode.mock.calls.length === 2)
+      error.data = abi721.encodeErrorResult('Error', ['x'.repeat(4096)]);
+    return 'CALL_EXCEPTION';
+  });
+  Object.defineProperty(error, 'code', { get: readCode });
+  const call = jest.fn(async () => {
+    if (call.mock.calls.length === 1) throw error;
+    return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+  });
+
+  expect(
+    await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+  ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+  expect(call).toHaveBeenCalledTimes(1);
+  expect(readCode).not.toHaveBeenCalled();
+  expect(makeError).not.toHaveBeenCalled();
+});
+
+it.each([
+  ['code', 'accessor'],
+  ['code', 'inherited'],
+  ['message', 'accessor'],
+  ['message', 'inherited'],
+] as const)('rejects raw %s evidence from an %s', async (field, kind) => {
+  const raw: Record<string, unknown> = {
+    code: 3,
+    message: 'execution reverted',
+    data: '0x',
+  };
+  const readField = jest.fn().mockReturnValue(raw[field]);
+  if (kind === 'inherited') {
+    Object.setPrototypeOf(raw, { [field]: raw[field] });
+    delete raw[field];
+  } else Object.defineProperty(raw, field, { get: readField });
+  const tx = { to: CONTRACT, data: abi721.encodeFunctionData('ownerOf', [42]) };
+  expect(normalizeNftExecutionRevert(raw, tx)).toBeUndefined();
+  expect(readField).not.toHaveBeenCalled();
+});
+
+it('a thrown descriptor trap cannot hand an unchecked exception to ethers', async () => {
+  const makeError = jest.spyOn(Interface.prototype, 'makeError');
+  const unchecked = Object.assign(new Error('execution reverted'), {
+    code: 'CALL_EXCEPTION',
+    data: abi721.encodeErrorResult('Error', ['x'.repeat(4096)]),
+  });
+  const error = new Proxy(unchecked, {
+    getOwnPropertyDescriptor() {
+      throw unchecked;
+    },
+  });
+  const call = jest.fn(async () => {
+    if (call.mock.calls.length === 1) throw error;
+    return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+  });
+  expect(
+    await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+  ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+  expect(call).toHaveBeenCalledTimes(1);
+  expect(makeError).not.toHaveBeenCalled();
+});
+
+it('the exported raw normalizer preserves the real call for one ethers decode', async () => {
+  const decode = jest.spyOn(AbiCoder, 'getBuiltinCallException');
+  const calldata = abi721.encodeFunctionData('ownerOf', [42]);
+  const data = abi721.encodeErrorResult('Error', ['ERC721: invalid token ID']);
+  const normalized = normalizeNftExecutionRevert(
+    { code: -32000, message: 'execution reverted: invalid token ID', data },
+    { to: CONTRACT, data: calldata }
+  );
+  expect(normalized).toMatchObject({
+    code: 'CALL_EXCEPTION',
+    action: 'call',
+    data,
+    transaction: { to: CONTRACT, data: calldata },
+  });
+  expect(decode).not.toHaveBeenCalled();
+  const call = jest.fn(async (tx: TransactionRequest) => {
+    if (call.mock.calls.length === 1) {
+      expect(tx.data).toBe(calldata);
+      tx.data = '0x';
+      throw normalized;
+    }
+    return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+  });
+  expect(
+    await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+  ).toEqual([{ tokenId: '7', balance: 1, verified: true }]);
+  expect(decode).toHaveBeenCalledTimes(1);
+});
+
+it('a plain CALL_EXCEPTION with null data cannot verify an NFT', async () => {
+  const decode = jest.spyOn(AbiCoder, 'getBuiltinCallException');
+  const call = jest.fn(async () => {
+    throw Object.assign(new Error('missing revert data'), {
+      code: 'CALL_EXCEPTION',
+      data: null,
+    });
+  });
+  expect(
+    await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+  ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+  expect(call).toHaveBeenCalledTimes(1);
+  expect(decode).not.toHaveBeenCalled();
+});
 
 function sdkRunner721(
   probe: Pick<JsonRpcError, 'error'> | { result: string } | Error,

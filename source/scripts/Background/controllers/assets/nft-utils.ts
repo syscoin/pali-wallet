@@ -1,10 +1,10 @@
-import { AbiCoder } from 'ethers/abi';
 import { Contract } from 'ethers/contract';
-import { hexlify, isCallException, isHexString } from 'ethers/utils';
+import { hexlify, isCallException, isHexString, makeError } from 'ethers/utils';
 
 type ContractRunner = NonNullable<Contract['runner']>;
 export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
   Pick<ContractRunner, 'resolveName'>;
+type NftReadTransaction = Parameters<NftReadRunner['call']>[0];
 
 const MAX_REVERT_HEX_LENGTH = 2 + 4096 * 2;
 
@@ -13,31 +13,57 @@ const isBoundedRevertData = (data: unknown): data is string =>
   data.length <= MAX_REVERT_HEX_LENGTH &&
   isHexString(data, true);
 
-/** Normalize an explicit raw eth_call execution revert for the ethers ABI. */
-export function normalizeNftExecutionRevert(
+const ownValue = (object: object, key: string): unknown => {
+  const property = Object.getOwnPropertyDescriptor(object, key);
+  return property && Object.prototype.hasOwnProperty.call(property, 'value')
+    ? property.value
+    : undefined;
+};
+
+function captureNftExecutionRevert(
   error: unknown,
-  tx: Parameters<NftReadRunner['call']>[0]
+  tx: NftReadTransaction,
+  acceptNormalized: boolean
 ): Error | undefined {
-  if (
-    error === null ||
-    typeof error !== 'object' ||
-    !('code' in error) ||
-    (error.code !== 3 && error.code !== -32000) ||
-    !('message' in error) ||
-    typeof error.message !== 'string' ||
-    !/^execution reverted(?:$|:)/i.test(error.message) ||
-    !('data' in error) ||
-    !isBoundedRevertData(error.data) ||
-    typeof tx.to !== 'string' ||
-    typeof tx.data !== 'string'
-  ) {
+  if (error === null || typeof error !== 'object') return undefined;
+  try {
+    const code = ownValue(error, 'code');
+    const normalized = acceptNormalized && code === 'CALL_EXCEPTION';
+    if (!normalized && code !== 3 && code !== -32000) return undefined;
+    const message = ownValue(error, 'message');
+    if (
+      typeof message !== 'string' ||
+      (!normalized && !/^execution reverted(?:$|:)/i.test(message))
+    )
+      return undefined;
+    const data = ownValue(error, 'data');
+    const { to, data: calldata } = tx;
+    if (
+      !isBoundedRevertData(data) ||
+      typeof to !== 'string' ||
+      typeof calldata !== 'string'
+    )
+      return undefined;
+    return makeError('execution reverted', 'CALL_EXCEPTION', {
+      action: 'call',
+      data,
+      transaction: { to, data: calldata },
+      invocation: null,
+      reason: null,
+      revert: null,
+    });
+  } catch {
+    // A proxy trap or malformed descriptor cannot supply a new exception to ethers.
     return undefined;
   }
-  return AbiCoder.getBuiltinCallException(
-    'call',
-    { to: tx.to, data: tx.data },
-    error.data
-  );
+}
+
+/** Normalize an explicit raw eth_call revert. The Contract decodes its ABI. */
+export function normalizeNftExecutionRevert(
+  error: unknown,
+  tx: NftReadTransaction
+): Error | undefined {
+  return captureNftExecutionRevert(error, tx, false);
 }
 
 const readContract = (address: string, abi: string[], runner: NftReadRunner) =>
@@ -45,22 +71,13 @@ const readContract = (address: string, abi: string[], runner: NftReadRunner) =>
     provider: null,
     async call(tx) {
       try {
-        return await runner.call(tx);
+        return await runner.call({ ...tx });
       } catch (error) {
-        if (isCallException(error)) {
-          // ethers re-reads data before ABI decoding. Its errors store data
-          // directly, so refuse inherited values and accessors.
-          const property = Object.getOwnPropertyDescriptor(error, 'data');
-          const data: unknown = property?.value;
-          if (
-            (property ? !('value' in property) : 'data' in error) ||
-            (data !== null && data !== undefined && !isBoundedRevertData(data))
-          )
-            throw new Error('Invalid NFT execution revert data');
-          throw error;
-        }
-        // CustomJsonRpcProvider preserves RPC code and data on plain Errors.
-        throw normalizeNftExecutionRevert(error, tx) ?? error;
+        // Ethers reclassifies errors and reads their data before ABI decoding.
+        throw (
+          captureNftExecutionRevert(error, tx, true) ??
+          new Error('NFT call failed')
+        );
       }
     },
     resolveName: runner.resolveName?.bind(runner),
