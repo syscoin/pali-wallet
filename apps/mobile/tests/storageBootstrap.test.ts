@@ -5,6 +5,8 @@ import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
+import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
+import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { openWalletStorage } from '../src/storage/coordinator.ts';
 import type { NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -116,6 +118,46 @@ test('new storage provisions once, verifies device key metadata, and reopens wit
     assert.equal(f.held, false);
   } finally {
     await f.cleanup();
+  }
+});
+
+test('the native storage coordinator exposes note backup to the real keyring across a cold reopen', async () => {
+  const f = await setup();
+  const phrase = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
+  const walletPassword = 'Public fixture wallet password 1!';
+  const backupPassword = 'Public fixture backup password 2!';
+  const note = { note: `tornado-eth-1-1-0x${'01'.repeat(62)}`, createdAt: 10 };
+  const current = () => undefined;
+  const codec = createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: current });
+  const factory = createKeyringRuntimeFactory({
+    ensureCryptoReady: async () => undefined,
+    openStorage: () => openWalletStorage(f.ports),
+  });
+  let runtime: KeyringRuntime | undefined;
+  let file: Uint8Array | undefined;
+  let exported: Uint8Array | undefined;
+  try {
+    runtime = await factory.open() as KeyringRuntime;
+    await runtime.session.importWallet(phrase, walletPassword);
+    assert.ok(runtime.openNoteBackup, 'The coordinator must pass the note store to its keyring owner');
+    const restore = await runtime.openNoteBackup(current);
+    file = await codec.encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes: [note] }, backupPassword);
+    const id = restore.begin();
+    assert.equal((await restore.prepareImport(id, file, backupPassword)).added, 1);
+    assert.equal((await restore.commitImport(id, walletPassword)).confirmed, true);
+    await runtime.storage.close();
+    assert.equal(f.held, false);
+    runtime = await factory.open() as KeyringRuntime;
+    assert.deepEqual(await runtime.session.unlock(walletPassword), { authenticated: true });
+    assert.ok(runtime.openNoteBackup);
+    const backup = await runtime.openNoteBackup(current);
+    const result = await backup.exportEncrypted(backup.begin(), walletPassword, backupPassword);
+    exported = result.bytes;
+    assert.deepEqual((await codec.decrypt(exported, backupPassword)).notes, [{ ...note, reconciliationRequired: true }]);
+  } finally {
+    file?.fill(0);
+    exported?.fill(0);
+    try { await runtime?.storage.close(); } finally { await f.cleanup(); }
   }
 });
 

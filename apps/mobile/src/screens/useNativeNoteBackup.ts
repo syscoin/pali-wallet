@@ -185,6 +185,7 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     } catch (cause) {
       if (foreground(owned)) {
         if (cause instanceof Error && cause.message === 'BACKUP_COMMIT_UNCONFIRMED') {
+          cancel();
           setStep({ phase: 'unconfirmed' });
           owned.owner.authority.lock();
         } else {

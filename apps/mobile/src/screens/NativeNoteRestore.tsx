@@ -23,6 +23,12 @@ type Props = {
   onBack(): void;
 };
 
+export function NoteRestoreUnconfirmedNotice({ reopen = false }: { reopen?: boolean }) {
+  return <Notice title="Restore could not be confirmed" body={reopen
+    ? 'Close and reopen Pali, then open the backup to check which notes are already saved.'
+    : 'Open the backup again after unlocking to check which notes are already saved.'} tone="amber" />;
+}
+
 export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onRestore, onBack }: Props) {
   useLayoutEffect(() => {
     const back = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
@@ -51,7 +57,7 @@ export function NativeNoteRestore({ step, busy, error, onChoose, onOpen, onResto
         ? <Notice title={step.receipt.added === 0 ? 'No new notes' : 'Notes restored'} body={step.receipt.added === 0
           ? 'Your existing notes were kept. Their status may still need to be checked.'
           : 'Your notes are saved in this wallet. Their current status still needs to be checked.'} />
-        : <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
+        : <NoteRestoreUnconfirmedNotice />}
     </Screen>;
   } else {
     content = <Screen footer={<Button title={busy ? 'Opening Files…' : 'Choose backup file'} onPress={onChoose} disabled={busy} />}>{header}

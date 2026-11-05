@@ -11,7 +11,7 @@ import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
 import { NativeRecoveryFlow, type RecoveryOutcome } from '../custody/recoveryFlow';
 import { NativeRecovery } from './NativeRecovery';
-import { NativeNoteRestore } from './NativeNoteRestore';
+import { NativeNoteRestore, NoteRestoreUnconfirmedNotice } from './NativeNoteRestore';
 import { NativeNoteExport, NativeNoteFilesMenu } from './NativeNoteExport';
 import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
@@ -406,11 +406,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             setError(message(cause));
         };
       }} />;
+  const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
-  if (unavailable) body = <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
+  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
+    <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Unlocking your wallet securely…</Text></View>;
   else if (locked) body = <>
+    {restoreUnconfirmed && <NoteRestoreUnconfirmedNotice />}
     <Text style={styles.muted}>Enter your password to unlock this device.</Text>
     <SecretInput label="Password" value={password} onChange={setPassword} disabled={busy} />
     <Button title="Unlock wallet" disabled={busy || !password} onPress={() => {
