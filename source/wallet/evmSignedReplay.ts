@@ -83,7 +83,7 @@ export type EvmReplayPreparation = Readonly<
 >;
 export type EvmReplayDispatchAdmission = (
   send: () => Promise<string>,
-  checkCancellation?: () => Promise<void>
+  preflight: () => Promise<void>
 ) => Promise<string>;
 export type EvmReplayDispatchContext = Pick<
   EvmSignedRecordSummary,
@@ -93,7 +93,7 @@ export type EvmReplayDispatchContext = Pick<
 export type EvmReplaySession = Readonly<{
   assertCurrent(): void;
   context: Pick<EvmSubmissionContext, 'account' | 'network'>;
-  /** Cancel replay supplies its bounded host preflight to admission. `send`
+  /** Replay supplies its bounded host preflight to admission. `send`
    * synchronously initiates transport and returns its acknowledgment promise. */
   dispatch(
     rawTransaction: string,
@@ -122,7 +122,7 @@ type Pending = {
   review: EvmReplayReview;
   session: EvmReplaySession;
 };
-const CANCELLATION_PREFLIGHT_MS = 12000;
+const REPLAY_PREFLIGHT_MS = 12000;
 function selectedHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
     throw new EvmReplayError('NOT_FOUND');
@@ -337,14 +337,14 @@ export class EvmSignedReplay {
     pending.session.recordSession.assertCurrent();
     if (this.time() >= pending.expires) throw new EvmReplayError('EXPIRED');
   }
-  private async waitCancellationPreflight(
+  private async waitReplayPreflight(
     expires: number,
     assertCurrent: () => void,
-    checkCancellation: () => Promise<void>
+    preflight: () => Promise<void>
   ): Promise<void> {
     assertCurrent();
     const started = this.time();
-    const cutoff = Math.min(expires, started + CANCELLATION_PREFLIGHT_MS);
+    const cutoff = Math.min(expires, started + REPLAY_PREFLIGHT_MS);
     const timeoutMs = Math.ceil(cutoff - started);
     if (timeoutMs <= 0) throw new EvmReplayError('EXPIRED');
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -356,7 +356,7 @@ export class EvmSignedReplay {
         );
       });
       // This bounds the queue wait. The host still owns transport cancellation.
-      const result = await Promise.race([checkCancellation(), deadline]);
+      const result = await Promise.race([preflight(), deadline]);
       if (this.time() >= cutoff) throw new EvmReplayError('EXPIRED');
       if (result !== undefined) throw new EvmReplayError('CONTEXT_CHANGED');
     } finally {
@@ -530,14 +530,8 @@ export class EvmSignedReplay {
       try {
         const result = await session.dispatch(
           current.rawTransaction,
-          async (send, checkCancellation) => {
-            if (
-              !open ||
-              requested ||
-              (requiresPayerCheck
-                ? typeof checkCancellation !== 'function'
-                : checkCancellation !== undefined)
-            )
+          async (send, preflight) => {
+            if (!open || requested || typeof preflight !== 'function')
               throw new EvmReplayError('CONTEXT_CHANGED');
             requested = true;
             const checkAdmission = () => {
@@ -549,7 +543,7 @@ export class EvmSignedReplay {
               entry,
               () => {
                 checkAdmission();
-                if (!checkCancellation) dispatched = true;
+                if (!requiresPayerCheck) dispatched = true;
                 const response = send();
                 dispatched = true;
                 // The response can reject before the storage queue yields.
@@ -557,14 +551,15 @@ export class EvmSignedReplay {
                 return response;
               },
               undefined,
-              checkCancellation &&
-                (() =>
-                  this.waitCancellationPreflight(
+              {
+                assertCurrent: checkAdmission,
+                run: () =>
+                  this.waitReplayPreflight(
                     pending.expires,
                     checkAdmission,
-                    checkCancellation
-                  )),
-              checkCancellation && checkAdmission
+                    preflight
+                  ),
+              }
             );
             if (!admission) throw new EvmReplayError('CONTEXT_CHANGED');
             return admission.result;

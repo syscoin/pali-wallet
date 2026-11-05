@@ -341,7 +341,6 @@ export class NativeTransferRpc {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
     return this.operation(signal, async (local) => {
-      if (!cancellation) await this.checkChain(local);
       const send = () => {
         if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
         if (beforeBroadcast) {
@@ -357,9 +356,13 @@ export class NativeTransferRpc {
           return hash;
         });
       };
-      if (!replay) return send();
-      const checkCancellation = cancellation && (async () => {
+      if (!replay) {
         await this.checkChain(local);
+        return send();
+      }
+      return replay.admit(send, async () => {
+        await this.checkChain(local);
+        if (!cancellation) return;
         await assertEvmCancellationPayerReady(
           cancellation.from, cancellation.nonce,
           (method, address, tag) => this.call(method, [address, tag], local),
@@ -370,7 +373,6 @@ export class NativeTransferRpc {
           throw error;
         });
       });
-      return replay.admit(send, checkCancellation);
     });
   }
   receipt(

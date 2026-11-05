@@ -118,14 +118,9 @@ beforeEach(() => {
     readExact: jest.fn(async () => entry),
     readPage: jest.fn(async () => ({ entries: [entry], nextCursor: null })),
     withReplayAdmission: jest.fn(
-      async (
-        _session,
-        _target,
-        admit,
-        _predecessorNonce,
-        checkCancellation
-      ) => {
-        await checkCancellation?.();
+      async (_session, _target, admit, _predecessorNonce, preflight) => {
+        preflight?.assertCurrent();
+        await preflight?.run();
         return { result: admit([]) };
       }
     ),
@@ -502,7 +497,7 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   expect(
     provider.send.mock.calls.some(([method]) => method === 'eth_getCode')
   ).toBe(false);
-  expect(provider._send).not.toHaveBeenCalled();
+  expect(provider._send).toHaveBeenCalledTimes(1);
 });
 
 it('refuses the exact provider send when final shared replay admission fails', async () => {
@@ -604,68 +599,105 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
   }
 );
 
-it('bypasses the installed provider chain cache after final journal admission', async () => {
-  const { CustomJsonRpcProvider } = jest.requireActual(
-    '@sidhujag/sysweb3-keyring/cjs/providers'
-  );
-  await retainCancellation();
-  const reached = deferred();
-  const release = deferred();
-  const admit = records.withReplayAdmission.getMockImplementation();
-  records.withReplayAdmission.mockImplementation(async (...args) => {
-    if (args[4]) {
-      reached.resolve();
-      await release.promise;
-    }
-    return admit(...args);
-  });
+it.each(['send', 'cancel'] as const)(
+  'bypasses the installed provider chain cache after final journal admission for %s replay',
+  async (operation) => {
+    const { CustomJsonRpcProvider } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/providers'
+    );
+    if (operation === 'cancel') await retainCancellation();
+    const reached = deferred();
+    const release = deferred();
+    const admit = records.withReplayAdmission.getMockImplementation();
 
-  const abort = new AbortController();
-  const live = new CustomJsonRpcProvider(
-    abort.signal,
-    context.network.url,
-    context.network.chainId
-  );
-  keyring.ethereumTransaction.web3Provider = live;
-  const wire: Array<{ method: string; params: unknown[] }> = [];
-  let chain = '0x7b';
-  jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
-    expect(url).toBe(context.network.url);
-    expect(init?.signal).toBe(abort.signal);
-    const { id, method, params } = JSON.parse(init!.body as string);
-    wire.push({ method, params });
-    const replies = new Map<string, unknown>([
-      ['eth_chainId', chain],
-      ['eth_getTransactionReceipt', null],
-      ['eth_getTransactionCount', '0x1'],
-      ['eth_getCode', '0x'],
-      ['eth_sendRawTransaction', entry.hash],
-    ]);
-    expect(replies.has(method)).toBe(true);
-    return {
-      ok: true,
-      status: 200,
-      json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
-    } as Response;
-  });
-  try {
-    await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
-    const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
-    expect(prepared.status).toBe('review');
-    const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
-    await Promise.race([reached.promise, confirmation]);
-    const before = wire.length;
-    chain = '0x1';
-    await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
-    expect(wire).toHaveLength(before);
-    release.resolve();
-    await expect(confirmation).rejects.toThrow('CONTEXT_CHANGED');
-    expect(wire.slice(before)).toEqual([{ method: 'eth_chainId', params: [] }]);
-  } finally {
-    release.resolve();
-    abort.abort();
-    live.destroy();
+    const abort = new AbortController();
+    const live = new CustomJsonRpcProvider(
+      abort.signal,
+      context.network.url,
+      context.network.chainId
+    );
+    keyring.ethereumTransaction.web3Provider = live;
+    const wire: Array<{ method: string; params: unknown[] }> = [];
+    let chain = '0x7b';
+    jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+      expect(url).toBe(context.network.url);
+      expect(init?.signal).toBe(abort.signal);
+      const { id, method, params } = JSON.parse(init!.body as string);
+      wire.push({ method, params });
+      const replies = new Map<string, unknown>([
+        ['eth_chainId', chain],
+        ['eth_getTransactionReceipt', null],
+        ['eth_getTransactionCount', `0x${entry.nonce.toString(16)}`],
+        ['eth_getCode', '0x'],
+        ['eth_sendRawTransaction', entry.hash],
+      ]);
+      expect(replies.has(method)).toBe(true);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
+      } as Response;
+    });
+    try {
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+      expect(prepared.status).toBe('review');
+      records.withReplayAdmission.mockImplementationOnce(async (...args) => {
+        reached.resolve();
+        await release.promise;
+        return admit(...args);
+      });
+      const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+      await Promise.race([reached.promise, confirmation]);
+      const before = wire.length;
+      chain = '0x1';
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      expect(wire).toHaveLength(before);
+      release.resolve();
+      await expect(confirmation).rejects.toThrow('CONTEXT_CHANGED');
+      expect(wire.slice(before)).toEqual([
+        { method: 'eth_chainId', params: [] },
+      ]);
+    } finally {
+      release.resolve();
+      abort.abort();
+      live.destroy();
+    }
   }
+);
+
+it('does not POST when an ordinary replay expires during the fresh chain check', async () => {
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  const reached = deferred(),
+    response = deferred<unknown[]>();
+  let requestId: number | undefined;
+  provider._send.mockImplementationOnce(async ({ id }) => {
+    requestId = id;
+    reached.resolve();
+    return response.promise;
+  });
+  const replay = wallet.retainedEvmReplay;
+  const now = replay.now();
+  const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+  expect(
+    await Promise.race([
+      reached.promise.then(() => 'preflight'),
+      confirmation.then(() => 'sent'),
+    ])
+  ).toBe('preflight');
+  jest.spyOn(replay, 'now').mockReturnValue(now + 90_001);
+  response.resolve([{ jsonrpc: '2.0', id: requestId, result: '0x7b' }]);
+  await expect(confirmation).rejects.toThrow('EXPIRED');
+  expect(
+    provider.send.mock.calls.some(
+      ([method]) => method === 'eth_sendRawTransaction'
+    )
+  ).toBe(false);
+  expect(records.updatePhase).not.toHaveBeenCalled();
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).rejects.toThrow('EXPIRED');
 });
 
 it('refuses cancellation metadata on a signed payment before any code read or send', async () => {
