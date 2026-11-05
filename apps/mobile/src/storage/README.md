@@ -93,3 +93,33 @@ authentication guard; its monotonic cooldown can therefore elapse without a
 reopen restarting it. Cancellation, disposal, expiry and terminal errors close
 that lease. Ordinary connection restarts still impose the complete persisted
 delay; recovery never substitutes an editable wall clock or resets the counter.
+
+## Explicit wallet removal storage seam
+
+`OpenWalletStorage.removal.commit` is a private host capability. A future
+removal flow must obtain fresh authorization and final destructive confirmation,
+retire the custody session, then submit a one-use recovery snapshot and a
+synchronous guard for the exact owner. The snapshot establishes what may be
+deleted. It does not establish authentication. The writer checks both the
+snapshot bytes and its own write generation, including when intervening writes
+restore identical bytes.
+
+One `BEGIN IMMEDIATE` transaction clears all wallet-owned records, backup,
+authentication and identity metadata, encrypted private notes and retained
+signed outcomes. It preserves the installation row. The transaction enables
+and verifies SQLite `secure_delete` for the deletion and verifies the empty
+scope before COMMIT. Only acknowledged COMMIT and exact empty readback return
+`wallet-records-removed`. The old writer rejects further operations. A lost
+COMMIT or readback returns `reopen-required` and quarantines that writer. After
+it closes, a new owner can inspect the complete snapshot. No automatic deletion
+retry, rollback of a committed removal or automatic creation is performed.
+
+The result is logical removal of SQLite records. The SQLCipher installation
+key and database file are retained, and encrypted page remnants may remain in
+WAL, filesystem snapshots or underlying storage. Public watch records and
+device-level custody/watch idle preferences live in separate app stores. The
+advisory native selection can also remain there. The future app flow must
+clear its obsolete native selection without removing an independent watch
+selection. Any requirement to retire the installation key or reset preferences
+must be completed and verified separately before reporting a wider removal
+result. The seam is dormant until an authenticated app flow calls it.

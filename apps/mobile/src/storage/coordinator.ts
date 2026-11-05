@@ -172,6 +172,7 @@ export async function openWalletStorage(
       signedRecords: owned.signedRecords,
       authGuard: owned.authGuard,
       recovery: owned.recovery,
+      removal: owned.removal,
       readState: () => owned.readState(),
       getWalletFingerprint: () => owned.getWalletFingerprint(),
       confirmBackup: (fingerprint: string) => owned.confirmBackup(fingerprint),
