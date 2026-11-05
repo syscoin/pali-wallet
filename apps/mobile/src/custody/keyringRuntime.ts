@@ -157,7 +157,8 @@ export function createKeyringRuntimeFactory(
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
         const signedRecords = new EvmSignedRecords(storage.signedRecords, Date.now, () => { void lock().catch(() => undefined); });
         const utxoRecords = storage.utxoSignedRecords && new (await import('../../../../source/wallet/utxoSignedRecords.ts')).UtxoSignedRecords(
-          storage.utxoSignedRecords, () => { void lock().catch(() => undefined); }
+          storage.utxoSignedRecords, storage.utxoSignedRecords,
+          () => { void lock().catch(() => undefined); }
         );
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
@@ -712,12 +713,11 @@ export function createKeyringRuntimeFactory(
                           throw new KeyringRuntimeError('NOT_READY');
                         const guard = () => { current(captured); checkGuard(assertCurrent); };
                         await dataBinding(captured, guard); guard();
-                        const pending = await utxoRecords.hasUnresolved({ keyring, assertCurrent: guard }, {
-                          chainId: network.chainId,
-                          slip44: network.slip44,
-                          genesisHash: network.genesisHash,
-                          account: { type: account.type, id: account.index, xpub: source.xpub },
-                        });
+                        const pending = await utxoRecords.hasUnresolvedForAccount(
+                          { keyring, assertCurrent: guard },
+                          account.slip44,
+                          { type: account.type, id: account.index, xpub: source.xpub },
+                        );
                         guard();
                         if (pending) throw new TransferJournalError('PENDING_TRANSFER');
                       }

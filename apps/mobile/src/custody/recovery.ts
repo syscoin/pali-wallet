@@ -165,10 +165,11 @@ export class NativeRecoveryCoordinator {
               if (utxo) {
                 const captured = utxo.value;
                 const { UtxoSignedRecords } = await import('../../../../source/wallet/utxoSignedRecords.ts'); check();
-                const reader = new UtxoSignedRecords({
-                  read: async (profile) => profile === profileId ? captured : fail('INVALID_SAVED_DATA'),
+                const snapshot = {
+                  read: async (profile: string) => profile === profileId ? captured : fail('INVALID_SAVED_DATA'),
                   compareAndSet: async () => fail('INVALID_SAVED_DATA'),
-                });
+                };
+                const reader = new UtxoSignedRecords(snapshot, snapshot);
                 try { await reader.validate({ keyring, assertCurrent: check }); check(); }
                 catch { check(); return fail('INVALID_SAVED_DATA'); }
               }

@@ -388,7 +388,7 @@ test('recovery authenticates captured UTXO bytes even if an ABA swap supplies a 
     psbt.addOutput({ script, value: 9000n });
     const tx = psbt.signInput(0, key).finalizeAllInputs().extractTransaction();
     const owner = { chainId: 0, slip44: 0, genesisHash: getUtxoNetwork('bitcoin').genesisHash, account: { id: 0, type: 'HDAccount', xpub: 'synthetic-public-owner' } };
-    const store = new UtxoSignedRecords(f.store.utxoSignedRecords);
+    const store = new UtxoSignedRecords(f.store.utxoSignedRecords, f.store.utxoSignedRecords);
     await store.persist({ keyring: f.keyring, assertCurrent: () => undefined }, {
       owner, operation: 'wallet', url: `${getUtxoNetwork('bitcoin').endpoint}/api/v2/sendtx/`, rawTransaction: tx.toHex(), txid: tx.getId(),
       virtualSize: tx.virtualSize(), feeSatoshis: '1000', outpoints: utxoInputOutpoints(tx.ins),

@@ -1040,7 +1040,8 @@ class MainController {
   private getRetainedUtxoRecords(): UtxoSignedRecords {
     let records = utxoRecordsByWallet.get(this);
     if (!records) {
-      records = createChromeUtxoSignedRecords(() => this.lock());
+      // An old session's admitted Chrome write may still be settling.
+      records = createChromeUtxoSignedRecords(this, () => this.lock());
       utxoRecordsByWallet.set(this, records);
     }
     return records;
@@ -6148,6 +6149,24 @@ class MainController {
       }
     };
     assertCurrent();
+    if (sourceNetwork.kind === INetworkType.Syscoin) {
+      if (sourceSlip44 === null || !target?.xpub)
+        throw new Error(WALLET_SESSION_CHANGED_ERROR);
+      const pending =
+        await this.getRetainedUtxoRecords().hasUnresolvedForAccount(
+          { keyring: this.getActiveKeyring(), assertCurrent },
+          sourceSlip44,
+          { id: accountId, type: accountType, xpub: target.xpub }
+        );
+      assertCurrent();
+      if (pending)
+        throw Object.assign(
+          new Error(
+            'This account has an unresolved transfer. Check its transaction status before removing it.'
+          ),
+          { code: 'PENDING_TRANSFER' }
+        );
+    }
     let importedRecovery;
     if (accountType === KeyringAccountType.Imported && target?.xprv) {
       const profileId =

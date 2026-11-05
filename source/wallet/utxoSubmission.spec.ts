@@ -97,7 +97,7 @@ function context() {
     }
   );
   const storage = { read: async () => disk, compareAndSet: cas };
-  const records = new UtxoSignedRecords(storage);
+  const records = new UtxoSignedRecords(storage, storage);
   const unavailable = () => {
     throw new Error('An already signed submission cannot request a signer');
   };
@@ -225,7 +225,7 @@ it('retains unknown bytes, fences ordinary overlap and permits separately author
     transactionNotBroadcast: false,
     txid: transaction.txid,
   });
-  const reopened = new UtxoSignedRecords(c.storage);
+  const reopened = new UtxoSignedRecords(c.storage, c.storage);
   expect(await reopened.readExact(c.session, owner, transaction.txid)).toEqual(
     transaction
   );
@@ -318,10 +318,13 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     txid: transaction.txid,
   });
   await entered.promise;
-  const competing = new UtxoSignedRecords(c.storage).persist(c.session, {
-    ...record(0xfffffffc),
-    operation: 'external',
-  });
+  const competing = new UtxoSignedRecords(c.storage, c.storage).persist(
+    c.session,
+    {
+      ...record(0xfffffffc),
+      operation: 'external',
+    }
+  );
   try {
     expect(c.cas).toHaveBeenCalledTimes(4);
     resume.finish();
@@ -351,7 +354,7 @@ it('cannot restore terminal eviction authority from an observation held across r
     confirmations: 1,
     blockHash: 'f'.repeat(64),
   };
-  const check = new UtxoSignedRecords(c.storage);
+  const check = new UtxoSignedRecords(c.storage, c.storage);
   await c.records.persist(c.session, transaction);
   await check.observe(
     c.session,
@@ -523,7 +526,7 @@ it('retains previously confirmed bytes when their current owned observation is u
     await expect(
       c.records.observe(c.session, owner, transaction.txid, url, fetchMissing)
     ).resolves.toBe('unknown');
-    const reopened = new UtxoSignedRecords(c.storage);
+    const reopened = new UtxoSignedRecords(c.storage, c.storage);
     await expect(
       reopened.persist(c.session, {
         ...record(0xfffffffa),
@@ -570,7 +573,7 @@ it('protects exact previously confirmed bytes after a current Blockbook read rej
     const observation = await c.records
       .observe(c.session, owner, transaction.txid, url, fetch)
       .catch((error) => error);
-    const reopened = new UtxoSignedRecords(c.storage);
+    const reopened = new UtxoSignedRecords(c.storage, c.storage);
     await expect(
       reopened.persist(c.session, {
         ...record(0xfffffffa),
@@ -695,7 +698,7 @@ it('keeps a newer confirmation when an older unknown observation loses ownership
   );
   const rejected = expect(obsolete).rejects.toThrow('UTXO observation changed');
   await entered.promise;
-  const reopened = new UtxoSignedRecords(c.storage);
+  const reopened = new UtxoSignedRecords(c.storage, c.storage);
   const newer = reopened.observe(
     c.session,
     owner,

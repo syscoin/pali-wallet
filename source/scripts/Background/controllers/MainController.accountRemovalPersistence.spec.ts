@@ -1,5 +1,16 @@
 jest.unmock('syscoinjs-lib');
+import {
+  decryptPrivateRecordBytes,
+  encryptPrivateRecordBytes,
+  privateRecordProfileId,
+} from '@sidhujag/sysweb3-keyring/cjs/private-records.js';
+import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
+import { webcrypto } from 'crypto';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
+
 import { getController } from '..';
+import { UTXO_SIGNED_RECORD_PREFIX } from '../../../wallet/utxoSignedRecords';
+import { submitReviewedUtxo } from '../../../wallet/utxoSubmission';
 import { notificationManager } from 'scripts/Background/notification-manager';
 import { addDApp, rehydrate as rehydrateDapps, removeDApp } from 'state/dapp';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
@@ -14,10 +25,15 @@ import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
+import { utxoInputOutpoints } from 'utils/utxoAcknowledgedInputs';
 
 import DAppController from './DAppController';
 import MainController, { AccountRemovalContext } from './MainController';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import type {
+  UtxoDurableSubmission,
+  UtxoRecordSession,
+} from '../../../wallet/utxoSignedRecords';
 
 jest.mock('..', () => ({
   getController: jest.fn(),
@@ -243,6 +259,236 @@ afterEach(() => {
   vaultCache.clearCache();
   global.chrome = originalChrome;
   jest.restoreAllMocks();
+});
+
+const prepareUtxoRemoval = async () => {
+  await configureTarget('HD');
+  const syscoin = {
+    kind: INetworkType.Syscoin,
+    chainId: 57,
+    slip44: 57,
+    url: 'https://first-blockbook.synthetic.invalid',
+    currency: 'sys',
+    label: 'First UTXO network',
+  };
+  const owner = {
+    chainId: syscoin.chainId,
+    slip44: syscoin.slip44,
+    genesisHash: 'a'.repeat(64),
+    account: {
+      id: 1,
+      type: KeyringAccountType.HDAccount,
+      xpub: store.getState().vault.accounts.HDAccount[1].xpub,
+    },
+  };
+  store.dispatch(setActiveSlip44(syscoin.slip44));
+  store.dispatch(
+    restoreVaultSnapshot({
+      ...store.getState().vault,
+      activeAccount: { id: 1, type: owner.account.type },
+      activeNetwork: syscoin,
+      isBitcoinBased: true,
+    })
+  );
+  const previousCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: webcrypto,
+  });
+  const restoreCrypto = () => {
+    if (previousCrypto)
+      Object.defineProperty(globalThis, 'crypto', previousCrypto);
+    else Reflect.deleteProperty(globalThis, 'crypto');
+  };
+  const secret = new Uint8Array(32).fill(42);
+  const currentGeneration = wallet.walletSessionGeneration;
+  const assertCurrent = () => {
+    if (wallet.walletSessionGeneration !== currentGeneration)
+      throw new Error('Signing session changed');
+  };
+  const guard = () => undefined;
+  const keyring: UtxoRecordSession['keyring'] = {
+    getPrivateRecordProfileId: () => privateRecordProfileId(secret, guard),
+    encryptPrivateRecord: (args) =>
+      encryptPrivateRecordBytes(secret, args, guard),
+    decryptPrivateRecord: (args) =>
+      decryptPrivateRecordBytes(secret, args, guard),
+  };
+  wallet.getActiveKeyring = () => keyring;
+  const { bitcoinjs: bitcoin } = syscoinUtils;
+  const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 3));
+  const script = bitcoin.payments.p2wpkh({ pubkey: key.publicKey }).output!;
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32, 4), 0);
+  previous.addOutput(script, BigInt(10_000));
+  const signed = new bitcoin.Psbt()
+    .addInput({
+      hash: previous.getHash(),
+      index: 0,
+      witnessUtxo: { value: BigInt(10_000), script },
+    })
+    .addOutput({ script, value: BigInt(9_000) })
+    .signInput(0, key)
+    .finalizeAllInputs()
+    .extractTransaction();
+  const transaction: UtxoDurableSubmission = {
+    owner,
+    operation: 'wallet',
+    url: `${syscoin.url}/api/v2/sendtx/`,
+    rawTransaction: signed.toHex(),
+    txid: signed.getId(),
+    virtualSize: signed.virtualSize(),
+    feeSatoshis: '1000',
+    outpoints: utxoInputOutpoints(signed.ins),
+  };
+  const unavailable = () => {
+    throw new Error('Already signed');
+  };
+  const sender = new SyscoinTransactionsCore(
+    unavailable,
+    unavailable,
+    () =>
+      ({
+        activeAccountId: 1,
+        activeAccountType: owner.account.type,
+        accounts: { HDAccount: { 1: { ...owner.account, address: TARGET } } },
+        activeNetwork: syscoin,
+      } as never),
+    {},
+    () => assertCurrent
+  );
+  const fetch = jest.fn(async () => {
+    const response = Response.json({ result: transaction.txid });
+    Object.defineProperty(response, 'url', { value: transaction.url });
+    return response;
+  });
+  const send = () =>
+    submitReviewedUtxo({
+      fetch,
+      intent: 'initial',
+      record: transaction,
+      records: wallet.getRetainedUtxoRecords(),
+      sender,
+      session: { keyring, assertCurrent },
+    });
+  const switchToAnchor = () => {
+    const anotherNetwork = {
+      ...syscoin,
+      chainId: 5700,
+      url: 'https://another-blockbook.synthetic.invalid',
+    };
+    wallet.advanceWalletSession();
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...store.getState().vault,
+        activeAccount: { id: 0, type: owner.account.type },
+        activeNetwork: anotherNetwork,
+      })
+    );
+    expected = { ...expected, network: anotherNetwork, slip44: syscoin.slip44 };
+  };
+  const remove = () => wallet.removeAccount(1, owner.account.type, expected);
+  return {
+    fetch,
+    owner,
+    remove,
+    restoreCrypto,
+    send,
+    session: { keyring, assertCurrent: guard },
+    switchToAnchor,
+    transaction,
+  };
+};
+
+it('keeps an inactive UTXO sender while another network in its group has an unresolved exact send', async () => {
+  const c = await prepareUtxoRemoval();
+  try {
+    await expect(c.send()).resolves.toEqual({ txid: c.transaction.txid });
+    expect(c.fetch).toHaveBeenCalledTimes(1);
+    c.switchToAnchor();
+    await expect(c.remove()).rejects.toMatchObject({
+      code: 'PENDING_TRANSFER',
+    });
+    expect(targetSnapshot(store.getState().vault).account).toBeDefined();
+
+    const journal = wallet.getRetainedUtxoRecords();
+    await journal.persist(c.session, {
+      ...c.transaction,
+      owner: { ...c.owner, slip44: 0 },
+    });
+    await journal.persist(c.session, {
+      ...c.transaction,
+      owner: {
+        ...c.owner,
+        chainId: 5700,
+        account: { ...c.owner.account, xpub: 'other-account-identity' },
+      },
+    });
+    await expect(
+      journal.observe(
+        c.session,
+        c.owner,
+        c.transaction.txid,
+        c.transaction.url,
+        async () => ({
+          txid: c.transaction.txid,
+          hex: c.transaction.rawTransaction,
+          confirmations: 1,
+          blockHash: 'b'.repeat(64),
+        })
+      )
+    ).resolves.toBe('confirmed');
+    await expect(c.remove()).resolves.toBeUndefined();
+    expect(targetSnapshot(await loadSlip44State(57)).account).toBeNull();
+  } finally {
+    c.restoreCrypto();
+  }
+});
+
+it('waits for the prior account session’s held signed-record write before removal', async () => {
+  const c = await prepareUtxoRemoval();
+  const entered = deferred();
+  const release = deferred();
+  const set = chrome.storage.local.set;
+  let held = false;
+  jest.spyOn(chrome.storage.local, 'set').mockImplementation((items, done) => {
+    if (
+      !held &&
+      Object.keys(items).some((key) =>
+        key.startsWith(UTXO_SIGNED_RECORD_PREFIX)
+      )
+    ) {
+      held = true;
+      entered.resolve();
+      void release.promise.then(() => set(items, done));
+    } else set(items, done);
+  });
+  try {
+    const sending = expect(c.send()).rejects.toMatchObject({
+      transactionNotBroadcast: true,
+    });
+    await entered.promise;
+    c.switchToAnchor();
+    const profileRead = jest.spyOn(
+      c.session.keyring,
+      'getPrivateRecordProfileId'
+    );
+    const removing = c.remove().then(
+      () => undefined,
+      (error: unknown) => error
+    );
+    await Promise.resolve();
+    const readsBeforeRelease = profileRead.mock.calls.length;
+    release.resolve();
+    const [, removalError] = await Promise.all([sending, removing]);
+    expect(readsBeforeRelease).toBe(0);
+    expect(removalError).toMatchObject({ code: 'PENDING_TRANSFER' });
+    expect(c.fetch).not.toHaveBeenCalled();
+    expect(targetSnapshot(store.getState().vault).account).toBeDefined();
+  } finally {
+    release.resolve();
+    c.restoreCrypto();
+  }
 });
 
 it.each(['private import', 'watch import', 'HD'] as const)(

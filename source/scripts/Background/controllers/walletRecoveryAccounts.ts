@@ -166,11 +166,12 @@ export async function prepareExtensionAccountRecovery(
               typeof value !== 'string'
             )
               return invalid();
-            const reader = new UtxoSignedRecords({
-              read: async (profile) =>
+            const snapshot = {
+              read: async (profile: string) =>
                 profile === profileId ? value : undefined,
               compareAndSet: async () => invalid(),
-            });
+            };
+            const reader = new UtxoSignedRecords(snapshot, snapshot);
             await reader.validate({ keyring, assertCurrent });
           }
         }

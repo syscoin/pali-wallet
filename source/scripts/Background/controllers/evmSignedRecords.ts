@@ -90,6 +90,7 @@ export function createChromeEvmSignedRecords(): EvmSignedRecords {
 }
 
 export function createChromeUtxoSignedRecords(
+  admissionOwner: object,
   onUnavailable: () => void
 ): UtxoSignedRecords {
   return new UtxoSignedRecords(
@@ -98,6 +99,7 @@ export function createChromeUtxoSignedRecords(
       'UTXO',
       inspectUtxoSignedBundle
     ),
+    admissionOwner,
     onUnavailable
   );
 }

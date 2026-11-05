@@ -94,7 +94,7 @@ export function snapshotUtxoSubmission(
     virtualSize,
   });
 }
-const queues = new WeakMap<UtxoRecordStorage, Promise<void>>();
+const queues = new WeakMap<object, Promise<void>>();
 const observationsByStorage = new WeakMap<
   UtxoRecordStorage,
   Map<string, object>
@@ -116,10 +116,11 @@ function chainKey({ chainId, slip44, genesisHash }: UtxoRecordChain): string {
   return digest([chainId, slip44, genesisHash]).slice(2);
 }
 
-function ownerId(owner: UtxoRecordOwner): string {
-  const {
-    account: { id, type, xpub },
-  } = owner;
+function accountIdentity({
+  id,
+  type,
+  xpub,
+}: UtxoRecordOwner['account']): [number, string, string] {
   if (
     !Number.isSafeInteger(id) ||
     id < 0 ||
@@ -129,7 +130,18 @@ function ownerId(owner: UtxoRecordOwner): string {
     xpub.length > 256
   )
     return corrupt();
-  return digest([chainKey(owner), id, type, xpub]).slice(2);
+  return [id, type, xpub];
+}
+
+function ownerIdForChain(
+  chain: string,
+  identity: ReturnType<typeof accountIdentity>
+): string {
+  return digest([chain, ...identity]).slice(2);
+}
+
+function ownerId(owner: UtxoRecordOwner): string {
+  return ownerIdForChain(chainKey(owner), accountIdentity(owner.account));
 }
 
 function guard(session: UtxoRecordSession) {
@@ -188,15 +200,18 @@ export class UtxoSignedRecords {
   private readonly onUnavailable: () => void;
   private unavailable = false;
   private readonly observations: Map<string, object>;
+  private readonly admissionOwner: object;
   get requiresReopen(): boolean {
     return this.unavailable;
   }
 
   constructor(
     storage: UtxoRecordStorage,
+    admissionOwner: object,
     onUnavailable: () => void = () => undefined
   ) {
     this.storage = storage;
+    this.admissionOwner = admissionOwner;
     this.onUnavailable = onUnavailable;
     this.observations = observationsByStorage.get(storage) ?? new Map();
     observationsByStorage.set(storage, this.observations);
@@ -205,15 +220,16 @@ export class UtxoSignedRecords {
   private exclusive<T>(
     operation: (release: () => void) => Promise<T>
   ): Promise<T> {
-    const prior = queues.get(this.storage) ?? Promise.resolve();
+    const prior = queues.get(this.admissionOwner) ?? Promise.resolve();
     let release!: () => void;
     const barrier = new Promise<void>((resolve) => {
       release = resolve;
     });
     const queued = prior.then(() => barrier);
-    queues.set(this.storage, queued);
+    queues.set(this.admissionOwner, queued);
     void queued.then(() => {
-      if (queues.get(this.storage) === queued) queues.delete(this.storage);
+      if (queues.get(this.admissionOwner) === queued)
+        queues.delete(this.admissionOwner);
     });
     const running = prior.then(() => operation(release));
     void running.then(release, release);
@@ -513,7 +529,15 @@ export class UtxoSignedRecords {
     const entry = entries.find(
       (item) => item.key === key && item.owner === identity
     );
-    if (!entry) return undefined;
+    return entry
+      ? { record: await this.readEntry(session, entry), entry }
+      : undefined;
+  }
+
+  private async readEntry(
+    session: UtxoRecordSession,
+    entry: Entry
+  ): Promise<UtxoDurableSubmission> {
     const decoder = new TextDecoder('utf-8', { fatal: true });
     let text = '';
     for (let index = 0; index < entry.chunks.length; index++) {
@@ -535,13 +559,14 @@ export class UtxoSignedRecords {
     const record = JSON.parse(text);
     if (
       JSON.stringify(record) !== text ||
-      checkRecord(record) !== identity ||
-      record.txid !== txid ||
+      checkRecord(record) !== entry.owner ||
+      chainKey(record.owner) !== entry.chain ||
+      record.txid !== entry.txid ||
       JSON.stringify(record.outpoints) !== JSON.stringify(entry.outpoints)
     )
       return corrupt();
     guard(session);
-    return { record: record as UtxoDurableSubmission, entry };
+    return record as UtxoDurableSubmission;
   }
 
   async excludedOutpoints(
@@ -572,17 +597,28 @@ export class UtxoSignedRecords {
       .map(({ txid, phase }) => ({ txid, accepted: phase !== 'pending' }));
   }
 
-  /** Wait for admission already in progress before checking account removal. */
-  hasUnresolved(
+  /** Wait for admission already in progress across the account group's networks. */
+  hasUnresolvedForAccount(
     session: UtxoRecordSession,
-    owner: UtxoRecordOwner
+    slip44: number,
+    account: UtxoRecordOwner['account']
   ): Promise<boolean> {
-    const identity = ownerId(owner);
+    if (!Number.isSafeInteger(slip44) || slip44 < 0) return corrupt();
+    const identity = accountIdentity(account);
     return this.exclusive(async () => {
       const { entries } = await this.load(session);
-      return entries.some(
-        (entry) => entry.owner === identity && entry.phase !== 'confirmed'
-      );
+      const checkedChains = new Set<string>();
+      for (const entry of entries) {
+        if (entry.phase === 'confirmed' || checkedChains.has(entry.chain))
+          continue;
+        if (entry.owner !== ownerIdForChain(entry.chain, identity)) continue;
+        // The header binds a hashed chain identity, so read only exact owner
+        // matches to recover the authenticated group without using a provider.
+        const record = await this.readEntry(session, entry);
+        if (record.owner.slip44 === slip44) return true;
+        checkedChains.add(entry.chain);
+      }
+      return false;
     });
   }
 

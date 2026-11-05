@@ -87,7 +87,7 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
     }).address;
-    const records = new UtxoSignedRecords(storage.utxoSignedRecords!);
+    const records = new UtxoSignedRecords(storage.utxoSignedRecords!, storage.utxoSignedRecords!);
     const calls: string[] = [];
     let published: string | undefined;
     let ackId: string | undefined;
