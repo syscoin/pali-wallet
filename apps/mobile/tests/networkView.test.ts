@@ -106,3 +106,52 @@ test('long padded network text reaches the verified endpoint unchanged and stale
     assert.deepEqual(urls, [registration.rpcUrl]);
   }
 });
+
+test('catalogue is lazy and verified Save rejects unexpected endpoints before reservation', async () => {
+  const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
+  const { EVM_CHAIN_CATALOGUE_URL } = await import('../../../source/shared/chainCatalogueData.ts');
+  const registration = createNativeNetwork({ id: 'custom:31337', name: 'Example', symbol: 'EX', kind: 'evm',
+    chainId: '31337', slip44: 60, rpcUrl: 'https://rpc.example', decimals: 18, testnet: true });
+  const requests: string[] = [], saved: unknown[] = [];
+  let finalUrl = 'https://rpc.example/';
+  let redirected = false;
+  const view = createNativeNetworkView({
+    getSnapshot: () => ({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
+    getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
+    subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
+    manageNetwork: async (request) => { saved.push(request); },
+  }, { fetch: async (url, init) => {
+    requests.push(url);
+    assert.equal(init.redirect, 'error');
+    if (url === EVM_CHAIN_CATALOGUE_URL) {
+      assert.equal(init.body, undefined);
+      return Response.json([{ chainId: 31337, name: 'Example',
+        nativeCurrency: { symbol: 'EX', decimals: 18 }, rpc: [{ url: registration.rpcUrl }] }]);
+    }
+    const request = JSON.parse(String(init.body));
+    assert.equal(request.method, 'eth_chainId');
+    assert.deepEqual(request.params, []);
+    return Object.defineProperties(Response.json({ jsonrpc: '2.0', id: request.id, result: '0x7a69' }), {
+      url: { value: finalUrl }, redirected: { value: redirected },
+    });
+  } });
+  assert.deepEqual(requests, []);
+  const chains = await view.loadCatalogue!();
+  assert.equal(chains[0]!.chainId, 31337);
+  assert.equal(await view.loadCatalogue!(), chains);
+  assert.deepEqual(requests, [EVM_CHAIN_CATALOGUE_URL]);
+  assert.deepEqual(saved, []);
+
+  for (const unexpected of ['https://wrong.example/', 'https://rpc.example/changed']) {
+    finalUrl = unexpected;
+    await assert.rejects(view.save!(registration, 1, 1), { code: 'PROFILE_CHANGED' });
+  }
+  finalUrl = 'https://rpc.example/';
+  redirected = true;
+  await assert.rejects(view.save!(registration, 1, 1), { code: 'PROFILE_CHANGED' });
+  assert.deepEqual(saved, []);
+  redirected = false;
+  await view.save!(registration, 1, 1);
+  assert.deepEqual(saved, [{ kind: 'save-network', registration }]);
+  assert.deepEqual(requests, [EVM_CHAIN_CATALOGUE_URL, ...Array(4).fill(registration.rpcUrl)]);
+});

@@ -1,10 +1,11 @@
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
+import { createNativeChainCatalogue, type NativeNetworkSuggestion } from './networkCatalogue.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { getNativeSendContext } from './networkContext.ts';
 import { snapshotNativeNetwork, nativeSigningEnabled, type EvmNetworkId } from './networkContext.ts';
 
-/** Public network-selection capability. No SDK, endpoint or signing handle crosses it. */
+/** Public network-selection and verified registration capability. No signing handle crosses it. */
 export type NativeNetworkSnapshot<Id extends string = string> = Readonly<{
   revision: number;
   selectedId: Id;
@@ -24,6 +25,7 @@ export interface NativeNetworkView<Id extends string = string> {
   subscribe(listener: () => void): () => void;
   select(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   save?(registration: import('./networkContext.ts').NativeNetworkRegistration, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
+  loadCatalogue?(retry?: boolean): Promise<readonly NativeNetworkSuggestion[]>;
   remove?(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   cancel(): void;
 }
@@ -36,6 +38,9 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
   let checking: AbortController | null = null;
   let cachedCatalogue: NativeWalletCatalogueSnapshot | null = null;
   let cached: NativeNetworkSnapshot<EvmNetworkId> | null = null;
+  const loadCatalogue = authority.manageNetwork && options.fetch
+    ? createNativeChainCatalogue(options.fetch)
+    : undefined;
   return Object.freeze({
     getSnapshot() {
       const catalogue = authority.getCatalogue();
@@ -59,6 +64,7 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
     getContextRevision: () => authority.getSnapshot().revision,
     subscribe: (listener: () => void) => authority.subscribe(() => listener()),
     select: (id: EvmNetworkId, revision: number, catalogueRevision: number) => authority.selectNetwork(id, revision, catalogueRevision),
+    ...(loadCatalogue ? { loadCatalogue } : {}),
     ...(authority.manageNetwork ? { save: async (registration: import('./networkContext.ts').NativeNetworkRegistration, revision: number, catalogueRevision: number) => {
       const selected = snapshotNativeNetwork(registration);
       checking?.abort(); const signal = new AbortController(); checking = signal;

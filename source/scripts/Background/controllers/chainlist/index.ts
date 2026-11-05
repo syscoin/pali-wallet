@@ -1,6 +1,10 @@
 import { INetworkType } from '@sidhujag/sysweb3-network';
 import { coins as utxoCoins, retryableFetch } from '@sidhujag/sysweb3-network';
 
+import {
+  EVM_CHAIN_CATALOGUE_URL,
+  parseEvmChainCatalogue,
+} from '../../../../shared/chainCatalogueData';
 import { chromeStorage } from 'utils/storageAPI';
 
 import type { ChainInfo } from '../../../../shared/chainCatalogue';
@@ -11,7 +15,6 @@ class ChainListService {
   private utxoChainData: ChainInfo[] | null = null;
   private lastFetchTime = 0;
   private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
-  private readonly CHAINLIST_URL = 'https://chainlist.org/rpcs.json';
   private readonly STORAGE_KEY = 'chainlist_data_cache';
   private fetchPromise: Promise<ChainInfo[]> | null = null;
 
@@ -191,7 +194,7 @@ class ChainListService {
 
   private async _fetchData(): Promise<ChainInfo[]> {
     try {
-      const response = await retryableFetch(this.CHAINLIST_URL, {
+      const response = await retryableFetch(EVM_CHAIN_CATALOGUE_URL, {
         headers: {
           Accept: 'application/json',
           'Cache-Control': 'no-cache',
@@ -202,18 +205,7 @@ class ChainListService {
         throw new Error(`Failed to fetch chain data: ${response.status}`);
       }
 
-      const rawData: any[] = await response.json();
-
-      // Validate data
-      if (!Array.isArray(rawData)) {
-        throw new Error('Invalid chain data format');
-      }
-
-      // Transform raw chainlist.org data to match ChainInfo.
-      const data: ChainInfo[] = rawData.map((rawChain) => ({
-        ...rawChain,
-        chain: INetworkType.Ethereum, // All EVM networks should use this enum value
-      }));
+      const data = parseEvmChainCatalogue(await response.json());
 
       // Cache the transformed data
       this.chainData = data;

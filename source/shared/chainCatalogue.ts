@@ -13,6 +13,7 @@ export type ChainInfo = {
   }>;
   icon?: string;
   infoURL?: string;
+  isTestnet?: boolean;
   name: string;
   nativeCurrency: {
     decimals: number;
@@ -29,14 +30,22 @@ export type ChainInfo = {
   slip44?: number;
 };
 
-export function rankChainSuggestions(
-  chains: readonly ChainInfo[],
+type SearchableChain = Pick<
+  ChainInfo,
+  'chainId' | 'coinLabel' | 'coinShortcut' | 'name'
+> & {
+  nativeCurrency: Pick<ChainInfo['nativeCurrency'], 'symbol'>;
+  rpc: readonly ChainInfo['rpc'][number][];
+};
+
+export function rankChainSuggestions<Chain extends SearchableChain>(
+  chains: readonly Chain[],
   query: string
-): Array<ChainInfo & { score: number }> {
+): Array<Chain & { score: number }> {
   if (query.trim().length < 2) return [];
   const lowerQuery = query.toLowerCase().trim();
 
-  const results: Array<ChainInfo & { score: number }> = [];
+  const results: Array<Chain & { score: number }> = [];
   for (const chain of chains) {
     let score = 0;
     const name = chain.name.toLowerCase();

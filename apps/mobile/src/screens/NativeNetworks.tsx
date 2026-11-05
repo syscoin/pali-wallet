@@ -1,7 +1,9 @@
 import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
-import React, { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { rankChainSuggestions } from '../../../../source/shared/chainCatalogue';
+import type { NativeNetworkSuggestion } from '../custody/networkCatalogue';
 import { createNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext';
 import type { NativeNetworkSnapshot, NativeNetworkView } from '../custody/networkView';
 import { Button, colors, Header, Notice, Screen, Text } from '../ui';
@@ -36,19 +38,89 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   </IdlePressable>{network.registration && onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}, Chain ID ${network.registration.chainId}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
+type CatalogueResult =
+  | { status: 'loading' | 'unavailable' }
+  | { status: 'ready'; chains: readonly NativeNetworkSuggestion[] };
+
+function NetworkSuggestions({ query, onQuery, load, networks, busy, onChoose }: {
+  query: string;
+  onQuery(value: string): void;
+  load: NonNullable<NativeNetworkView['loadCatalogue']>;
+  networks: NativeNetworkSnapshot['networks'];
+  busy: boolean;
+  onChoose(chain: NativeNetworkSuggestion): void;
+}) {
+  const [result, setResult] = useState<CatalogueResult>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  const searching = query.trim().length >= 2;
+  useEffect(() => {
+    if (!searching) return;
+    let current = true;
+    void load().then(
+      (chains) => { if (current) setResult({ status: 'ready', chains }); },
+      () => { if (current) setResult({ status: 'unavailable' }); }
+    );
+    return () => { current = false; };
+  }, [attempt, load, searching]);
+  const candidates = useMemo(() => {
+    if (result.status !== 'ready') return [];
+    const saved = new Set(networks.map((network) => network.registration?.chainId));
+    return result.chains.filter((chain) => !saved.has(String(chain.chainId)));
+  }, [networks, result]);
+  const matches = useMemo(() => rankChainSuggestions(candidates, query), [candidates, query]);
+  return <View style={s.field}>
+    <IdleTextInput accessibilityLabel="Find a network" placeholder="Search by name or chain ID"
+      placeholderTextColor={colors.muted} value={query} onChangeText={onQuery}
+      maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
+      spellCheck={false} autoComplete="off" returnKeyType="search"
+      onSubmitEditing={Keyboard.dismiss} style={s.search} />
+    {searching && !busy && (result.status !== 'ready' || !matches.length) && (
+      <Text accessibilityLiveRegion="polite" style={s.help}>
+        {result.status === 'loading' ? 'Searching networks…' : result.status === 'unavailable'
+          ? 'Search unavailable. Enter network details below.'
+          : 'No matching networks. Enter network details below.'}
+      </Text>
+    )}
+    {searching && !busy && result.status === 'unavailable' && (
+      <IdlePressable accessibilityRole="button" onPress={() => {
+        setResult({ status: 'loading' });
+        void load(true).catch(() => undefined);
+        setAttempt((previous) => previous + 1);
+      }} style={s.retry}>
+        <Text style={s.retryLabel}>Retry search</Text>
+      </IdlePressable>
+    )}
+    {!busy && matches.map((chain) => (
+      <IdlePressable key={chain.chainId} accessibilityRole="button"
+        accessibilityLabel={`Use ${chain.name}, ${chain.nativeCurrency.symbol}, Chain ID ${chain.chainId}`}
+        onPress={() => onChoose(chain)}
+        style={({ pressed }) => [s.suggestion, pressed && s.pressed]}>
+        <Text style={s.name} numberOfLines={2}>{chain.name}</Text>
+        <Text style={s.help} numberOfLines={2}>
+          {chain.nativeCurrency.symbol} · Chain ID {chain.chainId}{chain.isTestnet ? ' · Test network' : ''}
+        </Text>
+      </IdlePressable>
+    ))}
+  </View>;
+}
+
 /** Switching requests a guarded context change; this screen never grants signing authority. */
 export function NativeNetworks<Id extends string>({ controller, onBack }: {
   controller: NativeNetworkView<Id>;
   onBack(): void;
 }) {
   const [query, setQuery] = useState('');
+  const [catalogueQuery, setCatalogueQuery] = useState('');
   const [form, setForm] = useState<{ id?: string; name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
-  const edit = (registration?: NativeNetworkRegistration) => setForm(registration ? { ...registration } : { name: '', chainId: '', rpcUrl: 'https://', symbol: '', testnet: false });
 
   const [ui, setUi] = useState({ owner: controller, busy: false, error: '' });
   // Reset during a controller replacement before committing its rendered children.
   // Object equality alone is insufficient when a retired controller returns later.
-  if (ui.owner !== controller) setUi({ owner: controller, busy: false, error: '' });
+  if (ui.owner !== controller) {
+    setUi({ owner: controller, busy: false, error: '' });
+    setForm(null);
+    setCatalogueQuery('');
+  }
   const busy = ui.owner === controller && ui.busy;
   const error = ui.owner === controller ? ui.error : '';
   const working = useRef<object | null>(null);
@@ -57,6 +129,16 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   useLayoutEffect(() => { latestBack.current = onBack; }, [onBack]);
   const subscribe = useCallback((listener: () => void) => controller.subscribe(listener), [controller]);
   const snapshot = useSyncExternalStore(subscribe, controller.getSnapshot, controller.getSnapshot);
+  const discardForm = useCallback(() => {
+    lifetime.current.epoch++;
+    const cancel = working.current !== null;
+    working.current = null;
+    setUi({ owner: controller, busy: false, error: '' });
+    setCatalogueQuery('');
+    setForm(null);
+    if (cancel) controller.cancel();
+    Keyboard.dismiss();
+  }, [controller]);
   const close = useCallback(() => {
     lifetime.current.epoch++;
     working.current = null;
@@ -71,10 +153,32 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     working.current = null;
     return () => { local.alive = false; local.epoch++; working.current = null; controller.cancel(); };
   }, [controller]);
+  const inForm = form !== null;
   useEffect(() => {
-    const back = BackHandler.addEventListener('hardwareBackPress', () => { close(); return true; });
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (inForm) discardForm(); else close();
+      return true;
+    });
     return () => back.remove();
-  }, [close]);
+  }, [close, discardForm, inForm]);
+
+  const edit = (registration?: NativeNetworkRegistration) => {
+    if (working.current) return;
+    setUi({ owner: controller, busy: false, error: '' });
+    setCatalogueQuery('');
+    setForm(registration ? { ...registration } : { name: '', chainId: '', rpcUrl: 'https://', symbol: '', testnet: false });
+  };
+
+  const chooseSuggestion = (chain: NativeNetworkSuggestion) => {
+    if (!form || form.id || working.current) return;
+    setUi({ owner: controller, busy: false, error: '' });
+    setCatalogueQuery('');
+    setForm({
+      name: chain.name, chainId: String(chain.chainId), rpcUrl: chain.rpc[0].url,
+      symbol: chain.nativeCurrency.symbol.toUpperCase(), testnet: chain.isTestnet,
+    });
+    Keyboard.dismiss();
+  };
 
   const handleSelect = useCallback(async (id: Id) => {
     if (!snapshot || working.current || id === snapshot.selectedId) return;
@@ -118,7 +222,8 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       }
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) setForm(null);
     } catch {
-      if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch)
+      if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
+          controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision)
         setUi({ owner: controller, busy: false, error: 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.' });
     } finally {
       if (working.current === operation) {
@@ -127,9 +232,15 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       }
     }
   };
+  const changeField = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', value: string) => {
+    if (working.current) return;
+    setUi({ owner: controller, busy: false, error: '' });
+    setCatalogueQuery('');
+    setForm((old) => old && { ...old, [key]: key === 'symbol' ? value.toUpperCase() : value });
+  };
   const field = (key: 'name' | 'chainId' | 'rpcUrl' | 'symbol', label: string) => <View style={s.field}>
     <Text style={s.help}>{label}</Text><IdleTextInput accessibilityLabel={label} value={form?.[key] ?? ''}
-      onChangeText={(value) => setForm((old) => old && { ...old, [key]: key === 'symbol' ? value.toUpperCase() : value })} editable={!busy && !(key === 'chainId' && !!form?.id)}
+      onChangeText={(value) => changeField(key, value)} editable={!busy && !(key === 'chainId' && !!form?.id)}
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType={key === 'chainId' ? 'number-pad' : key === 'rpcUrl' ? 'url' : 'default'}
       maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : undefined} style={s.search} /></View>;
 
@@ -139,10 +250,16 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
-        <Header title={form ? form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? () => { controller.cancel(); setForm(null); } : close} />
+        <Header title={form ? form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? discardForm : close} />
         {form ? <>
+          {!form.id && snapshot && controller.loadCatalogue && (
+            <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
+              load={controller.loadCatalogue} networks={snapshot.networks} busy={busy}
+              onChoose={chooseSuggestion} />
+          )}
           {field('name', 'Network name')}{field('rpcUrl', 'RPC URL')}{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
-          <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: form.testnet, disabled: busy }} disabled={busy}
+          <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
+            accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
             <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
           </IdlePressable>
@@ -150,7 +267,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
           {form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
-          <Button title="Cancel" variant="quiet" disabled={busy} onPress={() => setForm(null)} />
+          <Button title="Cancel" variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
         <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
@@ -183,6 +300,9 @@ const s = StyleSheet.create({
   section: { gap: 10 }, sectionTitle: { fontSize: 14, fontWeight: '600', color: colors.muted },
   network: { minHeight: 82, borderWidth: 1, borderColor: colors.border, borderRadius: 18, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 16, backgroundColor: colors.surface },
   networkRow: { padding: 0, gap: 0 }, networkSelect: { flex: 1, minHeight: 82, padding: 17, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  suggestion: { minHeight: 50, justifyContent: 'center', gap: 3, borderRadius: 12, padding: 12, backgroundColor: colors.surface },
+  retry: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', paddingHorizontal: 8 },
+  retryLabel: { color: colors.blue, fontWeight: '600' },
   editNetwork: { minWidth: 44, minHeight: 60, alignItems: 'center', justifyContent: 'center' }, more: { color: colors.muted, fontSize: 24 },
   active: { borderColor: colors.blue }, pressed: { opacity: 0.7 }, details: { flex: 1, gap: 5 },
   name: { fontSize: 17, fontWeight: '600' }, help: { color: colors.muted, fontSize: 13, lineHeight: 20 },
