@@ -131,6 +131,11 @@ export const normalizeAccountHistory = (accountData: any) => {
   };
 };
 
+export type BlockbookHistoryRequest = Readonly<{
+  assertCurrent(): void;
+  fetch: BlockbookAccountFetch;
+}>;
+
 /** Keep one instance for the host lifetime to retain its existing backend capability memo. */
 export function createBlockbookAccountHistory(
   fetchAccount: BlockbookAccountFetch,
@@ -155,21 +160,27 @@ export function createBlockbookAccountHistory(
     networkUrl: string,
     xpubOrAddress: string,
     requestOptions: string,
-    allowEmptyPage = false
+    allowEmptyPage = false,
+    request?: BlockbookHistoryRequest
   ) => {
+    const fetch = request?.fetch ?? fetchAccount;
+    const check = () => request?.assertCurrent();
     let accountData: any = null;
+    check();
 
     try {
-      accountData = await fetchAccount(
+      accountData = await fetch(
         networkUrl,
         xpubOrAddress,
         requestOptions,
         true
       );
+      check();
       if (!isUnsupportedTxSummaryResponse(accountData, requestOptions)) {
         return validateAccountHistory(accountData, allowEmptyPage);
       }
     } catch (error) {
+      check();
       if (!requestOptions.includes('details=txsummary')) {
         throw error;
       }
@@ -179,16 +190,21 @@ export function createBlockbookAccountHistory(
 
     // Only a successful basic-only response proves missing txsummary support.
     // Transient, inconsistent and malformed responses do not change capability.
+    check();
     if (isUnsupportedTxSummaryResponse(accountData, requestOptions))
       txSummaryUnsupportedBackends.add(networkUrl);
     const fallbackOptions = requestOptions.replace(
       'details=txsummary',
       'details=txslight'
     );
-    return validateAccountHistory(
-      await fetchAccount(networkUrl, xpubOrAddress, fallbackOptions, true),
-      allowEmptyPage
+    const fallback = await fetch(
+      networkUrl,
+      xpubOrAddress,
+      fallbackOptions,
+      true
     );
+    check();
+    return validateAccountHistory(fallback, allowEmptyPage);
   };
 
   return { getHistoryRequestOptions, fetchAccountHistory };

@@ -1,3 +1,4 @@
+import type { UtxoActivityReader, UtxoActivityPage } from './utxoActivity.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { normalizePublicAddress } from './addresses.ts';
 import { assertBaseUnits, loadedBalance } from './amounts.ts';
@@ -20,7 +21,7 @@ import type {
 
 type RecordOpenOptions = Readonly<{
   repository: Pick<WatchRecordRepository, 'load'>; reader: BalanceReader;
-  signal: AbortSignal; now?: () => number;
+  signal: AbortSignal; now?: () => number; historyReader?: UtxoActivityReader;
   idle?: { begin(): void; check(): boolean; stop(): void };
 }>;
 type AccountSource = Extract<StoredWatchAccount, { kind: 'utxo-public' }>;
@@ -172,6 +173,7 @@ export function getWatchNetworks(account: PublicAccount | undefined): readonly W
 export class WatchOnlyAuthority implements WalletAuthority {
   private readonly accounts: readonly PublicAccount[];
   private readonly reader: BalanceReader;
+  private readonly historyReader?: UtxoActivityReader;
   private readonly now: () => number;
   private listeners = new Set<(snapshot: PublicSnapshot) => void>();
   private generation = 0;
@@ -180,6 +182,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private locked = true;
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
+  private historyRequests = new Set<AbortController>();
   private cachedSnapshot: PublicSnapshot | null = null;
   private recordSession: RecordSession | null = null;
 
@@ -200,7 +203,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
         if (record.kind === 'utxo-public') sources.set(record.id, record);
       }
       check();
-      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle);
+      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle, options.historyReader);
       authority.recordSession = { repository: Object.freeze({ load }), identity: view.identity, sources };
       return authority;
     } catch { throw signal.aborted ? admissionCancelled() : new Error('Saved public accounts could not be opened'); }
@@ -214,11 +217,13 @@ export class WatchOnlyAuthority implements WalletAuthority {
     accounts: readonly PublicAccount[],
     reader: BalanceReader,
     now: () => number = Date.now,
-    idle?: { begin(): void; check(): boolean; stop(): void }
+    idle?: { begin(): void; check(): boolean; stop(): void },
+    historyReader?: UtxoActivityReader
   ) {
     this.idle = idle;
     this.accounts = validatePublicAccounts(accounts);
     this.reader = reader;
+    this.historyReader = historyReader;
     this.now = now;
     this.accountId = this.accounts[0]?.id ?? null;
     this.networkId = (Object.keys(this.accounts[0]?.addresses ?? {})[0] ??
@@ -278,6 +283,8 @@ export class WatchOnlyAuthority implements WalletAuthority {
 
   private invalidate(): void {
     this.generation++;
+    for (const request of this.historyRequests) request.abort();
+    this.historyRequests.clear();
     this.pending?.abort();
     this.pending = null;
     this.balance = Object.freeze({ status: 'unknown' });
@@ -304,7 +311,9 @@ export class WatchOnlyAuthority implements WalletAuthority {
   /** A departing public screen may cancel its read without locking the session. */
   cancelRefresh(): void {
     if (!this.pending) return;
-    this.invalidate();
+    this.pending.abort();
+    this.pending = null;
+    this.balance = Object.freeze({ status: 'unknown' });
     this.publish();
   }
 
@@ -403,6 +412,49 @@ export class WatchOnlyAuthority implements WalletAuthority {
         this.publish();
       }
     }
+  }
+
+  /** Read operation only: the canonical identifier never enters a public snapshot. */
+  async readUtxoActivityPage(input: Readonly<{ page: number }>, external: AbortSignal): Promise<UtxoActivityPage> {
+    const page = input.page, snapshot = this.getSnapshot();
+    if (snapshot.status !== 'ready' || !this.historyReader || external.aborted ||
+        !Number.isSafeInteger(page) || page < 1 ||
+        this.networkId !== 'bitcoin' && this.networkId !== 'syscoin') throw new Error('Account activity unavailable');
+    const account = this.accounts.find((row) => row.id === this.accountId), networkId = this.networkId;
+    const address = account?.addresses[networkId];
+    if (!account || !address) throw new Error('Account activity unavailable');
+    const generation = this.generation, session = this.recordSession, source = this.currentSource();
+    const request = new AbortController(); this.historyRequests.add(request);
+    const abort = () => request.abort(); external.addEventListener('abort', abort, { once: true });
+    let stopped!: (reason: Error) => void;
+    const cancelled = new Promise<never>((_resolve, reject) => { stopped = reject; });
+    void cancelled.catch(() => undefined);
+    const onAbort = () => stopped(new Error('Account activity cancelled'));
+    request.signal.addEventListener('abort', onAbort, { once: true });
+    const check = () => {
+      this.getSnapshot();
+      if (external.aborted || request.signal.aborted || this.locked || generation !== this.generation ||
+          this.accountId !== account.id || this.networkId !== networkId || this.recordSession !== session) throw new Error('Account activity context changed');
+    };
+    const verifyRecords = async () => {
+      check();
+      if (session) {
+        const observed = await Promise.race([session.repository.load(), cancelled]); check();
+        if (recordView(observed).identity !== session.identity) throw new Error('Saved public accounts changed. Reopen them.');
+      }
+    };
+    try {
+      check(); await verifyRecords(); check();
+      const result = await Promise.race([this.historyReader.readPage({
+        context: Object.freeze({ accountId: account.id, networkId, address, generation }),
+        identifier: source?.identifier ?? address, isAccount: !!source,
+      }, { page }, request.signal), cancelled]);
+      check(); await verifyRecords(); check();
+      if (result.context.accountId !== account.id || result.context.networkId !== networkId || result.context.address !== address || result.context.generation !== generation || result.page !== page)
+        throw new Error('Account activity context changed');
+      return result;
+    } catch { throw new Error(request.signal.aborted ? 'Account activity cancelled' : 'Account activity unavailable'); }
+    finally { external.removeEventListener('abort', abort); request.signal.removeEventListener('abort', onAbort); this.historyRequests.delete(request); request.abort(); }
   }
 
   async prepareTransfer(_intent: TransferIntent): Promise<TransferReview> {

@@ -1,3 +1,5 @@
+import { createUtxoActivityReader } from '../../src/core/utxoActivity';
+import { activityFetch } from './utxoActivityFixture';
 import { getNetwork } from '../../src/core/networks';
 import { parseAccountSelection, type AccountSelection } from '../../src/core/accountDirectory';
 import { ACCOUNT_SELECTION_KEY, PUBLIC_ACCOUNTS_KEY, createPublicAccountStorage } from '../../src/core/publicAccountStorage';
@@ -42,3 +44,5 @@ export const loadPublicAccounts = repository.loadAccounts;
 export const publicAccountRecords = repository.records;
 export const loadAccountSelection = repository.loadSelection;
 export const saveAccountSelection = (selection: AccountSelection | null) => repository.saveSelection(selection);
+
+export const activityReader = createUtxoActivityReader({ fetch: async (url, init) => { const response = await activityFetch(url, init); if (!response) throw new Error('Unplanned fixture URL'); return response; } });

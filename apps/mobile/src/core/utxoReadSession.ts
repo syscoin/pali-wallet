@@ -43,7 +43,7 @@ export interface UtxoReadSession {
   readonly network: UtxoNetwork;
   readonly observedHeight: number;
   readonly anchorHash: string | null;
-  read(path: string): Promise<unknown>;
+  read(path: string, retryUnavailable?: boolean): Promise<unknown>;
   verifyAnchor(): Promise<number>;
   consumedBytes(): number;
   close(): void;
@@ -51,7 +51,8 @@ export interface UtxoReadSession {
 
 /** Shared bounded transport boundary. No address is disclosed during opening. */
 export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>, external: AbortSignal,
-  sampled = false, totalBytes = Number.MAX_SAFE_INTEGER): Promise<UtxoReadSession> {
+  sampled = false, totalBytes = Number.MAX_SAFE_INTEGER, responseBytes = 32768): Promise<UtxoReadSession> {
+  if (!Number.isSafeInteger(responseBytes) || responseBytes < 1 || responseBytes > 1024 * 1024) return utxoFailure('INVALID_INPUT');
   let network: UtxoNetwork;
   try { network = getUtxoNetwork(networkId); } catch { return utxoFailure('INVALID_INPUT'); }
   if (external.aborted) return utxoFailure('CANCELLED');
@@ -62,7 +63,7 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
   const close = () => { controller.abort(); clearTimeout(timer); external.removeEventListener('abort', abort); };
   const check = () => { if (failure) throw failure; if (controller.signal.aborted) return utxoFailure('CANCELLED'); };
   const charge = (bytes: number) => { if (bytes > totalBytes - consumed) throw new ResponseSizeLimitError(); consumed += bytes; };
-  async function read(path: string): Promise<unknown> {
+  async function read(path: string, retryUnavailable = false): Promise<unknown> {
     try {
       check();
       const url = network.endpoint + path;
@@ -85,11 +86,15 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
       if (response.redirected || response.url && response.url !== url) { discard(); return utxoFailure('NETWORK_MISMATCH'); }
       const contentType = response.headers.get('content-type');
       if (contentType && !/^(application\/json|application\/[a-z0-9!#$&^_.+-]+\+json)(?:\s*;|$)/i.test(contentType)) { discard(); return utxoFailure('INVALID_RESPONSE'); }
-      const text = await boundedResponseText(response, controller.signal, 32768, charge); check();
+      const text = await boundedResponseText(response, controller.signal, responseBytes, charge); check();
       try { return JSON.parse(text); } catch { return utxoFailure('INVALID_RESPONSE'); }
     } catch (cause) {
-      failure ??= controller.signal.aborted ? new UtxoBalanceError('CANCELLED') : cause instanceof UtxoBalanceError ? cause
+      const currentFailure = controller.signal.aborted ? new UtxoBalanceError('CANCELLED') : cause instanceof UtxoBalanceError ? cause
         : new UtxoBalanceError(cause instanceof ResponseSizeLimitError ? 'RESPONSE_TOO_LARGE' : 'UNAVAILABLE');
+      // A history reader may use the extension's explicit txslight fallback.
+      // Chain, body, timeout and cancellation failures still poison the session.
+      if (retryUnavailable && currentFailure.code === 'UNAVAILABLE') throw currentFailure;
+      failure ??= currentFailure;
       controller.abort(); throw failure;
     }
   }

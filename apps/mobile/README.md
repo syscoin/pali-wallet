@@ -29,11 +29,13 @@ transaction execution, not the behavior of an arbitrary token contract: fees,
 rebasing and other token rules may change the received amount. Native testnet and
 physical-device send qualification remain required before release.
 
-### Confirmed UTXO watch activity
+### Account-wide UTXO watch activity
 
-The **Load confirmed activity** action reads the selected Syscoin or Bitcoin receive address, including the initial address projected from a saved public account key or descriptor. This remains address activity, not account-wide history. It requests no activity data until that action, then reads at most 20 confirmed transaction IDs and their details at a sampled block height. Older pages require a button press, with a 100-row display limit. Leaving the tab, changing context, locking or backgrounding revokes the view; returning does not automatically request history. Nothing is persisted.
+Opening Activity for the active Bitcoin or Syscoin watch account loads indexed history through the same shared Blockbook account reader used by the extension. Saved public extended keys and descriptors query the whole account; address records query only that address. The authority keeps the canonical identifier private and exposes public transaction rows. No signing or scanner is added. Pending rows and nullable block observations remain visible.
 
-Native input/output amounts produce an exact signed change for this address. The whole-transaction fee is separate and is not presented as this address's fee share. Syscoin asset metadata is not interpreted as native coin. The fixed Blockbook provider receives the address and transaction requests; an explicit explorer action opens its transaction page. These observations are not proof of payment, finality or complete wallet history. Pending history, account-wide receive/change history and SPT amounts remain unsupported. See [the implementation contract](docs/utxo-watch-activity.md) for source/API assumptions and limits. Actual deployed-provider, native HTTP and physical-device acceptance remain release gates.
+Pages contain at most20 rows. The list keeps a window of at most100 rows, with older/newer navigation that can request pages beyond five. Fresh same-transaction observations replace retained status, including a return to pending; other retained rows are not proof of complete indexing. Network or storage failure preserves the previous list as stale. Backgrounding, focus loss, lock, account/network changes and leaving Activity abort its requests. Entering an active current Activity view loads again without an extra consent step.
+
+Native account change, whole-transaction fee and transfer intent use the existing shared exact-amount helpers. Unknown ownership or missing data stays unavailable. SPT quantity is explicitly unavailable and is never inferred from rounded token metadata; native funding remains separately labelled. Source/browser tests do not qualify deployed services, native HTTP, physical privacy or complete feature equivalence. See [the implementation contract](docs/utxo-watch-activity.md).
 
 ## Run
 
