@@ -1,4 +1,5 @@
 const { performance } = require('node:perf_hooks');
+const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 
 const READINESS_DEADLINE_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
@@ -26,17 +27,21 @@ async function prepareIosSimulator(run, device, runtime, record, options = {}) {
   const now = options.now ?? (() => performance.now());
   const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   assertOwnedIosDevice(device, runtime);
+  const serviceArgs = ['simctl', 'spawn', device, 'launchctl', 'list'];
   const started = now(), deadline = started + READINESS_DEADLINE_MS;
   let status = 'failed', stage = 'inventory', probes = 0, deviceState = null, springboardPidPresent = false;
+  let serviceTimeout;
   const remaining = () => {
     const value = Math.floor(deadline - now());
-    if (!Number.isFinite(value) || value <= 0 || value > READINESS_DEADLINE_MS) throw Error('iOS simulator readiness deadline exceeded');
+    if (!Number.isFinite(value) || value <= 0 || value > READINESS_DEADLINE_MS)
+      throw serviceTimeout ?? Error('iOS simulator readiness deadline exceeded');
     return value;
   };
   try {
     while (true) {
+      const inventoryTimeout = Math.min(PROBE_TIMEOUT_MS, remaining());
       stage = 'inventory'; probes++;
-      const raw = run('xcrun', ['simctl', 'list', 'devices', '-j'], false, Math.min(PROBE_TIMEOUT_MS, remaining()));
+      const raw = run('xcrun', ['simctl', 'list', 'devices', '-j'], false, inventoryTimeout);
       let inventory;
       try { inventory = JSON.parse(raw); } catch { throw Error('Invalid iOS simulator inventory'); }
       if (!inventory?.devices || typeof inventory.devices !== 'object' || Array.isArray(inventory.devices)) throw Error('Invalid iOS simulator inventory');
@@ -52,11 +57,19 @@ async function prepareIosSimulator(run, device, runtime, record, options = {}) {
       if (deviceState === 'unknown') throw Error('Invalid iOS simulator state');
       if (deviceState === 'Booted') {
         stage = 'springboard';
-        const services = inspectIosServices(run('xcrun', ['simctl', 'spawn', device, 'launchctl', 'list'], false, Math.min(PROBE_TIMEOUT_MS, remaining())));
-        if (services.servicesTruncated) throw Error('Incomplete iOS simulator service inventory');
-        if (services.appPidPresent) throw Error('Qualification app is already running before launch');
-        springboardPidPresent = services.springboardPidPresent;
-        if (springboardPidPresent) { remaining(); status = 'ready'; stage = 'ready'; return; }
+        const timeout = Math.min(PROBE_TIMEOUT_MS, remaining());
+        try {
+          const services = inspectIosServices(run('xcrun', serviceArgs, false, timeout));
+          serviceTimeout = undefined;
+          if (services.servicesTruncated) throw Error('Incomplete iOS simulator service inventory');
+          if (services.appPidPresent) throw Error('Qualification app is already running before launch');
+          springboardPidPresent = services.springboardPidPresent;
+          if (springboardPidPresent) { remaining(); status = 'ready'; stage = 'ready'; return; }
+        } catch (error) {
+          if (!isAmbiguousCommandFailure(error, 'xcrun', serviceArgs) || error.failure.errorCode !== 'ETIMEDOUT') throw error;
+          // Retry this read within the same deadline, keeping its original diagnostic if probes keep timing out.
+          serviceTimeout ??= error;
+        }
       }
       await sleep(Math.min(500, remaining()));
     }
