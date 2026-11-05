@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -21,7 +20,7 @@ const eyeStyle = 'w-[18px] max-w-none';
 const ImportPhrase: React.FC = () => {
   const { TextArea } = Input;
   const { controllerEmitter } = useController();
-  const [form] = useForm();
+  const [form] = Form.useForm();
   const navigate = useNavigate();
   const location = useLocation();
   const { beginImport, secrets } = useOnboardingSecrets();

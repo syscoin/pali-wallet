@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
 import { Switch } from '@headlessui/react';
 import { Form, Input, type InputProps, type InputRef } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -158,7 +157,7 @@ const CustomRPCView = () => {
   const { controllerEmitter } = useController();
   const { alert, navigate } = useUtils();
 
-  const [form] = useForm();
+  const [form] = Form.useForm();
   const draftFamilyRef = React.useRef(isSyscoinRpc);
   draftFamilyRef.current = isSyscoinRpc;
   const draftContext = JSON.stringify([draftScope, draftEditorIdentity]);
