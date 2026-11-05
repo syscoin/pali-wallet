@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { FIAT_QUOTE_CURRENCIES } from '../../shared/nativeCoinQuotes';
 import { ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, DefaultModal, PageActionFooter } from 'components/index';
 import { usePrice, useUtils } from 'hooks/index';
@@ -32,76 +33,6 @@ const CurrencyView = () => {
     (state: RootState) => state.vault.isBitcoinBased
   );
   const fiat = useSelector((state: RootState) => state.price.fiat);
-  // Currencies supported by both CoinGecko and Blockbook (from actual Blockbook API response)
-  // This list matches exactly what Blockbook's /api/v2/tickers/currency endpoint returns
-  const coins = [
-    'aed',
-    'ars',
-    'aud',
-    'bch',
-    'bdt',
-    'bhd',
-    'bits',
-    'bmd',
-    'bnb',
-    'brl',
-    'btc',
-    'cad',
-    'chf',
-    'clp',
-    'cny',
-    'czk',
-    'dkk',
-    'dot',
-    'eos',
-    'eth',
-    'eur',
-    'gbp',
-    'gel',
-    'hkd',
-    'huf',
-    'idr',
-    'ils',
-    'inr',
-    'jpy',
-    'krw',
-    'kwd',
-    'link',
-    'lkr',
-    'ltc',
-    'mmk',
-    'mxn',
-    'myr',
-    'ngn',
-    'nok',
-    'nzd',
-    'php',
-    'pkr',
-    'pln',
-    'rub',
-    'sar',
-    'sats',
-    'sek',
-    'sgd',
-    'sol',
-    'thb',
-    'try',
-    'twd',
-    'uah',
-    'usd',
-    'vef',
-    'vnd',
-    'xag',
-    'xau',
-    'xdr',
-    'xlm',
-    'xrp',
-    'yfi',
-    'zar',
-  ].reduce((acc: any, curr: string) => {
-    acc[curr] = 1; // Convert to object format to match existing code
-    return acc;
-  }, {});
 
   if (!activeAccount) throw new Error('No account');
 
@@ -202,7 +133,7 @@ const CurrencyView = () => {
     xdr: '🏦',
   };
 
-  const filteredCoins = Object.keys(coins).filter((code) =>
+  const filteredCoins = FIAT_QUOTE_CURRENCIES.filter((code) =>
     code.toLowerCase().includes(inputValue.toLowerCase())
   );
 
@@ -267,7 +198,7 @@ const CurrencyView = () => {
             <>
               <Popover.Button
                 aria-label={t('settings.setYourPreferred')}
-                disabled={!fiat || !coins || saving}
+                disabled={!fiat || saving}
                 className="inline-flex items-center justify-between p-[10px] w-full h-[44px] text-white text-sm font-light bg-brand-blue600 border border-alpha-whiteAlpha300 focus:border-fields-input-borderfocus rounded-[10px] hover:bg-brand-blue500 hover:bg-opacity-20 transition-all duration-200 group"
               >
                 <div className="flex items-center gap-2 ml-2">
@@ -291,7 +222,7 @@ const CurrencyView = () => {
                 />
               </Popover.Button>
 
-              {fiat && coins && (
+              {fiat && (
                 <Popover.Panel
                   as="div"
                   focus

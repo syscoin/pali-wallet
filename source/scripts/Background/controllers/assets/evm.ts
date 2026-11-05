@@ -15,6 +15,10 @@ import {
   parseErc20ReadFields,
   parseErc20Units,
 } from '../../../../shared/erc20';
+import {
+  coinGeckoNativeQuoteUrl,
+  readCoinGeckoNativeQuote,
+} from '../../../../shared/nativeCoinQuotes';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
@@ -370,28 +374,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
     }
 
     try {
-      // Use the network's coingeckoId directly - it should be the native token's ID
       const priceResponse = await retryableFetch(
-        `https://api.coingecko.com/api/v3/simple/price?ids=${network.coingeckoId}&vs_currencies=${currency}&include_24hr_change=true`
+        coinGeckoNativeQuoteUrl(network.coingeckoId, currency)
       );
-
       if (priceResponse.ok) {
-        const priceData = await priceResponse.json();
-        const tokenData = priceData[network.coingeckoId];
-
-        if (tokenData && Number.isFinite(tokenData[currency])) {
-          const result = {
-            available: true,
-            price: tokenData[currency],
-            priceChange24h: tokenData[`${currency}_24h_change`],
-          };
-
-          // Cache the result
-          priceDataCache.set(cacheKey, {
-            data: result,
-            timestamp: now,
-          });
-
+        const result = readCoinGeckoNativeQuote(
+          await priceResponse.json(),
+          network.coingeckoId,
+          currency
+        );
+        if (result) {
+          priceDataCache.set(cacheKey, { data: result, timestamp: now });
           console.log(
             `[EvmAssetsController] Fetched and cached price data for ${network.coingeckoId}`
           );
