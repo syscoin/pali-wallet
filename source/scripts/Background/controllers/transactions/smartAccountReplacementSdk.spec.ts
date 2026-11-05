@@ -159,6 +159,10 @@ describe('published keyring account-scoped replacement signing', () => {
     validateOriginal,
     beforeBroadcast,
   });
+  const signerFor = (type: KeyringAccountType) =>
+    type === KeyringAccountType.Ledger
+      ? ledger.evm.signEVMTransaction
+      : trezor.signEthTransaction;
   const ordinaryOptions = () => ({
     ...admission(),
     approvedMaximumFee: APPROVED_MAXIMUM_FEE,
@@ -205,6 +209,7 @@ describe('published keyring account-scoped replacement signing', () => {
     provider = {
       getTransaction: jest.fn().mockResolvedValue(transaction()),
       getNetwork: jest.fn().mockResolvedValue({ chainId: CHAIN }),
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
       getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
       getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000)),
       getBlock: jest
@@ -1191,14 +1196,18 @@ describe('published keyring account-scoped replacement signing', () => {
       expect(parsed.from?.toLowerCase()).toBe(PAYER.toLowerCase());
       expect(parsed.to?.toLowerCase()).toBe(TARGET);
       if (target.originalType) expect(parsed.accessList).toEqual(ACCESS_LIST);
-      if (target.type === KeyringAccountType.Ledger)
-        expect(ledger.evm.signEVMTransaction).toHaveBeenCalledWith(
-          expect.objectContaining({ accountIndex: 4 })
-        );
-      else
-        expect(trezor.signEthTransaction).toHaveBeenCalledWith(
-          expect.objectContaining({ index: '5', slip44: 60 })
-        );
+      expect(signerFor(target.type)).toHaveBeenCalledWith(
+        expect.objectContaining(
+          target.type === KeyringAccountType.Ledger
+            ? { accountIndex: 4, expectedAddress: PAYER }
+            : { index: '5', slip44: 60 }
+        ),
+        expect.objectContaining({
+          assertCurrent: expect.any(Function),
+          signal: expect.any(AbortSignal),
+        })
+      );
+      expect(provider.verifyConfiguredChainId.mock.calls).toEqual([[], [true]]);
       expect(beforeBroadcast).toHaveBeenCalledTimes(1);
     }
   );
@@ -1316,6 +1325,7 @@ describe('published keyring account-scoped replacement signing', () => {
       await expect(
         sdk.sendTransactionWithEditedFee(ORIGINAL, false, options(target))
       ).resolves.toMatchObject({ isSpeedUp: false, error: true });
+      expect(signerFor(target.type)).toHaveBeenCalledTimes(1);
       expect(provider.sendTransaction).not.toHaveBeenCalled();
     }
   );
@@ -1358,6 +1368,7 @@ describe('published keyring account-scoped replacement signing', () => {
           target.ordinary ? ordinaryOptions() : options(target)
         )
       ).resolves.toMatchObject({ isSpeedUp: false, error: true });
+      expect(signerFor(target.type)).toHaveBeenCalledTimes(1);
       expect(beforeBroadcast).not.toHaveBeenCalled();
       expect(provider.sendTransaction).not.toHaveBeenCalled();
     }
@@ -1393,6 +1404,7 @@ describe('published keyring account-scoped replacement signing', () => {
           target.ordinary ? ordinaryOptions() : options(target)
         )
       ).resolves.toMatchObject({ isSpeedUp: false, error: true });
+      expect(signerFor(target.type)).toHaveBeenCalledTimes(1);
       expect(beforeBroadcast).not.toHaveBeenCalled();
       expect(provider.sendTransaction).not.toHaveBeenCalled();
     }

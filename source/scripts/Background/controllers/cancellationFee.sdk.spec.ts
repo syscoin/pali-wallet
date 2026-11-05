@@ -161,6 +161,7 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
         const provider: any = {
           getTransaction: jest.fn(async () => null),
           getGasPrice: jest.fn(async () => BigNumber.from(price)),
+          verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
           sendTransaction: jest.fn(),
         };
         const ledger = {
@@ -212,6 +213,19 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
           ...options,
           approvedMaximumFee: preview.maximumFee,
         });
+        const device =
+          type === KeyringAccountType.Ledger
+            ? ledger.evm.signEVMTransaction
+            : trezor.signEthTransaction;
+        expect(device).toHaveBeenCalledTimes(1);
+        expect(device).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            assertCurrent: expect.any(Function),
+            signal: expect.any(AbortSignal),
+          })
+        );
+        expect(provider.verifyConfiguredChainId.mock.calls).toEqual([[]]);
         const envelope =
           type === KeyringAccountType.Ledger
             ? Transaction.from(
