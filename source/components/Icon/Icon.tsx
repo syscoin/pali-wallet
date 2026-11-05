@@ -31,15 +31,12 @@ import { TbFileImport } from 'react-icons/tb';
 // ---------------------------------------------------------------------------
 
 // Import SVGs as URLs (following existing codebase pattern)
-import AddUser from '../../assets/all_assets/add-user.svg';
 import ArrowLeft from '../../assets/all_assets/ArrowLeft.svg';
 import ArrowRight from '../../assets/all_assets/ArrowRight.svg';
 import ArrowUpBoldIcon from '../../assets/all_assets/ArrowUp.svg';
-import AttentionIcon from '../../assets/all_assets/Attention.svg';
 import Close from '../../assets/all_assets/closeBigger.svg';
 import Copy from '../../assets/all_assets/copy.svg';
 import EditTx from '../../assets/all_assets/editTx.svg';
-import WhiteErrorIcon from '../../assets/all_assets/errorIconWhite.svg';
 import GreenCheck from '../../assets/all_assets/greencheck.svg';
 import Info from '../../assets/all_assets/info.svg';
 import SpeedUp from '../../assets/all_assets/speedUp.svg';
@@ -1333,9 +1330,6 @@ const svgIcons = {
   Edit: EditIconSvg,
   Network: NetworkIconSvg,
   greenCheck: GreenCheck,
-  WhiteErrorIcon,
-  AttentionIcon,
-  AddUser,
   DollarSign: DollarSignIconSvg,
   HardWallet: HardWalletIconSvg,
   Help: HelpIconSvg,
