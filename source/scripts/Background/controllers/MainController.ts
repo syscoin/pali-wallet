@@ -30,6 +30,10 @@ import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
 import {
+  BLOCKBOOK_TICKER_PATH,
+  readBlockbookNativeQuote,
+} from '../../../shared/nativeCoinQuotes';
+import {
   clearNavigationState,
   clearTransactionNavigationState,
   getWalletNavigationScope,
@@ -55,7 +59,6 @@ import {
 } from '../utils/assertCompleteHDAccountData';
 import { readWalletPresence } from '../utils/readWalletPresence';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
-import { ASSET_PRICE_API } from 'constants/index';
 import {
   assertWalletPersistenceAllowed,
   walletPersistenceGate,
@@ -11284,21 +11287,10 @@ class MainController {
     try {
       const activeNetworkURL = ensureTrailingSlash(networkUrl);
       const response = await retryableFetch(
-        `${activeNetworkURL}${ASSET_PRICE_API}`
+        `${activeNetworkURL}${BLOCKBOOK_TICKER_PATH}`
       );
-      const currencies = await response.json();
-
-      if (
-        currencies &&
-        currencies.rates &&
-        Number.isFinite(currencies.rates[currency])
-      ) {
-        const result = {
-          available: true,
-          price: currencies.rates[currency],
-          priceChange24h: undefined, // Backend doesn't provide 24h change for UTXO yet
-        };
-
+      const result = readBlockbookNativeQuote(await response.json(), currency);
+      if (result) {
         // Preserve the existing zero-quote noncache policy.
         if (result.price !== 0)
           this.utxoPriceDataCache.set(cacheKey, {
