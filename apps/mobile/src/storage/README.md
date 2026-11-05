@@ -139,3 +139,26 @@ after an uncertain acknowledgement, an exact unchanged wallet. The native
 lifecycle permits an empty replacement only after verified removal and after
 both owners have drained. The user interface and its explicit warning and
 confirmation controls are separate work.
+
+## Device unlock enrollment reference
+
+The private storage owner records only a nonsecret enrollment ID bound to the
+installation, wallet and exact encrypted vault pair. The enrollment port reads
+the pair and reference together. Only the canonical, current reference can
+identify a protected credential. Absent or malformed references leave password
+unlock and matching-phrase recovery available.
+
+The private exact wallet snapshot represents the schema-bounded reference bytes
+in hex for removal and recovery reconciliation. This preserves malformed text
+across SQLite bridges that truncate embedded NULs or replace invalid UTF-8.
+Only the enrollment parser decodes canonical printable ASCII. Confirmed removal
+and phrase recovery retire the reference in their existing transactions. Rollback
+retains the original bytes.
+
+A future biometric host must stage credentials in protected storage before
+activating a reference. After verified revocation, replacement, recovery or
+removal, it must retire the superseded credential alias separately. An
+uncertain SQLite result or an owner retired after COMMIT requires reopening
+before deciding which alias may be retired. This storage layer neither activates
+biometrics nor establishes physical erasure of a credential or encrypted database
+remnants.
