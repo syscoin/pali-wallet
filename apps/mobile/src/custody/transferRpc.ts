@@ -1,7 +1,9 @@
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
+import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmReplayError, type EvmReplayDispatchAdmission, type EvmReplayDispatchContext } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
@@ -131,7 +133,7 @@ export class NativeTransferRpc {
     } catch (error) {
       if (controller.signal.aborted)
         throw new NativeTransferRpcError('CANCELLED');
-      if (error instanceof NativeTransferRpcError) throw error;
+      if (error instanceof NativeTransferRpcError || error instanceof EvmReplayError) throw error;
       if (error instanceof EvmTransferReadError) return this.mapReadError(error);
       throw new NativeTransferRpcError('UNAVAILABLE');
     } finally {
@@ -270,9 +272,12 @@ export class NativeTransferRpc {
     rawTransaction: string,
     expectedHash: string,
     signal: AbortSignal,
-    intent?: Erc20TransferIntent
+    intent?: Erc20TransferIntent,
+    options?: Readonly<{ replay: Readonly<{ admit: EvmReplayDispatchAdmission; context: EvmReplayDispatchContext }> }>
   ): Promise<string> {
     const hash = checkedHash(expectedHash);
+    const replay = options?.replay;
+    const cancellation = replay?.context.operation === 'cancel' ? replay.context : undefined;
     if (
       typeof rawTransaction !== 'string' ||
       rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
@@ -289,6 +294,10 @@ export class NativeTransferRpc {
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
+      if (cancellation && (intent || cancellation.hash !== hash || cancellation.chainId !== this.context.chainId ||
+          cancellation.nonce !== tx.nonce || tx.from?.toLowerCase() !== cancellation.from.toLowerCase() ||
+          tx.to !== tx.from || tx.value !== 0n || tx.data !== '0x' || tx.accessList?.length ||
+          (tx.type !== 0 && tx.type !== 2))) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
       if (intent) assertTransferIntentEnvelope(
         {
@@ -305,12 +314,25 @@ export class NativeTransferRpc {
     }
     return this.operation(signal, async (local) => {
       await this.checkChain(local);
-      // No automatic retry: the remote side may accept before a response is lost.
-      const returned = checkedHash(
-        await this.call('eth_sendRawTransaction', [rawTransaction], local)
-      );
-      if (returned !== hash) return invalid();
-      return hash;
+      const send = () => {
+        if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
+        // No automatic retry: the remote side may accept before a response is lost.
+        return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
+          if (checkedHash(value) !== hash) return invalid();
+          return hash;
+        });
+      };
+      if (!replay) return send();
+      const checkCancellation = cancellation && (() => assertEvmCancellationPayerReady(
+        cancellation.from, cancellation.nonce,
+        (method, address, tag) => this.call(method, [address, tag], local),
+        () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); }
+      ).catch((error) => {
+        if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
+          throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        throw error;
+      }));
+      return replay.admit(send, checkCancellation);
     });
   }
   receipt(

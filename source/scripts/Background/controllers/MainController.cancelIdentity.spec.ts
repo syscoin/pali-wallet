@@ -53,10 +53,17 @@ describe('cancellation reviewed original admission', () => {
       mockState.vault.activeAccount.id
     ].ethereum[CHAIN];
   const run = (nonce: any = NONCE, signer = PAYER) =>
-    wallet.cancelEvmTransaction(HASH, true, nonce, signer, {
-      chainId: CHAIN,
-      walletScope: getWalletNavigationScope(),
-    });
+    wallet.cancelEvmTransaction(
+      HASH,
+      true,
+      nonce,
+      signer,
+      {
+        chainId: CHAIN,
+        walletScope: getWalletNavigationScope(),
+      },
+      { approvedMaximumFee: '504000' }
+    );
   beforeEach(() => {
     jest.clearAllMocks();
     mockState = {
@@ -103,7 +110,16 @@ describe('cancellation reviewed original admission', () => {
       };
     });
     keyring = {
-      ethereumTransaction: { web3Provider: {}, cancelSentTransaction: cancel },
+      ethereumTransaction: {
+        web3Provider: {
+          send: jest.fn(async (method) =>
+            method === 'eth_getTransactionCount'
+              ? `0x${NONCE.toString(16)}`
+              : '0x'
+          ),
+        },
+        cancelSentTransaction: cancel,
+      },
       setVaultStateGetter: jest.fn(),
     };
     wallet = Object.create(MainController.prototype);
@@ -122,7 +138,7 @@ describe('cancellation reviewed original admission', () => {
       validateOriginal: expect.any(Function),
       targetAccount: undefined,
       previewOnly: false,
-      approvedMaximumFee: undefined,
+      approvedMaximumFee: '504000',
     });
   });
 

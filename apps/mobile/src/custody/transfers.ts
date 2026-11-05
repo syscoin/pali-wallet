@@ -1,6 +1,5 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
-import { keccak256 } from 'ethers/crypto';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { parseDecimalAmount } from '../core/amounts.ts';
@@ -822,7 +821,7 @@ export class NativeTransfers {
       };
       const replay = runtime.replay(current, {
         observe: ({ hash, from, to, nonce }) => rpc.observation({ hash, from, to, nonce }, abort.signal),
-        dispatch: raw => rpc.broadcast(raw, keccak256(raw), abort.signal),
+        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, undefined, { replay: { admit, context } }),
       }, { now: this.now, randomBytes: this.randomBytes });
       this.replay = replay;
       const result = await replay.prepare(selected); assertCurrent();

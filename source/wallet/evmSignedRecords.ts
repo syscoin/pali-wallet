@@ -328,6 +328,16 @@ function summary(entry: Entry): EvmSignedRecordSummary {
   void _chunks;
   return Object.freeze(value);
 }
+function replayableVariants(entries: readonly Entry[]): readonly Entry[] {
+  const lastCancel = entries
+    .map((entry) => entry.operation)
+    .lastIndexOf('cancel');
+  return lastCancel < 0
+    ? entries
+    : entries.filter(
+        (entry, index) => index >= lastCancel || entry.operation === 'cancel'
+      );
+}
 async function entriesHash(entries: readonly Entry[]): Promise<string> {
   const bytes = encoder.encode(JSON.stringify(entries));
   try {
@@ -745,7 +755,12 @@ export class EvmSignedRecords {
     session: EvmSignedRecordSession,
     chainId: string,
     address: string,
-    options: Readonly<{ beforeHash?: string; maximum: number; nonce?: number }>
+    options: Readonly<{
+      beforeHash?: string;
+      maximum: number;
+      nonce?: number;
+      replayCandidatesOnly?: boolean;
+    }>
   ): Promise<
     Readonly<{
       entries: readonly EvmRetainedSignedRecord[];
@@ -754,11 +769,12 @@ export class EvmSignedRecords {
     }>
   > {
     const from = getAddress(address).toLowerCase();
-    const { maximum, beforeHash, nonce } = options;
+    const { maximum, beforeHash, nonce, replayCandidatesOnly } = options;
     if (
       !Number.isSafeInteger(maximum) ||
       maximum < 1 ||
       maximum > 30 ||
+      (replayCandidatesOnly && nonce === undefined) ||
       (beforeHash !== undefined && !HASH.test(beforeHash)) ||
       (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
     )
@@ -766,12 +782,15 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
-      const matching = (bundle?.entries ?? []).filter(
+      const scoped = (bundle?.entries ?? []).filter(
         (entry) =>
           entry.chainId === chainId &&
           entry.from === from &&
           (nonce === undefined || entry.nonce === nonce)
       );
+      const matching = replayCandidatesOnly
+        ? replayableVariants(scoped)
+        : scoped;
       const end =
         beforeHash === undefined
           ? matching.length
@@ -787,6 +806,60 @@ export class EvmSignedRecords {
         total: matching.length,
         nextCursor: start > 0 ? matching[start]!.hash : null,
       });
+    });
+  }
+  /** Admit against the authenticated append order. Cancellation preflight runs
+   * here before synchronous dispatch. Box the result to release before its ACK. */
+  withReplayAdmission<T>(
+    session: EvmSignedRecordSession,
+    {
+      chainId,
+      from,
+      hash,
+      nonce,
+      operation,
+      originalHash,
+    }: Pick<
+      EvmSignedRecordSummary,
+      'chainId' | 'from' | 'hash' | 'nonce' | 'operation' | 'originalHash'
+    >,
+    admit: (predecessors: readonly EvmSignedRecordSummary[]) => T,
+    predecessorNonce?: number,
+    checkCancellation?: () => Promise<void>,
+    checkAdmission?: () => void
+  ): Promise<Readonly<{ result: T }> | null> {
+    const address = getAddress(from).toLowerCase();
+    return this.exclusive(async () => {
+      // A queued cancellation may have expired before reaching storage.
+      if (operation === 'cancel') checkAdmission?.();
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const sender = (bundle?.entries ?? []).filter(
+        (entry) => entry.chainId === chainId && entry.from === address
+      );
+      const variants = replayableVariants(
+        sender.filter((entry) => entry.nonce === nonce)
+      );
+      const retained = variants.find((entry) => entry.hash === hash);
+      if (
+        !retained ||
+        retained.operation !== operation ||
+        retained.originalHash !== originalHash
+      )
+        return null;
+      const predecessors =
+        predecessorNonce === undefined
+          ? []
+          : replayableVariants(
+              sender.filter((entry) => entry.nonce === predecessorNonce)
+            ).map(summary);
+      guard(session);
+      if (checkCancellation) {
+        if (retained.operation !== 'cancel') return null;
+        await checkCancellation();
+        guard(session);
+      }
+      return { result: admit(predecessors) };
     });
   }
   readExact(

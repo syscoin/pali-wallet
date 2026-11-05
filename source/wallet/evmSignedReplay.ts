@@ -1,7 +1,6 @@
 import {
   captureEvmSubmission,
   submitSignedEvmTransaction,
-  evmSubmissionFailure,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { getAddress } from 'ethers/address';
 import { Transaction } from 'ethers/transaction';
@@ -14,7 +13,6 @@ import {
 
 import {
   EvmSignedRecords,
-  createEvmSignedRecordLifecycle,
   type EvmSignedRecordSession,
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
@@ -81,10 +79,24 @@ export type EvmReplayPreparation = Readonly<
       transaction: EvmSavedTransaction;
     }
 >;
+export type EvmReplayDispatchAdmission = (
+  send: () => Promise<string>,
+  checkCancellation?: () => Promise<void>
+) => Promise<string>;
+export type EvmReplayDispatchContext = Pick<
+  EvmSignedRecordSummary,
+  'operation' | 'originalHash' | 'chainId' | 'from' | 'nonce' | 'hash'
+>;
 export type EvmReplaySession = Readonly<{
   assertCurrent(): void;
   context: Pick<EvmSubmissionContext, 'account' | 'network'>;
-  dispatch(rawTransaction: string): Promise<string>;
+  /** Cancel replay supplies its bounded host preflight to admission. `send`
+   * synchronously initiates transport and returns its acknowledgment promise. */
+  dispatch(
+    rawTransaction: string,
+    admit: EvmReplayDispatchAdmission,
+    context: EvmReplayDispatchContext
+  ): Promise<string>;
   observe(expected: EvmObservationRequest): Promise<EvmTransactionObservation>;
   recordSession: EvmSignedRecordSession;
 }>;
@@ -104,10 +116,10 @@ type Pending = {
   entry: EvmRetainedSignedRecord;
   expires: number;
   generation: number;
-  lifecycle: ReturnType<typeof createEvmSignedRecordLifecycle>;
   review: EvmReplayReview;
   session: EvmReplaySession;
 };
+const CANCELLATION_PREFLIGHT_MS = 12000;
 function selectedHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
     throw new EvmReplayError('NOT_FOUND');
@@ -297,7 +309,11 @@ export class EvmSignedReplay {
       session.recordSession,
       String(session.context.network.chainId),
       session.context.account.address,
-      { ...options, maximum: options.maximum ?? 30 }
+      {
+        ...options,
+        maximum: options.maximum ?? 30,
+        replayCandidatesOnly: options.nonce !== undefined,
+      }
     );
     session.assertCurrent();
     return Object.freeze({
@@ -315,6 +331,32 @@ export class EvmSignedReplay {
     pending.session.assertCurrent();
     pending.session.recordSession.assertCurrent();
     if (this.time() >= pending.expires) throw new EvmReplayError('EXPIRED');
+  }
+  private async waitCancellationPreflight(
+    expires: number,
+    assertCurrent: () => void,
+    checkCancellation: () => Promise<void>
+  ): Promise<void> {
+    assertCurrent();
+    const started = this.time();
+    const cutoff = Math.min(expires, started + CANCELLATION_PREFLIGHT_MS);
+    const timeoutMs = Math.ceil(cutoff - started);
+    if (timeoutMs <= 0) throw new EvmReplayError('EXPIRED');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new EvmReplayError('EXPIRED')),
+          timeoutMs
+        );
+      });
+      // This bounds the queue wait. The host still owns transport cancellation.
+      const result = await Promise.race([checkCancellation(), deadline]);
+      if (this.time() >= cutoff) throw new EvmReplayError('EXPIRED');
+      if (result !== undefined) throw new EvmReplayError('CONTEXT_CHANGED');
+    } finally {
+      clearTimeout(timer);
+    }
   }
   async prepare(hash: string): Promise<EvmReplayPreparation> {
     hash = selectedHash(hash);
@@ -339,10 +381,6 @@ export class EvmSignedReplay {
       generation: this.generation,
       expires: this.time() + 90000,
     };
-    const lifecycle = createEvmSignedRecordLifecycle(
-      this.records,
-      session.recordSession
-    );
     this.check(state);
     const {
       entry,
@@ -369,16 +407,15 @@ export class EvmSignedReplay {
       BigInt(observation.latestNonce) < BigInt(entry.nonce)
         ? observation.latestNonce
         : undefined;
-    const candidates =
-      missingNonce === undefined
-        ? []
-        : (
-            await this.records.listSender(
-              session.recordSession,
-              entry.chainId,
-              entry.from
-            )
-          ).filter((candidate) => String(candidate.nonce) === missingNonce);
+    const eligible = await this.records.withReplayAdmission(
+      session.recordSession,
+      entry,
+      (candidates) => candidates,
+      missingNonce === undefined ? undefined : Number(missingNonce)
+    );
+    this.check(state);
+    if (!eligible) throw new EvmReplayError('CONTEXT_CHANGED');
+    const candidates = eligible.result;
     const predecessors = candidates
       .slice(-20)
       .reverse()
@@ -427,7 +464,7 @@ export class EvmSignedReplay {
         : {}),
     });
     this.ownerId = id;
-    this.pending = { ...state, entry, review, lifecycle };
+    this.pending = { ...state, entry, review };
     return Object.freeze({ status: 'review', review });
   }
   async confirm(
@@ -462,24 +499,86 @@ export class EvmSignedReplay {
         operation: entry.operation,
         ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
       },
-      check,
-      () => pending.lifecycle
+      check
     );
+    const {
+      operation,
+      originalHash,
+      chainId,
+      from,
+      nonce,
+      hash: retainedHash,
+    } = entry;
+    const dispatchContext = Object.freeze({
+      operation,
+      ...(originalHash ? { originalHash } : {}),
+      chainId,
+      from,
+      nonce,
+      hash: retainedHash,
+    });
     let dispatched = false;
     try {
       const hash = await submitSignedEvmTransaction(
         entry.rawTransaction,
         async (raw) => {
           check();
-          const result = await session.dispatch(raw);
-          if (result.toLowerCase() !== entry.hash)
-            throw new EvmReplayError('INVALID_RESPONSE');
-          return result;
+          let open = true,
+            requested = false;
+          try {
+            const result = await session.dispatch(
+              raw,
+              async (send, checkCancellation) => {
+                if (
+                  !open ||
+                  requested ||
+                  (operation === 'cancel'
+                    ? typeof checkCancellation !== 'function'
+                    : checkCancellation !== undefined)
+                )
+                  throw new EvmReplayError('CONTEXT_CHANGED');
+                requested = true;
+                const checkAdmission = () => {
+                  if (!open) throw new EvmReplayError('CONTEXT_CHANGED');
+                  check();
+                };
+                const admission = await this.records.withReplayAdmission(
+                  session.recordSession,
+                  entry,
+                  () => {
+                    checkAdmission();
+                    if (!checkCancellation) dispatched = true;
+                    const response = send();
+                    dispatched = true;
+                    // The response can reject before the storage queue yields.
+                    void response.catch(() => undefined);
+                    return response;
+                  },
+                  undefined,
+                  checkCancellation &&
+                    (() =>
+                      this.waitCancellationPreflight(
+                        pending.expires,
+                        checkAdmission,
+                        checkCancellation
+                      )),
+                  checkCancellation && checkAdmission
+                );
+                if (!admission) throw new EvmReplayError('CONTEXT_CHANGED');
+                return admission.result;
+              },
+              dispatchContext
+            );
+            if (!dispatched || result.toLowerCase() !== entry.hash)
+              throw new EvmReplayError('INVALID_RESPONSE');
+            return result;
+          } finally {
+            open = false;
+          }
         },
         boundary,
         check
       );
-      dispatched = true;
       check();
       await this.records.updatePhase(
         session.recordSession,
@@ -491,8 +590,7 @@ export class EvmSignedReplay {
       check();
       return Object.freeze({ status: 'submitted', hash });
     } catch (error) {
-      if (!dispatched && evmSubmissionFailure(error).transactionNotBroadcast)
-        throw error;
+      if (!dispatched) throw error;
       // Retained bytes survive a lost acknowledgement; never dispatch again here.
       return Object.freeze({ status: 'unknown', hash: entry.hash });
     }

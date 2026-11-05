@@ -29,6 +29,7 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
+import { assertEvmCancellationPayerReady } from '../../../shared/evmCancellationPayer.ts';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -1040,6 +1041,10 @@ class MainController {
     const networkRequest = this.networkRequestGeneration;
     const navigation = getWalletNavigationScope();
     const selected = { ...store.getState().vault.activeAccount };
+    const cancellationProvider =
+      context.operation === 'cancel'
+        ? keyring.ethereumTransaction.web3Provider
+        : null;
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation, keyring);
@@ -1051,6 +1056,8 @@ class MainController {
         ];
       if (
         networkRequest !== this.networkRequestGeneration ||
+        (cancellationProvider !== null &&
+          keyring.ethereumTransaction.web3Provider !== cancellationProvider) ||
         currentNavigation.account !== navigation.account ||
         currentNavigation.network !== navigation.network ||
         vault.activeAccount.id !== selected.id ||
@@ -1065,9 +1072,27 @@ class MainController {
       }
     };
     assertCurrent();
-    return createEvmSignedRecordLifecycle(this.getRetainedEvmRecords(), {
-      keyring,
-      assertCurrent,
+    const lifecycle = createEvmSignedRecordLifecycle(
+      this.getRetainedEvmRecords(),
+      { keyring, assertCurrent }
+    );
+    if (cancellationProvider === null) return lifecycle;
+    const send = cancellationProvider.send.bind(cancellationProvider);
+    const payer = context.account.address;
+    return Object.freeze({
+      ...lifecycle,
+      persistSigned: async (
+        record: Parameters<typeof lifecycle.persistSigned>[0]
+      ) => {
+        await lifecycle.persistSigned(record);
+        // The SDK awaits this acknowledgement before its final synchronous send guard.
+        await assertEvmCancellationPayerReady(
+          payer,
+          record.nonce,
+          (method, address, tag) => send(method, [address, tag]),
+          lifecycle.assertCurrent
+        );
+      },
     });
   }
 
@@ -6567,6 +6592,9 @@ class MainController {
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
     const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const { approvedMaximumFee } = options;
+    const previewOnly = options.previewOnly === true;
     let usingFallback = false;
     const assertCurrentContext = () => {
       this.assertWalletReadyForSigning();
@@ -6577,6 +6605,7 @@ class MainController {
       const payer = currentVault.accounts[payerRef.type]?.[payerRef.id];
       if (
         this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkRequest ||
         currentScope.account !== scope.account ||
         currentScope.network !== scope.network ||
         this.getActiveKeyring() !== keyring ||
@@ -6608,6 +6637,20 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrentContext();
+    if (
+      !previewOnly &&
+      (typeof approvedMaximumFee !== 'string' ||
+        !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee))
+    )
+      throw new Error('Cancellation fee approval required');
+    const send = provider.send.bind(provider);
+    await assertEvmCancellationPayerReady(
+      normalizedSignerAddress,
+      fallbackNonce,
+      (method, address, tag) => send(method, [address, tag]),
+      assertCurrentContext
+    );
+    assertCurrentContext();
     return await transactionController.cancelSentTransaction(
       txHash,
       isLegacy,
@@ -6616,8 +6659,8 @@ class MainController {
         assertCurrentContext,
         validateOriginal,
         targetAccount,
-        previewOnly: options.previewOnly === true,
-        approvedMaximumFee: options.approvedMaximumFee,
+        previewOnly,
+        approvedMaximumFee,
       }
     );
   }

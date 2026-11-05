@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { EvmReplayError, type EvmReplayDispatchAdmission } from '../../../source/wallet/evmSignedReplay.ts';
 const sender = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
@@ -165,6 +166,88 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
     invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal())
   );
   assert.equal(invalid.calls.length, 0);
+});
+
+test('retained cancellation reads the latest nonce before latest and pending code inside admission', async () => {
+  const raw = await sender.signTransaction({
+    type: 2, chainId: 1, nonce: 1, to: sender.address, value: 0,
+    gasLimit: 42000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
+  });
+  const hash = keccak256(raw);
+  const context = { chainId: '1', from: sender.address, hash, nonce: 1, operation: 'cancel' as const };
+  for (const [latestNonce, delegatedAt, ready] of [
+    ['0x0', '', false], ['0x2', '', false], ['0x01', '', false],
+    ['0x1', 'latest', false], ['0x1', 'pending', false], ['0x1', '', true],
+  ] as const) {
+    const f = fixture({
+      eth_getTransactionCount: latestNonce,
+      eth_getCode: ({ params }: { params: string[] }) => params[1] === delegatedAt ? `0xef0100${'33'.repeat(20)}` : '0x',
+      eth_sendRawTransaction: hash,
+    });
+    const admit: EvmReplayDispatchAdmission = async (send, checkCancellation) => {
+      assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
+      assert(checkCancellation);
+      await checkCancellation();
+      return send();
+    };
+    const result = f.rpc.broadcast(raw, hash, signal(), undefined, { replay: { admit, context } });
+    if (ready) assert.equal(await result, hash);
+    else await assert.rejects(result, { code: 'REVIEW_REQUIRED' });
+    assert.deepEqual(f.calls.slice(1).map(({ method, params }) => [method, params]), [
+      ['eth_getTransactionCount', [sender.address, 'latest']],
+      ...(latestNonce === '0x1' ? [
+        ['eth_getCode', [sender.address, 'latest']],
+        ['eth_getCode', [sender.address, 'pending']],
+      ] : []),
+      ...(ready ? [['eth_sendRawTransaction', [raw]]] : []),
+    ]);
+  }
+});
+
+test('ordinary native replay preserves shared admission failures with no cancellation reads or POST', async () => {
+  const raw = await sender.signTransaction({
+    type: 2, chainId: 1, nonce: 0, to: recipient, value: 1,
+    gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
+  });
+  const hash = keccak256(raw), f = fixture();
+  const context = { chainId: '1', from: sender.address, hash, nonce: 0, operation: 'send' as const };
+  const admit: EvmReplayDispatchAdmission = async (_send, checkCancellation) => {
+    assert.equal(checkCancellation, undefined);
+    throw new EvmReplayError('CONTEXT_CHANGED');
+  };
+  await assert.rejects(f.rpc.broadcast(raw, hash, signal(), undefined, { replay: { admit, context } }), EvmReplayError);
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
+  const mislabeled = fixture();
+  await assert.rejects(mislabeled.rpc.broadcast(raw, hash, signal(), undefined, { replay: { admit, context: { ...context, operation: 'cancel' } } }), { code: 'INVALID_RESPONSE' });
+  assert.equal(mislabeled.calls.length, 0);
+});
+
+test('native cancellation waits for the nonce response before sampling code', async () => {
+  const raw = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: sender.address, value: 0,
+    gasLimit: 42000, gasPrice: 2,
+  });
+  const hash = keccak256(raw);
+  let entered!: () => void, release!: (nonce: string) => void;
+  const observed = new Promise<void>((resolve) => { entered = resolve; });
+  const held = new Promise<string>((resolve) => { release = resolve; });
+  const f = fixture({
+    eth_getTransactionCount: () => { entered(); return held; },
+    eth_getCode: `0xef0100${'33'.repeat(20)}`,
+  });
+  const context = { chainId: '1', from: sender.address, hash, nonce: 1, operation: 'cancel' as const };
+  const admit: EvmReplayDispatchAdmission = async (send, checkCancellation) => {
+    assert(checkCancellation);
+    await checkCancellation();
+    return send();
+  };
+  const work = f.rpc.broadcast(raw, hash, signal(), undefined, { replay: { admit, context } });
+  const rejected = assert.rejects(work, { code: 'REVIEW_REQUIRED' });
+  await observed;
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount']);
+  release('0x1');
+  await rejected;
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount', 'eth_getCode', 'eth_getCode']);
 });
 test('first canonical receipt confirms immediately without nonce or finality gates', async () => {
   const hash = '0x' + '1'.repeat(64);

@@ -1,5 +1,9 @@
+import { Transaction } from 'ethers/transaction';
+
+import { assertEvmCancellationPayerReady } from '../../../shared/evmCancellationPayer.ts';
 import { observeEvmTransaction } from '../../../shared/evmTransactionObservation.ts';
 import {
+  EvmReplayError,
   EvmSignedReplay,
   type EvmReplaySession,
 } from '../../../wallet/evmSignedReplay.ts';
@@ -30,7 +34,28 @@ export function createExtensionEvmReplay(
           (method, params) => send(method, [...params]),
           captured.assertCurrent
         ),
-      dispatch: (raw) => send('eth_sendRawTransaction', [raw]),
+      dispatch: (raw, admit, context) => {
+        const broadcast = () => send('eth_sendRawTransaction', [raw]);
+        if (context.operation !== 'cancel') return admit(broadcast);
+        const tx = Transaction.from(raw);
+        if (
+          (tx.type !== 0 && tx.type !== 2) ||
+          tx.from?.toLowerCase() !== context.from.toLowerCase() ||
+          tx.to !== tx.from ||
+          tx.value !== BigInt(0) ||
+          tx.data !== '0x' ||
+          tx.accessList?.length
+        )
+          throw new EvmReplayError('INVALID_RESPONSE');
+        return admit(broadcast, () =>
+          assertEvmCancellationPayerReady(
+            context.from,
+            context.nonce,
+            (method, address, tag) => send(method, [address, tag]),
+            captured.assertCurrent
+          )
+        );
+      },
     });
   });
 }
