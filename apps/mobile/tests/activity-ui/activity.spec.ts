@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-for (const decimals of [19, 255]) {
+for (const decimals of [0, 18, 19, 255]) {
   test(`Activity renders a valid ${decimals}-decimal token in the list and details`, async ({
     page,
   }) => {
@@ -18,7 +18,7 @@ for (const decimals of [19, 255]) {
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.goto('/');
-    const exactAmount = `0.${'0'.repeat(decimals - 1)}1 PRECISE`;
+    const exactAmount = decimals === 0 ? '1 PRECISE' : `0.${'0'.repeat(decimals - 1)}1 PRECISE`;
     const row = page.getByRole('button', {
       name: new RegExp('PRECISE.*View transaction details'),
     });
@@ -52,7 +52,7 @@ test('Activity details remain usable when an invalid fee reaches the view', asyn
   page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await page
-    .getByRole('button', { name: /1\.0 ETH, Confirmed/ })
+    .getByRole('button', { name: /1 ETH, Confirmed/ })
     .first()
     .click();
   await expect(
@@ -74,7 +74,7 @@ test('confirmed address copy writes the complete address to the clipboard', asyn
     navigator.clipboard.writeText('fixture-before-copy')
   );
   await page
-    .getByRole('button', { name: /1\.0 ETH, Confirmed/ })
+    .getByRole('button', { name: /1 ETH, Confirmed/ })
     .first()
     .click();
   await page
@@ -90,25 +90,27 @@ test('confirmed address copy writes the complete address to the clipboard', asyn
     page.getByText('Copy this address?', { exact: true })
   ).not.toBeVisible();
 });
-test('actual Activity component loads, filters zero-value events, and requires full-address copy confirmation', async ({
+test('actual Activity uses indexed values without RPC, filters zero-value events, and requires full-address copy confirmation', async ({
   page,
 }) => {
   await page.goto('/');
   await expect(
     page.getByText('1 zero-value token transaction hidden.')
   ).toBeVisible();
+  expect(await page.evaluate(() => window.__activityFixture.feedReads())).toBe(
+    2
+  );
+  expect(
+    await page.evaluate(() => window.__activityFixture.receiptReads())
+  ).toBe(0);
   await page
     .getByRole('button', {
       name: 'Show zero-value token activity',
       exact: true,
     })
     .click();
-  await expect(
-    page.getByText('1 token transfer event', { exact: true })
-  ).toBeVisible();
-  await page
-    .getByRole('button', { name: /1 token transfer event, Confirmed/ })
-    .click();
+  await expect(page.getByText('0 ZERO', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: /0 ZERO, Confirmed/ }).click();
   await expect(
     page.getByText('Transaction details', { exact: true })
   ).toBeVisible();
@@ -123,7 +125,7 @@ test('actual Activity component loads, filters zero-value events, and requires f
   ).toBeVisible();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 });
-test('feed failure remains retryable, and detail/back works while receipts are in flight', async ({
+test('feed failure remains retryable, and indexed detail/back works while explicit enrichment is in flight', async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -148,12 +150,10 @@ test('feed failure remains retryable, and detail/back works while receipts are i
     .getByRole('button', { name: 'Refresh activity', exact: true })
     .click();
   await expect(
-    page
-      .getByRole('button', { name: /Network activity, Checking transaction/ })
-      .first()
+    page.getByRole('button', { name: /1 ETH, Confirmed/ }).first()
   ).toBeVisible();
   await page
-    .getByRole('button', { name: /Network activity, Checking transaction/ })
+    .getByRole('button', { name: /1 ETH, Confirmed/ })
     .first()
     .click();
   await expect(
@@ -165,7 +165,7 @@ test('feed failure remains retryable, and detail/back works while receipts are i
   ).toBeVisible();
   await page.evaluate(() => (window as any).__activityFixture.release());
   await expect(
-    page.getByRole('button', { name: /1\.0 ETH, Confirmed/ }).first()
+    page.getByRole('button', { name: /1 ETH, Confirmed/ }).first()
   ).toBeVisible();
   await page
     .getByRole('button', { name: 'Load older activity', exact: true })
@@ -174,7 +174,7 @@ test('feed failure remains retryable, and detail/back works while receipts are i
     page.getByRole('button', { name: 'Load older activity', exact: true })
   ).toBeEnabled();
 });
-test('older visible rows receive RPC checks and return to the same list position', async ({
+test('older indexed rows need no RPC and return to the same list position after selected enrichment', async ({
   page,
 }) => {
   await page.goto('/');
@@ -188,10 +188,16 @@ test('older visible rows receive RPC checks and return to the same list position
     .getByRole('button')
     .filter({ hasText: '0x0000000000…00000028' });
   await expect(row).toContainText('Confirmed');
+  expect(
+    await page.evaluate(() => window.__activityFixture.receiptReads())
+  ).toBe(0);
   await row.click();
   await expect(
     page.getByText('Transaction details', { exact: true })
   ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__activityFixture.receiptReads())
+  ).toBe(1);
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(row).toBeVisible();
 });
@@ -201,7 +207,7 @@ test('copy review actions remain reachable on a small screen with enlarged text'
   await page.setViewportSize({ width: 320, height: 480 });
   await page.goto('/');
   await page
-    .getByRole('button', { name: /1\.0 ETH, Confirmed/ })
+    .getByRole('button', { name: /1 ETH, Confirmed/ })
     .first()
     .click();
   await page
@@ -221,7 +227,7 @@ test('Back waits for asynchronous position persistence before unmounting', async
 }) => {
   await page.goto('/');
   await expect(
-    page.getByRole('button', { name: /1\.0 ETH, Confirmed/ }).first()
+    page.getByRole('button', { name: /1 ETH, Confirmed/ }).first()
   ).toBeVisible();
   await page.evaluate(() => {
     (window as any).__activityFixture.clearView();
@@ -244,12 +250,50 @@ test('Back waits for asynchronous position persistence before unmounting', async
   ).toBeVisible();
 });
 
-
-test('generic contract creation keeps activity readable without inventing a recipient', async ({page}) => {
-  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+test('generic contract creation keeps activity readable without inventing a recipient', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/?contract-creation');
-  await page.getByRole('button').filter({hasText:'0x0000000000…00000001'}).click();
-  await expect(page.getByText('Not verified or contract creation',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Copy recipient address',exact:true})).toHaveCount(0);
+  await page
+    .getByRole('button')
+    .filter({ hasText: '0x0000000000…00000001' })
+    .click();
+  await expect(
+    page.getByText('Contract creation', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByRole('button', { name: 'Copy recipient address', exact: true })
+  ).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+for (const mode of ['missing','invalid','malformed']) test(`custody ${mode} token metadata never displays raw units as a human amount`, async ({page}, testInfo) => {
+  await page.goto('/?token-metadata='+mode);
+  const row=page.getByRole('button',{name:/UNKNOWN.*View transaction details/});
+  const amount=mode==='malformed'?'? UNKNOWN':'UNKNOWN transfer';
+  await expect(row).toBeVisible();
+  await page.screenshot({path:testInfo.outputPath('custody-'+mode+'-list.png')});
+  await expect(row).toContainText(amount);
+  await expect(row).not.toContainText('1000000 UNKNOWN');
+  await row.click();
+  await expect(page.getByText(amount,{exact:true}).last()).toBeVisible();
+  await expect(page.getByText(mode==='malformed'?'Raw token units: Unavailable':'Raw token units: 1000000',{exact:true})).toBeVisible();
+});
+
+
+for (const mode of ['token-placeholder', 'mixed-case']) test(`custody Activity preserves both transaction hashes for ${mode} history`, async ({ page }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`/?history-identity=${mode}`);
+  for (const index of [0xabc, 0xdef]) {
+    const id = `0x${index.toString(16).padStart(64, '0')}`;
+    const row = page.getByText(`${id.slice(0, 12)}…${id.slice(-8)}`, { exact: true }).locator('xpath=ancestor::*[@role="button"][1]');
+    await expect(row).toBeVisible(); await expect(row).toContainText('Confirmed');
+  }
+  expect(await page.evaluate(() => window.__activityFixture.feedReads())).toBe(mode === 'mixed-case' ? 3 : 2);
+  expect(await page.evaluate(() => window.__activityFixture.receiptReads())).toBe(0);
+  await expect(page.getByText(/One activity feed is unavailable|Activity could not be fully loaded/)).toHaveCount(0);
+  await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`custody-${mode}.png`), fullPage: true });
   expect(errors).toEqual([]);
 });

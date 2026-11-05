@@ -24,10 +24,17 @@ test('shared account URL preserves configured query identity and extension defau
   assert.equal(pending.searchParams.get('sort'), 'asc');
 });
 
-test('candidate codec preserves exact hash/block identity while discarding untrusted transaction facts', () => {
+test('candidate codec preserves full shared-mapped indexed facts in memory and the exact cache identity', () => {
   const [candidate] = decodeActivityPage(envelope([row({ hash: hash(10).toUpperCase().replace('0X', '0x'), value: '999',
     isError: '0', confirmations: '999999', tokenSymbol: 'FAKE', input: '0xabcdef' })]), 'tokentx', OWNER, 1);
-  assert.deepEqual(candidate, { hash: hash(10), blockNumber: '123', timestamp: 1700000000000, tokenHint: true });
+  assert.ok(candidate);
+  assert.deepEqual({ hash: candidate.hash, blockNumber: candidate.blockNumber, timestamp: candidate.timestamp, tokenHint: candidate.tokenHint }, { hash: hash(10), blockNumber: '123', timestamp: 1700000000000, tokenHint: true });
+  assert.equal(candidate.indexed.value, '999');
+  assert.equal(candidate.indexed.confirmations, 999999);
+  assert.equal(candidate.indexed.input, '0xabcdef');
+  assert.equal(candidate.indexed.tokenTransfer?.symbol, 'FAKE');
+  assert.equal(candidate.indexed.historySource, 'explorer-tokentx');
+  assert.equal(Object.isFrozen(candidate.indexed), true);
   assert.equal(Object.isFrozen(candidate), true);
   assert.deepEqual(decodeActivityPage({ status: '0', message: 'No transactions found', result: [] }, 'txlist', OWNER, 1), []);
 });
@@ -59,35 +66,25 @@ test('registered Activity scope distinguishes wallet, account, address, endpoint
   assert.equal(scope.apiUrl, 'https://api.routescan.io/v2/network/mainnet/evm/1/etherscan/api');
 });
 
-test('reader verifies the registered RPC chain before returning a bounded head', async () => {
-  const methods: string[] = [];
-  const reader = new ActivityExplorerReader(async (url, init) => {
-    assert.equal(url, scope.network.rpcUrl); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
-    const body = JSON.parse(String(init.body)); methods.push(body.method);
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: body.method === 'eth_chainId' ? '0x1' : '0x100' }));
-  });
-  assert.equal(await reader.head(scope, signal(), () => undefined), '256');
-  assert.equal(methods[0], 'eth_chainId');
-  assert(methods.includes('eth_blockNumber'));
-  const wrong = new ActivityExplorerReader(async (_url, init) => {
-    const body = JSON.parse(String(init.body)); assert.equal(body.method, 'eth_chainId');
-    return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x2' }));
-  });
-  await assert.rejects(wrong.head(scope, signal(), () => undefined), { code: 'CHANGED' });
+test('ordinary history has no RPC head capability or eager network requests', () => {
+  let requests = 0;
+  const reader = new ActivityExplorerReader(async () => { requests++; throw Error('Unexpected request'); });
+  assert.equal('head' in reader, false);
+  assert.equal(requests, 0);
 });
 
-test('reader pins API path, account, page size and sampled end block without exposing an RPC method', async () => {
+test('reader uses the shared account URL, page size and default range without RPC sampling', async () => {
   const reader = new ActivityExplorerReader(async (url, init) => {
     const parsed = new URL(url);
     assert.equal(parsed.origin + parsed.pathname, scope.apiUrl);
     assert.equal(parsed.searchParams.get('module'), 'account'); assert.equal(parsed.searchParams.get('action'), 'tokentx');
     assert.equal(parsed.searchParams.get('address'), OWNER); assert.equal(parsed.searchParams.get('page'), '2');
-    assert.equal(parsed.searchParams.get('offset'), '20'); assert.equal(parsed.searchParams.get('startblock'), '0');
-    assert.equal(parsed.searchParams.get('endblock'), '256'); assert.equal(parsed.searchParams.get('sort'), 'desc');
+    assert.equal(parsed.searchParams.get('offset'), '20'); assert.equal(parsed.searchParams.has('startblock'), false);
+    assert.equal(parsed.searchParams.has('endblock'), false); assert.equal(parsed.searchParams.get('sort'), 'desc');
     assert.equal(init.body, undefined); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
     return new Response(JSON.stringify(envelope()));
   });
-  assert.equal((await reader.page(scope, 'tokentx', 2, '256', signal(), () => undefined))[0]?.tokenHint, true);
+  assert.equal((await reader.page(scope, 'tokentx', 2, signal(), () => undefined))[0]?.tokenHint, true);
 });
 
 test('Activity uses the shared Routescan key-header transport without putting its key in the URL', async () => {
@@ -97,14 +94,13 @@ test('Activity uses the shared Routescan key-header transport without putting it
     assert.equal(new Headers(init.headers).get('apikey'), 'fixture-only-key');
     return new Response(JSON.stringify(envelope()));
   });
-  assert.equal((await reader.page(keyedScope, 'txlist', 1, '256', signal(), () => undefined)).length, 1);
+  assert.equal((await reader.page(keyedScope, 'txlist', 1, signal(), () => undefined)).length, 1);
 });
 
-test('invalid pages and end blocks reject before requesting an address', async () => {
+test('invalid pages reject before requesting an address', async () => {
   let requests = 0;
   const reader = new ActivityExplorerReader(async () => { requests++; return new Response('{}'); });
-  for (const page of [0, -1, 1.5, 10001, Infinity]) await assert.rejects(reader.page(scope, 'txlist', page, '256', signal(), () => undefined), { code: 'INVALID' });
-  assert.throws(() => reader.page(scope, 'txlist', 1, '01', signal(), () => undefined), { code: 'INVALID' });
+  for (const page of [0, -1, 1.5, 10001, Infinity]) await assert.rejects(reader.page(scope, 'txlist', page, signal(), () => undefined), { code: 'INVALID' });
   assert.equal(requests, 0);
 });
 
@@ -112,17 +108,24 @@ test('HTTP failures, malformed JSON and oversized bodies never become empty hist
   for (const response of [new Response('rate limited', { status: 429 }), new Response('{bad'),
     new Response(JSON.stringify(envelope([row({ padding: 'x'.repeat(256 * 1024) })])))]) {
     const reader = new ActivityExplorerReader(async () => response);
-    await assert.rejects(reader.page(scope, 'txlist', 1, '256', signal(), () => undefined));
+    await assert.rejects(reader.page(scope, 'txlist', 1, signal(), () => undefined));
   }
 });
 
 test('aborting a never-settling fetch completes the request without waiting for the transport', async () => {
   const abort = new AbortController();
   const reader = new ActivityExplorerReader(async () => new Promise(() => undefined));
-  const pending = reader.head(scope, abort.signal, () => undefined).then(() => 'resolved', () => 'rejected');
+  const pending = reader.page(scope, 'txlist', 1, abort.signal, () => undefined).then(() => 'resolved', () => 'rejected');
   await new Promise((resolve) => setTimeout(resolve, 0)); abort.abort();
   let timeout: ReturnType<typeof setTimeout> | undefined;
   const outcome = await Promise.race([pending, new Promise<string>((resolve) => { timeout = setTimeout(() => resolve('stalled'), 100); })]);
   if (timeout) clearTimeout(timeout);
   assert.equal(outcome, 'rejected');
+});
+
+test('custody read-scope extraction preserves established cache identity bytes', () => {
+  const scope = createActivityScope('a'.repeat(64), 'hd:60:0', '0x1111111111111111111111111111111111111111', 'ethereum');
+  assert.equal(scope.key, '0x6ef008a014ef15c7e7972895da13ef7ed0d57adc7efd259898d6f009f95bb7bd');
+  assert.equal(scope.sourceId, '0xd22f24f7c73d6e0964ff2a142009cdba7fe0008df0b3fe6beacc784709ac3a7c');
+  assert.deepEqual(Object.keys(scope), ['walletFingerprint', 'accountId', 'address', 'network', 'key', 'sourceId', 'apiUrl', 'explorerUrl']);
 });

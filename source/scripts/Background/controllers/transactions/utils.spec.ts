@@ -6,6 +6,10 @@ jest.mock('state/store', () => ({
   },
 }));
 
+import {
+  mapEvmExplorerTokenTransfer,
+  mapEvmExplorerTransaction,
+} from '../../../../shared/evmHistory';
 import reducer, {
   setAccountTransactions,
   setSingleTransactionToState,
@@ -202,4 +206,63 @@ describe('replacement attempt timestamps', () => {
       expect(result.blockNumber).toBe(incoming.blockNumber);
     }
   );
+});
+
+describe('explorer token-event representative identity', () => {
+  const event = (hash: string, confirmations = '1') => ({
+    hash,
+    from: FROM,
+    to: baseTx.to,
+    contractAddress: `0x${'33'.repeat(20)}`,
+    value: '1000000',
+    tokenSymbol: 'TOK',
+    tokenDecimal: '6',
+    nonce: '7',
+    blockNumber: '123',
+    confirmations,
+    timeStamp: '1700000000',
+    input: '0x',
+  });
+
+  it('retains two actual mapped token-only transactions with the same event sender and outer nonce', () => {
+    const rows = ['aa', 'bb'].map((digit) =>
+      mapEvmExplorerTokenTransfer(event(`0x${digit.repeat(32)}`), 1)
+    );
+    expect(
+      treatAndSortTransactions(rows)
+        .map((row) => (row as any).hash)
+        .sort()
+    ).toEqual(rows.map((row) => row.hash).sort());
+  });
+
+  it.each([false, true])(
+    'retains one actual outer body when the same-hash token placeholder has a different event sender (placeholder first: %s)',
+    (placeholderFirst) => {
+      const placeholder = mapEvmExplorerTokenTransfer(event(TX_HASH), 1);
+      const body = mapEvmExplorerTransaction(
+        { ...event(TX_HASH), from: baseTx.to, to: placeholder.to },
+        1
+      );
+      const rows = placeholderFirst ? [placeholder, body] : [body, placeholder];
+      expect(treatAndSortTransactions(rows)).toEqual([body]);
+    }
+  );
+
+  it('still collapses repeated token-event versions of one transaction hash', () => {
+    const first = mapEvmExplorerTokenTransfer(event(TX_HASH), 1);
+    const refreshed = mapEvmExplorerTokenTransfer(event(TX_HASH, '2'), 1);
+    expect(treatAndSortTransactions([first, refreshed])).toEqual([refreshed]);
+  });
+
+  it('still chooses the mined outer transaction over its pending same-sender same-nonce attempt', () => {
+    const pending = mapEvmExplorerTransaction(
+      { ...event(TX_HASH, '0'), blockNumber: '0' },
+      1
+    );
+    const mined = mapEvmExplorerTransaction(
+      event(`0x${'bb'.repeat(32)}`, '2'),
+      1
+    );
+    expect(treatAndSortTransactions([pending, mined])).toEqual([mined]);
+  });
 });

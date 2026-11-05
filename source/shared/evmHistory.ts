@@ -142,6 +142,19 @@ export function explorerApiError(
     : undefined;
 }
 
+const evmHistorySourcePriority = (tx: any): number => {
+  const source = (tx as any).historySource;
+  if (source === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) return 1;
+  if (
+    source === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer ||
+    (source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction &&
+      source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending &&
+      (tx as any).tokenRecipient !== undefined)
+  )
+    return 0;
+  return 2;
+};
+
 /** Merge normalized display rows; never use source priority for signing authority. */
 function mergeNormalizedEvmHistory<
   T extends { hash: string; timestamp?: number }
@@ -149,18 +162,7 @@ function mergeNormalizedEvmHistory<
   const byHash = new Map<string, T>();
   const key = (tx: T) =>
     String(tx.hash || (tx as any).txid || '').toLowerCase();
-  const priority = (tx: T): number => {
-    const source = (tx as any).historySource;
-    if (source === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) return 1;
-    if (
-      source === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer ||
-      (source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction &&
-        source !== EVM_TRANSACTION_HISTORY_SOURCE.ExplorerPending &&
-        (tx as any).tokenRecipient !== undefined)
-    )
-      return 0;
-    return 2;
-  };
+
   for (const tx of base) {
     const hash = key(tx);
     if (hash) byHash.set(hash, tx);
@@ -171,7 +173,11 @@ function mergeNormalizedEvmHistory<
     const existing = byHash.get(hash);
     // Real explorer bodies replace local summaries and token placeholders.
     // Equal-priority rows retain the established initial-page precedence.
-    if (!existing || priority(tx) > priority(existing)) byHash.set(hash, tx);
+    if (
+      !existing ||
+      evmHistorySourcePriority(tx) > evmHistorySourcePriority(existing)
+    )
+      byHash.set(hash, tx);
   }
   return Array.from(byHash.values());
 }
@@ -254,16 +260,32 @@ export const selectEvmHistoryRepresentatives = <
   transactions: readonly T[],
   limit = 30
 ): T[] => {
-  // Single pass: Group transactions by their ID and keep the best version
+  // Group transactions by their ID and keep the best version
   const txMap = new Map<string, any>();
+  // A token event's sender and outer nonce do not identify an EOA transaction.
+  // Once its real body is present, keep that body's existing nonce grouping.
+  const outerHashes = new Set<string>();
+  for (const input of transactions) {
+    const tx = input as any;
+    const hash = 'hash' in tx ? tx.hash : tx.txid;
+    if (evmHistorySourcePriority(tx) > 0 && typeof hash === 'string' && hash)
+      outerHashes.add(hash.toLowerCase());
+  }
 
   for (const input of transactions) {
     const tx = input as any;
+    const tokenPlaceholder = evmHistorySourcePriority(tx) === 0;
+    if (
+      tokenPlaceholder &&
+      outerHashes.has(('hash' in tx ? tx.hash : tx.txid).toLowerCase())
+    )
+      continue;
     // For EVM transactions, nonce is only unique per sender. Include `from`
     // so inbound and outbound txs with the same nonce do not collapse together.
     // For UTXO or transactions without a sender nonce, use hash/txid.
     let id: string;
     if (
+      !tokenPlaceholder &&
       'nonce' in tx &&
       typeof tx.nonce === 'number' &&
       'from' in tx &&

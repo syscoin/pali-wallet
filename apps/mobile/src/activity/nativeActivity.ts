@@ -1,4 +1,3 @@
-import type { CustodySnapshot } from '../custody/types.ts';
 import {
   ActivityExplorerReader,
   ACTIVITY_PAGE_SIZE,
@@ -12,26 +11,52 @@ import {
   ActivityError,
   DEFAULT_ACTIVITY_VIEW,
   type ActivityCandidate,
-  type ActivityScope,
+  type EvmActivityReadScope,
   type ActivityViewState,
   type LocalActivityRecord,
+  type IndexedActivityTransaction,
+  activityCandidateSummary,
 } from './types.ts';
 import type { ActivityHistorySnapshot } from './historyStore.ts';
-import { parseEvmInteger, selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
+import {
+  parseEvmInteger,
+  selectEvmHistoryRepresentatives,
+  mergeEvmExplorerTransactions,
+} from '../../../../source/shared/evmHistory.ts';
+import {
+  getEvmTransactionDisplayInfo,
+  type EvmTransactionDisplayInfo,
+  type EvmDisplayTokenMetadata,
+} from '../../../../source/shared/evmTransactionDisplay.ts';
+import {
+  buildEvmMinedNonceIndex,
+  getEvmSettlementStatus,
+  type EvmSettlementStatus,
+} from '../../../../source/utils/evmReplacement.ts';
+import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 
 export interface NativeActivityRuntime {
-  load(guard: () => void): Promise<{
-    scope: ActivityScope;
+  load(
+    guard: () => void,
+    signal?: AbortSignal
+  ): Promise<{
+    scope: EvmActivityReadScope;
     saved: ActivityHistorySnapshot;
     locals: readonly LocalActivityRecord[];
+    assets?: readonly EvmDisplayTokenMetadata[];
   }>;
+  observeLocal?(
+    record: LocalActivityRecord,
+    guard: () => void,
+    signal: AbortSignal
+  ): Promise<EvmTransactionObservation>;
   saveCache(
-    scope: ActivityScope,
+    scope: EvmActivityReadScope,
     candidates: readonly ActivityCandidate[],
     guard: () => void
   ): Promise<void>;
   saveView(
-    scope: ActivityScope,
+    scope: EvmActivityReadScope,
     view: ActivityViewState,
     guard: () => void
   ): Promise<void>;
@@ -41,6 +66,11 @@ export type ActivityRow = Readonly<{
   local?: LocalActivityRecord;
   candidate?: ActivityCandidate;
   observation?: ActivityTransactionObservation;
+  indexed?: IndexedActivityTransaction;
+  display?: EvmTransactionDisplayInfo;
+  indexedStatus?: EvmSettlementStatus;
+  zeroValueToken?: boolean;
+  retainedObservation?: EvmTransactionObservation;
   checking: boolean;
   unavailable: boolean;
 }>;
@@ -49,6 +79,8 @@ export type NativeActivitySnapshot = Readonly<{
   rows: readonly ActivityRow[];
   view: ActivityViewState;
   accountAddress: string | null;
+  scopeKey: string | null;
+  chainId: string | null;
   networkName?: string | null;
   nativeSymbol?: string | null;
   explorerUrl: string | null;
@@ -58,10 +90,20 @@ export type NativeActivitySnapshot = Readonly<{
   coverage: string;
   truncated: boolean;
 }>;
-type Source = {
-  getSnapshot(): CustodySnapshot;
-  subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
+export type ActivityLifecycleSnapshot = Readonly<{
+  phase: string;
+  revision: number;
+}>;
+export type ActivityLifecycle = {
+  getSnapshot(): ActivityLifecycleSnapshot;
+  subscribe(listener: () => void): () => void;
 };
+export type ActivityExplorerPort = Pick<ActivityExplorerReader, 'page'>;
+export type ActivityReceiptPort = Pick<ActivityReceiptReader, 'read'>;
+export type EvmActivityReaders = Readonly<{
+  explorer: ActivityExplorerPort;
+  receipts: ActivityReceiptPort;
+}>;
 type FeedState = {
   page: number;
   done: boolean;
@@ -74,7 +116,11 @@ const initial = (): NativeActivitySnapshot =>
     status: 'locked',
     rows: [],
     view: DEFAULT_ACTIVITY_VIEW,
-    accountAddress: null, networkName: null, nativeSymbol: null,
+    accountAddress: null,
+    scopeKey: null,
+    chainId: null,
+    networkName: null,
+    nativeSymbol: null,
     explorerUrl: null,
     loadingMore: false,
     hasMore: false,
@@ -88,11 +134,15 @@ const initial = (): NativeActivitySnapshot =>
 export class NativeActivity {
   private snapshot = initial();
   private listeners = new Set<() => void>();
-  private scope: ActivityScope | null = null;
+  private scope: EvmActivityReadScope | null = null;
   private request: AbortController | null = null;
   private generation = 0;
   private visible = 20;
-  private endblock: string | null = null;
+  private indexed = new Map<string, IndexedActivityTransaction>();
+  private displays = new Map<string, EvmTransactionDisplayInfo>();
+  private tokenEvents = new Map<string, Readonly<Record<string, unknown>>>();
+  private assets: readonly EvmDisplayTokenMetadata[] = [];
+  private retainedObservations = new Map<string, EvmTransactionObservation>();
   private cachedFallback = false;
   private candidates = new Map<string, ActivityCandidate>();
   private freshCandidates = new Set<string>();
@@ -106,15 +156,15 @@ export class NativeActivity {
   };
   private hydration: string[] = [];
   private workers = 0;
-  private readonly source: Source;
+  private readonly source: ActivityLifecycle;
   private readonly runtime: () => NativeActivityRuntime | undefined;
-  private readonly explorer: ActivityExplorerReader;
-  private readonly receipts: ActivityReceiptReader;
+  private readonly explorer: ActivityExplorerPort;
+  private readonly receipts: ActivityReceiptPort;
   constructor(
-    source: Source,
+    source: ActivityLifecycle,
     runtime: () => NativeActivityRuntime | undefined,
-    explorer = new ActivityExplorerReader(),
-    receipts = new ActivityReceiptReader()
+    explorer: ActivityExplorerPort = new ActivityExplorerReader(),
+    receipts: ActivityReceiptPort = new ActivityReceiptReader()
   ) {
     this.source = source;
     this.runtime = runtime;
@@ -189,15 +239,23 @@ export class NativeActivity {
     this.unavailable.clear();
     this.visible = 20;
     this.feeds = { txlist: this.feed(), tokentx: this.feed() };
-    this.endblock = null;
+    this.tokenEvents.clear();
+    this.indexed.clear();
+    this.displays.clear();
+    this.retainedObservations.clear();
+    this.assets = [];
     this.cachedFallback = true;
     this.publish({ ...initial(), status: 'loading' });
     try {
       const runtime = this.runtime();
       if (!runtime) throw new ActivityError('UNAVAILABLE');
-      const { scope, saved, locals } = await runtime.load(guard);
+      const { scope, saved, locals, assets } = await runtime.load(
+        guard,
+        signal
+      );
       guard();
       this.scope = scope;
+      this.assets = assets ?? [];
       for (const record of saved.archived) this.locals.set(record.hash, record);
       for (const local of locals) this.locals.set(local.hash, local);
       for (const record of saved.candidates)
@@ -205,14 +263,22 @@ export class NativeActivity {
       this.publish({
         status: 'ready',
         view: saved.view,
-        accountAddress: scope.address, networkName: scope.network.name, nativeSymbol: scope.network.symbol,
+        accountAddress: scope.address,
+        scopeKey: scope.key,
+        chainId: scope.network.chainId,
+        networkName: scope.network.name,
+        nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
       });
       this.renderRows(true);
+      this.observeRetained();
       if (!scope.apiUrl) {
-        this.feeds.txlist.done = true; this.feeds.tokentx.done = true;
-        this.publish({ coverage: 'Saved transfers only. Add an explorer data source to discover other activity.' });
+        this.feeds.txlist.done = true;
+        this.feeds.tokentx.done = true;
+        this.publish({
+          coverage: 'Activity discovery is unavailable for this network.',
+        });
         this.renderRows(true);
         return;
       }
@@ -220,13 +286,11 @@ export class NativeActivity {
         if (generation === this.generation) this.request?.abort();
       }, 30000);
       try {
-        this.endblock = await this.explorer.head(scope, signal, guard);
-        guard();
         await this.fill(guard, signal);
         guard();
         await runtime.saveCache(
           scope,
-          this.orderedCandidates().slice(0, 24),
+          this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
           guard
         );
         guard();
@@ -241,7 +305,7 @@ export class NativeActivity {
       this.publish({
         status: this.scope ? 'ready' : 'unavailable',
         error:
-          'Activity could not be fully loaded. Your saved transactions have been preserved.',
+          'Activity could not be fully loaded. Previously loaded transactions remain visible.',
         loadingMore: false,
       });
       this.renderRows(true);
@@ -268,7 +332,7 @@ export class NativeActivity {
       );
   }
   private async fill(guard: () => void, signal: AbortSignal): Promise<void> {
-    if (!this.scope || this.endblock === null) return;
+    if (!this.scope) return;
     this.publish({ loadingMore: true });
     for (
       let calls = 0;
@@ -291,7 +355,6 @@ export class NativeActivity {
           this.scope,
           name,
           feed.page,
-          this.endblock,
           signal,
           guard
         );
@@ -299,30 +362,49 @@ export class NativeActivity {
         const fingerprint = JSON.stringify(
           rows.map((r) => [r.hash, r.blockNumber])
         );
-        // tokentx does not include logIndex: distinct full pages may legitimately
-        // contain only events from one hash. Bound work per action, not by these projections.
-        const updates = new Map<string, ActivityCandidate>();
+        // The same shared source-priority merge keeps real transaction bodies
+        // ahead of token-event placeholders. All indexed facts remain transient.
+        for (const row of rows) if (row.tokenEvent && !this.tokenEvents.has(row.hash)) this.tokenEvents.set(row.hash, row.tokenEvent);
+        const merged = mergeEvmExplorerTransactions(
+          [...this.indexed.values()].map(indexed => ({ ...indexed, candidateSummary: this.candidates.get(indexed.hash.toLowerCase())! })),
+          [...this.tokenEvents.values()],
+          Number(this.scope.network.chainId),
+          true,
+          rows.map(row => ({ ...row.indexed, candidateSummary: activityCandidateSummary(row) }))
+        );
+        const byHash = new Map(
+          merged.map((row) => [row.hash.toLowerCase(), row])
+        );
         for (const row of rows) {
-          const old = updates.get(row.hash) ?? this.candidates.get(row.hash);
-          // Persisted block hints may predate a reorg. Only discoveries from
-          // this refresh must agree, including duplicate hashes in one page.
-          if (
-            old &&
-            (updates.has(row.hash) || this.freshCandidates.has(row.hash)) &&
-            old.blockNumber !== row.blockNumber
-          )
-            throw new ActivityError('INVALID');
-          updates.set(
-            row.hash,
-            old ? { ...row, tokenHint: old.tokenHint || row.tokenHint } : row
-          );
-        }
-        for (const [hash, row] of updates) {
-          if (!this.candidates.has(hash) && this.candidates.size >= 240)
+          if (!this.candidates.has(row.hash) && this.candidates.size >= 240)
             continue;
-          this.candidates.set(hash, row);
-          this.freshCandidates.add(hash);
+          const { candidateSummary, ...indexed } = byHash.get(row.hash)!;
+          this.candidates.set(row.hash, candidateSummary);
+          this.indexed.set(row.hash, Object.freeze(indexed));
+          this.freshCandidates.add(row.hash);
         }
+        await Promise.all(
+          rows.map(async (row) => {
+            const indexed = this.indexed.get(row.hash);
+            if (!indexed) return;
+            try {
+              const display = await getEvmTransactionDisplayInfo(
+                indexed,
+                this.scope!.network.symbol,
+                {
+                  chainId: Number(this.scope!.network.chainId),
+                  assets: this.assets,
+                }
+              );
+              guard();
+              this.displays.set(row.hash, Object.freeze(display));
+            } catch {
+              guard();
+              this.displays.delete(row.hash);
+            }
+          })
+        );
+        guard();
         feed.fingerprint = fingerprint;
         feed.page++;
         feed.done = rows.length < ACTIVITY_PAGE_SIZE;
@@ -364,7 +446,7 @@ export class NativeActivity {
       (this.visible >= 200 && this.orderedCandidates().length >= this.visible)
     )
       return;
-    if (this.endblock === null || this.request.signal.aborted) {
+    if (this.request.signal.aborted) {
       await this.refresh();
       return;
     }
@@ -381,7 +463,7 @@ export class NativeActivity {
       guard();
       await this.runtime()?.saveCache(
         this.scope,
-        this.orderedCandidates().slice(0, 24),
+        this.orderedCandidates().slice(0, 24).map(activityCandidateSummary),
         guard
       );
     } catch {
@@ -411,35 +493,70 @@ export class NativeActivity {
         checking: false,
         unavailable: false,
       });
-    const observedRows = [...records.values()]
-      .map((row) => ({
-        ...row,
-        observation: this.observations.get(row.hash),
-        checking: this.checking.has(row.hash),
-        unavailable: this.unavailable.has(row.hash),
-      }));
-    const representatives = selectEvmHistoryRepresentatives(observedRows.map((row) => ({
-      row, hash: row.hash, from: row.observation?.from ?? (row.local ? this.scope?.address : undefined),
-      nonce: parseEvmInteger(row.observation?.nonce ?? row.local?.nonce),
-      confirmations: row.observation?.block ? 1 : 0,
-      blockNumber: row.observation?.block?.number, blockHash: row.observation?.block?.hash,
-      timestamp: row.observation?.timestamp ?? row.candidate?.timestamp ?? row.local?.createdAt ?? 0,
-    })), observedRows.length).map(({ row }) => row);
+    const mined = buildEvmMinedNonceIndex(
+      [...this.indexed.values()],
+      Number(this.scope?.network.chainId)
+    );
+    const observedRows = [...records.values()].map((row) => ({
+      ...row,
+      observation: this.observations.get(row.hash),
+      indexed: this.indexed.get(row.hash),
+      display: this.displays.get(row.hash),
+      indexedStatus: this.indexed.has(row.hash)
+        ? getEvmSettlementStatus(
+            this.indexed.get(row.hash),
+            Number(this.scope?.network.chainId),
+            mined
+          )
+        : undefined,
+      zeroValueToken:
+        !!this.displays.get(row.hash)?.isErc20Transfer &&
+        !this.displays.get(row.hash)?.isNft &&
+        !this.displays.get(row.hash)?.amountUnavailable &&
+        /^0(?:\.0*)?$/.test(String(this.displays.get(row.hash)?.displayValue)),
+      retainedObservation: this.retainedObservations.get(row.hash),
+      checking: this.checking.has(row.hash),
+      unavailable: this.unavailable.has(row.hash),
+    }));
+    const representatives = selectEvmHistoryRepresentatives(
+      observedRows.map((row) => ({
+        row,
+        hash: row.hash,
+        historySource: row.indexed?.historySource,
+        from:
+          row.indexed?.from ??
+          row.observation?.from ??
+          (row.local ? this.scope?.address : undefined),
+        nonce: parseEvmInteger(
+          row.indexed?.nonce ?? row.observation?.nonce ?? row.local?.nonce
+        ),
+        confirmations:
+          row.indexed?.confirmations ?? (row.observation?.block ? 1 : 0),
+        blockNumber: row.indexed?.blockNumber ?? row.observation?.block?.number,
+        blockHash: row.indexed?.blockHash ?? row.observation?.block?.hash,
+        timestamp:
+          row.observation?.timestamp ??
+          row.candidate?.timestamp ??
+          row.local?.createdAt ??
+          0,
+      })),
+      observedRows.length
+    ).map(({ row }) => row);
     // Local attempts remain inspectable, just as the extension retains its
     // local replacement history after choosing the fetched representative.
     const retained = new Map(representatives.map((row) => [row.hash, row]));
     for (const row of observedRows) if (row.local) retained.set(row.hash, row);
     const rows = [...retained.values()].sort(
-        (a, b) =>
-          (b.observation?.timestamp ??
-            b.candidate?.timestamp ??
-            b.local?.createdAt ??
-            0) -
-          (a.observation?.timestamp ??
-            a.candidate?.timestamp ??
-            a.local?.createdAt ??
-            0)
-      );
+      (a, b) =>
+        (b.observation?.timestamp ??
+          b.candidate?.timestamp ??
+          b.local?.createdAt ??
+          0) -
+        (a.observation?.timestamp ??
+          a.candidate?.timestamp ??
+          a.local?.createdAt ??
+          0)
+    );
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
     this.publish({
@@ -449,9 +566,10 @@ export class NativeActivity {
       truncated:
         this.snapshot.truncated ||
         (atDisplayLimit && (candidates.length > this.visible || moreToLoad)),
-      coverage: this.scope?.apiUrl ? 'Direct transactions and ERC20 transfer events only. Internal transfers are not included. Explorer data is checked against the RPC; older activity may require loading.' : 'Saved transfers only. Add an explorer data source to discover other activity.',
+      coverage: this.scope?.apiUrl
+        ? 'Direct transactions and token transfer events from the selected explorer. Internal transfers are not included; older activity may require loading.'
+        : 'Activity discovery is unavailable for this network.',
     });
-    this.hydrate(rows.slice(0, Math.min(rows.length, 20)).map((r) => r.hash));
   }
   private hydrate(hashes: readonly string[]) {
     for (const hash of hashes)
@@ -510,13 +628,41 @@ export class NativeActivity {
       this.hydrate([hash]);
     }
   }
-  observeVisible(hashes: readonly string[]) {
-    this.hydrate(
-      hashes
-        .filter((hash) => this.snapshot.rows.some((row) => row.hash === hash))
-        .slice(0, 30)
+  private observeRetained() {
+    const runtime = this.runtime(),
+      scope = this.scope,
+      request = this.request;
+    if (!runtime?.observeLocal || !scope || !request) return;
+    const generation = this.generation,
+      revision = this.source.getSnapshot().revision;
+    const guard = () => this.guard(generation, revision);
+    // Only retained unresolved local submissions use the existing shared observer.
+    // Indexed list rows never trigger transaction/receipt/block RPC requests.
+    const queue = [...this.locals.values()].filter((local) =>
+      ['signed', 'attempted', 'submitted'].includes(local.phase)
     );
+    const run = async () => {
+      while (queue.length && !request.signal.aborted) {
+        const local = queue.shift()!;
+        try {
+          guard();
+          const observation = await runtime.observeLocal!(
+            local,
+            guard,
+            request.signal
+          );
+          guard();
+          this.retainedObservations.set(local.hash, observation);
+        } catch {
+          /* A read failure does not discard a retained transaction. */
+        }
+        if (generation === this.generation) this.renderRows();
+      }
+    };
+    void run();
+    void run();
   }
+
   async setView(update: Partial<ActivityViewState>): Promise<void> {
     const next = Object.freeze({ ...this.snapshot.view, ...update });
     this.publish({ view: next });

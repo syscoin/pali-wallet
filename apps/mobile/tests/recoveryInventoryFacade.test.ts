@@ -83,6 +83,7 @@ async function fixture(existing = true) {
     '../custody/seedBackup.ts': { SeedBackupFlow: PassiveController },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: PassiveController },
     '../custody/transfers.ts': { NativeTransfers: PassiveController },
+    '../custody/evmTransferReadRpc.ts': { EvmTransferReadRpc: class { constructor() { assert.fail('inventory must not observe transactions'); } } },
     '../portfolio/nativeTokens.ts': { NativeTokens: PassiveController },
     '../activity/nativeActivity.ts': { NativeActivity: PassiveController },
     '../activity/explorerReader.ts': { ActivityExplorerReader: PassiveController },

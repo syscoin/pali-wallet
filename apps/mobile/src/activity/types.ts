@@ -1,3 +1,4 @@
+import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
@@ -9,9 +10,7 @@ import {
   type NativeNetworkRegistration,
 } from '../custody/networkContext.ts';
 
-export type ActivityScope = Readonly<{
-  walletFingerprint: string;
-  accountId: string;
+export type EvmActivityReadScope = Readonly<{
   address: string;
   network: NativeNetworkRegistration;
   key: string;
@@ -19,6 +18,9 @@ export type ActivityScope = Readonly<{
   apiUrl: string;
   explorerUrl: string;
 }>;
+/** Custody persistence keeps its existing seed/account binding and wire format. */
+export type ActivityScope = EvmActivityReadScope &
+  Readonly<{ walletFingerprint: string; accountId: string }>;
 export type TerminalActivityRecord = Readonly<{
   walletFingerprint: string;
   accountId: string;
@@ -41,7 +43,10 @@ export type TerminalActivityRecord = Readonly<{
   }>;
 }>;
 export const LOCAL_ACTIVITY_LIMIT = 48;
-export type LocalActivityRecord = Omit<TerminalActivityRecord, 'phase' | 'recipient'> &
+export type LocalActivityRecord = Omit<
+  TerminalActivityRecord,
+  'phase' | 'recipient'
+> &
   Readonly<{
     recipient: string | null;
     phase:
@@ -58,6 +63,32 @@ export type ActivityCandidate = Readonly<{
   timestamp: number | null;
   tokenHint: boolean;
 }>;
+/** Full shared mapper output is transient. The persisted candidate stays four fields. */
+export type IndexedActivityTransaction = EvmDisplayTransaction &
+  Readonly<{
+    hash: string;
+    from: string;
+    to: string | null;
+    tokenRecipient?: string;
+    timestamp: number;
+    confirmations: number;
+    blockNumber?: number;
+    blockHash?: string;
+    nonce?: number;
+    txreceipt_status?: unknown;
+    isError?: unknown;
+  }>;
+export type DiscoveredActivityCandidate = ActivityCandidate &
+  Readonly<{ indexed: IndexedActivityTransaction; tokenEvent?: Readonly<Record<string, unknown>> }>;
+export const activityCandidateSummary = (
+  row: ActivityCandidate
+): ActivityCandidate =>
+  Object.freeze({
+    hash: row.hash,
+    blockNumber: row.blockNumber,
+    timestamp: row.timestamp,
+    tokenHint: row.tokenHint,
+  });
 export type ActivityViewState = Readonly<{
   filter: 'all' | 'sent' | 'received';
   showZero: boolean;
@@ -112,23 +143,53 @@ export function createActivityScope(
     !isNativeAccountId(accountId)
   )
     throw new ActivityError('INVALID');
-  const network = typeof networkId === 'string' ? getNativeNetwork(networkId) : snapshotNativeNetwork(networkId);
-  const definition = EVM_NETWORK_DEFINITIONS.find((item) => item.id === network.id && item.network.url === network.rpcUrl && String(item.network.chainId) === network.chainId);
-  const apiUrl = definition?.network.apiUrl ?? '';
-  const explorerUrl = definition?.network.explorer ?? '';
   const normalized = getAddress(address);
   const key = localScopeKey({
     walletFingerprint,
     accountId,
     address: normalized,
-    chainId: network.chainId,
+    chainId: (typeof networkId === 'string'
+      ? getNativeNetwork(networkId)
+      : snapshotNativeNetwork(networkId)
+    ).chainId,
   });
+  const read = createActivityReadScope(key, normalized, networkId);
+  return Object.freeze({
+    walletFingerprint,
+    accountId,
+    address: read.address,
+    network: read.network,
+    key: read.key,
+    sourceId: read.sourceId,
+    apiUrl: read.apiUrl,
+    explorerUrl: read.explorerUrl,
+  });
+}
+
+/** Shared query scope; the caller supplies its real owner key, never fake custody. */
+export function createActivityReadScope(
+  key: string,
+  address: string,
+  networkId: string | NativeNetworkRegistration
+): EvmActivityReadScope {
+  if (!/^0x[0-9a-f]{64}$/.test(key)) throw new ActivityError('INVALID');
+  const network =
+    typeof networkId === 'string'
+      ? getNativeNetwork(networkId)
+      : snapshotNativeNetwork(networkId);
+  const definition = EVM_NETWORK_DEFINITIONS.find(
+    (item) =>
+      item.id === network.id &&
+      item.network.url === network.rpcUrl &&
+      String(item.network.chainId) === network.chainId
+  );
+  const apiUrl = definition?.network.apiUrl ?? '';
+  const explorerUrl = definition?.network.explorer ?? '';
+  const normalized = getAddress(address);
   const sourceId = keccak256(
     toUtf8Bytes(JSON.stringify([key, apiUrl, 'etherscan-account-v1']))
   );
   return Object.freeze({
-    walletFingerprint,
-    accountId,
     address: normalized,
     network,
     key,

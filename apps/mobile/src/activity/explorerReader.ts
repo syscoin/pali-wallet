@@ -1,10 +1,17 @@
-import { buildAccountHistoryUrl, createRoutescanFetch } from '../../../../source/shared/evmExplorer.ts';
-import { belongsToEvmHistoryAccount, mapEvmExplorerTokenTransfer, mapEvmExplorerTransaction } from '../../../../source/shared/evmHistory.ts';
-import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
+import {
+  buildAccountHistoryUrl,
+  createRoutescanFetch,
+} from '../../../../source/shared/evmExplorer.ts';
+import {
+  belongsToEvmHistoryAccount,
+  mapEvmExplorerTokenTransfer,
+  mapEvmExplorerTransaction,
+} from '../../../../source/shared/evmHistory.ts';
+import { boundedResponseText } from '../platformRpc.ts';
 import {
   ActivityError,
-  type ActivityCandidate,
-  type ActivityScope,
+  type DiscoveredActivityCandidate,
+  type EvmActivityReadScope,
 } from './types.ts';
 
 export type ActivityFeed = 'txlist' | 'tokentx';
@@ -19,7 +26,7 @@ export function decodeActivityPage(
   feed: ActivityFeed,
   owner: string,
   chainId: number
-): readonly ActivityCandidate[] {
+): readonly DiscoveredActivityCandidate[] {
   if (!value || typeof value !== 'object' || Array.isArray(value))
     throw new ActivityError('INVALID');
   const body = value as Record<string, unknown>;
@@ -54,10 +61,12 @@ export function decodeActivityPage(
         )
       )
         throw new ActivityError('INVALID');
-      const transaction = feed === 'tokentx'
-        ? mapEvmExplorerTokenTransfer(item, chainId)
-        : mapEvmExplorerTransaction(item, chainId);
-      if (!belongsToEvmHistoryAccount(transaction, owner)) throw new ActivityError('INVALID');
+      const transaction =
+        feed === 'tokentx'
+          ? mapEvmExplorerTokenTransfer(item, chainId)
+          : mapEvmExplorerTransaction(item, chainId);
+      if (!belongsToEvmHistoryAccount(transaction, owner))
+        throw new ActivityError('INVALID');
       const blockNumber = integer(item.blockNumber);
       let timestamp: number | null = null;
       if (
@@ -77,18 +86,27 @@ export function decodeActivityPage(
         blockNumber,
         timestamp,
         tokenHint: feed === 'tokentx',
+        ...(feed === 'tokentx' ? { tokenEvent: Object.freeze({ ...item }) } : {}),
+        indexed: Object.freeze({
+          ...transaction,
+          ...(transaction.tokenTransfer
+            ? { tokenTransfer: Object.freeze({ ...transaction.tokenTransfer }) }
+            : {}),
+        }),
       });
     })
   );
 }
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
-/** Explorer rows discover hashes only. RPC observations supply transaction facts. */
+/** The selected explorer supplies the same mapped display facts used by the extension. */
 export class ActivityExplorerReader {
-  private sequence = 0;
   private readonly fetcher: FetchLike;
   constructor(fetcher: FetchLike = (url, init) => fetch(url, init)) {
     const routescan = createRoutescanFetch(fetcher);
-    this.fetcher = (url, init) => new URL(url).origin === 'https://api.routescan.io' ? routescan(url, init) : fetcher(url, init);
+    this.fetcher = (url, init) =>
+      new URL(url).origin === 'https://api.routescan.io'
+        ? routescan(url, init)
+        : fetcher(url, init);
   }
   private async request(
     url: string,
@@ -135,47 +153,15 @@ export class ActivityExplorerReader {
       signal.removeEventListener('abort', abort);
     }
   }
-  async head(
-    scope: ActivityScope,
-    signal: AbortSignal,
-    guard: () => void
-  ): Promise<string> {
-    const call = async (method: string, params: unknown[]) => {
-      const id = ++this.sequence;
-      const result = (await this.request(
-        scope.network.rpcUrl,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-        },
-        signal,
-        guard
-      )) as Record<string, unknown>;
-      if (
-        !result ||
-        result.jsonrpc !== '2.0' ||
-        result.id !== id ||
-        Object.hasOwn(result, 'error')
-      )
-        throw new ActivityError('INVALID');
-      return result.result;
-    };
-    if (parseRpcQuantity(await call('eth_chainId', [])) !== BigInt(scope.network.chainId))
-      throw new ActivityError('CHANGED');
-    return parseRpcQuantity(await call('eth_blockNumber', [])).toString();
-  }
   page(
-    scope: ActivityScope,
+    scope: EvmActivityReadScope,
     feed: ActivityFeed,
     page: number,
-    endblock: string,
     signal: AbortSignal,
     guard: () => void
-  ): Promise<readonly ActivityCandidate[]> {
+  ): Promise<readonly DiscoveredActivityCandidate[]> {
     if (!Number.isSafeInteger(page) || page < 1 || page > 10000)
       return Promise.reject(new ActivityError('INVALID'));
-    integer(endblock);
     const run = async () => {
       guard();
       if (signal.aborted) throw new ActivityError('CANCELLED');
@@ -186,8 +172,6 @@ export class ActivityExplorerReader {
         page,
         ACTIVITY_PAGE_SIZE
       );
-      url.searchParams.set('startblock', '0');
-      url.searchParams.set('endblock', endblock);
       return decodeActivityPage(
         await this.request(
           url.toString(),
@@ -203,3 +187,5 @@ export class ActivityExplorerReader {
     return run();
   }
 }
+
+export type { DiscoveredActivityCandidate } from './types.ts';
