@@ -10,6 +10,7 @@ import {
 } from '@sidhujag/sysweb3-keyring';
 import {
   coins,
+  findUtxoCoinByRegistration,
   getSysRpc,
   observeSysRpc,
   getEthRpc,
@@ -50,6 +51,7 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
 import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
@@ -5578,7 +5580,12 @@ class MainController {
           ? await getSysRpc(draft, { ...owner, registration, backendChain })
           : await observeSysRpc(draft, { ...owner, registration });
       assertCurrent();
-      return result.rpc.formattedNetwork;
+      const network = result.rpc.formattedNetwork;
+      if (label) return network;
+      const coin = findUtxoCoinByRegistration(network);
+      return coin
+        ? { ...network, label: utxoRegistrationDisplayName(coin) }
+        : network;
     });
   }
 
