@@ -22,6 +22,7 @@ import type {
   RecoveryRoot,
   NoteDomainRow,
   SignedRecordDomainRow,
+  WalletRemovalResult,
 } from './types.ts';
 
 const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} ELSE 65536 END))`;
@@ -146,10 +147,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   readonly notes: NonNullable<OpenWalletStorage['notes']>;
   readonly signedRecords: OpenWalletStorage['signedRecords'];
   readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
+  readonly removal: NonNullable<OpenWalletStorage['removal']>;
   private tail: Promise<void> = Promise.resolve();
   private closing: Promise<void> | null = null;
   private poisoned = false;
   private closed = false;
+  private retired = false;
   private readonly db: SqlConnection;
   private readonly digest: StorageDigest;
   private readonly now: () => number;
@@ -157,7 +160,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   private readonly installationId: string;
   private lastMonotonic: number | null = null;
   private authenticationWindow: { raw: string | undefined; notBefore: number } | null = null;
-  private readonly recoverySnapshots = new WeakSet<RecoveryStorageSnapshot>();
+  private writeGeneration = {};
+  private readonly recoverySnapshots = new WeakMap<RecoveryStorageSnapshot, object>();
   private readonly recoveryWrites = new WeakMap<
     RecoveryWritePlan,
     {
@@ -207,6 +211,9 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       checkAllowed: () => this.checkAllowed(),
       recordFailure: () => this.recordAuthentication(false),
       recordSuccess: () => this.recordAuthentication(true),
+    });
+    this.removal = Object.freeze({
+      commit: (snapshot, assertCurrent) => this.commitRemoval(snapshot, assertCurrent),
     });
     this.recovery = Object.freeze({
       readIdentity: () => this.readIdentity(),
@@ -324,6 +331,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     const pending = this.tail.then(async () => {
       if (this.poisoned)
         throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
+      if (this.retired) throw new WalletStorageError('STORAGE_CLOSED');
       try {
         return await operation();
       } catch (error) {
@@ -347,6 +355,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       beforeCommit?.();
       commitStarted = true;
       await this.db.execAsync('COMMIT');
+      this.writeGeneration = {};
       return result;
     } catch (error) {
       // An acknowledgement can be lost after COMMIT actually succeeded.
@@ -777,7 +786,71 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   }
 
   private readSnapshot(): Promise<RecoveryStorageSnapshot> {
-    return this.queued(async () => { const snapshot = await this.captureSnapshot(); this.recoverySnapshots.add(snapshot); return snapshot; });
+    return this.queued(async () => {
+      const snapshot = await this.captureSnapshot();
+      this.recoverySnapshots.set(snapshot, this.writeGeneration);
+      return snapshot;
+    });
+  }
+
+  private async verifyRemovalScope(): Promise<void> {
+    const snapshot = await this.captureSnapshot();
+    if (snapshot.state.presence !== 'empty' || snapshot.metadata.length !== 1 ||
+        snapshot.records.length || snapshot.notes.length || snapshot.signedRecords.length) throw failure();
+  }
+
+  private commitRemoval(before: RecoveryStorageSnapshot, guard: () => void): Promise<WalletRemovalResult> {
+    const generation = this.recoverySnapshots.get(before);
+    if (!generation || before.state.presence !== 'existing' || typeof guard !== 'function')
+      return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    this.recoverySnapshots.delete(before);
+    const assertOwner = storageGuard(guard);
+    const check = () => {
+      if (this.closing) throw new WalletStorageError('STORAGE_CLOSED');
+      assertOwner();
+      if (this.closing) throw new WalletStorageError('STORAGE_CLOSED');
+    };
+    return this.queued(async () => {
+      if (this.writeGeneration !== generation) throw new WalletStorageError('STORAGE_CHANGED');
+      try {
+        await this.transaction(async () => {
+          check();
+          const current = await this.captureSnapshot();
+          check();
+          if (!sameRecoverySnapshot(current, before)) throw new WalletStorageError('STORAGE_CHANGED');
+          // Scrub cells in the new page images. Existing encrypted pages in WAL
+          // or elsewhere are outside the logical removal acknowledgement.
+          await this.db.execAsync('PRAGMA secure_delete = ON');
+          const secureDelete = await this.db.getFirstAsync<{ secure_delete: number }>('PRAGMA secure_delete');
+          if (secureDelete?.secure_delete !== 1) throw failure();
+          for (const sql of [
+            'DELETE FROM evm_signed_records',
+            'DELETE FROM private_note_records',
+            'DELETE FROM keyring_records',
+            "DELETE FROM wallet_metadata WHERE key <> 'installation'",
+          ]) {
+            check();
+            await this.db.runAsync(sql);
+          }
+          check();
+          await this.verifyRemovalScope();
+        }, check);
+      } catch (error) {
+        if (!this.poisoned) throw error;
+        return Object.freeze({ status: 'reopen-required' });
+      }
+
+      // Do not run ordinary operations on this owner again, including writes
+      // already queued while COMMIT was in flight.
+      this.retired = true;
+      try {
+        await this.verifyRemovalScope();
+      } catch {
+        this.poisoned = true;
+        return Object.freeze({ status: 'reopen-required' });
+      }
+      return Object.freeze({ status: 'wallet-records-removed' });
+    });
   }
 
   private prepareReplacement(

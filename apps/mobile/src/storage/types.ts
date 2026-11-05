@@ -78,6 +78,11 @@ declare const recoveryWriteBrand: unique symbol;
 export type RecoveryWritePlan = Readonly<{ [recoveryWriteBrand]: true }>;
 export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
 
+/** Logical removal of wallet-scoped SQLite rows only. */
+export type WalletRemovalResult = Readonly<{
+  status: 'wallet-records-removed' | 'reopen-required';
+}>;
+
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
@@ -97,6 +102,12 @@ export interface OpenWalletStorage {
     checkAllowed(): Promise<void>;
     recordFailure(): Promise<void>;
     recordSuccess(): Promise<void>;
+  }>;
+  readonly removal?: Readonly<{
+    /** Trusted host only, after fresh authentication and explicit confirmation.
+     * The one-use snapshot must come from this owner after authentication.
+     * The synchronous guard binds the exact retired custody generation. */
+    commit(snapshot: RecoveryStorageSnapshot, assertCurrent: () => void): Promise<WalletRemovalResult>;
   }>;
   /** Private recovery host ports. Optional capabilities make older synthetic hosts fail closed. */
   readonly recovery?: Readonly<{
