@@ -215,8 +215,14 @@ it('quotes without submitting, shows the exact authenticated fee, and forwards t
   expect(mockUpdate).not.toHaveBeenCalled();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-    [ORIGINAL, false, { previewOnly: true }]
+    ['wallet', 'speedUpEvmTransaction'],
+    [
+      ORIGINAL,
+      false,
+      1,
+      ACCOUNT,
+      { previewOnly: true, walletScope: getWalletNavigationScope() },
+    ]
   );
 
   await settleQuote(pending, quote());
@@ -237,8 +243,17 @@ it('quotes without submitting, shows the exact authenticated fee, and forwards t
   expect(mockUpdate).toHaveBeenCalledTimes(1);
   expect(mockEmitter).toHaveBeenNthCalledWith(
     2,
-    ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-    [ORIGINAL, false, { approvedMaximumFee: MAXIMUM_FEE }]
+    ['wallet', 'speedUpEvmTransaction'],
+    [
+      ORIGINAL,
+      false,
+      1,
+      ACCOUNT,
+      {
+        approvedMaximumFee: MAXIMUM_FEE,
+        walletScope: getWalletNavigationScope(),
+      },
+    ]
   );
   expect(mockUpdate).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -262,13 +277,28 @@ it('routes SmartAccount preview and approved cap through the outer-payer control
   expect(mockEmitter).toHaveBeenNthCalledWith(
     1,
     ['wallet', 'speedUpEvmTransaction'],
-    [ORIGINAL, false, 1, ACCOUNT, { previewOnly: true }]
+    [
+      ORIGINAL,
+      false,
+      1,
+      ACCOUNT,
+      { previewOnly: true, walletScope: getWalletNavigationScope() },
+    ]
   );
   await act(async () => fireEvent.click(screen.getByText('Confirm')));
   expect(mockEmitter).toHaveBeenNthCalledWith(
     2,
     ['wallet', 'speedUpEvmTransaction'],
-    [ORIGINAL, false, 1, ACCOUNT, { approvedMaximumFee: MAXIMUM_FEE }]
+    [
+      ORIGINAL,
+      false,
+      1,
+      ACCOUNT,
+      {
+        approvedMaximumFee: MAXIMUM_FEE,
+        walletScope: getWalletNavigationScope(),
+      },
+    ]
   );
 });
 
@@ -559,6 +589,7 @@ it('rejects cancellation dispatch when the approved scope has changed', async ()
     t: mockT,
     updateData: {
       alert: mockAlert,
+      approvedMaximumFee: MAXIMUM_FEE,
       chainId: 1,
       isLegacy: false,
       txHash: ORIGINAL,

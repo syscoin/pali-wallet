@@ -353,8 +353,11 @@ import {
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
-import type { KeyringHost } from '@sidhujag/sysweb3-keyring';
-import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
+import type {
+  EvmReplacementFeeApproval,
+  EvmSubmissionContext,
+  KeyringHost,
+} from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
   SentryAuthorityScheme,
@@ -6412,8 +6415,8 @@ class MainController {
     txHash: string,
     isLegacy: boolean,
     chainId: number,
-    signerAddress?: string,
-    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
+    signerAddress: string | undefined,
+    options: EvmReplacementFeeApproval & { walletScope: IWalletNavigationScope }
   ) {
     this.assertWalletReadyForSigning();
     const { vault } = store.getState();
@@ -6421,8 +6424,30 @@ class MainController {
     const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
     const network = { ...vault.activeNetwork };
     const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
     const { account: accountScope, network: networkScope } =
       getWalletNavigationScope();
+    const isSmartAccount = accountInfo.type === KeyringAccountType.SmartAccount;
+    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
+      Object.assign(new Error(message), { transactionNotBroadcast: true });
+    if (
+      typeof txHash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/i.test(txHash) ||
+      options?.walletScope?.account !== accountScope ||
+      options.walletScope.network !== networkScope
+    )
+      throw contextError();
+    const { approvedMaximumFee, previewOnly } = options;
+    if (
+      previewOnly !== true &&
+      (typeof approvedMaximumFee !== 'string' ||
+        !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee))
+    )
+      throw contextError('Replacement fee approval required');
+    const feeApproval: EvmReplacementFeeApproval =
+      previewOnly === true
+        ? { previewOnly: true }
+        : { approvedMaximumFee: approvedMaximumFee! };
     const findOriginal = (currentVault = vault) =>
       currentVault.accountTransactions[accountInfo.type]?.[
         accountInfo.id
@@ -6435,22 +6460,20 @@ class MainController {
       { ...original, smartAccountExecutionFrom: undefined },
       sender || ''
     );
-    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
-      Object.assign(new Error(message), {
-        transactionNotBroadcast: true,
-      });
     const isPendingOriginal = (tx: any) =>
       tx &&
       !tx.isReplaced &&
       tx.status !== 'replaced' &&
       !isTransactionInBlock(tx) &&
-      tx.smartAccountExecutionFrom?.toLowerCase() ===
-        account.address?.toLowerCase() &&
+      (isSmartAccount
+        ? tx.smartAccountExecutionFrom?.toLowerCase() ===
+          account.address?.toLowerCase()
+        : !tx.smartAccountExecutionFrom &&
+          tx.from?.toLowerCase() === account.address?.toLowerCase()) &&
       (tx.chainId === undefined || Number(tx.chainId) === chainId);
     if (
       vault.isBitcoinBased ||
       this.isResettingWallet ||
-      accountInfo.type !== KeyringAccountType.SmartAccount ||
       network.kind !== INetworkType.Ethereum ||
       network.chainId !== chainId ||
       !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
@@ -6462,30 +6485,33 @@ class MainController {
       throw contextError();
 
     let targetAccount: { id: number; type: KeyringAccountType } | undefined;
-    for (const [type, accounts] of Object.entries(vault.accounts)) {
-      if (type === KeyringAccountType.SmartAccount) continue;
-      const found = Object.entries(accounts).find(
-        ([, value]) =>
-          value.address?.toLowerCase() === sender &&
-          isAccountCompatibleWithNetwork(
-            value,
-            type as KeyringAccountType,
-            network
-          ) &&
-          (type === KeyringAccountType.Ledger ||
-            type === KeyringAccountType.Trezor ||
-            Boolean(value.xprv))
-      );
-      if (found) {
-        targetAccount = {
-          id: Number(found[0]),
-          type: type as KeyringAccountType,
-        };
-        break;
+    if (isSmartAccount) {
+      for (const [type, accounts] of Object.entries(vault.accounts)) {
+        if (type === KeyringAccountType.SmartAccount) continue;
+        const found = Object.entries(accounts).find(
+          ([, value]) =>
+            value.address?.toLowerCase() === sender &&
+            isAccountCompatibleWithNetwork(
+              value,
+              type as KeyringAccountType,
+              network
+            ) &&
+            (type === KeyringAccountType.Ledger ||
+              type === KeyringAccountType.Trezor ||
+              Boolean(value.xprv))
+        );
+        if (found) {
+          targetAccount = {
+            id: Number(found[0]),
+            type: type as KeyringAccountType,
+          };
+          break;
+        }
       }
+      if (!targetAccount)
+        throw contextError('Original gas payer unavailable locally');
     }
-    if (!targetAccount)
-      throw contextError('Original gas payer unavailable locally');
+    const payerRef = targetAccount ?? accountInfo;
 
     const keyring = this.getActiveKeyring();
     const transactionController = keyring.ethereumTransaction;
@@ -6496,12 +6522,12 @@ class MainController {
       const currentScope = getWalletNavigationScope();
       const currentAccount =
         current.vault.accounts[accountInfo.type]?.[accountInfo.id];
-      const payer =
-        current.vault.accounts[targetAccount.type]?.[targetAccount.id];
+      const payer = current.vault.accounts[payerRef.type]?.[payerRef.id];
       const tracked = findOriginal(current.vault);
       if (
         this.isResettingWallet ||
         this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkRequest ||
         current.vault.isBitcoinBased ||
         currentScope.account !== accountScope ||
         currentScope.network !== networkScope ||
@@ -6514,7 +6540,7 @@ class MainController {
         keyring.ethereumTransaction !== transactionController ||
         transactionController.web3Provider !== provider ||
         payer?.address?.toLowerCase() !== sender ||
-        !isAccountCompatibleWithNetwork(payer, targetAccount.type, network) ||
+        !isAccountCompatibleWithNetwork(payer, payerRef.type, network) ||
         !isPendingOriginal(tracked) ||
         tracked.from?.toLowerCase() !== sender ||
         Number(tracked.nonce) !== nonce
@@ -6547,7 +6573,7 @@ class MainController {
         txHash,
         isLegacy,
         {
-          ...options,
+          ...feeApproval,
           targetAccount,
           assertCurrentContext,
           validateOriginal,
@@ -6573,7 +6599,7 @@ class MainController {
       chainId: number;
       walletScope: IWalletNavigationScope;
     },
-    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
+    options: EvmReplacementFeeApproval
   ) {
     this.assertWalletReadyForSigning();
     const vault = store.getState().vault;
@@ -6747,8 +6773,8 @@ class MainController {
     const provider = transactionController.web3Provider;
     const generation = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
-    const { approvedMaximumFee } = options;
-    const previewOnly = options.previewOnly === true;
+    const approvedMaximumFee = options?.approvedMaximumFee;
+    const previewOnly = options?.previewOnly === true;
     let usingFallback = false;
     const assertCurrentContext = () => {
       this.assertWalletReadyForSigning();
@@ -6813,8 +6839,12 @@ class MainController {
         assertCurrentContext,
         validateOriginal,
         targetAccount,
-        previewOnly,
-        approvedMaximumFee,
+        ...(previewOnly
+          ? { previewOnly: true as const }
+          : {
+              previewOnly: false as const,
+              approvedMaximumFee: approvedMaximumFee!,
+            }),
       }
     );
   }

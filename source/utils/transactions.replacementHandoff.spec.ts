@@ -37,7 +37,7 @@ const cases = [
   {
     action: UpdateTxAction.SpeedUp,
     flag: 'isSpeedUp',
-    send: ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
+    send: ['wallet', 'speedUpEvmTransaction'],
     setter: ['wallet', 'setEvmTransactionAsAccelerated'],
     success: 'transactions.transactionAcceleratedSuccessfully',
     failure: 'transactions.transactionSpeedUpFailed',
@@ -61,6 +61,7 @@ describe.each(cases)('$action submission metadata handoff', (testCase) => {
         isLegacy: false,
         updateType: testCase.action,
         alert,
+        approvedMaximumFee: '12345',
         signerAddress: `0x${'33'.repeat(20)}`,
         walletScope: getWalletNavigationScope(),
       },

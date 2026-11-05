@@ -171,7 +171,8 @@ const TransactionOptionsBase: React.FC<ITransactionOptions> = ({
             transaction.hash,
             isLegacyTransaction,
             chainId,
-            transaction.from
+            transaction.from,
+            startingScope
           );
       if (!current()) return;
       clearTimeout(timer);

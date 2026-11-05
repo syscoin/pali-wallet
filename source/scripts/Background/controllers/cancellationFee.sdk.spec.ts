@@ -368,7 +368,7 @@ it('keeps selected smart-account state untouched during overlapping held payer p
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   const targetAccount = { type: KeyringAccountType.HDAccount, id: 0 };
-  const opts = { ...guard, targetAccount, previewOnly: true };
+  const opts = { ...guard, targetAccount, previewOnly: true as const };
   const first = sdk.cancelSentTransaction(
     `0x${'22'.repeat(32)}`,
     true,
