@@ -12,6 +12,11 @@ import { Wallet } from 'ethers/wallet';
 
 import { getMethodConfig } from '../controllers/message-handler/method-registry';
 import { popupPromise } from '../controllers/message-handler/popup-promise';
+import {
+  getStoredSendCallsBundle,
+  recordSendCallsBundle,
+  reserveSendCallsBundle,
+} from '../controllers/message-handler/sendCallsBundles';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
 import { handleMasterControllerResponses } from './handleMasterControllerResponses';
@@ -125,7 +130,8 @@ describe('transaction approval submission lifetime', () => {
   });
   const begin = async (
     signal?: AbortSignal,
-    request = 'eth_sendTransaction'
+    request = 'eth_sendTransaction',
+    batch?: { bundleId: string; reservationId: string }
   ) => {
     // Use the same registry as the production request pipeline, so each case
     // exercises the route actually chosen for its public provider method.
@@ -136,7 +142,7 @@ describe('transaction approval submission lifetime', () => {
       route: config.popupRoute!,
       data: request.startsWith('sys_sign')
         ? { ...utxoPsbt, approvedContext: utxoContext }
-        : { approvedContext },
+        : { approvedContext, ...batch },
       signal,
     });
     await new Promise(setImmediate);
@@ -415,13 +421,61 @@ describe('transaction approval submission lifetime', () => {
   });
 
   it.each([
-    ['eth_sendTransaction', 'reload', false],
-    ['wallet_sendCalls', 'navigation', false],
-    ['eth_sendTransaction', 'reload', true],
+    ['eth_sendTransaction', 'reload', false, undefined],
+    ['wallet_sendCalls', 'navigation', false, 'release'],
+    ['wallet_sendCalls', 'reload', true, 'acknowledged'],
+    ['wallet_sendCalls', 'navigation', false, 'newer'],
+    ['wallet_sendCalls', 'navigation', false, 'previous-hash'],
+    ['wallet_sendCalls', 'navigation', false, 'earlier-ack'],
+    ['wallet_sendCalls', 'reload', true, 'unknown'],
+    ['eth_sendTransaction', 'reload', true, undefined],
   ] as const)(
-    'handles %s approval %s with the raw POST already dispatched=%s',
-    async (request, change, alreadyDispatched) => {
-      const { pending } = await begin(undefined, request);
+    'handles %s approval %s with the raw POST already dispatched=%s (%s)',
+    async (request, change, alreadyDispatched, outcome?) => {
+      const batch = outcome && { bundleId: '0x1234', reservationId: '0x5678' };
+      const submissionId = '11111111-2222-4333-8444-555555555555';
+      const descriptor = {
+        atomic: false,
+        chainId: approvedContext.chainId,
+        smartAccount: false,
+      };
+      const previousHash = `0x${'2'.repeat(64)}`;
+      const getStorage = chrome.storage.local.get as jest.Mock;
+      const setStorage = chrome.storage.local.set as jest.Mock;
+      const oldGet = getStorage.getMockImplementation();
+      const oldSet = setStorage.getMockImplementation();
+      if (batch) {
+        const key = 'pali-sendcalls-bundles';
+        let stored = {};
+        getStorage.mockImplementation((_keys, reply) =>
+          reply({ [key]: JSON.parse(JSON.stringify(stored)) })
+        );
+        setStorage.mockImplementation((items, reply) => {
+          stored = JSON.parse(JSON.stringify(items[key]));
+          reply();
+        });
+        await reserveSendCallsBundle(
+          data.host,
+          batch.bundleId,
+          descriptor,
+          batch.reservationId
+        );
+        await recordSendCallsBundle(data.host, batch.bundleId, {
+          ...descriptor,
+          reservationId: batch.reservationId,
+          submissionId,
+          submissionStarted: true,
+          txHashes: [],
+        });
+        if (outcome === 'previous-hash')
+          await recordSendCallsBundle(data.host, batch.bundleId, {
+            ...descriptor,
+            reservationId: batch.reservationId,
+            submissionId,
+            txHashes: [previousHash],
+          });
+      }
+      const { pending } = await begin(undefined, request, batch || undefined);
       const rejected = pending.catch((error) => error);
       const unsigned = Transaction.from({
         chainId: approvedContext.chainId,
@@ -449,6 +503,10 @@ describe('transaction approval submission lifetime', () => {
           enter();
           await held;
         }
+        if (outcome === 'unknown')
+          throw Object.assign(new Error('Unknown response'), {
+            transactionNotBroadcast: true,
+          });
         return acknowledgement;
       });
       send.mockImplementation(
@@ -480,9 +538,36 @@ describe('transaction approval submission lifetime', () => {
           );
         }
       );
-      const submitted = submit('sendAndSaveEthTransaction');
+      const submitEvm = () =>
+        submit(
+          'sendAndSaveEthTransaction',
+          sender(),
+          batch
+            ? [
+                {},
+                false,
+                undefined,
+                undefined,
+                { sendCallsSubmissionId: submissionId },
+              ]
+            : undefined
+        );
+      if (outcome === 'earlier-ack') {
+        send.mockResolvedValueOnce(acknowledgement);
+        await expect(submitEvm()).resolves.toEqual(acknowledgement);
+      }
+      const submitted = submitEvm();
       try {
         await entered;
+        if (batch && outcome === 'newer')
+          await recordSendCallsBundle(data.host, batch.bundleId, {
+            ...descriptor,
+            reservationId: batch.reservationId,
+            previousSubmissionId: submissionId,
+            submissionId: '22222222-2222-4333-8444-555555555555',
+            submissionStarted: true,
+            txHashes: [],
+          });
         const onNavigation = (
           chrome.tabs.onUpdated.addListener as jest.Mock
         ).mock.calls.at(-1)?.[0];
@@ -504,7 +589,12 @@ describe('transaction approval submission lifetime', () => {
         if (alreadyDispatched) {
           expect(post).toHaveBeenCalledTimes(1);
           expect(post).toHaveBeenCalledWith(raw);
-          expect(result).toEqual(acknowledgement);
+          if (outcome === 'unknown')
+            expect(result).toMatchObject({
+              success: false,
+              error: { transactionNotBroadcast: false },
+            });
+          else expect(result).toEqual(acknowledgement);
         } else {
           expect(post).not.toHaveBeenCalled();
           expect(result).toMatchObject({
@@ -517,10 +607,26 @@ describe('transaction approval submission lifetime', () => {
           expect.any(Function)
         );
         await expect(rejected).resolves.toMatchObject({ code: -32603 });
+        if (batch) {
+          const stored = await getStoredSendCallsBundle(
+            data.host,
+            batch.bundleId
+          );
+          if (outcome === 'release') expect(stored).toBeNull();
+          else
+            expect(stored).toMatchObject({
+              submissionStarted: true,
+              txHashes: outcome === 'previous-hash' ? [previousHash] : [],
+            });
+        }
       } finally {
         release();
         closeWindow(9);
         await rejected;
+        if (oldGet) getStorage.mockImplementation(oldGet);
+        else getStorage.mockReset();
+        if (oldSet) setStorage.mockImplementation(oldSet);
+        else setStorage.mockReset();
       }
     }
   );

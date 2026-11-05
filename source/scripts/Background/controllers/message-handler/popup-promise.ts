@@ -177,6 +177,16 @@ const openApprovalPopup = async (
     route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
       ? (data as { approvedContext?: IEvmTransactionContext }).approvedContext
       : undefined;
+  const { bundleId, reservationId } = data as {
+    bundleId?: string;
+    reservationId?: string;
+  };
+  const evmBatch =
+    route === MethodRoute.SendCalls &&
+    typeof bundleId === 'string' &&
+    typeof reservationId === 'string'
+      ? { host, id: bundleId, reservationId }
+      : undefined;
   const tracksTransactionDocument = Boolean(evmContext || utxoReview);
 
   let popup = null;
@@ -366,7 +376,9 @@ const openApprovalPopup = async (
             (possible) => {
               submissionStarted = possible;
             },
-            evmContext ? { ...document, context: evmContext } : undefined,
+            evmContext
+              ? { ...document, context: evmContext, batch: evmBatch }
+              : undefined,
             utxoReview ? { ...document, ...utxoReview } : undefined
           );
         }

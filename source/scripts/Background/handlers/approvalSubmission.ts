@@ -9,6 +9,7 @@ import type {
 } from 'utils/utxoSigningContext';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import type { EoaSendCallsReservation } from '../controllers/message-handler/sendCallsBundles';
 import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
 
 export type TransactionApprovalDocument = Readonly<{
@@ -18,7 +19,10 @@ export type TransactionApprovalDocument = Readonly<{
 }>;
 
 type DappEvmReview = TransactionApprovalDocument &
-  Readonly<{ context: IEvmTransactionContext }>;
+  Readonly<{
+    batch?: EoaSendCallsReservation;
+    context: IEvmTransactionContext;
+  }>;
 
 export type DappUtxoReview = TransactionApprovalDocument &
   Readonly<{
@@ -52,6 +56,7 @@ export const watchApprovalSubmission = (
       evmSend &&
       Object.freeze({
         ...evmSend,
+        batch: evmSend.batch && Object.freeze({ ...evmSend.batch }),
         context: Object.freeze({
           ...evmSend.context,
           account: Object.freeze({ ...evmSend.context.account }),
@@ -158,9 +163,14 @@ export const captureDappEvmSubmission = (
     watch.evmSend
   );
   return {
+    batch: watch.evmSend.batch,
     context: watch.evmSend.context,
     assertCurrent,
     checkDocument,
+    // A prior success or unknown dispatch remains in attempts. It may not
+    // have a durable bundle hash yet, so a later failure cannot release it.
+    isSoleRetiredAttempt: () =>
+      !watches.get(documentId)?.has(watch) && watch.attempts.size === 1,
   };
 };
 
