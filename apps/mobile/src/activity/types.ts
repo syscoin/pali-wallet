@@ -3,7 +3,7 @@ import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
-import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
+import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
 import {
   getNativeNetwork,
   snapshotNativeNetwork,
@@ -177,12 +177,7 @@ export function createActivityReadScope(
     typeof networkId === 'string'
       ? getNativeNetwork(networkId)
       : snapshotNativeNetwork(networkId);
-  const definition = EVM_NETWORK_DEFINITIONS.find(
-    (item) =>
-      item.id === network.id &&
-      item.network.url === network.rpcUrl &&
-      String(item.network.chainId) === network.chainId
-  );
+  const definition = findRegisteredEvmNetwork(network);
   const apiUrl = definition?.network.apiUrl ?? '';
   const explorerUrl = definition?.network.explorer ?? '';
   const normalized = getAddress(address);

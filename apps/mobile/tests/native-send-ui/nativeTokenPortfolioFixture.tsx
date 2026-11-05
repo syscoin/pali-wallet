@@ -8,6 +8,7 @@ import {
   type EvmNetworkId,
 } from '../../src/custody/networkContext';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
+import { createOwnedTokenReader } from '../../src/portfolio/ownedTokenReader';
 import {
   NativeTokenRegistry,
   type NativeTokenScope,
@@ -86,6 +87,29 @@ const pendingBalances = new Set<() => void>();
 let holdPreview = false;
 let releasePreview: (() => void) | undefined;
 const requests: string[] = [];
+const query = new URLSearchParams(window.location.search);
+let failHoldings = query.has('holdings-fail');
+const readHoldings = query.has('holdings')
+  ? createOwnedTokenReader(async (url) => {
+      requests.push(`holdings:${url}`);
+      if (failHoldings) {
+        failHoldings = false;
+        return new Response(null, { status: 503 });
+      }
+      return Response.json({
+        items: [
+          {
+            chainId: 1,
+            tokenAddress: '0x1111111111111111111111111111111111111111',
+            tokenName: 'Explorer fixture',
+            tokenSymbol: 'HINT',
+            tokenDecimals: '5',
+            tokenQuantity: '99',
+          },
+        ],
+      });
+    })
+  : undefined;
 const reader: Erc20Reader = {
   async readToken(network, address, contractAddress) {
     requests.push(`preview:${network}:${address}:${contractAddress}`);
@@ -137,7 +161,9 @@ const controller = new NativeTokens(
       registry.remove(scope(), revision, contractAddress, guard),
   }),
   reader,
-  () => 1000
+  () => 1000,
+  undefined,
+  readHoldings
 );
 let setVisible: (value: boolean) => void = () => undefined;
 let sends = 0;

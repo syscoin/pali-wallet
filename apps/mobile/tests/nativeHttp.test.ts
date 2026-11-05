@@ -350,6 +350,12 @@ test('native factory explicitly wires one owned transport to all network consume
         return 'token-reader';
       },
     },
+    '../portfolio/ownedTokenReader.ts': {
+      createOwnedTokenReader: (fetch: unknown) => {
+        captures.holdings = [fetch];
+        return 'holdings-reader';
+      },
+    },
     '../core/utxoBalanceReader.ts': {
       createUtxoBalanceReader() {
         assert.fail('unexpected UTXO balance read');
@@ -385,7 +391,9 @@ test('native factory explicitly wires one owned transport to all network consume
   ])
     assert.equal(options.fetch, fetcher);
   assert.equal(captures.explorer![0][0], fetcher);
+  assert.equal(captures.holdings![0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
+  assert.equal(captures.tokens![0][5], 'holdings-reader');
   assert.equal(captures.activity![0].length, 4);
   factory.createNativeRecoveryCoordinator(bundle);
   const recovery = captures.recovery![0][0];

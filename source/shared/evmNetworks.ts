@@ -173,6 +173,25 @@ export const EVM_NETWORK_DEFINITIONS: readonly EvmNetworkDefinition[] =
       })
     )
   );
+
+/** Public explorer data belongs to the exact registered RPC context. */
+export function findRegisteredEvmNetwork({
+  id,
+  rpcUrl,
+  chainId,
+}: {
+  chainId: string;
+  id: string;
+  rpcUrl: string;
+}): EvmNetworkDefinition | undefined {
+  return EVM_NETWORK_DEFINITIONS.find(
+    (item) =>
+      item.id === id &&
+      item.network.url === rpcUrl &&
+      String(item.network.chainId) === chainId
+  );
+}
+
 /** Extension callers retain their existing mutable registration object shape. */
 export function createExtensionEvmNetworks() {
   return Object.fromEntries(

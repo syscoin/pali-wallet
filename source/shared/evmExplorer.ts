@@ -50,7 +50,11 @@ export const createRoutescanFetch = (
 ) => {
   let routescanQueue = Promise.resolve();
   let lastRoutescanRequestAt = 0;
-  return async (url: string, options: RequestInit = {}): Promise<Response> => {
+  return async (
+    url: string,
+    options: RequestInit = {},
+    assertCurrent?: () => void
+  ): Promise<Response> => {
     const requestUrl = new URL(url);
     const headers = new Headers(options.headers);
     const apiKey =
@@ -77,6 +81,7 @@ export const createRoutescanFetch = (
       );
       if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
       if (signal?.aborted) throw new Error('Explorer API request timed out');
+      assertCurrent?.();
       lastRoutescanRequestAt = Date.now();
       return await fetcher(requestUrl.toString(), {
         ...options,
