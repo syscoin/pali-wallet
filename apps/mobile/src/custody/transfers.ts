@@ -1,6 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
+import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -72,7 +73,7 @@ export interface NativeTransferRuntime {
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
-  submit(rawTransaction: string, hash: string, assertCurrent: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent): Promise<void>;
+  submit(rawTransaction: string, hash: string, assertCurrent: () => void, broadcast: () => Promise<unknown>, intent: Erc20TransferIntent | undefined, approved: PreparedEvmTransaction): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
@@ -459,19 +460,19 @@ export class NativeTransfers {
     entropy.fill(0);
     const fee =
       transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas;
-    const maximumFeeUnits = (
-      BigInt(transaction.gasLimit) * BigInt(fee)
-    ).toString();
+    const cost = getEvmTransferCost(
+      BigInt(transaction.value),
+      BigInt(transaction.gasLimit),
+      BigInt(fee)
+    );
     const publicReview: NativeTransferReview = Object.freeze({
       id,
       context,
       from: transaction.from,
       recipient: intent?.recipient ?? transaction.to,
       amountUnits: intent?.amountUnits ?? transaction.value,
-      maximumFeeUnits,
-      totalUnits: (
-        BigInt(transaction.value) + BigInt(maximumFeeUnits)
-      ).toString(),
+      maximumFeeUnits: cost.maximumFee.toString(),
+      totalUnits: cost.total.toString(),
       gasLimit: transaction.gasLimit,
       maximumFeePerGas: fee,
       priorityFeePerGas:
@@ -683,7 +684,7 @@ export class NativeTransfers {
             startedSubmission = true;
             return rpc.broadcast(rawTransaction, transactionHash, signal, approved.public.intent);
           },
-          approved.public.intent);
+          approved.public.intent, approved.transaction!);
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
         // storage adapter simultaneously revoked the session.

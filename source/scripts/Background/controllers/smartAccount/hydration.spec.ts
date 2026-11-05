@@ -580,8 +580,12 @@ describe('SmartAccountController smart account execution fees', () => {
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       const { controller, sendAndSaveEthTransaction } = buildController();
       controller.getWalletGasPayerAccount.mockResolvedValue(fixturePayer);
-      sendAndSaveEthTransaction.mockImplementation((transaction, legacy) =>
-        sdk.sendFormattedTransaction(transaction, legacy)
+      sendAndSaveEthTransaction.mockImplementation(
+        (transaction, legacy, _account, _metadata, approval) =>
+          sdk.sendFormattedTransaction(transaction, legacy, {
+            assertCurrent: approval.assertCurrentContext,
+            mode: 'specialized',
+          })
       );
       await controller.submitSmartAccountExecution({
         executions: [],

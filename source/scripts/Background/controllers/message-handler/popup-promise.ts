@@ -10,6 +10,7 @@ import {
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 
 import {
   assertRequestActive,
@@ -268,7 +269,11 @@ const openApprovalPopup = async (
             approvalDocumentId,
             (possible) => {
               submissionStarted = possible;
-            }
+            },
+            route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
+              ? (data as { approvedContext?: IEvmTransactionContext })
+                  .approvedContext
+              : undefined
           );
         onClientBound?.();
       }

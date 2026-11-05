@@ -17,9 +17,10 @@ import {
   parseErc20Decimals,
   parseErc20Units,
 } from '../../shared/erc20';
+import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost';
 import { TransactionType } from '../../types/transactions';
-import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
+import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Icon, Tooltip } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
@@ -1236,7 +1237,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           feeData.maxPriorityFeePerGas
         );
         const gasPrice =
-          feeData.gasPrice == null ? null : BigNumber.from(feeData.gasPrice);
+          feeData.gasPrice === undefined || feeData.gasPrice === null
+            ? null
+            : BigNumber.from(feeData.gasPrice);
         if (
           maxFeePerGas.lt(0) ||
           maxPriorityFeePerGas.lt(0) ||
@@ -1814,51 +1817,42 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           // Only the current MAX amount gets confirmation-time gas
                           // deduction. A prior MAX click cannot exempt a fixed amount.
                           if (!isNativeMaxAmount(String(value), balanceEth)) {
-                            try {
-                              // Use cached fee data if available, otherwise use conservative estimate
-                              let estimatedGasCost: BigNumber;
-
-                              if (cachedFeeData && cachedFeeData.maxFeePerGas) {
-                                // Use cached fee data for estimation
-                                const gasLimit = BigNumber.from(
-                                  getDefaultGasLimit(
-                                    TransactionType.NATIVE_ETH
-                                  ).toString()
-                                );
-                                // cachedFeeData.maxFeePerGas is already a hex string
-                                const maxFeePerGas = BigNumber.from(
+                            const software =
+                              !activeAccount?.isSmartAccount &&
+                              !activeAccount?.isLedgerWallet &&
+                              !activeAccount?.isTrezorWallet;
+                            if (!cachedFeeData?.maxFeePerGas) {
+                              if (software)
+                                return Promise.reject(t('send.feeUnavailable'));
+                            } else {
+                              try {
+                                const cap = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );
-                                const feeRate = maxFeePerGas.isZero()
+                                const rate = cap.isZero()
                                   ? BigNumber.from(cachedFeeData.gasPrice)
-                                  : maxFeePerGas;
-                                estimatedGasCost = gasLimit.mul(feeRate);
-                              } else {
-                                // Use conservative fallback estimate
-                                const conservativeFee =
-                                  activeNetwork.chainId === 570
-                                    ? '0.00001'
-                                    : '0.001';
-                                estimatedGasCost = parseEther(conservativeFee);
+                                  : cap;
+                                // Only reject a provable shortfall here. Confirm
+                                // measures the real gas for the exact recipient.
+                                const gas = software
+                                  ? EVM_NATIVE_INTRINSIC_GAS
+                                  : getDefaultGasLimit(
+                                      TransactionType.NATIVE_ETH
+                                    );
+                                if (
+                                  balanceBN
+                                    .sub(valueBN)
+                                    .lt(BigNumber.from(gas).mul(rate))
+                                )
+                                  return Promise.reject(
+                                    t('send.insufficientFundsForGas')
+                                  );
+                              } catch {
+                                if (software)
+                                  return Promise.reject(
+                                    t('send.feeUnavailable')
+                                  );
                               }
-
-                              // Check if balance minus amount leaves enough for gas
-                              const remainingAfterSend = balanceBN.sub(valueBN);
-
-                              if (remainingAfterSend.lt(estimatedGasCost)) {
-                                return Promise.reject(
-                                  cachedFeeData?.maxFeePerGas
-                                    ? t('send.insufficientFundsForGas')
-                                    : t('send.feeUnavailable')
-                                );
-                              }
-                            } catch (error) {
-                              console.error(
-                                'Error validating gas estimate:',
-                                error
-                              );
-                              // On error, allow the transaction to proceed
-                              // The backend will provide proper validation
                             }
                           }
                         } catch (e) {

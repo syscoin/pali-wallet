@@ -368,6 +368,43 @@ it.each(['native', 'token'] as const)(
   }
 );
 
+it('reviews and submits the same exact fixed native maximum above Number precision', async () => {
+  const quote = mount('native');
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  const cap = '9007199254740999';
+  await act(async () => {
+    quote.resolve({ maxFeePerGas: cap, maxPriorityFeePerGas: '0' });
+  });
+  expect(document.body.textContent).toContain('189.151184349560979 TSYS');
+  expect(document.body.textContent).toContain('190.151184349560979 TSYS');
+  await act(async () => {
+    fireEvent.click(confirm());
+  });
+  expect(sendRequests()).toHaveLength(1);
+  const [request, legacy, , , options] = sendRequests()[0][1];
+  expect(request).toMatchObject({
+    data: '0x',
+    gasLimit: '21000',
+    value: '1000000000000000000',
+    maxFeePerGas: cap,
+    maxPriorityFeePerGas: '0',
+  });
+  expect(legacy).toBe(false);
+  expect(options).toEqual({
+    nativeReview: {
+      maximumFee: '189151184349560979000',
+      scope: mockScope,
+    },
+  });
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+    )
+  ).toBe(false);
+});
+
 it('changes only approximate fiat when quote availability changes on a ready native review', async () => {
   mockFiatAvailable = false;
   mockFiatRate = 0;

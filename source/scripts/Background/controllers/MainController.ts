@@ -307,8 +307,10 @@ import {
   createExtensionEvmReplay,
 } from './evmSignedReplay';
 import {
+  captureReviewedNativeEvmTransfer,
   freshSdkGasEstimate,
   getSdkGasOverrides,
+  recheckReviewedNativeEvmTransfer,
 } from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
@@ -7721,8 +7723,11 @@ class MainController {
     saveOptions?: {
       assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
+      authorizeDapp?: () => void;
       clearNavigation?: boolean;
       expectedContext?: IEvmTransactionContext;
+      hardwareScope?: IWalletNavigationScope;
+      nativeReview?: { maximumFee: string; scope: IWalletNavigationScope };
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -7732,6 +7737,16 @@ class MainController {
     let txResponse: IEvmTransactionResponse | undefined;
     let submissionStarted = false;
     const expectedContext = saveOptions?.expectedContext;
+    const nativeReview = saveOptions?.nativeReview;
+    const hardwareScope = saveOptions?.hardwareScope && {
+      ...saveOptions.hardwareScope,
+    };
+    const authorizeDapp = saveOptions?.authorizeDapp;
+    const internal = typeof saveOptions?.assertCurrentContext === 'function';
+    let assertNativeReviewCurrent: (() => void) | undefined;
+    let prepareNativeReview:
+      | (() => ReturnType<typeof recheckReviewedNativeEvmTransfer>)
+      | undefined;
     const sessionGeneration = this.walletSessionGeneration;
     const assertExpectedContext = (beforeSubmission = true) => {
       if (beforeSubmission && !expectedContext) {
@@ -7768,10 +7783,90 @@ class MainController {
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
-    try {
+    const assertSynchronous = (guard?: () => void) => {
+      const result: unknown = guard?.();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('Transaction approval must be synchronous');
+      }
+    };
+    const assertAuthority = () => {
+      assertSynchronous(saveOptions?.assertCurrentContext);
       assertExpectedContext();
+      if (hardwareScope) {
+        this.assertAssetMutationContext(hardwareScope);
+        const { vault } = store.getState();
+        const selected = vault.activeAccount;
+        const account = vault.accounts[selected.type]?.[selected.id];
+        if (
+          targetAccount ||
+          vault.isBitcoinBased ||
+          !account?.address ||
+          ![KeyringAccountType.Ledger, KeyringAccountType.Trezor].includes(
+            selected.type
+          )
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+      assertSynchronous(authorizeDapp);
+      assertNativeReviewCurrent?.();
+    };
+    if (
+      [
+        Boolean(nativeReview),
+        Boolean(hardwareScope),
+        typeof authorizeDapp === 'function',
+        internal,
+      ].filter(Boolean).length !== 1 ||
+      (authorizeDapp &&
+        !Number.isSafeInteger(expectedContext?.sessionGeneration))
+    )
+      throw Object.assign(
+        new Error('Explicit transaction approval is required'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
+    try {
+      assertAuthority();
       assertSupportedEvmFees(params, isLegacy);
       const controller = getController();
+
+      if (nativeReview) {
+        const read = this.captureFreshNativeEvmRead(nativeReview.scope);
+        const { accounts, activeAccount, isBitcoinBased } =
+          store.getState().vault;
+        const account = accounts[activeAccount.type]?.[activeAccount.id];
+        if (
+          targetAccount ||
+          isBitcoinBased ||
+          read.network.kind !== INetworkType.Ethereum ||
+          (activeAccount.type !== KeyringAccountType.HDAccount &&
+            activeAccount.type !== KeyringAccountType.Imported) ||
+          !account?.address ||
+          account.isSmartAccount ||
+          account.isLedgerWallet ||
+          account.isTrezorWallet
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const review = captureReviewedNativeEvmTransfer(
+          params,
+          Boolean(isLegacy),
+          nativeReview.maximumFee,
+          account.address,
+          read.network.chainId,
+          read.overrides
+        );
+        assertNativeReviewCurrent = read.assertCurrent;
+        prepareNativeReview = () =>
+          read.run((provider) =>
+            recheckReviewedNativeEvmTransfer(
+              review,
+              provider,
+              read.assertCurrent
+            )
+          );
+      }
 
       // Check the call target and obvious calldata recipients/spenders.
       for (const target of await getBlacklistTargetsForEvmCallWithContractType({
@@ -7805,8 +7900,10 @@ class MainController {
         }
       }
 
-      saveOptions?.assertCurrentContext?.();
-      assertExpectedContext();
+      const nativeTransaction = prepareNativeReview
+        ? await prepareNativeReview()
+        : undefined;
+      assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
         targetAccount &&
@@ -7836,24 +7933,30 @@ class MainController {
         }
         // No asynchronous work may intervene between this check and the
         // keyring's synchronous capture of the account and network.
-        saveOptions?.assertCurrentContext?.();
-        assertExpectedContext();
-        saveOptions?.assertBeforeSign?.();
+        const assertBeforeSign = () => {
+          assertAuthority();
+          assertSynchronous(saveOptions?.assertBeforeSign);
+        };
+        assertBeforeSign();
         submissionStarted = true;
-        txResponse =
-          (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
-            expectedContext
-              ? {
-                  ...params,
-                  chainId: expectedContext.chainId,
-                  from: expectedContext.account.address,
-                }
-              : params,
-            isLegacy,
-            saveOptions?.assertBeforeSign
-              ? { assertCurrent: saveOptions.assertBeforeSign }
-              : undefined
-          )) as unknown as IEvmTransactionResponse;
+        const ethereum = controller.wallet.ethereumTransaction;
+        const sending = nativeTransaction
+          ? ethereum.sendFormattedTransaction(nativeTransaction, isLegacy, {
+              assertCurrent: assertBeforeSign,
+              mode: 'reviewed-native',
+            })
+          : ethereum.sendFormattedTransaction(
+              expectedContext
+                ? {
+                    ...params,
+                    chainId: expectedContext.chainId,
+                    from: expectedContext.account.address,
+                  }
+                : params,
+              isLegacy,
+              { assertCurrent: assertBeforeSign, mode: 'specialized' }
+            );
+        txResponse = (await sending) as unknown as IEvmTransactionResponse;
       } finally {
         if (shouldUseTargetAccount) {
           keyring.setVaultStateGetter(() => store.getState().vault);
@@ -7917,14 +8020,19 @@ class MainController {
       if (
         (transactionMetadata?.smartAccountInfrastructureDeployment ||
           transactionMetadata?.smartAccountExecution ||
-          expectedContext) &&
+          expectedContext ||
+          nativeReview ||
+          hardwareScope ||
+          authorizeDapp ||
+          internal) &&
         !submissionStarted
       ) {
         throw Object.assign(
-          new Error(
-            error?.message ||
-              'Deployment rejected before transaction submission'
-          ),
+          error instanceof Error
+            ? error
+            : new Error(
+                error?.message || 'Transaction rejected before submission'
+              ),
           { transactionNotBroadcast: true }
         );
       }
@@ -10886,6 +10994,22 @@ class MainController {
       !/^0x[\da-f]{1,64}$/i.test(transaction.value)
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const read = this.captureFreshNativeEvmRead(expectedScope);
+    return read.run((provider) =>
+      freshSdkGasEstimate(
+        read.overrides,
+        read.network,
+        transaction,
+        provider,
+        read.assertCurrent
+      )
+    );
+  }
+
+  private captureFreshNativeEvmRead(expectedScope: IWalletNavigationScope) {
+    this.assertAssetMutationContext(expectedScope);
+    const scope = { ...expectedScope };
+    const network = { ...store.getState().vault.activeNetwork };
     const keyring = this.getActiveKeyring();
     const session = this.walletSessionGeneration;
     const generation = this.walletStateGeneration;
@@ -10895,62 +11019,58 @@ class MainController {
     const gasPolicy = JSON.stringify(overrides);
     const assertCurrent = () => {
       this.assertCurrentWalletSession(session, keyring);
-      this.assertAssetMutationContext(expectedScope);
+      this.assertAssetMutationContext(scope);
       if (
         this.isResettingWallet ||
         generation !== this.walletStateGeneration ||
         this.ethereumTransaction !== sdk ||
         sdk.web3Provider !== originalProvider ||
+        originalProvider.signal.aborted ||
         JSON.stringify(getSdkGasOverrides(sdk)) !== gasPolicy
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
-    const abort = new AbortController();
-    const invalidate = () =>
-      abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
-    originalProvider.signal.addEventListener('abort', invalidate, {
-      once: true,
-    });
-    const unsubscribe = store.subscribe(() => {
-      if (abort.signal.aborted) return;
-      try {
-        assertCurrent();
-      } catch {
-        invalidate();
-      }
-    });
-    // Match the existing controllerEmitter default deadline; do not extend it.
-    const timeout = setTimeout(
-      () =>
-        abort.abort(
-          new DOMException('Network request timed out', 'AbortError')
-        ),
-      10000
-    );
-    try {
-      if (originalProvider.signal.aborted) invalidate();
-      return await this.withReceiptReadProvider(
-        abort.signal,
-        network,
-        (provider) =>
-          freshSdkGasEstimate(
-            overrides,
-            network,
-            transaction,
-            provider,
-            assertCurrent
-          )
+    const run = async <T>(
+      read: (provider: CustomJsonRpcProvider) => Promise<T>
+    ) => {
+      assertCurrent();
+      const abort = new AbortController();
+      const invalidate = () =>
+        abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+      originalProvider.signal.addEventListener('abort', invalidate, {
+        once: true,
+      });
+      const unsubscribe = store.subscribe(() => {
+        if (abort.signal.aborted) return;
+        try {
+          assertCurrent();
+        } catch {
+          invalidate();
+        }
+      });
+      // Match the existing controllerEmitter deadline.
+      const timeout = setTimeout(
+        () =>
+          abort.abort(
+            new DOMException('Network request timed out', 'AbortError')
+          ),
+        10000
       );
-    } catch (error) {
-      if (abort.signal.aborted) throw abort.signal.reason;
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-      unsubscribe();
-      originalProvider.signal.removeEventListener('abort', invalidate);
-      abort.abort();
-    }
+      try {
+        if (originalProvider.signal.aborted) invalidate();
+        return await this.withReceiptReadProvider(abort.signal, network, read);
+      } catch (error) {
+        if (abort.signal.aborted) throw abort.signal.reason;
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+        unsubscribe();
+        originalProvider.signal.removeEventListener('abort', invalidate);
+        abort.abort();
+      }
+    };
+    return { network, overrides, assertCurrent, run };
   }
 
   // Get current block with latest data

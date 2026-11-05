@@ -19,6 +19,13 @@ describe('transaction approval submission lifetime', () => {
     host: 'https://synthetic.invalid',
     approvalId: 'approval-lifecycle',
   };
+  const approvedContext = {
+    account: { id: 0, type: 'HDAccount', address: `0x${'a'.repeat(40)}` },
+    chainId: 743211,
+    rpcUrl: 'https://rpc.invalid',
+    slip44: 60,
+    sessionGeneration: 6,
+  };
   const source = () => ({
     id: 'approval-client',
     url: `chrome-extension://pali/external.html?data=${encodeURIComponent(
@@ -102,7 +109,7 @@ describe('transaction approval submission lifetime', () => {
       host: data.host,
       eventName: config.popupEventName!,
       route: config.popupRoute!,
-      data: {},
+      data: { approvedContext },
       signal,
     });
     await new Promise(setImmediate);
@@ -151,6 +158,18 @@ describe('transaction approval submission lifetime', () => {
     closeWindow(9);
     await rejected;
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('binds the enrolled EVM approval to the captured wallet context and expires it on close', async () => {
+    const { pending } = await begin();
+    const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+    await submit('sendAndSaveEthTransaction');
+    const admitted = send.mock.calls[0][4];
+    expect(admitted.expectedContext).toEqual(approvedContext);
+    expect(admitted.authorizeDapp).not.toThrow();
+    closeWindow(9);
+    await rejected;
+    expect(admitted.authorizeDapp).toThrow('no longer current');
   });
 
   it('refuses a website sender while a batch approval is live', async () => {

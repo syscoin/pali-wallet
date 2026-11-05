@@ -25,8 +25,8 @@ import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime }
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeTransferRuntime } from './transfers.ts';
-import { assertTransferIntentEnvelope, snapshotErc20TransferIntent } from './transferIntent.ts';
-import { snapshotUnsignedTransfer } from './evmFeeContracts.ts';
+import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
+import { snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenInventory, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -1015,27 +1015,64 @@ export function createKeyringRuntimeFactory(
               void address;
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent) => {
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;
-              const work = Promise.resolve().then(async () => {
-              current(captured); checkGuard(assertCurrent);
-              const selected = selectedAccount(); const network = getNativeNetwork(catalogueSnapshot!.active.networkId,catalogueSnapshot!.networks);
-              const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-              const context: EvmSubmissionContext = { account:{id:selected.index,type:selected.type,address:selected.address},network:{kind:'ethereum',chainId:Number(network.chainId),slip44:60,url:network.rpcUrl},operation:intent?'erc20':'send' };
-              const boundary = sdk.captureEvmSubmission(context,() => { current(captured); checkGuard(assertCurrent); },() => captureSignedSubmission(context,assertCurrent,intent?{intent}:undefined));
-              const tx = Transaction.from(rawTransaction);
-              if (tx.to === null) throw new KeyringRuntimeError('INVALID_INPUT');
-              assertTransferIntentEnvelope({chainId:tx.chainId.toString(),to:tx.to,value:tx.value.toString(),data:tx.data},intent);
-              if (tx.hash !== hash) throw new KeyringRuntimeError('INVALID_INPUT');
-              try { await sdk.submitSignedEvmTransaction(rawTransaction,broadcast,boundary); }
-              catch (error) {
-                if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED')) throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
-                throw error;
+              let review: {
+                context: EvmSubmissionContext;
+                intent: Erc20TransferIntent | undefined;
+                expectedUnsigned: string;
+              };
+              const check = () => {
+                current(captured);
+                checkGuard(assertCurrent);
+                if (!keyring.isUnlocked() || !canSign())
+                  throw new KeyringRuntimeError('NOT_READY');
+              };
+              try {
+                check();
+                const selected = selectedAccount();
+                const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+                const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
+                const approved = snapshotUnsignedTransfer(inputApproval, network);
+                assertTransferIntentEnvelope(approved, intent);
+                if (approved.from.toLowerCase() !== selected.address.toLowerCase())
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                const context: EvmSubmissionContext = {
+                  account: { id: selected.index, type: selected.type, address: selected.address },
+                  network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
+                  operation: intent ? 'erc20' : 'send',
+                };
+                review = { context, intent, expectedUnsigned: unsignedTransferBytes(approved) };
+              } catch (error) {
+                return Promise.reject(error);
               }
+              const work = Promise.resolve().then(async () => {
+                check();
+                const { context, intent, expectedUnsigned } = review;
+                const boundary = sdk.captureEvmSubmission(
+                  context,
+                  check,
+                  () => captureSignedSubmission(context, check, intent ? { intent } : undefined)
+                );
+                const tx = Transaction.from(rawTransaction);
+                if (tx.to === null || tx.hash !== hash)
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                assertTransferIntentEnvelope({
+                  chainId: tx.chainId.toString(), to: tx.to,
+                  value: tx.value.toString(), data: tx.data,
+                }, intent);
+                try {
+                  await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
+                } catch (error) {
+                  if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
+                    throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                  throw error;
+                }
               });
               const pending = work.finally(() => { pendingSubmissions.delete(pending); });
-              pendingSubmissions.add(pending); return pending;
+              pendingSubmissions.add(pending);
+              return pending;
             },
             assertUnlocked: (assertCurrent) => {
               const captured = generation;

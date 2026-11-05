@@ -1322,6 +1322,15 @@ it.each([false, true])(
             maxFeePerGas: expect.anything(),
             maxPriorityFeePerGas: expect.anything(),
           }),
+          false,
+          undefined,
+          undefined,
+          {
+            nativeReview: {
+              maximumFee: '42000000000000',
+              scope: mockLocation.state.walletScope,
+            },
+          },
         ],
         expect.any(Number)
       )
@@ -1477,7 +1486,18 @@ it.each(['undeployed smart account', 'EOA'])(
     await waitFor(() =>
       expect(mockControllerEmitter).toHaveBeenCalledWith(
         ['wallet', 'sendAndSaveEthTransaction'],
-        [expect.objectContaining({ to: receiver }), true],
+        [
+          expect.objectContaining({ to: receiver }),
+          true,
+          undefined,
+          undefined,
+          {
+            nativeReview: {
+              maximumFee: '21000000000000',
+              scope: mockLocation.state.walletScope,
+            },
+          },
+        ],
         expect.any(Number)
       )
     );
@@ -2023,7 +2043,7 @@ it.each([
 );
 
 it.each([false, true])(
-  'native total formatting leaves the %s token/EVM total path unchanged',
+  'does not treat an input fee as the measured total for an EVM draft (UTXO token: %s)',
   async (token) => {
     mockState.vault.isBitcoinBased = token;
     mockLocation.state.tx = {
@@ -2038,7 +2058,7 @@ it.each([false, true])(
     });
     expect(
       screen.getByText('send.total (send.amountAndFee)').textContent
-    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS');
+    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.001 SYS');
   }
 );
 

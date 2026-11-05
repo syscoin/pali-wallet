@@ -1,7 +1,10 @@
 import { IMasterController } from 'scripts/Background/controllers';
 import { extractErrorMessage } from 'utils/index';
 
-import { beginApprovalSubmission } from './approvalSubmission';
+import {
+  beginApprovalSubmission,
+  captureDappEvmSubmission,
+} from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
 
@@ -216,6 +219,31 @@ export const handleMasterControllerResponses = (
               await personalSignApproval.checkDocument();
             assertSetupAdmission();
             personalSignApproval?.assertCurrent();
+            const sendsEvm =
+              route.length === 2 &&
+              route[0] === 'wallet' &&
+              route[1] === 'sendAndSaveEthTransaction';
+            const dappApproval = sendsEvm
+              ? captureDappEvmSubmission(sender)
+              : undefined;
+            const argumentsForCall = sendsEvm
+              ? [
+                  params?.[0],
+                  params?.[1],
+                  params?.[2],
+                  params?.[3],
+                  {
+                    ...params?.[4],
+                    // Background-only capabilities do not cross the UI boundary.
+                    assertCurrentContext: undefined,
+                    assertBeforeSign: undefined,
+                    authorizeDapp: dappApproval?.assertCurrent,
+                    ...(dappApproval && {
+                      expectedContext: dappApproval.context,
+                    }),
+                  },
+                ]
+              : params;
             // Always execute the method; never attempt to send functions over messaging
             const response = await (targetMethod as any)(
               ...(signer
@@ -225,7 +253,7 @@ export const handleMasterControllerResponses = (
                       ? personalSignApproval
                       : personalSignApproval.assertCurrent,
                   ]
-                : params)
+                : argumentsForCall)
             );
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the

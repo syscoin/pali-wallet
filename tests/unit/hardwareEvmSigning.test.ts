@@ -63,7 +63,10 @@ describe.each(['Ledger', 'Trezor'] as const)(
         : { maxFeePerGas: '100', maxPriorityFeePerGas: '2' }),
     });
     const send = (legacy = false) =>
-      sdk.sendFormattedTransaction(params(legacy), legacy);
+      sdk.sendFormattedTransaction(params(legacy), legacy, {
+        assertCurrent: () => undefined,
+        mode: 'specialized',
+      });
     const finishDelay = async () => {
       // Advance only the installed Trezor adapter's documented popup interval.
       // This is not a real wait or substitute for the actual device boundary.
@@ -432,7 +435,8 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const data = `0x${'12'.repeat(600)}`;
       const sending = sdk.sendFormattedTransaction(
         { ...params(), data, gasLimit: '200000' },
-        false
+        false,
+        { assertCurrent: () => undefined, mode: 'specialized' }
       );
       await finishDelay();
       await sending;

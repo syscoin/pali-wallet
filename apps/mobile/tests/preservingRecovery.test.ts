@@ -484,6 +484,46 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
   }
 });
 
+test('mobile dispatch rejects missing or changed approval before retaining or broadcasting signed bytes', async () => {
+  const f = await fixture();
+  try {
+    const approval = {
+      type: 2 as const, chainId: '1', nonce: '0', from: sourceWallet.address,
+      to: importedWallet.address, value: '1', gasLimit: '21000', data: '0x',
+      maxFeePerGas: '2', maxPriorityFeePerGas: '1',
+    };
+    const raw = await sourceWallet.signTransaction({
+      type: approval.type, chainId: approval.chainId, nonce: Number(approval.nonce),
+      to: approval.to, value: approval.value, gasLimit: approval.gasLimit,
+      maxFeePerGas: approval.maxFeePerGas, maxPriorityFeePerGas: approval.maxPriorityFeePerGas,
+    });
+    const hash = Transaction.from(raw).hash!;
+    const transfers = f.runtime.transfers!;
+    const before = f.read().signedRecords;
+    let broadcasts = 0;
+    const broadcast = async () => {
+      broadcasts++;
+      assert.equal(f.read().signedRecords.length, before.length + 1);
+      const record = await new EvmSignedRecords(f.store.signedRecords).readExact(
+        { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash
+      );
+      assert.equal(record?.rawTransaction, raw);
+    };
+    const guard = () => undefined;
+    await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, undefined as never));
+    await assert.rejects(
+      transfers.submit(raw, hash, guard, broadcast, undefined, { ...approval, nonce: '1' }),
+      { transactionNotBroadcast: true }
+    );
+    assert.deepEqual(f.read().signedRecords, before);
+    assert.equal(broadcasts, 0);
+    await transfers.submit(raw, hash, guard, broadcast, undefined, approval);
+    assert.equal(broadcasts, 1);
+  } finally {
+    await f.close();
+  }
+});
+
 test('retired imported signed bytes survive recovery without resurrecting an account or granting replay', async () => {
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
@@ -515,7 +555,11 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
     assert.equal(restored?.rawTransaction, raw);
     let broadcasts = 0;
-    await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined, async () => { broadcasts++; }));
+    await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
+      async () => { broadcasts++; }, undefined, {
+        type: 2, chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
+        value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1',
+      }));
     assert.equal(broadcasts, 0, 'historical attribution does not select or authorize a missing account');
   } finally {
     await recovery?.dispose();

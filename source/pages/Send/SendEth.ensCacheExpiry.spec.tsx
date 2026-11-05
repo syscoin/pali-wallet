@@ -213,7 +213,7 @@ beforeEach(() => {
   mockSave.mockResolvedValue(undefined);
   mockEmitter.mockImplementation(async (path) => {
     if (path[1] === 'resolveEns') return CURRENT;
-    if (path[1] === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+    if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return { maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000' };
     return undefined;
   });
