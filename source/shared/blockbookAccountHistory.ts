@@ -139,7 +139,8 @@ export type BlockbookHistoryRequest = Readonly<{
 /** Keep one instance for the host lifetime to retain its existing backend capability memo. */
 export function createBlockbookAccountHistory(
   fetchAccount: BlockbookAccountFetch,
-  onFallback?: (error: unknown) => void
+  onFallback?: (error: unknown) => void,
+  observeRows?: (source: object, rows: any[]) => any[]
 ) {
   const txSummaryUnsupportedBackends = new Set<string>();
   const getHistoryRequestOptions = (
@@ -167,6 +168,12 @@ export function createBlockbookAccountHistory(
     const check = () => request?.assertCurrent();
     let accountData: any = null;
     check();
+    const accept = (data: any) => {
+      const history = validateAccountHistory(data, allowEmptyPage);
+      return observeRows && history.transactions.length
+        ? { ...history, transactions: observeRows(data, history.transactions) }
+        : history;
+    };
 
     try {
       accountData = await fetch(
@@ -177,7 +184,7 @@ export function createBlockbookAccountHistory(
       );
       check();
       if (!isUnsupportedTxSummaryResponse(accountData, requestOptions)) {
-        return validateAccountHistory(accountData, allowEmptyPage);
+        return accept(accountData);
       }
     } catch (error) {
       check();
@@ -204,7 +211,7 @@ export function createBlockbookAccountHistory(
       true
     );
     check();
-    return validateAccountHistory(fallback, allowEmptyPage);
+    return accept(fallback);
   };
 
   return { getHistoryRequestOptions, fetchAccountHistory };

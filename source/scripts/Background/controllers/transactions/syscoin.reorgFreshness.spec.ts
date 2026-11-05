@@ -1,4 +1,5 @@
 import { mergeFreshBlockbookHistory } from '../../../../shared/blockbookHistoryMerge';
+import { UTXO_SUMMARY_OBSERVATION } from '../../../../shared/utxoDetailFreshness';
 
 const fetchBackendAccountCachedMock = jest.fn();
 jest.mock('../utils/fetchBackendAccountWrapper', () => ({
@@ -232,7 +233,13 @@ describe('alternate retained rows already accepted by the existing selector', ()
         true
       );
       expect(result).toHaveLength(2);
-      expect(result.find((item: any) => item.txid === TXID)).toEqual(fresh);
+      expect(result.find((item: any) => item.txid === TXID)).toEqual({
+        ...fresh,
+        [UTXO_SUMMARY_OBSERVATION]: expect.stringMatching(
+          /^[0-9a-f]{32}:[1-9]\d*$/
+        ),
+      });
+      expect(fresh).not.toHaveProperty(UTXO_SUMMARY_OBSERVATION);
       expect(result.find((item: any) => item.hash === cachedHash)).toEqual(row);
     }
   );

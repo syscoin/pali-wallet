@@ -15,6 +15,7 @@ import { AssetDetails } from './AssetDetails';
 import { NftsDetails } from './Nfts';
 import { TransactionDetails } from './TransactionDetails';
 import { replacementHash } from './Transactions/EVM/replacementWinner';
+import { getUtxoSummaryObservation } from './Transactions/UTXO/utxoTransactionDetails';
 
 export const DetailsView = () => {
   const { t } = useTranslation();
@@ -99,6 +100,13 @@ export const DetailsView = () => {
           String(hash).toLowerCase()
       )
     : undefined;
+  const utxoRouteSummaryObservation =
+    isBitcoinBased &&
+    hash &&
+    typeof routeTransaction?.txid === 'string' &&
+    routeTransaction.txid.toLowerCase() === hash.toLowerCase()
+      ? getUtxoSummaryObservation(routeTransaction)
+      : undefined;
 
   useEffect(() => {
     if (!hasDetails) navigateBack(navigate, location);
@@ -128,6 +136,7 @@ export const DetailsView = () => {
         <TransactionDetails
           hash={hash}
           tx={restoredTransaction || routeTransaction}
+          utxoRouteSummaryObservation={utxoRouteSummaryObservation}
           {...winnerProps}
         />
       )}

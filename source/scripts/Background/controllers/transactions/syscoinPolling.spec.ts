@@ -86,6 +86,91 @@ describe('SysTransactionController rapid polling', () => {
     expect(result.map((tx: any) => tx.txid)).toEqual(['tx1']);
   });
 
+  it('marks accepted responses once, through normalization and partial history merging', async () => {
+    const controller = SysTransactionController();
+    const xpub = 'zpub-history-observation';
+    const url = `${URL}history-observation/`;
+    const injected = 'abcdef1234567890abcdef1234567890:1';
+    const response = txsResponse({
+      transactions: [
+        fullNativeTransaction({ walletHistoryObservation: injected }),
+      ],
+    });
+    fetchBackendAccountCachedMock
+      .mockResolvedValueOnce(response)
+      .mockResolvedValueOnce(response);
+
+    const [first] = await controller.getInitialUserTransactionsByXpub(
+      xpub,
+      url
+    );
+    const [paged] = await controller.fetchTransactionsPageFromBlockbook(
+      xpub,
+      url,
+      2
+    );
+    expect(first).not.toBe(paged);
+    expect(first.walletHistoryObservation).toEqual(expect.any(String));
+    expect(first.walletHistoryObservation).not.toBe(injected);
+    expect(paged.walletHistoryObservation).toBe(first.walletHistoryObservation);
+    expect(response.transactions[0].walletHistoryObservation).toBe(injected);
+
+    const retained = { ...first, txid: 'previously-observed' };
+    vaultState = buildVaultState([retained]);
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(
+      structuredClone(response)
+    );
+    const refreshed = await controller.pollingSysTransactions(xpub, url);
+    expect(
+      refreshed.find((row) => row.txid === first.txid)?.walletHistoryObservation
+    ).not.toBe(first.walletHistoryObservation);
+    expect(refreshed.find((row) => row.txid === retained.txid)).toBe(retained);
+    fetchBackendAccountCachedMock.mockResolvedValueOnce(response);
+    vaultState = buildVaultState(refreshed);
+    expect(await controller.pollingSysTransactions(xpub, url, true)).toEqual(
+      refreshed
+    );
+  });
+
+  it('orders the actual raw dispatch between admitted account observations even when its reply is held', async () => {
+    const controller = SysTransactionController();
+    const txid = 'ab'.repeat(32);
+    const utils = jest.requireMock('syscoinjs-lib').utils;
+    let complete!: (value: unknown) => void;
+    utils.fetchBackendRawTx = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        })
+    );
+    try {
+      fetchBackendAccountCachedMock
+        .mockResolvedValueOnce(txsResponse())
+        .mockResolvedValueOnce(txsResponse());
+      const [first] = await controller.getInitialUserTransactionsByXpub(
+        'test-xpub',
+        URL
+      );
+      const raw = controller.fetchTransactionDetailsFromBlockbook(txid, URL);
+      expect(utils.fetchBackendRawTx).toHaveBeenCalledWith(URL, txid);
+      const [next] = await controller.getInitialUserTransactionsByXpub(
+        'test-xpub',
+        URL
+      );
+      complete({ txid, walletDetailObservation: `${'b'.repeat(32)}:99` });
+      const body = (await raw) as { walletDetailObservation?: string };
+      const [epoch, before] = first.walletHistoryObservation!.split(':');
+      expect(body.walletDetailObservation).toBe(
+        `${epoch}:${Number(before) + 1}`
+      );
+      expect(next.walletHistoryObservation).toBe(
+        `${epoch}:${Number(before) + 2}`
+      );
+    } finally {
+      delete utils.fetchBackendRawTx;
+    }
+  });
+
   it.each(['timeout', 'rate-limit', 'null', 'AbortError'])(
     'restores the native MAX amount after A → B (%s) → A without poisoning backend capability',
     async (failure) => {
@@ -284,7 +369,10 @@ describe('SysTransactionController rapid polling', () => {
           `${URL}ambiguous-light-${JSON.stringify(changes)}/`
         );
 
-      expect(row).toEqual(full);
+      expect(row).toEqual({
+        ...full,
+        walletHistoryObservation: expect.any(String),
+      });
       expect(getSyscoinNativeTransferAmount(row)).toBeNull();
     }
   );

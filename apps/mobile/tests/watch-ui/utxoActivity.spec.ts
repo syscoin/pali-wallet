@@ -256,9 +256,10 @@ test('a pasted public account key loads account-wide history without exposing th
 });
 
 
-test('SPT account quantity stays exact and separate from native funding without detail requests', async ({ page }, testInfo) => {
+test('SPT account quantity stays exact and list reads do not request transaction bodies', async ({ page }, testInfo) => {
   await open(page, 'syscoin', false, 'asset-exact'); await load(page);
   const title = '9007199254740993 BIG';
+  expect((await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/tx\//.test(url))).toEqual([]);
   await expect(page.getByRole('button', { name: title, exact: true }).first()).toBeVisible();
   await page.getByRole('button', { name: title, exact: true }).first().click();
   const detail = page.getByTestId('watch-activity-detail');
@@ -267,20 +268,23 @@ test('SPT account quantity stays exact and separate from native funding without 
   await expect(detail.getByText('987654321', { exact: true })).toBeVisible();
   await expect(detail.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
   await expect(detail.getByText('Whole transaction fee: 1.0 SYS', { exact: true })).toBeVisible();
-  expect((await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/tx\//.test(url))).toEqual([]);
+  await expect.poll(async () => (await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/tx\//.test(url)).length).toBe(1);
   await page.screenshot({ path: testInfo.outputPath('spt-account-exact.png'), fullPage: true });
 });
 
-test('SPT one-atom direction and compact bridge scope come from shared interpretation', async ({ page }) => {
+test('SPT one-atom direction and full bridge operation come from shared interpretation', async ({ page }) => {
   await open(page, 'syscoin', false, 'asset-owned'); await load(page);
   await page.getByRole('button', { name: '+0.00000001 ATOM', exact: true }).first().click();
   await expect(page.getByTestId('watch-activity-detail').getByText('+0.00000001 ATOM', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.evaluate(() => window.__watchFixture.activity.mode('asset-bridge'));
-  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click(); await load(page);
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+  // Distinct transaction bodies have distinct hashes; the old rows remain visible.
+  await expect(page.getByText('40 transactions shown', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '9007199254740993 BIG', exact: true }).first().click();
-  await expect(page.getByTestId('watch-activity-detail').getByText('Account asset amount', { exact: true })).toBeVisible();
-  await expect(page.getByText('Asset operation amount', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('watch-activity-detail').getByText('Asset operation amount', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('watch-activity-detail').getByText('9007199254740994 BIG', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('watch-activity-detail').getByText('TO', { exact: true })).toHaveCount(0);
 });
 
 test('SPT unavailable quantity and unsafe optional metadata never substitute or echo funding', async ({ page }) => {
@@ -291,7 +295,9 @@ test('SPT unavailable quantity and unsafe optional metadata never substitute or 
   await expect(detail.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.evaluate(() => window.__watchFixture.activity.mode('asset-hostile'));
-  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click(); await load(page);
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+  // Distinct transaction bodies have distinct hashes; the old rows remain visible.
+  await expect(page.getByText('40 transactions shown', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: '9007199254740993 SPT', exact: true }).first().click();
   expect(await page.locator('body').innerText()).not.toMatch(/SPOOF|provider-metadata|\u202e/);
   await expect(detail.getByText('ASSET ID', { exact: true })).toHaveCount(0);
@@ -353,4 +359,88 @@ test('the full 78-digit SPT quantity stays within list and detail bounds at larg
   await copy.scrollIntoViewIfNeeded(); await expect(copy).toBeInViewport();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(row).toBeVisible();
+});
+
+test('selected details hydrate participants once and reuse the shared warm cache', async ({ page }) => {
+  await open(page); await load(page);
+  const rawCalls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => /\/api\/v2\/tx\//.test(url)).length);
+  expect(await rawCalls()).toBe(0);
+  const first = page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first();
+  await first.click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText('TO', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Native account change: −10.0 BTC', { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await first.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
+});
+
+test('failed detail preserves compact facts and explicit retry succeeds', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await open(page); await load(page);
+  await page.evaluate(() => window.__watchFixture.activity.detail('error'));
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first().click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText('Couldn’t load full details.', { exact: true })).toBeVisible();
+  await expect(detail.getByText('−9.0 BTC', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Whole transaction fee: 1.0 BTC', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('utxo-detail-unavailable-320.png'), fullPage: true });
+  await page.evaluate(() => window.__watchFixture.activity.detail('value'));
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Try again', exact: true })).toHaveCount(0);
+  expect((await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/api\/v2\/tx\//.test(url))).toHaveLength(2);
+});
+
+test('Back cancels only selected detail work and a fresh reorg observation may become pending', async ({ page }, testInfo) => {
+  await open(page); await load(page);
+  await page.evaluate(() => window.__watchFixture.activity.detail('slow'));
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first().click();
+  await expect(page.getByLabel('Loading transaction details', { exact: true })).toBeVisible();
+  await expect.poll(async () => (await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/api\/v2\/tx\//.test(url)).length).toBe(1);
+  await page.screenshot({ path: testInfo.outputPath('utxo-detail-loading.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.cancelled())).toBe(1);
+  await load(page);
+  await page.evaluate(() => window.__watchFixture.activity.detail('reorg'));
+  await page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first().click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText('Pending', { exact: true })).toBeVisible();
+  await expect(detail.getByText(/Block time:/)).toHaveCount(0);
+  await expect(detail.getByText('Native account change: −10.0 BTC', { exact: true })).toBeVisible();
+});
+
+for (const initiallyPending of [false, true]) test(`reopening keeps the detail observation from an unchanged ${initiallyPending ? 'pending' : 'confirmed'} summary`, async ({ page }) => {
+  await open(page, 'bitcoin', false, initiallyPending ? 'pending' : 'value');
+  await load(page);
+  const row = page.getByTestId(`watch-activity-row-${ID(1)}`);
+  const details = row.getByRole('button', { name: 'Net change −10.0 BTC', exact: true });
+  const detail = page.getByTestId('watch-activity-detail');
+  const rawCalls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => /\/api\/v2\/tx\//.test(url)).length);
+  await page.evaluate(pending => {
+    window.__watchFixture.activity.mode('value');
+    window.__watchFixture.activity.detail(pending ? 'value' : 'reorg');
+  }, initiallyPending);
+  const status = initiallyPending ? '11 confirmations · Block 190' : 'Pending';
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(status, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(status, { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.evaluate(pending => window.__watchFixture.activity.mode(pending ? 'pending' : 'value'), initiallyPending);
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+  await load(page);
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(initiallyPending ? 'Pending' : '11 confirmations · Block 190', { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
 });

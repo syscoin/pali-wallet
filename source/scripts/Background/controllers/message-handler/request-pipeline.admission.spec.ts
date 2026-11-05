@@ -272,22 +272,39 @@ describe('network-control recovery admission', () => {
     }
   );
 
-  it.each(['connecting', 'switching'])(
-    'does not allow a recovery action while %s',
-    async (status) => {
-      mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: status } });
-      const next = jest.fn();
-      const waiting = networkStatusMiddleware(
-        recoveryContext('wallet_switchEthereumChain'),
-        next
-      );
-      const rejected = expect(waiting).rejects.toMatchObject({ code: -32603 });
-      await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
-      await rejected;
-      expect(next).not.toHaveBeenCalled();
-      expect(jest.getTimerCount()).toBe(0);
-    }
-  );
+  it.each([
+    ['connecting', 'wallet_switchEthereumChain'],
+    ['switching', 'wallet_switchEthereumChain'],
+    ['connecting', 'eth_chainId'],
+    ['switching', 'eth_chainId'],
+  ])('does not allow %s to admit %s', async (status, method) => {
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: status } });
+    const next = jest.fn();
+    const waiting = networkStatusMiddleware(recoveryContext(method), next);
+    const rejected = expect(waiting).rejects.toMatchObject({ code: -32603 });
+    await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+    await rejected;
+    expect(next).not.toHaveBeenCalled();
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('admits the selected chain identity read immediately on error', async () => {
+    mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });
+    const next = jest.fn().mockResolvedValue('0x3441');
+    const result = networkStatusMiddleware(
+      recoveryContext('eth_chainId'),
+      next
+    ).then(
+      (value) => ({ value }),
+      (error) => ({ error })
+    );
+    await jest.advanceTimersByTimeAsync(0);
+    const callsBeforeDeadline = next.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(NETWORK_READY_TIMEOUT_MS);
+    expect(await result).toEqual({ value: '0x3441' });
+    expect(callsBeforeDeadline).toBe(1);
+    expect(jest.getTimerCount()).toBe(0);
+  });
 
   it.each([
     'personal_sign',
@@ -306,7 +323,7 @@ describe('network-control recovery admission', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it.each(recoveryMethods)(
+  it.each([...recoveryMethods, 'eth_chainId'])(
     'retains document cancellation before %s recovery',
     async (method) => {
       mockGetState.mockReturnValue({ vaultGlobal: { networkStatus: 'error' } });

@@ -4,9 +4,14 @@ import { chromeStorage } from 'utils/storageAPI';
 import { walletPersistenceGate } from './paliStorage';
 import store, {
   persistAccountLabel,
+  persistAssetMutation,
   persistCommittedWalletState,
 } from './store';
-import { restoreVaultSnapshot, setAccountLabel } from './vault';
+import {
+  restoreVaultSnapshot,
+  setAccountAssets,
+  setAccountLabel,
+} from './vault';
 import vaultCache from './vaultCache';
 import { setActiveSlip44, setHasEthProperty } from './vaultGlobal';
 
@@ -101,6 +106,92 @@ describe('staged account label persistence', () => {
     walletPersistenceGate.blocked = false;
     jest.restoreAllMocks();
     vaultCache.clearCache();
+  });
+
+  it('keeps live UTXO observation tags out of committed, emergency and repair vault writes', async () => {
+    const observation = 'abcdef1234567890abcdef1234567890:1';
+    const row = {
+      txid: 'ab'.repeat(32),
+      blockHash: 'cd'.repeat(32),
+      blockHeight: 10,
+      confirmations: 2,
+      blockTime: 1700000000,
+      vin: [],
+      vout: [],
+      fees: '1',
+      hex: '00',
+      version: 2,
+      value: '1',
+      valueIn: '2',
+    };
+    const liveRow = Object.freeze({
+      ...row,
+      walletHistoryObservation: observation,
+    });
+    const vault = currentVault();
+    vault.activeNetwork = {
+      ...vault.activeNetwork,
+      kind: INetworkType.Syscoin,
+      chainId: 57,
+      slip44: 57,
+    };
+    vault.accountTransactions.HDAccount = {
+      0: { ethereum: {}, syscoin: { 57: [liveRow] } },
+    };
+    store.dispatch(setActiveSlip44(57));
+    store.dispatch(restoreVaultSnapshot(vault));
+    await persistCommittedWalletState(true);
+    const storedRows = () =>
+      disk['state-vault-57'].accountTransactions.HDAccount[0].syscoin[57];
+    const liveRows = async () =>
+      (await vaultCache.getSlip44Vault(57))?.accountTransactions.HDAccount[0]
+        .syscoin[57];
+    expect(storedRows()).toEqual([row]);
+    expect(await liveRows()).toEqual([liveRow]);
+    await vaultCache.emergencySave();
+    expect(storedRows()).toEqual([row]);
+    expect(await liveRows()).toEqual([liveRow]);
+
+    // When Redux switches first, the same emergency path writes from cache.
+    const switched = {
+      ...vault,
+      activeNetwork: {
+        ...vault.activeNetwork,
+        kind: INetworkType.Ethereum,
+        slip44: 60,
+      },
+    };
+    store.dispatch(restoreVaultSnapshot(switched));
+    const warning = jest.spyOn(console, 'warn').mockImplementation();
+    await vaultCache.emergencySave();
+    expect(warning).toHaveBeenCalled();
+    expect(storedRows()).toEqual([row]);
+    expect(await liveRows()).toEqual([liveRow]);
+    expect(liveRow.walletHistoryObservation).toBe(observation);
+
+    // A stale mutation restores the source from its live cache after a switch.
+    store.dispatch(restoreVaultSnapshot(vault));
+    const held = holdWrite();
+    const pending = persistAssetMutation(
+      () =>
+        setAccountAssets({
+          accountId: 0,
+          accountType: KeyringAccountType.HDAccount,
+          property: 'syscoin',
+          value: [],
+        }),
+      assertCurrent,
+      () => true
+    );
+    const rejected = expect(pending).rejects.toThrow('Account context changed');
+    await flush();
+    store.dispatch(setActiveSlip44(60));
+    store.dispatch(restoreVaultSnapshot(switched));
+    current = false;
+    held.resolve();
+    await rejected;
+    expect(storedRows()).toEqual([row]);
+    expect(await liveRows()).toEqual([liveRow]);
   });
 
   it.each([true, false])(

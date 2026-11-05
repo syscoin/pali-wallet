@@ -3,6 +3,10 @@ import * as sys from 'syscoinjs-lib';
 
 import { createBlockbookAccountHistory } from '../../../../shared/blockbookAccountHistory';
 import { mergeFreshBlockbookHistory } from '../../../../shared/blockbookHistoryMerge';
+import {
+  UTXO_DETAIL_OBSERVATION,
+  UTXO_SUMMARY_OBSERVATION,
+} from '../../../../shared/utxoDetailFreshness';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -22,13 +26,38 @@ interface IAccountActivitySnapshot {
 
 const MAX_SNAPSHOT_ENTRIES = 20;
 const accountActivitySnapshots = new Map<string, IAccountActivitySnapshot>();
+let observationEpoch: string | undefined;
+let observationSequence = 0;
+const nextObservation = () => {
+  observationEpoch ??= Array.from(
+    crypto.getRandomValues(new Uint8Array(16)),
+    (byte) => byte.toString(16).padStart(2, '0')
+  ).join('');
+  return `${observationEpoch}:${++observationSequence}`;
+};
+// The account fetcher can deliver one physical response to several callers.
+const historyObservations = new WeakMap<object, string>();
 const { getHistoryRequestOptions, fetchAccountHistory } =
-  createBlockbookAccountHistory(fetchBackendAccountCached, (error) => {
-    console.warn(
-      '[SysTransactionController] txsummary history fetch failed, falling back:',
-      error
-    );
-  });
+  createBlockbookAccountHistory(
+    fetchBackendAccountCached,
+    (error) => {
+      console.warn(
+        '[SysTransactionController] txsummary history fetch failed, falling back:',
+        error
+      );
+    },
+    (source, rows) => {
+      let observation = historyObservations.get(source);
+      if (!observation) {
+        observation = nextObservation();
+        historyObservations.set(source, observation);
+      }
+      return rows.map((row) => ({
+        ...row,
+        [UTXO_SUMMARY_OBSERVATION]: observation,
+      }));
+    }
+  );
 
 const getSnapshotKey = (networkUrl: string, xpubOrAddress: string) =>
   `${networkUrl}::${xpubOrAddress}`;
@@ -76,9 +105,16 @@ const SysTransactionController = (): ISysTransactionsController => {
   ): Promise<ISysTransaction | null> => {
     if (!txid || !networkUrl) return null;
 
+    const observation = nextObservation();
     const transaction = await sys.utils.fetchBackendRawTx(networkUrl, txid);
 
-    return transaction || null;
+    if (
+      !transaction ||
+      typeof transaction !== 'object' ||
+      Array.isArray(transaction)
+    )
+      return null;
+    return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
   };
 
   const getInitialUserTransactionsByXpub = async (

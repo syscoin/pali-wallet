@@ -36,9 +36,12 @@ export function WatchActivity({ authority, navigation, onBack }: {
     lifetime.current.selected = txid;
     lifetime.current.action++;
     setSelected(txid); setFeedback('');
-  }, []);
+    if (txid) controller.selectDetail(txid); else controller.clearDetail();
+  }, [controller]);
   const list = useRef<FlatList<UtxoActivityRow>>(null);
-  const chosen = state.rows.find((row) => row.txid === selected);
+  const summaryChosen = state.rows.find((row) => row.txid === selected);
+  const detail = state.detail?.txid === selected ? state.detail : null;
+  const chosen = detail?.row ?? summaryChosen;
   const network = state.context ? getUtxoNetwork(state.context.networkId) : null;
   const account = authority.getSnapshot().accounts.find((row) => row.id === state.context?.accountId);
   useLayoutEffect(() => {
@@ -66,10 +69,10 @@ export function WatchActivity({ authority, navigation, onBack }: {
   const act = async (kind: 'copy' | 'explorer') => {
     const life = lifetime.current;
     if (!chosen || !network || !life.alive || life.busy || !controller.isCurrent()) return;
-    const context = state.context, row = chosen, action = ++life.action, pending = {};
+    const context = state.context, row = chosen, summary = summaryChosen, action = ++life.action, pending = {};
     life.pending = pending; life.busy = true; setBusy(true); setFeedback('');
     const current = () => life.alive && life.pending === pending && action === life.action && life.selected === row.txid &&
-      controller.isCurrent(context) && controller.getSnapshot().rows.includes(row);
+      controller.isCurrent(context) && !!summary && controller.getSnapshot().rows.includes(summary);
     try {
       if (!current()) return;
       if (kind === 'copy') { if (await Clipboard.setStringAsync(row.txid) === false) throw Error(); }
@@ -121,17 +124,24 @@ export function WatchActivity({ authority, navigation, onBack }: {
         <Text style={s.amount}>{detailAmount}</Text>
         <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? 'Account asset amount' : 'Asset operation amount' : 'Asset quantity unavailable' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
         {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
+        {detail?.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading transaction details" color={colors.pink} />}
+        {detail?.status === 'unavailable' && <View style={s.section}>
+          <Text style={styles.muted}>Couldn’t load full details.</Text>
+          <Button title="Try again" variant="secondary" onPress={() => controller.retryDetail()} />
+        </View>}
         <Card style={s.detail}>
           <Text style={s.label}>TRANSACTION ID</Text><Text selectable style={s.hash}>{chosen.txid}</Text>
           {chosen.assetAmount?.assetGuid && <><Text style={s.label}>ASSET ID</Text><Text selectable style={s.hash}>{chosen.assetAmount.assetGuid}</Text></>}
           <Text style={s.label}>ACCOUNT</Text><Text>{account?.name ?? 'Watch account'}</Text>
+          {detail?.status === 'ready' && detail.from.length > 0 && <><Text style={s.label}>FROM</Text>{detail.from.map((address) => <Text key={address} selectable style={s.hash}>{address}</Text>)}</>}
+          {detail?.status === 'ready' && detail.to.length > 0 && <><Text style={s.label}>TO</Text>{detail.to.map((address) => <Text key={address} selectable style={s.hash}>{address}</Text>)}</>}
           <Text>Native account change: {net(chosen.netUnits)}</Text>
           <Text>Received by this account: {units(chosen.receivedUnits)}</Text>
           <Text>Spent from this account: {units(chosen.spentUnits)}</Text>
           <Text>Whole transaction fee: {units(chosen.transactionFeeUnits)}</Text>
           <Text style={styles.muted}>The fee may include inputs from other accounts.</Text>
           <Text>{status(chosen)}</Text>
-          {chosen.block?.timestamp != null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toISOString()}</Text>}
+          {chosen.block?.timestamp != null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Text>}
         </Card>
         {busy && <ActivityIndicator accessibilityLabel="Completing transaction action" color={colors.pink} />}
         <Button title="Copy transaction ID" variant="secondary" disabled={busy} onPress={() => void act('copy')} />

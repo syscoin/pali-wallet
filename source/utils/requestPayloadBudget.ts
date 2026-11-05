@@ -14,12 +14,12 @@ export const payloadBudgetError = (detail: string): Error & { code: number } =>
   });
 
 /** Bound JSON serialization work without recursively walking or stringifying it. */
-export const assertJsonWorkBudget = (
+export const measureJsonWorkBudget = (
   value: unknown,
   maxBytes: number = DAPP_REQUEST_LIMITS.bytes,
   maxDepth: number = DAPP_REQUEST_LIMITS.depth,
   maxNodes: number = DAPP_REQUEST_LIMITS.nodes
-): void => {
+): number => {
   let bytes = 0;
   let nodes = 0;
   let scheduled = 1;
@@ -126,6 +126,17 @@ export const assertJsonWorkBudget = (
       throw payloadBudgetError('non-JSON value');
     }
   }
+  return bytes;
+};
+
+/** Same admission policy; callers need not retain the measured size. */
+export const assertJsonWorkBudget = (
+  value: unknown,
+  maxBytes: number = DAPP_REQUEST_LIMITS.bytes,
+  maxDepth: number = DAPP_REQUEST_LIMITS.depth,
+  maxNodes: number = DAPP_REQUEST_LIMITS.nodes
+): void => {
+  measureJsonWorkBudget(value, maxBytes, maxDepth, maxNodes);
 };
 
 export const isTypedDataMethod = (method: string): boolean =>

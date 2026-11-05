@@ -1,3 +1,4 @@
+import { UTXO_SUMMARY_OBSERVATION } from '../shared/utxoDetailFreshness';
 import { accountRecordsForPersistence } from '../wallet/accountRecords';
 import { INetwork, INetworkType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
@@ -10,6 +11,47 @@ import {
 } from './paliStorage';
 import store, { saveMainStateWithinPersistenceLock } from './store';
 import { ISlip44State } from './vault/types';
+
+function vaultStateForPersistence(state: ISlip44State): ISlip44State {
+  let snapshot = state;
+  const source = state.accountTransactions;
+  if (state.activeNetwork?.kind !== INetworkType.Syscoin || !source)
+    return snapshot;
+
+  // Live summary revisions survive IPC and route cloning, but never enter the
+  // durable vault. Copy only the buckets containing annotated UTXO rows.
+  for (const type of Object.keys(source) as Array<keyof typeof source>) {
+    const accounts = source[type];
+    if (!accounts) continue;
+    for (const [id, account] of Object.entries(accounts)) {
+      if (!account?.syscoin) continue;
+      let syscoin = account.syscoin;
+      for (const [chain, rows] of Object.entries(account.syscoin)) {
+        if (
+          !Array.isArray(rows) ||
+          !rows.some(
+            (row) => row && Object.hasOwn(row, UTXO_SUMMARY_OBSERVATION)
+          )
+        )
+          continue;
+        if (syscoin === account.syscoin) syscoin = { ...syscoin };
+        syscoin[chain] = rows.map((row) => {
+          if (!row || !Object.hasOwn(row, UTXO_SUMMARY_OBSERVATION)) return row;
+          const saved = { ...row };
+          delete saved[UTXO_SUMMARY_OBSERVATION];
+          return saved;
+        });
+      }
+      if (syscoin === account.syscoin) continue;
+      if (snapshot === state)
+        snapshot = { ...state, accountTransactions: { ...source } };
+      if (snapshot.accountTransactions[type] === accounts)
+        snapshot.accountTransactions[type] = { ...accounts };
+      snapshot.accountTransactions[type][id] = { ...account, syscoin };
+    }
+  }
+  return snapshot;
+}
 
 // Slip44 constants
 export const DEFAULT_EVM_SLIP44 = 60; // Ethereum
@@ -141,7 +183,7 @@ class VaultCache {
 
     // Staged edits validate without publishing their uncommitted snapshot.
     if (cacheSnapshot) this.slip44Cache.set(slip44, vaultState);
-    return vaultState;
+    return vaultStateForPersistence(vaultState);
   }
 
   // activeSlip44 tracking removed - now handled by Redux global state
@@ -224,7 +266,10 @@ class VaultCache {
                 const vaultState = accountRecordsForPersistence(cachedState);
                 // Save the cached state which should be consistent
                 this.slip44Cache.set(activeSlip44, vaultState);
-                await saveSlip44State(activeSlip44, vaultState);
+                await saveSlip44State(
+                  activeSlip44,
+                  vaultStateForPersistence(vaultState)
+                );
                 console.log(
                   `[VaultCache] ✅ Emergency save completed using cached state for slip44: ${activeSlip44}`
                 );
@@ -243,7 +288,10 @@ class VaultCache {
           // Normal case - save to the target slip44
           const vaultState = accountRecordsForPersistence(liveVaultState);
           this.slip44Cache.set(targetSlip44, vaultState);
-          await saveSlip44State(targetSlip44, vaultState);
+          await saveSlip44State(
+            targetSlip44,
+            vaultStateForPersistence(vaultState)
+          );
 
           console.log(
             `[VaultCache] ✅ Emergency save completed for slip44: ${targetSlip44}`
