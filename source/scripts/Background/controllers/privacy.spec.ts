@@ -695,6 +695,56 @@ test('internal snapshot reader grants only immutable live verified data without 
   expect(run.schedule).toHaveBeenCalledTimes(schedules);
 });
 
+test.each(['downloaded', 'restored'] as const)(
+  'verifies a detached %s snapshot across calculation slices',
+  async (source) => {
+    let clock = 2000000000000;
+    const original = snapshot(
+      Array.from({ length: 300 }, (_, i) => leaf(i + 1))
+    );
+    const transport = copy(original);
+    const run = setup({
+      now: () => clock,
+      fetchSnapshot: jest.fn(async () => transport),
+    });
+    const save = run.storage.cache.save;
+    run.storage.cache.save = async (next, expected) => {
+      const accepted = await save(next, expected);
+      if (next.status.phase === 'verifying' && next.work?.nextIndex)
+        clock += 3000;
+      return accepted;
+    };
+    await run.controller.start(id);
+    if (source === 'restored') {
+      await run.storage.cache.saveCandidate(
+        id,
+        run.storage.record!.generation,
+        original
+      );
+      run.storage.cache.getCandidate = async () => transport;
+      run.storage.setRecord({
+        ...run.storage.record!,
+        work: createMerkleWork(),
+      });
+    }
+    await run.controller.resumePending(id);
+    expect(run.storage.record?.work?.nextIndex).toBe(128);
+    // The host still owns the original object. A late update to a leaf already
+    // consumed by the frontier must never change the snapshot a reader receives.
+    transport.leaves[0] = leaf(900);
+    transport.withdrawnNullifiers.push(leaf(901));
+    await run.controller.resumePending(id);
+    await run.controller.resumePending(id);
+    const access = await run.readSnapshot(id);
+    expect(access.snapshot).toEqual(original);
+    expectValidPath(original, 0, await access.getPath(0));
+    expect(run.fetchSnapshot).toHaveBeenCalledTimes(
+      source === 'downloaded' ? 1 : 0
+    );
+    expect(run.verifyAnchor).toHaveBeenCalledTimes(2);
+  }
+);
+
 test('the production reader retains verified subtree paths across calculation slices without network work', async () => {
   let clock = 2000000000000;
   const data = snapshot(Array.from({ length: 300 }, (_, i) => leaf(i + 1)));

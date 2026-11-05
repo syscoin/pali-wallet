@@ -35,6 +35,21 @@ const SYNC_INTERVAL_MS = 15 * 60 * 1000;
 export const PRIVACY_NOTE_MAX_BLOCK_AGE_MS = 45 * 60 * 1000;
 const MAX_FUTURE_BLOCK_MS = 30000;
 
+/** Detach once so every work slice and proof lease observes the admitted bytes. */
+const ownSnapshot = (
+  poolId: PrivacyPoolId,
+  input: PrivacySnapshot
+): PrivacySnapshot => {
+  const snapshot = validateSnapshot(poolId, input);
+  return Object.freeze({
+    ...snapshot,
+    leaves: Object.freeze([...snapshot.leaves]) as unknown as string[],
+    withdrawnNullifiers: Object.freeze([
+      ...snapshot.withdrawnNullifiers,
+    ]) as unknown as string[],
+  });
+};
+
 export type PrivacyRecord = {
   generation: number;
   poolId: PrivacyPoolId;
@@ -233,9 +248,9 @@ export function createPrivacyPoolSync(
       // proof of a consumed prefix. Rehash after a worker restart rather than
       // accepting a stored frontier/complete flag as verified input.
       if (!snapshot && record.work) {
-        snapshot = await cache.getCandidate(poolId);
-        if (snapshot) {
-          validateSnapshot(poolId, snapshot);
+        const candidate = await cache.getCandidate(poolId);
+        if (candidate) {
+          snapshot = ownSnapshot(poolId, candidate);
           await timed(poolId, generation, (signal) =>
             verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
           );
@@ -266,7 +281,7 @@ export function createPrivacyPoolSync(
           if (await cache.save(record, generation)) schedule(poolId, 2000);
           return;
         }
-        snapshot = validateSnapshot(poolId, result);
+        snapshot = ownSnapshot(poolId, result);
         await timed(poolId, generation, (signal) =>
           verifyAnchor(poolId, snapshot!, record!.rpcUrl!, signal)
         );
@@ -305,8 +320,6 @@ export function createPrivacyPoolSync(
           snapshot,
           work: record.work,
         });
-      } else {
-        validateSnapshot(poolId, snapshot);
       }
       const deadline = now() + SLICE_MS;
       do {
@@ -342,19 +355,10 @@ export function createPrivacyPoolSync(
         verifiedAt: now(),
       };
       if (await cache.commit(poolId, generation, next)) {
-        // Own immutable bytes for every synchronous proof lease. The cache and
-        // download objects must not mutate previously verified provenance.
-        const ownedSnapshot: PrivacySnapshot = Object.freeze({
-          ...snapshot,
-          leaves: Object.freeze([...snapshot.leaves]) as unknown as string[],
-          withdrawnNullifiers: Object.freeze([
-            ...snapshot.withdrawnNullifiers,
-          ]) as unknown as string[],
-        });
         verifiedTrees.set(poolId, {
           generation,
           pathIndex: pathIndex!,
-          snapshot: ownedSnapshot,
+          snapshot,
           blockTimestamp: anchor.blockTimestamp,
           work: record.work,
         });
