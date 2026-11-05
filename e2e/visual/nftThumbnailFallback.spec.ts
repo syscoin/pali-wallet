@@ -271,6 +271,7 @@ test('NFT thumbnails keep their category through native image failures and colle
               if (!collection) break;
               const data = String(call.params[0].data);
               const selector = data.slice(0, 10);
+              contractReads.push(`${collection.contract}:${selector}`);
               const args = `0x${data.slice(10)}`;
               const isCall = (signature: string) =>
                 selector === id(signature).slice(0, 10);
@@ -309,8 +310,17 @@ test('NFT thumbnails keep their category through native image failures and colle
                 const [tokenId] = abi.decode(['uint256'], args);
                 if (tokenId === BigInt(7))
                   result = abi.encode(['address'], [fixture.evmAddresses[0]]);
+                else
+                  return {
+                    jsonrpc: '2.0',
+                    id: call.id,
+                    error: {
+                      code: 3,
+                      message: 'execution reverted',
+                      data: '0x',
+                    },
+                  };
               }
-              contractReads.push(`${collection.contract}:${selector}`);
               break;
             }
           }
