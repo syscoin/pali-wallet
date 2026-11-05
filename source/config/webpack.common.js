@@ -479,6 +479,15 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        // Activity and Details already ship copies of this cache and its work
+        // budget helper. Keep them lazy and leave the worker's initial copy.
+        utxoHistoryDetails: {
+          test: /[\\/]source[\\/](?:shared[\\/]utxoTransactionDetailCache\.ts|utils[\\/]requestPayloadBudget\.ts|pages[\\/]Home[\\/]Panel[\\/]components[\\/]Transactions[\\/]UTXO[\\/]utxoTransactionDetails\.ts)$/,
+          chunks: 'async',
+          name: 'utxo-history-details',
+          minChunks: 2,
+          enforce: true,
+        },
         assetViews: {
           test: /[\\/]source[\\/](?:pages[\\/]Home[\\/]Panel[\\/]components[\\/](?:Assets[\\/]|Nfts[\\/]EvmNftsList\.tsx$)|utils[\\/]nftQuantity\.ts$)/,
           chunks: 'async',
