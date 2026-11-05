@@ -3,15 +3,15 @@ import {
   NOTE_BACKUP_MAX_FILE_BYTES,
   NoteBackupError,
   validateNoteBackupPayload,
-} from './noteBackup';
-import type { INoteBackupEntry } from './noteBackup';
-import { readPrivateNoteRestoreMetadata } from './privateNoteRestore';
-import type { IPrivateNoteRestoreReceipt } from './privateNoteRestore';
+} from './noteBackup.ts';
+import type { INoteBackupEntry } from './noteBackup.ts';
+import { readPrivateNoteRestoreMetadata } from './privateNoteRestore.ts';
+import type { IPrivateNoteRestoreReceipt } from './privateNoteRestore.ts';
 import type {
   IPrivateVaultRestoreController,
   IPrivateVaultRestorePlan,
   IPrivateVaultSession,
-} from './privateVault';
+} from './privateVault.ts';
 
 export const NOTE_BACKUP_PREVIEW_TTL_MS = 300_000;
 export type NoteBackupServiceErrorCode =
@@ -372,6 +372,7 @@ export function createNoteBackupService(
       return new NoteBackupServiceError('BACKUP_UNAVAILABLE');
     }
     if (
+      message === 'BACKUP_AUTHENTICATION_FAILED' ||
       message === 'Invalid password' ||
       message.startsWith('Too many failed attempts.')
     )
@@ -480,7 +481,7 @@ export function createNoteBackupService(
     cancelAll();
     return fail('BACKUP_UNAVAILABLE');
   }
-  return Object.freeze({
+  return Object.freeze<INoteBackupService>({
     begin: () => {
       const operation = beginOperation('reserved');
       try {
@@ -655,7 +656,7 @@ export function createNoteBackupService(
         const expected = operation.ciphertext;
         let difference = file.length ^ expected.length;
         for (let i = 0; i < file.length; i++)
-          difference |= file[i] ^ expected[i];
+          difference |= file[i]! ^ expected[i]!;
         if (difference) return fail('BACKUP_INVALID_FORMAT');
         const payload = await createNoteBackupCodec({
           crypto: ports.crypto,

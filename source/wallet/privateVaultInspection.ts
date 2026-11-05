@@ -378,6 +378,7 @@ export function withdrawalJournal(
 }
 
 const PUBLIC_ERRORS = new Set([
+  'BACKUP_AUTHENTICATION_FAILED',
   'privacy_note_invalid',
   'privacy_note_restore_required',
   'privacy_restore_invalid',
