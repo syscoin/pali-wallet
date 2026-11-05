@@ -2,6 +2,7 @@ import { createOwnedUtxoBlockbookRead } from './utxoBlockbookReads';
 
 const url = 'https://blockbook.invalid';
 const funding = `${url}/api/v2/utxo/selected-address`;
+const raw = (hex: string) => `${url}/api/v2/tx/${hex.repeat(64)}`;
 const scope = {
   address: 'selected-address',
   kind: 'wallet',
@@ -9,8 +10,8 @@ const scope = {
   xpub: 'selected-xpub',
 } as const;
 
-const reply = (source: string, body: string) => {
-  const response = new Response(body);
+const reply = (source: string, body: string, status = 200) => {
+  const response = new Response(body, { status });
   Object.defineProperty(response, 'url', { value: source });
   return response;
 };
@@ -98,4 +99,89 @@ it('refuses a different response URL or an oversized response before JSON parsin
   await expect(request()).rejects.toMatchObject({
     name: 'ResponseSizeLimitError',
   });
+});
+
+it('shares overlapping raw responses and refuses all cache use once authority changes', async () => {
+  const { signal } = new AbortController();
+  const options = { method: 'GET', signal };
+  const endpoint = raw('a');
+  let resolve!: (response: Response) => void;
+  const pending = new Promise<Response>((done) => {
+    resolve = done;
+  });
+  const fetch = jest.fn(() => pending);
+  let current = true;
+  const read = createOwnedUtxoBlockbookRead(
+    scope,
+    signal,
+    () => {
+      if (!current) throw new Error('Revoked');
+    },
+    fetch
+  );
+  const first = read.fetch(endpoint, options);
+  const second = read.fetch(endpoint, options);
+  resolve(reply(endpoint, '{"hex":"abc123"}'));
+  const responses = await Promise.all([first, second]);
+  await expect(
+    Promise.all(responses.map((response) => response.json()))
+  ).resolves.toEqual([{ hex: 'abc123' }, { hex: 'abc123' }]);
+  const late = read.fetch(endpoint, options);
+  current = false;
+  await expect(late).rejects.toThrow('Revoked');
+  await expect(read.fetch(endpoint, options)).rejects.toThrow('Revoked');
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('does not retain failed raw reads or reuse a response across owners', async () => {
+  const endpoint = raw('a');
+  const fetch = jest
+    .fn(async () => reply(endpoint, '{}'))
+    .mockResolvedValueOnce(reply(endpoint, '', 503))
+    .mockRejectedValueOnce(new Error('Offline'));
+  const open = () =>
+    createOwnedUtxoBlockbookRead(
+      scope,
+      new AbortController().signal,
+      () => undefined,
+      fetch
+    );
+  const request = (read: ReturnType<typeof open>) =>
+    read.fetch(endpoint, { method: 'GET', signal: read.signal });
+  const first = open();
+  await expect(request(first)).resolves.toHaveProperty('status', 503);
+  await expect(request(first)).rejects.toThrow('Offline');
+  await expect(request(first)).resolves.toHaveProperty('status', 200);
+  await expect(request(first)).resolves.toHaveProperty('status', 200);
+  await expect(request(open())).resolves.toHaveProperty('status', 200);
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it('continues to charge distinct raw response bodies against the same operation budget', async () => {
+  const { signal } = new AbortController();
+  const options = { method: 'GET', signal };
+  const body = 'x'.repeat(750 * 1024);
+  const fetch = jest.fn(async (request: string) => reply(request, body));
+  const read = createOwnedUtxoBlockbookRead(
+    scope,
+    signal,
+    () => undefined,
+    fetch
+  );
+  await expect(read.fetch(raw('a'), options)).resolves.toHaveProperty(
+    'status',
+    200
+  );
+  await expect(read.fetch(raw('a'), options)).resolves.toHaveProperty(
+    'status',
+    200
+  );
+  await expect(read.fetch(raw('b'), options)).resolves.toHaveProperty(
+    'status',
+    200
+  );
+  await expect(read.fetch(raw('c'), options)).rejects.toMatchObject({
+    name: 'ResponseSizeLimitError',
+  });
+  expect(fetch).toHaveBeenCalledTimes(3);
 });

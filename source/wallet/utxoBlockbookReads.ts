@@ -48,6 +48,57 @@ export function createOwnedUtxoBlockbookRead(
   };
   check();
 
+  async function read(url: string) {
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    signal.addEventListener('abort', cancel, { once: true });
+    const timeout = setTimeout(cancel, READ_TIMEOUT_MS);
+    try {
+      check();
+      const pending = transport(url, {
+        method: 'GET',
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'error',
+        referrerPolicy: 'no-referrer',
+        signal: controller.signal,
+      }).then((response) => {
+        if (controller.signal.aborted) cancelResponseBody(response);
+        return response;
+      });
+      const response = await abortable(pending, controller.signal);
+      check();
+      if (response.redirected || response.url !== url) {
+        cancelResponseBody(response);
+        throw new Error('Blockbook response does not match the owned endpoint');
+      }
+      if (!response.ok) {
+        cancelResponseBody(response);
+        return { body: null, status: response.status };
+      }
+      const body = await boundedResponseText(
+        response,
+        controller.signal,
+        RESPONSE_BYTES,
+        (bytes) => {
+          consumed += bytes;
+          if (consumed > OPERATION_BYTES) throw new ResponseSizeLimitError();
+        }
+      );
+      check();
+      return { body, status: response.status };
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', cancel);
+      controller.abort();
+    }
+  }
+
+  // Prevout verification and hardware enrichment share one bounded response.
+  // Keep the body, not a Response stream, so each caller can consume it once.
+  const rawReads = new Map<string, ReturnType<typeof read>>();
+  signal.addEventListener('abort', () => rawReads.clear(), { once: true });
+
   return Object.freeze({
     signal,
     assertCurrent: check,
@@ -66,56 +117,26 @@ export function createOwnedUtxoBlockbookRead(
       if (!url.startsWith(base + '/'))
         throw new Error('Invalid owned Blockbook endpoint');
       const path = url.slice(base.length);
-      if (
-        !allowed.has(path) &&
-        !(wallet && /^\/api\/v2\/tx\/[0-9a-f]{64}$/.test(path))
-      )
+      const txid = wallet
+        ? /^\/api\/v2\/tx\/([0-9a-f]{64})$/.exec(path)?.[1]
+        : undefined;
+      if (!allowed.has(path) && !txid)
         throw new Error('Invalid owned Blockbook route');
-      const controller = new AbortController();
-      const cancel = () => controller.abort();
-      signal.addEventListener('abort', cancel, { once: true });
-      const timeout = setTimeout(cancel, READ_TIMEOUT_MS);
-      try {
-        check();
-        const pending = transport(url, {
-          method: 'GET',
-          cache: 'no-store',
-          credentials: 'omit',
-          redirect: 'error',
-          referrerPolicy: 'no-referrer',
-          signal: controller.signal,
-        }).then((response) => {
-          if (controller.signal.aborted) cancelResponseBody(response);
-          return response;
-        });
-        const response = await abortable(pending, controller.signal);
-        check();
-        if (response.redirected || response.url !== url) {
-          cancelResponseBody(response);
-          throw new Error(
-            'Blockbook response does not match the owned endpoint'
-          );
+
+      let pending = txid ? rawReads.get(txid) : undefined;
+      if (!pending) {
+        pending = txid ? Promise.resolve().then(() => read(url)) : read(url);
+        if (txid) {
+          rawReads.set(txid, pending);
+          const forget = () => rawReads.delete(txid);
+          void pending.then(({ body }) => {
+            if (!body) forget();
+          }, forget);
         }
-        if (!response.ok) {
-          cancelResponseBody(response);
-          return new Response(null, { status: response.status });
-        }
-        const text = await boundedResponseText(
-          response,
-          controller.signal,
-          RESPONSE_BYTES,
-          (bytes) => {
-            consumed += bytes;
-            if (consumed > OPERATION_BYTES) throw new ResponseSizeLimitError();
-          }
-        );
-        check();
-        return new Response(text, { status: response.status });
-      } finally {
-        clearTimeout(timeout);
-        signal.removeEventListener('abort', cancel);
-        controller.abort();
       }
+      const { body, status } = await pending;
+      check();
+      return new Response(body, { status });
     },
   });
 }

@@ -30,6 +30,8 @@ import {
   verifyFixtureSignature,
 } from '../../e2e/harness/utxoFixture';
 import { getSyscoinUTXOTestnetNetwork } from '../../source/utils/defaultNetworks';
+import { getVerifiedSyscoinPsbtValueSummary } from '../../source/utils/syscoinPsbtValues';
+import { createOwnedUtxoBlockbookRead } from '../../source/wallet/utxoBlockbookReads';
 
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
 
@@ -326,6 +328,87 @@ describe.each(['Ledger', 'Trezor'] as const)(
     });
 
     if (kind === 'Ledger') {
+      it('reuses a reviewed previous transaction for both Ledger inputs within the same read budget', async () => {
+        const parent = fixture.parentTxs[0].clone();
+        parent.addOutput(parent.outs[0].script, parent.outs[0].value);
+        const txid = parent.getId();
+        const derivation = importFixturePsbt(request()).data.inputs[0]
+          .bip32Derivation;
+        const unsigned = new sys.bitcoinjs.Psbt({
+          network: sys.syscoinNetworks.testnet,
+        });
+        for (const [index, witnessUtxo] of parent.outs.entries())
+          unsigned.addInput({
+            hash: txid,
+            index,
+            witnessUtxo,
+            bip32Derivation: derivation,
+          });
+        unsigned.addOutput({
+          address: fixture.recipientAddress,
+          value: BigInt(199000),
+        });
+        const approval = exportFixturePsbt(unsigned);
+        const devicePsbt = importFixturePsbt(approval);
+        const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
+        const key = hd.deriveKeypair(UTXO_FIXTURE_PATH);
+        devicePsbt.signInput(0, key);
+        devicePsbt.signInput(1, key);
+        device.mockResolvedValueOnce({
+          fingerprint: signedDeviceReply.fingerprint,
+          signatures: devicePsbt.data.inputs.map(
+            (input: any, inputIndex: number) => ({
+              inputIndex,
+              pubkeyHex: Buffer.from(input.partialSig[0].pubkey).toString(
+                'hex'
+              ),
+              signatureHex: Buffer.from(input.partialSig[0].signature).toString(
+                'hex'
+              ),
+            })
+          ),
+        });
+        devicePsbt.finalizeAllInputs();
+
+        const url = state.activeNetwork.url;
+        const endpoint = `${url}/api/v2/tx/${txid}`;
+        const fetch = jest.fn(async (requestUrl: string) => {
+          expect(requestUrl).toBe(endpoint);
+          const response = new Response(
+            JSON.stringify({
+              hex: parent.toHex(),
+              padding: 'x'.repeat(800 * 1024),
+            })
+          );
+          Object.defineProperty(response, 'url', { value: endpoint });
+          return response;
+        });
+        const read = createOwnedUtxoBlockbookRead(
+          {
+            kind: 'wallet',
+            url,
+            address: fixture.userAddress,
+            xpub: fixture.userXpub,
+          },
+          new AbortController().signal,
+          () => undefined,
+          fetch
+        );
+        const reviewed = await getVerifiedSyscoinPsbtValueSummary(
+          unsigned,
+          (previousTxid) => sys.fetchBackendRawTx(url, previousTxid, read)
+        );
+        expect(reviewed.feeSatoshis).toBe('1000');
+        expect(fetch).toHaveBeenCalledTimes(1);
+
+        const signed = await sdk.signPSBT({ psbt: approval }, read);
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect(device).toHaveBeenCalledTimes(1);
+        expect(importFixturePsbt(signed).extractTransaction().toHex()).toBe(
+          devicePsbt.extractTransaction().toHex()
+        );
+      });
+
       it('rejects a tampered device signature before finalizing the transaction', async () => {
         const reply = JSON.parse(JSON.stringify(signedDeviceReply));
         reply.signatures[0].signatureHex = `${reply.signatures[0].signatureHex.slice(
