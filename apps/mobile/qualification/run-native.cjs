@@ -17,7 +17,7 @@ const { matchesZksysRestartEvidence } = require('./zksys-transfer.ts');
 const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget, selectSimulatorTarget } = require('./simulator-contract.cjs');
-const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
+const { prepareAndroidRoot, launchIos, probeIosSystemLaunch } = require('./native-readiness.cjs');
 const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 const { readHttpSidecar, readAndroidHttpSidecar } = require('./post-sidecar.cjs');
@@ -182,6 +182,14 @@ async function ios() {
   if (simulatorContract) {
     assertSimulatorTarget(run('plutil', ['-extract', 'DTPlatformName', 'raw', '-o', '-', info]), runtime.identifier, runtime.identifier);
     if (!/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '')) throw Error('Simulator contract requires source revision');
+    try {
+      const executablePath = path.join(artifact, executable);
+      if (/^[A-Za-z0-9_-]{1,100}$/.test(executable) && fs.lstatSync(executablePath).isFile()) {
+        const identity = { version: 1, diagnosticOnly: true, sourceRevision: process.env.GITHUB_SHA,
+          runtime: runtime.identifier, appExecutableSha256: hash(fs.readFileSync(executablePath)) };
+        fs.writeFileSync(path.join(output, 'ios-app-executable.json'), `${JSON.stringify(identity, null, 2)}\n`);
+      }
+    } catch { /* Diagnostic identity collection does not alter the qualification gate. */ }
   }
   const reports = [];
   if (httpEnabled) {
@@ -191,7 +199,7 @@ async function ios() {
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
-    let device, container;
+    let device, container, launchFailedAt;
     try {
       await stage('create', () => {
         const created = run('xcrun', [
@@ -241,7 +249,10 @@ async function ios() {
       await stage('launch-create', () => {
         try {
           return launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
-            (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
+            (evidence, failedAt) => {
+              if (simulatorContract) launchFailedAt = failedAt;
+              fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+            });
         } catch (error) {
           try {
             captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
@@ -362,6 +373,14 @@ async function ios() {
           ],
           true
         );
+        // Preserve the target's reports and final screenshot before foregrounding Settings.
+        if (launchFailedAt !== undefined) {
+          try {
+            const control = probeIosSystemLaunch(run, device, runtime.identifier, launchFailedAt);
+            const evidence = { version: 1, diagnosticOnly: true, ...control };
+            fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch-control.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+          } catch { /* Never replace the target launch failure or prevent cleanup. */ }
+        }
         run('xcrun', ['simctl', 'shutdown', device], true);
         run('xcrun', ['simctl', 'delete', device], true);
       }

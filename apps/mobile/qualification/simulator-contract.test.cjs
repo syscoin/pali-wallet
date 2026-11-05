@@ -2,7 +2,9 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const { Buffer } = require('node:buffer');
+const { createHash } = require('node:crypto');
 const test = require('node:test');
+const { probeIosSystemLaunch } = require('./native-readiness.cjs');
 const {
   qualificationMode, assertSimulatorRefusal, assertSimulatorTarget, selectSimulatorTarget,
   REFUSAL_STAGES, CHECKS, TIMED_CRYPTO_CASES,
@@ -86,14 +88,16 @@ test('only complete native crypto plus a classified strict protection refusal qu
   }
 });
 
-async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false, diagnosticFailure = false } = {}) {
+async function runFixture({ limited = true, report = refusal(), target = 'iphonesimulator', mixedOutput = false, http = false, httpFailure = false, cleanupFailure = false, diagnosticFailure = false,
+  launchFailure = false, controlTimeout = false, controlWriteFailure = false } = {}) {
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
-  const writes = [], calls = [];
+  const writes = [], calls = [], events = [];
   const original = JSON.stringify(report, null, 3) + '\n';
   let httpVerifications = 0, httpClosed = false;
   const httpEvents = [];
-  const spawn = (command, args) => {
-    calls.push({ command, args });
+  const spawn = (command, args, options) => {
+    calls.push({ command, args, timeout: options.timeout });
+    events.push({ command, args });
     const ok = (stdout = '') => ({ status: 0, stdout });
     if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' :
       args.includes('DTPlatformName') ? target : 'PaliQualification');
@@ -106,6 +110,11 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     ] } }));
     if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
     if (args.includes('get_app_container')) return ok('/public-container');
+    if (args[1] === 'launch' && args.includes('com.apple.Preferences'))
+      return controlTimeout ? { status: null, error: Object.assign(Error('private control error'), { code: 'ETIMEDOUT' }) }
+        : ok('com.apple.Preferences: 41');
+    if (args[1] === 'launch' && launchFailure)
+      return { status: null, error: Object.assign(Error('original launch timeout'), { code: 'ETIMEDOUT' }) };
     return ok();
   };
   const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output',
@@ -128,7 +137,12 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
       }) };
       if (name === 'fs') return {
         existsSync: (file) => file.endsWith('/ios-qualification.json') ? mixedOutput : true, mkdirSync() {},
-        writeFileSync(file, data) { writes.push({ file, data }); },
+        lstatSync: () => ({ isFile: () => true }),
+        writeFileSync(file, data) {
+          events.push({ file });
+          if (controlWriteFailure && file.endsWith('-launch-control.json')) throw Error('diagnostic output unavailable');
+          writes.push({ file, data });
+        },
         readFileSync(file) {
           if (file.endsWith('/PaliQualification')) return Buffer.from('public binary');
           if (file.endsWith('/pali-native-qualification-create.json')) return original;
@@ -140,7 +154,7 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
     },
     process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
   });
-  return { writes, calls, fakeProcess, original, httpVerifications, httpClosed, httpEvents };
+  return { writes, calls, events, fakeProcess, original, httpVerifications, httpClosed, httpEvents };
 }
 
 test('real limited runner preserves the failed report and writes only a separate non-custody artifact', async () => {
@@ -162,6 +176,83 @@ test('real limited runner preserves the failed report and writes only a separate
   assert(!fixture.writes.some((write) => write.file.endsWith('/ios-failure.json')));
   assert.equal(fixture.calls.filter((call) => call.args.includes('launch')).length, 1);
   assert(fixture.calls.some((call) => call.args.includes('delete')));
+});
+
+test('failed limited launch records executable identity and one cold system control after original evidence', async () => {
+  const fixture = await runFixture({ launchFailure: true, http: true });
+  assert.equal(fixture.fakeProcess.exitCode, 1);
+  const { calls, events, writes } = fixture;
+  const launches = calls.filter(({ args }) => args[1] === 'launch');
+  assert.equal(launches.length, 2);
+  const [target, control] = launches;
+  assert.equal(target.timeout, 180000);
+  assert.equal(target.args[3], 'com.paliwallet.qualification');
+  assert.deepEqual(control.args, ['simctl', 'launch', '--terminate-running-process',
+    target.args[2], 'com.apple.Preferences']);
+  assert(control.timeout > 0 && control.timeout <= 10000);
+  const index = (matches) => {
+    const position = events.findIndex(matches);
+    assert(position >= 0);
+    return position;
+  };
+  const controlIndex = index(({ args }) => args?.includes('com.apple.Preferences'));
+  assert(index(({ file }) => file?.endsWith('/ios-app-executable.json')) < index(({ args }) => args?.[1] === 'boot'));
+  assert(index(({ file }) => file?.endsWith('-create-launch.json')) < controlIndex);
+  assert(index(({ file }) => file?.endsWith('-create-launch-reports.json')) < controlIndex);
+  assert(index(({ args }) => args?.includes('screenshot')) < controlIndex);
+  assert(controlIndex < index(({ args }) => args?.[1] === 'shutdown'));
+  const artifact = (name) => JSON.parse(writes.find(({ file }) => file.endsWith(name)).data);
+  assert.equal(artifact('/ios-app-executable.json').appExecutableSha256,
+    createHash('sha256').update('public binary').digest('hex'));
+  const evidence = artifact('-launch-control.json');
+  assert.equal(evidence.diagnosticOnly, true);
+  assert.equal(evidence.status, 'launched');
+  assert.equal(evidence.pidPresent, true);
+  assert.equal(evidence.timeoutMs, control.timeout);
+  assert.equal(typeof evidence.elapsedMs, 'number');
+  assert.equal(Object.hasOwn(evidence, 'pid'), false);
+  assert(!JSON.stringify(evidence).includes(target.args[2]));
+  assert(!JSON.stringify(evidence).includes('httpToken'));
+  assert.equal(artifact('/ios-failure.json').failure.errorMessage, 'original launch timeout');
+  assert(!writes.some(({ file }) => file.endsWith('/ios-simulator-limited.json')));
+});
+
+test('control timeout or diagnostic write failure preserves the original result and device cleanup', async () => {
+  for (const controlWriteFailure of [false, true]) {
+    const fixture = await runFixture({ launchFailure: true, controlTimeout: true, controlWriteFailure });
+    assert.equal(fixture.fakeProcess.exitCode, 1);
+    assert(fixture.calls.some(({ args }) => args[1] === 'delete'));
+    const original = fixture.writes.find(({ file }) => file.endsWith('/ios-failure.json')).data;
+    assert.equal(JSON.parse(original).failure.errorMessage, 'original launch timeout');
+    const control = fixture.writes.find(({ file }) => file.endsWith('-launch-control.json'));
+    if (controlWriteFailure) assert.equal(control, undefined);
+    else {
+      assert.equal(JSON.parse(control.data).status, 'timed-out');
+      assert.equal(JSON.parse(control.data).pidPresent, false);
+      assert(!control.data.includes('private control error'));
+    }
+  }
+});
+
+test('a full-mode launch failure keeps the original diagnostic path', async () => {
+  const fixture = await runFixture({ limited: false, launchFailure: true });
+  assert.equal(fixture.fakeProcess.exitCode, 1);
+  assert.equal(fixture.calls.filter(({ args }) => args[1] === 'launch').length, 1);
+  assert(!fixture.writes.some(({ file }) => file.endsWith('-launch-control.json') || file.endsWith('/ios-app-executable.json')));
+});
+
+test('system launch is bounded by the original failure diagnostic window', () => {
+  const device = '11111111-2222-3333-4444-555555555555';
+  const runtime = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
+  const expired = probeIosSystemLaunch(() => assert.fail('deadline exhausted'),
+    device, runtime, 0, () => 20000);
+  assert.equal(expired.status, 'budget-unavailable');
+  const times = [19000, 19010];
+  const partial = probeIosSystemLaunch((_command, _args, _optional, timeout) => {
+    assert.equal(timeout, 1000);
+    return 'untrusted PID output';
+  }, device, runtime, 0, () => times.shift());
+  assert.deepEqual(partial, { status: 'unconfirmed', pidPresent: false, timeoutMs: 1000, elapsedMs: 10 });
 });
 
 test('default full runner rejects the identical storage refusal and retains its failed evidence', async () => {

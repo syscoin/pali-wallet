@@ -1,11 +1,12 @@
 const { describeQualificationFailure } = require('./command-runner.cjs');
 const { performance } = require('node:perf_hooks');
 const { constants: { signals } } = require('node:os');
-const { inspectIosServices } = require('./ios-runner-diagnostics.cjs');
+const { assertOwnedIosDevice, inspectIosServices } = require('./ios-runner-diagnostics.cjs');
 
 const CONNECTION_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 const PACKAGE = 'com.paliwallet.qualification';
+const IOS_CONTROL_PACKAGE = 'com.apple.Preferences';
 const QUERY_ERROR_CODES = new Set(['EACCES', 'EAGAIN', 'EBADF', 'ECONNRESET', 'EFAULT', 'EINTR', 'EINVAL', 'EIO', 'EISDIR', 'EMFILE', 'ENFILE', 'ENOBUFS', 'ENOENT', 'ENOMEM', 'ENOTCONN', 'ENOTDIR', 'EPERM', 'EPIPE', 'ETIMEDOUT']);
 
 /** Fixed host failure fields only: never error text, arguments, or process output. */
@@ -89,7 +90,8 @@ function launchIos(run, device, link, record, now = () => performance.now()) {
   try {
     return run('xcrun', ['simctl', 'launch', device, PACKAGE, '-PaliQualificationURL', link]);
   } catch (error) {
-    const duration = now() - started;
+    const failedAt = now();
+    const duration = failedAt - started;
     const elapsedMs = Math.max(0, Math.min(600000, duration));
     // Only the freshly-created, caller-owned simulator is queried. No raw system
     // or app log messages enter the artifact, even if they contain secret text.
@@ -108,10 +110,34 @@ function launchIos(run, device, link, record, now = () => performance.now()) {
     catch (queryError) { logQueryFailure = iosLogQueryFailure(queryError, now() - queryStarted); }
     try { record(Object.freeze({ version: 3, stage: 'launch', elapsedMs, lookbackMinutes,
       ...(logQueryFailure ? { logQueryFailure } : {}),
-      ...summarizeIosLaunch(services, logs, fullAttemptRequested) })); }
+      ...summarizeIosLaunch(services, logs, fullAttemptRequested) }), failedAt); }
     catch { /* preserve the original launch failure */ }
     throw error;
   }
 }
 
-module.exports = { prepareAndroidRoot, launchIos, summarizeIosLaunch };
+/** Diagnostic only, after retaining the target app's failure observations. */
+function probeIosSystemLaunch(run, device, runtime, failedAt, now = () => performance.now()) {
+  assertOwnedIosDevice(device, runtime);
+  const started = now();
+  const elapsed = started - failedAt;
+  // Share the original service/log probe allowance rather than adding a retry budget.
+  const timeoutMs = Math.min(PROBE_TIMEOUT_MS, Math.floor(2 * PROBE_TIMEOUT_MS - elapsed));
+  if (!Number.isFinite(elapsed) || elapsed < 0 || timeoutMs < 1)
+    return Object.freeze({ status: 'budget-unavailable', pidPresent: false, elapsedMs: 0 });
+  let status, pidPresent = false;
+  try {
+    const result = run('xcrun', ['simctl', 'launch', '--terminate-running-process', device, IOS_CONTROL_PACKAGE],
+      false, timeoutMs);
+    pidPresent = /^com\.apple\.Preferences: [1-9][0-9]*$/.test(result);
+    status = pidPresent ? 'launched' : 'unconfirmed';
+  } catch (error) {
+    const failure = describeQualificationFailure(error);
+    status = failure.kind === 'command' && failure.timedOut ? 'timed-out' : 'failed';
+  }
+  const duration = now() - started;
+  return Object.freeze({ status, pidPresent, timeoutMs,
+    elapsedMs: Number.isFinite(duration) && duration >= 0 ? Math.min(600000, duration) : null });
+}
+
+module.exports = { prepareAndroidRoot, launchIos, summarizeIosLaunch, probeIosSystemLaunch };
