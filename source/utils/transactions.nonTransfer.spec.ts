@@ -90,7 +90,7 @@ it.each(['approve', 'setApprovalForAll'])(
     ).resolves.toMatchObject({
       isNft: false,
       isErc20Transfer: false,
-      displayValue: 0,
+      displayValue: '0',
       displaySymbol: 'ETH',
     });
   }
@@ -112,7 +112,7 @@ it('preserves the native payment amount of a payable NFT mint', async () => {
   ).resolves.toMatchObject({
     isNft: false,
     isErc20Transfer: false,
-    displayValue: 1,
+    displayValue: '1',
     displaySymbol: 'ETH',
   });
 });
@@ -134,7 +134,7 @@ it('does not use an NFT from another chain to label a native payment', async () 
   ).resolves.toMatchObject({
     isNft: false,
     isErc20Transfer: false,
-    displayValue: 2,
+    displayValue: '2',
     displaySymbol: 'ETH',
   });
 });

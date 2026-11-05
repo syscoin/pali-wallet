@@ -1,9 +1,10 @@
+import { isTransactionInBlock } from '../shared/transactionBlockStatus.ts';
+
 import {
   getEoaNonceFromHistoryTransaction,
   needsEoaNonceHistoryVerification,
   parseEvmInteger,
-} from './evmNonce';
-import { isTransactionInBlock } from './transactionUtils';
+} from './evmNonce.ts';
 
 export type EvmSettlementStatus =
   | 'pending'

@@ -1,3 +1,4 @@
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../../shared/evmHistory';
 import store from 'state/store';
 import { Interface } from 'utils/ethersV6Compat';
 import { showTransactionNotification } from 'utils/notifications';
@@ -55,7 +56,8 @@ it.each(['2', '9007199254740993'])(
       },
       type: 'confirmed',
     });
-    await Promise.resolve();
+    // Flush the async shared interpretation and host wrapper before asserting.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     expect(showTransactionNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         value: quantity,
@@ -175,3 +177,69 @@ it('does not substitute native funding when SPT metadata has no amount', () => {
     expect.objectContaining({ value: undefined, tokenSymbol: 'BIG' })
   );
 });
+
+it.each([
+  ['1', '0.000000000000000001'],
+  [undefined, '?'],
+  [Number.MAX_SAFE_INTEGER + 1, '?'],
+])(
+  'does not round or substitute an EVM notification quantity %#',
+  async (value, expected) => {
+    notificationManager.notifyTransaction({
+      account: { address: OWNER },
+      isEvm: true,
+      network: { chainId: 1, currency: 'ETH', label: 'Ethereum' } as any,
+      transaction: {
+        hash: '0x' + 'bb'.repeat(32),
+        from: OWNER,
+        to: RECIPIENT,
+        input: '0x',
+        value,
+      },
+      type: 'confirmed',
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(showTransactionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ value: expected, tokenSymbol: 'ETH' })
+    );
+    expect(showTransactionNotification).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([7, { malformed: true }])(
+  'never relabels indexed token units as native for irrelevant calldata %#',
+  async (input) => {
+    notificationManager.notifyTransaction({
+      account: { address: OWNER },
+      isEvm: true,
+      network: { chainId: 1, currency: 'ETH', label: 'Ethereum' } as any,
+      transaction: {
+        chainId: 1,
+        hash: '0x' + 'cc'.repeat(32),
+        from: OWNER,
+        to: TOKEN,
+        input,
+        value: '1000000000000000000',
+        historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer,
+        tokenTransfer: {
+          chainId: 1,
+          contractAddress: TOKEN,
+          recipient: RECIPIENT,
+          value: '1000000000000000000',
+          decimals: 18,
+          symbol: 'TOK',
+        },
+      },
+      type: 'confirmed',
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(showTransactionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({
+        value: '1.0',
+        tokenSymbol: 'TOK',
+        to: RECIPIENT,
+      })
+    );
+    expect(showTransactionNotification).toHaveBeenCalledTimes(1);
+  }
+);

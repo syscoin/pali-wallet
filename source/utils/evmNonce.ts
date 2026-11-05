@@ -2,12 +2,12 @@ import {
   EVM_TRANSACTION_HISTORY_SOURCE,
   parseEvmInteger,
   type EvmTransactionHistorySource,
-} from '../shared/evmHistory';
+} from '../shared/evmHistory.ts';
 export {
   EVM_TRANSACTION_HISTORY_SOURCE,
   parseEvmInteger,
   type EvmTransactionHistorySource,
-} from '../shared/evmHistory';
+} from '../shared/evmHistory.ts';
 
 interface IEvmNonceHistoryTransaction {
   from?: unknown;

@@ -23,6 +23,7 @@ const mockGetFiatAmount = () => mockFiatText;
 beforeEach(() => {
   mockFiatAvailable = true;
   mockFiatText = '0 USD';
+  mockVault.accountAssets.HDAccount[0].ethereum = [];
 });
 const mockEnsCache = {
   [TARGET]: { name: 'first.eth' },
@@ -286,4 +287,63 @@ it('updates only native fiat when quote availability changes without replacing t
   expect(await screen.findByText('-4 USD')).toBeTruthy();
   expect(view.container.textContent).toContain(nativeText);
   expect(mockRows[0].value).toBe('2000000000000000000');
+});
+
+const showNative = (value: unknown) => {
+  mockRows = [
+    {
+      hash: '0x' + 'f'.repeat(64),
+      from: ACCOUNT,
+      to: TARGET,
+      value,
+      input: '0x',
+      nonce: 1,
+      chainId: 1,
+      timestamp: 1791655200,
+      blockNumber: 42,
+      confirmations: 1,
+    },
+  ];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+};
+it('renders one wei as the exact primary amount', async () => {
+  showNative('1');
+  expect(await screen.findByText('0.000000000000000001 ETH')).toBeTruthy();
+});
+it('renders a native amount beyond Number precision exactly', async () => {
+  showNative('9007199254740993000000000000000001');
+  expect(
+    await screen.findByText('9007199254740993.000000000000000001 ETH')
+  ).toBeTruthy();
+});
+it.each([undefined, 'invalid', Number.MAX_SAFE_INTEGER + 1])(
+  'shows unavailable instead of zero for native input %#',
+  async (value) => {
+    showNative(value);
+    expect(await screen.findByText('? ETH')).toBeTruthy();
+    expect(screen.queryByText('0 ETH')).toBeNull();
+  }
+);
+it('keeps valid native zero available', async () => {
+  showNative('0');
+  expect(await screen.findByText('0 ETH')).toBeTruthy();
+});
+
+it('renders a known ERC20 integer beyond Number precision exactly', async () => {
+  mockVault.accountAssets.HDAccount[0].ethereum = [
+    {
+      chainId: 1,
+      contractAddress: CONTRACT,
+      tokenSymbol: 'EXACT',
+      decimals: 0,
+    } as never,
+  ];
+  show(
+    id('transfer(address,uint256)').slice(0, 10) +
+      defaultAbiCoder
+        .encode(['address', 'uint256'], [TARGET, '9007199254740993'])
+        .slice(2),
+    'e'
+  );
+  expect(await screen.findByText('9007199254740993 EXACT')).toBeTruthy();
 });

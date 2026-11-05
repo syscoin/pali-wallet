@@ -69,7 +69,7 @@ it('uses imported fungible metadata for transferFrom', async () => {
       true
     )
   ).resolves.toMatchObject({
-    displayValue: 1,
+    displayValue: '1',
     displaySymbol: 'TOKEN',
     isNft: false,
   });
