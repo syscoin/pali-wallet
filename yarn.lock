@@ -2703,15 +2703,15 @@
     "@sentry/types" "6.19.7"
     tslib "^1.9.3"
 
-"@sidhujag/sysweb3-core@^1.0.29":
-  version "1.0.29"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.29.tgz#ba86f171956513e423d2c328c9098ddbc76774d1"
-  integrity sha512-ZQGSdwHG2Q9FX+PbHj3MnV6I413z+pN2Sm2qjoi1TrOqWZHXVnzfhjvxkj9s3djfTD56OAiu1nW2TUhX98rrdQ==
+"@sidhujag/sysweb3-core@^1.0.29", "@sidhujag/sysweb3-core@^1.0.30":
+  version "1.0.30"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz#b13e85229a1aeb727a9616719ea4ba8bed14e691"
+  integrity sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==
 
-"@sidhujag/sysweb3-keyring@2.1.2":
-  version "2.1.2"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.2.tgz#a562a52196b569a692e54d8b6a591f90c49982e1"
-  integrity sha512-RG/TYDDOtkz/GKSPluCGeFzL++41jWDCjT43Hn1yy5+9/5fld9W2ONRWKiWPUW+IzX1J1ozZMNStbR1wC6BdTg==
+"@sidhujag/sysweb3-keyring@2.1.3":
+  version "2.1.3"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.3.tgz#246f62dd97797ab729e88a2883d381e36db47017"
+  integrity sha512-RZFNgZbuL7rBwjLahUuNrzJDdYkl/wZJRnaTq7zQIQbVRgKdEg4W7AdurEZYAVGdHqwYxbS9nwN4g9HvXu3tPw==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -2734,10 +2734,10 @@
     rxjs "7.8.2"
     varuint-bitcoin "^2.0.0"
 
-"@sidhujag/sysweb3-network@1.0.111", "@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.111":
-  version "1.0.111"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.111.tgz#ae1cb05f1db48a1ecd11142ccf6b39dc211a5cff"
-  integrity sha512-DcjJMO+F222UA4UPm4T+OWDOxbFolO6SW8WW9RLIE0yBhkU8qexGEJ14beXeuqTpIK9Feg3NVricyV413B+q7A==
+"@sidhujag/sysweb3-network@1.0.112", "@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.111":
+  version "1.0.112"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.112.tgz#aa0a4b1f9b13d3c75e6b17c116a37cc6970632e4"
+  integrity sha512-XMY0IsqARCaq3QI7UV2AmPRtcqM5HdA7sdRxwZkTbOXcylfjs3RSLSh60RB2h9AoYs/1mjr9cz5PFvHyJNMvMg==
   dependencies:
     eth-chains "^1.0.0"
     ethers "^6.17.0"
@@ -10861,10 +10861,10 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@1.0.278:
-  version "1.0.278"
-  resolved "https://registry.yarnpkg.com/syscoinjs-lib/-/syscoinjs-lib-1.0.278.tgz#747b804907243f104b90e3cfea84055447fb7fce"
-  integrity sha512-WOJIwFAmFExDk80Q+ib7M7cVUcC8ywjPLvslKpq1GMI8OywIr3Sr0H+1wD2mhnEsjdn5sGTzkv0y1OVkwcFlvA==
+syscoinjs-lib@1.0.279:
+  version "1.0.279"
+  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.279.tgz#e07d89815e95717cd0be66df93c74e34611b50cc"
+  integrity sha512-vxqj9yoV9Fh+EWtgMPSddpLGfRVIrMR66rSLSC0gOwRFN+nyzEFL4af1IReiW5cLOttE5oobX4TvzlG7wX3Sag==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
