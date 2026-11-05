@@ -23,6 +23,10 @@ import {
   readPrivateVaultBundle,
 } from '../../../wallet/privateVaultInspection';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
+import {
+  UTXO_SIGNED_RECORD_PREFIX,
+  UtxoSignedRecords,
+} from '../../../wallet/utxoSignedRecords';
 
 import type { RecoveryAccountGroup } from '../../../wallet/accountRecovery';
 
@@ -150,6 +154,19 @@ export async function prepareExtensionAccountRecovery(
             )
               return invalid();
             const reader = new EvmSignedRecords({
+              read: async (profile) =>
+                profile === profileId ? value : undefined,
+              compareAndSet: async () => invalid(),
+            });
+            await reader.validate({ keyring, assertCurrent });
+          }
+          if (key.startsWith(UTXO_SIGNED_RECORD_PREFIX)) {
+            if (
+              key !== `${UTXO_SIGNED_RECORD_PREFIX}${profileId}` ||
+              typeof value !== 'string'
+            )
+              return invalid();
+            const reader = new UtxoSignedRecords({
               read: async (profile) =>
                 profile === profileId ? value : undefined,
               compareAndSet: async () => invalid(),

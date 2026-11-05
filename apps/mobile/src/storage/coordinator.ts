@@ -177,6 +177,7 @@ export async function openWalletStorage(
       deviceUnlockEnrollment: owned.deviceUnlockEnrollment,
       notes: owned.notes,
       signedRecords: owned.signedRecords,
+      utxoSignedRecords: owned.utxoSignedRecords,
       authGuard: owned.authGuard,
       recovery: owned.recovery,
       removal: owned.removal,

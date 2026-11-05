@@ -56,7 +56,7 @@ function snapshotPsbt({ psbt, assets }: PsbtData): PsbtData {
 }
 
 /** Match the owned SyscoinJS send path under the captured Blockbook base. */
-function submissionUrl(base: string): string {
+export function utxoSubmissionUrl(base: string): string {
   const url = new URL(base);
   if (
     (url.protocol !== 'https:' && url.protocol !== 'http:') ||
@@ -133,7 +133,7 @@ export async function prepareUtxoSignedBinding(
   )
     throw new Error('Invalid ordinary UTXO review scope or amount');
 
-  const url = submissionUrl(scope.network.url);
+  const url = utxoSubmissionUrl(scope.network.url);
   const psbt = snapshotPsbt(quote);
   const parsed: Psbt = PsbtUtils.fromPali(psbt, scope.network);
   const unsigned = unsignedTransactionHex(parsed);
@@ -217,6 +217,7 @@ export async function prepareUtxoSignedBinding(
       });
       check();
       return Object.freeze({
+        record,
         rawTransaction: record.rawTransaction,
         assertCurrent: check,
         bindPrepared({

@@ -79,6 +79,16 @@ describe('PSBT approval context', () => {
   let wallet: any;
   let state: any;
   let keyring: any;
+  const authorize = () => undefined;
+  const defaultTxid = syntheticPsbt(BigInt(1000)).extractTransaction().getId();
+  const dispatch = async (raw: string, port: any) => {
+    const url = 'https://rpc-a.invalid/api/v2/sendtx/';
+    const id = syscoinUtils.bitcoinjs.Transaction.fromHex(raw).getId();
+    await port.prepare({ url, rawTransaction: raw, txid: id });
+    port.assertCurrent();
+    await port.fetch(url, { method: 'POST', body: raw, signal: port.signal });
+    return { txid: id };
+  };
   beforeEach(() => {
     Object.defineProperty(global, 'crypto', {
       value: webcrypto,
@@ -102,9 +112,24 @@ describe('PSBT approval context', () => {
           chainId: 57,
           slip44: 57,
           url: 'https://rpc-a.invalid',
+          currency: 'sys',
         },
       },
-      vaultGlobal: { activeSlip44: 57 },
+      vaultGlobal: {
+        activeSlip44: 57,
+        networks: {
+          syscoin: {
+            57: {
+              kind: INetworkType.Syscoin,
+              chainId: 57,
+              slip44: 57,
+              currency: 'sys',
+              url: 'https://rpc-a.invalid',
+              utxoBackendChain: 'main',
+            },
+          },
+        },
+      },
     };
     jest.spyOn(store, 'getState').mockImplementation(() => state);
     keyring = {
@@ -114,7 +139,7 @@ describe('PSBT approval context', () => {
           .fn()
           .mockResolvedValue({ psbt: 'estimate-fixture', fee: 0.00001 }),
         signPSBT: jest.fn().mockResolvedValue('signed'),
-        sendTransaction: jest.fn().mockResolvedValue({ txid: 'hash' }),
+        sendTransaction: jest.fn(dispatch),
       },
     };
     wallet = Object.create(MainController.prototype);
@@ -129,6 +154,33 @@ describe('PSBT approval context', () => {
     }));
     wallet.sendAndSaveTransaction = jest.fn();
     wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
+    wallet.getRetainedUtxoRecords = jest.fn(() => ({
+      excludedOutpoints: jest.fn(async () => []),
+      admit: async (
+        _session: unknown,
+        _record: unknown,
+        _intent: string,
+        submit: (
+          prepare: () => Promise<void>,
+          release: () => void
+        ) => Promise<unknown>
+      ) =>
+        submit(
+          async () => undefined,
+          () => undefined
+        ),
+      acknowledge: async () => undefined,
+    }));
+    jest.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      if (init?.method !== 'POST')
+        throw new Error('Unexpected fixture network call');
+      const raw = syscoinUtils.bitcoinjs.Transaction.fromHex(
+        init.body as string
+      );
+      const response = Response.json({ result: raw.getId() });
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    });
     (PsbtUtils.fromPali as jest.Mock)
       .mockReset()
       .mockImplementation(() => syntheticPsbt(BigInt(1000)));
@@ -185,6 +237,10 @@ describe('PSBT approval context', () => {
       url: endpoint,
     };
     state.vaultGlobal.activeSlip44 = 1;
+    state.vaultGlobal.networks.syscoin[5700] = {
+      ...state.vault.activeNetwork,
+      utxoBackendChain: 'test',
+    };
     state.vault.accounts = {
       HDAccount: {},
       Imported: {},
@@ -409,7 +465,18 @@ describe('PSBT approval context', () => {
     wallet.getProtectedSentryOutpoints = (
       MainController.prototype as any
     ).getProtectedSentryOutpoints.bind(wallet);
-    state.vault.activeNetwork.chainId = 98765;
+    state.vault.activeNetwork = {
+      kind: INetworkType.Syscoin,
+      chainId: 0,
+      slip44: 0,
+      currency: 'btc',
+      url: 'https://custom-registered.invalid',
+    };
+    state.vaultGlobal.activeSlip44 = 0;
+    state.vaultGlobal.networks.syscoin[0] = {
+      ...state.vault.activeNetwork,
+      utxoBackendChain: 'main',
+    };
     await expect(
       wallet.getEstimateSysTransactionFee({ amount: '1' })
     ).resolves.toMatchObject({ fee: 0.00001 });
@@ -489,7 +556,7 @@ describe('PSBT approval context', () => {
       return 'signed';
     });
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
     ).rejects.toMatchObject({
       message: UTXO_SIGNING_CONTEXT_CHANGED,
       transactionNotBroadcast: true,
@@ -503,7 +570,7 @@ describe('PSBT approval context', () => {
       new Error('Device signing cancelled')
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
     ).rejects.toMatchObject({
       message: 'Device signing cancelled',
       transactionNotBroadcast: true,
@@ -514,10 +581,12 @@ describe('PSBT approval context', () => {
   it('rejects a real excessive-fee finalized PSBT without invoking the sender', async () => {
     const psbt = syntheticPsbt(BigInt(1130000));
     expect(() => psbt.extractTransaction()).toThrow('10272 satoshi per byte');
-    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(psbt);
+    (PsbtUtils.fromPali as jest.Mock).mockImplementation((value) =>
+      value === 'signed' ? psbt : syntheticPsbt(BigInt(1000))
+    );
 
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
     ).rejects.toMatchObject({
       code: 'UTXO_FEE_RATE_EXCEEDED',
       message:
@@ -529,11 +598,11 @@ describe('PSBT approval context', () => {
   });
 
   it('rejects a real unfinalized PSBT without invoking the sender', async () => {
-    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(
-      syntheticPsbt(BigInt(1000), false)
+    (PsbtUtils.fromPali as jest.Mock).mockImplementation((value) =>
+      syntheticPsbt(BigInt(1000), value !== 'signed')
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
     ).rejects.toMatchObject({
       message: 'Not finalized',
       transactionNotBroadcast: true,
@@ -542,15 +611,15 @@ describe('PSBT approval context', () => {
   });
 
   it('does not classify a sender timeout as safe even if its error carries an earlier safe marker', async () => {
-    keyring.syscoinTransaction.sendTransaction.mockRejectedValueOnce(
+    jest.mocked(globalThis.fetch).mockRejectedValueOnce(
       Object.assign(new Error('Network request timed out'), {
         transactionNotBroadcast: true,
       })
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
     ).rejects.toMatchObject({
-      message: 'Network request timed out',
+      message: 'Transaction submission could not be verified.',
       transactionNotBroadcast: false,
     });
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
@@ -559,27 +628,35 @@ describe('PSBT approval context', () => {
   it('extracts an ordinary finalized PSBT with the fee guard before invoking the sender', async () => {
     const psbt = syntheticPsbt(BigInt(1000));
     const extract = jest.spyOn(psbt, 'extractTransaction');
-    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(psbt);
+    (PsbtUtils.fromPali as jest.Mock).mockImplementation((value) =>
+      value === 'signed' ? psbt : syntheticPsbt(BigInt(1000))
+    );
     keyring.syscoinTransaction.sendTransaction.mockImplementationOnce(
-      async () => {
+      async (...args: Parameters<typeof dispatch>) => {
         expect(extract).toHaveBeenCalledWith();
-        return { txid: 'hash' };
+        return dispatch(...args);
       }
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
-    ).resolves.toEqual({ txid: 'hash' });
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
+    ).resolves.toEqual({ txid: defaultTxid });
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('returns an acknowledged broadcast after context changes without filing it under another account', async () => {
-    keyring.syscoinTransaction.sendTransaction.mockImplementation(async () => {
-      state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
-      return { txid: 'acknowledged-hash' };
-    });
+    keyring.syscoinTransaction.sendTransaction.mockImplementation(
+      async (...args: Parameters<typeof dispatch>) => {
+        const result = await dispatch(...args);
+        state.vault.activeAccount = {
+          id: 1,
+          type: KeyringAccountType.HDAccount,
+        };
+        return result;
+      }
+    );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
-    ).resolves.toEqual({ txid: 'acknowledged-hash' });
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
+    ).resolves.toEqual({ txid: defaultTxid });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
 
@@ -611,7 +688,10 @@ describe('PSBT approval context', () => {
     };
     const admission = await captureSentryCollateralAdmission(reservationScope);
     const write = jest.spyOn(chromeStorage, 'setItem');
-    const sending = wallet.signSendAndSaveTransaction({ psbt: 'fixture' });
+    const sending = wallet.signSendAndSaveTransaction(
+      { psbt: 'fixture' },
+      authorize
+    );
     await reachedFinalRead;
     const reserving = reserveSentryCollateral({
       ...reservationScope,
@@ -625,7 +705,7 @@ describe('PSBT approval context', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(write).not.toHaveBeenCalled();
     finishRead();
-    await expect(sending).resolves.toEqual({ txid: 'hash' });
+    await expect(sending).resolves.toEqual({ txid: defaultTxid });
     await refused;
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
     expect(write).not.toHaveBeenCalled();
@@ -771,10 +851,10 @@ describe('PSBT approval context', () => {
       new Error('storage unavailable')
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
-    ).resolves.toEqual({ txid: 'hash' });
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
+    ).resolves.toEqual({ txid: defaultTxid });
     expect(wallet.sendAndSaveTransaction).toHaveBeenCalledWith(
-      { txid: 'hash' },
+      { txid: defaultTxid },
       {
         id: 0,
         type: KeyringAccountType.HDAccount,
@@ -889,11 +969,11 @@ describe('PSBT approval context', () => {
     (PsbtUtils.fromPali as jest.Mock).mockImplementation(() => replacement);
     const expectedContext = wallet.captureUtxoSigningContext().context;
     await expect(
-      wallet.signSendAndSaveTransaction({
-        psbt: 'replacement',
-        expectedContext,
-      })
-    ).resolves.toEqual({ txid: 'hash' });
+      wallet.signSendAndSaveTransaction(
+        { psbt: 'replacement', expectedContext },
+        authorize
+      )
+    ).resolves.toEqual({ txid: replacement.extractTransaction().getId() });
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
   });
@@ -907,20 +987,43 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it('keeps PoDA sign-only consent and refuses submission before requesting a signer', async () => {
+    const psbt = syntheticPsbt(BigInt(1000), false);
+    psbt.setVersion(137);
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt,
+      summary: { feeSatoshis: '1000' },
+    });
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
+    await expect(
+      wallet.signSendAndSaveTransaction({ psbt: 'poda' }, authorize)
+    ).rejects.toMatchObject({
+      message: 'This wallet can sign PoDA PSBTs for external submission',
+      transactionNotBroadcast: true,
+    });
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+    await expect(
+      wallet.signSyscoinPsbt({ psbt: 'poda' }, authorize)
+    ).resolves.toBe('signed');
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+  });
+
   it('returns an ACK without saving old metadata into a replacement wallet session', async () => {
     keyring.syscoinTransaction.sendTransaction.mockImplementationOnce(
-      async () => {
+      async (...args: Parameters<typeof dispatch>) => {
+        const result = await dispatch(...args);
         wallet.walletSessionGeneration += 1;
         state.vault.accounts.HDAccount[0] = {
           address: 'replacement-wallet',
           xpub: 'replacement-wallet-xpub',
         };
-        return { txid: 'acknowledged-before-reset' };
+        return result;
       }
     );
     await expect(
-      wallet.signSendAndSaveTransaction({ psbt: 'fixture' })
-    ).resolves.toEqual({ txid: 'acknowledged-before-reset' });
+      wallet.signSendAndSaveTransaction({ psbt: 'fixture' }, authorize)
+    ).resolves.toEqual({ txid: defaultTxid });
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
 });

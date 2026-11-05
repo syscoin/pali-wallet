@@ -1,5 +1,6 @@
 import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
 
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
@@ -97,6 +98,7 @@ export type WalletRemovalResult = Readonly<{
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
+  readonly utxoSignedRecords?: UtxoRecordStorage;
   readonly deviceUnlockEnrollment?: DeviceUnlockEnrollmentPort;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{

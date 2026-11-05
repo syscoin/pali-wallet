@@ -36,6 +36,21 @@ export type UtxoFeeReview = Readonly<{
   unsignedHash: string;
 }>;
 
+export const assertUtxoBuilderFee = (
+  fee: number,
+  feeSatoshis: string
+): void => {
+  const exact = Number(feeSatoshis);
+  if (!Number.isSafeInteger(exact) || exact / 1e8 !== fee)
+    throw Object.assign(
+      new Error('Transaction or network fee changed. Review a new quote.'),
+      {
+        code: 'UTXO_QUOTE_FEE_CHANGED',
+        transactionNotBroadcast: true,
+      }
+    );
+};
+
 export const createUtxoFeeReview = (
   psbt: any,
   feeSatoshis: string

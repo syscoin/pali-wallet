@@ -9,6 +9,7 @@ import {
   type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
 import {
+  coins,
   getSysRpc,
   observeSysRpc,
   getEthRpc,
@@ -31,6 +32,7 @@ import isEmpty from 'lodash/isEmpty';
 import isEqual from 'lodash/isEqual';
 import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
+import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
 import {
@@ -74,6 +76,13 @@ import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
 } from '../../../wallet/utxoBlockbookReads';
+import { utxoSubmissionUrl } from '../../../wallet/utxoSignedBinding';
+import {
+  UTXO_SIGNED_RECORD_PREFIX,
+  type UtxoDurableSubmission,
+  type UtxoSignedRecords,
+} from '../../../wallet/utxoSignedRecords';
+import { submitReviewedUtxo } from '../../../wallet/utxoSubmission';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -206,7 +215,10 @@ import {
   isSameBalanceNetwork,
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  networkRegistrationFingerprint,
+  resolvePinnedUtxoBackendChain,
+} from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
 import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
@@ -279,6 +291,7 @@ import type {
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
 import {
+  assertUtxoBuilderFee,
   assertUtxoFeeReview,
   createUtxoFeeReview,
   getVerifiedSyscoinPsbtValueSummary,
@@ -292,6 +305,7 @@ import {
 import {
   assertNoRecentAcknowledgedInputOverlap,
   createUtxoAcknowledgedInputs,
+  utxoInputOutpoints,
   type UtxoAcknowledgedInputs,
 } from 'utils/utxoAcknowledgedInputs';
 import {
@@ -326,6 +340,7 @@ import ChainListService from './chainlist';
 import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
+  createChromeUtxoSignedRecords,
 } from './evmSignedRecords';
 import {
   assertLiveEvmReplacementChain,
@@ -420,6 +435,17 @@ const fiatNetworkKey = (network: INetwork) =>
     network.slip44,
     network.coingeckoId,
   ]);
+
+const utxoRecordsByWallet = new WeakMap<MainController, UtxoSignedRecords>();
+const utxoReviewsByWallet = new WeakMap<
+  MainController,
+  {
+    deadline: number;
+    id: string;
+    record: UtxoDurableSubmission;
+    signing: ReturnType<MainController['captureUtxoSigningContext']>;
+  }
+>();
 
 class MainController {
   // Map of keyrings indexed by slip44
@@ -740,6 +766,7 @@ class MainController {
             key.match(/^state-vault-\d+$/) ||
             key.startsWith('sysweb3-vault-') ||
             key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
+            key.startsWith(UTXO_SIGNED_RECORD_PREFIX) ||
             key.startsWith('pali-slh-dsa-state:') ||
             key.startsWith('sentry-operator-v1:') ||
             key.startsWith('sentry-settings-v1:') ||
@@ -1001,6 +1028,117 @@ class MainController {
   private getRetainedEvmRecords(): EvmSignedRecords {
     this.retainedEvmRecords ??= createChromeEvmSignedRecords();
     return this.retainedEvmRecords;
+  }
+
+  private getRetainedUtxoRecords(): UtxoSignedRecords {
+    let records = utxoRecordsByWallet.get(this);
+    if (!records) {
+      records = createChromeUtxoSignedRecords(() => this.lock());
+      utxoRecordsByWallet.set(this, records);
+    }
+    return records;
+  }
+
+  public async listRetainedUtxoTransfers() {
+    const signing = this.captureUtxoSigningContext();
+    const network = store.getState().vault.activeNetwork;
+    return this.getRetainedUtxoRecords().list(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      this.utxoRecordOwner(network, signing.context.account)
+    );
+  }
+
+  public async checkRetainedUtxoTransfer(txid: string) {
+    const signing = this.captureUtxoSigningContext();
+    const network = store.getState().vault.activeNetwork;
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    return signing.withRead((read) =>
+      this.getRetainedUtxoRecords().observe(
+        { keyring: signing.keyring, assertCurrent: read.assertCurrent },
+        owner,
+        txid,
+        utxoSubmissionUrl(network.url),
+        () => syscoinjs.utils.fetchBackendRawTx(network.url, txid, read)
+      )
+    );
+  }
+
+  public async prepareRetainedUtxoRetry(txid: string) {
+    utxoReviewsByWallet.delete(this);
+    const signing = this.captureUtxoSigningContext();
+    const network = store.getState().vault.activeNetwork;
+    const record = await this.getRetainedUtxoRecords().readExact(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      this.utxoRecordOwner(network, signing.context.account),
+      txid
+    );
+    signing.assertCurrent();
+    if (!record || record.url !== utxoSubmissionUrl(network.url))
+      throw new Error('Saved transfer is unavailable on this network');
+    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
+      record.rawTransaction
+    );
+    const { networks } = getNetworkConfig(network.slip44, network.currency);
+    const addressNetwork =
+      network.slip44 === 1 ? networks.testnet : networks.mainnet;
+    const outputs = transaction.outs.map((output) => {
+      let address: string;
+      try {
+        address = syscoinjs.utils.bitcoinjs.address.fromOutputScript(
+          output.script,
+          addressNetwork
+        );
+      } catch {
+        address = Buffer.from(output.script).toString('hex');
+      }
+      return { address, amountSatoshis: output.value.toString() };
+    });
+    const id = crypto.randomUUID();
+    utxoReviewsByWallet.set(this, {
+      id,
+      deadline: performance.now() + 90_000,
+      record,
+      signing,
+    });
+    return { id, txid, feeSatoshis: record.feeSatoshis, outputs };
+  }
+
+  public async confirmRetainedUtxoRetry(id: string) {
+    const selected = utxoReviewsByWallet.get(this);
+    if (!selected || selected.id !== id)
+      throw new Error('Review the saved transfer again');
+    utxoReviewsByWallet.delete(this);
+    const { signing, record, deadline } = selected;
+    const assertCurrent = () => {
+      signing.assertCurrent();
+      if (performance.now() >= deadline)
+        throw new Error('Review the saved transfer again');
+    };
+    assertCurrent();
+    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
+      record.rawTransaction
+    );
+    const collateral = this.getSentryCollateralScope();
+    const submit = async (markInvoked: () => void) => {
+      await this.assertNoSentryCollateralInputs({ txInputs: transaction.ins });
+      assertCurrent();
+      return withWalletBackend(signing.context.rpcUrl, () =>
+        submitReviewedUtxo({
+          record,
+          sender: signing.transactions,
+          records: this.getRetainedUtxoRecords(),
+          session: { keyring: signing.keyring, assertCurrent },
+          intent: 'replay',
+          fetch: (input, init) => {
+            markInvoked();
+            return globalThis.fetch(input, init);
+          },
+        })
+      );
+    };
+    return collateral
+      ? withSentryCollateralBroadcast(collateral, submit)
+      : submit(() => undefined);
   }
 
   private getRetainedEvmReplay(): EvmSignedReplay {
@@ -1723,8 +1861,18 @@ class MainController {
     >[0]
   ) {
     const signing = this.captureUtxoSigningContext();
-    const excludedOutpoints = await this.getProtectedSentryOutpoints();
+    const collateral = await this.getProtectedSentryOutpoints();
     signing.assertCurrent();
+    const owner = this.utxoRecordOwner(
+      store.getState().vault.activeNetwork,
+      signing.context.account
+    );
+    const pending = await this.getRetainedUtxoRecords().excludedOutpoints(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      owner
+    );
+    signing.assertCurrent();
+    const excludedOutpoints = [...collateral, ...pending];
     return signing.withRead(async (read) => {
       const result = await signing.transactions.getEstimateSysTransactionFee(
         { ...params, excludedOutpoints },
@@ -1737,17 +1885,9 @@ class MainController {
       await this.assertNoSentryCollateralInputs(psbt);
       read.assertCurrent();
       this.assertOrdinaryUtxoInputsCurrent(psbt, signing.context);
-      const exactFee = Number(summary.feeSatoshis);
       // The builder reports a numeric fee derived from the funding snapshot.
       // Never display or authorize it if authenticated prevouts disagree.
-      if (!Number.isSafeInteger(exactFee) || exactFee / 1e8 !== result.fee)
-        throw Object.assign(
-          new Error('Transaction or network fee changed. Review a new quote.'),
-          {
-            code: 'UTXO_QUOTE_FEE_CHANGED',
-            transactionNotBroadcast: true,
-          }
-        );
+      assertUtxoBuilderFee(result.fee, summary.feeSatoshis);
       return {
         ...result,
         utxoFeeReview: createUtxoFeeReview(psbt, summary.feeSatoshis),
@@ -2191,6 +2331,8 @@ class MainController {
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
     this.retainedEvmRecords = undefined;
+    utxoRecordsByWallet.delete(this);
+    utxoReviewsByWallet.delete(this);
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
@@ -7676,21 +7818,41 @@ class MainController {
    * Atomic wrapper that handles sign, send, and save in one operation
    * This ensures the transaction completes even if the popup window loses focus
    */
-  public async signSendAndSaveTransaction(params: {
-    expectedContext?: IUtxoSigningContext;
-    isLedger?: boolean; // For UTXO transactions
-    isTrezor?: boolean;
-    ordinaryWalletSend?: boolean;
-    psbt?: any;
-    utxoFeeReview?: UtxoFeeReview;
-  }): Promise<any> {
+  public async signSendAndSaveTransaction(
+    params: {
+      expectedContext?: IUtxoSigningContext;
+      isLedger?: boolean; // For UTXO transactions
+      isTrezor?: boolean;
+      ordinaryWalletSend?: boolean;
+      psbt?: any;
+      utxoFeeReview?: UtxoFeeReview;
+    },
+    authorizeDapp?: () => void
+  ): Promise<any> {
     let senderInvoked = false;
     try {
       this.assertWalletReadyForSigning();
       const { isBitcoinBased, activeNetwork } = store.getState().vault;
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
-        const signing = this.captureUtxoSigningContext(params.expectedContext);
+        if (
+          params.ordinaryWalletSend !== true &&
+          typeof authorizeDapp !== 'function'
+        )
+          throw new Error('Explicit PSBT submission approval is required');
+        const signing = this.captureUtxoSigningContext(
+          params.expectedContext,
+          authorizeDapp
+        );
+        const approvedPsbt = PsbtUtils.fromPali(params.psbt, activeNetwork);
+        if (syscoinTransactionTypes.isPoDATx(approvedPsbt.version))
+          throw new Error(
+            'This wallet can sign PoDA PSBTs for external submission'
+          );
+        const owner = this.utxoRecordOwner(
+          activeNetwork,
+          signing.context.account
+        );
         const review =
           params.ordinaryWalletSend === true ? params.utxoFeeReview : undefined;
         if (params.ordinaryWalletSend === true && !review)
@@ -7705,20 +7867,20 @@ class MainController {
           );
 
         if (params.ordinaryWalletSend === true) {
-          this.assertOrdinaryUtxoInputsCurrent(
-            PsbtUtils.fromPali(params.psbt, activeNetwork),
-            signing.context
-          );
+          this.assertOrdinaryUtxoInputsCurrent(approvedPsbt, signing.context);
         }
 
         // Step 1: Sign the PSBT
-        const signedPsbt = await this.signSyscoinPsbt({
-          psbt: params.psbt,
-          isTrezor: params.isTrezor,
-          isLedger: params.isLedger,
-          expectedContext: signing.context,
-          ...(review && { utxoFeeReview: review }),
-        });
+        const signedPsbt = await this.signSyscoinPsbt(
+          {
+            psbt: params.psbt,
+            isTrezor: params.isTrezor,
+            isLedger: params.isLedger,
+            expectedContext: signing.context,
+            ...(review && { utxoFeeReview: review }),
+          },
+          signing.assertCurrent
+        );
         signing.assertCurrent();
 
         // Reject incomplete or excessive-fee signatures before the sender can
@@ -7727,8 +7889,11 @@ class MainController {
           signedPsbt,
           activeNetwork
         );
+        let transaction: ReturnType<
+          typeof verifiedSignedPsbt.extractTransaction
+        >;
         try {
-          verifiedSignedPsbt.extractTransaction();
+          transaction = verifiedSignedPsbt.extractTransaction();
         } catch (error) {
           if (
             error instanceof Error &&
@@ -7761,12 +7926,39 @@ class MainController {
 
         // Step 2: Send the transaction
         const sentryScope = this.getSentryCollateralScope();
+        const record = Object.freeze({
+          owner,
+          operation:
+            params.ordinaryWalletSend === true
+              ? ('wallet' as const)
+              : ('external' as const),
+          url: utxoSubmissionUrl(signing.context.rpcUrl),
+          txid: transaction.getId(),
+          rawTransaction: transaction.toHex(),
+          outpoints: Object.freeze(utxoInputOutpoints(transaction.ins)),
+          feeSatoshis: verifiedSignedPsbt.getFee().toString(),
+          virtualSize: transaction.virtualSize(),
+        });
         const submit = async (markInvoked: () => void) => {
           await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
           signing.assertCurrent();
-          markInvoked();
-          senderInvoked = true;
-          return signing.transactions.sendTransaction(signedPsbt);
+          return withWalletBackend(signing.context.rpcUrl, () =>
+            submitReviewedUtxo({
+              record,
+              sender: signing.transactions,
+              session: {
+                keyring: signing.keyring,
+                assertCurrent: signing.assertCurrent,
+              },
+              records: this.getRetainedUtxoRecords(),
+              intent: 'initial',
+              fetch: (input, init) => {
+                markInvoked();
+                senderInvoked = true;
+                return globalThis.fetch(input, init);
+              },
+            })
+          );
         };
         const txResult = sentryScope
           ? await withSentryCollateralBroadcast(sentryScope, submit)
@@ -11038,11 +11230,50 @@ class MainController {
     }
   }
 
-  private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
+  private utxoRecordOwner(
+    network: INetwork,
+    account: IUtxoSigningContext['account']
+  ) {
+    const coin = coins.find(
+      (entry) =>
+        (entry.chainId ?? entry.slip44) === network.chainId &&
+        entry.slip44 === network.slip44 &&
+        entry.coinShortcut.toLowerCase() === network.currency?.toLowerCase()
+    );
+    const registered =
+      store.getState().vaultGlobal.networks?.syscoin?.[network.chainId];
+    if (
+      !coin?.hashGenesisBlock ||
+      !resolvePinnedUtxoBackendChain(network, registered)
+    )
+      throw new Error(
+        'Verify this UTXO network before submitting a transaction'
+      );
+    return Object.freeze({
+      chainId: network.chainId,
+      slip44: network.slip44,
+      genesisHash: coin.hashGenesisBlock,
+      account: Object.freeze({
+        id: account.id,
+        type: account.type,
+        xpub: account.xpub,
+      }),
+    });
+  }
+
+  private captureUtxoSigningContext(
+    expected?: IUtxoSigningContext,
+    authorize?: () => void
+  ) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
     const keyring = this.getActiveKeyring();
     const { vault, vaultGlobal } = store.getState();
+    const { currency } = vault.activeNetwork;
+    const pin = resolvePinnedUtxoBackendChain(
+      vault.activeNetwork,
+      vaultGlobal.networks?.syscoin?.[vault.activeNetwork.chainId]
+    );
     const selected = { ...vault.activeAccount };
     const account = vault.accounts[selected.type]?.[selected.id];
     if (!vault.isBitcoinBased || !account)
@@ -11072,6 +11303,11 @@ class MainController {
     if (expected && !matches(expected))
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const assertCurrent = () => {
+      const result: unknown = authorize?.();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      }
       try {
         this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(generation, keyring);
@@ -11090,6 +11326,11 @@ class MainController {
         current.vault.activeNetwork.chainId !== context.chainId ||
         current.vault.activeNetwork.kind !== context.kind ||
         current.vault.activeNetwork.url !== context.rpcUrl ||
+        current.vault.activeNetwork.currency !== currency ||
+        resolvePinnedUtxoBackendChain(
+          current.vault.activeNetwork,
+          current.vaultGlobal.networks?.syscoin?.[context.chainId]
+        ) !== pin ||
         current.vaultGlobal.activeSlip44 !== context.slip44
       )
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
@@ -11098,6 +11339,7 @@ class MainController {
     return {
       context,
       assertCurrent,
+      keyring,
       transactions: keyring.syscoinTransaction,
       withRead: <T>(
         operation: (
@@ -11117,15 +11359,21 @@ class MainController {
     };
   }
 
-  public async signSyscoinPsbt(params: {
-    expectedContext?: IUtxoSigningContext;
-    isLedger?: boolean;
-    isTrezor?: boolean;
-    psbt: any;
-    utxoFeeReview?: UtxoFeeReview;
-  }) {
+  public async signSyscoinPsbt(
+    params: {
+      expectedContext?: IUtxoSigningContext;
+      isLedger?: boolean;
+      isTrezor?: boolean;
+      psbt: any;
+      utxoFeeReview?: UtxoFeeReview;
+    },
+    authorizeDapp?: () => void
+  ) {
     const { utxoFeeReview, ...signingParams } = params;
-    const signing = this.captureUtxoSigningContext(params.expectedContext);
+    const signing = this.captureUtxoSigningContext(
+      params.expectedContext,
+      authorizeDapp
+    );
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
       signing.assertCurrent();

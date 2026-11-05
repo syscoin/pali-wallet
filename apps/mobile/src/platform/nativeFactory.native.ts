@@ -26,6 +26,7 @@ import { NativeWalletRemoval } from '../custody/walletRemoval.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
+import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -50,6 +51,10 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
         guard();
         return walletFetch(url, init);
       } }).readAccount(id, xpub, signal);
+    },
+    utxoFetch(input, init) {
+      if (typeof input !== 'string' || !init) throw new Error('Invalid native Blockbook request');
+      return walletFetch(input, init);
     },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
@@ -169,6 +174,13 @@ export function createNativeWalletControllers() {
       verifyExport: (...args) => observeFailure(() => notes.verifyExport(...args)),
     });
   };
+  const openUtxoSend = async (assertOwner: () => void): Promise<NativeUtxoSend> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const open = selected.openUtxoSend;
+    if (!open) throw new CustodyOperationError('NOT_READY');
+    const send = await observeFailure(() => open(assertCurrent));
+    return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view) => observeFailure(() => send.confirm(view)) });
+  };
   const openNoteCapacity = async (assertOwner: () => void): Promise<NativeNoteCapacityRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openNoteCapacity;
@@ -216,6 +228,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

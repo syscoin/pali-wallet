@@ -26,6 +26,10 @@ import { NATIVE_TOKEN_REGISTRY_KEY } from '../src/portfolio/tokenRegistry.ts';
 import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/privateVaultInspection.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { UTXO_SIGNED_RECORD_KEY, UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
+import { ROOT_DOMAIN as UTXO_ROOT_DOMAIN } from '../../../source/wallet/utxoSignedBundle.ts';
+import { utxoInputOutpoints } from '../../../source/utils/utxoAcknowledgedInputs.ts';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -93,7 +97,7 @@ async function fixture(
       await local.recovery.recordFailureForPair!(fingerprint);
     } };
     let closed = false;
-    return { keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, authGuard: local.authGuard, recovery,
+    return { keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, utxoSignedRecords: local.utxoSignedRecords, authGuard: local.authGuard, recovery,
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
@@ -158,6 +162,7 @@ async function fixture(
     open,
     read,
     write,
+    writeUtxoBytes(value: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(UTXO_SIGNED_RECORD_KEY, value); } finally { db.close(); } },
     coordinator,
     remove(key: string) { const db = new DatabaseSync(file); try { db.prepare('DELETE FROM keyring_records WHERE key = ?').run(key); } finally { db.close(); } },
     meta(key: string, value: unknown) {
@@ -364,6 +369,49 @@ for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`reco
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
     assert.deepEqual(f.read(), before);
   } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('recovery authenticates captured UTXO bytes even if an ABA swap supplies a valid live row', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  let corrupt: string | undefined;
+  try {
+    const bitcoin = syscoinUtils.bitcoinjs;
+    const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13));
+    const script = bitcoin.payments.p2wpkh({ pubkey: key.publicKey }).output;
+    const parent = new bitcoin.Transaction();
+    parent.addInput(Buffer.alloc(32, 14), 0);
+    parent.addOutput(script, 10000n);
+    const psbt = new bitcoin.Psbt();
+    psbt.addInput({ hash: parent.getHash(), index: 0, witnessUtxo: { script, value: 10000n } });
+    psbt.addOutput({ script, value: 9000n });
+    const tx = psbt.signInput(0, key).finalizeAllInputs().extractTransaction();
+    const owner = { chainId: 0, slip44: 0, genesisHash: getUtxoNetwork('bitcoin').genesisHash, account: { id: 0, type: 'HDAccount', xpub: 'synthetic-public-owner' } };
+    const store = new UtxoSignedRecords(f.store.utxoSignedRecords);
+    await store.persist({ keyring: f.keyring, assertCurrent: () => undefined }, {
+      owner, operation: 'wallet', url: `${getUtxoNetwork('bitcoin').endpoint}/api/v2/sendtx/`, rawTransaction: tx.toHex(), txid: tx.getId(),
+      virtualSize: tx.virtualSize(), feeSatoshis: '1000', outpoints: utxoInputOutpoints(tx.ins),
+    });
+    const valid = (await f.store.utxoSignedRecords.read(await f.keyring.getPrivateRecordProfileId()))!;
+    const changed = JSON.parse(valid);
+    changed.root.ciphertext = (changed.root.ciphertext[0] === 'A' ? 'B' : 'A') + changed.root.ciphertext.slice(1);
+    corrupt = JSON.stringify(changed);
+    f.writeUtxoBytes(corrupt);
+    f.owner.lock();
+    class ProbeKeyring extends sdk.SoftwareKeyring {
+      async decryptPrivateRecord(input: Parameters<InstanceType<typeof sdk.SoftwareKeyring>['decryptPrivateRecord']>[0]) {
+        const output = await super.decryptPrivateRecord(input);
+        // A live-row validation would authenticate B, then observe A at commit.
+        if (input.domain === UTXO_ROOT_DOMAIN) f.writeUtxoBytes(corrupt!);
+        return output;
+      }
+    }
+    recovery = f.coordinator(async () => {
+      f.writeUtxoBytes(valid);
+      return { ...sdk, SoftwareKeyring: ProbeKeyring };
+    });
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.equal(f.read().records.find(({ key: name }) => name === UTXO_SIGNED_RECORD_KEY)?.value, valid);
+  } finally { if (corrupt) f.writeUtxoBytes(corrupt); await recovery?.dispose(); await f.close(); }
 });
 
 test('known wrong-root failure is charged once even when its request is cancelled before accounting finishes', async () => {
