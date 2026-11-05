@@ -837,7 +837,8 @@ export function createPrivateVaultController(
   };
 
   const load = async (
-    context: IContext
+    context: IContext,
+    identities?: WeakMap<IStoredNote, IClassicNoteIdentity>
   ): Promise<{ basis: IWriteBasis; manifest: IManifest }> => {
     if (compareAndSet) assertSession(context.session);
     const stored = await checked(
@@ -848,7 +849,8 @@ export function createPrivateVaultController(
       stored,
       context.session,
       identify,
-      compareAndSet ? 'serialized' : 'object'
+      compareAndSet ? 'serialized' : 'object',
+      identities
     );
     assertSession(context.session);
     context.capacity = result.capacity;
@@ -2023,10 +2025,12 @@ export function createPrivateVaultController(
         const context = await capture();
         return await mutex.runExclusive(async () => {
           context.session.assertCurrent();
-          const { manifest } = await load(context);
+          const identities = new WeakMap<IStoredNote, IClassicNoteIdentity>();
+          const { manifest } = await load(context, identities);
           const notes: IPrivateNoteView[] = [];
           for (const note of manifest.notes) {
-            const identity = identify(note.note);
+            const identity = identities.get(note);
+            if (!identity) throw new Error('privacy_vault_corrupt');
             notes.push(
               view(note, identity, await readStatus(context, identity))
             );
