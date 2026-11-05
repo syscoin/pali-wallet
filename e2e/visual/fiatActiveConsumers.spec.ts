@@ -426,9 +426,7 @@ test('actual EVM history and connection account cards distinguish missing quote 
           const list = page.locator('#activity-panel-list');
           await expect(list).toBeVisible();
           const fiatLine = list
-            .locator(
-              'div.text-brand-gray200.text-xs.font-normal.whitespace-nowrap'
-            )
+            .locator('div.text-brand-gray200.text-xs.font-normal')
             .first();
           await expect(fiatLine).toHaveText(
             scenario.phase === 'missing' && !before
