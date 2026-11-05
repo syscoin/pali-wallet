@@ -4,6 +4,7 @@ import { ICustomEvent } from '../../../../types/index'; // need to use this rela
 import {
   transactionApprovalExpired,
   watchApprovalSubmission,
+  type DappSmartAccountMethod,
   type DappUtxoReview,
   type TransactionApprovalDocument,
 } from '../../handlers/approvalSubmission';
@@ -187,7 +188,17 @@ const openApprovalPopup = async (
     typeof reservationId === 'string'
       ? { host, id: bundleId, reservationId }
       : undefined;
-  const tracksTransactionDocument = Boolean(evmContext || utxoReview);
+  const smartMethods: readonly DappSmartAccountMethod[] | undefined =
+    route === MethodRoute.SmartAccount
+      ? ['registerSmartAccountOnChain', 'submitSmartAccountExecution']
+      : route === MethodRoute.SendEthTx ||
+        route === MethodRoute.SendCalls ||
+        route === MethodRoute.SmartAccountModules
+      ? ['submitSmartAccountExecution']
+      : undefined;
+  const tracksTransactionDocument = Boolean(
+    evmContext || utxoReview || smartMethods
+  );
 
   let popup = null;
   let approvalClientId: string | null = null;
@@ -379,7 +390,8 @@ const openApprovalPopup = async (
             evmContext
               ? { ...document, context: evmContext, batch: evmBatch }
               : undefined,
-            utxoReview ? { ...document, ...utxoReview } : undefined
+            utxoReview ? { ...document, ...utxoReview } : undefined,
+            smartMethods ? { ...document, methods: smartMethods } : undefined
           );
         }
         onClientBound?.();

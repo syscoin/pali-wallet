@@ -631,6 +631,74 @@ describe('transaction approval submission lifetime', () => {
     }
   );
 
+  it.each([
+    ['eth_sendTransaction', 'submitSmartAccountExecution'],
+    ['wallet_sendCalls', 'submitSmartAccountExecution'],
+    ['wallet_prepareSmartAccount', 'registerSmartAccountOnChain'],
+    ['wallet_requestSmartAccountModuleInstall', 'submitSmartAccountExecution'],
+  ] as const)(
+    'revokes the %s document during %s without changing the wallet',
+    async (request, method) => {
+      const { pending } = await begin(undefined, request);
+      const rejected = pending.catch((error) => error);
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => (enter = resolve));
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const dispatch = jest.fn();
+      send.mockImplementation(async (_params, assertCurrent: () => void) => {
+        enter();
+        await held;
+        assertCurrent();
+        dispatch();
+      });
+      const submitted = submit(method, sender(), [
+        { expectedContext: { chainId: 1 } },
+      ]);
+      try {
+        await entered;
+        const [[params, guard]] = send.mock.calls;
+        expect(typeof guard).toBe('function');
+        if (request === 'wallet_sendCalls' || request === 'eth_sendTransaction')
+          expect(params.expectedContext).toEqual(approvedContext);
+        const onNavigation = (
+          chrome.tabs.onUpdated.addListener as jest.Mock
+        ).mock.calls.at(-1)?.[0];
+        (self as any).clients.get.mockResolvedValueOnce(undefined);
+        onNavigation?.(19, { status: 'loading', url: source().url });
+        await rejected;
+        release();
+        await expect(submitted).resolves.toMatchObject({
+          error: { transactionNotBroadcast: true },
+        });
+        expect(dispatch).not.toHaveBeenCalled();
+      } finally {
+        release();
+        closeWindow(9);
+        await rejected;
+      }
+    }
+  );
+
+  it('rejects smart registration from the wrong route or replacement document', async () => {
+    const { pending } = await begin(undefined, 'wallet_sendCalls');
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    await expect(submit('registerSmartAccountOnChain')).resolves.toMatchObject({
+      error: { transactionNotBroadcast: true },
+    });
+    await expect(
+      submit('submitSmartAccountExecution', {
+        ...sender(),
+        documentId: 'replacement-approval',
+      })
+    ).resolves.toMatchObject({
+      error: { transactionNotBroadcast: true },
+    });
+    expect(send).not.toHaveBeenCalled();
+    closeWindow(9);
+    await rejected;
+  });
+
   it('refuses a website sender while a batch approval is live', async () => {
     const log = jest.spyOn(console, 'error').mockImplementation();
     try {

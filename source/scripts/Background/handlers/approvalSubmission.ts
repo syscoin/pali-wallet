@@ -35,10 +35,18 @@ export type DappUtxoReview = TransactionApprovalDocument &
     }>;
   }>;
 
+export type DappSmartAccountMethod =
+  | 'registerSmartAccountOnChain'
+  | 'submitSmartAccountExecution';
+
+type DappSmartAccountReview = TransactionApprovalDocument &
+  Readonly<{ methods: readonly DappSmartAccountMethod[] }>;
+
 type Watch = {
   attempts: Set<object>;
   evmSend?: DappEvmReview;
   notify: (possible: boolean) => void;
+  smart?: DappSmartAccountReview;
   utxo?: DappUtxoReview;
 };
 const watches = new Map<string, Set<Watch>>();
@@ -48,7 +56,8 @@ export const watchApprovalSubmission = (
   documentId: string,
   notify: Watch['notify'],
   evmSend?: DappEvmReview,
-  utxo?: DappUtxoReview
+  utxo?: DappUtxoReview,
+  smart?: DappSmartAccountReview
 ): (() => void) => {
   const watch: Watch = {
     attempts: new Set(),
@@ -63,6 +72,9 @@ export const watchApprovalSubmission = (
         }),
       }),
     notify,
+    smart:
+      smart &&
+      Object.freeze({ ...smart, methods: Object.freeze([...smart.methods]) }),
     utxo:
       utxo &&
       Object.freeze({
@@ -172,6 +184,25 @@ export const captureDappEvmSubmission = (
     isSoleRetiredAttempt: () =>
       !watches.get(documentId)?.has(watch) && watch.attempts.size === 1,
   };
+};
+
+/** The enrolled route determines which smart-account operations it may submit. */
+export const captureDappSmartAccountSubmission = (
+  sender: chrome.runtime.MessageSender,
+  method: DappSmartAccountMethod
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find((candidate) =>
+    candidate.smart?.methods.includes(method)
+  );
+  if (!watch?.smart) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.smart
+  );
+  return { context: watch.evmSend?.context, assertCurrent, checkDocument };
 };
 
 /** Called only around the actual trusted controller invocation, never by a dapp. */

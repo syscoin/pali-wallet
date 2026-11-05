@@ -368,7 +368,7 @@ describe('SmartAccountController smart account execution fees', () => {
       const error = new Error('RPC timed out');
       controller.ensureSmartAccountDeploymentPrefund = jest.fn(
         async (...args: any[]) => {
-          args[6]();
+          args[5].onSubmissionAttempt();
           if (!prefundReturned) throw error;
         }
       );
@@ -536,6 +536,181 @@ describe('SmartAccountController smart account execution fees', () => {
     });
     expect(sendAndSaveEthTransaction.mock.calls[0][1]).toBe(true);
   });
+
+  it.each([
+    ['prefund', 'before POST'],
+    ['handleOps', 'before POST'],
+    ['prefund', 'after ACK'],
+    ['handleOps', 'during ACK'],
+    ['prefund', 'wait failure'],
+    ['handleOps', 'wait failure'],
+  ] as const)(
+    'checks the real SDK %s guard %s without misclassifying a wire dispatch',
+    async (operation, phase) => {
+      const key = `0x${'11'.repeat(32)}`;
+      const owner = new Wallet(key);
+      const fixturePayer = { ...gasPayer, address: owner.address };
+      const document = new AbortController();
+      const entered = createDeferred();
+      const resume = createDeferred();
+      const check = () => {
+        if (document.signal.aborted)
+          throw Object.assign(new Error('Approval document changed'), {
+            transactionNotBroadcast: true,
+          });
+      };
+      const { controller, estimateGas, sendAndSaveEthTransaction } =
+        buildController();
+      const provider = {
+        estimateGas,
+        getBalance: jest.fn().mockResolvedValue(BigNumber.from(0)),
+        call: jest.fn().mockResolvedValue(`0x${'0'.repeat(64)}`),
+        verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
+        getTransactionCount: jest.fn().mockResolvedValue(7),
+        getFeeData: jest.fn().mockResolvedValue({
+          gasPrice: BigNumber.from(13),
+          maxFeePerGas: BigNumber.from(13),
+          maxPriorityFeePerGas: BigNumber.from(1),
+        }),
+        sendTransaction: jest.fn(async (raw: string) => {
+          const hash = Transaction.from(raw).hash;
+          if (phase === 'during ACK') {
+            entered.resolve(undefined);
+            await resume.promise;
+          }
+          return {
+            hash,
+            async wait() {
+              if (phase === 'after ACK' || phase === 'wait failure') {
+                entered.resolve(undefined);
+                await resume.promise;
+              }
+              if (phase === 'wait failure')
+                throw Object.assign(
+                  new Error('Transaction confirmation failed'),
+                  {
+                    transactionHash: `0x${'ff'.repeat(32)}`,
+                    transactionNotBroadcast: true,
+                  }
+                );
+            },
+          };
+        }),
+      };
+      controller.deps.getEthereumTransaction = () => ({
+        web3Provider: provider,
+      });
+      controller.getWalletGasPayerAccount.mockResolvedValue(fixturePayer);
+      const persistSigned = jest.fn(async () => {
+        if (phase === 'before POST') {
+          entered.resolve(undefined);
+          await resume.promise;
+        }
+      });
+      const signingNetwork = {
+        kind: 'ethereum',
+        chainId: CHAIN_ID,
+        slip44: 60,
+        url: 'https://test-only.invalid',
+      } as const;
+      const sdk = new EthereumTransactions(
+        () => signingNetwork as any,
+        () => ({ address: owner.address, decryptedPrivateKey: key }),
+        () =>
+          ({
+            activeAccountId: 0,
+            activeAccountType: KeyringAccountType.HDAccount,
+            accounts: {
+              [KeyringAccountType.HDAccount]: { 0: { address: owner.address } },
+            },
+            activeNetwork: {
+              kind: 'ethereum',
+              chainId: CHAIN_ID,
+              slip44: 60,
+              url: 'https://test-only.invalid',
+            },
+          } as any),
+        {} as any,
+        {} as any,
+        () => () => undefined,
+        () => ({ assertCurrent: () => undefined, persistSigned })
+      );
+      Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
+      sendAndSaveEthTransaction.mockImplementation(
+        async (transaction, legacy, _payer, _metadata, options) => {
+          // The production MainController invokes the independent popup guard
+          // before signing, and only its wallet context after the wire ACK.
+          const response = await sdk.sendFormattedTransaction(
+            transaction,
+            legacy,
+            {
+              assertCurrent() {
+                options.assertCurrentContext();
+                options.assertBeforeSign?.();
+              },
+              mode: 'specialized',
+            }
+          );
+          await options.onBroadcast?.(response);
+          options.assertCurrentContext();
+          return response;
+        }
+      );
+      const approval = controller.submitSmartAccountExecution(
+        {
+          executions: [],
+          gasPayer: fixturePayer,
+          gasPrice: '13',
+          signature: '0x1234',
+          userOperation: {
+            ...buildUserOperation(),
+            ...(operation === 'prefund' ? { initCode: '0x1234' } : {}),
+          },
+          waitForConfirmation:
+            operation === 'handleOps' && phase === 'wait failure',
+        },
+        check
+      );
+      const result = approval.catch((error: unknown) => error);
+      const stage = await Promise.race([
+        entered.promise.then(() => 'entered'),
+        result.then((error) => {
+          throw error;
+        }),
+      ]);
+      expect(stage).toBe('entered');
+      document.abort();
+      resume.resolve(undefined);
+      const outcome = await result;
+      expect(persistSigned).toHaveBeenCalledTimes(1);
+      expect(sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
+      expect(sendAndSaveEthTransaction.mock.calls[0]?.[3]).toMatchObject(
+        operation === 'prefund'
+          ? { smartAccountDeploymentPrefund: true }
+          : { smartAccountExecution: true }
+      );
+      if (phase === 'before POST') {
+        expect(provider.sendTransaction).not.toHaveBeenCalled();
+        expect(outcome).toMatchObject({ transactionNotBroadcast: true });
+      } else {
+        expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+        const [raw] = provider.sendTransaction.mock.calls[0]!;
+        const { hash } = Transaction.from(raw);
+        if (operation === 'prefund') {
+          expect(outcome).toMatchObject({ transactionNotBroadcast: false });
+          expect(outcome).not.toHaveProperty('transactionHash');
+          expect(estimateGas).toHaveBeenCalledTimes(1);
+        } else if (phase === 'wait failure') {
+          expect(outcome).toBeInstanceOf(Error);
+          expect(outcome).toMatchObject({
+            message: 'Transaction confirmation failed',
+            transactionHash: hash,
+            transactionNotBroadcast: false,
+          });
+        } else expect(outcome).toMatchObject({ hash });
+      }
+    }
+  );
 
   it.each(['0', '13'])(
     'published SDK signs type-0 at exact gasPrice=%s without fetching a higher recommendation',

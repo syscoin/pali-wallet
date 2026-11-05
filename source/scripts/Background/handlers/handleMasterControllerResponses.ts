@@ -7,6 +7,7 @@ import { extractErrorMessage } from 'utils/index';
 import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
+  captureDappSmartAccountSubmission,
   captureDappUtxoSubmission,
   transactionApprovalExpired,
 } from './approvalSubmission';
@@ -272,6 +273,17 @@ export const handleMasterControllerResponses = (
             if (dappApproval) await dappApproval.checkDocument();
             else if (sendsEvm && isExternalWalletUrl(sender.url))
               throw transactionApprovalExpired();
+            const smartMethod =
+              walletMethod === 'submitSmartAccountExecution' ||
+              walletMethod === 'registerSmartAccountOnChain'
+                ? walletMethod
+                : undefined;
+            const smartApproval = smartMethod
+              ? captureDappSmartAccountSubmission(sender, smartMethod)
+              : undefined;
+            if (smartApproval) await smartApproval.checkDocument();
+            else if (smartMethod && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
             const utxoMethod =
               walletMethod === 'signSyscoinPsbt' ||
               walletMethod === 'signSendAndSaveTransaction'
@@ -308,6 +320,14 @@ export const handleMasterControllerResponses = (
                   }),
                 },
               ];
+            } else if (smartMethod) {
+              // This capability belongs to the worker, not the renderer.
+              argumentsForCall = [
+                smartApproval?.context
+                  ? { ...params?.[0], expectedContext: smartApproval.context }
+                  : params?.[0],
+                smartApproval?.assertCurrent,
+              ];
             } else if (utxoApproval) {
               argumentsForCall = [utxoApproval.input, utxoApproval.authority];
             } else if (utxoMethod) {
@@ -315,6 +335,7 @@ export const handleMasterControllerResponses = (
             }
             // Always execute the method; never attempt to send functions over messaging
             dappApproval?.assertCurrent();
+            smartApproval?.assertCurrent();
             utxoApproval?.authority.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
