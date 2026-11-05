@@ -478,3 +478,128 @@ it('cannot re-mark a later reorg as confirmed with an older held observation', a
     inspectUtxoSignedBundle((await c.storage.read())!, profile).entries[0].phase
   ).toBe('submitted');
 });
+
+it('retains previously confirmed bytes when their current owned observation is unknown', async () => {
+  const capacity = jest.replaceProperty(
+    signedBundle as { MAX_RECORDS: number },
+    'MAX_RECORDS',
+    1
+  );
+  try {
+    const c = context();
+    const transaction = record();
+    await c.records.persist(c.session, transaction);
+    await expect(
+      c.records.observe(c.session, owner, transaction.txid, url, async () => ({
+        txid: transaction.txid,
+        hex: transaction.rawTransaction,
+        confirmations: 1,
+        blockHash: 'f'.repeat(64),
+      }))
+    ).resolves.toBe('confirmed');
+
+    const fetchMissing = jest.fn(async () => null);
+    await expect(
+      c.records.observe(
+        c.session,
+        owner,
+        transaction.txid,
+        'https://another.invalid/api/v2/sendtx/',
+        fetchMissing
+      )
+    ).resolves.toBe('unknown');
+    await expect(
+      c.records.observe(
+        c.session,
+        { ...owner, account: { ...owner.account, id: 1 } },
+        transaction.txid,
+        url,
+        fetchMissing
+      )
+    ).resolves.toBe('unknown');
+    expect(fetchMissing).not.toHaveBeenCalled();
+    expect(await c.records.excludedOutpoints(c.session, owner)).toEqual([]);
+
+    await expect(
+      c.records.observe(c.session, owner, transaction.txid, url, fetchMissing)
+    ).resolves.toBe('unknown');
+    const reopened = new UtxoSignedRecords(c.storage);
+    await expect(
+      reopened.persist(c.session, {
+        ...record(0xfffffffa),
+        operation: 'external',
+      })
+    ).rejects.toThrow('UTXO_SIGNED_RECORD_CAPACITY');
+    expect(await reopened.excludedOutpoints(c.session, owner)).toEqual([
+      { txid: transaction.outpoints[0]!.slice(0, 64), vout: 0 },
+    ]);
+    expect(
+      await reopened.readExact(c.session, owner, transaction.txid)
+    ).toEqual(transaction);
+  } finally {
+    capacity.restore();
+  }
+});
+
+it('does not erase an existing submission acknowledgment on an unknown observation', async () => {
+  const c = context();
+  const transaction = record();
+  await c.records.persist(c.session, transaction);
+  await c.records.acknowledge(c.session, owner, transaction.txid);
+  const writes = c.cas.mock.calls.length;
+  await expect(
+    c.records.observe(c.session, owner, transaction.txid, url, async () => null)
+  ).resolves.toBe('unknown');
+  expect(c.cas).toHaveBeenCalledTimes(writes);
+  expect(await c.records.list(c.session, owner)).toEqual([
+    { txid: transaction.txid, accepted: true },
+  ]);
+});
+
+it('keeps a newer confirmation when an older unknown observation loses ownership before commit', async () => {
+  const c = context();
+  const transaction = record();
+  const confirmed = {
+    txid: transaction.txid,
+    hex: transaction.rawTransaction,
+    confirmations: 1,
+    blockHash: 'f'.repeat(64),
+  };
+  await c.records.persist(c.session, transaction);
+  await c.records.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => confirmed
+  );
+  const entered = deferred();
+  const resume = deferred();
+  const commit = c.cas.getMockImplementation()!;
+  c.cas.mockImplementationOnce(async (...args) => {
+    entered.finish();
+    await resume.promise;
+    return commit(...args);
+  });
+  const obsolete = c.records.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => null
+  );
+  const rejected = expect(obsolete).rejects.toThrow('UTXO observation changed');
+  await entered.promise;
+  const reopened = new UtxoSignedRecords(c.storage);
+  const newer = reopened.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => confirmed
+  );
+  resume.finish();
+  await rejected;
+  await expect(newer).resolves.toBe('confirmed');
+  expect(await reopened.excludedOutpoints(c.session, owner)).toEqual([]);
+});

@@ -458,7 +458,7 @@ export class UtxoSignedRecords {
     txid: string
   ): Promise<void> {
     return this.exclusive(() =>
-      this.mark(session, owner, txid, 'submitted', true)
+      this.mark(session, owner, txid, 'submitted', 'pending')
     );
   }
 
@@ -467,7 +467,7 @@ export class UtxoSignedRecords {
     owner: UtxoRecordOwner,
     txid: string,
     phase: Summary['phase'],
-    pendingOnly = false
+    onlyFrom?: Summary['phase']
   ) {
     const identity = ownerId(owner),
       key = recordKey(chainKey(owner), txid);
@@ -479,7 +479,7 @@ export class UtxoSignedRecords {
       if (!match) return corrupt();
       if (
         match.phase === phase ||
-        (pendingOnly && match.phase !== 'pending') ||
+        (onlyFrom !== undefined && match.phase !== onlyFrom) ||
         (await this.write(
           session,
           before,
@@ -603,14 +603,13 @@ export class UtxoSignedRecords {
         txid?: string;
       } | null;
       guard(observation);
-      if (
-        observed?.txid !== txid ||
-        observed.hex !== retained.rawTransaction ||
-        !Number.isSafeInteger(observed.confirmations) ||
-        observed.confirmations! < 0
-      )
-        return 'unknown';
+      const matches =
+        observed?.txid === txid &&
+        observed.hex === retained.rawTransaction &&
+        Number.isSafeInteger(observed.confirmations) &&
+        observed.confirmations! >= 0;
       const confirmed =
+        matches &&
         observed.confirmations! > 0 &&
         typeof observed.blockHash === 'string' &&
         HASH.test(observed.blockHash);
@@ -619,10 +618,13 @@ export class UtxoSignedRecords {
           observation,
           owner,
           txid,
-          confirmed ? 'confirmed' : 'submitted'
+          confirmed ? 'confirmed' : matches ? 'submitted' : 'pending',
+          // An unverified observation revokes terminal eviction authority.
+          // Preserve any earlier submission ACK on an already retained record.
+          matches ? undefined : 'confirmed'
         )
       );
-      return confirmed ? 'confirmed' : 'seen';
+      return confirmed ? 'confirmed' : matches ? 'seen' : 'unknown';
     } finally {
       if (this.observations.get(key) === request) this.observations.delete(key);
     }
