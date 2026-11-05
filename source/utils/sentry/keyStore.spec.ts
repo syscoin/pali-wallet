@@ -1,5 +1,6 @@
 import { webcrypto } from 'crypto';
 
+import { createSentryKeyVault } from '../../wallet/sentryKeyVault';
 import { chromeStorage } from 'utils/storageAPI';
 
 import {
@@ -63,6 +64,43 @@ it('stores authenticated ciphertext, never operator secrets or wallet seed', asy
       assertCurrent,
     })
   ).toEqual(key);
+});
+
+it('shares the authenticated envelope with a host that owns an immutable snapshot', async () => {
+  const portable = createSentryKeyVault({
+    crypto: () => globalThis.crypto,
+    async read(name) {
+      const stored = records.get(name);
+      return stored ? Object.freeze(structuredClone(stored)) : null;
+    },
+    async write(name, value, current) {
+      current();
+      records.set(name, structuredClone(value));
+    },
+  });
+  const vaultId = await getSentryVaultId('synthetic-xpub');
+  expect(await portable.getSentryVaultId('synthetic-xpub')).toBe(vaultId);
+  const input = { vaultId, network: 'testnet' as const, seed, assertCurrent };
+  const summary = await saveSentryKey({
+    ...input,
+    label: 'Shared envelope',
+    key,
+  });
+  await expect(
+    portable.loadSentryKey({ ...input, id: summary.id })
+  ).resolves.toEqual(key);
+  await portable.removeSentryKey(
+    vaultId,
+    input.network,
+    summary.id,
+    assertCurrent
+  );
+  expect(await listSentryKeys(vaultId, input.network)).toEqual([]);
+  const [other] = await portable.saveSentryKeys({
+    ...input,
+    entries: [{ label: 'Same format', key }],
+  });
+  await expect(loadSentryKey({ ...input, id: other.id })).resolves.toEqual(key);
 });
 
 it('decrypts after Chrome storage reorders the authenticated summary properties', async () => {
