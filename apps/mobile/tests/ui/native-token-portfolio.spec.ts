@@ -288,6 +288,69 @@ test('manual collectible check works without an explorer and cancels an edited s
   await page.screenshot({ path: testInfo.outputPath('manual-collectible-large.png') });
 });
 
+test('saves only the checked collectible and removes just one saved item', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&collectible-check');
+  const requestCount = () => page.evaluate(() => window.__nativeTokenPortfolio.requests().length);
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const save = page.getByRole('button', { name: 'Save collectible', exact: true });
+  const manual = page.getByRole('button', { name: 'Check by contract', exact: true });
+  const storage = () => page.evaluate(() => localStorage.getItem('pali-native-token-ui:native-token-registry-v1'));
+  const fill = async (id: string) => {
+    await manual.click();
+    await page.getByRole('textbox', { name: 'Collectible contract address', exact: true }).fill(long);
+    await page.getByRole('button', { name: 'ERC-1155', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Token ID', exact: true }).fill(id);
+    await expect(save).toHaveCount(0);
+  };
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await fill('0');
+  await check.click();
+  await expect(save).toBeVisible();
+  expect(await storage()).toBeNull();
+  await page.getByRole('textbox', { name: 'Token ID', exact: true }).fill('1');
+  await expect(save).toHaveCount(0);
+  expect(await requestCount()).toBe(7);
+  await check.click();
+  await save.click();
+  const one = page.getByRole('button', { name: `View saved token 1, ${long}`, exact: true });
+  const zeroItem = page.getByRole('button', { name: `View saved token 0, ${long}`, exact: true });
+  await expect(one).toBeVisible();
+  await expect(zeroItem).toHaveCount(0);
+  expect(await requestCount()).toBe(14);
+  await fill('0');
+  await check.click();
+  await save.click();
+  await expect(zeroItem).toBeVisible();
+  expect(await requestCount()).toBe(21);
+  expect(JSON.parse((await storage())!).entries.map(({ collectible }: { collectible: { tokenId: string } }) => collectible.tokenId)).toEqual(['1', '0']);
+  await page.screenshot({ path: testInfo.outputPath('saved-collectibles-320.png') });
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await zeroItem.click();
+  await expect(page.getByText('Token ID 0', { exact: true })).toBeVisible();
+  expect(await requestCount()).toBe(0);
+  await page.getByRole('button', { name: 'Remove collectible', exact: true }).click();
+  await expect(page.getByText('Remove this collectible?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Token ID 0', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Remove this collectible?', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Remove collectible', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove from saved list', exact: true }).click();
+  await expect(one).toBeVisible();
+  await expect(zeroItem).toHaveCount(0);
+  expect(await requestCount()).toBe(0);
+  expect(JSON.parse((await storage())!).entries.map(({ collectible }: { collectible: { tokenId: string } }) => collectible.tokenId)).toEqual(['1']);
+  const saved = await storage();
+  await fill('1');
+  await check.click();
+  await expect(page.getByText('Already in your saved list.', { exact: true })).toBeVisible();
+  await expect(save).toHaveCount(0);
+  expect(await requestCount()).toBe(7);
+  expect(await storage()).toBe(saved);
+});
+
 test('failed holdings stays separate from manual review and requires explicit retry', async ({
   page,
 }) => {

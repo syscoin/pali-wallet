@@ -8,6 +8,7 @@ import {
 } from '../src/portfolio/nativeTokens.ts';
 import { createNftOwnershipReader } from '../src/portfolio/nftOwnershipReadRpc.ts';
 import type { Erc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
+import type { SavedCollectible } from '../src/portfolio/tokenRegistry.ts';
 import type {
   OwnedTokenReader,
   OwnedTokenSuggestions,
@@ -45,6 +46,8 @@ function fixture(
     readHoldings?: OwnedTokenReader;
     readNft?: ReturnType<typeof createNftOwnershipReader>;
     getCatalogue?: () => NativeWalletCatalogueSnapshot | null;
+    collectibles?: SavedCollectible[];
+    beforeCollectibleWrite?: () => Promise<void>;
   } = {}
 ) {
   let state: CustodySnapshot = {
@@ -57,8 +60,11 @@ function fixture(
   };
   const listeners = new Set<(snapshot: CustodySnapshot) => void>();
   const mutations: { kind: string; address: string }[] = [];
+  const collectibleWrites: { kind: 'add' | 'remove'; item: SavedCollectible }[] = [];
   let items = options.items ?? [];
+  let collectibles = options.collectibles ?? [];
   let revision = 0;
+  const inventory = () => ({ revision, items, ...(collectibles.length ? { collectibles } : {}) });
   const source = {
     getSnapshot: () => state,
     getCatalogue: options.getCatalogue,
@@ -72,23 +78,47 @@ function fixture(
   const runtime: NativeTokenRuntime = {
     async load(guard) {
       guard();
-      return { revision, items };
+      return inventory();
     },
     async add(expected, token, guard) {
       guard();
       assert.equal(expected, revision);
       mutations.push({ kind: 'add', address: state.account!.address });
       items = [...items, token];
-      return { revision: ++revision, items };
+      revision++;
+      return inventory();
     },
     async remove(expected, contract, guard) {
       guard();
       assert.equal(expected, revision);
       mutations.push({ kind: 'remove', address: state.account!.address });
       items = items.filter((item) => item.contractAddress !== contract);
-      return { revision: ++revision, items };
+      revision++;
+      return inventory();
     },
   };
+  if (options.collectibles) {
+    runtime.addCollectible = async (expected, item, guard) => {
+      guard();
+      await options.beforeCollectibleWrite?.();
+      guard();
+      assert.equal(expected, revision);
+      collectibleWrites.push({ kind: 'add', item });
+      collectibles = [...collectibles, item];
+      revision++;
+      return inventory();
+    };
+    runtime.removeCollectible = async (expected, item, guard) => {
+      guard();
+      await options.beforeCollectibleWrite?.();
+      guard();
+      assert.equal(expected, revision);
+      collectibleWrites.push({ kind: 'remove', item });
+      collectibles = collectibles.filter((row) => JSON.stringify(row) !== JSON.stringify(item));
+      revision++;
+      return inventory();
+    };
+  }
   const reader = options.reader ?? {
     async readToken() {
       return { metadata, units: '0' };
@@ -109,7 +139,7 @@ function fixture(
   const change = (
     address: string | null,
     notify = true,
-    network: 'ethereum' | 'base' = 'ethereum'
+    network = 'ethereum'
   ) => {
     state = {
       ...state,
@@ -124,6 +154,8 @@ function fixture(
     source,
     change,
     mutations,
+    collectibleWrites,
+    bumpInventory: () => { revision++; },
     listenerCount: () => listeners.size,
   };
 }
@@ -287,6 +319,240 @@ test('manual and explorer ownership checks share admission without relaxing sugg
   assert.deepEqual(await selected, { tokenId: '7', units: '1' });
   assert.deepEqual(await f.model.view.checkManualCollectible(account, query, signal), { tokenId: '7', units: '0' });
   assert.equal(reads, 2);
+  disconnect();
+});
+
+const zeroCollectible = { contractAddress: B, tokenStandard: 'ERC-1155', tokenId: '0' } as const;
+const siblingCollectible = { ...zeroCollectible, tokenId: '1' } as const;
+
+test('saved collectible consent is opaque, one-use and preserves observed ERC20 rows without RPC', async () => {
+  let balances = 0, checks = 0;
+  const f = fixture({
+    items: [metadata],
+    collectibles: [siblingCollectible],
+    reader: {
+      async readToken() { assert.fail('Collectible actions must not read ERC20 metadata'); },
+      async readBalance() { balances++; return { units: '42' }; },
+    },
+    async readNft(selection) {
+      checks++;
+      assert.equal(selection.contractAddress, B);
+      assert.equal(selection.owner, A);
+      assert.equal(selection.tokenId, '0');
+      return { tokenId: '0', units: '0' };
+    },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const before = f.model.getSnapshot();
+  const account = before.account!;
+  const signal = new AbortController().signal;
+  const observation = await f.model.view.checkManualCollectible(account, { ...zeroCollectible, tokenId: '0x0' }, signal);
+  assert.equal(observation.units, '0');
+  assert.equal(observation.tokenId, '0');
+  assert.deepEqual(f.collectibleWrites, []);
+  assert.ok(observation.saveTicket);
+  assert.deepEqual(Reflect.ownKeys(observation.saveTicket), []);
+  assert.equal(await f.model.view.saveCollectible({ ...observation.saveTicket }), false);
+  assert.deepEqual(await Promise.all([
+    f.model.view.saveCollectible(observation.saveTicket),
+    f.model.view.saveCollectible(observation.saveTicket),
+  ]), [true, false]);
+  assert.deepEqual(f.collectibleWrites, [{ kind: 'add', item: zeroCollectible }]);
+  const afterSave = f.model.getSnapshot();
+  assert.equal(afterSave.items, before.items);
+  assert.equal(afterSave.items[0]?.units, '42');
+  assert.deepEqual(afterSave.collectibles, [siblingCollectible, zeroCollectible]);
+  assert.equal(Object.isFrozen(afterSave.collectibles), true);
+  const saved = afterSave.collectibles![1]!;
+  assert.equal(Object.isFrozen(saved), true);
+  await assert.rejects(f.model.view.checkSavedCollectible(account, { ...saved }, '0', signal), /CANCELLED/);
+  await assert.rejects(f.model.view.checkSavedCollectible(account, saved, '1', signal), /CANCELLED/);
+  assert.deepEqual(await f.model.view.checkSavedCollectible(account, saved, '000', signal), { tokenId: '0', units: '0' });
+  assert.equal(await f.model.view.removeCollectible({ ...account }, saved), false);
+  assert.equal(await f.model.view.removeCollectible(account, { ...saved }), false);
+  assert.equal(await f.model.view.removeCollectible(account, saved), true);
+  assert.equal(await f.model.view.removeCollectible(account, saved), false);
+  assert.deepEqual(f.collectibleWrites, [
+    { kind: 'add', item: zeroCollectible }, { kind: 'remove', item: zeroCollectible },
+  ]);
+  assert.deepEqual(f.model.getSnapshot().collectibles, [siblingCollectible]);
+  assert.equal(f.model.getSnapshot().items, before.items);
+  assert.equal(checks, 2);
+  assert.equal(balances, 1);
+  disconnect();
+});
+
+test('ERC721 review saves a collection and keeps the exact checked ID out of its identity', async () => {
+  const held = deferred<{ tokenId: string; units: string }>();
+  let captured: CollectibleQuery | undefined;
+  const f = fixture({
+    collectibles: [],
+    readNft(query) { captured = query; return held.promise; },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const account = f.model.getSnapshot().account!;
+  const draft: CollectibleQuery = { contractAddress: B, tokenStandard: 'ERC-721', tokenId: '0x0' };
+  const pending = f.model.view.checkManualCollectible(account, draft, new AbortController().signal);
+  Object.assign(draft, { tokenId: '1', contractAddress: A });
+  held.resolve({ tokenId: '0', units: '1' });
+  const observation = await pending;
+  assert.equal(captured?.contractAddress, B);
+  assert.equal(captured?.tokenId, '0');
+  assert.ok(observation.saveTicket);
+  assert.equal(await f.model.view.saveCollectible(observation.saveTicket), true);
+  assert.deepEqual(f.model.getSnapshot().collectibles, [{ contractAddress: B, tokenStandard: 'ERC-721' }]);
+  disconnect();
+});
+
+test('retired reviews cannot save after edit, a newer check, Back, lock, ABA, alias or inventory change', async () => {
+  const network = getNativeNetwork('ethereum');
+  const alias = createNativeNetwork({ ...network, id: 'ethereum-alias', rpcUrl: 'https://ethereum-alias.invalid' });
+  for (const retire of ['edit', 'new check', 'back', 'lock', 'ABA', 'alias', 'inventory'] as const) {
+    const f = fixture({
+      collectibles: [],
+      async readNft({ tokenId }) { return { tokenId, units: '0' }; },
+      getCatalogue: () => ({
+        revision: 0, accounts: [], networks: [network, alias], active: { accountId: 'hd:60:0', networkId: network.id },
+      }),
+    });
+    const disconnect = f.model.connect();
+    await tick();
+    const account = f.model.getSnapshot().account!;
+    const original = new AbortController();
+    const { saveTicket } = await f.model.view.checkManualCollectible(account, zeroCollectible, original.signal);
+    assert.ok(saveTicket, retire);
+    let next;
+    if (retire === 'edit') original.abort();
+    else if (retire === 'new check') {
+      next = (await f.model.view.checkManualCollectible(account, siblingCollectible,
+        new AbortController().signal)).saveTicket;
+    } else if (retire === 'back') f.model.closeDiscovery();
+    else if (retire === 'lock') { f.change(null); f.change(A); }
+    else if (retire === 'ABA') { f.change(B); f.change(A); }
+    else if (retire === 'alias') f.change(A, true, alias.id);
+    else { f.bumpInventory(); await f.model.refresh(); }
+    assert.equal(await f.model.view.saveCollectible(saveTicket), false, retire);
+    assert.deepEqual(f.collectibleWrites, [], retire);
+    if (next) {
+      assert.equal(await f.model.view.saveCollectible(next), true);
+      assert.deepEqual(f.collectibleWrites, [{ kind: 'add', item: siblingCollectible }]);
+    }
+    disconnect();
+  }
+});
+
+test('aborting the original check signal during Save revokes the runtime precommit guard', async () => {
+  const held = deferred<void>();
+  const entered = deferred<void>();
+  const f = fixture({
+    collectibles: [],
+    async readNft({ tokenId }) { return { tokenId, units: '1' }; },
+    beforeCollectibleWrite() { entered.resolve(); return held.promise; },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const account = f.model.getSnapshot().account!;
+  const original = new AbortController();
+  const { saveTicket } = await f.model.view.checkManualCollectible(account, zeroCollectible, original.signal);
+  assert.ok(saveTicket);
+  const pending = f.model.view.saveCollectible(saveTicket);
+  await entered.promise;
+  original.abort();
+  held.resolve();
+  assert.equal(await pending, false);
+  assert.equal(await f.model.view.saveCollectible(saveTicket), false);
+  assert.deepEqual(f.collectibleWrites, []);
+  disconnect();
+});
+
+test('only matching exact ownership results can mint a review for the selected suggestion', async () => {
+  const item = Object.freeze({ ...zeroCollectible, name: 'Public hint', units: '900' });
+  let result = { tokenId: '1', units: '0' };
+  const f = fixture({
+    collectibles: [],
+    async readHoldings() { return { tokens: [], collectibles: [item], limited: false }; },
+    async readNft() { return result; },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  await f.model.discover('collectibles');
+  const signal = new AbortController().signal;
+  await assert.rejects(f.model.view.checkCollectible(item, '0', signal));
+  result = { tokenId: '0', units: '1e3' };
+  await assert.rejects(f.model.view.checkCollectible(item, '0', signal));
+  result = { tokenId: '0', units: '0' };
+  const { saveTicket } = await f.model.view.checkCollectible(item, '0x0', signal);
+  assert.ok(saveTicket);
+  f.model.closeDiscovery();
+  assert.equal(await f.model.view.saveCollectible(saveTicket), false);
+  assert.deepEqual(f.collectibleWrites, []);
+  disconnect();
+});
+
+test('a collectible save retires a targeted ERC20 refresh without discarding its last observation', async () => {
+  const held = deferred<{ units: string }>();
+  let checks = 0, balances = 0, balanceSignal: AbortSignal | undefined;
+  const f = fixture({
+    items: [metadata], collectibles: [],
+    reader: {
+      async readToken() { assert.fail('Unexpected token metadata read'); },
+      async readBalance(_network, _owner, _metadata, signal) {
+        if (++balances === 1) return { units: '21' };
+        balanceSignal = signal;
+        return held.promise;
+      },
+    },
+    async readNft({ tokenId }) { checks++; return { tokenId, units: '0' }; },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const account = f.model.getSnapshot().account!;
+  const refreshing = f.model.view.refresh(metadata.contractAddress);
+  assert.equal(f.model.getSnapshot().items[0]?.status, 'loading');
+  const { saveTicket } = await f.model.view.checkManualCollectible(account, zeroCollectible, new AbortController().signal);
+  assert.ok(saveTicket);
+  assert.equal(await f.model.view.saveCollectible(saveTicket), true);
+  assert.equal(balanceSignal?.aborted, true);
+  assert.deepEqual(f.model.getSnapshot().items[0], {
+    metadata, status: 'available', units: '21', updatedAt: 123,
+  });
+  held.resolve({ units: '55' });
+  await refreshing;
+  assert.equal(f.model.getSnapshot().items[0]?.units, '21');
+  assert.equal(balances, 2);
+  assert.equal(checks, 1);
+  disconnect();
+});
+
+test('saved collectibles reload on a same-chain alias, and checks use only the new exact membership', async () => {
+  const network = getNativeNetwork('ethereum');
+  const alias = createNativeNetwork({ ...network, id: 'ethereum-alias', rpcUrl: 'https://ethereum-alias.invalid' });
+  const selected: string[] = [];
+  const f = fixture({
+    collectibles: [zeroCollectible],
+    async readNft({ networkId, tokenId }) { selected.push(networkId); return { tokenId, units: '0' }; },
+    getCatalogue: () => ({
+      revision: 0, accounts: [], networks: [network, alias], active: { accountId: 'hd:60:0', networkId: alias.id },
+    }),
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const old = f.model.getSnapshot();
+  const oldItem = old.collectibles![0]!;
+  f.change(A, true, alias.id);
+  await tick();
+  const current = f.model.getSnapshot();
+  const item = current.collectibles![0]!;
+  const signal = new AbortController().signal;
+  assert.deepEqual(item, oldItem);
+  assert.notEqual(item, oldItem);
+  await assert.rejects(f.model.view.checkSavedCollectible(current.account!, oldItem, '0', signal), /CANCELLED/);
+  assert.equal(await f.model.view.removeCollectible(old.account!, item), false);
+  assert.deepEqual(await f.model.view.checkSavedCollectible(current.account!, item, '0', signal), { tokenId: '0', units: '0' });
+  assert.deepEqual(selected, [alias.id]);
+  assert.deepEqual(f.collectibleWrites, []);
   disconnect();
 });
 
