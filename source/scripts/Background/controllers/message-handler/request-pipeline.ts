@@ -55,10 +55,12 @@ const NETWORK_RECOVERY_METHODS = new Set([
 ]);
 const isNetworkReadyForRequest = (context: IEnhancedRequestContext) => {
   const { networkStatus } = store.getState().vaultGlobal;
+  const { method } = context.originalRequest;
   return (
     networkStatus === 'idle' ||
     (networkStatus === 'error' &&
-      NETWORK_RECOVERY_METHODS.has(context.originalRequest.method))
+      // Chain identity reads the current wallet selection without using the RPC.
+      (method === 'eth_chainId' || NETWORK_RECOVERY_METHODS.has(method)))
   );
 };
 
