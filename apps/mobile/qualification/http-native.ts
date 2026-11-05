@@ -114,9 +114,10 @@ export async function qualifyNativeHttp(options: Readonly<{
         quoteSignal = init.signal;
         return response;
       });
+      const started = performance.now();
       assert(await read({ kind: 'utxo', endpoint }, 'usd', owner) === null);
       // The quote must abort itself before the harness can abort its owner.
-      assert(quoteSignal?.aborted && !owner.aborted);
+      assert(quoteSignal?.aborted && !owner.aborted && performance.now() - started < 6_000);
       await query(`${route}-closed`);
     });
   }
@@ -129,8 +130,10 @@ export async function qualifyNativeHttp(options: Readonly<{
       quoteSignal = init.signal;
       return walletFetch(target, init);
     });
+    const started = performance.now();
     assert(await read({ kind: 'utxo', endpoint }, 'usd', owner) === null);
-    assert(quoteSignal?.aborted && !owner.aborted);
+    // A fast transport failure also aborts in cleanup, but proves no deadline.
+    assert(quoteSignal?.aborted && !owner.aborted && performance.now() - started >= 7_500);
     await query(`${STALLED_QUOTE_ROUTE}-closed`);
   }, 11_000);
   currentCase = 'healthy-after-cancel';
