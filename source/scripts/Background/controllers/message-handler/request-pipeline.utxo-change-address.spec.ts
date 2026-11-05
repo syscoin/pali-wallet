@@ -5,14 +5,15 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
+import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import {
   HardwareWalletManager,
   KeyringManager,
 } from '@sidhujag/sysweb3-keyring';
-import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import http from 'http';
 import https from 'https';
 
+import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
 import DAppController from '../DAppController';
 import MainController from '../MainController';
 import dappReducer from 'state/dapp';
@@ -134,7 +135,7 @@ beforeEach(() => {
       getDefaultMiddleware({ serializableCheck: false }),
   });
   hardwareManager = new HardwareWalletManager();
-  manager = new KeyringManager(hardwareManager);
+  manager = createTestKeyringManager(undefined, { hardwareManager });
   manager.setVaultStateGetter(() => mockStore.getState().vault);
   manager.isUnlocked = () => true;
   // Keep the SDK's real account/type selection; only its eventual backend

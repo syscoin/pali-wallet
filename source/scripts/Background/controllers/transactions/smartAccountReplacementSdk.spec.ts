@@ -2,7 +2,6 @@ import {
   BigNumber,
   serializeTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
-import { KeyringManager } from '@sidhujag/sysweb3-keyring/cjs/keyring-manager';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import {
   privateKeyToAccount,
@@ -11,6 +10,7 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 jest.mock(
@@ -31,12 +31,6 @@ jest.mock('syscoinjs-lib', () => ({
   utils: { bitcoinjs: {} },
   networks: { bitcoin: {}, syscoin: {} },
 }));
-jest.mock(
-  '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager-singleton',
-  () => ({
-    HardwareWalletManagerSingleton: { getInstance: () => ({}) },
-  })
-);
 jest.mock('@sidhujag/sysweb3-keyring/cjs/ledger', () => ({
   LedgerKeyring: jest.fn(),
 }));
@@ -1400,7 +1394,7 @@ describe('published keyring account-scoped replacement signing', () => {
   );
 
   it('passes the exact account to the actual keyring credential getter without replacing the vault getter', async () => {
-    const manager: any = new KeyringManager();
+    const manager: any = createTestKeyringManager();
     const vault = {
       activeNetwork: state.activeNetwork,
       activeAccount: smart,

@@ -107,7 +107,7 @@ async function stageWallet(
     if (key !== 'vault' && key !== 'vault-keys') invalid();
   };
   const keyring = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost({
+    sdk.createKeyringHost({
       async get(key) {
         allowed(key);
         return values.get(key);

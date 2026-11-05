@@ -19,7 +19,7 @@ export async function createAccountRecordTestFixture() {
       for (const [key, value] of Object.entries(entries)) values.set(key, value);
       return true;
     } };
-  const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost(storage));
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(storage));
   const group = structuredClone(staged.groups[0]!);
   const state = { activeAccount: group.activeAccount, activeNetwork: group.activeNetwork, accounts: group.accounts };
   keyring.setVaultStateGetter(() => state);

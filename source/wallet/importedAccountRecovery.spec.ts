@@ -9,7 +9,7 @@ import {
 } from './importedAccountRecovery';
 
 jest.unmock('syscoinjs-lib');
-const { SoftwareKeyring, createSoftwareKeyringHost } = jest.requireActual(
+const { SoftwareKeyring, createKeyringHost } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/software.js'
 );
 const { BIP32Factory } = jest.requireActual('bip32');
@@ -65,7 +65,7 @@ async function fixture(
       SmartAccount: {},
     },
   };
-  const keyring = new SoftwareKeyring(createSoftwareKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage));
   keyring.setVaultStateGetter(() => state);
   await keyring.initializeSession(seed, password);
   return { keyring, network, state, records };

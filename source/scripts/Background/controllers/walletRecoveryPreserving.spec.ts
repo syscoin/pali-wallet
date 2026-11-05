@@ -118,7 +118,7 @@ async function fixture() {
     label: 'Public offline fixture',
     url: 'https://offline.invalid',
   };
-  let keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost(port));
+  let keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(port));
   const group: any = {
     activeNetwork: network,
     activeAccount: { type: 'HDAccount', id: 0 },
@@ -308,7 +308,7 @@ async function fixture() {
       unlocked = false;
     },
     async activateRecoveredWallet(password: string, assertCurrent: () => void) {
-      keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost(port));
+      keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(port));
       keyring.setVaultStateGetter(() => mockState.vault);
       expect(await keyring.unlock(password)).toMatchObject({ canLogin: true });
       assertCurrent();

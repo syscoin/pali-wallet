@@ -296,6 +296,7 @@ import {
   tokenBalanceKey,
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
+import { createBrowserKeyringHost } from './browserKeyringHost';
 import ChainListService from './chainlist';
 import {
   assertEvmSignedRecordSdk,
@@ -340,6 +341,7 @@ import {
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
+import type { KeyringHost } from '@sidhujag/sysweb3-keyring';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
@@ -392,6 +394,7 @@ const fiatNetworkKey = (network: INetwork) =>
 class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
+  private keyringHost?: KeyringHost;
 
   public account: {
     eth: IEthAccountController;
@@ -1125,15 +1128,7 @@ class MainController {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      assertEvmSignedRecordSdk();
-      const keyring = new KeyringManager(undefined, getLedgerHost(), {
-        captureEvmSubmission: (context) =>
-          this.captureEvmSignedSubmission(keyring, context),
-      });
-      // Set up storage access for each keyring
-      keyring.setStorage(chrome.storage.local);
-      keyring.setVaultStateGetter(() => store.getState().vault);
-      this.keyrings.set(slip44, keyring);
+      this.keyrings.set(slip44, this.createKeyringOnDemand());
     }
     return this.keyrings.get(slip44)!;
   }
@@ -1474,17 +1469,17 @@ class MainController {
     }
   }
 
-  // Create a keyring on demand with storage access
   private createKeyringOnDemand(): KeyringManager {
-    // Create new keyring with the wallet state
     assertEvmSignedRecordSdk();
-    const keyring = new KeyringManager(undefined, getLedgerHost(), {
+    const host = (this.keyringHost ??= createBrowserKeyringHost(
+      chrome.storage.local
+    ));
+    const keyring = new KeyringManager(host, {
+      ledgerHost: getLedgerHost(),
       captureEvmSubmission: (context) =>
         this.captureEvmSignedSubmission(keyring, context),
     });
 
-    // Set up storage access - this gives it access to the global encrypted vault
-    keyring.setStorage(chrome.storage.local);
     keyring.setVaultStateGetter(() => store.getState().vault);
 
     // Note: Session transfer is handled in switchActiveKeyring method
@@ -3255,7 +3250,17 @@ class MainController {
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
     const walletStateGeneration = this.walletStateGeneration;
-    const result = await keyring.unlock(pwd);
+    const isCurrent = () =>
+      walletStateGeneration === this.walletStateGeneration &&
+      generation === this.walletSessionGeneration &&
+      keyring === this.getActiveKeyring();
+    let result: Awaited<ReturnType<typeof keyring.unlock>>;
+    try {
+      result = await keyring.unlock(pwd);
+    } catch (error) {
+      if (!isCurrent()) throw new Error(WALLET_SESSION_CHANGED_ERROR);
+      throw error;
+    }
     if (
       !result ||
       typeof result !== 'object' ||
@@ -3275,14 +3280,10 @@ class MainController {
       walletStateGeneration === this.walletStateGeneration
     )
       await this.recordFailedAttempt();
-    if (
-      walletStateGeneration !== this.walletStateGeneration ||
-      generation !== this.walletSessionGeneration ||
-      keyring !== this.getActiveKeyring()
-    ) {
+    if (!isCurrent()) {
       // KDF/decryption cannot be aborted. Drop the session it created if a
       // lock/reset/network change happened while it was running.
-      await keyring.lockWallet();
+      if (result.canLogin) await keyring.lockWallet();
       throw new Error(WALLET_SESSION_CHANGED_ERROR);
     }
     return result;

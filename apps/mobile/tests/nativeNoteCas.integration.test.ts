@@ -8,7 +8,7 @@ import {
   INetworkType,
   KeyringAccountType,
   SoftwareKeyring,
-  createSoftwareKeyringHost,
+  createKeyringHost,
 } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { HDNodeWallet } from 'ethers/wallet';
 import { AsyncMutex } from '../../../source/utils/asyncMutex.ts';
@@ -90,7 +90,7 @@ test('real SDK note restore revokes a locked write, consumes an uncertain commit
   };
   const createKeyring = (currentStorage: SqliteWalletStorage) => {
     const current = new SoftwareKeyring(
-      createSoftwareKeyringHost(currentStorage.keyringStorage)
+      createKeyringHost(currentStorage.keyringStorage)
     );
     current.setVaultStateGetter(() => state);
     return current;

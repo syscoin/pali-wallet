@@ -243,7 +243,7 @@ test('pending work is bounded and fatal disposal prevents later use and late out
 
 test('published SDK uses this facade for production-cost vault and private-record operations', async () => {
   const require = createRequire(import.meta.url);
-  const { SoftwareKeyring, createSoftwareKeyringHost, KeyringAccountType, INetworkType } = require('@sidhujag/sysweb3-keyring/cjs/software');
+  const { SoftwareKeyring, createKeyringHost, KeyringAccountType, INetworkType } = require('@sidhujag/sysweb3-keyring/cjs/software');
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
   const previousEnv = [process.env.NODE_ENV, process.env.SYSWEB3_PBKDF2_ENC_ITERS];
   const f = bridge();
@@ -258,7 +258,7 @@ test('published SDK uses this facade for production-cost vault and private-recor
       return true;
     },
   };
-  const keyring = new SoftwareKeyring(createSoftwareKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage));
   const state = {
     activeAccount: { type: KeyringAccountType.HDAccount, id: 0 },
     activeNetwork: { kind: INetworkType.Ethereum, chainId: 1, slip44: 60, currency: 'ETH', label: 'Ethereum', url: 'https://offline.invalid' },

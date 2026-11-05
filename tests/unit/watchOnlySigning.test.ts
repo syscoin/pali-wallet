@@ -46,38 +46,28 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
   let manager: any;
   try {
     const fixture = createUtxoFixture();
-    // A separate module graph confines the SDK's shared storage client to this
-    // test. Initialization/encryption/signing remain the installed SDK code.
+    const records = new Map<string, unknown>();
     jest.isolateModules(() => {
-      const { KeyringManager } = jest.requireActual(
-        '@sidhujag/sysweb3-keyring'
-      );
-      manager = new KeyringManager();
-    });
-    const records: Record<string, unknown> = {};
-    manager.setStorage({
-      get: async (keys: string[]) =>
-        Object.fromEntries(keys.map((key) => [key, records[key]])),
-      set: async (items: Record<string, unknown>) => {
-        Object.assign(records, items);
-      },
-      remove: async (key: string) => {
-        delete records[key];
-      },
-      createItemsIfAbsent: async (items: Record<string, string>) => {
-        if (Object.keys(items).some((key) => records[key] !== undefined))
-          return false;
-        Object.assign(
-          records,
-          Object.fromEntries(
-            Object.entries(items).map(([key, value]) => [
-              key,
-              JSON.parse(value),
-            ])
-          )
-        );
-        return true;
-      },
+      const { KeyringManager, HardwareWalletManager, createKeyringHost } =
+        jest.requireActual('@sidhujag/sysweb3-keyring');
+      const host = createKeyringHost({
+        get: async (key: string) => records.get(key),
+        async set(key: string, value: unknown) {
+          records.set(key, value);
+        },
+        async deleteItem(key: string) {
+          records.delete(key);
+        },
+        async createManyIfAbsent(items: Record<string, unknown>) {
+          if (Object.keys(items).some((key) => records.has(key))) return false;
+          for (const [key, value] of Object.entries(items))
+            records.set(key, value);
+          return true;
+        },
+      });
+      manager = new KeyringManager(host, {
+        hardwareManager: new HardwareWalletManager(),
+      });
     });
     const vault: any = {
       activeAccount: { id: 0, type: 'HDAccount' },

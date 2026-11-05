@@ -87,6 +87,13 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         if (failCasAcknowledgement) { failCasAcknowledgement = false; throw Error('Lost CAS acknowledgement'); }
         return true;
       },
+      async readDeviceUnlockVaultPair() {
+        const vault = records.get('vault');
+        const keys = records.get('vault-keys');
+        if (typeof vault !== 'string' || !keys || typeof keys !== 'object' ||
+          Object.keys(keys).length !== 1 || !('salt' in keys) || typeof keys.salt !== 'string') return null;
+        return { vault, keys: { salt: keys.salt }, pairFingerprint: fingerprint() };
+      },
       async get(key) { const value = records.has(key) ? structuredClone(records.get(key)) : undefined; await recordHook?.('get', key); return value; },
       async set(key, value) { records.set(key, structuredClone(value)); },
       async deleteItem(key) { records.delete(key); },

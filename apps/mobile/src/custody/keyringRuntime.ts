@@ -126,7 +126,7 @@ export function createKeyringRuntimeFactory(
       try {
         const sdk = await (dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js'));
         if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
-        const host = sdk.createSoftwareKeyringHost(storage.keyringStorage, { captureEvmSubmission: (context) => captureSignedSubmission(context) });
+        const host = sdk.createKeyringHost(storage.keyringStorage);
         const initialEvmNetwork = getNativeNetwork('ethereum');
         const sdkEvmNetwork = (network: NativeNetworkRegistration): SdkNetwork => ({
           kind: sdk.INetworkType.Ethereum, chainId: Number(network.chainId), slip44: network.slip44,
@@ -142,7 +142,7 @@ export function createKeyringRuntimeFactory(
         });
         type State = ReturnType<typeof initialState>;
         const openKeyring = (scope: State) => {
-          const instance = new sdk.SoftwareKeyring(host) as IndexedKeyring;
+          const instance = new sdk.SoftwareKeyring(host, { captureEvmSubmission: (context) => captureSignedSubmission(context) }) as IndexedKeyring;
           instance.setVaultStateGetter(() => scope);
           return instance;
         };

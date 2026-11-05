@@ -971,7 +971,7 @@ test('recovery view model drives the real SDK and SQLite coordinator then requir
 /** Synthetic bearer notes only; real released SDK encryption, no private SDK fields. */
 async function noteBundle(count = 17) {
   const values = new Map<string, unknown>();
-  const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost({
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost({
     async get(key) { return values.get(key); }, async set(key, value) { values.set(key, value); }, async deleteItem(key) { values.delete(key); },
     async createManyIfAbsent(items) { if (Object.keys(items).some((key) => values.has(key))) return false; Object.entries(items).forEach(([k, v]) => values.set(k, v)); return true; },
   }));

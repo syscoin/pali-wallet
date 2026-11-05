@@ -12,12 +12,12 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
 import { getController } from '..';
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import {
   importedRecoveryStorageKey,
@@ -127,7 +127,7 @@ beforeEach(() => {
     .mockImplementation(async (key) => structuredClone(disk[key] ?? null));
   // Only authentication/session setup is synthetic. SDK import validation,
   // public-key derivation, account-ID allocation and encryption remain real.
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   attachImportedRecoveryCryptoFixture(manager);
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
@@ -307,7 +307,7 @@ it('the real controller commits a real SDK recovery envelope after Chrome serial
   const sdk = jest.requireActual('@sidhujag/sysweb3-keyring/cjs/software.js');
   const values = new Map<string, unknown>();
   const software = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost({
+    sdk.createKeyringHost({
       async get(key: string) {
         return values.get(key);
       },

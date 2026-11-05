@@ -262,7 +262,7 @@ async function establishOriginal(activeSlip44: number, retainSigned = false) {
       return true;
     },
   };
-  const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost(port));
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(port));
   keyring.setVaultStateGetter(() => activeVault);
   try {
     await keyring.initializeSession(PHRASE, ORIGINAL_PASSWORD);
@@ -473,7 +473,7 @@ function successfulHost() {
     assertCurrent: () => void
   ) => {
     const keyring = new sdk.SoftwareKeyring(
-      sdk.createSoftwareKeyringHost({
+      sdk.createKeyringHost({
         get: async (key: string) => records[`sysweb3-${key}`],
         set: async (key: string, value: unknown) => {
           records[`sysweb3-${key}`] = value;

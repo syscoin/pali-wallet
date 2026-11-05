@@ -22,6 +22,7 @@ import http from 'http';
 import https from 'https';
 
 import { getController } from '..';
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
@@ -132,7 +133,7 @@ beforeEach(async () => {
     } as any)
   );
   store.dispatch(setActiveSlip44(60));
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault as any);
   provider = {
     getBlockNumber: jest.fn(async () => 100),

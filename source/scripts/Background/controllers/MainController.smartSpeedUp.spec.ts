@@ -1,5 +1,4 @@
 import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
-import { KeyringManager } from '@sidhujag/sysweb3-keyring/cjs/keyring-manager';
 import {
   privateKeyToAccount,
   sendLocalEvmTransaction,
@@ -7,6 +6,7 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -69,12 +69,6 @@ jest.mock('syscoinjs-lib', () => ({
   utils: { bitcoinjs: {} },
   networks: { bitcoin: {}, syscoin: {} },
 }));
-jest.mock(
-  '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager-singleton',
-  () => ({
-    HardwareWalletManagerSingleton: { getInstance: () => ({}) },
-  })
-);
 jest.mock('@sidhujag/sysweb3-keyring/cjs/ledger', () => ({
   LedgerKeyring: jest.fn(),
 }));
@@ -241,7 +235,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
-    keyring = new KeyringManager();
+    keyring = createTestKeyringManager();
     keyring.setVaultStateGetter(() => mockState.vault);
     replaceGetter = jest.spyOn(keyring, 'setVaultStateGetter');
     keyring.sessionPassword = { isCleared: () => false };

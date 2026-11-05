@@ -15,6 +15,7 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot, setNetworkChange } from 'state/vault';
@@ -185,7 +186,7 @@ beforeEach(async () => {
   );
   store.dispatch(setActiveSlip44(1));
   await persistCommittedWalletState(true);
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   const actualImport = manager.importWatchOnly.bind(manager);

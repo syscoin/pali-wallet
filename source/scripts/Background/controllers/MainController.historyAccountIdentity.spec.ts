@@ -19,11 +19,11 @@ jest.mock(
   })
 );
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import { getController, notificationManager } from 'scripts/Background';
 import SysAccountController from 'scripts/Background/controllers/account/syscoin';
@@ -174,7 +174,7 @@ beforeEach(() => {
           .map((key) => [key, structuredClone(disk[key])])
       )
     );
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   attachImportedRecoveryCryptoFixture(manager);
