@@ -17,6 +17,7 @@ import path from 'path';
 import React from 'react';
 
 import EthSign from '../../../source/pages/Transactions/SignEth';
+import { capturePersonalSignApproval } from '../../../source/scripts/Background/handlers/personalSignApproval';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { defaultAbiCoder, hexlify, toUtf8Bytes } from 'utils/ethersV6Compat';
 
@@ -30,7 +31,13 @@ jest.mock('syscoinjs-lib', () => ({
   utils: { bitcoinjs: {} },
   networks: { bitcoin: {}, syscoin: {} },
 }));
-jest.mock('state/store', () => ({ __esModule: true, default: {} }));
+jest.mock('state/store', () => ({
+  __esModule: true,
+  default: {
+    getState: () => mockState,
+    subscribe: () => () => undefined,
+  },
+}));
 jest.mock('react-redux', () => ({
   useSelector: (select: any) => select(mockState),
 }));
@@ -76,6 +83,7 @@ const owner = new Wallet(TEST_KEY);
 let mockState: any;
 let mockQuery: any;
 let mockMetadata: any;
+let mockApproval: ReturnType<typeof capturePersonalSignApproval>;
 let backend: ChildProcess;
 let backendInfo: any;
 let requestId = 0;
@@ -106,9 +114,19 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   if (method.at(-1) === 'hydrateSmartAccount') return mockMetadata;
   if (method.at(-1) === 'checkAddressBlacklist')
     return { isBlacklisted: false, severity: 'low' };
-  expect(method).toEqual(['wallet', 'signSmartAccountActionDigestInternal']);
-  expect(args[1]).toEqual({ id: 0, type: 'HDAccount' });
-  return sdk.ethSign(args[0]);
+  expect(method).toEqual(['wallet', 'signSmartAccountPersonalDigest']);
+  expect(args).toEqual([
+    { address: owner.address, id: 0, type: 'HDAccount' },
+    mockMetadata.auth.validator,
+    mockMetadata.auth.validator,
+  ]);
+  mockApproval.assertCurrent();
+  const signer = mockApproval.bindSmartAccountSigner(args);
+  if (signer?.method !== 'signSmartAccountActionDigestInternal')
+    throw new Error('Expected a bound software signer');
+  const signature = await sdk.ethSign(signer.args[0]);
+  mockApproval.assertCurrent();
+  return signature;
 });
 
 beforeAll(async () => {
@@ -143,6 +161,7 @@ afterAll(async () => {
   backend?.kill();
 });
 afterEach(() => {
+  mockApproval?.dispose();
   cleanup();
   jest.restoreAllMocks();
 });
@@ -177,6 +196,15 @@ async function sign(
     ],
   };
   mockState = {
+    dapp: {
+      dapps: {
+        'http://app.test.local': {
+          chain: 'ethereum',
+          accountId: 0,
+          accountType: 'SmartAccount',
+        },
+      },
+    },
     vault: {
       accounts: {
         HDAccount: {
@@ -197,7 +225,12 @@ async function sign(
         },
       },
       activeAccount: { type: 'SmartAccount', id: 0 },
-      activeNetwork: { chainId, currency: 'ETH', url: backendInfo.rpcUrl },
+      activeNetwork: {
+        chainId,
+        currency: 'ETH',
+        kind: 'ethereum',
+        url: backendInfo.rpcUrl,
+      },
       isBitcoinBased: false,
     },
   };
@@ -207,6 +240,16 @@ async function sign(
     0: hexlify(toUtf8Bytes(message)),
     1: account,
   };
+  mockApproval = capturePersonalSignApproval({
+    getWalletSessionGeneration: () => 0,
+    host: mockQuery.host,
+    params: mockQuery,
+    sender: {
+      documentId: 'recovery-enrollment-dapp',
+      tab: { id: 1 } as chrome.tabs.Tab,
+      url: mockQuery.host,
+    },
+  });
   const original = { ...mockQuery };
   jest.spyOn(window, 'close').mockImplementation(() => undefined);
   const view = render(<EthSign />);
@@ -222,13 +265,14 @@ async function sign(
   expect(mockQuery).toEqual(original);
   expect(
     mockEmitter.mock.calls.filter(
-      ([method]) => method.at(-1) === 'signSmartAccountActionDigestInternal'
+      ([method]) => method.at(-1) === 'signSmartAccountPersonalDigest'
     )
   ).toHaveLength(1);
   const [event, signature] = jest.mocked(dispatchBackgroundEvent).mock.calls[0];
   expect(event).toBe('personal_sign.http://app.test.local');
   expect(signature).toMatch(/^0x[0-9a-f]+$/i);
   // No test-side prefixing, wrapping, hashing or signature assembly.
+  mockApproval.dispose();
   view.unmount();
   jest.restoreAllMocks();
   return signature;
