@@ -28,7 +28,10 @@ import vaultCache from 'state/vaultCache';
 import { rehydrate, setActiveSlip44, setNetworks } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
 import { getDefaultUTXONetworks } from 'utils/defaultNetworks';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  networkRegistrationFingerprint,
+  resolvePinnedUtxoBackendChain,
+} from 'utils/networkRegistration';
 
 import CustomRPC from './CustomRPC';
 import { clearCustomRpcDrafts } from './customRpcDraft';
@@ -700,6 +703,41 @@ it('takes built-in backend identities from the catalogue without assigning them 
   expect(saved[0].utxoBackendChain).toBe(bitcoin.utxoBackendChain);
   expect(saved[57].utxoBackendChain).toBe(syscoin.utxoBackendChain);
   expect(saved[5700].utxoBackendChain).toBeUndefined();
+});
+
+it('resolves a cold active wallet copy from its exact trusted registration', () => {
+  const builtIn = getDefaultUTXONetworks()[57];
+  const active = { ...builtIn, utxoBackendChain: undefined };
+  store.dispatch(
+    rehydrate({
+      ...store.getState().vaultGlobal,
+      networks: { ethereum: {}, syscoin: { 57: active } },
+    })
+  );
+  store.dispatch(
+    restoreVaultSnapshot({
+      ...store.getState().vault,
+      activeNetwork: active,
+      isBitcoinBased: true,
+    })
+  );
+  const { vault, vaultGlobal } = store.getState();
+  const selected = vault.activeNetwork;
+  const trusted = vaultGlobal.networks.syscoin[57];
+  expect(selected.utxoBackendChain).toBeUndefined();
+  expect(resolvePinnedUtxoBackendChain(selected, trusted)).toBe('main');
+  for (const mismatch of [
+    { url: BLOCKBOOK },
+    { kind: INetworkType.Ethereum },
+    { chainId: 0 },
+    { slip44: 1 },
+    { currency: 'btc' },
+    { utxoBackendChain: 'test' },
+  ])
+    expect(
+      resolvePinnedUtxoBackendChain({ ...selected, ...mismatch }, trusted)
+    ).toBeUndefined();
+  expect(resolvePinnedUtxoBackendChain(selected, undefined)).toBeUndefined();
 });
 
 it('uses the shared built-in pin in an edit and denies first-use observation for a pinned row', async () => {
