@@ -6,6 +6,7 @@ import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
   captureDappUtxoSubmission,
+  consumeWalletErc20Review,
   utxoDappApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
@@ -178,7 +179,6 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
-
       const assertSetupAdmission = () => {
         if (!MasterControllerInstance.wallet?.getWalletSetupStatus?.()) return;
         // Member traversal also reaches SDK objects and TypeScript-private
@@ -236,19 +236,18 @@ export const handleMasterControllerResponses = (
               await personalSignApproval.checkDocument();
             assertSetupAdmission();
             personalSignApproval?.assertCurrent();
-            const sendsEvm =
-              route.length === 2 &&
-              route[0] === 'wallet' &&
-              route[1] === 'sendAndSaveEthTransaction';
+            const walletMethod =
+              route.length === 2 && route[0] === 'wallet'
+                ? route[1]
+                : undefined;
+            const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
             const dappApproval = sendsEvm
               ? captureDappEvmSubmission(sender)
               : undefined;
             const utxoMethod =
-              route.length === 2 &&
-              route[0] === 'wallet' &&
-              (route[1] === 'signSyscoinPsbt' ||
-                route[1] === 'signSendAndSaveTransaction')
-                ? route[1]
+              walletMethod === 'signSyscoinPsbt' ||
+              walletMethod === 'signSendAndSaveTransaction'
+                ? walletMethod
                 : undefined;
             const utxoApproval = utxoMethod
               ? captureDappUtxoSubmission(sender, utxoMethod, params?.[0])
@@ -261,28 +260,45 @@ export const handleMasterControllerResponses = (
                 params?.[0]?.ordinaryWalletSend !== true)
             )
               throw utxoDappApprovalExpired();
-            const argumentsForCall = sendsEvm
-              ? [
-                  params?.[0],
-                  params?.[1],
-                  params?.[2],
-                  params?.[3],
-                  {
-                    ...params?.[4],
-                    // Background-only capabilities do not cross the UI boundary.
-                    assertCurrentContext: undefined,
-                    assertBeforeSign: undefined,
-                    authorizeDapp: dappApproval?.assertCurrent,
-                    ...(dappApproval && {
-                      expectedContext: dappApproval.context,
-                    }),
-                  },
-                ]
-              : utxoApproval
-              ? [utxoApproval.input, utxoApproval.assertCurrent]
-              : utxoMethod
-              ? [params[0]]
-              : params;
+
+            const sendsWalletErc20 =
+              walletMethod === 'sendAndSaveTokenTransaction' &&
+              params?.[0] === 'ERC20';
+            const tokenApproval = sendsWalletErc20
+              ? consumeWalletErc20Review(sender, params[1]?.approvalId)
+              : undefined;
+            let argumentsForCall = params;
+            if (tokenApproval) {
+              argumentsForCall = [
+                'ERC20',
+                tokenApproval.transaction,
+                tokenApproval.assertCurrent,
+              ];
+            } else if (sendsEvm) {
+              argumentsForCall = [
+                params?.[0],
+                params?.[1],
+                params?.[2],
+                params?.[3],
+                {
+                  ...params?.[4],
+                  // Background-only capabilities do not cross the UI boundary.
+                  assertCurrentContext: undefined,
+                  assertBeforeSign: undefined,
+                  authorizeDapp: dappApproval?.assertCurrent,
+                  ...(dappApproval && {
+                    expectedContext: dappApproval.context,
+                  }),
+                },
+              ];
+            } else if (utxoApproval) {
+              argumentsForCall = [
+                utxoApproval.input,
+                utxoApproval.assertCurrent,
+              ];
+            } else if (utxoMethod) {
+              argumentsForCall = [params[0]];
+            }
             // Always execute the method; never attempt to send functions over messaging
             utxoApproval?.assertCurrent();
             const response = await (targetMethod as any)(

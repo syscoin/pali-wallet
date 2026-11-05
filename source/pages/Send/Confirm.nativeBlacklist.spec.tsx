@@ -53,6 +53,17 @@ jest.mock('scripts/Background/handlers/approvalSubmission', () => ({
 }));
 let mockWallet: any;
 let mockListener: any;
+const mockOpenWalletErc20Review = jest.fn<
+  { close: jest.Mock; ready: Promise<string> },
+  [any]
+>(() => ({
+  ready: Promise.resolve('reviewed-erc20-id'),
+  close: jest.fn(),
+}));
+jest.mock('./walletErc20ReviewPort', () => ({
+  openWalletErc20Review: (request: any) => mockOpenWalletErc20Review(request),
+}));
+
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockNativeReplies: any[] = [];

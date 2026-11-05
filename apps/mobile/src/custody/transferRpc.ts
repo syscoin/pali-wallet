@@ -32,6 +32,18 @@ export type NativeTransferReceipt = Readonly<
   | { status: 'confirmed' | 'reverted'; blockHash: string; blockNumber: string }
   | { status: 'nonce-consumed' }
 >;
+type NativeBroadcastAdmission = Readonly<
+  | {
+      mode: 'new-send';
+      intent?: Erc20TransferIntent;
+      beforeBroadcast: () => undefined;
+    }
+  | {
+      mode: 'replay';
+      admit: EvmReplayDispatchAdmission;
+      context: EvmReplayDispatchContext;
+    }
+>;
 export class NativeTransferRpcError extends Error {
   readonly code:
     | 'CANCELLED'
@@ -272,14 +284,27 @@ export class NativeTransferRpc {
     rawTransaction: string,
     expectedHash: string,
     signal: AbortSignal,
-    intent?: Erc20TransferIntent,
-    options?: Readonly<
-      | { beforeBroadcast: () => undefined; replay?: never }
-      | { replay: Readonly<{ admit: EvmReplayDispatchAdmission; context: EvmReplayDispatchContext }>; beforeBroadcast?: never }
-    >
+    admission: NativeBroadcastAdmission
   ): Promise<string> {
+    if (
+      !admission ||
+      (admission.mode !== 'new-send' && admission.mode !== 'replay') ||
+      (admission.mode === 'new-send' && (
+        typeof admission.beforeBroadcast !== 'function' ||
+        'admit' in admission || 'context' in admission
+      )) ||
+      (admission.mode === 'replay' && (
+        typeof admission.admit !== 'function' || !admission.context ||
+        'beforeBroadcast' in admission || 'intent' in admission
+      ))
+    )
+      return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
     const hash = checkedHash(expectedHash);
-    const { beforeBroadcast, replay } = options ?? {};
+    const replay = admission.mode === 'replay'
+      ? { admit: admission.admit, context: { ...admission.context } }
+      : undefined;
+    const beforeBroadcast = admission.mode === 'new-send' ? admission.beforeBroadcast : undefined;
+    const intent = admission.mode === 'new-send' ? admission.intent : undefined;
     const cancellation = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
       ? replay.context : undefined;
     if (
@@ -298,9 +323,9 @@ export class NativeTransferRpc {
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
-      if (cancellation && (intent || cancellation.hash !== hash || cancellation.chainId !== this.context.chainId ||
-          cancellation.nonce !== tx.nonce || tx.from?.toLowerCase() !== cancellation.from.toLowerCase() ||
-          !isEvmProtectedEmptySelfCall(tx, cancellation.operation))) return invalid();
+      if (replay && (replay.context.hash !== hash || replay.context.chainId !== this.context.chainId ||
+          replay.context.nonce !== tx.nonce || tx.from?.toLowerCase() !== replay.context.from.toLowerCase())) return invalid();
+      if (cancellation && !isEvmProtectedEmptySelfCall(tx, cancellation.operation)) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
       if (intent) assertTransferIntentEnvelope(
         {
@@ -319,7 +344,13 @@ export class NativeTransferRpc {
       if (!cancellation) await this.checkChain(local);
       const send = () => {
         if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
-        beforeBroadcast?.();
+        if (beforeBroadcast) {
+          const result: unknown = beforeBroadcast();
+          if (result !== undefined) {
+            void Promise.resolve(result).catch(() => undefined);
+            throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          }
+        }
         // No automatic retry: the remote side may accept before a response is lost.
         return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
           if (checkedHash(value) !== hash) return invalid();

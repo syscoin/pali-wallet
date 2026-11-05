@@ -1,5 +1,4 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
-import type { ISendSignedErc20TransactionProps } from '@sidhujag/sysweb3-keyring';
 import currency from 'currency.js';
 import React, {
   useCallback,
@@ -79,6 +78,7 @@ import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 import { EditPriorityModal } from './EditPriority';
 import { parseWalletErc20SendAmount } from './erc20SendAmount';
 import { useConfirmSubmission } from './useConfirmSubmission';
+import { openWalletErc20Review } from './walletErc20ReviewPort';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
@@ -159,6 +159,11 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
+  const tokenReviewPort = useRef<ReturnType<typeof openWalletErc20Review>>();
+  useEffect(() => () => tokenReviewPort.current?.close(), []);
+  useEffect(() => {
+    if (!submission.isActive()) tokenReviewPort.current?.close();
+  }, [location, state]);
 
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
@@ -956,7 +961,7 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
-  const getTokenFeeParams = (fallbackGasLimit: number) => ({
+  const getTokenFeeParams = (fallbackGasLimit?: number) => ({
     isLegacy: !isEIP1559Compatible,
     gasPrice: BigNumber.from(gasPrice).toHexString(),
     maxPriorityFeePerGas: parseUnits(
@@ -974,7 +979,7 @@ export const SendConfirm = () => {
     gasLimit: validateCustomGasLimit
       ? BigNumber.from(customFee.gasLimit)
       : BigNumber.from(
-          fee.gasLimit || basicTxValues.defaultGasLimit || fallbackGasLimit
+          fee.gasLimit || basicTxValues.defaultGasLimit || fallbackGasLimit || 0
         ),
   });
 
@@ -1066,7 +1071,11 @@ export const SendConfirm = () => {
         }
       }
     }
-    if (nativeMax || isFixedNativeSoftwareSend) {
+    if (
+      nativeMax ||
+      isFixedNativeSoftwareSend ||
+      (reviewedErc20Units && !isSmartAccountSend)
+    ) {
       if (!submission.isActive()) return;
       if (feeSelectionRef.current !== approvedFeeSelection) return;
     }
@@ -1508,22 +1517,53 @@ export const SendConfirm = () => {
               try {
                 if (!reviewedErc20Units)
                   throw new Error('ERC20 review required');
-                await submitEmitter(
-                  ['wallet', 'sendAndSaveTokenTransaction'],
-                  [
-                    'ERC20',
-                    {
-                      networkUrl: activeNetwork.url,
-                      receiver: destinationTo,
-                      tokenAddress: basicTxValues.token.contractAddress,
-                      tokenAmountUnits: reviewedErc20Units,
-                      ...getTokenFeeParams(65000),
-                    } satisfies ISendSignedErc20TransactionProps,
-                  ],
-                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000 // 5 minutes timeout for hardware wallet operations
-                    : 10000 // Default 10 seconds for regular wallets
-                );
+                const reviewedFees = getTokenFeeParams();
+                const review = openWalletErc20Review({
+                  chainId: activeNetwork.chainId,
+                  walletScope: state.walletScope,
+                  transaction: {
+                    networkUrl: activeNetwork.url,
+                    receiver: destinationTo,
+                    tokenAddress: basicTxValues.token.contractAddress,
+                    tokenAmountUnits: reviewedErc20Units,
+                    gasLimit: reviewedFees.gasLimit.toString(),
+                    ...(reviewedFees.isLegacy
+                      ? {
+                          isLegacy: true,
+                          gasPrice: BigNumber.from(
+                            reviewedFees.gasPrice
+                          ).toString(),
+                        }
+                      : {
+                          isLegacy: false,
+                          maxFeePerGas: reviewedFees.maxFeePerGas.toString(),
+                          maxPriorityFeePerGas:
+                            reviewedFees.maxPriorityFeePerGas.toString(),
+                        }),
+                  },
+                });
+                tokenReviewPort.current = review;
+                try {
+                  const approvalId = await review.ready;
+                  if (
+                    !submission.isActive() ||
+                    feeSelectionRef.current !== approvedFeeSelection
+                  )
+                    throw Object.assign(new Error('ERC20 review changed'), {
+                      transactionNotBroadcast: true,
+                    });
+                  await submitEmitter(
+                    ['wallet', 'sendAndSaveTokenTransaction'],
+                    ['ERC20', { approvalId }],
+                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
+                      ? 300000
+                      : 10000
+                  );
+                } finally {
+                  if (tokenReviewPort.current === review)
+                    tokenReviewPort.current = undefined;
+                  review.close();
+                }
 
                 setConfirmed(true);
                 setLoading(false);

@@ -72,7 +72,7 @@ test('fee and estimation calls respect owner revocation without emitting a quote
 for(const legacy of [false,true])test(`${legacy?'legacy':'type2'} broadcast preserves signed bytes and rejects another chain or unsafe gas`,async()=>{
  const signer=Wallet.fromPhrase('test test test test test test test test test test test junk'),f=fixture({legacy});
  const tx={type:legacy?0:2,chainId:BigInt(network.chainId),to,nonce:0,value:1,gasLimit:72000,...(legacy?{gasPrice:101}:{maxFeePerGas:250,maxPriorityFeePerGas:0})};
- const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal()),signed.hash);
+ const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),signed.hash);
  assert.deepEqual(f.calls.find(c=>c.method==='eth_sendRawTransaction')?.params,[raw]);
- for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal()),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
+ for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
 });

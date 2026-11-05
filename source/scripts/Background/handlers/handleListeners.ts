@@ -1,13 +1,15 @@
+import { WALLET_ERC20_REVIEW_PORT } from '../../../shared/walletErc20Review';
 import { onMessage } from '../controllers/message-handler';
+import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
-import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
-import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
 import type { PrivacyPoolId } from 'utils/privacy/types';
+import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
 
+import { watchWalletErc20Review } from './approvalSubmission';
 import { checkForUpdates } from './handlePaliUpdates';
 import {
   isPrivilegedInternalMessage,
@@ -260,6 +262,12 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // 🚀 NEW: Port connection approach for popup close detection (no permissions needed)
   chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === WALLET_ERC20_REVIEW_PORT) {
+      watchWalletErc20Review(port, (request) =>
+        currentMasterController.wallet.captureWalletErc20Review(request)
+      );
+      return;
+    }
     if (port.name === 'popup-connection') {
       console.log('[Background] 🔌 Popup connected via port');
 

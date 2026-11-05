@@ -57,7 +57,13 @@ describe.each([
       ? { tokenAmountUnits: '9007199254740993' }
       : { tokenAmount: '1' }),
   };
-  const send = () => wallet.sendAndSaveTokenTransaction(standard, params);
+  const assertApproved = () => undefined;
+  const send = () =>
+    wallet.sendAndSaveTokenTransaction(
+      standard,
+      params,
+      ...(standard === 'ERC20' ? [assertApproved] : [])
+    );
   const mutate = (change: string) => {
     if (change === 'account') mockState.vault.activeAccount.id = 1;
     if (change === 'network') mockState.vault.activeNetwork.chainId = 1;
@@ -117,11 +123,15 @@ describe.each([
       'rejects a malformed exact amount request before any work: %j',
       async (amount) => {
         await expect(
-          wallet.sendAndSaveTokenTransaction(standard, {
-            receiver: RECEIVER,
-            tokenAddress: TOKEN,
-            ...amount,
-          })
+          wallet.sendAndSaveTokenTransaction(
+            standard,
+            {
+              receiver: RECEIVER,
+              tokenAddress: TOKEN,
+              ...amount,
+            },
+            assertApproved
+          )
         ).rejects.toMatchObject({ transactionNotBroadcast: true });
         expect(blacklistService.checkAddress).not.toHaveBeenCalled();
         expect(sdk).not.toHaveBeenCalled();
@@ -133,7 +143,9 @@ describe.each([
   it('saves one unchanged ACK to the captured original account and chain', async () => {
     await expect(send()).resolves.toBe(RESPONSE);
     expect(sdk).toHaveBeenCalledTimes(1);
-    expect(sdk).toHaveBeenCalledWith(params);
+    if (standard === 'ERC20')
+      expect(sdk).toHaveBeenCalledWith(params, assertApproved);
+    else expect(sdk).toHaveBeenCalledWith(params);
     expect(store.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({

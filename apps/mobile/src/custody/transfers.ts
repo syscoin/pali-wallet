@@ -690,7 +690,9 @@ export class NativeTransfers {
           transactionHash,
           guard,
           (approvedBytes) =>
-            rpc.broadcast(approvedBytes, transactionHash, signal, approved.public.intent, {
+            rpc.broadcast(approvedBytes, transactionHash, signal, {
+              mode: 'new-send',
+              intent: approved.public.intent,
               beforeBroadcast: () => {
                 guard();
                 startedSubmission = true;
@@ -856,7 +858,7 @@ export class NativeTransfers {
       };
       const replay = runtime.replay(current, {
         observe: ({ hash, from, to, nonce }) => rpc.observation({ hash, from, to, nonce }, abort.signal),
-        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, undefined, { replay: { admit, context } }),
+        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, { mode: 'replay', admit, context }),
       }, { now: this.now, randomBytes: this.randomBytes });
       this.replay = replay;
       const result = await replay.prepare(selected); assertCurrent();

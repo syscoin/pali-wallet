@@ -21,6 +21,17 @@ import {
 
 import { SendConfirm } from './Confirm';
 
+const mockOpenWalletErc20Review = jest.fn<
+  { close: jest.Mock; ready: Promise<string> },
+  [any]
+>(() => ({
+  ready: Promise.resolve('reviewed-erc20-id'),
+  close: jest.fn(),
+}));
+jest.mock('./walletErc20ReviewPort', () => ({
+  openWalletErc20Review: (request: any) => mockOpenWalletErc20Review(request),
+}));
+
 const mockControllerEmitter = jest.fn();
 const mockClearNavigationState = jest.fn();
 const mockSaveNavigationState = jest.fn();
@@ -696,15 +707,17 @@ it.each([24, 255])(
     const submitted = mockControllerEmitter.mock.calls.find(
       ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
     )!;
-    expect(submitted[1][1]).toMatchObject({
+    expect(submitted[1][1]).toEqual({ approvalId: 'reviewed-erc20-id' });
+    const reviewed = mockOpenWalletErc20Review.mock.calls[0][0].transaction;
+    expect(reviewed).toMatchObject({
       tokenAmountUnits: '1',
       isLegacy: true,
-      gasPrice: '0x3b9aca00',
+      gasPrice: '1000000000',
+      gasLimit: '21000',
     });
-    expect(submitted[1][1]).not.toHaveProperty('tokenAmount');
-    expect(submitted[1][1].gasLimit.toString()).toBe('21000');
-    expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
-    expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
+    expect(reviewed).not.toHaveProperty('tokenAmount');
+    expect(reviewed).not.toHaveProperty('maxFeePerGas');
+    expect(reviewed).not.toHaveProperty('maxPriorityFeePerGas');
   }
 );
 
@@ -1399,14 +1412,20 @@ it.each([
       ([path]) => path.at(-1) === method
     )!;
     const sent =
-      transactionType === TransactionType.NATIVE_ETH ? args[0] : args[1];
+      transactionType === TransactionType.NATIVE_ETH
+        ? args[0]
+        : transactionType === TransactionType.ERC20
+        ? mockOpenWalletErc20Review.mock.calls[0][0].transaction
+        : args[1];
     expect(BigNumber.from(sent.maxFeePerGas).toString()).toBe('2000000000');
     expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
     if (transactionType === TransactionType.NATIVE_ETH)
       expect(args[1]).not.toBe(true);
     else {
       expect(sent.isLegacy).toBe(false);
-      expect(sent.gasPrice).toBe('0x00');
+      if (transactionType === TransactionType.ERC20)
+        expect(sent).not.toHaveProperty('gasPrice');
+      else expect(sent.gasPrice).toBe('0x00');
       expect(sent.gasLimit.toString()).toBe('21000');
     }
   }

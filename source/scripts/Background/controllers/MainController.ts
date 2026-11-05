@@ -33,7 +33,11 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
-import { formatErc20Balance, parseErc20Units } from '../../../shared/erc20';
+import {
+  encodeErc20Transfer,
+  formatErc20Balance,
+  parseErc20Units,
+} from '../../../shared/erc20';
 import {
   assertEvmCancellationPayerReady,
   isEvmEmptySelfCall,
@@ -43,6 +47,10 @@ import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
+import {
+  walletErc20ReviewError,
+  type WalletErc20ReviewRequest,
+} from '../../../shared/walletErc20Review';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -8699,13 +8707,103 @@ class MainController {
     return recordSendCallsBundle(host, id, bundle);
   }
 
+  /** Capture the reviewed ERC20 fields before accepting a submission ticket. */
+  public captureWalletErc20Review(request: unknown) {
+    const input = request as Partial<WalletErc20ReviewRequest> | null;
+    const reviewed = input?.transaction;
+    if (
+      !input ||
+      !reviewed ||
+      !input.walletScope ||
+      !Number.isSafeInteger(input.chainId) ||
+      input.chainId! <= 0 ||
+      typeof reviewed.networkUrl !== 'string' ||
+      typeof reviewed.isLegacy !== 'boolean' ||
+      'tokenAmount' in reviewed ||
+      'decimals' in reviewed ||
+      (reviewed.isLegacy
+        ? reviewed.maxFeePerGas !== undefined ||
+          reviewed.maxPriorityFeePerGas !== undefined
+        : reviewed.gasPrice !== undefined)
+    )
+      throw walletErc20ReviewError();
+    const scope = { ...input.walletScope };
+    const chainId = input.chainId;
+    const networkUrl = reviewed.networkUrl;
+    const receiver = getAddress(reviewed.receiver);
+    const tokenAddress = getAddress(reviewed.tokenAddress);
+    const tokenAmountUnits = parseErc20Units(reviewed.tokenAmountUnits);
+    encodeErc20Transfer(receiver, tokenAmountUnits);
+    if (/^0x0{40}$/i.test(tokenAddress)) throw walletErc20ReviewError();
+    const gasLimit = parseErc20Units(reviewed.gasLimit);
+    if (gasLimit === '0') throw walletErc20ReviewError();
+    const common = {
+      networkUrl,
+      receiver,
+      tokenAddress,
+      tokenAmountUnits,
+      gasLimit,
+    };
+    let transaction: Readonly<ISendSignedErc20TransactionProps>;
+    if (reviewed.isLegacy) {
+      const gasPrice = parseErc20Units(reviewed.gasPrice);
+      if (gasPrice === '0') throw walletErc20ReviewError();
+      transaction = Object.freeze({ ...common, isLegacy: true, gasPrice });
+    } else {
+      const maxFeePerGas = parseErc20Units(reviewed.maxFeePerGas);
+      const maxPriorityFeePerGas = parseErc20Units(
+        reviewed.maxPriorityFeePerGas
+      );
+      if (
+        maxFeePerGas === '0' ||
+        BigInt(maxPriorityFeePerGas) > BigInt(maxFeePerGas)
+      )
+        throw walletErc20ReviewError();
+      transaction = Object.freeze({
+        ...common,
+        isLegacy: false,
+        maxFeePerGas,
+        maxPriorityFeePerGas,
+      });
+    }
+    this.assertWalletReadyForSigning();
+    const session = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const keyring = this.getActiveKeyring();
+    const assertCurrent = () => {
+      try {
+        this.assertWalletReadyForSigning();
+        this.assertCurrentWalletSession(session, keyring);
+        this.assertAssetMutationContext(scope);
+      } catch {
+        throw walletErc20ReviewError();
+      }
+      const { vault } = store.getState();
+      if (
+        networkRequest !== this.networkRequestGeneration ||
+        vault.isBitcoinBased ||
+        vault.activeAccount.type === KeyringAccountType.SmartAccount ||
+        vault.activeNetwork.kind !== INetworkType.Ethereum ||
+        vault.activeNetwork.chainId !== chainId ||
+        vault.activeNetwork.url !== networkUrl
+      )
+        throw walletErc20ReviewError();
+    };
+    assertCurrent();
+    return { transaction, assertCurrent };
+  }
+
   /**
    * Atomic wrapper for token transactions (ERC20, ERC721, ERC1155)
    * Combines send and save operations to ensure completion
    */
   public async sendAndSaveTokenTransaction(
-    ...[tokenType, params]:
-      | [tokenType: 'ERC20', params: ISendSignedErc20TransactionProps]
+    ...[tokenType, params, assertApproved]:
+      | [
+          tokenType: 'ERC20',
+          params: ISendSignedErc20TransactionProps,
+          assertApproved: () => void
+        ]
       | [
           tokenType: 'ERC721' | 'ERC1155',
           params: ISendSignedErcTransactionProps
@@ -8713,6 +8811,8 @@ class MainController {
   ): Promise<IEvmTransactionResponse> {
     this.assertWalletReadyForSigning();
     if (tokenType === 'ERC20') {
+      if (typeof assertApproved !== 'function') throw walletErc20ReviewError();
+      assertApproved();
       try {
         if (
           !params ||
@@ -8796,9 +8896,11 @@ class MainController {
       // Call the appropriate method based on token type
       switch (tokenType) {
         case 'ERC20':
+          assertApproved();
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
-              params
+              params,
+              assertApproved
             )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC721':

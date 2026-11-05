@@ -5,6 +5,17 @@ import React from 'react';
 
 import { SendConfirm } from './Confirm';
 
+const mockOpenWalletErc20Review = jest.fn<
+  { close: jest.Mock; ready: Promise<string> },
+  [any]
+>(() => ({
+  ready: Promise.resolve('reviewed-erc20-id'),
+  close: jest.fn(),
+}));
+jest.mock('./walletErc20ReviewPort', () => ({
+  openWalletErc20Review: (request: any) => mockOpenWalletErc20Review(request),
+}));
+
 const mockEmitter = jest.fn();
 let mockFiatAvailable = true;
 let mockFiatRate: number | null = null;
@@ -325,7 +336,10 @@ it.each(['native', 'token'] as const)(
     });
     expect(sendRequests()).toHaveLength(1);
     const args = sendRequests()[0][1];
-    const payload = kind === 'native' ? args[0] : args[1];
+    const payload =
+      kind === 'native'
+        ? args[0]
+        : mockOpenWalletErc20Review.mock.calls[0][0].transaction;
     expect(payload.maxFeePerGas.toString()).toBe('3000000000');
     expect(payload.maxPriorityFeePerGas.toString()).toBe('0');
     expect(feeRequests()).toHaveLength(1);
@@ -361,7 +375,10 @@ it.each(['native', 'token'] as const)(
     });
     expect(sendRequests()).toHaveLength(1);
     const args = sendRequests()[0][1];
-    const payload = kind === 'native' ? args[0] : args[1];
+    const payload =
+      kind === 'native'
+        ? args[0]
+        : mockOpenWalletErc20Review.mock.calls[0][0].transaction;
     expect(payload.maxFeePerGas.toString()).toBe('4000000000');
     expect(payload.maxPriorityFeePerGas.toString()).toBe('0');
     expect(feeRequests()).toHaveLength(1);

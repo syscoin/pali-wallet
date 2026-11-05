@@ -386,10 +386,23 @@ describe.each(['Ledger', 'Trezor'] as const)(
           };
           const sending =
             method === 'sendSignedErc20Transaction'
-              ? sdk.sendSignedErc20Transaction({
-                  ...request,
-                  tokenAmountUnits: atomic,
-                })
+              ? sdk.sendSignedErc20Transaction(
+                  {
+                    networkUrl: request.networkUrl,
+                    tokenAddress,
+                    receiver: recipient,
+                    gasLimit: request.gasLimit,
+                    tokenAmountUnits: atomic,
+                    ...(legacy
+                      ? { isLegacy: true, gasPrice: '100' }
+                      : {
+                          isLegacy: false,
+                          maxFeePerGas: '100',
+                          maxPriorityFeePerGas: '2',
+                        }),
+                  },
+                  () => undefined
+                )
               : sdk[method]({
                   ...request,
                   tokenId: '9007199254740993',

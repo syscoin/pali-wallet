@@ -7,12 +7,14 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { randomUUID } from 'node:crypto';
 import React from 'react';
 
 import { SendConfirm } from 'pages/Send/Confirm';
 import { getController } from 'scripts/Background';
 import { controllerEmitter as realControllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import MainController from 'scripts/Background/controllers/MainController';
+import { watchWalletErc20Review } from 'scripts/Background/handlers/approvalSubmission';
 import { handleMasterControllerResponses } from 'scripts/Background/handlers/handleMasterControllerResponses';
 import { blacklistService } from 'utils/security/blacklistService';
 
@@ -43,11 +45,63 @@ jest.mock('state/store', () => ({
 jest.mock('scripts/Background/handlers/internalMessageAuthorization', () => ({
   isTrustedExtensionPageSender: () => true,
 }));
-jest.mock('scripts/Background/handlers/approvalSubmission', () => ({
-  beginApprovalSubmission: () => () => undefined,
-}));
 let mockWallet: any;
 let mockListener: any;
+const reviewDocument = 'wallet-confirm-document';
+const alternateDocument = 'different-extension-document';
+let mockTokenSender: string;
+let mockOverwritePayload: boolean;
+let mockDisconnectBeforeSubmit: boolean;
+let mockExpireBeforeSubmit: boolean;
+let mockStage: jest.SpyInstance;
+let mockCloseReview: () => void;
+
+function connectReview() {
+  const rendererMessages: ((value: unknown) => void)[] = [];
+  const backgroundMessages: ((value: unknown) => void)[] = [];
+  const onDisconnect: (() => void)[] = [];
+  let connected = true;
+  const disconnect = () => {
+    if (!connected) return;
+    connected = false;
+    onDisconnect.forEach((listener) => listener());
+  };
+  const common = {
+    disconnect,
+    onDisconnect: {
+      addListener: (listener: () => void) => onDisconnect.push(listener),
+    },
+  };
+  const port = {
+    ...common,
+    sender: { id: 'synthetic-extension', documentId: reviewDocument },
+    onMessage: {
+      addListener: (listener: (value: unknown) => void) =>
+        backgroundMessages.push(listener),
+    },
+    postMessage: (reply: unknown) => {
+      if (connected) rendererMessages.forEach((listener) => listener(reply));
+    },
+  } as unknown as chrome.runtime.Port;
+  mockCloseReview = disconnect;
+  watchWalletErc20Review(port, (request) =>
+    mockWallet.captureWalletErc20Review(request)
+  );
+  return {
+    ...common,
+    onMessage: {
+      addListener: (listener: (value: unknown) => void) =>
+        rendererMessages.push(listener),
+    },
+    postMessage: (request: unknown) => {
+      if (connected)
+        backgroundMessages.forEach((listener) =>
+          listener(JSON.parse(JSON.stringify(request)))
+        );
+    },
+  } as unknown as chrome.runtime.Port;
+}
+
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockTokenReplies: any[] = [];
@@ -191,6 +245,11 @@ jest.mock('utils/validations', () => ({
 }));
 
 beforeAll(() => {
+  if (typeof crypto.randomUUID !== 'function')
+    Object.defineProperty(crypto, 'randomUUID', {
+      configurable: true,
+      value: randomUUID,
+    });
   globalThis.ResizeObserver = class {
     observe() {
       // JSDOM has no layout.
@@ -225,6 +284,13 @@ beforeEach(() => {
   mockTransportOutcome = 'success';
   mockMessages.length = 0;
   mockTokenReplies.length = 0;
+  mockTokenSender = reviewDocument;
+  mockOverwritePayload = false;
+  mockDisconnectBeforeSubmit = false;
+  mockExpireBeforeSubmit = false;
+  chrome.runtime.connect = jest.fn(
+    connectReview
+  ) as typeof chrome.runtime.connect;
   (chrome.runtime as any).id = 'synthetic-extension';
   jest.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((
     message: any,
@@ -247,23 +313,39 @@ beforeEach(() => {
         },
       });
     }
-    if (method === 'sendAndSaveTokenTransaction')
+    if (method === 'sendAndSaveTokenTransaction') {
+      if (mockDisconnectBeforeSubmit) mockCloseReview();
+      if (mockExpireBeforeSubmit) {
+        const now = performance.now();
+        jest.spyOn(performance, 'now').mockReturnValue(now + 300_000);
+      }
+      if (mockOverwritePayload) {
+        Object.assign(message.data.params[1], {
+          receiver: '0x7777777777777777777777777777777777777777',
+          tokenAddress: '0x8888888888888888888888888888888888888888',
+          tokenAmountUnits: '123',
+          networkUrl: 'https://wrong-rpc.invalid',
+        });
+      }
       return mockListener(
         message,
-        { id: 'synthetic-extension' },
+        { id: 'synthetic-extension', documentId: mockTokenSender },
         (reply: any) => {
           mockTokenReplies.push(reply);
           callback(reply);
         }
       );
+    }
     throw new Error(`Unexpected synthetic controller call: ${method}`);
   }) as any);
   mockWallet = Object.create(MainController.prototype);
   mockWallet.walletSessionGeneration = 7;
-  mockWallet.getActiveKeyring = jest.fn(() => ({
+  const keyring = {
     isUnlocked: () => true,
     ethereumTransaction: { sendSignedErc20Transaction: mockSdkSend },
-  }));
+  };
+  mockWallet.getActiveKeyring = jest.fn(() => keyring);
+  mockStage = jest.spyOn(mockWallet, 'captureWalletErc20Review');
   mockWallet.sendAndSaveTransaction = jest.fn(async () => undefined);
   mockWallet.sendAndSaveTokenTransaction =
     mockWallet.sendAndSaveTokenTransaction.bind(mockWallet);
@@ -397,7 +479,12 @@ it('shows the localized refusal after the real pre-send blacklist rejection cros
     (m) => m.data.methods.at(-1) === 'sendAndSaveTokenTransaction'
   );
   expect(message.data.params[0]).toBe('ERC20');
-  expect(message.data.params[1].receiver).toBe(syntheticRecipient);
+  expect(message.data.params[1]).toEqual({ approvalId: expect.any(String) });
+  expect(mockStage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      transaction: expect.objectContaining({ receiver: syntheticRecipient }),
+    })
+  );
   expect(blacklistService.checkAddress).toHaveBeenCalledWith(
     syntheticRecipient
   );
@@ -422,7 +509,8 @@ it('shows the localized refusal after the real pre-send blacklist rejection cros
   expect(mockSdkSend).not.toHaveBeenCalled();
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
 });
-it('accepts an unlisted synthetic recipient through the same controller path', async () => {
+it('uses only the staged recipient, amount and RPC through the same controller path', async () => {
+  mockOverwritePayload = true;
   await readyToken(false);
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
@@ -431,18 +519,84 @@ it('accepts an unlisted synthetic recipient through the same controller path', a
   expect(blacklistService.checkAddress).toHaveBeenCalledWith(
     syntheticRecipient
   );
-  expect(mockSdkSend.mock.calls[0][0].receiver).toBe(syntheticRecipient);
+  expect(mockSdkSend).toHaveBeenCalledWith(
+    expect.objectContaining({
+      receiver: syntheticRecipient,
+      tokenAddress: `0x${'33'.repeat(20)}`,
+      tokenAmountUnits: '1000000000000000000',
+      networkUrl: 'https://rpc.invalid',
+    }),
+    expect.any(Function)
+  );
   const message = mockMessages.find(
     (m) => m.data.methods.at(-1) === 'sendAndSaveTokenTransaction'
   );
   expect(message.data.params[0]).toBe('ERC20');
-  expect(message.data.params[1].receiver).toBe(syntheticRecipient);
+  expect(message.data.params[1].approvalId).toEqual(expect.any(String));
+  expect(mockStage).toHaveBeenCalledWith(
+    expect.objectContaining({
+      transaction: expect.objectContaining({ receiver: syntheticRecipient }),
+    })
+  );
   await waitFor(() =>
     expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1)
   );
   expect(
     screen.queryByText('send.submissionStatusUnknown')
   ).not.toBeInTheDocument();
+});
+
+it.each(['different document', 'disconnected review', 'expired review'])(
+  'refuses a submission with %s before signer entry',
+  async (testCase) => {
+    if (testCase === 'different document') mockTokenSender = alternateDocument;
+    else if (testCase === 'disconnected review')
+      mockDisconnectBeforeSubmit = true;
+    else mockExpireBeforeSubmit = true;
+    await readyToken(false);
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+    );
+    await waitFor(() => expect(mockTokenReplies).toHaveLength(1));
+    expect(mockTokenReplies[0]).toMatchObject({
+      success: false,
+      error: { transactionNotBroadcast: true },
+    });
+    expect(mockSdkSend).not.toHaveBeenCalled();
+  }
+);
+
+it('cannot consume a second IPC request while the first is still signing', async () => {
+  let release!: () => void;
+  const signerPending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  mockSdkSend.mockImplementationOnce(async () => {
+    await signerPending;
+    return { hash: `0x${'44'.repeat(32)}`, nonce: 7 };
+  });
+  try {
+    await readyToken(false);
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+    await waitFor(() => expect(mockSdkSend).toHaveBeenCalledTimes(1));
+    const message = mockMessages.find(
+      (entry) => entry.data.methods.at(-1) === 'sendAndSaveTokenTransaction'
+    );
+    const duplicate = await new Promise((reply) =>
+      mockListener(
+        message,
+        { id: 'synthetic-extension', documentId: reviewDocument },
+        reply
+      )
+    );
+    expect(duplicate).toMatchObject({
+      success: false,
+      error: { transactionNotBroadcast: true },
+    });
+    expect(mockSdkSend).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => release());
+  }
 });
 
 it('keeps an ambiguous SDK failure in unknown status', async () => {
