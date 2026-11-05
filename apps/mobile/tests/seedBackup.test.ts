@@ -24,7 +24,7 @@ async function fixture() {
       async createWallet() { throw new Error('fixture only opens existing wallets'); },
       async importWallet() { throw new Error('fixture only opens existing wallets'); },
       async unlock() { unlocked = true; return { authenticated: true }; },
-      async readEthereumAddress() { assert.ok(unlocked); return ADDRESS; },
+      async readSelectedAddress() { assert.ok(unlocked); return ADDRESS; },
       async lock() { unlocked = false; },
     },
     storage: {

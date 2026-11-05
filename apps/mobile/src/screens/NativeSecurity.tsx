@@ -7,6 +7,7 @@ import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from 
 
 type Props = {
   keyExport: HdKeyExportFlow;
+  canRevealKey?: boolean;
   accountId: string;
   accountType: 'HDAccount' | 'Imported';
   accountLabel: string;
@@ -18,7 +19,7 @@ type Props = {
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, accountId, accountType, accountLabel, address, onViewRecovery, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, canRevealKey = true, accountId, accountType, accountLabel, address, onViewRecovery, onLock, onBack, captureFailureHandler }: Props) {
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -53,7 +54,7 @@ export function NativeSecurity({ keyExport, accountId, accountType, accountLabel
 
   const reveal = async () => {
     const state = lifecycle.current;
-    if (!state.mounted || state.busy || !password) return;
+    if (!canRevealKey || !state.mounted || state.busy || !password) return;
     state.busy = true; setBusy(true); setError('');
     const entered = password; setPassword(''); Keyboard.dismiss();
     const request = ++state.request;
@@ -89,7 +90,7 @@ export function NativeSecurity({ keyExport, accountId, accountType, accountLabel
         {mode === 'hub' ? <>
           <Notice title={accountType === 'Imported' ? 'Imported key needs a separate backup' : 'Recovery phrase backed up'} body={accountType === 'Imported' ? 'Your recovery phrase cannot restore this account. Keep its original private key backed up separately.' : 'Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.'} />
           <Card><Row title="View recovery phrase" subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
-            <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />
+            {canRevealKey && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
             <Row title="Recovery guide" subtitle="Understand what your backups restore" icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           <Button title="Lock wallet" variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
         </> : mode === 'recovery' ? <>

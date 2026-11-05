@@ -11,6 +11,8 @@ import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
+import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
+import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
 import { createBalanceReader } from '../platformRpc.ts';
 import { walletFetch } from './http';
 import type { NativeImportView } from '../custody/importedAccounts.ts';
@@ -38,6 +40,12 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
     assertActive,
     observeActivity(network, expected, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
+    },
+    readUtxoAccount(id, xpub, signal, guard) {
+      return createUtxoBalanceReader({ fetch: (url, init) => {
+        guard();
+        return walletFetch(url, init);
+      } }).readAccount(id, xpub, signal);
     },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
@@ -69,7 +77,17 @@ export function createNativeWalletControllers() {
   }, { preferences: securityPreferences, assertActive });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
-  const balanceReader = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
+  const evmBalances = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
+  const balanceReader: BalanceReader = {
+    readBalance: evmBalances.readBalance,
+    readUtxoBalance(id, address, signal) {
+      const snapshot = authority.getSnapshot();
+      if (snapshot.phase !== 'ready' || snapshot.account?.network !== id ||
+          snapshot.account.address !== address || !runtime?.readUtxoBalance)
+        return Promise.reject(new CustodyOperationError('NOT_READY'));
+      return runtime.readUtxoBalance(id, address, signal);
+    },
+  };
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
   const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock());
   const activity = new NativeActivity(authority, () => runtime?.activity,

@@ -49,7 +49,7 @@ function fixture(existing = false) {
         unlocked = true;
         return { authenticated: true };
       },
-      async readEthereumAddress() {
+      async readSelectedAddress() {
         assert.equal(unlocked, true, 'address access requires a live session');
         events.push('address');
         return ADDRESS.toLowerCase();
@@ -439,7 +439,7 @@ test('lock during public-account loading discards the late response and relocks 
   await f.authority.initialize();
   const loading = deferred<void>();
   const address = deferred<string>();
-  f.runtime.session.readEthereumAddress = async () => {
+  f.runtime.session.readSelectedAddress = async () => {
     loading.resolve();
     return address.promise;
   };
@@ -458,7 +458,7 @@ test('a lock failure while authentication is pending cannot publish a ready stat
   await f.authority.initialize();
   const loading = deferred<void>();
   const address = deferred<string>();
-  f.runtime.session.readEthereumAddress = async () => {
+  f.runtime.session.readSelectedAddress = async () => {
     loading.resolve(); return address.promise;
   };
   const pending = f.authority.unlock(PASSWORD);
@@ -488,7 +488,7 @@ test('dispose from an authenticating observer drains admission without starting 
 test('invalid account output and close failures expose only safe error codes', async () => {
   const f = fixture(true);
   await f.authority.initialize();
-  f.runtime.session.readEthereumAddress = async () => `${PASSWORD} ${PHRASE}`;
+  f.runtime.session.readSelectedAddress = async () => `${PASSWORD} ${PHRASE}`;
   await rejectsCode(f.authority.unlock(PASSWORD), 'OPERATION_FAILED');
   assert.equal(f.unlocked, false);
   assert.equal(f.authority.getSnapshot().account, null);

@@ -5,7 +5,8 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { getNativeSendContext, nativeSigningEnabled } from '../custody/networkContext';
 import { getTestnetFaucet, openTestnetFaucet } from '../custody/testnetFaucet';
-import { formatBaseUnits } from '../core/amounts';
+import { findUtxoNetwork } from '../core/utxoNetworks';
+import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
 import { walletFetch } from '../platform/http';
@@ -59,15 +60,17 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const account = snapshot.account;
-  const registration = account ? model.getNetworkRegistration(account.network) : null;
-  const network = registration ? getNativeSendContext(registration) : { networkId: '', name: 'Network', symbol: '', decimals: 18, testnet: false };
+  const utxo = findUtxoNetwork(account?.network);
+  const registration = account && !utxo ? model.getNetworkRegistration(account.network) : null;
+  const network = utxo ? { ...utxo, networkId: utxo.symbol } : registration ? getNativeSendContext(registration)
+    : { networkId: '', name: 'Network', symbol: '', decimals: 18, testnet: false };
   const networkName = network.name;
   const symbol = network.symbol;
   const scope = account ? scopeOf(account) : null;
   const receiving = !!scope && receiveScope === scope;
   const loading = snapshot.status === 'loading';
   const canSend = !!registration && nativeSigningEnabled(registration.id, [registration]) && !!onSend;
-  const faucet = account ? getTestnetFaucet(registration!) : null;
+  const faucet = registration ? getTestnetFaucet(registration) : null;
 
   const invalidateActions = useCallback(() => {
     lifecycle.current.epoch++; lifecycle.current.busy = false;
@@ -125,6 +128,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   };
 
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
+  const pending = snapshot.pendingDeltaUnits;
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
@@ -148,9 +152,11 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         {!tokenTitle && <>
         <View style={s.hero}>
           <Coin id={network.networkId} size={46} />
-          <Text style={s.label}>{networkName.toUpperCase()} BALANCE</Text>
+          <Text style={s.label}>{networkName.toUpperCase()} {utxo ? 'CONFIRMED BALANCE' : 'BALANCE'}</Text>
           <Text style={[s.amount, amount !== null && amount.length > 14 && s.longAmount]} accessibilityLabel={amount === null ? statusText : `${networkName} balance ${amount} ${symbol}`} testID="native-portfolio-balance">{amount ?? '—'}</Text>
           <Text style={s.unit}>{amount === null ? statusText : symbol}</Text>
+          {pending !== undefined && pending !== '0' &&
+            <Text style={s.unit}>Pending {formatBalanceDelta(pending, network.decimals)} {symbol}</Text>}
           {loading && <ActivityIndicator color={colors.pink} accessibilityLabel={`Loading ${networkName} balance`} />}
           {snapshot.status === 'available' && snapshot.updatedAt !== null && <Text style={s.freshness}>Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>}
         </View>
@@ -165,7 +171,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
         {faucetCard}
         </>}
-        {tokenView && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
+        {tokenView && !utxo && <NativeTokens controller={tokenView} onBackHandlerChange={setTokenBack} onModeChange={setTokenTitle}
           onSend={account && onSendToken ? (token) => { if (model.isCurrent(account)) onSendToken(token); } : undefined}
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
         {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}

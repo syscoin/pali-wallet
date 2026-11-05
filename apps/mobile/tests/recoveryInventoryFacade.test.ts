@@ -60,7 +60,7 @@ async function fixture(existing = true) {
     },
     session: {
       async lock() {}, async unlock() { return { authenticated: true }; },
-      async readEthereumAddress() { return root.address; },
+      async readSelectedAddress() { return root.address; },
       async createWallet() { assert.fail('unexpected create'); },
       async importWallet() { assert.fail('unexpected import'); },
     },

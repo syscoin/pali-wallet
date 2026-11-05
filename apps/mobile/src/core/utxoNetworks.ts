@@ -30,9 +30,11 @@ export type UtxoNetwork = Readonly<{
   explorer: string;
 }>;
 
+const sdkDefaults = getDefaultUTXONetworks();
+
 /** Public-read registrations derived from the extension defaults and the pinned SDK coin catalogue. */
 export const UTXO_NETWORKS: readonly UtxoNetwork[] = Object.freeze(
-  Object.values(getDefaultUTXONetworks())
+  Object.values(sdkDefaults)
     .sort((a, b) => Number(!!b.default) - Number(!!a.default))
     .map((network): UtxoNetwork => {
       const coin = coins.find((entry) => (entry.chainId ?? entry.slip44) === network.chainId &&
@@ -67,4 +69,9 @@ export function getUtxoNetwork(id: unknown): UtxoNetwork {
   const network = findUtxoNetwork(id);
   if (!network) throw new Error('Unsupported UTXO network');
   return network;
+}
+
+/** The same default registration configures the SDK account scope. */
+export function getUtxoSdkNetwork(id: UtxoNetworkId): ReturnType<typeof getDefaultUTXONetworks>[number] {
+  return { ...sdkDefaults[getUtxoNetwork(id).chainId]! };
 }

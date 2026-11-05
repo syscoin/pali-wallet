@@ -145,9 +145,10 @@ export class NativeCustodyAuthority {
         await this.drainLocks(); current();
         await reservation.execute(current); current();
         await this.readState(true); current();
-        const address = normalizePublicAddress(await runtime.session.readEthereumAddress(), 'ethereum');
+        const network = this.selectedNetwork(runtime);
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network);
         current();
-        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network: this.selectedNetwork(runtime), address }), error: null });
+        this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null });
         current();
       } catch (cause) {
         reservation.cancel();
@@ -346,9 +347,9 @@ export class NativeCustodyAuthority {
       try {
         await this.drainLocks(); current();
         await this.readState(true); current();
-        const address = normalizePublicAddress(await runtime.session.readEthereumAddress(), 'ethereum');
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), account.network);
         current();
-        if (address !== account.address) throw new CustodyOperationError('UNAVAILABLE');
+        if (address !== account.address || this.selectedNetwork(runtime) !== account.network) throw new CustodyOperationError('UNAVAILABLE');
         this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required' });
         current();
       } catch {
@@ -456,13 +457,14 @@ export class NativeCustodyAuthority {
           this.failUnavailable();
           throw new CustodyOperationError('UNAVAILABLE');
         }
+        const network = this.selectedNetwork(runtime);
         const address = normalizePublicAddress(
-          await runtime.session.readEthereumAddress(), 'ethereum'
+          await runtime.session.readSelectedAddress(), network
         );
         assertCurrent();
         this.publish({
           phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required',
-          account: Object.freeze({ network: this.selectedNetwork(runtime), address }),
+          account: Object.freeze({ network, address }),
           error: null,
         });
         assertCurrent();

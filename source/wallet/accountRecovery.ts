@@ -254,14 +254,12 @@ async function stageWallet(
               // These are the existing extension recovery proof and SDK
               // account encryptor; account IDs are never inferred or filled.
               // Import the existing portable signer entry, not the extension
-              // package entry that initializes hardware dependencies.
-              /* eslint-disable @typescript-eslint/no-var-requires */
-              const { getSyscoinSigners } =
-                require('@sidhujag/sysweb3-keyring/cjs/signers') as Pick<
-                  typeof import('@sidhujag/sysweb3-keyring'),
-                  'getSyscoinSigners'
-                >;
-              /* eslint-enable @typescript-eslint/no-var-requires */
+              // package entry that initializes hardware dependencies. Keep
+              // it in the worker's loaded chunk for MV3 cold recovery.
+              const { getSyscoinSigners } = await import(
+                /* webpackMode: "eager" */ '@sidhujag/sysweb3-keyring/cjs/signers.js'
+              );
+              check();
               const config = getNetworkConfig(network.slip44, network.currency);
               const { hd } = getSyscoinSigners({
                 mnemonic: phrase,

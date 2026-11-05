@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, V
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
-import { formatBaseUnits } from '../core/amounts';
+import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
 import { getNetwork } from '../core/networks';
 import { getWatchNetworks, type WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNativeNetwork } from '../custody/networkContext';
@@ -64,7 +64,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
   const utxo = network.kind === 'utxo';
   const pending = snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo'
     ? snapshot.balance.pendingDeltaUnits : null;
-  const pendingAmount = pending === null ? null : `${pending.startsWith('-') ? '-' : pending === '0' ? '' : '+'}${formatBaseUnits(pending.replace(/^-/, ''), network.decimals)}`;
+  const pendingAmount = pending === null ? null : formatBalanceDelta(pending, network.decimals);
   const loading = snapshot.balance.status === 'loading';
   const back = () => { invalidateActions(); if (mode !== 'home') setMode('home'); else onExit(); };
   const faucetCard = address && network.kind === 'evm' && <TestnetFaucetCard registration={getNativeNetwork(network.id)} busy={busy} opening={openingFaucet} onCopy={mode === 'receive' ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
