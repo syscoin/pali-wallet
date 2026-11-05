@@ -1,7 +1,7 @@
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { utf8ByteLength } from '../platformRpc.ts';
 import { parseUtxoPublicIdentifier } from './utxoIdentifier.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { getUtxoNetwork, resolveUtxoNetwork, UTXO_NETWORKS, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import type { PublicAccount } from './types.ts';
 import { validatePublicAccounts } from './watchOnlyAuthority.ts';
 
@@ -15,6 +15,7 @@ export type DecodedWatchRecords = Readonly<{
   version: 1;
   records: readonly StoredWatchAccount[];
   accounts: readonly PublicAccount[];
+  utxoNetworks: readonly UtxoNetwork[];
 }>;
 const invalid = (): never => { throw new Error('Invalid saved watch account records'); };
 export function assertWatchRecordSize(raw: string): void {
@@ -47,7 +48,7 @@ function array(value: unknown): readonly unknown[] {
   return result;
 }
 /** Detach untrusted input before queueing or invoking any host callback. */
-export function snapshotWatchRecords(input: unknown): readonly StoredWatchAccount[] {
+export function snapshotWatchRecords(input: unknown, registrations = UTXO_NETWORKS): readonly StoredWatchAccount[] {
   assertJsonWorkBudget(input, WATCH_RECORD_LIMITS.bytes, 8, 1500);
   const ids = new Set<string>();
   return Object.freeze(array(input).map((value): StoredWatchAccount => {
@@ -58,31 +59,35 @@ export function snapshotWatchRecords(input: unknown): readonly StoredWatchAccoun
         typeof raw.name !== 'string' || raw.name.trim() !== raw.name || raw.name.length < 1 || raw.name.length > 40 || /[\u0000-\u001f\u007f-\u009f]/.test(raw.name)) return invalid();
     ids.add(raw.id);
     if (raw.kind === 'address') {
-      const account = validatePublicAccounts([{ id: raw.id, name: raw.name, addresses: raw.addresses }])[0]!;
+      const account = validatePublicAccounts([{ id: raw.id, name: raw.name, addresses: raw.addresses }], registrations)[0]!;
       return Object.freeze({ kind: 'address', ...account });
     }
     if (raw.kind !== 'utxo-public' || typeof raw.identifier !== 'string') return invalid();
-    const networkId = getUtxoNetwork(raw.networkId).id;
-    const source = parseUtxoPublicIdentifier(raw.identifier, networkId);
+    const network = getUtxoNetwork(raw.networkId, registrations);
+    const source = parseUtxoPublicIdentifier(raw.identifier, network);
     if (source.kind !== 'account') return invalid();
-    return Object.freeze({ kind: 'utxo-public', id: raw.id, name: raw.name, networkId, identifier: source.identifier });
+    return Object.freeze({ kind: 'utxo-public', id: raw.id, name: raw.name, networkId: network.id, identifier: source.identifier });
   }));
 }
 
 /** One canonical public-record codec; SDK validation/derivation supplies account addresses. */
-export function createWatchAccountCodec() {
+export function createWatchAccountCodec(input = UTXO_NETWORKS) {
+  if (!Array.isArray(input) || input.length > UTXO_NETWORKS.length + 16) return invalid();
+  const utxoNetworks = Object.freeze(input.map(resolveUtxoNetwork));
+  if (new Set(utxoNetworks.map(({ id }) => id)).size !== utxoNetworks.length ||
+      UTXO_NETWORKS.some((network) => !utxoNetworks.includes(network))) return invalid();
   const validatedLists = new WeakSet<readonly StoredWatchAccount[]>();
   function validate(input: unknown): DecodedWatchRecords {
-    const records = snapshotWatchRecords(input), accounts: PublicAccount[] = [], identifiers = new Set<string>();
+    const records = snapshotWatchRecords(input, utxoNetworks), accounts: PublicAccount[] = [], identifiers = new Set<string>();
     for (const record of records) {
       if (record.kind === 'address') { accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: record.addresses })); continue; }
-      const source = parseUtxoPublicIdentifier(record.identifier, record.networkId);
+      const source = parseUtxoPublicIdentifier(record.identifier, getUtxoNetwork(record.networkId, utxoNetworks));
       const key = `${record.networkId}:${source.identifier}`;
       if (identifiers.has(key)) return invalid(); identifiers.add(key);
       accounts.push(Object.freeze({ id: record.id, name: record.name, addresses: Object.freeze({ [record.networkId]: source.address }) }));
     }
     validatedLists.add(records);
-    return Object.freeze({ version: 1, records, accounts: validatePublicAccounts(accounts) });
+    return Object.freeze({ version: 1, records, accounts: validatePublicAccounts(accounts, utxoNetworks), utxoNetworks });
   }
   return Object.freeze({ validate,
     decode(raw: string | null): DecodedWatchRecords {

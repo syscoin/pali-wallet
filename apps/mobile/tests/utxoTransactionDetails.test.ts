@@ -3,7 +3,7 @@ import test from 'node:test';
 import { utils as actualSjs } from 'syscoinjs-lib';
 import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityPage } from '../src/core/utxoActivity.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount, type BalanceReader } from '../src/core/watchOnlyAuthority.ts';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { createUtxoTransactionDetailsCache } from '../../../source/shared/utxoTransactionDetailCache.ts';
@@ -38,7 +38,7 @@ function fixture(count = 1, networkId: 'bitcoin' | 'syscoin' = 'bitcoin') {
     return json({ address: decodeURIComponent(target.pathname.split('/').at(-1)!), txs: count, unconfirmedTxs: 0, page, totalPages: Math.ceil(count / 20), itemsOnPage: 20,
       transactions: summaryRows ?? Array.from({ length: Math.min(20, Math.max(0, count - (page - 1) * 20)) }, (_, index) => summary(count === 1 && rowShift === 0 ? H : ID((page - 1) * 20 + index + 1 + rowShift))) });
   } });
-  const repository = createPublicAccountStorage({ async get() { return raw; }, async set(_key, value) { writes.push(value); raw = value; } }).records;
+  const repository = createPublicAccountStorage({ async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? raw : null; }, async set(_key, value) { writes.push(value); raw = value; } }).records;
   const open = async (extraReader: Partial<BalanceReader> = {}, historyReader = reader) => { const owner = await WatchOnlyAuthority.openRecords({ repository, reader: { async readBalance() { throw Error('No EVM read'); }, ...extraReader }, historyReader, signal: signal() }); owner.unlock(); return owner; };
   return { set accountHold(value: Promise<void> | undefined) { accountHeld = value; }, set summaryRows(value: readonly Record<string, unknown>[] | undefined) { summaryRows = value; }, set returnedCount(value: number) { count = value; }, set rowShift(value: number) { rowShift = value; }, set memo(value: string) { memo = value; }, open, reader, summary, address, identifier: parseUtxoPublicIdentifier(XPUB, networkId).identifier, calls, signals, writes, entered, get raw() { return raw; }, set raw(value: string) { raw = value; }, set hold(value: Promise<void> | undefined) { held = value; },
     set full(value: Record<string, any> | null) { full = value; }, set failure(value: boolean) { failure = value; }, set summaryHeight(value: number) { summaryHeight = value; } };

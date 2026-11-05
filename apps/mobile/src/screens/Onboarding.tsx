@@ -16,12 +16,14 @@ import {
 import { colors, Icon, PaliMark } from '../ui';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
-import { UTXO_NETWORKS } from '../core/utxoNetworks';
-const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...UTXO_NETWORKS.map(({ id }) => id)];
-const WATCH_CHOICES = [
+import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS, type UtxoNetwork } from '../core/utxoNetworks';
+import type { WatchUtxoNetworksView } from '../core/publicAccountStorage';
+import { WatchNetworks } from './WatchNetworks';
+
+const watchChoices = (registrations: readonly UtxoNetwork[]) => [
   { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
-  ...UTXO_NETWORKS.map((network) => ({
-    id: network.id, title: network.name, shortName: network.name, inputLabel: 'Public address, account key or descriptor',
+  ...registrations.map((network) => ({
+    id: network.id, title: isCustomUtxoNetworkId(network.id) ? `${network.name} · ${new URL(network.endpoint).hostname}` : network.name, shortName: network.name, inputLabel: 'Public address, account key or descriptor',
     prefix: `${network.addressNetwork.bech32}1, ${network.testnet ? 'vpub' : 'zpub'} or wpkh(…)`,
     scope: 'A public account key or descriptor includes its receive and change addresses.',
   })),
@@ -38,6 +40,9 @@ type AddWatchAccountProps = {
   onAdd: (account: { name: string; address: string; network?: WatchAccountNetwork }) => Promise<void>;
   onCancel: () => void;
   availableNetworks?: readonly WatchAccountNetwork[];
+  utxoNetworks?: readonly UtxoNetwork[];
+  networkSettings?: WatchUtxoNetworksView;
+  onNetworksChanged?(): Promise<void>;
 };
 
 function BrandMark({ small = false }: { small?: boolean }) {
@@ -145,7 +150,10 @@ export function Welcome({ onPreview, onWatch, onDesign, onWallet }: WelcomeProps
   );
 }
 
-export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_WATCH_NETWORKS }: AddWatchAccountProps) {
+export function AddWatchAccount({ onAdd, onCancel, availableNetworks, utxoNetworks = UTXO_NETWORKS, networkSettings, onNetworksChanged }: AddWatchAccountProps) {
+  const choices = watchChoices(utxoNetworks);
+  const available = availableNetworks ?? choices.map(({ id }) => id);
+  const [managingNetworks, setManagingNetworks] = useState(false);
   const [name, setName] = useState('Account 1');
   const [address, setAddress] = useState('');
   const [network, setNetwork] = useState<WatchAccountNetwork>('evm');
@@ -156,37 +164,43 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
   const scroll = useRef<React.ComponentRef<typeof ScrollView>>(null);
   const submissionInProgress = useRef(false);
   const alive = useRef(true);
-  const hardwareBack = useRef(() => undefined as void);
+  const hardwareBack = useRef<() => boolean>(() => true);
   useEffect(() => {
     alive.current = true;
     const listener = AppState.addEventListener('change', (state) => { if (state !== 'active') { setReview(null); setError(null); } });
     return () => { alive.current = false; listener.remove(); };
   }, []);
   useEffect(() => { scroll.current?.scrollTo({ y: 0, animated: false }); }, [review]);
-  const info = WATCH_CHOICES.find((choice) => choice.id === network)!;
-  const back = () => { if (submissionInProgress.current) return; if (review) { setReview(null); setError(null); } else onCancel(); };
-  useLayoutEffect(() => { hardwareBack.current = back; });
+  const info = choices.find((choice) => choice.id === network) ?? choices[0]!;
+  const closeNetworks = () => {
+    setManagingNetworks(false);
+    if (info.id !== network) { setNetwork(info.id); setAddress(''); }
+  };
+  const back = () => { if (submissionInProgress.current) return; if (managingNetworks) return; if (review) { setReview(null); setError(null); } else onCancel(); };
+  useLayoutEffect(() => { hardwareBack.current = () => { if (managingNetworks) return false; back(); return true; }; });
   useEffect(() => {
-    const listener = BackHandler.addEventListener('hardwareBackPress', () => { hardwareBack.current(); return true; });
+    const listener = BackHandler.addEventListener('hardwareBackPress', () => hardwareBack.current());
     return () => listener.remove();
   }, []);
   const prepare = () => {
     if (submissionInProgress.current || AppState.currentState !== 'active') return;
     try {
-      if (!availableNetworks.includes(network)) throw new Error('This network is not available in this build.');
-      const source = network === 'evm' ? null : parseUtxoPublicIdentifier(address.trim(), network);
-      const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network);
+      if (info.id !== network || !available.includes(network)) throw new Error('This network is not available in this build.');
+      const source = network === 'evm' ? null : parseUtxoPublicIdentifier(address.trim(), getUtxoNetwork(network, utxoNetworks));
+      const account = createWatchAccount('review', name.trim(), source?.address ?? address.trim(), network, utxoNetworks);
       setReview({ name: account.name, address: source?.identifier ?? Object.values(account.addresses)[0]!, network });
       setError(null);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Check the public address.'); }
   };
   const confirm = async () => {
-    if (!review || submissionInProgress.current || AppState.currentState !== 'active' || !availableNetworks.includes(review.network)) return;
+    if (!review || submissionInProgress.current || AppState.currentState !== 'active' || !available.includes(review.network)) return;
     submissionInProgress.current = true; setSubmitting(true); setError(null);
     try { await onAdd(review); }
     catch (cause) { if (alive.current) setError(cause instanceof Error ? cause.message : 'This account could not be added. Please try again.'); }
     finally { submissionInProgress.current = false; if (alive.current) setSubmitting(false); }
   };
+  if (managingNetworks && networkSettings && onNetworksChanged)
+    return <WatchNetworks controller={networkSettings} onChanged={onNetworksChanged} onBack={closeNetworks} />;
   return <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView ref={scroll} contentContainerStyle={styles.formContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
       <View style={styles.formNavigation}>
@@ -204,12 +218,16 @@ export function AddWatchAccount({ onAdd, onCancel, availableNetworks = DEFAULT_W
         <Text style={styles.fieldHint}>{info.scope}</Text>
       </View> : <View style={styles.fields}>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Address network</Text>
-          <View style={styles.networkChoices}>{WATCH_CHOICES.map((choice) => <IdlePressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
-            accessibilityState={{ selected: network === choice.id, disabled: !availableNetworks.includes(choice.id) }} disabled={!availableNetworks.includes(choice.id) || submitting}
+          <View style={styles.networkChoices}>{choices.map((choice) => <IdlePressable key={choice.id} accessibilityRole="button" accessibilityLabel={choice.title}
+            accessibilityState={{ selected: network === choice.id, disabled: !available.includes(choice.id) }} disabled={!available.includes(choice.id) || submitting}
             onPress={() => { setNetwork(choice.id); setAddress(''); setReview(null); setError(null); }}
-            style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !availableNetworks.includes(choice.id) && styles.disabled]}>
-            <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!availableNetworks.includes(choice.id) && <Text style={styles.fieldHint}>Not available yet</Text>}
+            style={[styles.networkChoice, network === choice.id && styles.networkChoiceSelected, !available.includes(choice.id) && styles.disabled]}>
+            <Text style={styles.networkChoiceTitle}>{choice.title}</Text>{!available.includes(choice.id) && <Text style={styles.fieldHint}>Not available yet</Text>}
           </IdlePressable>)}</View>
+          {networkSettings && onNetworksChanged && <IdlePressable accessibilityRole="button" accessibilityLabel="Manage watch networks"
+            onPress={() => { setError(null); setManagingNetworks(true); }}>
+            <Text style={styles.fieldHint}>Manage networks</Text>
+          </IdlePressable>}
         </View>
         <View style={styles.fieldGroup}><Text style={styles.fieldLabel}>Account name</Text>
           <IdleTextInput accessibilityLabel="Account name" autoCapitalize="words" autoComplete="off" autoCorrect={false} editable={!submitting} importantForAutofill="no" maxLength={40}

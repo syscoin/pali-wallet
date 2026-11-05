@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { createWatchAccountCodec, snapshotWatchRecords } from '../src/core/watchAccountCodec.ts';
 import { createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
@@ -10,7 +10,7 @@ const addressRecord = { kind: 'address' as const, ...address };
 const doc = (records: readonly unknown[]) => JSON.stringify({ version: 1, records });
 function fixture(initial: string | null = doc([addressRecord])) {
   let raw = initial; const writes: string[] = [];
-  const storage = createPublicAccountStorage({ get: async () => raw, set: async (_key, value) => { raw = value; writes.push(value); } });
+  const storage = createPublicAccountStorage({ get: async (key) => key === PUBLIC_ACCOUNTS_KEY ? raw : null, set: async (_key, value) => { raw = value; writes.push(value); } });
   return { storage, writes, get raw() { return raw; }, set raw(value) { raw = value; } };
 }
 test('canonical mixed records preserve account keys internally and expose only first addresses', async () => {
@@ -67,13 +67,13 @@ test('snapshots are repository-issued, single-use and stale saves cannot replace
 });
 test('input is detached before queued saves and acknowledged writes require exact readback', async () => {
   const gate = deferred<void>(); let raw = doc([addressRecord]), reads = 0;
-  const repo = createPublicAccountStorage({ async get() { if (++reads === 2) await gate.promise; return raw; }, async set(_key, value) { raw = value; } });
+  const repo = createPublicAccountStorage({ async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; if (++reads === 2) await gate.promise; return raw; }, async set(_key, value) { raw = value; } });
   const first = await repo.records.load(); const next = [{ ...keyRecord() }];
   const pending = repo.records.compareAndSet(first, next); next[0]!.name = 'Mutated'; gate.resolve();
   assert.equal((await pending).records[0]?.name, 'key');
   for (const behavior of ['ignore', 'wrong', 'throw']) {
     let data = doc([addressRecord]);
-    const broken = createPublicAccountStorage({ get: async () => data, async set() { if (behavior === 'wrong') data = doc([]); if (behavior === 'throw') throw Error('ACK lost'); } });
+    const broken = createPublicAccountStorage({ get: async (key) => key === PUBLIC_ACCOUNTS_KEY ? data : null, async set() { if (behavior === 'wrong') data = doc([]); if (behavior === 'throw') throw Error('ACK lost'); } });
     const loaded = await broken.records.load(); await assert.rejects(broken.records.compareAndSet(loaded, [keyRecord()]));
     await assert.rejects(broken.records.compareAndSet(loaded, []));
   }

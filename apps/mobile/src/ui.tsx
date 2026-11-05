@@ -131,7 +131,7 @@ export function PaliMark({ size = 34 }: { size?: number }) {
   );
 }
 
-export function Coin({ id, size = 42 }: { id: string; size?: number }) {
+export function Coin({ id, size = 42, fallbackSymbol }: { id: string; size?: number; fallbackSymbol?: string }) {
   const token = id.toLowerCase();
   if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'tsys', 'nevm'].includes(token)) {
     return (
@@ -214,6 +214,11 @@ export function Coin({ id, size = 42 }: { id: string; size?: number }) {
         </G>
       </>
     );
+  } else if (fallbackSymbol) {
+    return <View accessible={false} style={{ width: size, height: size, borderRadius: size / 2,
+      backgroundColor: colors.raised, alignItems: 'center', justifyContent: 'center' }}>
+      <Text style={{ color: colors.muted, fontSize: size * 0.24, fontWeight: '700' }}>{fallbackSymbol.slice(0, 5)}</Text>
+    </View>;
   } else {
     graphic = (
       <>

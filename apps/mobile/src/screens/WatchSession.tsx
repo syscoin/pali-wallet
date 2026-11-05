@@ -3,7 +3,6 @@ import { securityPreferences, watchIdle } from '../platform/security';
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler } from 'react-native';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
-import { getNetwork } from '../core/networks';
 import { RealAppShell } from './RealAppShell';
 import { RealTools } from './RealTools';
 import { RealSettings } from './RealSettings';
@@ -40,7 +39,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
     return securityPreferences.save(expected, 'watch', minutes, () => { check(); watchIdle.assertCurrent(); if (captured !== currentScope()) throw Error('CANCELLED'); });
   }} />;
   const account = snapshot.accounts.find((row) => row.id === snapshot.selectedAccountId);
-  const network = getNetwork(snapshot.selectedNetworkId);
+  const network = authority.getNetwork(snapshot.selectedNetworkId);
   const label = account?.name ?? 'Watch account';
   const openAccounts = () => { if (AppState.currentState === 'active' && currentScope()) onAccounts(); };
   let content: React.ReactNode;

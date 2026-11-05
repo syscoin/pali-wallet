@@ -46,7 +46,8 @@ const reader: BalanceReader = {
   async readBalance(id) {
     reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };
   },
-  async readUtxoBalance(id, selectedAddress) {
+  async readUtxoBalance(scope, selectedAddress) {
+    const id = typeof scope === 'string' ? scope : scope.id;
     if (selectedAddress !== utxoAddresses[id]) throw Error('Wrong account');
     const network = getUtxoNetwork(id);
     reads.push(id);

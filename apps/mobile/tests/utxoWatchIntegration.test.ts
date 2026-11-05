@@ -123,7 +123,7 @@ test('optional add-network input rejects coercion, getters and private fields be
 test('one watch authority routes EVM and UTXO separately and retains confirmed versus pending units', async () => {
   const calls: string[] = [];
   const reader: BalanceReader = { async readBalance(n) { calls.push(n); return { chainId: 1, units: '0' }; },
-    async readUtxoBalance(n, address) { calls.push(n); assert.equal(address, n === 'syscoin' ? SYS : BTC); return observation(n); } };
+    async readUtxoBalance(scope, address) { const id = typeof scope === 'string' ? scope : scope.id; calls.push(id); assert.equal(address, id === 'syscoin' ? SYS : BTC); return observation(id); } };
   const authority = new WatchOnlyAuthority([mapped, sys, btc], reader, () => 500);
   authority.unlock(); await authority.refresh(); assert.deepEqual(authority.getSnapshot().balance, { status: 'available', units: '0', updatedAt: 500 });
   for (const account of [sys, btc]) {

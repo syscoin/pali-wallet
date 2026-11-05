@@ -1,15 +1,17 @@
 import { getAddress } from 'ethers/address';
 import type { NetworkId } from './types.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
-import { findUtxoNetwork } from './utxoNetworks.ts';
+import { findUtxoNetwork, UTXO_NETWORKS } from './utxoNetworks.ts';
 
 /** Uses the extension's ethers parser, including mixed-case checksum validation. */
 export function normalizePublicAddress(
   address: string,
-  networkId: NetworkId
+  networkId: NetworkId,
+  registrations = UTXO_NETWORKS
 ): string {
-  const utxo = findUtxoNetwork(networkId);
-  if (utxo) return normalizeUtxoAddress(address, utxo.id);
+  const utxo = findUtxoNetwork(networkId, registrations);
+  if (utxo) return normalizeUtxoAddress(address, utxo);
+  if (networkId.startsWith('utxo:')) throw new Error('Unknown UTXO network');
   if (typeof address !== 'string' || address !== address.trim()) {
     throw new Error('Enter an address without whitespace');
   }
