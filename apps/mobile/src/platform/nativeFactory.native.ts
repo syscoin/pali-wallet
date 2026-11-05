@@ -23,6 +23,7 @@ import { ensureNativeCryptoReady } from './cryptoBootstrap';
 import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
+import type { NativeNoteBackupRuntime } from '../custody/noteBackupRuntime.ts';
 
 async function openStorage() {
   const crypto = await ensureNativeCryptoReady();
@@ -119,6 +120,54 @@ export function createNativeWalletControllers() {
     assertCurrent();
     return inventory;
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, transfers: transfers.view, tokens: tokens.view,
+  const openNoteBackup = async (assertOwner: () => void): Promise<NativeNoteBackupRuntime> => {
+    const selected = runtime;
+    const initial = authority.getSnapshot();
+    if (initial.phase !== 'ready' || !selected?.openNoteBackup)
+      throw new CustodyOperationError('NOT_READY');
+    const catalogue = selected.catalogue;
+    const assertCurrent = () => {
+      const current = authority.getSnapshot();
+      if (selected !== runtime || current.phase !== 'ready' || current.revision !== initial.revision)
+        throw new CustodyOperationError('CANCELLED');
+      return assertOwner();
+    };
+    async function observeFailure<T>(action: () => Promise<T>): Promise<T> {
+      try { return await action(); }
+      catch (cause) {
+        if (selected === runtime && authority.getSnapshot() === initial && !catalogue.getSnapshot()) authority.lock();
+        throw cause;
+      }
+    }
+    const notes = await observeFailure(() => selected.openNoteBackup!(assertCurrent));
+    return Object.freeze<NativeNoteBackupRuntime>({
+      ...notes,
+      prepareImport: (...args) => observeFailure(() => notes.prepareImport(...args)),
+      exportEncrypted: (...args) => observeFailure(() => notes.exportEncrypted(...args)),
+      verifyExport: (...args) => observeFailure(() => notes.verifyExport(...args)),
+    });
+  };
+  // Bound to the exact durable vault without handing its fingerprint to a view.
+  const captureNoteFileOwner = async (assertOwner: () => void) => {
+    const storage = ownedStorage;
+    const selected = runtime;
+    const readPair = async () => {
+      const before = authority.getSnapshot();
+      if (!storage || selected !== runtime || storage !== ownedStorage ||
+          before.phase !== 'ready' || !selected?.openNoteBackup)
+        throw new CustodyOperationError('NOT_READY');
+      assertOwner();
+      const pair = await storage.getWalletFingerprint();
+      assertOwner();
+      if (before !== authority.getSnapshot() || selected !== runtime || storage !== ownedStorage)
+        throw new CustodyOperationError('CANCELLED');
+      return pair;
+    };
+    const expected = await readPair();
+    return async () => {
+      if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
+    };
+  };
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, captureNoteFileOwner, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

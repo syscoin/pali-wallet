@@ -11,6 +11,9 @@ import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
 import { NativeRecoveryFlow, type RecoveryOutcome } from '../custody/recoveryFlow';
 import { NativeRecovery } from './NativeRecovery';
+import { NativeNoteRestore, NoteRestoreUnconfirmedNotice } from './NativeNoteRestore';
+import { NativeNoteExport, NativeNoteFilesMenu } from './NativeNoteExport';
+import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
@@ -41,7 +44,7 @@ const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWall
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; context: string; identity: string; epoch: number }>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery' | 'auto-lock';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'restore-notes' | 'backup-notes';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -110,6 +113,12 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const rootOrigin = useRef<RootOrigin | null>(null);
+  const noteRestore = useNativeNoteBackup(() => {
+    const local = controllers.current;
+    return mounted.current && local && !recoveryRef.current &&
+      nativeLifecycle.current(screenToken.current) === local && !nativeLifecycle.hasRecovery(screenToken.current) ? local : null;
+  }, mode => setStage(mode === 'restore' ? 'restore-notes' : 'backup-notes'));
+  const { cancel: cancelNoteRestore, lock: lockNoteRestore } = noteRestore;
 
   const clearSecrets = useCallback(() => {
     setPassword(''); setConfirmation(''); setPhrase(''); setPresentation(null); setAnswers(['', '', '']);
@@ -118,16 +127,17 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     custodyIdle.stop(screenToken.current);
     epoch.current++;
     recoveryRef.current?.cancel();
+    lockNoteRestore();
     rootOrigin.current = null;
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendToken(null); if (!recoveryRef.current) setStage('choose'); setError('');
-  }, [clearSecrets]);
+  }, [clearSecrets, lockNoteRestore]);
   useLayoutEffect(() => {
     if (mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, revoke);
   });
   useLayoutEffect(() => { const owner = screenToken.current; custodyIdle.begin(owner, revoke); return () => custodyIdle.stop(owner); }, [revoke]);
-  const exit = useCallback(() => { revoke(); onExit(); }, [onExit, revoke]);
+  const exit = useCallback(() => { cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
   const readyContext = useCallback(() => {
     const local = controllers.current, state = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
     return state?.phase === 'ready' && state.account && current
@@ -156,7 +166,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => {
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
-      if (stage === 'recovery' || stage === 'auto-lock' || stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
+      if (stage === 'private-notes' && snapshot.phase === 'ready') { closeStage(); return true; }
+      if (stage === 'recovery' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes') && snapshot.phase === 'ready' ||
+          stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
@@ -169,12 +181,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   });
 
   const clearOwnerView = useCallback(() => {
+    cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllers.current = null;
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
     setSaveIdle(null); setCatalogue(null); setTransferView(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
     bridge.current?.onNativeCatalogue(null);
-  }, []);
+  }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
     detachSubscriptions.current(); controllers.current = local;
     const networks = createNativeNetworkView(local.authority, { fetch: walletFetch });
@@ -232,6 +245,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const local = controllers.current;
     if (!local || recoveryRef.current || submitting.current || !protectedScreen || AppState.currentState !== 'active' ||
         local.authority.getSnapshot().phase !== 'locked' || nativeLifecycle.current(screenToken.current) !== local) return;
+    cancelNoteRestore();
     rootOrigin.current = null; requestedAccount.current = undefined; feedbackRequest.current++;
     clearSecrets(); setError(''); setSendToken(null); const captured = ++epoch.current;
     let flow!: NativeRecoveryFlow, recoveryStarted = false;
@@ -360,6 +374,17 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase))
     return <NativeNetworks controller={networkView} onBack={closeStage} />;
   if (stage === 'auto-lock' && snapshot.phase === 'ready' && saveIdle) return <AutoLockSettings mode="custody" save={saveIdle} onBack={closeStage} />;
+  if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
+    onExport={() => { if (noteRestore.begin('export')) setStage('backup-notes'); }}
+    onRestore={() => { if (noteRestore.begin('restore')) setStage('restore-notes'); }} />;
+  if (stage === 'restore-notes' && snapshot.phase === 'ready') return <NativeNoteRestore
+    step={noteRestore.step} busy={noteRestore.busy} error={noteRestore.error}
+    onChoose={noteRestore.choose} onOpen={noteRestore.open} onRestore={noteRestore.restore}
+    onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
+  if (stage === 'backup-notes' && snapshot.phase === 'ready') return <NativeNoteExport
+    step={noteRestore.exportStep} busy={noteRestore.busy} error={noteRestore.error}
+    onChoose={noteRestore.choose} onSave={noteRestore.saveExport} onShowVerify={noteRestore.showVerify} onVerify={noteRestore.verifyExport}
+    onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView)
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
       keyExport={keyExportView} canRevealKey={canSign} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
@@ -381,11 +406,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             setError(message(cause));
         };
       }} />;
+  const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
-  if (unavailable) body = <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
+  if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
+    <Notice title="Wallet unavailable" body="Your saved wallet has been preserved. Close and reopen Pali to try again." tone="amber" />;
   else if (!protectedScreen || snapshot.phase === 'opening') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening your wallet securely…</Text></View>;
   else if (snapshot.phase === 'authenticating') body = <View style={s.center}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Unlocking your wallet securely…</Text></View>;
   else if (locked) body = <>
+    {restoreUnconfirmed && <NoteRestoreUnconfirmedNotice />}
     <Text style={styles.muted}>Enter your password to unlock this device.</Text>
     <SecretInput label="Password" value={password} onChange={setPassword} disabled={busy} />
     <Button title="Unlock wallet" disabled={busy || !password} onPress={() => {
@@ -401,12 +429,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         if (requested && current && authority.getSnapshot().phase === 'ready' && current.active.accountId !== requested && current.accounts.some((entry) => entry.id === requested)) {
           await controllers.current!.accounts.execute({ kind: 'select', id: requested }, authority.getSnapshot().revision, current.revision);
         }
+        if (authority.getSnapshot().phase === 'ready' && noteRestore.resume()) return;
         if (authority.getSnapshot().phase === 'ready' || authority.getSnapshot().phase === 'backup-required')
           setStage(authority.getSnapshot().backup === 'confirmed' ? 'choose' : 'backup-auth');
       });
     }} />
     <Button title="Forgot password?" variant="quiet" disabled={busy} onPress={openRecovery} />
-    {accounts && !busy && <Button title="View watch accounts" variant="secondary" onPress={() => { revoke(); setStage('accounts'); }} />}
+    {accounts && !busy && <Button title="View watch accounts" variant="secondary" onPress={() => { cancelNoteRestore(); revoke(); setStage('accounts'); }} />}
   </>;
   else if (snapshot.phase === 'empty' && stage === 'choose') body = <>
     <PaliMark size={72} /><Text style={styles.h1}>A wallet that stays yours.</Text>
@@ -468,7 +497,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
-      onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
+      onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined}
+      onPrivateNotes={() => openStage('private-notes')}
+      onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
     else content = <RealSettings navigation={shell.navigation} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')} onLock={revoke} onBack={() => shell.select('wallet')} />;
     return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>{content}</RealAppShell>;
   }
@@ -477,6 +508,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
       {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
+      {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
       {body}
       {snapshot.error && <NativeCustodyFeedback error={snapshot.error} />}
       {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
