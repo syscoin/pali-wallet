@@ -2,7 +2,10 @@ package org.syscoin.pali.storage
 
 import java.io.IOException
 import java.net.SocketTimeoutException
-import java.nio.ByteBuffer
+import java.util.concurrent.ArrayBlockingQueue
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import okhttp3.Authenticator
@@ -29,12 +32,12 @@ internal enum class PaliPublicSnapshotError(val code: String) {
 
 internal class PaliPublicSnapshotException(val error: PaliPublicSnapshotError) : IOException(error.code)
 
-internal class PaliPublicSnapshotResponse(val status: Int, private val storage: ByteArray) {
-  /** Read-only, exact-capacity view of the single bounded allocation. */
-  fun payload(): ByteBuffer = ByteBuffer.wrap(storage).asReadOnlyBuffer()
-}
+internal data class PaliPublicSnapshotInfo(val status: Int, val byteCount: Int)
 
-internal fun interface PaliPublicSnapshotCancellation {
+internal interface PaliPublicSnapshotOperation {
+  fun start()
+  fun info(): PaliPublicSnapshotInfo
+  fun pull(): ByteArray?
   fun cancel()
 }
 
@@ -43,11 +46,27 @@ internal object PaliPublicSnapshotDownloader {
   private const val SNAPSHOT_BYTES = 2 * 1024 * 1024
   private const val PROGRESS_BYTES = 4 * 1024
   private const val READ_BYTES = 16 * 1024
+  private const val PULL_BYTES = 64 * 1024
   private const val TIMEOUT_SECONDS = 25L
+  private const val MAX_PENDING_COMPLETIONS = 2
   private val lock = Any()
   private var active: Operation? = null
+  private var pendingCompletions = 0
+  private val deadlines by lazy {
+    ScheduledThreadPoolExecutor(1) { work ->
+      Thread(work, "PaliPublicSnapshotDeadline").apply { isDaemon = true }
+    }.apply { removeOnCancelPolicy = true }
+  }
+  private val completions by lazy {
+    ThreadPoolExecutor(
+      MAX_PENDING_COMPLETIONS, MAX_PENDING_COMPLETIONS, 30, TimeUnit.SECONDS,
+      ArrayBlockingQueue(MAX_PENDING_COMPLETIONS)
+    ) { work ->
+      Thread(work, "PaliPublicSnapshotCompletion").apply { isDaemon = true }
+    }.apply { allowCoreThreadTimeOut(true) }
+  }
 
-  private class DispatchPermit(val deadline: Long) {
+  private class DispatchPermit(val deadline: Long, val snapshotLimit: Int) {
     val used = AtomicBoolean(false)
   }
 
@@ -75,7 +94,7 @@ internal object PaliPublicSnapshotDownloader {
         ) throw IOException()
         val response = chain.proceed(request)
         try {
-          admittedLength(response)
+          admittedLength(response, permit.snapshotLimit)
           response
         } catch (error: PaliPublicSnapshotException) {
           // A body close can read chunk extensions while discarding. Throw after cancel so
@@ -92,22 +111,25 @@ internal object PaliPublicSnapshotDownloader {
     else -> null
   }
 
-  fun download(
+  /** The caller receives the exact cancellation handle before starting any I/O. */
+  fun prepare(
     pool: String,
-    completion: (Result<PaliPublicSnapshotResponse>) -> Unit
-  ): PaliPublicSnapshotCancellation = start(
-    endpoint(pool) ?: fail(PaliPublicSnapshotError.INVALID), TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS), completion
+    completion: (Result<Unit>) -> Unit
+  ): PaliPublicSnapshotOperation = reserve(
+    endpoint(pool) ?: fail(PaliPublicSnapshotError.INVALID),
+    TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS), SNAPSHOT_BYTES, completion
   )
 
-  private fun start(
+  private fun reserve(
     endpoint: HttpUrl,
     timeoutNanos: Long,
-    completion: (Result<PaliPublicSnapshotResponse>) -> Unit,
+    snapshotLimit: Int,
+    completion: (Result<Unit>) -> Unit,
     observer: EventListener? = null
-  ): PaliPublicSnapshotCancellation {
+  ): PaliPublicSnapshotOperation {
     val deadline = System.nanoTime() + timeoutNanos
     val operation = synchronized(lock) {
-      if (active != null) fail(PaliPublicSnapshotError.BUSY)
+      if (active != null || pendingCompletions >= MAX_PENDING_COMPLETIONS) fail(PaliPublicSnapshotError.BUSY)
       if (expired(deadline)) fail(PaliPublicSnapshotError.TIMEOUT)
       val request = Request.Builder().url(endpoint).get()
         .header("Accept-Encoding", "identity")
@@ -115,20 +137,23 @@ internal object PaliPublicSnapshotDownloader {
         .header("Cache-Control", "no-store, no-cache")
         .header("Pragma", "no-cache")
         .header("User-Agent", "PaliWallet")
-        .tag(DispatchPermit::class.java, DispatchPermit(deadline))
+        .tag(DispatchPermit::class.java, DispatchPermit(deadline, snapshotLimit))
         .build()
       val transport = observer?.let { client.newBuilder().eventListener(it).build() } ?: client
       val call = transport.newCall(request)
       call.timeout().deadlineNanoTime(deadline)
-      Operation(call, deadline, completion).also { active = it }
+      Operation(call, deadline, snapshotLimit, completion).also {
+        pendingCompletions++
+        active = it
+      }
     }
-    operation.enqueue()
+    operation.armDeadline()
     return operation
   }
 
-  private fun admittedLength(response: Response): Int {
+  private fun admittedLength(response: Response, snapshotLimit: Int): Int {
     val limit = when (response.code) {
-      200 -> SNAPSHOT_BYTES
+      200 -> snapshotLimit
       202 -> PROGRESS_BYTES
       else -> fail(PaliPublicSnapshotError.UNAVAILABLE)
     }
@@ -145,76 +170,161 @@ internal object PaliPublicSnapshotDownloader {
   private fun expired(deadline: Long): Boolean = System.nanoTime() - deadline >= 0L
   private fun fail(error: PaliPublicSnapshotError): Nothing = throw PaliPublicSnapshotException(error)
 
+  /** A delayed caller may occupy its reserved completion slot, never a transport or timer worker. */
+  private fun deliverCompletion(completion: (Result<Unit>) -> Unit, result: Result<Unit>) {
+    completions.submit {
+      try {
+        completion(result)
+      } finally {
+        synchronized(lock) { pendingCompletions-- }
+      }
+    }
+  }
+
   private class Operation(
     private val request: Call,
     private val deadline: Long,
-    private val completion: (Result<PaliPublicSnapshotResponse>) -> Unit
-  ) : Callback, PaliPublicSnapshotCancellation {
-    private val state = Any()
-    private var cancelled = false
-    private var finished = false
+    private val snapshotLimit: Int,
+    completion: (Result<Unit>) -> Unit
+  ) : Callback, PaliPublicSnapshotOperation {
+    private enum class Phase { RESERVED, DOWNLOADING, READY, RETIRED }
 
-    fun enqueue() {
-      if (expired(deadline)) {
-        finish(Result.failure(PaliPublicSnapshotException(PaliPublicSnapshotError.TIMEOUT)))
-        return
+    private val state = Any()
+    private var phase = Phase.RESERVED
+    private var completion: ((Result<Unit>) -> Unit)? = completion
+    private var timer: ScheduledFuture<*>? = null
+    private var stopped: PaliPublicSnapshotError? = null
+    private var info: PaliPublicSnapshotInfo? = null
+    private var body: ByteArray? = null
+    private var offset = 0
+
+    fun armDeadline() = synchronized(state) {
+      timer = deadlines.schedule(
+        { stop(PaliPublicSnapshotError.TIMEOUT) }, deadline - System.nanoTime(), TimeUnit.NANOSECONDS
+      )
+    }
+
+    override fun start() {
+      synchronized(state) {
+        if (phase != Phase.RESERVED || stopReasonLocked() != null) return
+        phase = Phase.DOWNLOADING
       }
       try {
         request.enqueue(this)
       } catch (_: RuntimeException) {
         request.cancel()
-        finish(Result.failure(PaliPublicSnapshotException(PaliPublicSnapshotError.UNAVAILABLE)))
+        finish(PaliPublicSnapshotError.UNAVAILABLE)
       }
     }
 
-    override fun cancel() {
-      synchronized(state) {
-        if (finished || cancelled) return
-        cancelled = true
-      }
-      request.cancel()
+    /** A completion is only a wakeup. Read metadata through the exact current handle. */
+    override fun info(): PaliPublicSnapshotInfo = synchronized(state) {
+      stopReasonLocked()?.let(::fail)
+      info?.takeIf { phase == Phase.READY } ?: fail(PaliPublicSnapshotError.UNAVAILABLE)
     }
 
-    private fun checkCurrent() {
-      synchronized(state) {
-        if (cancelled) fail(PaliPublicSnapshotError.CANCELLED)
-        if (expired(deadline)) fail(PaliPublicSnapshotError.TIMEOUT)
+    /** A fixed-size copy on demand. Exact EOF retires the handle and frees the slot. */
+    override fun pull(): ByteArray? {
+      val chunk = synchronized(state) {
+        stopReasonLocked()?.let(::fail)
+        val bytes = body?.takeIf { phase == Phase.READY } ?: fail(PaliPublicSnapshotError.UNAVAILABLE)
+        if (offset == bytes.size) {
+          retireLocked(PaliPublicSnapshotError.CANCELLED)
+          null
+        } else {
+          val end = minOf(offset + PULL_BYTES, bytes.size)
+          val chunk = bytes.copyOfRange(offset, end)
+          stopReasonLocked()?.let(::fail)
+          offset = end
+          chunk
+        }
+      }
+      if (chunk == null) release()
+      return chunk
+    }
+
+    override fun cancel() = stop(PaliPublicSnapshotError.CANCELLED)
+
+    private fun retireLocked(error: PaliPublicSnapshotError) {
+      stopped = error
+      phase = Phase.RETIRED
+      info = null
+      body = null
+      timer?.cancel(false)
+      timer = null
+    }
+
+    private fun takeCompletionLocked() = completion.also { completion = null }
+
+    private fun release() {
+      synchronized(lock) {
+        if (active === this) active = null
       }
     }
+
+    private fun stop(error: PaliPublicSnapshotError) {
+      val (notify, retired) = synchronized(state) {
+        if (stopped != null) return
+        if (phase == Phase.DOWNLOADING) {
+          stopped = error
+          null to false
+        } else {
+          retireLocked(error)
+          takeCompletionLocked() to true
+        }
+      }
+      if (retired) release()
+      else request.cancel()
+      notify?.let { deliverCompletion(it, Result.failure(PaliPublicSnapshotException(error))) }
+    }
+
+    private fun stopReasonLocked(): PaliPublicSnapshotError? =
+      stopped ?: PaliPublicSnapshotError.TIMEOUT.takeIf { expired(deadline) }
+
+    private fun checkCurrent() = synchronized(state) { stopReasonLocked()?.let(::fail) }
 
     override fun onFailure(call: Call, e: IOException) {
-      finish(Result.failure(transportFailure(e)))
+      finish(transportFailure(e))
     }
 
     override fun onResponse(call: Call, response: Response) {
-      val result = try {
-        Result.success(response.use { owned ->
-          try {
-            read(owned)
-          } catch (error: Exception) {
-            // Cancel before close so a refused body is not drained for connection reuse.
-            call.cancel()
-            throw error
-          }
-        })
+      val error = try {
+        readAndStage(call, response)
+        null
       } catch (error: IOException) {
-        Result.failure(transportFailure(error))
+        transportFailure(error)
       } catch (_: RuntimeException) {
-        Result.failure(PaliPublicSnapshotException(PaliPublicSnapshotError.UNAVAILABLE))
+        PaliPublicSnapshotError.UNAVAILABLE
       }
-      finish(result)
+      finish(error)
     }
 
-    private fun transportFailure(error: IOException): PaliPublicSnapshotException = when (error) {
-      is PaliPublicSnapshotException -> error
-      is SocketTimeoutException -> PaliPublicSnapshotException(PaliPublicSnapshotError.TIMEOUT)
-      else -> PaliPublicSnapshotException(PaliPublicSnapshotError.UNAVAILABLE)
+    private fun readAndStage(call: Call, response: Response) {
+      val bytes = response.use {
+        try {
+          read(it)
+        } catch (error: Exception) {
+          // Cancel before close so a refused body is not drained for connection reuse.
+          call.cancel()
+          throw error
+        }
+      }
+      synchronized(state) {
+        body = bytes
+        info = PaliPublicSnapshotInfo(response.code, bytes.size)
+      }
     }
 
-    private fun read(response: Response): PaliPublicSnapshotResponse {
+    private fun transportFailure(error: IOException): PaliPublicSnapshotError = when (error) {
+      is PaliPublicSnapshotException -> error.error
+      is SocketTimeoutException -> PaliPublicSnapshotError.TIMEOUT
+      else -> PaliPublicSnapshotError.UNAVAILABLE
+    }
+
+    private fun read(response: Response): ByteArray {
       checkCurrent()
       if (response.request.url != request.request().url) fail(PaliPublicSnapshotError.UNAVAILABLE)
-      val declared = admittedLength(response)
+      val declared = admittedLength(response, snapshotLimit)
       val stream = response.body?.byteStream() ?: fail(PaliPublicSnapshotError.INVALID)
       val bytes = ByteArray(declared)
       var length = 0
@@ -227,25 +337,21 @@ internal object PaliPublicSnapshotDownloader {
       checkCurrent()
       if (stream.read() != -1) fail(PaliPublicSnapshotError.INVALID)
       checkCurrent()
-      return PaliPublicSnapshotResponse(response.code, bytes)
+      return bytes
     }
 
-    private fun finish(result: Result<PaliPublicSnapshotResponse>) {
-      val accepted = synchronized(state) {
-        if (finished) return
-        finished = true
-        when {
-          cancelled -> Result.failure(PaliPublicSnapshotException(PaliPublicSnapshotError.CANCELLED))
-          expired(deadline) -> Result.failure(PaliPublicSnapshotException(PaliPublicSnapshotError.TIMEOUT))
-          else -> result
-        }
+    private fun finish(error: PaliPublicSnapshotError?) {
+      val (notify, refused) = synchronized(state) {
+        if (phase != Phase.DOWNLOADING) return
+        val reason = stopReasonLocked() ?: error
+        if (reason != null) retireLocked(reason)
+        else phase = Phase.READY
+        takeCompletionLocked() to reason
       }
-      synchronized(lock) {
-        if (active !== this) return
-        active = null
+      if (refused != null) release()
+      notify?.let {
+        deliverCompletion(it, if (refused == null) Result.success(Unit) else Result.failure(PaliPublicSnapshotException(refused)))
       }
-      // Body closure precedes slot release and delivery. The old handle stays permanently retired.
-      completion(accepted)
     }
   }
 }

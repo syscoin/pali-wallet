@@ -25,7 +25,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 private const val SNAPSHOT_BYTES = 2 * 1024 * 1024
+private const val QUALIFIED_BYTES = 16 * 1024 * 1024
+private const val PULL_BYTES = 64 * 1024
 private const val FIXTURE_TIMEOUT_MS = 5000L
+private val LARGE_BODIES = mapOf("/medium" to 6_693_325, "/large" to 13_106_047, "/limit" to QUALIFIED_BYTES)
 
 class PaliPublicSnapshotDownloadTest {
   @Test
@@ -35,14 +38,24 @@ class PaliPublicSnapshotDownloadTest {
     }
     for (pool in listOf("", "eth-0.10", "../eth-1", "eth-1?x=y", "ETH-1")) {
       expectThrow(PaliPublicSnapshotError.INVALID) {
-        PaliPublicSnapshotDownloader.download(pool) { error("invalid pool dispatched") }
+        PaliPublicSnapshotDownloader.prepare(pool) { error("invalid pool dispatched") }
       }
     }
     SnapshotLoopback().use { server ->
-      expectThrow(PaliPublicSnapshotError.TIMEOUT) { begin(server, "/must-not-hit", 0) }
-      checkBody(run(server, "/exact").getOrThrow(), 200, SNAPSHOT_BYTES, 'a')
-      checkBody(run(server, "/progress").getOrThrow(), 202, 4096, 'b')
-      checkBody(run(server, "/short-fixed").getOrThrow(), 200, 5, 'a')
+      expectThrow(PaliPublicSnapshotError.TIMEOUT) { reserve(server, "/must-not-hit", 0) }
+      val (beforeStart, notDispatched) = reserve(server, "/must-not-hit")
+      expectThrow(PaliPublicSnapshotError.UNAVAILABLE) { beforeStart.info() }
+      beforeStart.cancel()
+      beforeStart.start()
+      assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(notDispatched.get()))
+      checkBody(run(server, "/exact"), 200, SNAPSHOT_BYTES) { 'a'.code.toByte() }
+      checkBody(run(server, "/progress"), 202, 4096) { 'b'.code.toByte() }
+      checkSmall(run(server, "/short-fixed"))
+      checkBody(run(server, "/empty"), 200, 0) { error("unexpected payload") }
+      for ((path, size) in LARGE_BODIES) {
+        checkBody(run(server, path, snapshotLimit = QUALIFIED_BYTES), 200, size, ::patternByte)
+      }
+      expectFailure(server, "/oversize-qualified-length", PaliPublicSnapshotError.TOO_LARGE, QUALIFIED_BYTES)
       assertTrue(server.bodyStarted.containsAll(listOf("/exact", "/progress", "/short-fixed")))
       for (path in server.refusedFraming.keys) expectFailure(server, path, PaliPublicSnapshotError.INVALID)
       assertTrue("Rejected framing must close while the server withholds the body",
@@ -62,29 +75,97 @@ class PaliPublicSnapshotDownloadTest {
       expectFailure(server, "/truncated", PaliPublicSnapshotError.UNAVAILABLE)
 
       val (handle, pending) = begin(server, "/held")
+      handle.start()
       assertTrue(server.heldBody.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
       expectThrow(PaliPublicSnapshotError.BUSY) { begin(server, "/must-not-hit") }
       handle.cancel()
       handle.cancel()
       assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(pending.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
-      checkBody(run(server, "/reopened").getOrThrow(), 200, 5, 'a')
+      checkSmall(run(server, "/reopened"))
       val (_, deadline) = begin(server, "/deadline", 1500)
       assertTrue(server.deadlineBody.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
       handle.cancel()
       assertEquals(PaliPublicSnapshotError.TIMEOUT, errorCode(deadline.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
-      checkBody(run(server, "/after-deadline").getOrThrow(), 200, 5, 'a')
+      checkSmall(run(server, "/after-deadline"))
 
+      val retained = run(server, "/retained")
+      expectThrow(PaliPublicSnapshotError.BUSY) { reserve(server, "/must-not-hit") }
+      assertEquals(5, retained.pull()?.size)
+      expectThrow(PaliPublicSnapshotError.BUSY) { reserve(server, "/must-not-hit") }
+      retained.cancel()
+      expectThrow(PaliPublicSnapshotError.CANCELLED) { retained.info() }
+      checkSmall(run(server, "/after-release"))
+
+      val abandoned = run(server, "/abandoned", timeoutMs = 1000)
+      Thread.sleep(1200)
+      expectThrow(PaliPublicSnapshotError.TIMEOUT) { abandoned.pull() }
+      checkSmall(run(server, "/after-retained-deadline"))
+
+      val entered = CountDownLatch(1)
+      val resume = CountDownLatch(1)
+      val (delayed, late) = reserve(server, "/delayed-delivery", beforeCompletion = {
+        entered.countDown()
+        check(resume.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+      })
+      delayed.start()
+      try {
+        assertTrue(entered.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        delayed.cancel()
+        checkSmall(run(server, "/after-delayed-delivery"))
+      } finally {
+        resume.countDown()
+      }
+      late.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS).getOrThrow()
+      expectThrow(PaliPublicSnapshotError.CANCELLED) { delayed.pull() }
+
+      checkBlockedDeadlineDelivery(server)
       assertEquals(emptyList<String>(), server.violations.toList())
       assertEquals(server.paths.associateWith { 1 }, server.requests.toMap())
     }
   }
 
-  private fun checkBody(response: PaliPublicSnapshotResponse, status: Int, length: Int, value: Char) {
-    assertEquals(status, response.status)
-    val bytes = response.payload()
-    assertTrue(bytes.isReadOnly)
-    assertEquals(length, bytes.capacity())
-    while (bytes.hasRemaining()) check(bytes.get() == value.code.toByte())
+  private fun checkBlockedDeadlineDelivery(server: SnapshotLoopback) {
+    val firstEntered = CountDownLatch(1)
+    val secondEntered = CountDownLatch(1)
+    val resume = CountDownLatch(1)
+    val (first, firstResult) = reserve(server, "/must-not-hit", timeoutMs = 100, beforeCompletion = {
+      firstEntered.countDown()
+      check(resume.await(FIXTURE_TIMEOUT_MS * 3, TimeUnit.MILLISECONDS))
+    })
+    try {
+      assertTrue(firstEntered.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+      expectThrow(PaliPublicSnapshotError.TIMEOUT) { first.info() }
+      val (second, secondResult) = reserve(server, "/must-not-hit", timeoutMs = 100, beforeCompletion = {
+        secondEntered.countDown()
+        check(resume.await(FIXTURE_TIMEOUT_MS * 3, TimeUnit.MILLISECONDS))
+      })
+      assertTrue("A delayed owner must not block replacement expiry", secondEntered.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+      expectThrow(PaliPublicSnapshotError.TIMEOUT) { second.pull() }
+      expectThrow(PaliPublicSnapshotError.BUSY) { reserve(server, "/must-not-hit") }
+      resume.countDown()
+      assertEquals(PaliPublicSnapshotError.TIMEOUT, errorCode(firstResult.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
+      assertEquals(PaliPublicSnapshotError.TIMEOUT, errorCode(secondResult.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
+    } finally {
+      resume.countDown()
+    }
+  }
+
+  private fun checkSmall(handle: PaliPublicSnapshotOperation) =
+    checkBody(handle, 200, 5) { 'a'.code.toByte() }
+
+  private fun checkBody(
+    handle: PaliPublicSnapshotOperation, status: Int, length: Int, expected: (Int) -> Byte
+  ) {
+    assertEquals(PaliPublicSnapshotInfo(status, length), handle.info())
+    var position = 0
+    while (true) {
+      val bytes = handle.pull() ?: break
+      assertEquals(minOf(PULL_BYTES, length - position), bytes.size)
+      check(bytes.isNotEmpty())
+      for (byte in bytes) check(byte == expected(position++))
+    }
+    assertEquals(length, position)
+    expectThrow(PaliPublicSnapshotError.CANCELLED) { handle.pull() }
   }
 
   private fun expectThrow(expected: PaliPublicSnapshotError, action: () -> Unit) {
@@ -96,37 +177,63 @@ class PaliPublicSnapshotDownloadTest {
     }
   }
 
-  private fun errorCode(result: Result<PaliPublicSnapshotResponse>): PaliPublicSnapshotError =
+  private fun errorCode(result: Result<Unit>): PaliPublicSnapshotError =
     (result.exceptionOrNull() as PaliPublicSnapshotException).error
 
-  private fun expectFailure(server: SnapshotLoopback, path: String, expected: PaliPublicSnapshotError) {
-    assertEquals(path, expected, errorCode(run(server, path)))
+  private fun expectFailure(
+    server: SnapshotLoopback, path: String, expected: PaliPublicSnapshotError,
+    snapshotLimit: Int = SNAPSHOT_BYTES
+  ) {
+    val (_, pending) = begin(server, path, snapshotLimit = snapshotLimit)
+    assertEquals(path, expected, errorCode(pending.get(FIXTURE_TIMEOUT_MS + 1000, TimeUnit.MILLISECONDS)))
   }
 
-  private fun run(server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS) =
-    begin(server, path, timeoutMs).second.get(FIXTURE_TIMEOUT_MS + 1000, TimeUnit.MILLISECONDS)
+  private fun run(
+    server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS,
+    snapshotLimit: Int = SNAPSHOT_BYTES
+  ): PaliPublicSnapshotOperation {
+    val (handle, pending) = begin(server, path, timeoutMs, snapshotLimit)
+    pending.get(FIXTURE_TIMEOUT_MS + 1000, TimeUnit.MILLISECONDS).getOrThrow()
+    return handle
+  }
 
-  // Only tests substitute a loopback URL. The producer's production entry accepts a registered pool ID.
-  private fun begin(server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS):
-    Pair<PaliPublicSnapshotCancellation, CompletableFuture<Result<PaliPublicSnapshotResponse>>> {
+  private fun begin(
+    server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS,
+    snapshotLimit: Int = SNAPSHOT_BYTES
+  ) = reserve(server, path, timeoutMs, snapshotLimit).also { it.first.start() }
+
+  // Only tests substitute a loopback URL and larger candidate ceiling.
+  private fun reserve(
+    server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS,
+    snapshotLimit: Int = SNAPSHOT_BYTES, beforeCompletion: () -> Unit = {}
+  ): Pair<PaliPublicSnapshotOperation, CompletableFuture<Result<Unit>>> {
     val method = PaliPublicSnapshotDownloader::class.java.getDeclaredMethod(
-      "start", HttpUrl::class.java, java.lang.Long.TYPE, Function1::class.java, EventListener::class.java
+      "reserve", HttpUrl::class.java, java.lang.Long.TYPE, java.lang.Integer.TYPE,
+      Function1::class.java, EventListener::class.java
     ).apply { isAccessible = true }
-    val pending = CompletableFuture<Result<PaliPublicSnapshotResponse>>()
-    val complete: (Result<PaliPublicSnapshotResponse>) -> Unit = { check(pending.complete(it)) }
+    val pending = CompletableFuture<Result<Unit>>()
+    val complete: (Result<Unit>) -> Unit = {
+      beforeCompletion()
+      check(pending.complete(it))
+    }
     val observer = object : EventListener() {
       override fun responseBodyStart(call: Call) {
         server.bodyStarted.add(path)
       }
     }
     val handle = try {
-      method.invoke(PaliPublicSnapshotDownloader, server.url(path), TimeUnit.MILLISECONDS.toNanos(timeoutMs), complete, observer)
+      method.invoke(
+        PaliPublicSnapshotDownloader, server.url(path), TimeUnit.MILLISECONDS.toNanos(timeoutMs),
+        snapshotLimit, complete, observer
+      )
     } catch (error: InvocationTargetException) {
       throw error.targetException
     }
-    return (handle as PaliPublicSnapshotCancellation) to pending
+    return (handle as PaliPublicSnapshotOperation) to pending
   }
 }
+
+private fun patternByte(position: Int): Byte = (position / 16384 % 251).toByte()
 
 private class SnapshotLoopback : Closeable {
   private val server = ServerSocket(0, 16, InetAddress.getByName("127.0.0.1"))
@@ -145,10 +252,12 @@ private class SnapshotLoopback : Closeable {
   val framingClosed = ConcurrentHashMap.newKeySet<String>()
   val framingFinished = CountDownLatch(refusedFraming.size)
   val paths = setOf(
-    "/exact", "/progress", "/short-fixed", "/oversize-length", "/oversize-progress",
+    "/exact", "/progress", "/short-fixed", "/empty", "/oversize-length", "/oversize-progress",
     "/encoded", "/duplicate-encoding", "/duplicate-length", "/redirect", "/retry", "/challenge", "/partial",
-    "/truncated", "/held", "/reopened", "/deadline", "/after-deadline"
-  ) + refusedFraming.keys
+    "/truncated", "/held", "/reopened", "/deadline", "/after-deadline",
+    "/retained", "/after-release", "/abandoned", "/after-retained-deadline",
+    "/delayed-delivery", "/after-delayed-delivery", "/oversize-qualified-length"
+  ) + refusedFraming.keys + LARGE_BODIES.keys
   private val acceptor = Thread {
     try {
       while (!server.isClosed) {
@@ -198,7 +307,17 @@ private class SnapshotLoopback : Closeable {
         }
         return
       }
+      val size = LARGE_BODIES[path]
+      if (size != null) {
+        output.headers(200, "Content-Length: $size")
+        for (position in 0 until size step 16384) {
+          output.write(ByteArray(minOf(16384, size - position)) { patternByte(position) })
+        }
+        return
+      }
       when (path) {
+        "/empty" -> output.headers(200, "Content-Length: 0")
+        "/oversize-qualified-length" -> output.headers(200, "Content-Length: ${QUALIFIED_BYTES + 1}")
         "/exact" -> output.body(200, ByteArray(SNAPSHOT_BYTES) { 'a'.code.toByte() }, "Set-Cookie: blocked=1")
         "/progress" -> output.body(202, ByteArray(4096) { 'b'.code.toByte() })
         "/oversize-length" -> output.headers(200, "Content-Length: ${SNAPSHOT_BYTES + 1}")
