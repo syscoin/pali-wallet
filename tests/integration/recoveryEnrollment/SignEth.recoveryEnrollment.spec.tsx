@@ -122,9 +122,13 @@ const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   ]);
   mockApproval.assertCurrent();
   const signer = mockApproval.bindSmartAccountSigner(args);
-  if (signer?.method !== 'signSmartAccountActionDigestInternal')
-    throw new Error('Expected a bound software signer');
-  const signature = await sdk.ethSign(signer.args[0]);
+  const request =
+    signer?.method === 'signSmartAccountActionDigestInternal'
+      ? signer.args[0]
+      : undefined;
+  if (!Array.isArray(request))
+    throw new Error('Expected a bound software signing request');
+  const signature = await sdk.ethSign(request);
   mockApproval.assertCurrent();
   return signature;
 });
