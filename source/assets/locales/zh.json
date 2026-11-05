@@ -312,6 +312,7 @@
     "generationFailed": "无法生成新的恢复短语。请选择“生成”重试。"
   },
   "send": {
+    "openWalletTab": "在钱包标签页中打开",
     "transactionFailureDetails": "交易失败：{{message}}",
     "transactionCreationFailureDetails": "交易创建失败（{{code}}）：{{message}}",
     "atomicMode": "原子执行",

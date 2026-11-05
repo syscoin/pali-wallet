@@ -312,6 +312,7 @@
     "generationFailed": "Could not generate a new recovery phrase. Select Generate to try again."
   },
   "send": {
+    "openWalletTab": "Open in wallet tab",
     "transactionFailureDetails": "Transaction failed: {{message}}",
     "transactionCreationFailureDetails": "Transaction creation failed ({{code}}): {{message}}",
     "atomicMode": "atomic",

@@ -270,7 +270,8 @@ export const handleListeners = (masterController: IMasterController) => {
       const wallet = currentMasterController.wallet;
       watchWalletTokenReview(
         port,
-        (request) => wallet.captureWalletTokenReview(request),
+        (request, persistentTab) =>
+          wallet.captureWalletTokenReview(request, persistentTab),
         (payload, approval) =>
           wallet.sendAndSaveTokenTransaction(
             payload,

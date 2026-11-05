@@ -312,6 +312,7 @@
     "generationFailed": "No se pudo generar una nueva frase de recuperación. Selecciona Generar para volver a intentarlo."
   },
   "send": {
+    "openWalletTab": "Abrir en la pestaña de la cartera",
     "transactionFailureDetails": "La transacción falló: {{message}}",
     "transactionCreationFailureDetails": "No se pudo crear la transacción ({{code}}): {{message}}",
     "atomicMode": "atómico",

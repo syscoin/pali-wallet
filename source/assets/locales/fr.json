@@ -312,6 +312,7 @@
     "generationFailed": "Impossible de générer une nouvelle phrase de récupération. Sélectionnez Générer pour réessayer."
   },
   "send": {
+    "openWalletTab": "Ouvrir dans l’onglet du portefeuille",
     "transactionFailureDetails": "Échec de la transaction : {{message}}",
     "transactionCreationFailureDetails": "Échec de création de la transaction ({{code}}) : {{message}}",
     "atomicMode": "atomique",

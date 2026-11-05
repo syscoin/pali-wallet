@@ -32,6 +32,10 @@ export interface ISavedNavigationState {
   walletScope: IWalletNavigationScope;
 }
 const NAVIGATION_STATE_KEY = 'pali_navigation_state';
+const HARDWARE_SEND_HANDOFF_KEY = 'pali_hardware_send_handoff';
+const HARDWARE_SEND_HANDOFF_TTL_MS = 60_000;
+const HARDWARE_SEND_DRAFT_PATH = '/send/eth';
+const HARDWARE_SEND_DRAFT_ID = /^[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}$/;
 let navigationWriteGeneration = 0;
 const NAVIGATION_STORAGE_LOCK = 'pali-navigation-storage';
 const withNavigationStorageLock = async <T>(
@@ -603,6 +607,69 @@ const clearNavigationStateUnlocked = async () => {
   await chromeStorage.removeItem(NAVIGATION_STATE_KEY);
 };
 
+/** Move only an unsigned, sanitized Send draft into a fresh wallet tab. */
+export const stageHardwareSendDraft = async (
+  state: Record<string, any>,
+  returnContext: INavigationContext | undefined,
+  assertCurrent: () => boolean
+): Promise<string> => {
+  if (!navigator.locks?.request || !assertCurrent())
+    throw new Error('Hardware Send draft unavailable');
+  const draft = createSavedNavigationState(
+    HARDWARE_SEND_DRAFT_PATH,
+    undefined,
+    state,
+    returnContext
+  );
+  const id = uuidv4();
+  const handoff = { id, draft };
+  if (JSON.stringify(handoff).length > MAX_BYTES)
+    throw new Error('Hardware Send draft exceeds its storage limit');
+  await withNavigationStorageLock(async () => {
+    if (
+      !assertCurrent() ||
+      !sameScope(draft.walletScope, getWalletNavigationScope())
+    )
+      throw new Error('Hardware Send draft context changed');
+    await chromeStorage.setItem(HARDWARE_SEND_HANDOFF_KEY, handoff);
+  });
+  return id;
+};
+
+export const takeHardwareSendDraft = async (
+  id: string,
+  assertCurrent: () => boolean
+): Promise<ISavedNavigationState | undefined> => {
+  if (!HARDWARE_SEND_DRAFT_ID.test(id) || !navigator.locks?.request) return;
+  return withNavigationStorageLock(async () => {
+    if (!assertCurrent()) return;
+    const handoff = await chromeStorage.getItem(HARDWARE_SEND_HANDOFF_KEY);
+    if (!record(handoff) || handoff.id !== id || !assertCurrent()) return;
+    // Consume under the same browser lock before releasing it to a document.
+    await chromeStorage.removeItem(HARDWARE_SEND_HANDOFF_KEY);
+    const { draft } = handoff;
+    const scope = getWalletNavigationScope();
+    if (
+      !assertCurrent() ||
+      !record(draft) ||
+      draft.version !== 2 ||
+      draft.currentPath !== HARDWARE_SEND_DRAFT_PATH ||
+      !Number.isFinite(draft.timestamp) ||
+      draft.timestamp > Date.now() ||
+      Date.now() - draft.timestamp >= HARDWARE_SEND_HANDOFF_TTL_MS ||
+      !sameScope(draft.walletScope, scope) ||
+      JSON.stringify(draft).length > MAX_BYTES
+    )
+      return;
+    return createSavedNavigationState(
+      HARDWARE_SEND_DRAFT_PATH,
+      undefined,
+      draft.state,
+      draft.returnContext
+    );
+  });
+};
+
 export const saveNavigationState = async (
   path: string,
   tab?: string,
@@ -637,7 +704,12 @@ export const clearNavigationState = async (): Promise<void> => {
   ++navigationWriteGeneration;
   try {
     // Auth cleanup always runs; a queued save must never cancel it.
-    await withNavigationStorageLock(clearNavigationStateUnlocked);
+    await withNavigationStorageLock(async () => {
+      await chromeStorage.removeItem([
+        NAVIGATION_STATE_KEY,
+        HARDWARE_SEND_HANDOFF_KEY,
+      ]);
+    });
   } catch {
     /* non-fatal */
   }

@@ -67,6 +67,7 @@ export const useConfirmSubmission = ({
   const attemptRef = useRef<{
     definitelyNotBroadcast: boolean;
     mayBroadcast: boolean;
+    ownsPendingTransport?: () => boolean;
     successful: boolean;
   } | null>(null);
   const [blocked, setBlocked] = useState(consumed);
@@ -120,17 +121,23 @@ export const useConfirmSubmission = ({
   const hasTrustedAuth = () => {
     const live = liveRef.current;
     const fresh = getControllerStatus();
+    const attempt = attemptRef.current;
+    // Returning from a hardware window refreshes renderer status. A live
+    // review Port already owns its one pending attempt in the background.
+    const ownedHardwareAttempt =
+      attempt?.ownsPendingTransport &&
+      (attempt.successful ||
+        attempt.definitelyNotBroadcast ||
+        attempt.ownsPendingTransport());
     const trusted =
       live.isUnlocked &&
       !live.isLoading &&
-      !live.connectionUnavailable &&
       fresh.isUnlocked &&
       !fresh.isLoading &&
-      !fresh.connectionUnavailable;
-    // Status can publish before React commits new auth props. A begun attempt
-    // must stay consumed even if trust recovers before the next render.
-    if (!trusted && attemptRef.current) departedRef.current = true;
-    return trusted;
+      ((!live.connectionUnavailable && !fresh.connectionUnavailable) ||
+        ownedHardwareAttempt);
+    if (!trusted && attempt) departedRef.current = true;
+    return Boolean(trusted);
   };
   const isCurrent = () => {
     const live = liveRef.current;
@@ -186,13 +193,15 @@ export const useConfirmSubmission = ({
   };
   const dispatch = async <T>(
     operation: () => Promise<T>,
-    broadcasting: boolean
+    broadcasting: boolean,
+    ownsPendingTransport?: () => boolean
   ): Promise<T> => {
     if (broadcasting && attemptRef.current) {
       assertCurrent();
       attemptRef.current.mayBroadcast = true;
       attemptRef.current.definitelyNotBroadcast = false;
       attemptRef.current.successful = false;
+      attemptRef.current.ownsPendingTransport = ownsPendingTransport;
     }
     try {
       const response = await operation();
@@ -290,7 +299,10 @@ export const useConfirmSubmission = ({
         ? undefined
         : stateRef.current,
     controllerEmitter: invoke,
-    submit: <T>(operation: () => Promise<T>) => dispatch(operation, true),
+    submit: <T>(
+      operation: () => Promise<T>,
+      ownsPendingTransport?: () => boolean
+    ) => dispatch(operation, true, ownsPendingTransport),
     recordError,
     beforeBroadcast: async () => {
       assertCurrent();

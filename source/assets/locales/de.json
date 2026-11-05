@@ -312,6 +312,7 @@
     "generationFailed": "Eine neue Wiederherstellungsphrase konnte nicht erstellt werden. Wähle „Generieren“, um es erneut zu versuchen."
   },
   "send": {
+    "openWalletTab": "Im Wallet-Tab öffnen",
     "transactionFailureDetails": "Transaktion fehlgeschlagen: {{message}}",
     "transactionCreationFailureDetails": "Transaktion konnte nicht erstellt werden ({{code}}): {{message}}",
     "atomicMode": "atomar",

@@ -175,7 +175,10 @@ const WALLET_TOKEN_REVIEW_TTL_MS = 300_000;
 
 export function watchWalletTokenReview(
   port: chrome.runtime.Port,
-  capture: (request: unknown) => WalletTokenReviewAdmission,
+  capture: (
+    request: unknown,
+    persistentTab: boolean
+  ) => WalletTokenReviewAdmission,
   submit: (
     payload: WalletTokenReviewPayload,
     approval: IReviewedEvmTokenApproval
@@ -192,6 +195,11 @@ export function watchWalletTokenReview(
     return;
   }
 
+  const tabId = sender.tab?.id;
+  const persistentTab =
+    Number.isInteger(tabId) &&
+    tabId >= 0 &&
+    (sender.frameId === undefined || sender.frameId === 0);
   let phase: 'review' | 'submit' | 'submitted' | 'closed' = 'review';
   let approved: WalletTokenReviewAdmission;
   let expires: number;
@@ -215,7 +223,7 @@ export function watchWalletTokenReview(
     if (phase === 'closed') return;
     if (phase === 'review') {
       try {
-        approved = capture(message);
+        approved = capture(message, persistentTab);
         expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
         timeout = setTimeout(
           () => authority.abort(),

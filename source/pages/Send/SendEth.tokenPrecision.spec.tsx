@@ -9,16 +9,24 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 
+import {
+  getWalletNavigationScope,
+  stageHardwareSendDraft,
+  takeHardwareSendDraft,
+} from 'utils/navigationState';
+
 import { SendEth } from './SendEth';
 
 const mockEmitter = jest.fn();
 const mockNavigate = jest.fn();
+const mockDirectNavigate = jest.fn();
 const mockSave = jest.fn();
 let mockAssets: any[] = [];
 let mockState: any;
 const mockLocation = {
   key: 'send',
   pathname: '/send/eth',
+  search: '',
   state: undefined as any,
 };
 const mockStatus = {
@@ -48,7 +56,7 @@ jest.mock('hooks/useController', () => ({
 }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
-    navigate: jest.fn(),
+    navigate: mockDirectNavigate,
     alert: { error: jest.fn(), info: jest.fn() },
   }),
 }));
@@ -58,6 +66,8 @@ jest.mock('hooks/useAdjustedExplorer', () => ({
 jest.mock('utils/navigationState', () => ({
   ...jest.requireActual('utils/navigationState'),
   saveNavigationState: (...args: any[]) => mockSave(...args),
+  stageHardwareSendDraft: jest.fn(),
+  takeHardwareSendDraft: jest.fn(),
 }));
 jest.mock('utils/index', () => ({
   getWalletNavigationScope: (...args: any[]) =>
@@ -198,7 +208,7 @@ const prepare = async (
       });
     return Promise.resolve(undefined);
   });
-  render(<SendEth />);
+  const view = render(<SendEth />);
   fireEvent.click(screen.getByRole('button', { name: /PRECISE.*ERC-20/ }));
   await waitFor(
     () =>
@@ -213,6 +223,7 @@ const prepare = async (
   fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
     target: { value: '0x2222222222222222222222222222222222222222' },
   });
+  return view;
 };
 const amount = () =>
   screen.getByPlaceholderText('send.amount') as HTMLInputElement;
@@ -253,6 +264,96 @@ it('uses newly verified decimals for validation and the confirmation payload', a
     tokenAmountUnits: '1',
     token: { decimals: 24 },
   });
+});
+
+it('hands a toolbar hardware token form to one wallet tab with its exact draft before review', async () => {
+  const draftId = '12345678-1234-1234-1234-123456789abc';
+  const tokenAmount = '0.000000000000000000000001';
+  const originalTabs = chrome.tabs;
+  const originalUrl = chrome.runtime.getURL;
+  const originalView = document.documentElement.dataset.paliView;
+  let tab: { id: number } | undefined;
+  const create = jest.fn((_request, callback) => callback({ id: 42 }));
+  chrome.tabs = {
+    ...originalTabs,
+    getCurrent: (callback: (current?: { id: number }) => void) => callback(tab),
+    create,
+  } as unknown as typeof chrome.tabs;
+  chrome.runtime.getURL = (path) => `moz-extension://wallet/${path}`;
+  document.documentElement.dataset.paliView = 'toolbar-popup';
+  mockState.vault.accounts.HDAccount[0].isLedgerWallet = true;
+  jest.mocked(stageHardwareSendDraft).mockResolvedValue(draftId);
+  try {
+    const first = await prepare('1', 24, 18);
+    fireEvent.change(amount(), { target: { value: tokenAmount } });
+    fireEvent.click(screen.getByRole('button', { name: 'send.openWalletTab' }));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const [savedDraft, returnContext] = jest.mocked(stageHardwareSendDraft).mock
+      .calls[0];
+    expect(savedDraft).toMatchObject({
+      formValues: {
+        amount: tokenAmount,
+        receiver: '0x2222222222222222222222222222222222222222',
+      },
+      selectedAsset: expect.objectContaining({
+        contractAddress: mockAssets[0].contractAddress,
+      }),
+    });
+    expect(create.mock.calls[0][0]).toEqual({
+      url: `moz-extension://wallet/app.html#/send/eth?hardwareDraft=${draftId}`,
+    });
+    expect(mockNavigate).not.toHaveBeenCalled();
+    first.unmount();
+
+    tab = { id: 42 };
+    document.documentElement.dataset.paliView = 'standalone';
+    mockLocation.search = `?hardwareDraft=${draftId}`;
+    mockLocation.state = undefined;
+    jest.mocked(takeHardwareSendDraft).mockResolvedValue({
+      state: savedDraft,
+      returnContext,
+      walletScope: getWalletNavigationScope(),
+      currentPath: '/send/eth',
+      timestamp: Date.now(),
+      version: 2,
+    });
+    const second = render(<SendEth />);
+    await waitFor(() =>
+      expect(mockDirectNavigate).toHaveBeenCalledWith(
+        '/send/eth',
+        expect.objectContaining({ replace: true })
+      )
+    );
+    expect(takeHardwareSendDraft).toHaveBeenCalledTimes(1);
+    const [, route] = mockDirectNavigate.mock.calls.at(-1);
+    mockLocation.search = '';
+    mockLocation.state = route.state;
+    second.rerender(<SendEth />);
+    await waitFor(() => expect(amount().value).toBe(tokenAmount));
+    await waitFor(() => expect(amount()).toBeEnabled());
+    fireEvent.click(next());
+    await waitFor(() =>
+      expect(mockNavigate).toHaveBeenCalledWith(
+        expect.any(Function),
+        '/send/confirm',
+        expect.objectContaining({
+          tx: expect.objectContaining({
+            amount: tokenAmount,
+            tokenAmountUnits: '1',
+          }),
+        }),
+        expect.any(Object)
+      )
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+  } finally {
+    chrome.tabs = originalTabs;
+    chrome.runtime.getURL = originalUrl;
+    if (originalView === undefined)
+      delete document.documentElement.dataset.paliView;
+    else document.documentElement.dataset.paliView = originalView;
+    mockLocation.search = '';
+  }
 });
 
 it('rejects even one atomic unit above the exact verified balance', async () => {

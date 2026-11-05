@@ -1607,13 +1607,12 @@ export const SendConfirm = () => {
                     throw Object.assign(new Error('Token review changed'), {
                       transactionNotBroadcast: true,
                     });
-                  await submission.submit(() =>
-                    review.submit(
-                      activeAccount.isTrezorWallet ||
-                        activeAccount.isLedgerWallet
-                        ? 300000
-                        : 10000
-                    )
+                  const hardware =
+                    activeAccount.isTrezorWallet ||
+                    activeAccount.isLedgerWallet;
+                  await submission.submit(
+                    () => review.submit(hardware ? 300000 : 10000),
+                    hardware ? review.isOpen : undefined
                   );
                 } finally {
                   if (tokenReviewPort.current === review)

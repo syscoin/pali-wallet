@@ -87,5 +87,5 @@ export function openWalletTokenReview(request: WalletTokenReviewRequest) {
       }
     });
   };
-  return { ready, submit, close };
+  return { ready, submit, close, isOpen: () => phase !== 'closed' };
 }

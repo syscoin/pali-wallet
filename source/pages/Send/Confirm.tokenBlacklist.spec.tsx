@@ -48,6 +48,7 @@ let mockWallet: any;
 let mockListener: any;
 const APP_URL = 'moz-extension://synthetic-extension/app.html';
 let mockTokenSender: string;
+let mockTokenTab: number | undefined;
 let mockOverwritePayload: boolean;
 let mockExpireBeforeSubmit: boolean;
 let mockStage: jest.SpyInstance;
@@ -72,7 +73,14 @@ function connectReview() {
   };
   const port = {
     ...common,
-    sender: { id: 'synthetic-extension', url: mockTokenSender },
+    sender: {
+      id: 'synthetic-extension',
+      url: mockTokenSender,
+      ...(mockTokenTab !== undefined && {
+        frameId: 0,
+        tab: { id: mockTokenTab },
+      }),
+    },
     onMessage: {
       addListener: (listener: (value: unknown) => void) =>
         backgroundMessages.push(listener),
@@ -93,7 +101,8 @@ function connectReview() {
   queueMicrotask(() =>
     watchWalletTokenReview(
       port,
-      (request) => mockWallet.captureWalletTokenReview(request),
+      (request, persistentTab) =>
+        mockWallet.captureWalletTokenReview(request, persistentTab),
       (payload, authority) =>
         mockWallet.sendAndSaveTokenTransaction(payload, authority),
       controllerErrorResponse
@@ -177,6 +186,14 @@ const mockState = {
           id: 0,
           address: '0x1111111111111111111111111111111111111111',
           balances: { ethereum: '100' },
+        },
+      },
+      Ledger: {
+        0: {
+          id: 0,
+          address: '0x1111111111111111111111111111111111111111',
+          balances: { ethereum: '100' },
+          isLedgerWallet: true,
         },
       },
     },
@@ -304,6 +321,10 @@ beforeEach(() => {
   mockMessages.length = 0;
   mockTokenReplies.length = 0;
   mockTokenSender = APP_URL;
+  mockTokenTab = undefined;
+  mockState.vault.activeAccount.type = 'HDAccount';
+  mockAuth.connectionUnavailable = false;
+  mockAuth.isUnlocked = true;
   mockOverwritePayload = false;
   mockExpireBeforeSubmit = false;
   chrome.runtime.connect = jest.fn(
@@ -409,7 +430,7 @@ function prepare() {
   mockEmitter.mockImplementation((...args: any[]) =>
     (realControllerEmitter as any)(...args)
   );
-  render(<SendConfirm />);
+  return render(<SendConfirm />);
 }
 const edit = () => screen.getByRole('button', { name: 'send.editFee' });
 const quoteRequests = () =>
@@ -429,7 +450,7 @@ const ready = async (
     maxFeePerGas: '0xb2d05e00',
     maxPriorityFeePerGas: '0x00',
   };
-  prepare();
+  const view = prepare();
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
@@ -437,6 +458,7 @@ const ready = async (
   );
   if (!legacy) expect(edit()).toBeEnabled();
   expect(quoteRequests()).toHaveLength(0);
+  return view;
 };
 
 // Synthetic account, token, list and SDK response; all chrome messages are
@@ -459,7 +481,7 @@ async function readyToken(
     symbol: 'TEST',
     name: 'Synthetic token',
   };
-  await ready(false);
+  return ready(false);
 }
 const confirmToken = () =>
   screen.getByRole('button', { name: 'buttons.confirm' });
@@ -516,7 +538,8 @@ it.each([
       maxPriorityFeePerGas: '0',
     });
     expect(mockStage).toHaveBeenCalledWith(
-      expect.objectContaining({ type, transaction: expected })
+      expect.objectContaining({ type, transaction: expected }),
+      false
     );
     expect(mockSdkSend).toHaveBeenCalledWith(
       expected,
@@ -587,6 +610,75 @@ it('revokes the sole token attempt on disconnect or duplicate submit while signi
     await act(async () => release());
   }
 });
+
+it('refuses a toolbar hardware review before invoking the broker', async () => {
+  mockState.vault.activeAccount.type = 'Ledger';
+  await readyToken(false);
+  await act(async () => fireEvent.click(confirmToken()));
+  expect(mockTokenReplies.at(-1)).toMatchObject({
+    type: 'failure',
+    error: { transactionNotBroadcast: true },
+  });
+  expect(mockSdkSend).not.toHaveBeenCalled();
+});
+
+it('keeps a browser-owned wallet tab review active through device focus and renderer refresh', async () => {
+  mockState.vault.activeAccount.type = 'Ledger';
+  mockTokenTab = 42;
+  const view = await readyToken(false, 'ERC721');
+  const focusDeviceWindow = jest.fn(() => {
+    window.dispatchEvent(new Event('blur'));
+    window.dispatchEvent(new Event('focus'));
+    mockAuth.connectionUnavailable = true;
+    view.rerender(<SendConfirm />);
+  });
+  mockSdkSend.mockImplementationOnce(async (_request, authority) => {
+    focusDeviceWindow();
+    expect(authority.signal.aborted).toBe(false);
+    authority.assertCurrent();
+    return { hash: `0x${'44'.repeat(32)}`, nonce: 7 };
+  });
+  fireEvent.click(confirmToken());
+  await waitFor(() =>
+    expect(mockTokenReplies.at(-1)).toMatchObject({ type: 'submitted' })
+  );
+  expect(focusDeviceWindow).toHaveBeenCalledTimes(1);
+  expect(mockSdkSend).toHaveBeenCalledTimes(1);
+});
+
+it.each(['tab close', 'wallet lock'])(
+  'revokes pending hardware signing on %s',
+  async (reason) => {
+    mockState.vault.activeAccount.type = 'Ledger';
+    mockTokenTab = 42;
+    let release!: () => void;
+    const signerPending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mockSdkSend.mockImplementationOnce(async (_request, authority) => {
+      await signerPending;
+      authority.assertCurrent();
+      return { hash: `0x${'44'.repeat(32)}`, nonce: 7 };
+    });
+    const view = await readyToken(false, 'ERC1155');
+    try {
+      fireEvent.click(confirmToken());
+      await waitFor(() => expect(mockSdkSend).toHaveBeenCalledTimes(1));
+      const authority = mockSdkSend.mock.calls[0][1];
+      expect(authority.signal.aborted).toBe(false);
+      if (reason === 'tab close') view.unmount();
+      else {
+        mockAuth.isUnlocked = false;
+        view.rerender(<SendConfirm />);
+      }
+      expect(authority.signal.aborted).toBe(true);
+      expect(() => authority.assertCurrent()).toThrow();
+    } finally {
+      await act(async () => release());
+    }
+    expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  }
+);
 
 it.each(['ERC20', 'ERC721', 'ERC1155'])(
   'rejects the old %s reflective wrapper without a review port',

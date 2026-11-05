@@ -8929,7 +8929,7 @@ class MainController {
   }
 
   /** Capture the reviewed ERC20 fields before accepting a submission ticket. */
-  public captureWalletTokenReview(request: unknown) {
+  public captureWalletTokenReview(request: unknown, persistentTab: boolean) {
     const input = request as Partial<WalletTokenReviewRequest> | null;
     const reviewed = input?.transaction;
     if (
@@ -8954,6 +8954,13 @@ class MainController {
     const networkRequest = this.networkRequestGeneration;
     const keyring = this.getActiveKeyring();
     const { activeAccount, accounts } = store.getState().vault;
+    if (
+      !persistentTab &&
+      [KeyringAccountType.Ledger, KeyringAccountType.Trezor].includes(
+        activeAccount.type
+      )
+    )
+      throw walletTokenReviewError();
     const from = accounts[activeAccount.type]?.[activeAccount.id]?.address;
     const receiver = getAddress(reviewed.receiver);
     const tokenAddress = getAddress(reviewed.tokenAddress);

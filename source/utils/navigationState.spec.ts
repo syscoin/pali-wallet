@@ -11,6 +11,8 @@ import {
   saveNavigationState,
   saveConfirmationReturnState,
   sanitizeBrowsingState,
+  stageHardwareSendDraft,
+  takeHardwareSendDraft,
 } from './navigationState';
 
 let mockStored: any;
@@ -1008,4 +1010,88 @@ it('preserves a validated preview parent when transaction cleanup removes its dr
   expect(saved?.state?.name).toBe('Original preview');
   expect(saved?.state?.balance).toBe(99);
   expect(JSON.stringify(saved)).not.toContain('synthetic-recipient');
+});
+it('moves an exact unsigned hardware token draft once across documents', async () => {
+  sharedLockManager();
+  const scope = getWalletNavigationScope();
+  const formValues = {
+    receiver: '0x2222222222222222222222222222222222222222',
+    amount: '9007199254740993',
+    nftTokenId: '9007199254740995',
+  };
+  const selectedAsset = {
+    contractAddress: '0x3333333333333333333333333333333333333333',
+    tokenStandard: 'ERC-1155',
+    isNft: true,
+    tokenId: '9007199254740995',
+    authorization: 'unapproved',
+  };
+  const id = await stageHardwareSendDraft(
+    {
+      formValues,
+      selectedAsset,
+      tx: { rawTransaction: 'never persisted' },
+      submissionStarted: true,
+    },
+    undefined,
+    () => true
+  );
+  expect(mockStored.draft.state).toEqual({
+    formValues,
+    selectedAsset: expect.objectContaining({
+      contractAddress: selectedAsset.contractAddress,
+      tokenId: selectedAsset.tokenId,
+    }),
+  });
+  expect(JSON.stringify(mockStored)).not.toMatch(
+    /never persisted|unapproved|submissionStarted/
+  );
+  const recovered = await Promise.all([
+    separateDocument().takeHardwareSendDraft(id, () => true),
+    separateDocument().takeHardwareSendDraft(id, () => true),
+  ]);
+  expect(recovered.filter(Boolean)).toEqual([
+    expect.objectContaining({
+      currentPath: '/send/eth',
+      walletScope: scope,
+      state: expect.objectContaining({ formValues }),
+    }),
+  ]);
+  expect(await takeHardwareSendDraft(id, () => true)).toBeUndefined();
+});
+
+it.each(['account', 'network', 'expiry', 'lock'])(
+  'cannot restore a hardware handoff across %s',
+  async (change) => {
+    sharedLockManager();
+    const id = await stageHardwareSendDraft(
+      { formValues: { amount: '1' } },
+      undefined,
+      () => true
+    );
+    if (change === 'account') mockState.vault.activeAccount.id = 1;
+    if (change === 'network')
+      mockState.vault.activeNetwork.url = 'https://other.invalid';
+    if (change === 'expiry') mockStored.draft.timestamp -= 60_000;
+    if (change === 'lock') await clearNavigationState();
+    expect(await takeHardwareSendDraft(id, () => true)).toBeUndefined();
+  }
+);
+
+it('does not let an earlier tab consume a newer hardware handoff', async () => {
+  sharedLockManager();
+  const prior = await stageHardwareSendDraft(
+    { formValues: { amount: '1' } },
+    undefined,
+    () => true
+  );
+  const current = await stageHardwareSendDraft(
+    { formValues: { amount: '2' } },
+    undefined,
+    () => true
+  );
+  expect(await takeHardwareSendDraft(prior, () => true)).toBeUndefined();
+  expect((await takeHardwareSendDraft(current, () => true))?.state).toEqual({
+    formValues: { amount: '2' },
+  });
 });

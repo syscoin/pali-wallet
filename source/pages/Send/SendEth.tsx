@@ -50,12 +50,18 @@ import {
   navigateWithContext,
   getWalletNavigationScope,
 } from 'utils/index';
+import { takeHardwareSendDraft } from 'utils/navigationState';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
 import { parseWalletErc20SendAmount } from './erc20SendAmount';
+import {
+  getWalletBrowserTabId,
+  HARDWARE_SEND_DRAFT_QUERY,
+  openHardwareSendDraft,
+} from './hardwareSendDraft';
 import {
   getScopedSendDraft,
   useSendDraftWriter,
@@ -156,7 +162,78 @@ export const SendEth = () => {
   const scopeKey = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
   );
-  return <SendEthForm key={scopeKey} scopeKey={scopeKey} />;
+  const { search } = useLocation();
+  const draftId = new URLSearchParams(search).get(HARDWARE_SEND_DRAFT_QUERY);
+  return draftId ? (
+    <HardwareSendDraft
+      key={`${scopeKey}:${draftId}`}
+      draftId={draftId}
+      scopeKey={scopeKey}
+    />
+  ) : (
+    <SendEthForm key={scopeKey} scopeKey={scopeKey} />
+  );
+};
+
+const HardwareSendDraft = ({
+  draftId,
+  scopeKey,
+}: {
+  draftId: string;
+  scopeKey: string;
+}) => {
+  const { navigate, alert } = useUtils();
+  const { t } = useTranslation();
+  const { isUnlocked, isLoading, connectionUnavailable } = useController();
+  const isCurrentForm = useSendPreparationGuard(scopeKey, '/send/eth');
+  const pending = useRef<ReturnType<typeof takeHardwareSendDraft>>();
+  useEffect(() => {
+    if (!isUnlocked || isLoading || connectionUnavailable || !isCurrentForm())
+      return;
+    let current = true;
+    pending.current ??= getWalletBrowserTabId().then((tab) =>
+      tab === undefined
+        ? undefined
+        : takeHardwareSendDraft(draftId, isCurrentForm)
+    );
+    const unavailable = () => {
+      if (!current || !isCurrentForm()) return;
+      alert.error(t('send.internalError'));
+      navigate('/home', { replace: true });
+    };
+    void pending.current.then((saved) => {
+      if (!current || !isCurrentForm()) return;
+      if (!saved) {
+        unavailable();
+        return;
+      }
+      navigate('/send/eth', {
+        replace: true,
+        state: {
+          ...saved.state,
+          walletScope: saved.walletScope,
+          returnContext: saved.returnContext,
+        },
+      });
+    }, unavailable);
+    return () => {
+      current = false;
+    };
+  }, [
+    draftId,
+    isCurrentForm,
+    isUnlocked,
+    isLoading,
+    connectionUnavailable,
+    navigate,
+    alert,
+    t,
+  ]);
+  return (
+    <p role="status" className="text-sm text-brand-gray200">
+      {t('send.calculating')}
+    </p>
+  );
 };
 
 const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
@@ -191,6 +268,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
   const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
 
+  const isHardwareAccount = Boolean(
+    activeAccount?.isLedgerWallet || activeAccount?.isTrezorWallet
+  );
+  const openingHardwareDraft = useRef(false);
+  const [hardwareDraftPending, setHardwareDraftPending] = useState(false);
   const hasAccountAssets = Boolean(activeAccountAssets?.ethereum);
   const isAccountImported = activeAccount?.isImported || false;
 
@@ -840,6 +922,33 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           isMaxSend: isMax, // Use the calculated isMax value
         };
 
+        if (isHardwareAccount && selectedAsset) {
+          if (openingHardwareDraft.current) return;
+          openingHardwareDraft.current = true;
+          const selection = assetSelectionRevision.current;
+          const exactValues = JSON.stringify(allFormValues);
+          const ownsDraft = () =>
+            isCurrentForm() &&
+            assetSelectionRevision.current === selection &&
+            JSON.stringify(form.getFieldsValue()) === exactValues;
+          try {
+            setHardwareDraftPending(true);
+            const tab = await getWalletBrowserTabId();
+            if (!ownsDraft()) return;
+            if (tab === undefined) {
+              await openHardwareSendDraft(
+                state,
+                location.state?.returnContext,
+                ownsDraft
+              );
+              return;
+            }
+          } finally {
+            openingHardwareDraft.current = false;
+            if (isCurrentForm()) setHardwareDraftPending(false);
+          }
+        }
+
         // Create navigation context for returning from confirm
         const returnContext = {
           ...createNavigationContext('/send/eth', undefined, state),
@@ -888,6 +997,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     },
     [
       navigate,
+      isHardwareAccount,
       activeAccount.address,
       activeAccount?.balances?.ethereum,
       selectedAsset,
@@ -2136,9 +2246,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
-            loading={!selectedAsset && isCalculatingGas}
+            loading={
+              hardwareDraftPending || (!selectedAsset && isCalculatingGas)
+            }
           >
-            {t('buttons.next')}
+            {isHardwareAccount &&
+            selectedAsset &&
+            document.documentElement.dataset.paliView === 'toolbar-popup'
+              ? t('send.openWalletTab')
+              : t('buttons.next')}
           </Button>
         </ToastActionFooter>
       </Form>
