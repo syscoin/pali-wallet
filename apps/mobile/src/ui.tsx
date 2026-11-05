@@ -519,6 +519,8 @@ export function Label({ children }: { children: React.ReactNode }) {
 
 export const styles = StyleSheet.create({
   text: { color: colors.text, fontSize: 15, lineHeight: 22 },
+  walletBalanceLong: { fontSize: 24, lineHeight: 34, letterSpacing: -0.4 },
+  walletBalancePrecise: { fontSize: 19, lineHeight: 29, letterSpacing: -0.2 },
   screen: { flex: 1, backgroundColor: colors.bg },
   button: {
     minHeight: 54,

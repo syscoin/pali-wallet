@@ -10,6 +10,7 @@ import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
 import { walletFetch } from '../platform/http';
+import { useNativeCoinQuote } from '../portfolio/useNativeCoinQuote';
 import { NativePortfolioController } from '../portfolio/nativePortfolio';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import { NativeTokens } from './NativeTokens';
@@ -128,6 +129,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   };
 
   const amount = snapshot.status === 'available' && snapshot.units !== null ? formatBaseUnits(snapshot.units, network.decimals) : null;
+  const quote = useNativeCoinQuote(!receiving && !tokenTitle ? account?.network ?? null : null, amount, registration);
   const pending = snapshot.pendingDeltaUnits;
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
@@ -153,8 +155,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         <View style={s.hero}>
           <Coin id={network.networkId} size={46} />
           <Text style={s.label}>{networkName.toUpperCase()} {utxo ? 'CONFIRMED BALANCE' : 'BALANCE'}</Text>
-          <Text style={[s.amount, amount !== null && amount.length > 14 && s.longAmount]} accessibilityLabel={amount === null ? statusText : `${networkName} balance ${amount} ${symbol}`} testID="native-portfolio-balance">{amount ?? '—'}</Text>
+          <Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? statusText : `${networkName} balance ${amount} ${symbol}`} testID="native-portfolio-balance">{amount ?? '—'}</Text>
           <Text style={s.unit}>{amount === null ? statusText : symbol}</Text>
+          {quote && <Text style={styles.muted} testID="native-portfolio-quote">{quote}</Text>}
           {pending !== undefined && pending !== '0' &&
             <Text style={s.unit}>Pending {formatBalanceDelta(pending, network.decimals)} {symbol}</Text>}
           {loading && <ActivityIndicator color={colors.pink} accessibilityLabel={`Loading ${networkName} balance`} />}
@@ -188,7 +191,6 @@ const s = StyleSheet.create({
   hero: { alignItems: 'center', gap: 9, paddingTop: 8, paddingBottom: 12 },
   label: { color: colors.muted, fontSize: 11, lineHeight: 17, fontWeight: '600', letterSpacing: 1 },
   amount: { fontSize: 36, lineHeight: 46, fontWeight: '600', textAlign: 'center', letterSpacing: -1.1, alignSelf: 'stretch', flexShrink: 1 },
-  longAmount: { fontSize: 24, lineHeight: 34, letterSpacing: -0.4 },
   unit: { color: colors.muted, fontSize: 15, lineHeight: 22 }, freshness: { color: colors.muted, fontSize: 11, lineHeight: 17 },
   privacy: { color: colors.muted, fontSize: 12, lineHeight: 19 },
   accountCard: { padding: 18, gap: 10 }, address: { color: colors.text, fontSize: 14, lineHeight: 23 },
