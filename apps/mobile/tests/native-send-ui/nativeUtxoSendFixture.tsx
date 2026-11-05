@@ -19,11 +19,15 @@ const request = {
 };
 
 async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
+  const expireAfterSave = new URLSearchParams(window.location.search).has(
+    'saved-before-expiry'
+  );
+  let saved = !expireAfterSave;
   let seen = false;
   return {
     cancel() {},
     async list() {
-      return [{ txid, accepted: false }];
+      return saved ? [{ txid, accepted: false }] : [];
     },
     async check() {
       return seen ? 'seen' : 'unknown';
@@ -49,6 +53,8 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
     },
     async confirm() {
       assertCurrent();
+      saved = true;
+      if (expireAfterSave) throw new CustodyRuntimeError('CANCELLED');
       seen = true;
       return { txid };
     },

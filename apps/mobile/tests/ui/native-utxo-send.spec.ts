@@ -60,3 +60,25 @@ test('a saved UTXO retry reviews each exact output before resubmission', async (
   await page.getByRole('button', { name: 'Resend saved transfer' }).click();
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });
+
+test('an expired confirmation exposes newly saved bytes in the same composer', async ({
+  page,
+}) => {
+  await page.goto('/?utxo-send&saved-before-expiry');
+  await page
+    .getByLabel('Recipient address', { exact: true })
+    .fill('bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4');
+  await page.getByLabel('Amount in BTC', { exact: true }).fill('1.23456789');
+  await expect(page.getByText('Saved transfers', { exact: true })).toHaveCount(
+    0
+  );
+  await page.getByTestId('native-utxo-review').click();
+  await page.getByTestId('native-utxo-confirm').click();
+  await expect(page.getByRole('alert')).toContainText(
+    'This review is no longer available.'
+  );
+  await expect(
+    page.getByRole('button', { name: 'Check transfer aaaaaaaa…' })
+  ).toBeVisible();
+  await expect(page.getByText('Submitted', { exact: true })).toHaveCount(0);
+});

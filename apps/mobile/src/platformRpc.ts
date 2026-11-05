@@ -1,4 +1,4 @@
-import { abortable, boundedResponseText, cancelResponseBody, checkAborted, MAX_RESPONSE_BYTES, utf8ByteLength } from '../../../source/shared/boundedHttp.ts';
+import { abortable, boundedResponseText, checkAborted, MAX_RESPONSE_BYTES, utf8ByteLength } from '../../../source/shared/boundedHttp.ts';
 import { EVM_NETWORK_DEFINITIONS } from '../../../source/shared/evmNetworks.ts';
 import { normalizePublicAddress } from './core/addresses.ts';
 import { getNativeNetwork, type NativeNetworkRegistration } from './custody/networkContext.ts';

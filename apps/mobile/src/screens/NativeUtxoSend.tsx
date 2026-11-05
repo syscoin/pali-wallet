@@ -186,8 +186,20 @@ export function NativeUtxoSendScreen({
       onPress={() => {
         run(async (current) => {
           setReview(null);
-          const { txid } = await send!.confirm(review);
-          if (current()) setOutcome({ txid, phase: 'submitted' });
+          try {
+            const { txid } = await send!.confirm(review);
+            if (current()) setOutcome({ txid, phase: 'submitted' });
+          } catch (cause) {
+            // The signed bytes may be durable even if expiry prevented POST.
+            if (current())
+              void send!
+                .list()
+                .then((records) => {
+                  if (current()) setSaved([...records].reverse());
+                })
+                .catch(() => undefined);
+            throw cause;
+          }
         });
       }}
       testID="native-utxo-confirm"
