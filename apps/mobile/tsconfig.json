@@ -22,8 +22,11 @@
       "@sidhujag/sysweb3-network": [
         "./node_modules/@sidhujag/sysweb3-network/types/index.d.ts"
       ],
+      "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
       "ethers/address": ["./node_modules/ethers/lib.esm/address/index.d.ts"],
+      "ethers/contract": ["./node_modules/ethers/lib.esm/contract/index.d.ts"],
       "ethers/crypto": ["./node_modules/ethers/lib.esm/crypto/index.d.ts"],
+      "ethers/hash": ["./node_modules/ethers/lib.esm/hash/index.d.ts"],
       "ethers/transaction": [
         "./node_modules/ethers/lib.esm/transaction/index.d.ts"
       ],
