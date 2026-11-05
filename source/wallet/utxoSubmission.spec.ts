@@ -342,6 +342,64 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
   }
 });
 
+it('cannot restore terminal eviction authority from an observation held across replay', async () => {
+  const c = context();
+  const transaction = record();
+  const result = {
+    txid: transaction.txid,
+    hex: transaction.rawTransaction,
+    confirmations: 1,
+    blockHash: 'f'.repeat(64),
+  };
+  const check = new UtxoSignedRecords(c.storage);
+  await c.records.persist(c.session, transaction);
+  await check.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => result
+  );
+  const observed = deferred(),
+    finishObservation = deferred(),
+    posted = deferred(),
+    reply = deferred();
+  const stale = expect(
+    check.observe(c.session, owner, transaction.txid, url, async () => {
+      observed.finish();
+      await finishObservation.promise;
+      return result;
+    })
+  ).rejects.toThrow('UTXO observation changed');
+  await observed.promise;
+  const sending = expect(
+    submitReviewedUtxo({
+      ...c,
+      record: transaction,
+      intent: 'replay',
+      fetch: async () => {
+        posted.finish();
+        await reply.promise;
+        return c.response('d'.repeat(64));
+      },
+    })
+  ).rejects.toMatchObject({ code: 'UTXO_SUBMISSION_UNKNOWN' });
+  try {
+    await posted.promise;
+    finishObservation.finish();
+    await stale;
+    expect(await c.records.excludedOutpoints(c.session, owner)).toHaveLength(1);
+    await expect(
+      check.observe(c.session, owner, transaction.txid, url, async () => result)
+    ).resolves.toBe('confirmed');
+    expect(await c.records.excludedOutpoints(c.session, owner)).toEqual([]);
+  } finally {
+    finishObservation.finish();
+    reply.finish();
+    await sending;
+  }
+});
+
 it('uses only a matching exact-raw observation to mark a confirmation and can observe a reorg', async () => {
   const c = context(),
     transaction = record();

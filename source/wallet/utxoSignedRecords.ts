@@ -95,6 +95,10 @@ export function snapshotUtxoSubmission(
   });
 }
 const queues = new WeakMap<UtxoRecordStorage, Promise<void>>();
+const observationsByStorage = new WeakMap<
+  UtxoRecordStorage,
+  Map<string, object>
+>();
 
 const reopen = (): never => {
   throw new Error('UTXO_SIGNED_RECORD_REOPEN_REQUIRED');
@@ -183,7 +187,7 @@ export class UtxoSignedRecords {
   private readonly storage: UtxoRecordStorage;
   private readonly onUnavailable: () => void;
   private unavailable = false;
-  private readonly observations = new Map<string, object>();
+  private readonly observations: Map<string, object>;
   get requiresReopen(): boolean {
     return this.unavailable;
   }
@@ -194,6 +198,8 @@ export class UtxoSignedRecords {
   ) {
     this.storage = storage;
     this.onUnavailable = onUnavailable;
+    this.observations = observationsByStorage.get(storage) ?? new Map();
+    observationsByStorage.set(storage, this.observations);
   }
 
   private exclusive<T>(
@@ -221,37 +227,49 @@ export class UtxoSignedRecords {
     intent: 'initial' | 'replay',
     dispatch: (prepare: () => Promise<void>, release: () => void) => Promise<T>
   ): Promise<T> {
-    return this.exclusive((release) =>
-      dispatch(async () => {
-        if (intent === 'initial') return this.persistRetained(session, record);
-        const before = await this.load(session);
-        const retained = await this.readMatching(
-          session,
-          record.owner,
-          record.txid,
-          before.entries
-        );
-        if (
-          !retained ||
-          retained.record.rawTransaction !== record.rawTransaction ||
-          retained.record.url !== record.url
-        )
-          throw new Error('Retained UTXO submission changed');
-        // Replay can outlive a reorg or lose its ACK. Remove the old terminal
-        // eviction authority before the exact bytes can leave this lease.
-        if (
-          retained.entry.phase === 'confirmed' &&
-          !(await this.write(
+    return this.exclusive((release) => {
+      let replayKey: string | undefined;
+      return dispatch(
+        async () => {
+          if (intent === 'initial')
+            return this.persistRetained(session, record);
+          const before = await this.load(session);
+          const retained = await this.readMatching(
             session,
-            before,
-            before.entries.map((entry) =>
-              entry === retained.entry ? { ...entry, phase: 'pending' } : entry
-            )
-          ))
-        )
-          throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
-      }, release)
-    );
+            record.owner,
+            record.txid,
+            before.entries
+          );
+          if (
+            !retained ||
+            retained.record.rawTransaction !== record.rawTransaction ||
+            retained.record.url !== record.url
+          )
+            throw new Error('Retained UTXO submission changed');
+          // Replay can outlive a reorg or lose its ACK. Remove the old terminal
+          // eviction authority before the exact bytes can leave this lease.
+          if (
+            retained.entry.phase === 'confirmed' &&
+            !(await this.write(
+              session,
+              before,
+              before.entries.map((entry) =>
+                entry === retained.entry
+                  ? { ...entry, phase: 'pending' }
+                  : entry
+              )
+            ))
+          )
+            throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
+          replayKey = retained.entry.key;
+        },
+        () => {
+          // A status read begun before POST cannot restore stale eviction authority.
+          if (replayKey) this.observations.delete(replayKey);
+          release();
+        }
+      );
+    });
   }
 
   private requireReopen(): never {
