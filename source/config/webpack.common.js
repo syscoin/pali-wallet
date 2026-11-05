@@ -301,6 +301,13 @@ module.exports = {
               // No current Icon call site selects this legacy provider logo.
               // A future explicit import still emits it as an asset.
               '**/metamask.svg',
+              // Superseded controls have no direct URL or import in the wallet.
+              // Keep the source art available to emit if a screen imports it.
+              '**/errorIcon.svg',
+              '**/close.svg',
+              '**/greenChecked.svg',
+              '**/arrowScrollUp.svg',
+              '**/import.png',
             ],
           },
         },
