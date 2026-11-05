@@ -610,13 +610,19 @@ export class UtxoSignedRecords {
       const retained = await this.readExact(observation, owner, txid);
       if (!retained || retained.url !== url) return 'unknown';
       guard(observation);
-      const observed = (await fetchTx()) as {
+      let response: unknown = null;
+      try {
+        response = await fetchTx();
+      } catch {
+        // A failed network read cannot keep an older confirmation eligible for eviction.
+      }
+      guard(observation);
+      const observed = response as {
         blockHash?: string;
         confirmations?: number;
         hex?: string;
         txid?: string;
       } | null;
-      guard(observation);
       const matches =
         observed?.txid === txid &&
         observed.hex === retained.rawTransaction &&

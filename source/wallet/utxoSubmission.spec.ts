@@ -541,6 +541,111 @@ it('retains previously confirmed bytes when their current owned observation is u
   }
 });
 
+it('protects exact previously confirmed bytes after a current Blockbook read rejects', async () => {
+  const capacity = jest.replaceProperty(
+    signedBundle as { MAX_RECORDS: number },
+    'MAX_RECORDS',
+    1
+  );
+  try {
+    const c = context();
+    const transaction = record();
+    await c.records.persist(c.session, transaction);
+    await c.records.observe(
+      c.session,
+      owner,
+      transaction.txid,
+      url,
+      async () => ({
+        txid: transaction.txid,
+        hex: transaction.rawTransaction,
+        confirmations: 1,
+        blockHash: 'f'.repeat(64),
+      })
+    );
+
+    const fetch = jest.fn(async () => {
+      throw new TypeError('Blockbook network connection failed');
+    });
+    const observation = await c.records
+      .observe(c.session, owner, transaction.txid, url, fetch)
+      .catch((error) => error);
+    const reopened = new UtxoSignedRecords(c.storage);
+    await expect(
+      reopened.persist(c.session, {
+        ...record(0xfffffffa),
+        operation: 'external',
+      })
+    ).rejects.toThrow('UTXO_SIGNED_RECORD_CAPACITY');
+    expect(observation).toBe('unknown');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(
+      await reopened.readExact(c.session, owner, transaction.txid)
+    ).toEqual(transaction);
+  } finally {
+    capacity.restore();
+  }
+});
+
+it('does not write an observation if its owner was revoked during a failed read', async () => {
+  const c = context();
+  const transaction = record();
+  await c.records.persist(c.session, transaction);
+  await c.records.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => ({
+      txid: transaction.txid,
+      hex: transaction.rawTransaction,
+      confirmations: 1,
+      blockHash: 'f'.repeat(64),
+    })
+  );
+  const before = await c.storage.read();
+  const controller = new AbortController();
+  const cancelled = new Error('Wallet owner revoked');
+  const session = {
+    ...c.session,
+    assertCurrent: () => {
+      if (controller.signal.aborted) throw cancelled;
+    },
+  };
+  await expect(
+    c.records.observe(session, owner, transaction.txid, url, async () => {
+      controller.abort();
+      throw new Error('Request aborted');
+    })
+  ).rejects.toBe(cancelled);
+  expect(await c.storage.read()).toBe(before);
+});
+
+it('propagates a storage failure when retiring an unverifiable confirmation', async () => {
+  const c = context();
+  const transaction = record();
+  await c.records.persist(c.session, transaction);
+  await c.records.observe(
+    c.session,
+    owner,
+    transaction.txid,
+    url,
+    async () => ({
+      txid: transaction.txid,
+      hex: transaction.rawTransaction,
+      confirmations: 1,
+      blockHash: 'f'.repeat(64),
+    })
+  );
+  c.cas.mockRejectedValueOnce(new Error('STORAGE_REOPEN_REQUIRED'));
+  await expect(
+    c.records.observe(c.session, owner, transaction.txid, url, async () => {
+      throw new Error('Network unavailable');
+    })
+  ).rejects.toThrow('UTXO_SIGNED_RECORD_REOPEN_REQUIRED');
+  expect(c.records.requiresReopen).toBe(true);
+});
+
 it('does not erase an existing submission acknowledgment on an unknown observation', async () => {
   const c = context();
   const transaction = record();
