@@ -126,6 +126,25 @@ export function createPublicAccountStorage(port: PublicStoragePort) {
         if (JSON.stringify(await readSelection()) !== JSON.stringify(checked)) throw new Error('Saved account choice could not be verified.');
       });
     },
+    /** Removal may clear only an existing native hint, after retiring its owner. */
+    clearNativeSelection: (assertCurrent: () => void): Promise<void> => {
+      const check = () => {
+        const result: unknown = assertCurrent();
+        if (result !== undefined) {
+          if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
+          throw new Error('Saved account choice changed');
+        }
+      };
+      return serialized(async () => {
+        check();
+        const selected = await readSelection();
+        check();
+        if (!selected || selected.kind === 'watch') return;
+        try { await port.set(ACCOUNT_SELECTION_KEY, 'null'); } catch { /* Exact readback resolves a lost acknowledgement. */ }
+        if (await readSelection() !== null) throw new Error('Saved account choice could not be cleared.');
+        check();
+      });
+    },
     records,
   });
 }

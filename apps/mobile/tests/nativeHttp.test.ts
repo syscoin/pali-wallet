@@ -328,6 +328,7 @@ test('native factory explicitly wires one owned transport to all network consume
     '../custody/recovery.ts': {
       NativeRecoveryCoordinator: capture('recovery'),
     },
+    '../custody/walletRemoval.ts': { NativeWalletRemoval: capture('removal') },
     '../custody/recoveryInventory.ts': {
       readRecoveryInventory() {
         assert.fail('unexpected inventory read');

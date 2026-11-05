@@ -79,6 +79,8 @@ export interface CustodyRuntime {
     readState(): Promise<CustodyStoredState>;
     /** Drain and revoke the runtime; capture its pair while the original lease is held, then close. */
     retireForRecovery?(): Promise<string>;
+    /** Retire signing and drain outstanding work before an explicit removal on the original lease. */
+    retireForRemoval?(remove: () => Promise<void>): Promise<void>;
     /** Wait for pending commits; never delete records as cleanup. */
     close(): Promise<void>;
   };

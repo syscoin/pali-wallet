@@ -8,6 +8,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 function fixture() {
   const events: string[] = []; let count = 0;
   let close: Promise<void> = Promise.resolve(), recoveryClose: Promise<void> = Promise.resolve();
+  let removalClose: Promise<void> = Promise.resolve(), removed = false;
   let onLock = () => {}, onCreate = () => {}, onRecovery = () => {};
   let presence: 'existing' | 'empty' = 'existing';
   const gate = new NativeControllerLifecycle({
@@ -18,12 +19,14 @@ function fixture() {
       return {
         authority: { getSnapshot: () => state, async initialize() { events.push(`init${id}`); }, lock() { events.push(`lock${id}`); onLock(); }, async dispose() { events.push(`close${id}`); await close; state = { ...state, phase: 'disposed' }; } },
         backup: { dispose() { events.push(`backup${id}`); } }, keyExport: { dispose() {} }, disposeTokens() {}, disposeTransfers() {},
+        removal: { cancel() {}, async dispose() { await removalClose; }, hasVerifiedRemoval() { return removed; } },
       };
     },
     recovery() { onRecovery(); return { cancel() { events.push('cancel'); }, async dispose() { events.push('recovery-close'); await recoveryClose; } }; },
   });
   return { gate, events, count: () => count, closing(value: Promise<void>) { close = value; }, recoveryClosing(value: Promise<void>) { recoveryClose = value; },
-    onLock(value: () => void) { onLock = value; }, onCreate(value: () => void) { onCreate = value; }, onRecovery(value: () => void) { onRecovery = value; }, empty() { presence = 'empty'; } };
+    onLock(value: () => void) { onLock = value; }, onCreate(value: () => void) { onCreate = value; }, onRecovery(value: () => void) { onRecovery = value; }, empty() { presence = 'empty'; },
+    removalClosing(value: Promise<void>) { removalClose = value; }, verifyRemoval() { removed = true; } };
 }
 
 test('new mount waits for both recovery and authority drain, with synchronous revocation', async () => {
@@ -57,6 +60,27 @@ test('cleanup failure permanently prevents another factory invocation', async ()
 test('existing wallet can never become onboarding after recovery or remount', async () => {
   const f = fixture(), a = {}; await f.gate.acquire(a, () => true); await f.gate.release(a); f.empty();
   await assert.rejects(f.gate.acquire({}, () => true), { message: 'REOPEN_REQUIRED' });
+});
+test('only the verified retiring removal owner allows an empty replacement after reconciliation drains', async () => {
+  const f = fixture(), first = {}, next = {}, reconciliation = deferred();
+  await f.gate.acquire(first, () => true);
+  f.removalClosing(reconciliation.promise);
+  const retiring = f.gate.release(first), opening = f.gate.acquire(next, () => true);
+  await tick(); assert.equal(f.count(), 1);
+  f.verifyRemoval(); f.empty(); reconciliation.resolve();
+  await retiring;
+  assert.equal((await opening)?.authority.getSnapshot().phase, 'empty');
+  await f.gate.release(next);
+});
+
+test('an unresolved removal quarantines reopening even when authority close itself succeeds', async () => {
+  const f = fixture(), first = {};
+  await f.gate.acquire(first, () => true);
+  const failure = Promise.reject(new Error('REOPEN_REQUIRED')); void failure.catch(() => undefined);
+  f.removalClosing(failure);
+  await assert.rejects(f.gate.release(first), { message: 'REOPEN_REQUIRED' });
+  await assert.rejects(f.gate.acquire({}, () => true), { message: 'REOPEN_REQUIRED' });
+  assert.equal(f.count(), 1);
 });
 test('rapid mount/unmount before privacy completion never opens an abandoned owner', async () => {
   const privacy = deferred(); let creates = 0;

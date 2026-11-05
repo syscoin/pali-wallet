@@ -45,3 +45,4 @@ export const loadPublicAccounts = publicStorage.loadAccounts;
 export const publicAccountRecords = publicStorage.records;
 export const loadAccountSelection = publicStorage.loadSelection;
 export const saveAccountSelection = publicStorage.saveSelection;
+export const clearNativeAccountSelection = publicStorage.clearNativeSelection;

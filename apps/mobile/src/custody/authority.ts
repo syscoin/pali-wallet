@@ -519,9 +519,25 @@ export class NativeCustodyAuthority {
     return this.recoveryRetirement!;
   }
 
+  retireForRemoval<T>(expected: CustodySnapshot, operation: () => Promise<T>): Promise<T> {
+    const retire = this.runtime?.storage.retireForRemoval;
+    if (this.disposal || this.pending || this.getSnapshot() !== expected ||
+        !['ready', 'backup-required'].includes(expected.phase) || !retire)
+      return Promise.reject(new CustodyOperationError('CANCELLED'));
+    let result: Promise<T> | undefined;
+    const disposal = this.startDisposal(false, () => retire(async () => {
+      result = Promise.resolve().then(operation);
+      await result.catch(() => undefined);
+    }));
+    return disposal.then(() => {
+      if (!result) throw new CustodyOperationError('CLEANUP_FAILED');
+      return result;
+    });
+  }
+
   dispose(): Promise<void> { return this.startDisposal(false); }
 
-  private startDisposal(capturePair: boolean): Promise<void> {
+  private startDisposal(capturePair: boolean, retire?: () => Promise<void>): Promise<void> {
     if (this.disposal) return this.disposal;
     // Install the promise before notifying observers to make reentrant disposal
     // idempotent, including disposal initiated during an authentication event.
@@ -553,6 +569,9 @@ export class NativeCustodyAuthority {
           if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
           pairFingerprint = fingerprint;
         } catch { failed = true; }
+      }
+      if (retire && !failed) {
+        try { await retire(); } catch { failed = true; }
       }
       try { await this.close(); } catch { failed = true; }
       if (failed) throw new CustodyOperationError('CLEANUP_FAILED');

@@ -8,7 +8,8 @@ export function openNativeWalletStorage(
     randomBytes(length: number): Uint8Array;
     digest: StorageDigest;
   },
-  _observeOpen?: StorageOpenObserver
+  _observeOpen?: StorageOpenObserver,
+  _expectedInstallationId?: string
 ): Promise<OpenWalletStorage> {
   return Promise.reject(new WalletStorageError('STORAGE_UNAVAILABLE'));
 }

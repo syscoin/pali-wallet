@@ -82,7 +82,8 @@ function decodeKey(raw: string): KeyRecord {
 
 /** Crash-resumable provisioning. No failure path deletes a key or database. */
 export async function openWalletStorage(
-  ports: NativeStoragePorts
+  ports: NativeStoragePorts,
+  expectedInstallationId?: string
 ): Promise<OpenWalletStorage> {
   let lease: StorageLease;
   try {
@@ -97,7 +98,12 @@ export async function openWalletStorage(
     observeStorageOpen(ports.observeOpen, 'key-read');
     let raw = await ports.keyStore.get();
     let record: KeyRecord;
-    if (raw === null) {
+    if (expectedInstallationId !== undefined) {
+      if (raw === null || !lease.databaseExists) throw new WalletStorageError('STORAGE_CHANGED');
+      record = decodeKey(raw);
+      if (record.status !== 'ready' || record.installationId !== expectedInstallationId)
+        throw new WalletStorageError('STORAGE_CHANGED');
+    } else if (raw === null) {
       if (lease.databaseExists)
         throw new WalletStorageError('STORAGE_KEY_MISSING');
       observeStorageOpen(ports.observeOpen, 'key-generate');
