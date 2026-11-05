@@ -224,6 +224,7 @@ it.each([
   { raw: '9007199254740993', decimals: 0, expected: '9007199254740993' },
   { raw: '1', decimals: 24, expected: '0.000000000000000000000001' },
   { raw: '123456', decimals: 6, expected: '0.123456' },
+  { raw: '1', decimals: 255, expected: `0.${'0'.repeat(254)}1` },
 ])(
   'keeps ERC20 MAX exact at $decimals decimals: $raw',
   async ({ raw, decimals, expected }) => {
@@ -234,6 +235,7 @@ it.each([
     await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
     expect(mockNavigate.mock.calls[0][2].tx).toMatchObject({
       amount: expected,
+      tokenAmountUnits: raw,
       token: { decimals },
     });
   }
@@ -248,6 +250,7 @@ it('uses newly verified decimals for validation and the confirmation payload', a
   await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
   expect(mockNavigate.mock.calls[0][2].tx).toMatchObject({
     amount: '0.000000000000000000000001',
+    tokenAmountUnits: '1',
     token: { decimals: 24 },
   });
 });
@@ -259,6 +262,24 @@ it('rejects even one atomic unit above the exact verified balance', async () => 
   await screen.findByText('send.insufficientFundsVerified');
   expect(mockNavigate).not.toHaveBeenCalled();
 });
+
+it('checks adjacent amounts exactly even at 255 decimals', async () => {
+  await prepare('1', 255, 18);
+  fireEvent.change(amount(), { target: { value: `0.${'0'.repeat(254)}2` } });
+  fireEvent.click(next());
+  await screen.findByText('send.insufficientFundsVerified');
+  expect(mockNavigate).not.toHaveBeenCalled();
+});
+
+it.each(['.5', '00.5'])(
+  'keeps the existing extension number input spelling %s usable',
+  async (amountText) => {
+    await prepare('1000000', 6);
+    fireEvent.change(amount(), { target: { value: amountText } });
+    fireEvent.click(next());
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledTimes(1));
+  }
+);
 
 it('keeps excessive precision visible on blur and blocks submission without rounding', async () => {
   await prepare('1000000', 6);

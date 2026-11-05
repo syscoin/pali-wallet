@@ -4,6 +4,8 @@ import {
   KeyringManager,
   CustomJsonRpcProvider,
   PsbtUtils,
+  type ISendSignedErc20TransactionProps,
+  type ISendSignedErcTransactionProps,
 } from '@sidhujag/sysweb3-keyring';
 import {
   getSysRpc,
@@ -29,7 +31,7 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
-import { formatErc20Balance } from '../../../shared/erc20';
+import { formatErc20Balance, parseErc20Units } from '../../../shared/erc20';
 import {
   assertEvmCancellationPayerReady,
   isEvmEmptySelfCall,
@@ -8414,10 +8416,31 @@ class MainController {
    * Combines send and save operations to ensure completion
    */
   public async sendAndSaveTokenTransaction(
-    tokenType: 'ERC20' | 'ERC721' | 'ERC1155',
-    params: any
+    ...[tokenType, params]:
+      | [tokenType: 'ERC20', params: ISendSignedErc20TransactionProps]
+      | [
+          tokenType: 'ERC721' | 'ERC1155',
+          params: ISendSignedErcTransactionProps
+        ]
   ): Promise<IEvmTransactionResponse> {
     this.assertWalletReadyForSigning();
+    if (tokenType === 'ERC20') {
+      try {
+        if (
+          !params ||
+          typeof params !== 'object' ||
+          'tokenAmount' in params ||
+          'decimals' in params ||
+          typeof params.tokenAmountUnits !== 'string' ||
+          parseErc20Units(params.tokenAmountUnits) === '0'
+        )
+          throw new Error('Invalid ERC20 amount');
+      } catch {
+        throw Object.assign(new Error('Invalid ERC20 amount'), {
+          transactionNotBroadcast: true,
+        });
+      }
+    }
     const sessionGeneration = this.walletSessionGeneration;
     const { vault, vaultGlobal } = store.getState();
     const targetAccount = { ...vault.activeAccount };

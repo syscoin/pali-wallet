@@ -12,6 +12,11 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import {
+  formatTokenUnits,
+  parseErc20Decimals,
+  parseErc20Units,
+} from '../../shared/erc20';
 import { TransactionType } from '../../types/transactions';
 import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
@@ -32,7 +37,7 @@ import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
 } from 'utils/addressPoisoning';
-import { parseEther, parseUnits, formatUnits } from 'utils/ethersV6Compat';
+import { parseEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import {
@@ -49,6 +54,7 @@ import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
+import { parseWalletErc20SendAmount } from './erc20SendAmount';
 import {
   getScopedSendDraft,
   useSendDraftWriter,
@@ -227,13 +233,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ERC-20 verification state
   const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
-  const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<{
+  const [erc20Observation, setErc20Observation] = useState<{
+    asset: ITokenEthProps;
     atomic: string;
     decimals: number;
     formatted: string;
   } | null>(null);
-  const selectedTokenDecimals =
-    verifiedERC20Balance?.decimals ?? selectedAsset?.decimals ?? 18;
+  const verifiedERC20Balance =
+    erc20Observation?.asset === selectedAsset ? erc20Observation : null;
+  const selectedTokenDecimals = verifiedERC20Balance?.decimals;
 
   const [form] = Form.useForm();
   // Receiver suggestions / ENS state
@@ -644,7 +652,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         );
 
       if (getAsset) {
-        setSelectedAsset(getAsset);
+        setSelectedAsset(getAsset.isNft ? getAsset : { ...getAsset });
         // Don't clear cached fee data - gas prices don't change based on asset
         setIsMaxSend(false);
 
@@ -750,6 +758,22 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         return;
       }
       try {
+        let erc20Review: { decimals: number; units: string } | undefined;
+        if (selectedAsset && !selectedAsset.isNft) {
+          if (!verifiedERC20Balance) {
+            alert.error(t('send.tokenVerificationFailed'));
+            return;
+          }
+          const { atomic, decimals, formatted } = verifiedERC20Balance;
+          const units = parseWalletErc20SendAmount(values.amount, decimals);
+          if (BigInt(units) > BigInt(atomic)) {
+            alert.error(
+              t('send.insufficientFundsVerified', { balance: formatted })
+            );
+            return;
+          }
+          erc20Review = { decimals, units };
+        }
         const receiver = String(values.receiver || '');
         // Only submit the result this validation admitted. A concurrent cache
         // publication must not substitute an unchecked destination at onFinish.
@@ -833,12 +857,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               sender: activeAccount.address,
               receivingAddress: values.receiver,
               amount: values.amount,
+              ...(erc20Review && { tokenAmountUnits: erc20Review.units }),
               token: selectedAsset
                 ? {
                     ...selectedAsset,
-                    ...(!selectedAsset.isNft && verifiedERC20Balance
-                      ? { decimals: verifiedERC20Balance.decimals }
-                      : {}),
+                    ...(erc20Review && { decimals: erc20Review.decimals }),
                     symbol: finalSymbolToNextStep,
                     tokenId:
                       selectedAsset.tokenStandard === 'ERC-1155'
@@ -1081,33 +1104,27 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // A verified balance belongs only to this selection and request lifetime.
   useEffect(() => {
     let current = true;
-    setVerifiedERC20Balance(null);
+    setErc20Observation(null);
     setIsVerifyingERC20(false);
     if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) return;
     setVerificationError(null);
 
     const timeoutId = setTimeout(async () => {
+      if (!isCurrentForm()) return;
       setIsVerifyingERC20(true);
       try {
         const result = (await controllerEmitter(
           ['wallet', 'getERC20TokenInfo'],
           [selectedAsset.contractAddress, activeAccount.address]
         )) as { balance: string; decimals: number };
-        if (current) {
-          if (
-            !result ||
-            typeof result.balance !== 'string' ||
-            !/^\d+$/.test(result.balance) ||
-            !Number.isInteger(result.decimals) ||
-            result.decimals < 0 ||
-            result.decimals > 255
-          )
-            throw new Error('Invalid ERC-20 balance');
-          const atomic = BigNumber.from(result.balance).toString();
-          setVerifiedERC20Balance({
+        if (current && isCurrentForm()) {
+          const atomic = parseErc20Units(result?.balance);
+          const decimals = parseErc20Decimals(result?.decimals);
+          setErc20Observation({
+            asset: selectedAsset,
             atomic,
-            decimals: result.decimals,
-            formatted: formatUnits(atomic, result.decimals).replace(/\.0$/, ''),
+            decimals,
+            formatted: formatTokenUnits(atomic, decimals).replace(/\.0$/, ''),
           });
         }
       } catch (error) {
@@ -1123,7 +1140,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       current = false;
       clearTimeout(timeoutId);
     };
-  }, [selectedAsset, activeAccount.address]);
+  }, [selectedAsset, activeAccount.address, isCurrentForm]);
 
   // Sync form field with component state for NFT token ID
   useEffect(() => {
@@ -1717,15 +1734,16 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                               )
                             );
                           }
-                          let tokenValue: BigNumber;
+                          let tokenValue: string;
                           try {
-                            tokenValue = parseUnits(valueString, decimals);
+                            tokenValue = parseWalletErc20SendAmount(
+                              valueString,
+                              decimals
+                            );
                           } catch {
                             return Promise.reject(t('send.invalidAmount'));
                           }
-                          if (tokenValue.lte(0))
-                            return Promise.reject(t('send.invalidAmount'));
-                          if (tokenValue.gt(atomic)) {
+                          if (BigInt(tokenValue) > BigInt(atomic)) {
                             return Promise.reject(
                               t('send.insufficientFundsVerified', {
                                 balance: formatted,

@@ -343,92 +343,90 @@ describe.each(['Ledger', 'Trezor'] as const)(
         'sendSignedErc20Transaction',
         'transfer(address,uint256)',
         '2',
-        0,
       ],
       [
         'ERC20 eight decimals',
         'sendSignedErc20Transaction',
         'transfer(address,uint256)',
         '200000001',
-        8,
       ],
       [
         'ERC721 large id',
         'sendSignedErc721Transaction',
         'transferFrom(address,address,uint256)',
         '9007199254740993',
-        0,
       ],
       [
         'ERC1155 large amount',
         'sendSignedErc1155Transaction',
         'safeTransferFrom(address,address,uint256,uint256,bytes)',
         '9007199254740993',
-        0,
       ],
-    ] as const)(
-      '%s device bytes',
-      (_name, method, fragment, atomic, decimals) => {
-        it.each([false, true])(
-          'signs exact standard calldata through the actual adapter (legacy %s)',
-          async (legacy) => {
-            const tokenAddress = `0x${'44'.repeat(20)}`;
-            const sending = sdk[method]({
-              networkUrl: state.activeNetwork.url,
-              tokenAddress,
-              receiver: recipient,
-              tokenAmount:
-                method === 'sendSignedErc1155Transaction'
-                  ? atomic
-                  : decimals === 8
-                  ? '2.00000001'
-                  : '2',
-              tokenId: '9007199254740993',
-              decimals,
-              gasLimit: '200000',
-              isLegacy: legacy,
-              ...(legacy
-                ? { gasPrice: '100' }
-                : { maxFeePerGas: '100', maxPriorityFeePerGas: '2' }),
-            });
-            await finishDelay();
-            const response = await sending;
-            expect(device).toHaveBeenCalledTimes(1);
-            expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
-            expect(otherProvider.sendTransaction).not.toHaveBeenCalled();
-            const tx = Transaction.from(
-              provider.sendTransaction.mock.calls[0][0]
-            );
-            expect(tx).toMatchObject({
-              from: wallet.address,
-              to: tokenAddress,
-              value: BigInt(0),
-              nonce: 7,
-              chainId: BigInt(57057),
-              gasLimit: BigInt(200000),
-              type: legacy ? 0 : 2,
-            });
-            const parsed = new Interface([
-              `function ${fragment}`,
-            ]).parseTransaction({ data: tx.data })!;
-            const expected =
-              method === 'sendSignedErc20Transaction'
-                ? [recipient, BigInt(atomic)]
-                : method === 'sendSignedErc721Transaction'
-                ? [wallet.address, recipient, BigInt(atomic)]
-                : [
-                    wallet.address,
-                    recipient,
-                    BigInt('9007199254740993'),
-                    BigInt(atomic),
-                    '0x',
-                  ];
-            expect(Array.from(parsed.args)).toEqual(expected);
-            expect(response.hash).toBe(tx.hash);
-          }
-        );
-      }
-    );
+    ] as const)('%s device bytes', (_name, method, fragment, atomic) => {
+      it.each([false, true])(
+        'signs exact standard calldata through the actual adapter (legacy %s)',
+        async (legacy) => {
+          const tokenAddress = `0x${'44'.repeat(20)}`;
+          const request = {
+            networkUrl: state.activeNetwork.url,
+            tokenAddress,
+            receiver: recipient,
+            gasLimit: '200000',
+            isLegacy: legacy,
+            ...(legacy
+              ? { gasPrice: '100' }
+              : { maxFeePerGas: '100', maxPriorityFeePerGas: '2' }),
+          };
+          const sending =
+            method === 'sendSignedErc20Transaction'
+              ? sdk.sendSignedErc20Transaction({
+                  ...request,
+                  tokenAmountUnits: atomic,
+                })
+              : sdk[method]({
+                  ...request,
+                  tokenId: '9007199254740993',
+                  ...(method === 'sendSignedErc1155Transaction' && {
+                    tokenAmount: atomic,
+                  }),
+                });
+          await finishDelay();
+          const response = await sending;
+          expect(device).toHaveBeenCalledTimes(1);
+          expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+          expect(otherProvider.sendTransaction).not.toHaveBeenCalled();
+          const tx = Transaction.from(
+            provider.sendTransaction.mock.calls[0][0]
+          );
+          expect(tx).toMatchObject({
+            from: wallet.address,
+            to: tokenAddress,
+            value: BigInt(0),
+            nonce: 7,
+            chainId: BigInt(57057),
+            gasLimit: BigInt(200000),
+            type: legacy ? 0 : 2,
+          });
+          const parsed = new Interface([
+            `function ${fragment}`,
+          ]).parseTransaction({ data: tx.data })!;
+          const expected =
+            method === 'sendSignedErc20Transaction'
+              ? [recipient, BigInt(atomic)]
+              : method === 'sendSignedErc721Transaction'
+              ? [wallet.address, recipient, BigInt(atomic)]
+              : [
+                  wallet.address,
+                  recipient,
+                  BigInt('9007199254740993'),
+                  BigInt(atomic),
+                  '0x',
+                ];
+          expect(Array.from(parsed.args)).toEqual(expected);
+          expect(response.hash).toBe(tx.hash);
+        }
+      );
+    });
 
     it('preserves a large calldata payload through the semantic host', async () => {
       const data = `0x${'12'.repeat(600)}`;

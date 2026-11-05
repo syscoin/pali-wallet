@@ -364,6 +364,7 @@ async function readyToken(blacklisted: boolean) {
       'synthetic list entry'
     );
   mockLocation.state.tx.transactionType = 'ERC20';
+  mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
   mockLocation.state.tx.token = {
     contractAddress: `0x${'33'.repeat(20)}`,
     decimals: 18,

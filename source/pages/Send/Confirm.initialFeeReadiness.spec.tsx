@@ -219,6 +219,7 @@ function mount(kind: 'native' | 'token') {
   const quote = deferred();
   if (kind === 'token') {
     mockLocation.state.tx.transactionType = 'ERC20';
+    mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     mockLocation.state.tx.defaultGasLimit = 65000;
     mockLocation.state.tx.token = {
       contractAddress: '0x3333333333333333333333333333333333333333',

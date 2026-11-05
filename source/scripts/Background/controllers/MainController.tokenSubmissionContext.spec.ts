@@ -50,7 +50,13 @@ describe.each([
 ] as const)('%s token submission persistence scope', (standard, sdkMethod) => {
   let wallet: any;
   let sdk: jest.Mock;
-  const params = { receiver: RECEIVER, tokenAddress: TOKEN, tokenAmount: '1' };
+  const params = {
+    receiver: RECEIVER,
+    tokenAddress: TOKEN,
+    ...(standard === 'ERC20'
+      ? { tokenAmountUnits: '9007199254740993' }
+      : { tokenAmount: '1' }),
+  };
   const send = () => wallet.sendAndSaveTokenTransaction(standard, params);
   const mutate = (change: string) => {
     if (change === 'account') mockState.vault.activeAccount.id = 1;
@@ -98,6 +104,31 @@ describe.each([
   });
 
   afterEach(() => jest.restoreAllMocks());
+
+  if (standard === 'ERC20') {
+    it.each([
+      {},
+      { tokenAmount: '1' },
+      { tokenAmountUnits: '1', tokenAmount: '1' },
+      { tokenAmountUnits: '1', decimals: 18 },
+      { tokenAmountUnits: '0' },
+      { tokenAmountUnits: '01' },
+    ])(
+      'rejects a malformed exact amount request before any work: %j',
+      async (amount) => {
+        await expect(
+          wallet.sendAndSaveTokenTransaction(standard, {
+            receiver: RECEIVER,
+            tokenAddress: TOKEN,
+            ...amount,
+          })
+        ).rejects.toMatchObject({ transactionNotBroadcast: true });
+        expect(blacklistService.checkAddress).not.toHaveBeenCalled();
+        expect(sdk).not.toHaveBeenCalled();
+        expect(store.dispatch).not.toHaveBeenCalled();
+      }
+    );
+  }
 
   it('saves one unchanged ACK to the captured original account and chain', async () => {
     await expect(send()).resolves.toBe(RESPONSE);

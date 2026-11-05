@@ -1,4 +1,5 @@
 import { ChevronDoubleDownIcon } from '@heroicons/react/solid';
+import type { ISendSignedErc20TransactionProps } from '@sidhujag/sysweb3-keyring';
 import currency from 'currency.js';
 import React, {
   useCallback,
@@ -75,6 +76,7 @@ import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 
 import { EditPriorityModal } from './EditPriority';
+import { parseWalletErc20SendAmount } from './erc20SendAmount';
 import { useConfirmSubmission } from './useConfirmSubmission';
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
@@ -263,6 +265,33 @@ export const SendConfirm = () => {
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
+  const reviewedErc20Units = useMemo(() => {
+    if (isBitcoinBased || !basicTxValues) return undefined;
+    const { amount, token, tokenAmountUnits, transactionType } = basicTxValues;
+    if (transactionType !== TransactionType.ERC20) {
+      // A saved token review without its exact route cannot become a native send.
+      return token &&
+        transactionType !== TransactionType.ERC721 &&
+        transactionType !== TransactionType.ERC1155
+        ? null
+        : undefined;
+    }
+    if (
+      !token ||
+      typeof amount !== 'string' ||
+      typeof tokenAmountUnits !== 'string'
+    )
+      return null;
+    try {
+      return parseWalletErc20SendAmount(amount, token.decimals) ===
+        tokenAmountUnits
+        ? tokenAmountUnits
+        : null;
+    } catch {
+      return null;
+    }
+  }, [basicTxValues, isBitcoinBased]);
+  const tokenReviewInvalid = reviewedErc20Units === null;
   const isSmartAccountSend =
     !isBitcoinBased &&
     Boolean(activeAccount?.isSmartAccount && activeAccount.smartAccount);
@@ -535,7 +564,8 @@ export const SendConfirm = () => {
       !basicTxValues ||
       recipientWrongNetwork ||
       !smartAccountFeeOverrides ||
-      smartAccountQuoteNeedsRefresh
+      smartAccountQuoteNeedsRefresh ||
+      tokenReviewInvalid
     )
       return;
     let cancelled = false;
@@ -565,15 +595,11 @@ export const SendConfirm = () => {
           throw new Error('Unsupported smart account transfer');
         execution.target = basicTxValues.token.contractAddress;
         if (transactionType === TransactionType.ERC20) {
+          if (!reviewedErc20Units) throw new Error('ERC20 review required');
           const abi = new Interface(await getErc20Abi());
           execution.data = abi.encodeFunctionData('transfer', [
             target,
-            toEthersBigNumberish(
-              parseUnits(
-                String(removeScientificNotation(basicTxValues.amount || '0')),
-                basicTxValues.token.decimals ?? 18
-              )
-            ),
+            reviewedErc20Units,
           ]);
         } else {
           const tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
@@ -661,7 +687,12 @@ export const SendConfirm = () => {
     return () => {
       cancelled = true;
     };
-  }, [smartAccountQuoteKey, retryTrigger, smartAccountQuoteNeedsRefresh]);
+  }, [
+    smartAccountQuoteKey,
+    retryTrigger,
+    smartAccountQuoteNeedsRefresh,
+    reviewedErc20Units,
+  ]);
 
   const getNativeEvmGasLimit = useCallback(
     async (maxSendFeeRateWei?: BigNumber): Promise<BigNumber> => {
@@ -898,6 +929,7 @@ export const SendConfirm = () => {
   };
 
   const performConfirm = async () => {
+    if (tokenReviewInvalid) return;
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
       alert.error(sptReviewMessage);
@@ -1400,6 +1432,8 @@ export const SendConfirm = () => {
             //HANDLE ERC20 TRANSACTION
             case TransactionType.ERC20:
               try {
+                if (!reviewedErc20Units)
+                  throw new Error('ERC20 review required');
                 await submitEmitter(
                   ['wallet', 'sendAndSaveTokenTransaction'],
                   [
@@ -1408,10 +1442,9 @@ export const SendConfirm = () => {
                       networkUrl: activeNetwork.url,
                       receiver: destinationTo,
                       tokenAddress: basicTxValues.token.contractAddress,
-                      tokenAmount: `${basicTxValues.amount}`,
-                      decimals: basicTxValues?.token?.decimals,
+                      tokenAmountUnits: reviewedErc20Units,
                       ...getTokenFeeParams(65000),
-                    },
+                    } satisfies ISendSignedErc20TransactionProps,
                   ],
                   activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
                     ? 300000 // 5 minutes timeout for hardware wallet operations
@@ -1510,6 +1543,7 @@ export const SendConfirm = () => {
   };
 
   const handleConfirm = () => {
+    if (tokenReviewInvalid) return;
     if (sptReviewError) {
       alert.error(sptReviewMessage);
       return;
@@ -2573,6 +2607,7 @@ export const SendConfirm = () => {
                 Boolean(recipientPoisoningCollision) ||
                 recipientWrongNetwork ||
                 Boolean(sptReviewError) ||
+                tokenReviewInvalid ||
                 !confirmationFeeReady ||
                 isCalculatingFees ||
                 (!isBitcoinBased && isEIP1559Compatible === undefined) ||
@@ -2586,6 +2621,11 @@ export const SendConfirm = () => {
               {t('buttons.confirm')}
             </Button>
           </div>
+          {tokenReviewInvalid && (
+            <p role="status" className="text-sm text-warning-error text-center">
+              {t('send.tokenVerificationFailed')}
+            </p>
+          )}
           {submission.unknown && (
             <p role="status" className="text-sm text-brand-gray200 text-center">
               {t('send.submissionStatusUnknown')}
