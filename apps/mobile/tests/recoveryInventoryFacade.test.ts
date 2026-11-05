@@ -89,6 +89,8 @@ async function fixture(existing = true) {
     '../activity/explorerReader.ts': { ActivityExplorerReader: PassiveController },
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },
     '../portfolio/erc20ReadRpc.ts': { createErc20Reader: () => ({}) },
+    '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => () => assert.fail('inventory must not discover tokens') },
+    '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
     '../platformRpc.ts': { createBalanceReader: () => ({}) },
     './http': { walletFetch() { assert.fail('inventory must not fetch'); } },
     '../storage/native': { async openNativeWalletStorage() { counts.opens++; return storage; } },

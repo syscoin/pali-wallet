@@ -1,9 +1,118 @@
 import { test, expect, type Page } from '@playwright/test';
 
-test.use({ baseURL: 'http://127.0.0.1:4179' });
+const fixtureUrl =
+  process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179';
+test.use({ baseURL: fixtureUrl });
+test.beforeEach(async ({ page }) => {
+  await page.route(/^https?:\/\//, (route) =>
+    new URL(route.request().url()).origin === new URL(fixtureUrl).origin
+      ? route.continue()
+      : route.abort('blockedbyclient')
+  );
+});
 const token = '0x1111111111111111111111111111111111111111';
 const zero = '0x2222222222222222222222222222222222222222';
 const long = '0x3333333333333333333333333333333333333333';
+
+async function enlargeText(page: Page) {
+  await page.evaluate(() => {
+    for (const node of Array.from(
+      document.querySelectorAll<HTMLElement>('[dir="auto"]')
+    )) {
+      const style = getComputedStyle(node);
+      node.style.fontSize = `${parseFloat(style.fontSize) * 2}px`;
+      node.style.lineHeight = `${parseFloat(style.lineHeight) * 2}px`;
+    }
+  });
+}
+
+test('wallet holdings on the native Import route require verified review and explicit add', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&holdings');
+  const requests = () =>
+    page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await expect(page.getByTestId('native-token-import')).toBeEnabled();
+  expect(await requests()).toEqual([]);
+  await page.getByTestId('native-token-import').click();
+  const contractInput = page.getByRole('textbox', {
+    name: 'Token contract address',
+    exact: true,
+  });
+  await expect(contractInput).toBeVisible();
+  expect(await requests()).toEqual([]);
+  await contractInput.fill('0x1');
+  expect(await requests()).toEqual([]);
+  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  const suggestion = page.getByRole('button', {
+    name: `Review HINT token contract ${token}`,
+  });
+  await expect(suggestion).toBeVisible();
+  expect(await requests()).toHaveLength(1);
+  expect((await requests())[0]).toContain(
+    '/address/0x52908400098527886E0F7030069857D2E4169EE7/erc20-holdings?limit=100'
+  );
+  await expect(page.getByTestId('native-token-add')).toHaveCount(0);
+  await suggestion.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('holdings-320.png') });
+  await enlargeText(page);
+  await suggestion.scrollIntoViewIfNeeded();
+  await expect(suggestion).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('holdings-320-large-text.png'),
+  });
+  await suggestion.click();
+  await expect(page.getByText('Fixture token', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-token-preview-balance')).toHaveText(
+    '90071992547409.93 FIXTURE'
+  );
+  await expect(page.getByTestId('native-token-contract')).toHaveText(token);
+  const saved = () =>
+    page.evaluate(() =>
+      localStorage.getItem('pali-native-token-ui:native-token-registry-v1')
+    );
+  expect(await saved()).toBeNull();
+  await page.getByTestId('native-token-add').click();
+  await expect(
+    page.getByRole('heading', { name: 'Token details', exact: true })
+  ).toBeVisible();
+  expect(await saved()).toContain('Fixture token');
+  expect(await saved()).not.toContain('Explorer fixture');
+});
+
+test('failed holdings stays separate from manual review and requires explicit retry', async ({
+  page,
+}) => {
+  await page.goto('/?token-portfolio&holdings&holdings-fail');
+  await page.getByTestId('native-token-import').click();
+  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  await expect(
+    page.getByText('Holdings unavailable', { exact: true })
+  ).toBeVisible();
+  await page
+    .getByRole('textbox', { name: 'Token contract address', exact: true })
+    .fill(zero);
+  await expect(page.getByTestId('native-token-review')).toBeEnabled();
+  const requests = () =>
+    page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  expect(await requests()).toHaveLength(1);
+  await page.getByRole('button', { name: 'Retry holdings' }).click();
+  await expect(
+    page.getByText('Explorer fixture · HINT', { exact: true })
+  ).toBeVisible();
+  expect(await requests()).toHaveLength(2);
+  await page.getByTestId('native-token-review').click();
+  await expect(page.getByTestId('native-token-contract')).toHaveText(zero);
+  await expect(page.getByTestId('native-token-preview-balance')).toHaveText(
+    '0.0 ZERO'
+  );
+});
 async function preview(page: Page, address: string) {
   await page.getByTestId('native-token-import').click();
   await page
@@ -192,15 +301,7 @@ test('full contract and long exact amounts remain reachable on a narrow screen',
     path: testInfo.outputPath('native-token-detail-320.png'),
     fullPage: true,
   });
-  await page.evaluate(() => {
-    for (const node of Array.from(
-      document.querySelectorAll<HTMLElement>('[dir="auto"]')
-    )) {
-      const style = getComputedStyle(node);
-      node.style.fontSize = `${parseFloat(style.fontSize) * 2}px`;
-      node.style.lineHeight = `${parseFloat(style.lineHeight) * 2}px`;
-    }
-  });
+  await enlargeText(page);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth

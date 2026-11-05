@@ -11,6 +11,7 @@ import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
+import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
 import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
 import { createBalanceReader } from '../platformRpc.ts';
@@ -89,7 +90,7 @@ export function createNativeWalletControllers() {
     },
   };
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
-  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock());
+  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock(), createOwnedTokenReader(walletFetch));
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const accounts: NativeAccountView = Object.freeze({

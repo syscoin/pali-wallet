@@ -350,6 +350,17 @@ test('native factory explicitly wires one owned transport to all network consume
         return 'token-reader';
       },
     },
+    '../portfolio/ownedTokenReader.ts': {
+      createOwnedTokenReader: (fetch: unknown) => {
+        captures.holdings = [fetch];
+        return 'holdings-reader';
+      },
+    },
+    '../core/utxoBalanceReader.ts': {
+      createUtxoBalanceReader() {
+        assert.fail('unexpected UTXO balance read');
+      },
+    },
     '../platformRpc.ts': {
       createBalanceReader: (options: unknown) => {
         captures.balance = [options];
@@ -369,7 +380,9 @@ test('native factory explicitly wires one owned transport to all network consume
     './http': { walletFetch: fetcher },
   });
   const bundle = factory.createNativeWalletControllers();
-  assert.equal(bundle.balanceReader, balance);
+  assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
+  assert.equal(typeof bundle.balanceReader.readUtxoBalance, 'function');
+  assert.equal(typeof captures.factory![0].readUtxoAccount, 'function');
   for (const options of [
     captures.balance![0],
     captures.erc20![0],
@@ -378,7 +391,9 @@ test('native factory explicitly wires one owned transport to all network consume
   ])
     assert.equal(options.fetch, fetcher);
   assert.equal(captures.explorer![0][0], fetcher);
+  assert.equal(captures.holdings![0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
+  assert.equal(captures.tokens![0][5], 'holdings-reader');
   assert.equal(captures.activity![0].length, 4);
   factory.createNativeRecoveryCoordinator(bundle);
   const recovery = captures.recovery![0][0];

@@ -69,7 +69,6 @@ function TokenContent({
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });
   const network = snapshot.network ?? { name: snapshot.account?.network ?? 'Network', chainId: '', symbol: '', testnet: false };
-  const scope = scopeOf(snapshot);
   const token =
     route.kind === 'detail' || route.kind === 'remove'
       ? snapshot.items.find(
@@ -97,7 +96,13 @@ function TokenContent({
     if (snapshot.busy) return true;
     lifetime.current.epoch++;
     lifetime.current.running = false;
-    if (route.kind === 'import') controller.cancelPreview();
+    if (
+      route.kind === 'import' &&
+      controller.getSnapshot().account === snapshot.account
+    ) {
+      controller.closeDiscovery();
+      controller.cancelPreview();
+    }
     Keyboard.dismiss();
     setLocalError('');
     setRoute(
@@ -106,7 +111,7 @@ function TokenContent({
         : { kind: 'list' }
     );
     return true;
-  }, [controller, route, snapshot.busy]);
+  }, [controller, route, snapshot.account, snapshot.busy]);
   useLayoutEffect(() => {
     onBackHandlerChange?.(back);
     return () => onBackHandlerChange?.(null);
@@ -125,7 +130,10 @@ function TokenContent({
   }, [back]);
 
   const run = async (action: () => Promise<void>, complete?: () => void) => {
-    if (lifetime.current.running || busy || !snapshot.account) return;
+    if (
+      lifetime.current.running || busy || !snapshot.account ||
+      controller.getSnapshot().account !== snapshot.account
+    ) return;
     lifetime.current.running = true;
     const epoch = ++lifetime.current.epoch;
     setLocalError('');
@@ -135,14 +143,14 @@ function TokenContent({
       if (
         lifetime.current.alive &&
         lifetime.current.epoch === epoch &&
-        scopeOf(controller.getSnapshot()) === scope
+        controller.getSnapshot().account === snapshot.account
       )
         complete?.();
     } catch {
       if (
         lifetime.current.alive &&
         lifetime.current.epoch === epoch &&
-        scopeOf(controller.getSnapshot()) === scope
+        controller.getSnapshot().account === snapshot.account
       )
         setLocalError(
           'This token request could not be completed. Your saved tokens have been preserved.'
@@ -152,12 +160,13 @@ function TokenContent({
     }
   };
   const openImport = () => {
-    if (busy) return;
+    if (busy || controller.getSnapshot().account !== snapshot.account) return;
     controller.cancelPreview();
     setContract('');
     setLocalError('');
     setRoute({ kind: 'import' });
   };
+  const discovery = snapshot.discovery;
   const metadata =
     route.kind === 'import' ? snapshot.preview?.metadata : token?.metadata;
   const balance = (item: {
@@ -351,6 +360,72 @@ function TokenContent({
                   accessibilityLabel="Reading token metadata and balance"
                 />
               )}
+              {discovery && ['idle', 'error'].includes(snapshot.previewStatus) && (
+                <View style={s.section} testID="native-token-holdings">
+                  <Text accessibilityRole="header" style={s.title}>
+                    Wallet holdings
+                  </Text>
+                  <Text style={styles.muted}>
+                    Suggestions from the network explorer for this address.
+                    Check the contract before adding a token.
+                  </Text>
+                  {discovery.status === 'loading' && (
+                    <ActivityIndicator
+                      color={colors.pink}
+                      accessibilityLabel="Looking up wallet holdings"
+                    />
+                  )}
+                  {discovery.status === 'error' && (
+                    <Notice
+                      title="Holdings unavailable"
+                      body="Retry the explorer or enter a contract above."
+                      tone="amber"
+                    />
+                  )}
+                  {discovery.status === 'idle' || discovery.status === 'error' ? (
+                    <Button
+                      title={discovery.status === 'error' ? 'Retry holdings' : 'Find holdings'}
+                      variant="secondary"
+                      disabled={busy}
+                      onPress={() => {
+                        if (controller.getSnapshot().account === snapshot.account)
+                          void controller.discover();
+                      }}
+                    />
+                  ) : null}
+                  {discovery.status === 'ready' && !discovery.tokens.length && (
+                    <Text style={styles.muted}>
+                      The explorer returned no new token suggestions. You can
+                      still enter a contract above.
+                    </Text>
+                  )}
+                  {discovery.tokens.map(({ contractAddress, name, symbol }) => (
+                    <IdlePressable
+                      key={contractAddress}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Review ${symbol} token contract ${contractAddress}`}
+                      disabled={busy}
+                      onPress={() => {
+                        if (controller.getSnapshot().discovery !== discovery) return;
+                        void run(() => {
+                          setContract(contractAddress);
+                          return controller.preview(contractAddress);
+                        });
+                      }}
+                    >
+                      <Card style={s.tokenRow}>
+                        <Text style={s.name}>{name} · {symbol}</Text>
+                        <Text style={s.contract}>{contractAddress}</Text>
+                      </Card>
+                    </IdlePressable>
+                  ))}
+                  {discovery.limited && (
+                    <Text style={styles.muted}>
+                      Showing up to 20 suggestions. Enter other contracts above.
+                    </Text>
+                  )}
+                </View>
+              )}
               {snapshot.previewStatus === 'ready' && snapshot.preview && (
                 <>
                   {identity}
@@ -389,8 +464,10 @@ function TokenContent({
                                 (item) =>
                                   item.metadata.contractAddress === selected
                               )
-                          )
+                          ) {
+                            controller.closeDiscovery();
                             setRoute({ kind: 'detail', contract: selected });
+                          }
                         }
                       );
                     }}

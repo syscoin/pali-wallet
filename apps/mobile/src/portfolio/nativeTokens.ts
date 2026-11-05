@@ -1,4 +1,5 @@
 import { getAddress } from 'ethers/address';
+import { findRegisteredEvmNetwork } from '../../../../source/shared/evmNetworks.ts';
 import {
   parseErc20Units,
   type Erc20Metadata,
@@ -12,6 +13,10 @@ import type {
   PublicCustodySource,
 } from './nativePortfolio.ts';
 import { getNativeNetwork, getNativeSendContext, type NativeSendContext } from '../custody/networkContext.ts';
+import type {
+  OwnedTokenReader,
+  OwnedTokenSuggestions,
+} from './ownedTokenReader.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
@@ -32,6 +37,13 @@ export type NativeTokenItem = Readonly<{
   units: string | null;
   updatedAt: number | null;
 }>;
+type TokenDiscovery = OwnedTokenSuggestions &
+  Readonly<{ status: 'idle' | 'loading' | 'ready' | 'error' }>;
+const idleDiscovery: TokenDiscovery = Object.freeze({
+  status: 'idle',
+  tokens: Object.freeze([]),
+  limited: false,
+});
 export type NativeTokenSnapshot = Readonly<{
   account: NativePortfolioAccount | null;
   network?: Pick<NativeSendContext, 'name' | 'chainId' | 'symbol' | 'testnet'> | null;
@@ -39,6 +51,7 @@ export type NativeTokenSnapshot = Readonly<{
   items: readonly NativeTokenItem[];
   preview: Readonly<{ metadata: Erc20Metadata; units: string }> | null;
   previewStatus: 'idle' | 'loading' | 'ready' | 'error';
+  discovery: TokenDiscovery | null;
   busy: boolean;
   error: string | null;
 }>;
@@ -51,6 +64,8 @@ export type NativeTokenView = Readonly<
     | 'preview'
     | 'confirmPreview'
     | 'cancelPreview'
+    | 'discover'
+    | 'closeDiscovery'
     | 'refresh'
     | 'remove'
   >
@@ -71,6 +86,7 @@ const initial = (
     items: Object.freeze([]),
     preview: null,
     previewStatus: 'idle',
+    discovery: null,
     busy: false,
     error: null,
   });
@@ -108,6 +124,8 @@ export class NativeTokens {
     preview: (contract: string) => this.preview(contract),
     confirmPreview: () => this.confirmPreview(),
     cancelPreview: () => this.cancelPreview(),
+    discover: () => this.discover(),
+    closeDiscovery: () => this.closeDiscovery(),
     refresh: (contract?: string) => this.refresh(contract),
     remove: (contract: string) => this.remove(contract),
   });
@@ -117,6 +135,9 @@ export class NativeTokens {
   private unsubscribe: (() => void) | null = null;
   private epoch = 0;
   private request: Request | null = null;
+  private discoveryRequest: AbortController | null = null;
+  private discoveryApi = '';
+  private registrationHash: string | null = null;
   private inventoryRevision: number | null = null;
   private loadWork: Promise<NativeTokenInventory> | null = null;
   private unpublished = false;
@@ -125,18 +146,21 @@ export class NativeTokens {
   private readonly reader: Erc20Reader;
   private readonly now: () => number;
   private readonly revoke: () => void;
+  private readonly readHoldings?: OwnedTokenReader;
   constructor(
     source: PublicCustodySource,
     runtime: () => NativeTokenRuntime | undefined,
     reader: Erc20Reader = createErc20Reader(),
     now: () => number = Date.now,
-    revoke: () => void = () => undefined
+    revoke: () => void = () => undefined,
+    readHoldings?: OwnedTokenReader
   ) {
     this.source = source;
     this.runtime = runtime;
     this.reader = reader;
     this.now = now;
     this.revoke = revoke;
+    this.readHoldings = readHoldings;
   }
   private runtimeFailed(error: unknown): void {
     if (
@@ -147,7 +171,7 @@ export class NativeTokens {
     )
       this.revoke();
   }
-  private readAccount(): NativePortfolioAccount | null {
+  private readScope() {
     try {
       const state = this.source.getSnapshot();
       if (
@@ -157,12 +181,22 @@ export class NativeTokens {
         state.revision < 0
       )
         return null;
-      const network = getNativeNetwork(state.account.network, this.source.getCatalogue?.()?.networks);
-      return Object.freeze({
-        address: getAddress(state.account.address),
-        network: network.id,
-        revision: state.revision,
-      });
+      const catalogue = this.source.getCatalogue?.();
+      const registration = getNativeNetwork(
+        state.account.network,
+        catalogue?.networks
+      );
+      return {
+        account: Object.freeze({
+          address: getAddress(state.account.address),
+          network: registration.id,
+          revision: state.revision,
+        }),
+        network: getNativeSendContext(registration),
+        apiUrl: this.readHoldings && (!this.source.getCatalogue || catalogue)
+          ? findRegisteredEvmNetwork(registration)?.network.apiUrl ?? ''
+          : '',
+      };
     } catch {
       return null;
     }
@@ -171,6 +205,11 @@ export class NativeTokens {
     this.epoch++;
     this.request?.controller.abort();
     this.request = null;
+  }
+  private stopDiscovery(): void {
+    const request = this.discoveryRequest;
+    request?.abort();
+    if (this.discoveryRequest === request) this.discoveryRequest = null;
   }
   private emit(): void {
     this.unpublished = false;
@@ -191,12 +230,26 @@ export class NativeTokens {
     if (notify) this.emit();
   }
   private synchronize(notify: boolean): boolean {
-    const account = this.connection ? this.readAccount() : null;
-    if (!same(account, this.state.account)) {
+    const scope = this.connection ? this.readScope() : null;
+    const account = scope?.account ?? null;
+    const registrationHash = scope?.network.registrationHash ?? null;
+    const apiUrl = scope?.apiUrl ?? '';
+    if (
+      !same(account, this.state.account) ||
+      registrationHash !== this.registrationHash ||
+      apiUrl !== this.discoveryApi
+    ) {
       this.cancel();
       this.inventoryRevision = null;
-      this.state = Object.freeze({ ...initial(account), network: account ? getNativeSendContext(getNativeNetwork(account.network, this.source.getCatalogue?.()?.networks)) : null });
+      this.registrationHash = registrationHash;
+      this.discoveryApi = apiUrl;
+      this.state = Object.freeze({
+        ...initial(account),
+        network: scope?.network ?? null,
+        discovery: this.discoveryApi ? idleDiscovery : null,
+      });
       this.unpublished = true;
+      this.stopDiscovery();
       if (notify) this.emit();
       return true;
     }
@@ -219,6 +272,7 @@ export class NativeTokens {
     this.connection = connection;
     this.unsubscribe = null;
     this.cancel();
+    this.stopDiscovery();
     this.state = initial();
     this.inventoryRevision = null;
     try {
@@ -248,6 +302,7 @@ export class NativeTokens {
       if (this.connection === connection) {
         this.connection = null;
         this.cancel();
+        this.stopDiscovery();
         this.state = initial();
         this.emit();
       }
@@ -258,6 +313,7 @@ export class NativeTokens {
       if (this.connection !== connection) return;
       this.connection = null;
       this.cancel();
+      this.stopDiscovery();
       const unsub = this.unsubscribe;
       this.unsubscribe = null;
       this.state = initial();
@@ -273,6 +329,7 @@ export class NativeTokens {
   dispose(): void {
     this.connection = null;
     this.cancel();
+    this.stopDiscovery();
     try {
       this.unsubscribe?.();
     } finally {
@@ -358,6 +415,60 @@ export class NativeTokens {
       if (this.loadWork === work) this.loadWork = null;
     }
   }
+  discover = async (): Promise<void> => {
+    this.synchronize(true);
+    const { account, network, discovery } = this.state;
+    const apiUrl = this.discoveryApi;
+    if (
+      !this.readHoldings || !account || !network || !discovery || !apiUrl ||
+      this.discoveryRequest || this.state.busy || this.state.status !== 'ready'
+    ) return;
+
+    const request = new AbortController();
+    const current = () => {
+      this.synchronize(true);
+      return this.discoveryRequest === request;
+    };
+    const guard = () => {
+      if (!current() || request.signal.aborted) throw new Error('CANCELLED');
+    };
+    const saved = new Set(
+      this.state.items.map(({ metadata }) => metadata.contractAddress)
+    );
+    this.discoveryRequest = request;
+    const timer = setTimeout(() => request.abort(), 15_000);
+    try {
+      this.publish({
+        discovery: Object.freeze({ ...idleDiscovery, status: 'loading' }),
+      });
+      guard();
+      const result = await bounded(
+        this.readHoldings(
+          { address: account.address, chainId: Number(network.chainId), apiUrl },
+          saved,
+          request.signal,
+          guard
+        ),
+        request.signal
+      );
+      guard();
+      this.publish({ discovery: Object.freeze({ ...result, status: 'ready' }) });
+    } catch {
+      if (current())
+        this.publish({
+          discovery: Object.freeze({ ...idleDiscovery, status: 'error' }),
+        });
+    } finally {
+      clearTimeout(timer);
+      request.abort();
+      if (this.discoveryRequest === request) this.discoveryRequest = null;
+    }
+  };
+  closeDiscovery = (): void => {
+    this.stopDiscovery();
+    if (this.state.discovery && this.state.discovery !== idleDiscovery)
+      this.publish({ discovery: idleDiscovery });
+  };
   refresh = async (contract?: string): Promise<void> => {
     if (this.state.busy) return;
     let target: string | undefined;

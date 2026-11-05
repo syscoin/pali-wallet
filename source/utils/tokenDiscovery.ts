@@ -1,5 +1,8 @@
-import { createRoutescanFetch, isRoutescanApiUrl } from '../shared/evmExplorer';
-export { isRoutescanApiUrl } from '../shared/evmExplorer';
+import {
+  createRoutescanFetch,
+  isRoutescanApiUrl,
+} from '../shared/evmExplorer.ts';
+export { isRoutescanApiUrl } from '../shared/evmExplorer.ts';
 
 const ROUTESCAN_ORIGIN = 'https://api.routescan.io';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -8,14 +11,29 @@ const CACHE_MS = 60_000;
 const MAX_CACHE_ENTRIES = 64;
 
 type TokenRow = Record<string, unknown>;
+/** The native owner supplies bounded I/O and never joins the extension cache. */
+type OwnedTokenDiscoveryIo = Readonly<{
+  fetch(url: string, init: RequestInit, routescan: boolean): Promise<Response>;
+  readJson(response: Response): Promise<unknown>;
+  signal: AbortSignal;
+}>;
+type TokenResponse = {
+  items?: unknown;
+  link?: { next?: unknown; nextToken?: unknown };
+  message?: unknown;
+  result?: unknown;
+  status?: unknown;
+};
 const cache = new Map<
   string,
   { expires: number; result: Promise<TokenRow[]> }
 >();
 
 export class TokenDiscoveryError extends Error {
-  constructor(message: string, public readonly retryAfterMs = 0) {
+  readonly retryAfterMs: number;
+  constructor(message: string, retryAfterMs = 0) {
     super(message);
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
@@ -36,7 +54,8 @@ const requestRows = async (
   apiUrl: string,
   walletAddress: string,
   chainId: number,
-  includeNfts: boolean
+  includeNfts: boolean,
+  owned?: OwnedTokenDiscoveryIo
 ): Promise<TokenRow[]> => {
   if (!/^0x[0-9a-f]{40}$/i.test(walletAddress)) {
     throw new TokenDiscoveryError('Invalid token discovery address');
@@ -67,8 +86,11 @@ const requestRows = async (
     url.searchParams.set('address', walletAddress);
   }
 
-  const abort = new AbortController();
-  const timeout = setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS);
+  const abort = owned ? null : new AbortController();
+  const signal = owned?.signal ?? abort?.signal;
+  const timeout = abort
+    ? setTimeout(() => abort.abort(), REQUEST_TIMEOUT_MS)
+    : undefined;
   try {
     const rows: TokenRow[] = [];
     const collections = new Map<string, { ids: Set<string>; row: TokenRow }>();
@@ -81,11 +103,10 @@ const requestRows = async (
       }
       const cursors = new Set<string>();
       for (let page = 0; page < MAX_PAGES; page += 1) {
-        const request = routescan ? fetchRoutescan : fetch;
-        const response = await request(url.toString(), {
-          headers,
-          signal: abort.signal,
-        });
+        const init = { headers, signal };
+        const response = owned
+          ? await owned.fetch(url.toString(), init, routescan)
+          : await (routescan ? fetchRoutescan : fetch)(url.toString(), init);
         if (!response.ok) {
           // A rate limit ends this load immediately; the caller applies cooldown.
           throw new TokenDiscoveryError(
@@ -93,7 +114,9 @@ const requestRows = async (
             retryAfterMs(response.headers.get('Retry-After'))
           );
         }
-        const data = await response.json();
+        const data: TokenResponse | null = owned
+          ? ((await owned.readJson(response)) as TokenResponse | null)
+          : await response.json();
         if (!routescan) {
           if (
             data?.status === '0' &&
@@ -169,7 +192,10 @@ const requestRows = async (
           }
         }
         const cursor = data.link?.nextToken;
-        if (!cursor) {
+        const isLastPage = owned
+          ? cursor === undefined || cursor === null || cursor === ''
+          : !cursor;
+        if (isLastPage) {
           if (data.link?.next) {
             throw new TokenDiscoveryError(
               'Token discovery API returned a missing cursor'
@@ -205,8 +231,11 @@ export const fetchOwnedTokenRows = (
   apiUrl: string,
   walletAddress: string,
   chainId: number,
-  includeNfts = false
+  includeNfts = false,
+  owned?: OwnedTokenDiscoveryIo
 ): Promise<TokenRow[]> => {
+  if (owned)
+    return requestRows(apiUrl, walletAddress, chainId, includeNfts, owned);
   const key = `${chainId}:${apiUrl}:${walletAddress.toLowerCase()}:${includeNfts}`;
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.result;
@@ -214,7 +243,7 @@ export const fetchOwnedTokenRows = (
   const entry = { expires: Date.now() + CACHE_MS, result };
   cache.delete(key);
   cache.set(key, entry);
-  if (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value);
+  if (cache.size > MAX_CACHE_ENTRIES) cache.delete(cache.keys().next().value!);
   void result.catch(() => {
     if (cache.get(key) === entry) cache.delete(key);
   });

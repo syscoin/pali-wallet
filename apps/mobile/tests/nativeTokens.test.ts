@@ -5,7 +5,16 @@ import {
   type NativeTokenRuntime,
 } from '../src/portfolio/nativeTokens.ts';
 import type { Erc20Reader } from '../src/portfolio/erc20ReadRpc.ts';
+import type {
+  OwnedTokenReader,
+  OwnedTokenSuggestions,
+} from '../src/portfolio/ownedTokenReader.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
+import {
+  createNativeNetwork,
+  getNativeNetwork,
+} from '../src/custody/networkContext.ts';
+import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 const A = '0x1111111111111111111111111111111111111111';
 const B = '0x2222222222222222222222222222222222222222';
 const metadata = {
@@ -27,7 +36,12 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 function fixture(
-  options: { items?: (typeof metadata)[]; reader?: Erc20Reader } = {}
+  options: {
+    items?: (typeof metadata)[];
+    reader?: Erc20Reader;
+    readHoldings?: OwnedTokenReader;
+    getCatalogue?: () => NativeWalletCatalogueSnapshot | null;
+  } = {}
 ) {
   let state: CustodySnapshot = {
     phase: 'ready',
@@ -43,6 +57,7 @@ function fixture(
   let revision = 0;
   const source = {
     getSnapshot: () => state,
+    getCatalogue: options.getCatalogue,
     subscribe: (listener: (snapshot: CustodySnapshot) => void) => {
       listeners.add(listener);
       return () => {
@@ -82,7 +97,9 @@ function fixture(
     source,
     () => runtime,
     reader,
-    () => 123
+    () => 123,
+    undefined,
+    options.readHoldings
   );
   const change = (
     address: string | null,
@@ -105,6 +122,166 @@ function fixture(
     listenerCount: () => listeners.size,
   };
 }
+test('explicit holdings lookup reserves one request and cannot add or replace verified preview metadata', async () => {
+  const held = deferred<OwnedTokenSuggestions>();
+  let requests = 0;
+  const f = fixture({
+    readHoldings(scope) {
+      requests++;
+      assert.equal(scope.address, A);
+      assert.equal(scope.chainId, 1);
+      assert.equal(new URL(scope.apiUrl).hostname, 'api.routescan.io');
+      return held.promise;
+    },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  assert.equal(requests, 0);
+  assert.equal(f.model.getSnapshot().discovery?.status, 'idle');
+  f.model.subscribe(() => {
+    if (f.model.getSnapshot().discovery?.status === 'loading')
+      void f.model.discover();
+  });
+  const lookup = f.model.discover();
+  await f.model.discover();
+  assert.equal(requests, 1);
+  f.model.cancelPreview(); // Typing a manual contract neither starts nor cancels discovery.
+  held.resolve({
+    tokens: [
+      {
+        contractAddress: metadata.contractAddress,
+        name: 'Provider suggestion',
+        symbol: 'HINT',
+      },
+    ],
+    limited: false,
+  });
+  await lookup;
+  assert.equal(f.model.getSnapshot().discovery?.status, 'ready');
+  assert.equal(f.model.getSnapshot().preview, null);
+  await f.model.confirmPreview();
+  assert.equal(f.mutations.length, 0);
+  await f.model.preview(metadata.contractAddress);
+  assert.deepEqual(f.model.getSnapshot().preview?.metadata, metadata);
+  assert.equal(f.mutations.length, 0);
+  await f.model.confirmPreview();
+  assert.equal(f.mutations.length, 1);
+  disconnect();
+});
+
+test('Back, account A-B-A, lock and disconnect abort discovery and discard late results', async () => {
+  for (const retire of ['back', 'aba', 'lock', 'disconnect'] as const) {
+    const held = deferred<OwnedTokenSuggestions>();
+    let signal: AbortSignal | undefined;
+    let requests = 0;
+    const f = fixture({
+      readHoldings(_scope, _saved, requestSignal) {
+        requests++;
+        signal = requestSignal;
+        return held.promise;
+      },
+    });
+    const disconnect = f.model.connect();
+    await tick();
+    const lookup = f.model.discover();
+    if (retire === 'back') f.model.closeDiscovery();
+    if (retire === 'lock') f.change(null);
+    if (retire === 'disconnect') disconnect();
+    if (retire === 'aba') {
+      f.change(B, true, 'base');
+      await tick();
+      await f.model.discover();
+      assert.equal(f.model.getSnapshot().discovery, null);
+      f.change(A);
+      await tick();
+    }
+    assert.equal(signal?.aborted, true, retire);
+    assert.equal(requests, 1, retire);
+    await lookup;
+    held.resolve({ tokens: [metadata], limited: false });
+    await tick();
+    assert.equal(
+      f.model.getSnapshot().discovery?.status ?? null,
+      retire === 'back' || retire === 'aba' ? 'idle' : null,
+      retire
+    );
+    assert.equal(f.mutations.length, 0);
+    disconnect();
+  }
+});
+
+test('discovery failure leaves manual preview usable and a later explicit retry can show an empty result', async () => {
+  let requests = 0;
+  const f = fixture({
+    async readHoldings() {
+      if (++requests === 1) throw new Error('Public indexer unavailable');
+      return { tokens: [], limited: false };
+    },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  await f.model.discover();
+  assert.equal(f.model.getSnapshot().discovery?.status, 'error');
+  await f.model.preview(metadata.contractAddress);
+  assert.equal(
+    f.model.getSnapshot().preview?.metadata.contractAddress,
+    metadata.contractAddress
+  );
+  f.model.cancelPreview();
+  await f.model.discover();
+  assert.deepEqual(f.model.getSnapshot().discovery, {
+    status: 'ready',
+    tokens: [],
+    limited: false,
+  });
+  disconnect();
+});
+
+test('no explorer fallback for an edited endpoint or missing current catalogue', async () => {
+  const ethereum = getNativeNetwork('ethereum');
+  const edited = createNativeNetwork({
+    ...ethereum,
+    rpcUrl: 'https://custom-rpc.invalid',
+  });
+  const held = deferred<OwnedTokenSuggestions>();
+  let requests = 0;
+  let signal: AbortSignal | undefined;
+  let catalogue: NativeWalletCatalogueSnapshot | null = {
+    revision: 0,
+    accounts: [],
+    networks: [getNativeNetwork('ethereum')],
+    active: { accountId: 'hd:60:0', networkId: 'ethereum' },
+  };
+  const f = fixture({
+    getCatalogue: () => catalogue,
+    readHoldings(_scope, _saved, owned) {
+      requests++;
+      signal = owned;
+      return held.promise;
+    },
+  });
+  const disconnect = f.model.connect();
+  await tick();
+  const lookup = f.model.discover();
+  catalogue = { ...catalogue, networks: [edited] };
+  assert.equal(f.model.getSnapshot().discovery, null);
+  assert.equal(signal?.aborted, true);
+  held.resolve({ tokens: [metadata], limited: false });
+  await lookup;
+  await f.model.refresh();
+  await f.model.discover();
+  catalogue = null;
+  await f.model.refresh();
+  await f.model.discover();
+  assert.equal(requests, 1);
+  assert.equal(f.model.getSnapshot().discovery, null);
+  await f.model.preview(metadata.contractAddress);
+  assert.equal(
+    f.model.getSnapshot().preview?.metadata.contractAddress,
+    metadata.contractAddress
+  );
+  disconnect();
+});
 test('connected token import persists only after confirmation, zero is available, removal works', async () => {
   const f = fixture();
   const disconnect = f.model.connect();
