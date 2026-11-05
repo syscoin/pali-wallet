@@ -120,6 +120,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
+        '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => null },
         '../../../../source/shared/erc20': {},
       };
       const source = kind === 'native' ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
