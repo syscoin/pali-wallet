@@ -460,6 +460,41 @@ it.each([
   }
 );
 
+it.each(['oversized', 'non-hex', 'accessor'] as const)(
+  'rejects %s ethers CALL_EXCEPTION data before the Contract ABI decodes it',
+  async (kind) => {
+    const makeError = jest.spyOn(Interface.prototype, 'makeError');
+    const oversized = `0xdeadbeef${'00'.repeat(4096)}`;
+    const readData = jest
+      .fn()
+      .mockReturnValueOnce('0x')
+      .mockReturnValue(oversized);
+    const call = jest.fn(async ({ data }: TransactionRequest) => {
+      if (call.mock.calls.length > 1)
+        return abi721.encodeFunctionResult('ownerOf', [OWNER]);
+      const error = callError(data!, {
+        code: 3,
+        message: 'execution reverted',
+        data: kind === 'oversized' ? oversized : '0x',
+      });
+      // ethers rejects malformed bytes at its own RPC boundary. Model a
+      // runner that passes malformed data on an already normalized error.
+      if (kind === 'non-hex')
+        Object.assign(error, { data: `0xdeadbeef${'zz'.repeat(32)}` });
+      if (kind === 'accessor')
+        Object.defineProperty(error, 'data', { get: readData });
+      throw error;
+    });
+
+    expect(
+      await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], { call })
+    ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(makeError).not.toHaveBeenCalled();
+    expect(readData).not.toHaveBeenCalled();
+  }
+);
+
 function sdkRunner721(
   probe: Pick<JsonRpcError, 'error'> | { result: string } | Error,
   status = 200

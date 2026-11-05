@@ -219,15 +219,15 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     this.now = now;
     this.monotonicMilliseconds = monotonicMilliseconds;
     this.installationId = installationId;
-    this.keyringStorage = Object.freeze({
+    this.keyringStorage = Object.freeze<KeyringStoragePort>({
       get: (key: string) => this.get(key),
       set: (key: string, value: unknown) => this.set(key, value),
       deleteItem: (key: string) => this.deleteItem(key),
-      createManyIfAbsent: (items: Record<string, unknown>) =>
-        this.createManyIfAbsent(items),
+      createManyIfAbsent: (items, assertCurrent) =>
+        this.createManyIfAbsent(items, assertCurrent),
       readDeviceUnlockVaultPair: () => this.readDeviceUnlockVaultPair(),
-      compareAndSet: (key: string, expected: unknown, value: unknown, removeIfEqual?: Readonly<Record<string, unknown>>) =>
-        this.compareAndSet(key, expected, value, removeIfEqual),
+      compareAndSet: (key, expected, value, removeIfEqual, assertCurrent) =>
+        this.compareAndSet(key, expected, value, removeIfEqual, assertCurrent),
     });
     this.deviceUnlockEnrollment = Object.freeze<NonNullable<OpenWalletStorage['deviceUnlockEnrollment']>>({
       read: () => this.readDeviceUnlockEnrollment(),
@@ -411,6 +411,25 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     }
   }
 
+  private async guardedMutation(
+    operation: (check?: () => void) => Promise<boolean>,
+    assertCurrent?: () => void
+  ): Promise<boolean> {
+    if (assertCurrent === undefined) return this.transaction(() => operation());
+    const rejected = new WalletStorageError('STORAGE_CHANGED');
+    const assertOwner = storageGuard(assertCurrent);
+    const check = () => {
+      try { assertOwner(); } catch { throw rejected; }
+    };
+    try { return await this.transaction(() => operation(check), check); }
+    catch (error) {
+      // This exact rejection occurs only before COMMIT. A failed ROLLBACK
+      // poisons the storage owner and must still be reported as uncertain.
+      if (error === rejected && !this.poisoned) return false;
+      throw error;
+    }
+  }
+
   private get(key: string): Promise<unknown> {
     validateStorageKey(key);
     return this.queued(async () => {
@@ -459,7 +478,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     );
   }
 
-  private createManyIfAbsent(items: Record<string, unknown>): Promise<boolean> {
+  private createManyIfAbsent(items: Record<string, unknown>, assertCurrent?: () => void): Promise<boolean> {
     if (
       !items ||
       typeof items !== 'object' ||
@@ -481,7 +500,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       return [key, encodeRecord(key, descriptor.value)] as const;
     });
     return this.queued(() =>
-      this.transaction(async () => {
+      this.guardedMutation(async (check) => {
+        check?.();
         for (const [key] of entries) {
           if (
             await this.db.getFirstAsync(
@@ -505,12 +525,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
             entry
           );
         return true;
-      })
+      }, assertCurrent)
     );
   }
 
   private compareAndSet(key: string, expected: unknown, value: unknown,
-    removeIfEqual: Readonly<Record<string, unknown>> = {}): Promise<boolean> {
+    removeIfEqual: Readonly<Record<string, unknown>> = {}, assertCurrent?: () => void): Promise<boolean> {
     validateStorageKey(key);
     const before = encodeRecord(key, expected);
     const after = encodeRecord(key, value);
@@ -525,7 +545,8 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) throw failure();
       return [name, descriptor.value === undefined ? undefined : encodeRecord(name, descriptor.value)] as const;
     });
-    return this.queued(() => this.transaction(async () => {
+    return this.queued(() => this.guardedMutation(async (check) => {
+      check?.();
       const row = await this.db.getFirstAsync<StoredRow>(GET, [recordBytes(key), key]);
       if (row === null || admittedRow(row, recordBytes(key)) !== before) return false;
       for (const [name, snapshot] of removals) {
@@ -537,7 +558,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         if (snapshot !== undefined) await this.db.runAsync('DELETE FROM keyring_records WHERE key = ?', [name]);
       }
       return true;
-    }));
+    }, assertCurrent));
   }
 
   private async pair(includeEnrollment = false): Promise<Pair> {

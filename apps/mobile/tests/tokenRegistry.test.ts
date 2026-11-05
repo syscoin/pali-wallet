@@ -252,6 +252,64 @@ test('stale collectible admission aborts before SQL write and snapshots a mutabl
   } finally { release.resolve(); await f.cleanup(); }
 });
 
+for (const operation of ['create', 'add', 'remove'] as const) {
+  test(`canceling collectible ${operation} during the SQLite write rolls back before commit`, async () => {
+    let hold = false, observing = false, commits = 0, live = true;
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    const f = await fixture({ after: async (kind, sql) => {
+      if (observing && kind === 'exec' && sql === 'COMMIT') commits++;
+      if (!hold || kind !== 'run' || !/^(INSERT INTO|UPDATE) keyring_records/.test(sql)) return;
+      hold = false;
+      entered.resolve();
+      await release.promise;
+    } });
+    try {
+      const registry = new NativeTokenRegistry(f.port);
+      if (operation !== 'create') await registry.addCollectible(f.scope, 0, collectible(), current);
+      const before = await f.port.get(NATIVE_TOKEN_REGISTRY_KEY);
+      const check = () => { if (!live) throw new Error('CANCELLED'); };
+      observing = hold = true;
+      const pending = operation === 'remove'
+        ? registry.removeCollectible(f.scope, 1, collectible(), check)
+        : registry.addCollectible(f.scope, operation === 'create' ? 0 : 1, collection(), check);
+      const rejected = assert.rejects(pending, /CANCELLED/);
+      await entered.promise;
+      live = false;
+      release.resolve();
+      await rejected;
+      assert.equal(registry.requiresReopen, false);
+      assert.equal((await registry.load(f.scope, current)).revision, operation === 'create' ? 0 : 1);
+      await f.reopen();
+      assert.deepEqual(await f.port.get(NATIVE_TOKEN_REGISTRY_KEY), before);
+      assert.equal(commits, 0);
+    } finally { release.resolve(); await f.cleanup(); }
+  });
+}
+
+test('an unacknowledged collectible rollback keeps the owner quarantined', async () => {
+  let live = true, intercept = false;
+  const f = await fixture({
+    after(kind, sql) {
+      if (intercept && kind === 'run' && sql.startsWith('UPDATE keyring_records')) live = false;
+    },
+    before(kind, sql) {
+      if (intercept && kind === 'exec' && sql === 'ROLLBACK') throw new Error('rollback acknowledgment lost');
+    },
+  });
+  try {
+    const registry = new NativeTokenRegistry(f.port);
+    await registry.addCollectible(f.scope, 0, collectible(), current);
+    intercept = true;
+    await assert.rejects(registry.removeCollectible(f.scope, 1, collectible(), () => {
+      if (!live) throw new Error('CANCELLED');
+    }));
+    assert.equal(registry.requiresReopen, true);
+    await assert.rejects(registry.load(f.scope, current), /REOPEN_REQUIRED/);
+    await f.reopen();
+    assert.deepEqual((await new NativeTokenRegistry(f.port).load(f.scope, current)).collectibles, [collectible()]);
+  } finally { await f.cleanup(); }
+});
+
 for (const point of ['before-commit', 'lost-ack'] as const)
   test(`collectible CAS ${point} preserves the mixed document and requires reopen`, async () => {
     let enabled = false;
