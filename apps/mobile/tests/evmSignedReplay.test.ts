@@ -90,7 +90,7 @@ async function fixture() {
               if (lost) throw Error('lost');
               return Transaction.from(bytes).hash!;
             })();
-          }, context.operation === 'cancel' ? cancellationCheck : undefined);
+          }, context.operation === 'cancel' || context.requiresPayerCheck ? cancellationCheck : undefined);
           return afterAdmission?.(admission) ?? admission;
         },
       }),
@@ -106,6 +106,7 @@ async function fixture() {
       operation?: 'cancel' | 'speed-up';
       originalHash?: string;
       fee?: number;
+      value?: number;
       chainId?: number;
     } = {}
   ) {
@@ -115,7 +116,7 @@ async function fixture() {
       chainId,
       nonce: n,
       to: operation === 'cancel' ? wallet.address : to,
-      value: operation === 'cancel' ? 0 : 1,
+      value: options.value ?? (operation === 'cancel' ? 0 : 1),
       gasLimit: operation === 'cancel' ? 42000 : 100000,
       ...(type === 2
         ? { maxFeePerGas: fee, maxPriorityFeePerGas: 1 }
@@ -274,13 +275,37 @@ test('an already initiated replay does not hold the records queue for its acknow
   await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
 });
 
-async function cancellationFixture() {
-  const f = await fixture(), original = await f.append(0);
-  const cancellation = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+async function cancellationFixture(operation: 'cancel' | 'speed-up' = 'cancel') {
+  const f = await fixture();
+  const original = operation === 'cancel' ? await f.append(0) : await f.append(0, 2, wallet.address, '0x', { value: 0 });
+  const cancellation = await f.append(0, 2, wallet.address, '0x', { operation, originalHash: original.hash!, fee: 7, value: 0 });
   const replay = f.create(), prepared = await replay.prepare(cancellation.hash!);
   if (prepared.status !== 'review') throw Error('review');
   return { f, replay, id: prepared.review.id, cancellation };
 }
+
+test('only an exact empty self fee replacement enters late payer readiness', async () => {
+  for (const self of [false, true]) {
+    const f = await fixture();
+    const original = await f.append(0, 2, self ? wallet.address : recipient, '0x', { value: self ? 0 : 1 });
+    const replacement = await f.append(0, 2, self ? wallet.address : recipient, '0x', {
+      operation: 'speed-up', originalHash: original.hash!, value: self ? 0 : 1, fee: 9,
+    });
+    let checked = 0;
+    f.beforeCancellation(async () => { checked++; throw Error('delegated payer'); });
+    const replay = f.create(), prepared = await replay.prepare(replacement.hash!);
+    if (prepared.status !== 'review') throw Error('review');
+    const confirm = replay.confirm(prepared.review.id);
+    if (self) {
+      await assert.rejects(confirm, /delegated payer/);
+      assert.deepEqual(f.dispatched, []);
+    } else {
+      assert.equal((await confirm).status, 'submitted');
+      assert.deepEqual(f.dispatched, [replacement.serialized]);
+    }
+    assert.equal(checked, self ? 1 : 0);
+  }
+});
 
 test('cancellation preflight sees delegation that became live during the authenticated records read', async () => {
   const { f, replay, id } = await cancellationFixture();
@@ -321,9 +346,9 @@ test('cancellation holds records through the late check but releases them before
   assert.deepEqual(f.dispatched, [cancellation.serialized]);
 });
 
-for (const reason of ['review expiry', 'transport timeout'] as const) {
-  test(`cancellation skips journal reads when ${reason} ends admission in the queue`, async (t) => {
-    const { f, replay, id } = await cancellationFixture();
+for (const [operation, reason] of [['cancel', 'review expiry'], ['cancel', 'transport timeout'], ['speed-up', 'review expiry']] as const) {
+  test(`${operation} skips journal reads when ${reason} ends admission in the queue`, async (t) => {
+    const { f, replay, id } = await cancellationFixture(operation);
     const record = hold(), stop = hold();
     const profile = t.mock.method(f.session.keyring, 'getPrivateRecordProfileId');
     let reads = 0, enqueued!: () => void, blocker!: Promise<number>;

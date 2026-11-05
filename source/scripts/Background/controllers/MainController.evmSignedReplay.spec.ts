@@ -289,6 +289,97 @@ it('normal shared SDK submission rejects a network request epoch change after pe
   expect(dispatch).not.toHaveBeenCalled();
 });
 
+it.each([false, true])(
+  'checks a direct empty self fee replacement only when self=%s',
+  async (self) => {
+    const replacement = self
+      ? await signer.signTransaction({
+          type: 2,
+          chainId: 123,
+          nonce: 0,
+          to: signer.address,
+          value: 0,
+          gasLimit: 42000,
+          maxFeePerGas: 4,
+          maxPriorityFeePerGas: 2,
+        })
+      : raw;
+    const speedUp = {
+      ...context,
+      operation: 'speed-up' as const,
+      originalHash: entry.hash,
+    };
+    const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+    const boundary = captureEvmSubmission(
+      speedUp,
+      () => undefined,
+      () => lifecycle
+    );
+    provider.send.mockImplementation(async (method) => {
+      if (method === 'eth_getTransactionCount') return '0x0';
+      if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
+      throw Error('Unexpected RPC');
+    });
+    const dispatch = jest.fn(async () => entry.hash);
+    const submit = submitSignedEvmTransaction(replacement, dispatch, boundary);
+    if (self) {
+      await expect(submit).rejects.toThrow(
+        'Unable to verify a code-free cancellation payer'
+      );
+      expect(provider._send).toHaveBeenCalledTimes(1);
+      expect(dispatch).not.toHaveBeenCalled();
+    } else {
+      await expect(submit).resolves.toBe(entry.hash);
+      expect(provider._send).not.toHaveBeenCalled();
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    }
+  }
+);
+
+it.each([1, 2])(
+  'preserves a valid access list on a ready type %s self fee replacement',
+  async (type) => {
+    const replacement = await signer.signTransaction({
+      type,
+      chainId: 123,
+      nonce: 0,
+      to: signer.address,
+      value: 0,
+      gasLimit: 42000,
+      ...(type === 1
+        ? { gasPrice: 4 }
+        : { maxFeePerGas: 4, maxPriorityFeePerGas: 2 }),
+      accessList: [
+        { address: signer.address, storageKeys: ['0x' + '01'.repeat(32)] },
+      ],
+    });
+    const speedUp = {
+      ...context,
+      operation: 'speed-up' as const,
+      originalHash: entry.hash,
+    };
+    const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+    const boundary = captureEvmSubmission(
+      speedUp,
+      () => undefined,
+      () => lifecycle
+    );
+    provider.send.mockImplementation(async (method) => {
+      if (method === 'eth_getTransactionCount') return '0x0';
+      if (method === 'eth_getCode') return '0x';
+      throw Error('Unexpected RPC');
+    });
+    const hash = Transaction.from(replacement).hash;
+    const dispatch = jest.fn(async () => hash);
+    await expect(
+      submitSignedEvmTransaction(replacement, dispatch, boundary)
+    ).resolves.toBe(hash);
+    expect(dispatch).toHaveBeenCalledWith(replacement);
+    expect(provider._send).toHaveBeenCalledTimes(1);
+  }
+);
+
 it.each(['latest', 'pending', 'consumed', 'ready'])(
   'handles %s after durable cancellation persistence through the installed SDK',
   async (blocked) => {

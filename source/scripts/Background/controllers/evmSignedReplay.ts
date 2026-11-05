@@ -1,6 +1,9 @@
 import { Transaction } from 'ethers/transaction';
 
-import { assertEvmCancellationPayerReady } from '../../../shared/evmCancellationPayer.ts';
+import {
+  assertEvmCancellationPayerReady,
+  isEvmProtectedEmptySelfCall,
+} from '../../../shared/evmCancellationPayer.ts';
 import { observeEvmTransaction } from '../../../shared/evmTransactionObservation.ts';
 import {
   EvmReplayError,
@@ -15,6 +18,39 @@ type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
   Readonly<{
     provider: Pick<CustomJsonRpcProvider, 'send' | '_send'>;
   }>;
+
+export async function assertLiveEvmReplacementChain(
+  provider: Pick<CustomJsonRpcProvider, '_send'>,
+  chainId: string | number,
+  assertCurrent: () => void
+): Promise<void> {
+  assertCurrent();
+  // The provider's ordinary send method caches eth_chainId.
+  const id = 0;
+  const replies = await provider._send({
+    jsonrpc: '2.0',
+    id,
+    method: 'eth_chainId',
+    params: [],
+  });
+  assertCurrent();
+  const response: unknown =
+    Array.isArray(replies) && replies.length === 1 ? replies[0] : null;
+  if (
+    !response ||
+    typeof response !== 'object' ||
+    !('jsonrpc' in response) ||
+    response.jsonrpc !== '2.0' ||
+    !('id' in response) ||
+    response.id !== id ||
+    'error' in response ||
+    !('result' in response) ||
+    typeof response.result !== 'string' ||
+    !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(response.result) ||
+    BigInt(response.result) !== BigInt(chainId)
+  )
+    throw new EvmReplayError('CONTEXT_CHANGED');
+}
 
 /** The extension contributes its existing captured provider, never a new RPC client. */
 export function createExtensionEvmReplay(
@@ -37,44 +73,20 @@ export function createExtensionEvmReplay(
         ),
       dispatch: (raw, admit, context) => {
         const broadcast = () => send('eth_sendRawTransaction', [raw]);
-        if (context.operation !== 'cancel') return admit(broadcast);
+        if (context.operation !== 'cancel' && !context.requiresPayerCheck)
+          return admit(broadcast);
         const tx = Transaction.from(raw);
         if (
-          (tx.type !== 0 && tx.type !== 2) ||
           tx.from?.toLowerCase() !== context.from.toLowerCase() ||
-          tx.to !== tx.from ||
-          tx.value !== BigInt(0) ||
-          tx.data !== '0x' ||
-          tx.accessList?.length
+          !isEvmProtectedEmptySelfCall(tx, context.operation)
         )
           throw new EvmReplayError('INVALID_RESPONSE');
         return admit(broadcast, async () => {
-          captured.assertCurrent();
-          // The provider's ordinary send method caches eth_chainId.
-          const id = 0;
-          const replies = await captured.provider._send({
-            jsonrpc: '2.0',
-            id,
-            method: 'eth_chainId',
-            params: [],
-          });
-          captured.assertCurrent();
-          const response: unknown =
-            Array.isArray(replies) && replies.length === 1 ? replies[0] : null;
-          if (
-            !response ||
-            typeof response !== 'object' ||
-            !('jsonrpc' in response) ||
-            response.jsonrpc !== '2.0' ||
-            !('id' in response) ||
-            response.id !== id ||
-            'error' in response ||
-            !('result' in response) ||
-            typeof response.result !== 'string' ||
-            !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(response.result) ||
-            BigInt(response.result) !== BigInt(context.chainId)
-          )
-            throw new EvmReplayError('CONTEXT_CHANGED');
+          await assertLiveEvmReplacementChain(
+            captured.provider,
+            context.chainId,
+            captured.assertCurrent
+          );
           await assertEvmCancellationPayerReady(
             context.from,
             context.nonce,

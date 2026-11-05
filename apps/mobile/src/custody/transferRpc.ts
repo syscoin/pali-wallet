@@ -1,7 +1,7 @@
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
-import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
+import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission, type EvmReplayDispatchContext } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
@@ -277,7 +277,8 @@ export class NativeTransferRpc {
   ): Promise<string> {
     const hash = checkedHash(expectedHash);
     const replay = options?.replay;
-    const cancellation = replay?.context.operation === 'cancel' ? replay.context : undefined;
+    const cancellation = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
+      ? replay.context : undefined;
     if (
       typeof rawTransaction !== 'string' ||
       rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
@@ -296,8 +297,7 @@ export class NativeTransferRpc {
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
       if (cancellation && (intent || cancellation.hash !== hash || cancellation.chainId !== this.context.chainId ||
           cancellation.nonce !== tx.nonce || tx.from?.toLowerCase() !== cancellation.from.toLowerCase() ||
-          tx.to !== tx.from || tx.value !== 0n || tx.data !== '0x' || tx.accessList?.length ||
-          (tx.type !== 0 && tx.type !== 2))) return invalid();
+          !isEvmProtectedEmptySelfCall(tx, cancellation.operation))) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
       if (intent) assertTransferIntentEnvelope(
         {
