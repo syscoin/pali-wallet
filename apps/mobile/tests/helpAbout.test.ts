@@ -20,8 +20,8 @@ function setup(component = 'HelpAbout', watchOnly = true) {
     useRef(value: unknown) { const c = cell(); c.value ??= { current: value }; return c.value; },
     useState(initial: unknown) { const c = cell(); if (!Object.hasOwn(c, 'value')) c.value = initial;
       return [c.value, (value: unknown) => { c.value = typeof value === 'function' ? value(c.value) : value; }]; },
-    useLayoutEffect(run: () => void | (() => void), deps: readonly unknown[]) { const c = cell();
-      if (c.deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
+    useLayoutEffect(run: () => void | (() => void), deps?: readonly unknown[]) { const c = cell();
+      if (c.deps && deps && deps.length === c.deps.length && deps.every((d, i) => Object.is(d, c.deps![i]))) return;
       c.deps = deps; effects.push(() => { c.cleanup?.(); c.cleanup = run() || undefined; }); },
   };
   const native = { AppState: { get currentState() { return active; }, addEventListener(event: string, listener: (value: string) => void) {
@@ -35,7 +35,7 @@ function setup(component = 'HelpAbout', watchOnly = true) {
   const ui = { ...Object.fromEntries(['Button', 'Card', 'Header', 'Screen', 'Text', 'Notice', 'Row'].map((v) => [v, v])), colors: {} };
   const deps: Record<string, unknown> = { react, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
     'expo-clipboard': { async setStringAsync(value: string) { actions.push({ kind: 'copy', value }); if (blocked) return false; return await pending; } },
-    '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' } };
+    '../../../../source/shared/paliInformation': { PALI_INFORMATION }, '../../app.json': JSON.parse(source('../app.json')), '../ui': ui, './HelpAbout': { HelpAbout: 'HelpAbout' }, './DisplayCurrency': { DisplayCurrency: 'DisplayCurrency' } };
   const module = { exports: {} as Record<string, (props: object) => Element> };
   const code = ts.transpileModule(source(`../src/screens/${component}.tsx`), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   runInNewContext(code, { module, exports: module.exports, require(name: string) { assert.ok(Object.hasOwn(deps, name), `Unexpected public-screen dependency ${name}`); return deps[name]; } });
@@ -81,6 +81,18 @@ test('actual Settings hardware Back returns from Help before leaving Settings; p
   const f = setup('RealSettings'); let tree = f.render(); press(tree, 'Help & about'); tree = f.render(); assert.equal(tree.type, 'HelpAbout'); assert.equal(f.immersive(), true);
   assert.equal(f.back(), true); tree = f.render(); assert.equal(f.immersive(), false); assert.equal(f.backs(), 0); press(tree, 'Hide accounts'); assert.equal(f.closes(), 1);
   assert.equal(f.back(), true); assert.equal(f.backs(), 1); f.dispose();
+});
+test('actual Settings hardware Back closes Display currency before leaving Settings', () => {
+  const f = setup('RealSettings');
+  press(f.render(), 'Display currency');
+  assert.equal(f.render().type, 'DisplayCurrency');
+  assert.equal(f.immersive(), true);
+  assert.equal(f.back(), true);
+  assert.notEqual(f.render().type, 'DisplayCurrency');
+  assert.equal(f.immersive(), false);
+  assert.equal(f.backs(), 0);
+  assert.equal(f.actions.length, 0);
+  f.dispose();
 });
 test('both real session owners pass existing navigation to the shared settings component', () => {
   for (const owner of ['NativeWallet.native', 'WatchSession']) assert.match(source(`../src/screens/${owner}.tsx`), /<RealSettings navigation=\{shell\.navigation\}/);
