@@ -403,6 +403,15 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     setRecipient('');
     go(snapshot.accounts.length ? 'locked' : 'welcome');
   };
+  const walletRemoved = () => {
+    setRequestedHdId(undefined);
+    if (lastSelection.current?.kind !== 'watch') {
+      lastSelection.current = null;
+      setSelectionError('');
+    }
+    setCatalogue(null);
+    exit();
+  };
   const openDesign = () => {
     authority.current?.lock();
     setPreview(true);
@@ -512,7 +521,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   if (route === 'design') return <DesignStudio onExit={exit} />;
   const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
-  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
+  if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
     active={snapshot.selectedAccountId ? { kind: 'watch', id: snapshot.selectedAccountId } : null}
     onSelect={(selection) => { if (selection.kind !== 'watch') openWallet(selection.id); else openWatch(selection); }}

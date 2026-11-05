@@ -36,7 +36,7 @@ const repository = createPublicAccountStorage({
     return localStorage.getItem(RECORDS_KEY) ?? codec.encode(codec.validate(accounts.map((account) => ({ kind: 'address', ...account }))).records);
   },
   async set(key, value) {
-    if (key === ACCOUNT_SELECTION_KEY) { writeSelection(parseAccountSelection(JSON.parse(value))!); return; }
+    if (key === ACCOUNT_SELECTION_KEY) { writeSelection(parseAccountSelection(JSON.parse(value))); return; }
     if (key !== PUBLIC_ACCOUNTS_KEY) throw Error('Unexpected fixture storage key');
     const decoded = codec.decode(value);
     writeAccounts(decoded.accounts);
@@ -47,6 +47,7 @@ export const loadPublicAccounts = repository.loadAccounts;
 export const publicAccountRecords = repository.records;
 export const loadAccountSelection = repository.loadSelection;
 export const saveAccountSelection = (selection: AccountSelection | null) => repository.saveSelection(selection);
+export const clearNativeAccountSelection = repository.clearNativeSelection;
 
 export const activityReader = createUtxoActivityReader({ fetch: async (url, init) => { const response = await activityFetch(url, init); if (!response) throw new Error('Unplanned fixture URL'); return response; } });
 const evmFetch = async (url: string, init: RequestInit) => {

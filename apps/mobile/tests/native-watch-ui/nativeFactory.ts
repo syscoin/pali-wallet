@@ -18,6 +18,7 @@ import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBL
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
+import { createWalletRemovalFixture, fixtureWalletPresent, recreateFixtureWallet, removalFixtureEnabled } from './walletRemovalFixture';
 
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
 const recorded = Date.UTC(2024, 5, 15);
@@ -108,6 +109,12 @@ export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
 let sessionUnlocked = false;
 let fixturePassword = 'public-password';
+export function recreateRemovalWallet(accountId: 'hd:60:0' | 'hd:60:1') {
+  if (!removalFixtureEnabled || fixtureWalletPresent || !catalogue.accounts.some(({ id }) => id === accountId))
+    throw Error('Unexpected fixture wallet recreation');
+  catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, accountId } });
+  recreateFixtureWallet();
+}
 // Match the pinned SDK allocator: removed slots are reusable within each bucket.
 const nextAccountIndex = (type: 'HDAccount' | 'Imported') => {
   const used = new Set(catalogue.accounts.filter((account) => account.type === type).map((account) => account.index));
@@ -202,7 +209,11 @@ export function createNativeWalletControllers() {
       async lock() { sessionUnlocked = false; events.push('lock'); },
     },
     storage: {
-      async readState() { return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' }; },
+      async readState() {
+        if (!fixtureWalletPresent) return { presence: 'empty', backup: 'unconfirmed' };
+        return { presence: 'existing', backup: backupConfirmed ? 'confirmed' : 'unconfirmed' };
+      },
+      ...(removalFixtureEnabled ? { async retireForRemoval(operation: () => Promise<void>) { await operation(); } } : {}),
       async close() { audit.closed++; events.push('close'); },
     },
   };
@@ -263,6 +274,7 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }, (password) => password === fixturePassword) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: readFixtureNoteInventory,
       async openNoteCapacity(check: () => void) {

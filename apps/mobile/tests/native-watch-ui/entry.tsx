@@ -2,15 +2,16 @@ import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
 import { registerRootComponent } from 'expo';
-import { AppState, Linking, Platform, Share } from 'react-native';
+import { AppState, BackHandler, Linking, Platform, Share } from 'react-native';
 import { activityFetch, activityFixture } from './utxoActivityFixture';
 import { evmActivityFetch, evmActivityFixture } from './evmActivityFixture';
 import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
-import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture } from './nativeFactory';
+import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet } from './nativeFactory';
 import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
+import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
 
 Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
 let appState = 'active';
@@ -21,6 +22,13 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
   listeners.get(event)!.add(listener);
   return { remove() { listeners.get(event)!.delete(listener); } };
 }) as typeof AppState.addEventListener;
+const backListeners = new Set<Parameters<typeof BackHandler.addEventListener>[1]>();
+if (removalFixtureEnabled) {
+  BackHandler.addEventListener = ((_event, listener) => {
+    backListeners.add(listener);
+    return { remove() { backListeners.delete(listener); } };
+  }) as typeof BackHandler.addEventListener;
+}
 const quoteRequests: string[] = [];
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input), window.location.href);
@@ -51,6 +59,7 @@ declare global {
       activity: typeof activityFixture;
       evmActivity: typeof evmActivityFixture;
       notes: typeof noteInventoryFixture;
+      removal: typeof walletRemovalFixture & { recreate: typeof recreateRemovalWallet };
       idle: typeof idleFixture;
       quotes(): string[];
       audit(): typeof audit;
@@ -66,6 +75,7 @@ declare global {
       releaseSign(): void;
       lifecycle(state: 'active' | 'inactive' | 'background'): void;
       blur(): void;
+      back(): boolean;
       delayKeyRead(value: boolean): void;
       releaseKeyRead(): void;
       keyFailure(code: 'AUTH_THROTTLED' | null): void;
@@ -88,10 +98,15 @@ declare global {
 }
 window.__watchFixture = {
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
+  removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
   quotes: () => [...quoteRequests], audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
+  back() {
+    const event = { type: 'hardwareBackPress', timeStamp: performance.now() };
+    return [...backListeners].reverse().some((listener) => listener(event) === true);
+  },
   delayKeyRead: setDelayKeyRead, releaseKeyRead, keyFailure: setKeyFailure,
   delayImport: setDelayImport, releaseImport, importFailure: setImportFailure, catalogue: fixtureCatalogue,
   async selectAccount(id) { await latestAuthority!.manageAccounts({ kind: 'select', id }, latestAuthority!.getSnapshot().revision, latestAuthority!.getCatalogue()!.revision); },

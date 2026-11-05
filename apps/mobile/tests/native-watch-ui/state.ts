@@ -53,4 +53,4 @@ export function writeAccounts(accounts: readonly PublicAccount[]) {
 export function readSelection(): AccountSelection | null {
   return JSON.parse(localStorage.getItem(SELECTION_KEY) ?? 'null');
 }
-export function writeSelection(selection: AccountSelection) { localStorage.setItem(SELECTION_KEY, JSON.stringify(selection)); }
+export function writeSelection(selection: AccountSelection | null) { localStorage.setItem(SELECTION_KEY, JSON.stringify(selection)); }

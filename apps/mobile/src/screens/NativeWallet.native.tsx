@@ -23,6 +23,8 @@ import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '
 import { NativePortfolio } from './NativePortfolio';
 import { NativeSend } from './NativeSend';
 import { NativeSecurity } from './NativeSecurity';
+import { NativeWalletRemovalScreen, type RemovalScreenOutcome } from './NativeWalletRemoval';
+import { WalletRemovalError, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { NativeImport } from './NativeImport';
 import type { NativeImportView } from '../custody/importedAccounts';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
@@ -46,7 +48,8 @@ const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWall
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; context: string; identity: string; epoch: number }>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes';
+type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -72,9 +75,9 @@ function SecretInput({ label, value, onChange, multiline = false, disabled = fal
   /></View>;
 }
 
-export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; onSelectedNative?(id: string): void };
+export type NativeWalletProps = { onExit(): void; accounts?: WatchWalletBridge; initialAccountId?: string; onSelectedNative?(id: string): void; onWalletRemoved?(): void };
 
-export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative }: NativeWalletProps) {
+export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelectedNative, onWalletRemoved }: NativeWalletProps) {
   const bridge = useRef(accounts);
   const selectedNative = useRef(onSelectedNative);
   useLayoutEffect(() => { bridge.current = accounts; selectedNative.current = onSelectedNative; }, [accounts, onSelectedNative]);
@@ -83,6 +86,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const screenToken = useRef<object>({});
   const detachSubscriptions = useRef<() => void>(() => undefined);
   const recoveryRef = useRef<NativeRecoveryFlow | null>(null);
+  const removalRef = useRef<RemovalScope | null>(null);
+  const [removalScope, setRemovalScope] = useState<RemovalScope | null>(null);
+  const [canRemoveWallet, setCanRemoveWallet] = useState(false);
   const [recoveryFlow, setRecoveryFlow] = useState<NativeRecoveryFlow | null>(null);
   const [recoveryOutcome, setRecoveryOutcome] = useState<RecoveryOutcome | null>(savedRecoveryOutcome);
   const [publicSource, setPublicSource] = useState<PublicCustodySource | null>(null);
@@ -131,11 +137,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     custodyIdle.stop(screenToken.current);
     epoch.current++;
     recoveryRef.current?.cancel();
+    const removal = removalRef.current;
+    removal?.local.removal.cancel();
+    const retainRemoval = removal && removal.phase !== 'reviewing';
+    if (removal && !retainRemoval) { removalRef.current = null; setRemovalScope(null); }
     lockNoteRestore();
     rootOrigin.current = null;
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
-    Keyboard.dismiss(); clearSecrets(); setSendToken(null); if (!recoveryRef.current) setStage('choose'); setError('');
+    Keyboard.dismiss(); clearSecrets(); setSendToken(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore]);
   useLayoutEffect(() => {
     if (mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, revoke);
@@ -171,7 +181,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
       if (stage === 'private-notes' && snapshot.phase === 'ready') { closeStage(); return true; }
-      if (stage === 'recovery' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory') && snapshot.phase === 'ready' ||
+      if (stage === 'recovery' || stage === 'remove-wallet' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -188,12 +198,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllers.current = null;
+    setCanRemoveWallet(false);
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
     detachSubscriptions.current(); controllers.current = local;
+    setCanRemoveWallet(!!local.removal);
     const networks = createNativeNetworkView(local.authority, { fetch: walletFetch });
     const publicView: PublicCustodySource = Object.freeze({
       getSnapshot: () => local.authority.getSnapshot(),
@@ -207,6 +219,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
+      const removal = removalRef.current;
+      if (removal?.local === local && removal.phase === 'reviewing' && state !== removal.authority) {
+        local.removal.cancel(); removalRef.current = null; setRemovalScope(null); setStage('choose');
+      }
       if (['locked', 'unavailable', 'disposed'].includes(state.phase)) {
         rootOrigin.current = null;
         setStage((current) => current === 'note-inventory' ? 'choose' : current);
@@ -237,18 +253,72 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     void install().catch(() => undefined);
     const lifecycle = AppState.addEventListener('change', (state) => {
       if (state !== 'active') revoke();
-      else { custodyIdle.begin(screenToken.current, revoke); if (!controllers.current && !recoveryRef.current) void install().catch(() => undefined); }
+      else { custodyIdle.begin(screenToken.current, revoke); if (!controllers.current && !recoveryRef.current && !removalRef.current) void install().catch(() => undefined); }
     });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', revoke) : null;
     const focus = AppState.addEventListener('focus', () => { if (AppState.currentState === 'active') custodyIdle.begin(screenToken.current, revoke); });
     return () => {
       mounted.current = false; lifecycleEpoch.current++; recoveryRef.current?.cancel();
+      removalRef.current?.local.removal.cancel(); removalRef.current = null;
       detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
       bridge.current?.onNativeCatalogue(null); controllers.current = null;
       lifecycle.remove(); blur?.remove(); focus.remove(); custodyIdle.stop(ownedToken);
       void nativeLifecycle.release(ownedToken).catch(() => undefined);
     };
   }, [install, revoke]);
+
+  const openRemoval = () => {
+    const local = controllers.current, authority = local?.authority.getSnapshot();
+    if (!local?.removal || !onWalletRemoved || !protectedScreen || removalRef.current || !mounted.current ||
+        AppState.currentState !== 'active' || stage !== 'security' || authority?.phase !== 'ready' ||
+        nativeLifecycle.current(screenToken.current) !== local) return;
+    const scope: RemovalScope = { local, authority, epoch: epoch.current, phase: 'reviewing' };
+    removalRef.current = scope; setRemovalScope(scope); setStage('remove-wallet');
+  };
+
+  const removalCurrent = (scope: RemovalScope) => {
+    if (!mounted.current || removalRef.current !== scope || controllers.current !== scope.local || scope.epoch !== epoch.current ||
+        AppState.currentState !== 'active' || nativeLifecycle.current(screenToken.current) !== scope.local) return false;
+    const now = scope.local.authority.getSnapshot();
+    return now === scope.authority || scope.phase === 'working' && now.phase === 'disposed' && now.revision === scope.authority.revision + 1;
+  };
+
+  const confirmRemoval = async (scope: RemovalScope, ticket: WalletRemovalTicket, check: () => void): Promise<RemovalScreenOutcome> => {
+    if (scope.phase !== 'reviewing') return 'unconfirmed';
+    if (!removalCurrent(scope)) { scope.phase = 'settled'; scope.outcome = 'unchanged'; return 'unchanged'; }
+    scope.phase = 'working';
+    let outcome: RemovalScreenOutcome;
+    try {
+      const result = await scope.local.removal.confirm(ticket, check);
+      outcome = result === 'wallet-records-removed' && scope.local.removal.hasVerifiedRemoval() ? 'removed'
+        : result === 'wallet-records-unchanged' ? 'unchanged' : 'unconfirmed';
+    } catch (cause) {
+      outcome = cause instanceof WalletRemovalError && ['CANCELLED', 'STATE_CHANGED', 'SELECTION_UNAVAILABLE'].includes(cause.code)
+        ? 'unchanged' : 'unconfirmed';
+    }
+    scope.phase = 'settled'; scope.outcome = outcome;
+    return outcome;
+  };
+
+  const finishRemoval = async (scope: RemovalScope, outcome: 'removed' | 'unchanged') => {
+    if (!mounted.current || removalRef.current !== scope || scope.outcome !== outcome || AppState.currentState !== 'active') return;
+    const retired = scope.local.authority.getSnapshot().phase === 'disposed';
+    if (outcome === 'removed' && (!retired || !scope.local.removal.hasVerifiedRemoval())) throw new Error('REOPEN_REQUIRED');
+    if (retired) {
+      const draining = nativeLifecycle.release(screenToken.current);
+      if (controllers.current === scope.local) { clearOwnerView(); setSnapshot(INITIAL); setProtectedScreen(false); }
+      await draining;
+    }
+    if (!mounted.current || removalRef.current !== scope || AppState.currentState !== 'active') return;
+    removalRef.current = null; setRemovalScope(null);
+    if (outcome === 'removed') {
+      requestedAccount.current = undefined;
+      onWalletRemoved?.();
+    } else if (retired) {
+      setStage('choose');
+      await install();
+    } else setStage(scope.local.authority.getSnapshot().phase === 'ready' ? 'security' : 'choose');
+  };
 
   const openRecovery = () => {
     const local = controllers.current;
@@ -355,6 +425,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     bridge.current?.onSelectWatch(selection);
   };
   if (stage === 'recovery' && recoveryFlow) return <NativeRecovery flow={recoveryFlow} />;
+  if (stage === 'remove-wallet' && removalScope) return <NativeWalletRemovalScreen removal={removalScope.local.removal}
+    isCurrent={() => removalCurrent(removalScope)} confirm={(ticket, check) => confirmRemoval(removalScope, ticket, check)}
+    onBack={() => {
+      if (removalRef.current !== removalScope || removalScope.phase !== 'reviewing') return;
+      removalRef.current = null; setRemovalScope(null);
+      setStage(removalScope.local.authority.getSnapshot().phase === 'ready' ? 'security' : 'choose');
+    }} onContinue={(outcome) => finishRemoval(removalScope, outcome)} />;
   if (stage === 'accounts' && accounts && snapshot.phase !== 'authenticating')
     return <WalletAccounts {...accounts} catalogue={catalogue} active={catalogue ? nativeAccountSelection(catalogue.active.accountId) : null}
       onBack={closeStage} onSelect={async (selection) => {
@@ -408,6 +485,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
       keyExport={keyExportView} canRevealKey={canSign} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
       onBack={closeStage} onLock={revoke} onViewRecovery={() => setStage('backup-auth')}
+      onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       captureFailureHandler={() => {
         const local = controllers.current;
         const context = local?.authority.getSnapshot();
