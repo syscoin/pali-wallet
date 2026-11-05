@@ -552,7 +552,7 @@ it.each([
     });
     expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
     expect(screen.queryByText(`Options:${observed.hash}`)).toBeNull();
-    expect(screen.getAllByText(`${exactValue} ETH`)).toHaveLength(1);
+    expect(await screen.findAllByText(`${exactValue} ETH`)).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
       state: expect.objectContaining({ hash: observed.hash, tx: observed }),

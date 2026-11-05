@@ -315,11 +315,11 @@ const EvmTransactionItem = React.memo(
       }
 
       return (
-        <div className="flex flex-col justify-end items-end min-w-0">
+        <div className="flex flex-col justify-end items-end min-w-0 max-w-full">
           <div
-            className={`inline-flex items-center ${
+            className={`flex items-start justify-end min-w-0 ${
               isFailed || isReplaced ? 'text-brand-gray200' : 'text-white'
-            } text-xs font-normal whitespace-nowrap overflow-hidden max-w-full`}
+            } text-xs font-normal max-w-full`}
           >
             {showSign && (
               <span
@@ -335,8 +335,8 @@ const EvmTransactionItem = React.memo(
                 {tokenIcon}
               </span>
             )}
-            {/* Single-line, truncating container for amount + ENS */}
-            <div className="ml-1 inline-flex items-center truncate max-w-full">
+            {/* Exact primary amount wraps within its column; only secondary fiat may truncate. */}
+            <div className="ml-1 min-w-0 max-w-full break-words text-right whitespace-normal">
               {amountStr}
               {(() => {
                 try {
@@ -371,7 +371,7 @@ const EvmTransactionItem = React.memo(
               })()}
             </div>
           </div>
-          <div className="text-brand-gray200 text-xs font-normal whitespace-nowrap">
+          <div className="text-brand-gray200 text-xs font-normal min-w-0 max-w-full truncate text-right">
             {fiatText === '---' ? '---' : fiatText}
           </div>
           {displayInfo.hasUnknownDecimals && (
@@ -398,8 +398,10 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="line-through">{renderValueDisplay()}</div>
+          <div className="flex max-w-[50%] min-w-0 shrink-0 items-center gap-4">
+            <div className="line-through min-w-0 max-w-full">
+              {renderValueDisplay()}
+            </div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
@@ -428,8 +430,10 @@ const EvmTransactionItem = React.memo(
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-            <div className="line-through">{renderValueDisplay()}</div>
+          <div className="flex max-w-[50%] min-w-0 shrink-0 items-center gap-4">
+            <div className="line-through min-w-0 max-w-full">
+              {renderValueDisplay()}
+            </div>
             <div className="m-auto">
               <Tooltip content={t('notifications.clickToView')}>
                 <DetailArrowSvg
