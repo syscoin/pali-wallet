@@ -78,6 +78,23 @@ test('actual loopback fixture exercises all helper cases and independent server 
     assertAudit(fixture.snapshot(expected.token), expected.token, fixture.port);
   } finally { await fixture.close(); }
 });
+test('a transport failure after opening the stalled quote cannot prove the production deadline', async () => {
+  const fixture = await createHttpFixture(); fixture.begin(expected.token);
+  try {
+    const walletFetch = async (url, init) => {
+      const response = await fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' });
+      if (url.includes('/quote-stalled/')) throw Error('transport failed before deadline');
+      return response;
+    };
+    await assert.rejects(qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+      walletFetch, cookieFetch: cookieControl(), phase: 'create', scenario: 'import', platform: 'ios',
+      sessionId: report().sessionId, networkCalls: () => 0 }), (error) => error.failedCase === 'quote-stalled-deadline');
+    const evidence = fixture.snapshot(expected.token);
+    assert.equal(evidence.counts['quote-stalled'], 1);
+    assert.equal(evidence.counts['quote-stalled-closed'], 0);
+    assert.equal(evidence.counts.healthy, 0);
+  } finally { await fixture.close(); }
+});
 test('redirect-following adapter fails; fixture sees forbidden target rather than claiming privacy', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
