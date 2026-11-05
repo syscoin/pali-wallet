@@ -58,7 +58,7 @@ let mockState: any;
 let wallet: any;
 let keyring: any;
 let records: any;
-let provider: { send: jest.Mock };
+let provider: { _send: jest.Mock; send: jest.Mock };
 let raw: string;
 let entry: any;
 
@@ -133,6 +133,7 @@ beforeEach(() => {
     updatePhase: jest.fn(async () => undefined),
   };
   provider = {
+    _send: jest.fn(async ({ id }) => [{ jsonrpc: '2.0', id, result: '0x7b' }]),
     send: jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x7b';
       if (method === 'eth_getTransactionReceipt') return null;
@@ -395,6 +396,7 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   expect(
     provider.send.mock.calls.some(([method]) => method === 'eth_getCode')
   ).toBe(false);
+  expect(provider._send).not.toHaveBeenCalled();
 });
 
 it('refuses the exact provider send when final shared replay admission fails', async () => {
@@ -411,28 +413,33 @@ it('refuses the exact provider send when final shared replay admission fails', a
   ).toBe(false);
 });
 
+async function retainCancellation() {
+  const cancellation = await signer.signTransaction({
+    type: 2,
+    chainId: 123,
+    nonce: 1,
+    to: signer.address,
+    value: 0,
+    gasLimit: 42000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  entry = {
+    ...entry,
+    originalHash: entry.hash,
+    hash: Transaction.from(cancellation).hash,
+    nonce: 1,
+    operation: 'cancel',
+    rawTransaction: cancellation,
+  };
+  records.readExact.mockResolvedValue(entry);
+  return cancellation;
+}
+
 it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
   'handles %s only for authenticated cancellation replay',
   async (blocked) => {
-    const cancellation = await signer.signTransaction({
-      type: 2,
-      chainId: 123,
-      nonce: 1,
-      to: signer.address,
-      value: 0,
-      gasLimit: 42000,
-      maxFeePerGas: 4,
-      maxPriorityFeePerGas: 2,
-    });
-    entry = {
-      ...entry,
-      originalHash: entry.hash,
-      hash: Transaction.from(cancellation).hash,
-      nonce: 1,
-      operation: 'cancel',
-      rawTransaction: cancellation,
-    };
-    records.readExact.mockResolvedValue(entry);
+    const cancellation = await retainCancellation();
     let nonceReads = 0;
     const changedNonce = blocked === 'queued' || blocked === 'consumed';
     provider.send.mockImplementation(async (method, params) => {
@@ -471,6 +478,7 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
           ? 'Unable to verify a ready cancellation nonce'
           : 'Unable to verify a code-free cancellation payer'
       );
+    expect(provider._send).toHaveBeenCalledTimes(1);
     expect(nonceReads).toBe(3);
     expect(
       provider.send.mock.calls.filter(([method]) => method === 'eth_getCode')
@@ -489,6 +497,70 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
     ).toHaveLength(blocked === 'ready' ? 1 : 0);
   }
 );
+
+it('bypasses the installed provider chain cache after final journal admission', async () => {
+  const { CustomJsonRpcProvider } = jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/providers'
+  );
+  await retainCancellation();
+  const reached = deferred();
+  const release = deferred();
+  const admit = records.withReplayAdmission.getMockImplementation();
+  records.withReplayAdmission.mockImplementation(async (...args) => {
+    if (args[4]) {
+      reached.resolve();
+      await release.promise;
+    }
+    return admit(...args);
+  });
+
+  const abort = new AbortController();
+  const live = new CustomJsonRpcProvider(
+    abort.signal,
+    context.network.url,
+    context.network.chainId
+  );
+  keyring.ethereumTransaction.web3Provider = live;
+  const wire: Array<{ method: string; params: unknown[] }> = [];
+  let chain = '0x7b';
+  jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+    expect(url).toBe(context.network.url);
+    expect(init?.signal).toBe(abort.signal);
+    const { id, method, params } = JSON.parse(init!.body as string);
+    wire.push({ method, params });
+    const replies = new Map<string, unknown>([
+      ['eth_chainId', chain],
+      ['eth_getTransactionReceipt', null],
+      ['eth_getTransactionCount', '0x1'],
+      ['eth_getCode', '0x'],
+      ['eth_sendRawTransaction', entry.hash],
+    ]);
+    expect(replies.has(method)).toBe(true);
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
+    } as Response;
+  });
+  try {
+    await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+    const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+    expect(prepared.status).toBe('review');
+    const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+    await Promise.race([reached.promise, confirmation]);
+    const before = wire.length;
+    chain = '0x1';
+    await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+    expect(wire).toHaveLength(before);
+    release.resolve();
+    await expect(confirmation).rejects.toThrow('CONTEXT_CHANGED');
+    expect(wire.slice(before)).toEqual([{ method: 'eth_chainId', params: [] }]);
+  } finally {
+    release.resolve();
+    abort.abort();
+    live.destroy();
+  }
+});
 
 it('refuses cancellation metadata on a signed payment before any code read or send', async () => {
   entry.operation = 'cancel';

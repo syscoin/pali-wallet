@@ -313,7 +313,7 @@ export class NativeTransferRpc {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
     return this.operation(signal, async (local) => {
-      await this.checkChain(local);
+      if (!cancellation) await this.checkChain(local);
       const send = () => {
         if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
         // No automatic retry: the remote side may accept before a response is lost.
@@ -323,15 +323,18 @@ export class NativeTransferRpc {
         });
       };
       if (!replay) return send();
-      const checkCancellation = cancellation && (() => assertEvmCancellationPayerReady(
-        cancellation.from, cancellation.nonce,
-        (method, address, tag) => this.call(method, [address, tag], local),
-        () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); }
-      ).catch((error) => {
-        if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
-          throw new NativeTransferRpcError('REVIEW_REQUIRED');
-        throw error;
-      }));
+      const checkCancellation = cancellation && (async () => {
+        await this.checkChain(local);
+        await assertEvmCancellationPayerReady(
+          cancellation.from, cancellation.nonce,
+          (method, address, tag) => this.call(method, [address, tag], local),
+          () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); }
+        ).catch((error) => {
+          if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
+            throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          throw error;
+        });
+      });
       return replay.admit(send, checkCancellation);
     });
   }

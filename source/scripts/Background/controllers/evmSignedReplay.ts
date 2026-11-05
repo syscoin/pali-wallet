@@ -9,10 +9,11 @@ import {
 } from '../../../wallet/evmSignedReplay.ts';
 
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords.ts';
+import type { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
   Readonly<{
-    provider: { send(method: string, params: any[]): Promise<any> };
+    provider: Pick<CustomJsonRpcProvider, 'send' | '_send'>;
   }>;
 
 /** The extension contributes its existing captured provider, never a new RPC client. */
@@ -47,14 +48,40 @@ export function createExtensionEvmReplay(
           tx.accessList?.length
         )
           throw new EvmReplayError('INVALID_RESPONSE');
-        return admit(broadcast, () =>
-          assertEvmCancellationPayerReady(
+        return admit(broadcast, async () => {
+          captured.assertCurrent();
+          // The provider's ordinary send method caches eth_chainId.
+          const id = 0;
+          const replies = await captured.provider._send({
+            jsonrpc: '2.0',
+            id,
+            method: 'eth_chainId',
+            params: [],
+          });
+          captured.assertCurrent();
+          const response: unknown =
+            Array.isArray(replies) && replies.length === 1 ? replies[0] : null;
+          if (
+            !response ||
+            typeof response !== 'object' ||
+            !('jsonrpc' in response) ||
+            response.jsonrpc !== '2.0' ||
+            !('id' in response) ||
+            response.id !== id ||
+            'error' in response ||
+            !('result' in response) ||
+            typeof response.result !== 'string' ||
+            !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(response.result) ||
+            BigInt(response.result) !== BigInt(context.chainId)
+          )
+            throw new EvmReplayError('CONTEXT_CHANGED');
+          await assertEvmCancellationPayerReady(
             context.from,
             context.nonce,
             (method, address, tag) => send(method, [address, tag]),
             captured.assertCurrent
-          )
-        );
+          );
+        });
       },
     });
   });
