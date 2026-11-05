@@ -251,7 +251,11 @@ it('retains unknown bytes, fences ordinary overlap and permits separately author
 });
 
 it('keeps the replay record through synchronous POST while confirmed-only reclaim waits', async () => {
-  const capacity = jest.replaceProperty(signedBundle, 'MAX_RECORDS', 2);
+  const capacity = jest.replaceProperty(
+    signedBundle as { MAX_RECORDS: number },
+    'MAX_RECORDS',
+    2
+  );
   const c = context(),
     transaction = record();
   await c.records.persist(c.session, transaction);
@@ -268,10 +272,16 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     })
   );
   const another = {
-    ...transaction,
-    owner: { ...owner, chainId: 156, slip44: 156 },
-  };
+    ...record(0xfffffffa),
+    operation: 'external',
+  } as const;
   await c.records.persist(c.session, another);
+  await c.records.observe(c.session, owner, another.txid, url, async () => ({
+    txid: another.txid,
+    hex: another.rawTransaction,
+    confirmations: 1,
+    blockHash: 'f'.repeat(64),
+  }));
   const entered = deferred(),
     resume = deferred(),
     posted = deferred(),
@@ -293,7 +303,7 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
   const fetch = jest.fn(async () => {
     posted.finish();
     await reply.promise;
-    return c.response(transaction.txid);
+    return c.response('d'.repeat(64));
   });
   const sending = submitReviewedUtxo({
     ...c,
@@ -302,24 +312,29 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     intent: 'replay',
     fetch,
   });
+  const unknown = expect(sending).rejects.toMatchObject({
+    code: 'UTXO_SUBMISSION_UNKNOWN',
+    transactionNotBroadcast: false,
+    txid: transaction.txid,
+  });
   await entered.promise;
   const competing = new UtxoSignedRecords(c.storage).persist(c.session, {
     ...record(0xfffffffc),
     operation: 'external',
   });
   try {
-    expect(c.cas).toHaveBeenCalledTimes(3);
+    expect(c.cas).toHaveBeenCalledTimes(4);
     resume.finish();
     await posted.promise;
     await expect(competing).resolves.toBeUndefined();
     expect(
       await c.records.readExact(c.session, owner, transaction.txid)
-    ).toBeUndefined();
+    ).toEqual(transaction);
     expect(
       await c.records.readExact(c.session, another.owner, another.txid)
-    ).toEqual(another);
+    ).toBeUndefined();
     reply.finish();
-    await expect(sending).resolves.toEqual({ txid: transaction.txid });
+    await unknown;
   } finally {
     resume.finish();
     reply.finish();

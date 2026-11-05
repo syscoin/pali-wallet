@@ -187,6 +187,33 @@ describe('PSBT approval context', () => {
   });
   afterEach(() => jest.restoreAllMocks());
 
+  it('revokes a cancelled saved review and discards a superseded read', async () => {
+    const record = {
+      rawTransaction: syntheticPsbt(BigInt(1000)).extractTransaction().toHex(),
+      url: 'https://rpc-a.invalid/api/v2/sendtx/',
+      feeSatoshis: '1000',
+    };
+    let resume!: (value: typeof record) => void;
+    const held = new Promise<typeof record>((resolve) => {
+      resume = resolve;
+    });
+    wallet.getRetainedUtxoRecords.mockReturnValue({
+      readExact: jest.fn().mockResolvedValue(record).mockReturnValueOnce(held),
+    });
+    const superseded = expect(
+      wallet.prepareRetainedUtxoRetry(defaultTxid)
+    ).rejects.toThrow('Saved transfer is unavailable');
+    const review = await wallet.prepareRetainedUtxoRetry(defaultTxid);
+    resume(record);
+    await superseded;
+    wallet.cancelRetainedUtxoRetry(review.id);
+    await expect(wallet.confirmRetainedUtxoRetry(review.id)).rejects.toThrow(
+      'Review the saved transfer again'
+    );
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('uses owned prevouts and refuses the exact legacy WIF funding mismatch before review', async () => {
     const { SoftwareKeyring, createKeyringHost } = jest.requireActual(
       '@sidhujag/sysweb3-keyring/cjs/software.js'

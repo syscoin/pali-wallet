@@ -19,12 +19,27 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
   const [limit, setLimit] = useState(6);
   const [busy, setBusy] = useState(false);
   const epoch = useRef(0);
-  useEffect(
-    () => () => {
+  const heldReview = useRef({ id: undefined as string | undefined });
+  useEffect(() => {
+    const held = heldReview.current;
+    return () => {
       epoch.current++;
-    },
-    []
-  );
+      if (held.id)
+        void controllerEmitter(
+          ['wallet', 'cancelRetainedUtxoRetry'],
+          [held.id]
+        ).catch(() => undefined);
+    };
+  }, [controllerEmitter]);
+  const cancelReview = () => {
+    const id = heldReview.current.id;
+    heldReview.current.id = undefined;
+    if (id)
+      void controllerEmitter(['wallet', 'cancelRetainedUtxoRetry'], [id]).catch(
+        () => undefined
+      );
+    setReview(undefined);
+  };
   const run = (work: (owns: () => boolean) => Promise<void>) => {
     const request = ++epoch.current,
       owns = () => request === epoch.current;
@@ -45,7 +60,7 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
       onToggle={(event) => {
         if (!event.currentTarget.open) {
           epoch.current++;
-          setReview(undefined);
+          cancelReview();
           setSelected(undefined);
           setBusy(false);
           return;
@@ -82,6 +97,7 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
               type="button"
               disabled={busy}
               onClick={() => {
+                heldReview.current.id = undefined;
                 setReview(undefined);
                 run(async (owns) => {
                   await controllerEmitter(
@@ -98,7 +114,7 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
               className={button}
               type="button"
               disabled={busy}
-              onClick={() => setReview(undefined)}
+              onClick={cancelReview}
             >
               Back
             </button>
@@ -155,7 +171,15 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                       ['wallet', 'prepareRetainedUtxoRetry'],
                       [selected]
                     )) as Review;
-                    if (owns()) setReview(next);
+                    if (owns()) {
+                      heldReview.current.id = next.id;
+                      setReview(next);
+                    } else {
+                      void controllerEmitter(
+                        ['wallet', 'cancelRetainedUtxoRetry'],
+                        [next.id]
+                      ).catch(() => undefined);
+                    }
                   });
                 }}
               >

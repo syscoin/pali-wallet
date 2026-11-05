@@ -3,6 +3,10 @@ import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { PSBT_WORK_LIMITS } from '../utils/psbtWorkBudget.ts';
 import { utxoInputOutpoints } from '../utils/utxoAcknowledgedInputs.ts';
 
+import type {
+  EvmSignedRecordSession,
+  EvmSignedRecordStorage,
+} from './evmSignedRecords.ts';
 import {
   capacity,
   CHUNK_BYTES,
@@ -23,18 +27,14 @@ import {
   type Entry,
   type Summary,
 } from './utxoSignedBundle.ts';
+import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
+
 export {
   inspectUtxoSignedBundle,
   UTXO_SIGNED_RECORD_BYTES,
   UTXO_SIGNED_RECORD_KEY,
   UTXO_SIGNED_RECORD_PREFIX,
 } from './utxoSignedBundle.ts';
-
-import type {
-  EvmSignedRecordSession,
-  EvmSignedRecordStorage,
-} from './evmSignedRecords.ts';
-import type { IEncryptedPrivateRecord } from '@sidhujag/sysweb3-keyring';
 
 const encoder = new TextEncoder();
 
@@ -224,17 +224,32 @@ export class UtxoSignedRecords {
     return this.exclusive((release) =>
       dispatch(async () => {
         if (intent === 'initial') return this.persistRetained(session, record);
-        const retained = await this.readExact(
+        const before = await this.load(session);
+        const retained = await this.readMatching(
           session,
           record.owner,
-          record.txid
+          record.txid,
+          before.entries
         );
         if (
           !retained ||
-          retained.rawTransaction !== record.rawTransaction ||
-          retained.url !== record.url
+          retained.record.rawTransaction !== record.rawTransaction ||
+          retained.record.url !== record.url
         )
           throw new Error('Retained UTXO submission changed');
+        // Replay can outlive a reorg or lose its ACK. Remove the old terminal
+        // eviction authority before the exact bytes can leave this lease.
+        if (
+          retained.entry.phase === 'confirmed' &&
+          !(await this.write(
+            session,
+            before,
+            before.entries.map((entry) =>
+              entry === retained.entry ? { ...entry, phase: 'pending' } : entry
+            )
+          ))
+        )
+          throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
       }, release)
     );
   }
@@ -465,9 +480,18 @@ export class UtxoSignedRecords {
     owner: UtxoRecordOwner,
     txid: string
   ): Promise<UtxoDurableSubmission | undefined> {
+    const { entries } = await this.load(session);
+    return (await this.readMatching(session, owner, txid, entries))?.record;
+  }
+
+  private async readMatching(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner,
+    txid: string,
+    entries: readonly Entry[]
+  ) {
     const identity = ownerId(owner),
       key = recordKey(chainKey(owner), txid);
-    const { entries } = await this.load(session);
     const entry = entries.find(
       (item) => item.key === key && item.owner === identity
     );
@@ -499,7 +523,7 @@ export class UtxoSignedRecords {
     )
       return corrupt();
     guard(session);
-    return record as UtxoDurableSubmission;
+    return { record: record as UtxoDurableSubmission, entry };
   }
 
   async excludedOutpoints(

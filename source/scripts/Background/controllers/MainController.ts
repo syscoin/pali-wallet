@@ -436,15 +436,18 @@ const fiatNetworkKey = (network: INetwork) =>
     network.coingeckoId,
   ]);
 
+const UTXO_RETRY_REVIEW_MS = 90_000;
 const utxoRecordsByWallet = new WeakMap<MainController, UtxoSignedRecords>();
 const utxoReviewsByWallet = new WeakMap<
   MainController,
-  {
-    deadline: number;
-    id: string;
-    record: UtxoDurableSubmission;
-    signing: ReturnType<MainController['captureUtxoSigningContext']>;
-  }
+  | { id: string }
+  | {
+      deadline: number;
+      id: string;
+      record: UtxoDurableSubmission;
+      signing: ReturnType<MainController['captureUtxoSigningContext']>;
+      timer: ReturnType<typeof setTimeout>;
+    }
 >();
 
 class MainController {
@@ -1064,8 +1067,11 @@ class MainController {
   }
 
   public async prepareRetainedUtxoRetry(txid: string) {
-    utxoReviewsByWallet.delete(this);
     const signing = this.captureUtxoSigningContext();
+    const previous = utxoReviewsByWallet.get(this);
+    if (previous) this.cancelRetainedUtxoRetry(previous.id);
+    const preparing = { id: crypto.randomUUID() };
+    utxoReviewsByWallet.set(this, preparing);
     const network = store.getState().vault.activeNetwork;
     const record = await this.getRetainedUtxoRecords().readExact(
       { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
@@ -1073,7 +1079,11 @@ class MainController {
       txid
     );
     signing.assertCurrent();
-    if (!record || record.url !== utxoSubmissionUrl(network.url))
+    if (
+      utxoReviewsByWallet.get(this) !== preparing ||
+      !record ||
+      record.url !== utxoSubmissionUrl(network.url)
+    )
       throw new Error('Saved transfer is unavailable on this network');
     const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
       record.rawTransaction
@@ -1093,21 +1103,25 @@ class MainController {
       }
       return { address, amountSatoshis: output.value.toString() };
     });
-    const id = crypto.randomUUID();
+    const { id } = preparing;
     utxoReviewsByWallet.set(this, {
       id,
-      deadline: performance.now() + 90_000,
+      deadline: performance.now() + UTXO_RETRY_REVIEW_MS,
       record,
       signing,
+      timer: setTimeout(
+        () => this.cancelRetainedUtxoRetry(id),
+        UTXO_RETRY_REVIEW_MS
+      ),
     });
     return { id, txid, feeSatoshis: record.feeSatoshis, outputs };
   }
 
   public async confirmRetainedUtxoRetry(id: string) {
     const selected = utxoReviewsByWallet.get(this);
-    if (!selected || selected.id !== id)
+    if (!selected || selected.id !== id || !('record' in selected))
       throw new Error('Review the saved transfer again');
-    utxoReviewsByWallet.delete(this);
+    this.cancelRetainedUtxoRetry(id);
     const { signing, record, deadline } = selected;
     const assertCurrent = () => {
       signing.assertCurrent();
@@ -1139,6 +1153,13 @@ class MainController {
     return collateral
       ? withSentryCollateralBroadcast(collateral, submit)
       : submit(() => undefined);
+  }
+
+  public cancelRetainedUtxoRetry(id: string) {
+    const selected = utxoReviewsByWallet.get(this);
+    if (typeof id !== 'string' || selected?.id !== id) return;
+    if ('timer' in selected) clearTimeout(selected.timer);
+    utxoReviewsByWallet.delete(this);
   }
 
   private getRetainedEvmReplay(): EvmSignedReplay {
@@ -2332,7 +2353,8 @@ class MainController {
     this.retainedEvmReplay = undefined;
     this.retainedEvmRecords = undefined;
     utxoRecordsByWallet.delete(this);
-    utxoReviewsByWallet.delete(this);
+    const utxoReview = utxoReviewsByWallet.get(this);
+    if (utxoReview) this.cancelRetainedUtxoRetry(utxoReview.id);
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
