@@ -1,5 +1,9 @@
 const mockStorageGet = jest.fn<Promise<any>, any[]>(async () => null);
 const mockStorageSet = jest.fn();
+const mockApprovalController = jest.fn();
+jest.mock('scripts/Background', () => ({
+  getController: () => mockApprovalController(),
+}));
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: (...args: any[]) => mockStorageGet(...args),
@@ -10,14 +14,27 @@ jest.mock('../notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
 }));
 
+import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
+import {
+  getPersonalSignGrantReplacement,
+  watchConnectedPersonalSignGrant,
+} from '../handlers/personalSignApproval';
 import { notificationManager } from '../notification-manager';
 import { rehydrate } from 'state/dapp';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store, { persistMainStateStrict } from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import { restoreVaultSnapshot, setActiveAccount } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 
 import DAppController from './DAppController';
+import { EthMethodHandler } from './message-handler/method-handlers';
+import { getMethodConfig } from './message-handler/method-registry';
+import {
+  accountSwitchingMiddleware,
+  RequestPipeline,
+} from './message-handler/request-pipeline';
+import type { IEnhancedRequestContext } from './message-handler/types';
 
 const host = 'https://connection.invalid';
 const type = KeyringAccountType.HDAccount;
@@ -132,6 +149,38 @@ it('publishes an existing account change only after its durable write', async ()
   expect(DAppController(() => true).getAccount(host).address).toBe(
     store.getState().vault.accounts[type][1].address
   );
+});
+
+it('continues a connected request through its exact durable account-selection successor only', async () => {
+  await connect();
+  const scope = watchConnectedPersonalSignGrant({
+    host,
+    method: 'personal_sign',
+    sender: { documentId: 'site-document', url: host },
+    type: 'METHOD_REQUEST',
+  })!;
+  try {
+    const waitForWrite = holdWrite();
+    const change = controller.changeAccount(
+      host,
+      1,
+      type,
+      context(1),
+      getPersonalSignGrantReplacement(scope.signal)
+    );
+    const finish = await waitForWrite();
+    expect(scope.signal.aborted).toBe(false);
+    expect(controller.get(host)?.accountId).toBe(0);
+    finish();
+    await change;
+    expect(controller.get(host)?.accountId).toBe(1);
+    expect(scope.signal.aborted).toBe(false);
+
+    await controller.changeAccount(host, 0, type, context());
+    expect(scope.signal.aborted).toBe(true);
+  } finally {
+    scope.dispose();
+  }
 });
 
 it('keeps an account change unpublished on write failure and allows a durable retry', async () => {
@@ -295,4 +344,501 @@ it('does not publish a pending connection revoked before its write completes', a
     host,
     true
   );
+});
+
+describe('connected personal-sign approval authority', () => {
+  const message = 'Read this message';
+  const createPopup = jest.fn();
+  const signPersonalMessage = jest.fn(async () => 'synthetic-signature');
+  const wallet = {
+    getWalletSessionGeneration: () => sessionGeneration,
+    ethereumTransaction: { signPersonalMessage },
+  };
+  const getURL = (path = '') => `chrome-extension://test-extension/${path}`;
+  const sendMessage = jest.fn(async () => ({ documentActive: true }));
+  const getClient = jest.fn<Promise<{ url: string } | undefined>, [string]>();
+  const popupNavigation = new Set<
+    (tabId: number, change: chrome.tabs.TabChangeInfo) => void
+  >();
+  let workerMessage: (event: any) => void;
+  let sessionGeneration: number;
+
+  beforeEach(() => {
+    sessionGeneration = 1;
+    popupNavigation.clear();
+    jest.spyOn(console, 'error').mockImplementation();
+    Object.assign(crypto, {
+      randomUUID: jest.fn(() => 'synthetic-approval-id'),
+    });
+    Object.assign(chrome.runtime, { getURL });
+    Object.assign(chrome.tabs, {
+      sendMessage,
+      onUpdated: {
+        addListener: (listener: Parameters<typeof popupNavigation.add>[0]) =>
+          popupNavigation.add(listener),
+        removeListener: (
+          listener: Parameters<typeof popupNavigation.delete>[0]
+        ) => popupNavigation.delete(listener),
+      },
+    });
+    Object.assign(chrome, {
+      windows: {
+        onRemoved: { addListener: jest.fn(), removeListener: jest.fn() },
+        remove: jest.fn((_id, callback) => callback?.()),
+      },
+    });
+    Object.assign(self, {
+      clients: { get: getClient },
+      addEventListener: jest.fn(
+        (_type, listener) => (workerMessage = listener)
+      ),
+      removeEventListener: jest.fn(),
+    });
+    mockApprovalController.mockReturnValue({
+      createPopup,
+      dapp: controller,
+      wallet,
+    });
+    handleMasterControllerResponses({ wallet } as any);
+  });
+
+  afterEach(() => jest.restoreAllMocks());
+
+  const openApproval = async (
+    start = (request: IEnhancedRequestContext) =>
+      new EthMethodHandler().handle(request),
+    method = 'personal_sign',
+    params: unknown[] = [message, address]
+  ) => {
+    let opened!: (data: object) => void;
+    const created = new Promise<object>((resolve) => (opened = resolve));
+    createPopup.mockImplementation(async (_route, data) => {
+      opened(data);
+      return { id: 9 };
+    });
+    const actionListener = (chrome.runtime.onMessage.addListener as jest.Mock)
+      .mock.lastCall[0];
+    const outcome = start({
+      methodConfig: getMethodConfig(method)!,
+      originalRequest: {
+        host,
+        method,
+        params,
+        sender: {
+          documentId: 'site-document',
+          frameId: 0,
+          tab: { id: 7 },
+          url: `${host}/page`,
+        } as chrome.runtime.MessageSender,
+        type: 'METHOD_REQUEST',
+      },
+    }).then(
+      (value) => ({ value }),
+      (error) => ({ code: error.code ?? error.message })
+    );
+    const data: any = await Promise.race([
+      created,
+      outcome.then((result) => {
+        throw Error(`Approval did not open: ${JSON.stringify(result)}`);
+      }),
+    ]);
+    const registrationListener = (
+      chrome.runtime.onMessage.addListener as jest.Mock
+    ).mock.lastCall[0];
+    const sender = {
+      id: chrome.runtime.id,
+      documentId: 'approval-document',
+      frameId: 0,
+      tab: { id: 19, windowId: 9 },
+      url: `${getURL('external.html')}?data=${encodeURIComponent(
+        JSON.stringify(data)
+      )}`,
+    };
+    const reply = jest.fn();
+    registrationListener(
+      { type: APPROVAL_REGISTER, approvalId: data.approvalId },
+      sender,
+      reply
+    );
+    await new Promise(setImmediate);
+    const registration = reply.mock.lastCall[0];
+    expect(registration.status).toBe('registered');
+    const source = { id: 'approval-client', url: sender.url };
+    getClient.mockResolvedValue({ url: source.url });
+    const port = { postMessage: jest.fn(), close: jest.fn() };
+    workerMessage({
+      source,
+      data: {
+        eventName: APPROVAL_CLIENT_READY,
+        approvalId: data.approvalId,
+        challenge: registration.challenge,
+      },
+      ports: [port],
+    });
+    expect(port.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'ready' })
+    );
+    return {
+      data,
+      source,
+      outcome,
+      approve: (payload = message, documentId = sender.documentId) =>
+        new Promise((resolve) => {
+          actionListener(
+            {
+              type: 'CONTROLLER_ACTION',
+              data: {
+                methods: [
+                  'wallet',
+                  'ethereumTransaction',
+                  'signPersonalMessage',
+                ],
+                params: [{ ...data, 0: address, 1: payload }],
+              },
+            },
+            { ...sender, documentId },
+            resolve
+          );
+        }),
+      reply: (value: unknown) =>
+        workerMessage({
+          source,
+          data: {
+            eventName: `${data.eventName}.${host}`,
+            detail: JSON.stringify(value),
+          },
+        }),
+    };
+  };
+
+  describe.each(['personal_sign', 'eth_sendTransaction'])(
+    '%s account-switch consent',
+    (method) => {
+      it.each([true, false])(
+        'checks the reviewed Imported slot after popup approval, replaced=%s',
+        async (replaced) => {
+          const imported = KeyringAccountType.Imported;
+          const selected = {
+            id: 7,
+            address: `0x${'33'.repeat(20)}`,
+            xpub: 'reviewed-import',
+          };
+          const putImported = (account: typeof selected) => {
+            const vault = store.getState().vault;
+            store.dispatch(
+              restoreVaultSnapshot({
+                ...vault,
+                accounts: {
+                  ...vault.accounts,
+                  [imported]: { [account.id]: account },
+                },
+              } as any)
+            );
+          };
+          putImported(selected);
+          (chrome.tabs.query as jest.Mock).mockImplementation((_query, reply) =>
+            reply([{ id: 7, url: `${host}/page` }])
+          );
+          await connect();
+          await new Promise(setImmediate);
+          mockStorageSet.mockClear();
+          const notifyTab = chrome.scripting.executeScript as jest.Mock;
+          notifyTab.mockClear();
+
+          const pipeline = new RequestPipeline()
+            .use(accountSwitchingMiddleware)
+            .use(async () => 'continued');
+          const approval = await openApproval(
+            (request) => pipeline.execute(request),
+            method,
+            method === 'personal_sign'
+              ? [message, selected.address]
+              : [{ from: selected.address }]
+          );
+          expect(approval.data.connectedAccount.address).toBe(selected.address);
+          store.dispatch(setActiveAccount({ id: selected.id, type: imported }));
+
+          let started!: () => void;
+          let finishSite!: () => void;
+          const checking = new Promise<void>((resolve) => (started = resolve));
+          sendMessage.mockImplementationOnce(async () => {
+            started();
+            await new Promise<void>((resolve) => (finishSite = resolve));
+            return { documentActive: true };
+          });
+          approval.reply(null);
+          await checking;
+          if (replaced)
+            putImported({
+              ...selected,
+              address: `0x${'44'.repeat(20)}`,
+              xpub: 'replacement-import',
+            });
+          const waitForWrite = replaced ? undefined : holdWrite();
+          finishSite();
+          if (waitForWrite) {
+            const finishWrite = await waitForWrite();
+            expect(controller.get(host)?.accountId).toBe(0);
+            expect(disk.dapp.dapps[host].accountId).toBe(0);
+            expect(notifyTab).not.toHaveBeenCalled();
+            finishWrite();
+          }
+          const outcome = await approval.outcome;
+          await new Promise(setImmediate);
+          expect({
+            outcome,
+            diskAccount: disk.dapp.dapps[host].accountId,
+            publicAddress: controller.getAccount(host)?.address,
+            writes: mockStorageSet.mock.calls.length,
+            published: notifyTab.mock.calls.map(
+              ([call]) => JSON.parse(call.args[0]).data.params
+            ),
+          }).toEqual(
+            replaced
+              ? {
+                  outcome: {
+                    code: 'Account context changed. Please select an account again.',
+                  },
+                  diskAccount: 0,
+                  publicAddress: address,
+                  writes: 0,
+                  published: [],
+                }
+              : {
+                  outcome: { value: 'continued' },
+                  diskAccount: selected.id,
+                  publicAddress: selected.address,
+                  writes: 1,
+                  published: [[selected.address]],
+                }
+          );
+        }
+      );
+    }
+  );
+
+  it('does not call the signer or return a signature after same-document grant revocation', async () => {
+    await connect();
+    const approval = await openApproval();
+    await controller.disconnect(host, true, { propagateErrors: true });
+    expect(controller.isConnected(host)).toBe(false);
+    expect(disk.dapp.dapps[host]).toBeUndefined();
+    const value = await approval.approve();
+    approval.reply(value);
+    expect({
+      calls: signPersonalMessage.mock.calls.length,
+      result: await approval.outcome,
+    }).toEqual({
+      calls: 0,
+      result: { code: 4001 },
+    });
+  });
+
+  it('binds the registered popup and original payload without affecting another origin', async () => {
+    const other = 'https://connection.invalid:8443';
+    await connect();
+    await controller.connect({ ...details(), host: other }, context());
+    const approval = await openApproval();
+    await controller.disconnect(other, true, { propagateErrors: true });
+    expect(controller.isConnected(host)).toBe(true);
+    await expect(
+      approval.approve(message, 'another-popup')
+    ).resolves.toMatchObject({ success: false });
+    await expect(approval.approve('Different payload')).resolves.toMatchObject({
+      success: false,
+    });
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+    const value = await approval.approve();
+    expect(value).toBe('synthetic-signature');
+    expect(signPersonalMessage).toHaveBeenCalledTimes(1);
+    approval.reply(value);
+    expect(await approval.outcome).toEqual({ value: 'synthetic-signature' });
+  });
+
+  it.each(['reconnect', 'durable rollback'])(
+    'never restores the old approval on %s',
+    async (restore) => {
+      await connect();
+      const grant = controller.get(host);
+      const approval = await openApproval();
+      if (restore === 'durable rollback') {
+        mockStorageSet.mockRejectedValueOnce(Error('Storage unavailable'));
+        await expect(
+          controller.disconnect(host, true, { propagateErrors: true })
+        ).rejects.toThrow('Storage unavailable');
+        expect(controller.get(host)).toBe(grant);
+      } else {
+        await controller.disconnect(host, true, { propagateErrors: true });
+        await connect();
+      }
+      expect(controller.isConnected(host)).toBe(true);
+      await expect(approval.approve()).resolves.toMatchObject({
+        success: false,
+      });
+      expect(await approval.outcome).toEqual({ code: 4001 });
+      expect(signPersonalMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['account', 'network', 'wallet session'])(
+    'retires the approval after a change in %s',
+    async (field) => {
+      await connect();
+      const approval = await openApproval();
+      const vault = store.getState().vault;
+      if (field === 'wallet session') sessionGeneration += 1;
+      else {
+        store.dispatch(
+          restoreVaultSnapshot({
+            ...vault,
+            ...(field === 'account'
+              ? { activeAccount: { id: 1, type } }
+              : { activeNetwork: { ...vault.activeNetwork, chainId: 10 } }),
+          })
+        );
+        store.dispatch(restoreVaultSnapshot(vault));
+      }
+      await expect(approval.approve()).resolves.toMatchObject({
+        success: false,
+      });
+      expect(await approval.outcome).toEqual({ code: 4001 });
+      expect(signPersonalMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  it('rechecks the initiating document at signing, even with the grant still present', async () => {
+    await connect();
+    const approval = await openApproval();
+    sendMessage.mockResolvedValueOnce({ documentActive: false });
+    await expect(approval.approve()).resolves.toMatchObject({ success: false });
+    expect(sendMessage).toHaveBeenLastCalledWith(
+      7,
+      { type: 'PALI_PROVIDER_DOCUMENT_CHECK' },
+      { documentId: 'site-document', frameId: 0 }
+    );
+    expect(controller.isConnected(host)).toBe(true);
+    await expect(approval.approve()).resolves.toMatchObject({ success: false });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+  });
+
+  it('rechecks the grant after an admitted document check finishes', async () => {
+    await connect();
+    const approval = await openApproval();
+    let started!: () => void;
+    let finish!: () => void;
+    const checking = new Promise<void>((resolve) => (started = resolve));
+    sendMessage.mockImplementationOnce(async () => {
+      started();
+      await new Promise<void>((resolve) => (finish = resolve));
+      return { documentActive: true };
+    });
+    const response = approval.approve();
+    await checking;
+    await controller.disconnect(host, true, { propagateErrors: true });
+    finish();
+    await expect(response).resolves.toMatchObject({ success: false });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+  });
+
+  it('discards a signature that completes after a durable revoke', async () => {
+    let started!: () => void;
+    let finish!: (value: string) => void;
+    const invoked = new Promise<void>((resolve) => (started = resolve));
+    const held = new Promise<string>((resolve) => (finish = resolve));
+    signPersonalMessage.mockImplementationOnce(() => {
+      started();
+      return held;
+    });
+    await connect();
+    const approval = await openApproval();
+    const response = approval.approve();
+    await invoked;
+    await controller.disconnect(host, true, { propagateErrors: true });
+    finish('signature completed after revocation');
+    await expect(response).resolves.toMatchObject({ success: false });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(signPersonalMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks the session before delivering an already signed popup response', async () => {
+    await connect();
+    const approval = await openApproval();
+    const value = await approval.approve();
+    expect(value).toBe('synthetic-signature');
+    sessionGeneration += 1;
+    approval.reply(value);
+    expect(await approval.outcome).toEqual({ code: 4001 });
+  });
+
+  it('checks the bound popup client before invoking the signer', async () => {
+    await connect();
+    const approval = await openApproval();
+    getClient.mockResolvedValue(undefined);
+    const response = await approval.approve();
+    approval.reply(response);
+    expect(response).toMatchObject({ success: false });
+    expect(getClient).toHaveBeenCalledWith(approval.source.id);
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(controller.isConnected(host)).toBe(true);
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+    expect(popupNavigation.size).toBe(0);
+  });
+
+  it('preserves approved SPA routing and retires on reload during signer admission', async () => {
+    await connect();
+    const approval = await openApproval();
+    const route = approval.source.url.replace(
+      '/external.html',
+      '/external/tx/ethSign'
+    );
+    for (const listener of popupNavigation)
+      listener(19, { url: route, status: 'loading' });
+    let started!: () => void;
+    let finish!: () => void;
+    const checking = new Promise<void>((resolve) => (started = resolve));
+    getClient.mockImplementationOnce(async () => {
+      started();
+      await new Promise<void>((resolve) => (finish = resolve));
+      return { url: route };
+    });
+    const response = approval.approve();
+    await checking;
+    getClient.mockResolvedValue(undefined);
+    for (const listener of popupNavigation) listener(19, { status: 'loading' });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    finish();
+    await expect(response).resolves.toMatchObject({ success: false });
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+    expect(popupNavigation.size).toBe(0);
+  });
+
+  it('does not sign when a same-URL popup reload wins during a held site probe', async () => {
+    await connect();
+    const approval = await openApproval();
+    let started!: () => void;
+    let finishSite!: (value: { documentActive: boolean }) => void;
+    const checking = new Promise<void>((resolve) => (started = resolve));
+    const site = new Promise<{ documentActive: boolean }>(
+      (resolve) => (finishSite = resolve)
+    );
+    sendMessage.mockImplementationOnce(() => {
+      started();
+      return site;
+    });
+    const pending = approval.approve();
+    await checking;
+    // The same-URL loading notification can still see the departing client.
+    for (const listener of popupNavigation) listener(19, { status: 'loading' });
+    await new Promise(setImmediate);
+    expect(getClient).toHaveBeenCalledWith(approval.source.id);
+    getClient.mockResolvedValue(undefined);
+    finishSite({ documentActive: true });
+    const response = await pending;
+    approval.reply(response);
+    expect(response).toMatchObject({ success: false });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(signPersonalMessage).not.toHaveBeenCalled();
+  });
 });

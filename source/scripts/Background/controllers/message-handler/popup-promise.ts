@@ -2,6 +2,11 @@ import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import { watchApprovalSubmission } from '../../handlers/approvalSubmission';
+import {
+  bindPersonalSignApproval,
+  capturePersonalSignApproval,
+  personalSignApprovalExpired,
+} from '../../handlers/personalSignApproval';
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
@@ -9,6 +14,7 @@ import cleanErrorStack from 'utils/cleanErrorStack';
 import {
   assertRequestActive,
   isRequestDocumentLive,
+  probeDocumentLiveness,
   requestCancelledError,
 } from './request-lifetime';
 import { MethodRoute } from './types';
@@ -30,6 +36,25 @@ const readApprovalUrl = (url: string, approvalId: string): URL | undefined => {
   return undefined;
 };
 
+const isApprovalRoute = (url: URL, route: MethodRoute) =>
+  url.pathname === '/external.html' ||
+  url.pathname === `/external/${route}` ||
+  (url.pathname === '/' && url.searchParams.get('externalRoute') === route);
+
+const isApprovalClientLive = (
+  clientId: string,
+  approvalId: string,
+  route: MethodRoute
+) =>
+  probeDocumentLiveness(async () => {
+    const { clients } = self as unknown as {
+      clients: { get: (id: string) => Promise<{ url: string } | undefined> };
+    };
+    const client = await clients.get(clientId);
+    const url = client && readApprovalUrl(client.url, approvalId);
+    return Boolean(url && isApprovalRoute(url, route));
+  });
+
 const handleResponseEvent = async (
   event: ICustomEvent,
   eventName: string,
@@ -49,16 +74,7 @@ const handleResponseEvent = async (
   const sourceUrl = readApprovalUrl(source?.url, approvalId);
   if (!approvalClientId || source?.id !== approvalClientId || !sourceUrl)
     return;
-  const expectedPath = `/external/${route}`;
-  if (
-    sourceUrl.pathname !== '/external.html' &&
-    sourceUrl.pathname !== expectedPath &&
-    !(
-      sourceUrl.pathname === '/' &&
-      sourceUrl.searchParams.get('externalRoute') === route
-    )
-  )
-    return;
+  if (!isApprovalRoute(sourceUrl, route)) return;
   if (event.data?.eventName !== expectedEventName) {
     return;
   }
@@ -84,34 +100,45 @@ const handleResponseEvent = async (
   }
 };
 
-/**
- * Opens a popup and adds events listener to resolve a promise.
- *
- * @param host The dApp host
- * @param route The popup route
- * @param eventName The event which will resolve the promise.
- * The final event name is `eventName.host`
- * @param data information that will be passed to the route. Optional
- *
- * @return either the event data or `null` for success
- */
-export const popupPromise = async ({
-  data,
-  eventName,
-  host,
-  route,
-  signal,
-  sender,
-}: {
+interface IPopupRequest {
+  connectedPersonalSign?: boolean;
   data?: object;
   eventName: string;
   host: string;
   route: MethodRoute;
   sender?: chrome.runtime.MessageSender;
   signal?: AbortSignal;
-}) => {
+}
+
+/** Opens an approval popup for the original request document. */
+export const popupPromise = async (request: IPopupRequest) => {
+  if (!request.connectedPersonalSign) return openApprovalPopup(request);
+  const { wallet } = getController();
+  const approval = capturePersonalSignApproval({
+    host: request.host,
+    params: Array.isArray(request.data) ? request.data : undefined,
+    sender: request.sender,
+    signal: request.signal,
+    getWalletSessionGeneration: () => wallet.getWalletSessionGeneration(),
+  });
+  try {
+    approval.assertCurrent();
+    return await openApprovalPopup(
+      { ...request, signal: approval.signal },
+      approval
+    );
+  } finally {
+    approval.dispose();
+  }
+};
+
+const openApprovalPopup = async (
+  { data, eventName, host, route, signal, sender }: IPopupRequest,
+  personalSignApproval?: ReturnType<typeof capturePersonalSignApproval>
+) => {
   assertRequestActive(signal);
   if (!(await isRequestDocumentLive(sender))) throw requestCancelledError();
+  personalSignApproval?.assertCurrent();
   const { createPopup } = getController();
   const approvalId = crypto.randomUUID();
 
@@ -121,8 +148,10 @@ export const popupPromise = async ({
   let popup = null;
   let approvalClientId: string | null = null;
   let approvalDocumentId: string | null = null;
+  let approvalTabId: number | undefined;
   let submissionStarted = false;
   let stopWatchingSubmission: (() => void) | undefined;
+  let unbindPersonalSign: (() => void) | undefined;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -135,6 +164,7 @@ export const popupPromise = async ({
   ) => {
     if (
       registrationSender.tab?.windowId !== popup?.id ||
+      (personalSignApproval && registrationSender.tab?.id === undefined) ||
       (approvalDocumentId &&
         registrationSender.documentId !== approvalDocumentId)
     ) {
@@ -142,6 +172,7 @@ export const popupPromise = async ({
       return;
     }
     approvalDocumentId = registrationSender.documentId!;
+    approvalTabId = registrationSender.tab?.id;
     challenge ||= crypto.randomUUID();
     reply({ status: 'registered', approvalId, challenge });
   };
@@ -187,9 +218,43 @@ export const popupPromise = async ({
         !port
       )
         return;
-      const available = !approvalClientId || approvalClientId === source.id;
+      const available =
+        (!approvalClientId || approvalClientId === source.id) &&
+        (!personalSignApproval || personalSignApproval.isCurrent());
       if (available) {
         approvalClientId = source.id;
+        if (personalSignApproval && approvalDocumentId && !unbindPersonalSign) {
+          const clientId = source.id;
+          const approverIsLive = () =>
+            isApprovalClientLive(clientId, approvalId, route);
+          const unbind = bindPersonalSignApproval(
+            approvalDocumentId,
+            personalSignApproval,
+            approverIsLive
+          );
+          const onNavigation = (
+            tabId: number,
+            change: chrome.tabs.TabChangeInfo
+          ) => {
+            if (tabId !== approvalTabId) return;
+            if (change.url) {
+              const destination = readApprovalUrl(change.url, approvalId);
+              if (!destination || !isApprovalRoute(destination, route))
+                personalSignApproval.retire();
+            } else if (change.status === 'loading') {
+              // Chrome can report loading during a same-document transition.
+              // Resolve the originally enrolled client before treating it as a reload.
+              void approverIsLive().then((live) => {
+                if (!live) personalSignApproval.retire();
+              });
+            }
+          };
+          unbindPersonalSign = () => {
+            chrome.tabs.onUpdated.removeListener(onNavigation);
+            unbind();
+          };
+          chrome.tabs.onUpdated.addListener(onNavigation);
+        }
         if (
           (route === MethodRoute.SendEthTx ||
             route === MethodRoute.SendCalls ||
@@ -257,6 +322,7 @@ export const popupPromise = async ({
 
     // Clean up function to remove listeners
     const cleanup = () => {
+      unbindPersonalSign?.();
       stopWatchingSubmission?.();
       stopWatchingSubmission = undefined;
       if (livenessInterval) clearInterval(livenessInterval);
@@ -277,7 +343,10 @@ export const popupPromise = async ({
 
     // Safe resolve function that prevents double resolution
     const safeResolve = (result: any) => {
-      if (resolved) {
+      if (
+        resolved ||
+        (personalSignApproval && !personalSignApproval.isCurrent())
+      ) {
         return;
       }
       resolved = true;
@@ -361,7 +430,13 @@ export const popupPromise = async ({
       chrome.windows.remove(popup.id, () => {
         void chrome.runtime.lastError;
       });
-      reject(submissionStarted ? cancellationError() : requestCancelledError());
+      reject(
+        submissionStarted
+          ? cancellationError()
+          : personalSignApproval
+          ? personalSignApprovalExpired()
+          : requestCancelledError()
+      );
     };
 
     // Add listeners

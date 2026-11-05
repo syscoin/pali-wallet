@@ -205,7 +205,8 @@ const DAppController = (
     accountId: number,
     accountType: KeyringAccountType,
     expectedContext?: IDAppAccountSelectionContext,
-    connectionDetails?: IDApp
+    connectionDetails?: IDApp,
+    stageReplacement?: (grant: IDApp) => void
   ) => {
     // Validate before touching the grant or session, including identities that
     // changed while the approval message was travelling to the worker.
@@ -252,6 +253,7 @@ const DAppController = (
     // reapproval replaces any previous or caller-supplied namespace/reference.
     if (isBitcoinBased) grant.utxoAccount = { slip44, xpub };
     else delete grant.utxoAccount;
+    stageReplacement?.(grant);
     const selectedNetwork = { ...network };
     const attempt: NonNullable<ReturnType<typeof pendingGrants.get>> = {
       accountId,
@@ -374,13 +376,21 @@ const DAppController = (
     host: string,
     accountId: number,
     accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext
+    expectedContext?: IDAppAccountSelectionContext,
+    stageReplacement?: (grant: IDApp) => void
   ) => {
     if (!isConnected(host))
       throw new Error('Unable to update account. DApp does not exist');
     // The admitted permission change must survive without the approval view's
     // optional wallet switch. Publish and notify only after its durable write.
-    await grantAccountPermission(host, accountId, accountType, expectedContext);
+    await grantAccountPermission(
+      host,
+      accountId,
+      accountType,
+      expectedContext,
+      undefined,
+      stageReplacement
+    );
   };
 
   const syncAccountSession = (

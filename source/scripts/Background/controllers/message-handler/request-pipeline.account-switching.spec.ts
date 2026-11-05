@@ -21,7 +21,7 @@ jest.mock('./method-handlers', () => ({
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 import { getController } from 'scripts/Background';
-import { KeyringAccountType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 
 import { popupPromise } from './popup-promise';
 import {
@@ -37,6 +37,17 @@ const accountA = {
 const accountB = {
   address: '0x2222222222222222222222222222222222222222',
   id: 1,
+};
+const activeNetwork = {
+  chainId: 1,
+  kind: INetworkType.Ethereum,
+  slip44: 60,
+  url: 'https://rpc.invalid',
+};
+const reviewedAccountB = {
+  address: accountB.address,
+  network: activeNetwork,
+  xpub: undefined,
 };
 
 const createContext = () =>
@@ -152,6 +163,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
           [KeyringAccountType.Imported]: { 1: accountB },
         },
         activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+        activeNetwork,
       },
     });
     jest
@@ -167,7 +179,9 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).toHaveBeenCalledWith(
       host,
       accountB.id,
-      KeyringAccountType.Imported
+      KeyringAccountType.Imported,
+      reviewedAccountB,
+      undefined
     );
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -254,6 +268,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
           [KeyringAccountType.Imported]: { 1: accountB },
         },
         activeAccount: { id: 1, type: KeyringAccountType.Imported },
+        activeNetwork,
       },
     });
     const popupSpy = jest
@@ -269,7 +284,9 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).toHaveBeenCalledWith(
       host,
       accountB.id,
-      KeyringAccountType.Imported
+      KeyringAccountType.Imported,
+      reviewedAccountB,
+      undefined
     );
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -282,6 +299,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
           [KeyringAccountType.Imported]: { 1: accountB },
         },
         activeAccount: { id: 1, type: KeyringAccountType.Imported },
+        activeNetwork,
       },
     });
     const popupSpy = jest
@@ -298,7 +316,9 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).toHaveBeenCalledWith(
       host,
       accountB.id,
-      KeyringAccountType.Imported
+      KeyringAccountType.Imported,
+      reviewedAccountB,
+      undefined
     );
     expect(next).toHaveBeenCalledTimes(1);
     expect(changeAccount.mock.invocationCallOrder[0]).toBeLessThan(
@@ -398,6 +418,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
           activeAccount: alreadyActive
             ? { id: 1, type: KeyringAccountType.Imported }
             : { id: 0, type: KeyringAccountType.HDAccount },
+          activeNetwork,
         },
       });
       const context = createContext();
@@ -432,7 +453,9 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
         expect(changeAccount).toHaveBeenCalledWith(
           host,
           1,
-          KeyringAccountType.Imported
+          KeyringAccountType.Imported,
+          reviewedAccountB,
+          undefined
         );
       expect(next).toHaveBeenCalledTimes(accepted ? 1 : 0);
       expect(context.originalRequest.params).toEqual(original);
@@ -482,6 +505,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
       vault: {
         accounts: { HDAccount: { 0: accountA }, Imported: { 1: accountB } },
         activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+        activeNetwork,
       },
     });
     const context = createContext();
@@ -496,7 +520,9 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
     expect(changeAccount).toHaveBeenCalledWith(
       host,
       1,
-      KeyringAccountType.Imported
+      KeyringAccountType.Imported,
+      reviewedAccountB,
+      undefined
     );
     expect(next).toHaveBeenCalledTimes(1);
   });

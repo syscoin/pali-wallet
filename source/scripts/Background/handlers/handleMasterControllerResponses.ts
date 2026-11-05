@@ -3,6 +3,7 @@ import { extractErrorMessage } from 'utils/index';
 
 import { beginApprovalSubmission } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import { requirePersonalSignApproval } from './personalSignApproval';
 
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
@@ -189,6 +190,11 @@ export const handleMasterControllerResponses = (
           );
       };
       assertSetupAdmission();
+      const personalSignApproval = requirePersonalSignApproval(
+        sender,
+        methods,
+        params
+      );
 
       let targetMethod = MasterControllerInstance;
 
@@ -204,7 +210,10 @@ export const handleMasterControllerResponses = (
         const finishSubmission = beginApprovalSubmission(sender, methods);
         Promise.resolve()
           .then(async () => {
+            if (personalSignApproval)
+              await personalSignApproval.checkDocument();
             assertSetupAdmission();
+            personalSignApproval?.assertCurrent();
             // Always execute the method; never attempt to send functions over messaging
             const response = await (targetMethod as any)(...params);
             // Hardware message signing can remain pending while wallet storage
@@ -220,9 +229,15 @@ export const handleMasterControllerResponses = (
               )
             )
               assertSetupAdmission();
+            if (personalSignApproval)
+              await personalSignApproval.checkDocument();
             return response;
           })
           .then((response) => {
+            if (personalSignApproval) {
+              assertSetupAdmission();
+              personalSignApproval.assertCurrent();
+            }
             finishSubmission();
             sendResponse(response);
           })
