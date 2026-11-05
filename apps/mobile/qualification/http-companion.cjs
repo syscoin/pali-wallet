@@ -8,14 +8,15 @@ const { assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { assertPostReport, postDiagnosticCase } = require('./post-contract.ts');
 const { assertPostAudit, partialPostAudit } = require('./post-server.cjs');
 const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
-const { ROUTES } = require('./http-server.cjs');
+const { ROUTES, HELD_ROUTES } = require('./http-server.cjs');
+const closedKeys = [...HELD_ROUTES].sort().join(',');
 
 function assertAudit(value, token, port) {
   if (!value || Object.keys(value).sort().join(',') !== 'closed,counts,invalid,port,token' ||
       value.token !== token || value.port !== port || value.invalid !== 0 ||
       !value.counts || Object.keys(value.counts).length !== ROUTES.length ||
       ROUTES.some((route) => value.counts[route] !== (route === 'target' ? 0 : 1)) ||
-      !value.closed || Object.keys(value.closed).sort().join(',') !== 'before,body,oversize' ||
+      !value.closed || Object.keys(value.closed).sort().join(',') !== closedKeys ||
       Object.values(value.closed).some((closed) => closed !== true)) throw Error('HTTP_FIXTURE_AUDIT_FAILED');
 }
 
@@ -35,7 +36,7 @@ function partialAudit(value, token, port) {
       !Number.isSafeInteger(value.invalid) || value.invalid < 0 || value.invalid > 100000 ||
       !value.counts || Object.keys(value.counts).length !== ROUTES.length ||
       ROUTES.some((route) => !Number.isSafeInteger(value.counts[route]) || value.counts[route] < 0 || value.counts[route] > 100000) ||
-      !value.closed || Object.keys(value.closed).sort().join(',') !== 'before,body,oversize' ||
+      !value.closed || Object.keys(value.closed).sort().join(',') !== closedKeys ||
       Object.values(value.closed).some((closed) => typeof closed !== 'boolean')) return null;
   return { counts: { ...value.counts }, invalid: value.invalid, closed: { ...value.closed } };
 }
