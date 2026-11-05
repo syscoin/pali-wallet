@@ -704,6 +704,22 @@ export function createKeyringRuntimeFactory(
                         const hasAlias = before.accounts.some((candidate) => candidate.id !== account.id && candidate.address.toLowerCase() === account.address.toLowerCase());
                         if (!hasAlias && retained.some((entry) => !['confirmed','reverted','nonce-consumed'].includes(entry.phase))) throw new TransferJournalError('PENDING_TRANSFER');
                         current(captured); checkGuard(assertCurrent);
+                      } else {
+                        const network = findUtxoNetwork(before.active.networkId);
+                        const source = state.accounts[account.type][account.index];
+                        if (!utxoRecords || !network || network.slip44 !== account.slip44 ||
+                            !source?.xpub || source.address !== account.address)
+                          throw new KeyringRuntimeError('NOT_READY');
+                        const guard = () => { current(captured); checkGuard(assertCurrent); };
+                        await dataBinding(captured, guard); guard();
+                        const pending = await utxoRecords.hasUnresolved({ keyring, assertCurrent: guard }, {
+                          chainId: network.chainId,
+                          slip44: network.slip44,
+                          genesisHash: network.genesisHash,
+                          account: { type: account.type, id: account.index, xpub: source.xpub },
+                        });
+                        guard();
+                        if (pending) throw new TransferJournalError('PENDING_TRANSFER');
                       }
                     }
                   }

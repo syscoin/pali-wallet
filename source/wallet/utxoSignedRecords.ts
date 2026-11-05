@@ -572,6 +572,20 @@ export class UtxoSignedRecords {
       .map(({ txid, phase }) => ({ txid, accepted: phase !== 'pending' }));
   }
 
+  /** Wait for admission already in progress before checking account removal. */
+  hasUnresolved(
+    session: UtxoRecordSession,
+    owner: UtxoRecordOwner
+  ): Promise<boolean> {
+    const identity = ownerId(owner);
+    return this.exclusive(async () => {
+      const { entries } = await this.load(session);
+      return entries.some(
+        (entry) => entry.owner === identity && entry.phase !== 'confirmed'
+      );
+    });
+  }
+
   /** Explicit same-endpoint observation. Missing or malformed data does not authorize a new spend. */
   async observe(
     session: UtxoRecordSession,

@@ -64,7 +64,8 @@ async function fixture(
   loadRuntimeSdk?: () => Promise<typeof sdk>,
   confirmed = true,
   clocks?: { wall: () => number; monotonic: () => number },
-  readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount']
+  readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount'],
+  utxoFetch?: typeof globalThis.fetch
 ) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
@@ -105,6 +106,7 @@ async function fixture(
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
+    utxoFetch,
     loadSdk: async () => {
       const module = await (loadRuntimeSdk?.() ?? sdk);
       class ObservedKeyring extends module.SoftwareKeyring {
@@ -1229,6 +1231,77 @@ const selectNetwork = (f: RecoveryFixture, id: string) => f.owner.selectNetwork(
 );
 const accountRecord = async (f: RecoveryFixture) =>
   await f.store.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+
+test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable until confirmed', async () => {
+  const bitcoin = syscoinUtils.bitcoinjs, network = getUtxoNetwork('bitcoin');
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32, 7), 0);
+  let account!: NativeAccountRecord['groups'][number]['accounts']['HDAccount'][number];
+  let posted: { raw: string; txid: string } | undefined;
+  let confirmed = false;
+  const fetcher: typeof globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    assert(url.startsWith(network.endpoint));
+    const path = url.slice(network.endpoint.length);
+    const reply = (value: unknown) => {
+      const response = Response.json(value);
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    };
+    if (path === '/api/v2/estimatefee/1') return reply({ result: '0.00001024' });
+    if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`) return reply({ tokens: [] });
+    if (path === `/api/v2/utxo/${account.xpub}`) return reply([{
+      txid: previous.getId(), vout: 0, value: '100000', address: account.address,
+      confirmations: 10, path: "m/84'/0'/1'/0/0",
+    }]);
+    if (path === `/api/v2/tx/${previous.getId()}`) return reply({ hex: previous.toHex() });
+    if (path === '/api/v2/sendtx/' && init?.method === 'POST') {
+      assert.equal(typeof init.body, 'string');
+      const raw = init.body as string;
+      posted = { raw, txid: bitcoin.Transaction.fromHex(raw).getId() };
+      return reply({ result: posted.txid });
+    }
+    if (posted && path === `/api/v2/tx/${posted.txid}`)
+      return reply({ txid: posted.txid, hex: posted.raw, confirmations: confirmed ? 1 : 0,
+        ...(confirmed && { blockHash: 'a'.repeat(64) }) });
+    throw Error(`Unexpected fixture route ${path}`);
+  };
+  const f = await fixture(undefined, true, undefined, undefined, fetcher);
+  const manage = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
+    f.owner.manageAccounts(request, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+  const current = () => undefined;
+  const primary = 'hd:0:0', sending = 'hd:0:1';
+  const remove = { kind: 'remove', id: sending, password: OLD } as const;
+  try {
+    await selectNetwork(f, network.id);
+    await manage({ kind: 'create', label: 'Bitcoin spending', password: OLD });
+    assert.equal(f.owner.getCatalogue()!.active.accountId, sending);
+    account = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[1]!;
+    previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
+    const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
+    let send = await f.runtime.openUtxoSend!(current);
+    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }));
+    assert.equal(txid, posted?.txid);
+    assert.equal(await send.check(txid), 'seen');
+
+    await manage({ kind: 'select', id: primary });
+    await assert.rejects(manage(remove), { code: 'PENDING_TRANSFER' });
+    await f.owner.unlock(OLD);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, primary);
+    assert(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending));
+
+    await manage({ kind: 'select', id: sending });
+    send = await f.runtime.openUtxoSend!(current);
+    assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
+    confirmed = true;
+    assert.equal(await send.check(txid), 'confirmed');
+    await manage({ kind: 'select', id: primary });
+    await manage(remove);
+    assert.equal(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending), false);
+  } finally {
+    await f.close();
+  }
+});
 
 test('UTXO custody uses SDK groups, preserves EVM selection and survives real password recovery', async () => {
   const f = await fixture();
