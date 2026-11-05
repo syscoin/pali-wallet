@@ -13,7 +13,7 @@ import { assertJsonWorkBudget, measureJsonWorkBudget } from '../../../../source/
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { assertBaseUnits } from './amounts.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { findUtxoNetwork, getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { openUtxoReadSession, utxoFetchOptions, utxoObject, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
 import type { PublicSnapshot } from './types.ts';
 
@@ -254,8 +254,9 @@ export class UtxoWatchActivity {
   constructor(authority: PublicAuthority, foreground: () => boolean) { this.authority = authority; this.foreground = foreground; this.state = this.empty(); }
   private capture(): UtxoActivityContext | null {
     const value = this.authority.getSnapshot(), account = value.accounts.find((a) => a.id === value.selectedAccountId);
-    if (value.status !== 'ready' || !account || value.selectedNetworkId !== 'bitcoin' && value.selectedNetworkId !== 'syscoin') return null;
-    try { return context({ accountId: account.id, networkId: value.selectedNetworkId, address: account.addresses[value.selectedNetworkId]!, generation: value.generation }); } catch { return null; }
+    const network = findUtxoNetwork(value.selectedNetworkId);
+    if (value.status !== 'ready' || !account || !network) return null;
+    try { return context({ accountId: account.id, networkId: network.id, address: account.addresses[network.id]!, generation: value.generation }); } catch { return null; }
   }
   private empty(): UtxoActivityState { return Object.freeze({ status: 'idle', context: this.capture(), rows: Object.freeze([]), detail: null, firstPage: 0, page: 0, hasMore: false, hasNewer: false, windowed: false }); }
   private publish(value: UtxoActivityState) { this.state = Object.freeze(value); for (const listener of [...this.listeners]) { if (this.state !== value) break; if (this.listeners.has(listener)) { try { listener(); } catch { /* Observers cannot block revocation. */ } } } }

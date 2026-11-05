@@ -9,7 +9,7 @@ import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
-import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
@@ -211,7 +211,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
     './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, '../ui': ui,
-    '../core/watchOnlyAuthority': core, '../core/networks': core, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
+    '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS }, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {

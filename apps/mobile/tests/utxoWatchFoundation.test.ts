@@ -5,24 +5,21 @@ import { UTXO_NETWORKS, getUtxoNetwork, type UtxoNetworkId } from '../src/core/u
 import { normalizeUtxoAddress } from '../src/core/utxoAddresses.ts';
 import { createUtxoBalanceReader, UtxoBalanceError, type UtxoBalanceErrorCode } from '../src/core/utxoBalanceReader.ts';
 import { getNetwork } from '../src/core/networks.ts';
+import { getDefaultUTXONetworks } from '../../../source/utils/defaultNetworks.ts';
+import { UTXO_ADDRESSES, XPUB, metadata } from './publicWatchFixtures.ts';
 
 // Public BIP173 witness-program vector; no keys are generated or read.
 const PROGRAM = Uint8Array.from(Buffer.from('751e76e8199196d454941c45d1b3a323f1433bd6', 'hex'));
-const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
-const SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
-const addressFor = (network: UtxoNetworkId) => network === 'bitcoin' ? BTC : SYS;
+const { bitcoin: BTC, syscoin: SYS, 'utxo:5700': TSYS } = UTXO_ADDRESSES;
+const addressFor = (network: UtxoNetworkId) => UTXO_ADDRESSES[network as keyof typeof UTXO_ADDRESSES];
 const signal = () => new AbortController().signal;
-const statusFor = (network: UtxoNetworkId) => ({
-  blockbook: { coin: getUtxoNetwork(network).blockbookCoin, network: getUtxoNetwork(network).symbol,
-    decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 },
-  backend: { chain: 'main' },
-});
+const statusFor = metadata;
 const balanceFor = (network: UtxoNetworkId) => ({ address: addressFor(network), balance: '9007199254740993', unconfirmedBalance: '-123', unconfirmedTxs: 2 });
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
 const code = (expected: UtxoBalanceErrorCode) => (error: unknown) => {
   assert.ok(error instanceof UtxoBalanceError);
   assert.equal(error.code, expected);
-  assert.equal(error.message.includes(BTC) || error.message.includes(SYS) || error.message.includes('https:'), false);
+  assert.equal(Object.values(UTXO_ADDRESSES).some((address) => error.message.includes(address)) || error.message.includes('https:'), false);
   return true;
 };
 function responses(network: UtxoNetworkId, values?: unknown[]) {
@@ -36,27 +33,36 @@ function responses(network: UtxoNetworkId, values?: unknown[]) {
   } };
 }
 
-test('fixed UTXO watch definitions retain coin, genesis, SLIP and valid zero identity', () => {
-  assert.equal(UTXO_NETWORKS.length, 2);
-  assert.deepEqual(UTXO_NETWORKS.map((n) => [n.id, n.chainId, n.slip44, n.addressHrp]), [
-    ['syscoin', 57, 57, 'sys'], ['bitcoin', 0, 0, 'bc'],
+test('UTXO watch registrations share all extension defaults, SDK metadata and valid zero identity', () => {
+  const defaults = getDefaultUTXONetworks();
+  assert.equal(UTXO_NETWORKS.length, Object.keys(defaults).length);
+  assert.deepEqual(UTXO_NETWORKS.map((n) => [n.id, n.chainId, n.slip44, n.addressNetwork.bech32, n.blockbookCoin, n.symbol, n.backendChain]), [
+    ['syscoin', 57, 57, 'sys', 'Syscoin', 'SYS', 'main'],
+    ['bitcoin', 0, 0, 'bc', 'Bitcoin', 'BTC', 'main'],
+    ['utxo:5700', 5700, 1, 'tsys', 'Syscoin Testnet', 'tSYS', 'test'],
   ]);
   assert.equal(getUtxoNetwork('syscoin').genesisHash, '0000022642db0346b6e01c2a397471f4f12e65d4f4251ec96c1f85367a61a7ab');
   assert.equal(getUtxoNetwork('bitcoin').genesisHash, '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f');
-  assert.equal(getUtxoNetwork('syscoin').endpoint, 'https://explorer-blockbook.syscoin.org');
-  assert.equal(getUtxoNetwork('bitcoin').endpoint, 'https://blockbook.btc.zelcore.io');
+  assert.equal(getUtxoNetwork('utxo:5700').genesisHash, '0000066e1a6b9cfeac8295dce0cc8d9170690a74bc4878cf8a0b412554f5c222');
   assert.equal(Object.isFrozen(UTXO_NETWORKS), true);
   for (const network of UTXO_NETWORKS) {
     assert.equal(Object.isFrozen(network), true);
+    assert.equal(network.endpoint + '/', defaults[network.chainId]!.url);
+    assert.equal(network.explorer, defaults[network.chainId]!.explorer);
+    assert.equal(network.name, defaults[network.chainId]!.label);
     assert.equal(getNetwork(network.id).canWatch, true);
   }
-  for (const id of ['ethereum', 'syscoin-nevm', '0', 0, {}, null])
-    assert.throws(() => getUtxoNetwork(id as UtxoNetworkId));
+  for (const id of ['ethereum', 'syscoin-nevm', 'utxo:0', 'utxo:57', 'utxo:1', '5700', '0', 0, {}, null])
+    assert.throws(() => getUtxoNetwork(id));
+  const evmTestnet = getNetwork('syscoin-nevm-testnet');
+  assert.equal(evmTestnet.kind, 'evm');
+  assert.equal(evmTestnet.chainId, getUtxoNetwork('utxo:5700').chainId);
 });
 
 test('P2WPKH parser accepts fixed public vectors, normalizes uppercase and binds HRP', () => {
   assert.equal(bech32.encode('bc', [0, ...bech32.toWords(PROGRAM)]), BTC);
   assert.equal(bech32.encode('sys', [0, ...bech32.toWords(PROGRAM)]), SYS);
+  assert.equal(bech32.encode('tsys', [0, ...bech32.toWords(PROGRAM)]), TSYS);
   for (const network of UTXO_NETWORKS) {
     const address = addressFor(network.id);
     assert.equal(normalizeUtxoAddress(address, network.id), address);
@@ -64,6 +70,8 @@ test('P2WPKH parser accepts fixed public vectors, normalizes uppercase and binds
   }
   assert.throws(() => normalizeUtxoAddress(BTC, 'syscoin'));
   assert.throws(() => normalizeUtxoAddress(SYS, 'bitcoin'));
+  assert.throws(() => normalizeUtxoAddress(SYS, 'utxo:5700'));
+  assert.throws(() => normalizeUtxoAddress(TSYS, 'syscoin'));
 });
 
 test('parser rejects bad checksums/case/padding and private or descriptor inputs', () => {
@@ -89,14 +97,14 @@ test('parser rejects Unicode before Bech32 case conversion', () => {
   assert.equal(normalizeUtxoAddress(BTC, 'bitcoin'), BTC);
 });
 
-for (const network of ['syscoin', 'bitcoin'] as const) {
+for (const network of ['syscoin', 'bitcoin', 'utxo:5700'] as const) {
   test(`${network} reader checks metadata and genesis before its one-address summary`, async () => {
     const fixture = responses(network), definition = getUtxoNetwork(network);
     const result = await createUtxoBalanceReader(fixture).readBalance(network, addressFor(network).toUpperCase(), signal());
     assert.deepEqual(result, { networkId: network, kind: 'utxo', chainId: definition.chainId,
       genesisHash: definition.genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123', unconfirmedTransactions: 2, observedHeight: 123 });
     assert.equal(Object.isFrozen(result), true);
-    assert.deepEqual(fixture.calls.map(({ url }) => url), [`${definition.endpoint}/api/`,
+    assert.deepEqual(fixture.calls.map(({ url }) => url), [`${definition.endpoint}/api/v2/`,
       `${definition.endpoint}/api/v2/block-index/0`, `${definition.endpoint}/api/v2/address/${addressFor(network)}?details=tokenBalances&tokens=nonzero`]);
     for (const { init } of fixture.calls) {
       assert.equal(init.method, 'GET'); assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
@@ -105,6 +113,22 @@ for (const network of ['syscoin', 'bitcoin'] as const) {
     }
   });
 }
+
+test('testnet rejects mainnet status or genesis and never sends the public account key on redirect', async () => {
+  const network = 'utxo:5700';
+  const mismatchedFinalUrl = json(statusFor(network));
+  Object.defineProperty(mismatchedFinalUrl, 'url', { value: `${getUtxoNetwork(network).endpoint}/api/v2` });
+  for (const [bodies, expectedReads] of [
+    [[statusFor('syscoin')], 1],
+    [[mismatchedFinalUrl], 1],
+    [[statusFor(network), { blockHash: getUtxoNetwork('syscoin').genesisHash }], 2],
+  ] as const) {
+    const fixture = responses(network, [...bodies]);
+    await assert.rejects(createUtxoBalanceReader(fixture).readAccount(network, XPUB, signal()), code('NETWORK_MISMATCH'));
+    assert.equal(fixture.calls.length, expectedReads);
+    assert.ok(fixture.calls.every(({ url, init }) => !url.includes('/xpub/') && init.redirect === 'error'));
+  }
+});
 
 test('valid zero and positive pending delta remain separate; unrelated asset data never enters results', async () => {
   for (const pending of ['0', '123', '-123']) {
@@ -174,15 +198,15 @@ test('each refresh revalidates identity and does not reuse a prior address or ne
   const calls: string[] = [];
   const reader = createUtxoBalanceReader({ fetch: async (url) => {
     calls.push(url); const n = url.startsWith(getUtxoNetwork('bitcoin').endpoint) ? 'bitcoin' : 'syscoin';
-    return json(url.endsWith('/api/') ? statusFor(n) : url.endsWith('/0') ? { blockHash: getUtxoNetwork(n).genesisHash } : balanceFor(n));
+    return json(url.endsWith('/api/v2/') ? statusFor(n) : url.endsWith('/0') ? { blockHash: getUtxoNetwork(n).genesisHash } : balanceFor(n));
   } });
   for (const n of ['bitcoin', 'syscoin', 'bitcoin'] as const) await reader.readBalance(n, addressFor(n), signal());
-  assert.equal(calls.length, 9); assert.equal(calls.filter((url) => url.endsWith('/api/')).length, 3);
+  assert.equal(calls.length, 9); assert.equal(calls.filter((url) => url.endsWith('/api/v2/')).length, 3);
 });
 
 test('transport refuses redirects, unexpected final URLs, HTTP errors, non-JSON and malformed JSON', async () => {
   const redirected = json(statusFor('bitcoin')); Object.defineProperty(redirected, 'redirected', { value: true });
-  const wrongUrl = json(statusFor('bitcoin')); Object.defineProperty(wrongUrl, 'url', { value: 'https://elsewhere.invalid/api/' });
+  const wrongUrl = json(statusFor('bitcoin')); Object.defineProperty(wrongUrl, 'url', { value: 'https://elsewhere.invalid/api/v2/' });
   for (const response of [redirected, wrongUrl, new Response('redirect', { status: 302 }),
     new Response('private error', { status: 500 }), new Response('{}', { headers: { 'content-type': 'text/html' } }), new Response('{')]) {
     const fixture = responses('bitcoin', [response]);

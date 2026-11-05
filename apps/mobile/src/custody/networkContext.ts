@@ -2,6 +2,7 @@ import { keccak256 } from 'ethers/crypto';
 import { toUtf8Bytes } from 'ethers/utils';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks.ts';
 import { isNonBlankNetworkText } from '../../../../source/shared/networkText.ts';
+import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 
 /** A saved registration ID, not a compile-time list of supported EVM chains. */
 export type EvmNetworkId = string;
@@ -66,8 +67,11 @@ export function getNativeSendContext(input: string | NativeNetworkRegistration, 
   }
   return context;
 }
-const evmId = (id: string) => typeof id === 'string' && /^[a-zA-Z0-9][a-zA-Z0-9:_-]{0,63}$/.test(id) && id !== 'bitcoin' && id !== 'syscoin';
 /** UI eligibility only; signing additionally validates the selected saved registration. */
-export const getNativeSendCapabilities = (id: EvmNetworkId) => Object.freeze({ native: evmId(id), erc20: evmId(id) });
-export const nativeSigningEnabled = (id: EvmNetworkId): boolean => evmId(id);
-export const erc20SigningEnabled = (id: EvmNetworkId): boolean => evmId(id);
+export const nativeSigningEnabled = (id: EvmNetworkId, registrations: readonly NativeNetworkRegistration[] = NATIVE_NETWORKS): boolean =>
+  !findUtxoNetwork(id) && registrations.some((network) => network.kind === 'evm' && network.id === id);
+export const erc20SigningEnabled = nativeSigningEnabled;
+export function getNativeSendCapabilities(id: EvmNetworkId, registrations?: readonly NativeNetworkRegistration[]) {
+  const enabled = nativeSigningEnabled(id, registrations);
+  return Object.freeze({ native: enabled, erc20: enabled });
+}

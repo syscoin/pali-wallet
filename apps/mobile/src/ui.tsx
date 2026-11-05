@@ -133,7 +133,7 @@ export function PaliMark({ size = 34 }: { size?: number }) {
 
 export function Coin({ id, size = 42 }: { id: string; size?: number }) {
   const token = id.toLowerCase();
-  if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'nevm'].includes(token)) {
+  if (['syscoin', 'syscoin-nevm', 'syscoin-nevm-testnet', 'sys', 'tsys', 'nevm'].includes(token)) {
     return (
       <Image
         source={require('../assets/syscoin.png')}

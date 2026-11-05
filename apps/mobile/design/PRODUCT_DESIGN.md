@@ -1,6 +1,6 @@
 # Pali mobile product design
 
-Status: proposed native product specification and review artifact. The current native development flow implements wallet creation/import, password unlock, seed backup, multiple seed-derived Ethereum accounts (create/select/rename/remove/restore), and per-account ETH portfolio, receive and send operations with an encrypted transaction journal. This document describes the broader extension-equivalent target. Full feature equivalence remains incomplete. An end-to-end native testnet transfer, physical-device behavior and signed release artifacts remain unqualified.
+Status: native product specification and review artifact. The current native development flow implements wallet creation and restore, password unlock and recovery, seed backup, HD and imported EVM accounts, EVM portfolio, receive and send, and public EVM and UTXO watching. The extension and mobile share signed transaction retention and replay rules. The [capability ledger](PARITY_MATRIX.md#current-implementation-ledger) records what is implemented and what still needs native, live network and release qualification.
 
 Source baseline: `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's `88cc9c9a8959b5dccc7ff43f136d60203782918a` reference adds documentation changes. The supplied 32-screen deck and video inform visual direction and journeys; labels such as “approved” inside those artifacts do not establish approval of this specification, working native custody, or security qualification.
 
@@ -132,6 +132,8 @@ Sentry operation, link and vote reviews have their own action summaries and curr
 ### Accounts, recovery and settings
 
 Account management preserves seed-derived/imported/watch-only/hardware/smart distinctions. Renaming does not change identity. Removing an account and forgetting the wallet explain which local records and secrets are affected, plus what is required to restore each type. A detected storage failure is a repair/error screen, never an invitation to create a new wallet over unreadable data.
+
+Biometric unlock is an optional Security & backups setting. Enrolling requires the wallet password and a device-protected unlock credential. Offer the password on the unlock screen when biometrics are unavailable, canceled, or no longer enrolled. Wallet recovery and fresh-password checks for secret reveal remain separate. This feature needs physical-device qualification before it is enabled.
 
 Security presents auto-lock, supported native privacy behavior and unlock methods. Preferences include language/currency and balance visibility. Advanced settings hold infrastructure/provider/diagnostic controls without becoming the only route to ordinary backups. The Recovery center inventories seed, imported keys, private notes and authenticator dependencies independently; one checkmark does not imply that everything is backed up.
 

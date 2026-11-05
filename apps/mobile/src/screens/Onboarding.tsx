@@ -15,13 +15,16 @@ import {
 
 import { colors, Icon, PaliMark } from '../ui';
 import { createWatchAccount, type WatchAccountNetwork } from '../core/watchOnlyAuthority';
-import { NETWORKS } from '../core/networks';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier';
-const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...NETWORKS.filter((n) => n.canWatch && (n.id === 'syscoin' || n.id === 'bitcoin')).map((n) => n.id as 'syscoin' | 'bitcoin')];
+import { UTXO_NETWORKS } from '../core/utxoNetworks';
+const DEFAULT_WATCH_NETWORKS: readonly WatchAccountNetwork[] = ['evm', ...UTXO_NETWORKS.map(({ id }) => id)];
 const WATCH_CHOICES = [
   { id: 'evm' as const, title: 'EVM networks', shortName: 'Ethereum', inputLabel: 'Public EVM address', prefix: '0x', provider: 'the selected EVM network provider', scope: 'Ethereum and compatible networks. Paste only a public address.' },
-  { id: 'syscoin' as const, title: 'Syscoin UTXO', shortName: 'Syscoin', inputLabel: 'Public address, account key or descriptor', prefix: 'sys1, zpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
-  { id: 'bitcoin' as const, title: 'Bitcoin', shortName: 'Bitcoin', inputLabel: 'Public address, account key or descriptor', prefix: 'bc1, xpub or wpkh(…)', scope: 'A public account key or descriptor includes its receive and change addresses.' },
+  ...UTXO_NETWORKS.map((network) => ({
+    id: network.id, title: network.name, shortName: network.name, inputLabel: 'Public address, account key or descriptor',
+    prefix: `${network.addressNetwork.bech32}1, ${network.testnet ? 'vpub' : 'zpub'} or wpkh(…)`,
+    scope: 'A public account key or descriptor includes its receive and change addresses.',
+  })),
 ];
 
 type WelcomeProps = {

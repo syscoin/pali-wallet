@@ -213,7 +213,7 @@ test('fixed Bitcoin watch Activity loads automatically and its Wallet scope surv
   await expect(page.getByText('20 transactions shown', { exact: true })).toBeVisible();
   const accountCalls = (await page.evaluate(() => window.__watchFixture.activity.calls()))
     .filter(url => new URL(url).pathname.includes('/address/'));
-  expect(accountCalls).toEqual([`https://blockbook.btc.zelcore.io/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
+  expect(accountCalls).toEqual([`https://btc1.trezor.io/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
   await chooseTab(page, 'Wallet');
   await expect(page.getByText('Network', { exact: true })).toBeVisible();
   await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();

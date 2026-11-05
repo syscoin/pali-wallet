@@ -49,7 +49,7 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
             name: getNativeSendContext(registration).name,
             symbol: registration.symbol,
             testnet: registration.testnet,
-            canSign: nativeSigningEnabled(registration.id), registration,
+            canSign: nativeSigningEnabled(registration.id, catalogue.networks), registration,
           }))),
         });
         cachedCatalogue = catalogue;

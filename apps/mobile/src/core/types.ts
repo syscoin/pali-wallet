@@ -1,19 +1,18 @@
 import type { EvmNetworkId } from '../custody/networkContext.ts';
+import type { UtxoNetworkId } from './utxoNetworks.ts';
 export type { EvmNetworkId } from '../custody/networkContext.ts';
 
-export type NetworkId = 'syscoin' | 'bitcoin' | EvmNetworkId;
+export type NetworkId = UtxoNetworkId | EvmNetworkId;
 
 export type WalletNetwork = Readonly<{
-  id: NetworkId;
   name: string;
   symbol: string;
   decimals: number;
-  kind: 'evm' | 'utxo';
-  chainId?: number;
+  chainId: number;
   color: string;
   canWatch: boolean;
   testnet?: boolean;
-}>;
+} & ({ id: UtxoNetworkId; kind: 'utxo' } | { id: EvmNetworkId; kind: 'evm' })>;
 
 /** Intentionally excludes keys, phrases, xpubs and keyring state. */
 export type PublicAccount = Readonly<{

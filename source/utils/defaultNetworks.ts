@@ -1,6 +1,8 @@
 // Default network configurations for frontend use
 // Matches the structure from sysweb3-keyring but avoids importing it in frontend
-import { INetwork, INetworkType } from 'types/network';
+import type { INetwork, INetworkType } from '../types/network.ts';
+
+const utxoKind = 'syscoin' as INetworkType.Syscoin;
 
 export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
   chainId: 57,
@@ -10,7 +12,7 @@ export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
   url: 'https://blockbook.syscoin.org/',
   explorer: 'https://explorer-blockbook.syscoin.org/',
   default: true,
-  kind: INetworkType.Syscoin,
+  kind: utxoKind,
 });
 
 export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
@@ -21,7 +23,7 @@ export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
   url: 'https://blockbook-dev.syscoin.org/',
   explorer: 'https://explorer-blockbook-dev.syscoin.org/',
   default: false,
-  kind: INetworkType.Syscoin,
+  kind: utxoKind,
 });
 
 export const getBitcoinMainnetNetwork = (): INetwork => ({
@@ -32,7 +34,7 @@ export const getBitcoinMainnetNetwork = (): INetwork => ({
   url: 'https://btc1.trezor.io/',
   explorer: 'https://btc1.trezor.io/',
   default: false,
-  kind: INetworkType.Syscoin,
+  kind: utxoKind,
 });
 
 // Return object mapping chainId to network (matches sysweb3-keyring structure)

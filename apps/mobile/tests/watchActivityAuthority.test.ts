@@ -13,7 +13,7 @@ function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   const repository = createPublicAccountStorage({ async get() { if (fail) throw Error('storage'); return raw; }, async set(_key, value) { writes.push(value); raw=value; } }).records;
   const historyReader = createUtxoActivityReader({ async fetch(url, init) {
     calls.push(url); signals.push(init.signal!); const endpoint=getUtxoNetwork('bitcoin').endpoint, path=url.slice(endpoint.length);
-    if(path==='/api/')return json(metadata('bitcoin'));
+    if(path==='/api/v2/')return json(metadata('bitcoin'));
     if(path==='/api/v2/block-index/0')return json({blockHash:getUtxoNetwork('bitcoin').genesisHash});
     assert.match(path,/^\/api\/v2\/(xpub|address)\//);entered.resolve();await hold;
     return json({address:decodeURIComponent(new URL(url).pathname.split('/').at(-1)!),page:Number(new URL(url).searchParams.get('page')),totalPages:1,txs:1,unconfirmedTxs:0,

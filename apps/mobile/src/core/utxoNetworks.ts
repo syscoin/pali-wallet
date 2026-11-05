@@ -1,41 +1,70 @@
-/** Fixed public-read registrations only. These do not enable wallet capabilities. */
-export type UtxoNetworkId = 'syscoin' | 'bitcoin';
+import { coins } from '@sidhujag/sysweb3-network/cjs/coins.js';
+import { getNetworkConfigFromCoin } from '@sidhujag/sysweb3-network/cjs/networks.js';
+import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
+
+export type UtxoNetworkId = 'syscoin' | 'bitcoin' | `utxo:${number}`;
+type AddressNetwork = ReturnType<typeof getNetworkConfigFromCoin>['networks']['mainnet'];
+
+function registrationId(chainId: number): UtxoNetworkId {
+  // Keep the IDs already used by saved public accounts.
+  if (chainId === 57) return 'syscoin';
+  if (chainId === 0) return 'bitcoin';
+  return `utxo:${chainId}`;
+}
+
 export type UtxoNetwork = Readonly<{
   id: UtxoNetworkId;
   kind: 'utxo';
   name: string;
-  symbol: 'SYS' | 'BTC';
-  decimals: 8;
-  chainId: 57 | 0;
-  slip44: 57 | 0;
-  addressHrp: 'sys' | 'bc';
-  blockbookCoin: 'Syscoin' | 'Bitcoin';
-  backendChain: 'main';
+  symbol: string;
+  decimals: number;
+  chainId: number;
+  slip44: number;
+  testnet: boolean;
+  addressNetwork: AddressNetwork;
+  publicKeyVersion: string;
+  blockbookCoin: string;
+  backendChain: 'main' | 'test';
   genesisHash: string;
   endpoint: string;
+  explorer: string;
 }>;
 
-// Fixed mobile providers: the extension's Syscoin explorer and the Bitcoin
-// endpoint in the pinned SDK coin list. Their canonical origins were verified
-// without redirect following. Genesis hashes/HRPs match SDK data and Syscoin Core.
-// No testnet, alternate endpoint or numeric-only network selection is accepted.
-export const UTXO_NETWORKS: readonly UtxoNetwork[] = Object.freeze([
-  Object.freeze({
-    id: 'syscoin', kind: 'utxo', name: 'Syscoin UTXO', symbol: 'SYS', decimals: 8,
-    chainId: 57, slip44: 57, addressHrp: 'sys', blockbookCoin: 'Syscoin', backendChain: 'main',
-    genesisHash: '0000022642db0346b6e01c2a397471f4f12e65d4f4251ec96c1f85367a61a7ab',
-    endpoint: 'https://explorer-blockbook.syscoin.org',
-  }),
-  Object.freeze({
-    id: 'bitcoin', kind: 'utxo', name: 'Bitcoin', symbol: 'BTC', decimals: 8,
-    chainId: 0, slip44: 0, addressHrp: 'bc', blockbookCoin: 'Bitcoin', backendChain: 'main',
-    genesisHash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
-    endpoint: 'https://blockbook.btc.zelcore.io',
-  }),
-] satisfies UtxoNetwork[]);
+/** Public-read registrations derived from the extension defaults and the pinned SDK coin catalogue. */
+export const UTXO_NETWORKS: readonly UtxoNetwork[] = Object.freeze(
+  Object.values(getDefaultUTXONetworks())
+    .sort((a, b) => Number(!!b.default) - Number(!!a.default))
+    .map((network): UtxoNetwork => {
+      const coin = coins.find((entry) => (entry.chainId ?? entry.slip44) === network.chainId &&
+        entry.slip44 === network.slip44 && entry.coinShortcut.toLowerCase() === network.currency.toLowerCase());
+      if (!coin || !network.explorer) throw new Error('Incomplete default UTXO registration');
+      const testnet = coin.slip44 === 1;
+      const { networks, types } = getNetworkConfigFromCoin(coin);
+      const addressNetwork = testnet ? networks.testnet : networks.mainnet;
+      // SDK 1.0.111's declaration omits the testnet member of its zPubType.
+      const publicVersions = types.zPubType as (typeof types.zPubType & { testnet?: { vpub: string } }) | undefined;
+      const publicKeyVersion = testnet ? publicVersions?.testnet?.vpub : publicVersions?.mainnet.zpub;
+      if (!publicKeyVersion) throw new Error('Incomplete default UTXO key versions');
+      return Object.freeze({
+        id: registrationId(network.chainId), kind: 'utxo', name: network.label, symbol: coin.coinShortcut,
+        decimals: coin.decimals, chainId: network.chainId, slip44: coin.slip44, testnet,
+        addressNetwork: Object.freeze({ ...addressNetwork, bip32: Object.freeze({ ...addressNetwork.bip32 }) }),
+        publicKeyVersion,
+        blockbookCoin: testnet ? coin.coinLabel : coin.coinName,
+        backendChain: testnet ? 'test' : 'main',
+        genesisHash: coin.hashGenesisBlock,
+        endpoint: network.url.replace(/\/$/, ''),
+        explorer: network.explorer,
+      });
+    })
+);
 
-export function getUtxoNetwork(id: UtxoNetworkId): UtxoNetwork {
-  const network = UTXO_NETWORKS.find((entry) => entry.id === id);
+export function findUtxoNetwork(id: unknown): UtxoNetwork | undefined {
+  return UTXO_NETWORKS.find((entry) => entry.id === id);
+}
+
+export function getUtxoNetwork(id: unknown): UtxoNetwork {
+  const network = findUtxoNetwork(id);
   if (!network) throw new Error('Unsupported UTXO network');
   return network;
 }

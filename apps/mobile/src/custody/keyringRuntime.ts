@@ -578,7 +578,7 @@ export function createKeyringRuntimeFactory(
             return reserveContext(request, expectedRevision, true);
           },
         };
-        const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId);
+        const canSign = () => !!catalogueSnapshot && nativeSigningEnabled(catalogueSnapshot.active.networkId, catalogueSnapshot.networks);
         const activityContext = async (assertCurrent: () => void): Promise<{ scope: ActivityScope; guard: () => void; index: number; type: NativeAccountType }> => {
           const captured = generation;
           const guard = () => { current(captured); checkGuard(assertCurrent); if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY'); };
@@ -834,7 +834,7 @@ export function createKeyringRuntimeFactory(
               current(captured); checkGuard(assertCurrent);
               assertTransferIntentEnvelope(prepared, intent);
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-              if (!nativeSigningEnabled(network.id) || prepared.chainId !== network.chainId)
+              if (!nativeSigningEnabled(network.id, catalogueSnapshot!.networks) || prepared.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
               snapshotUnsignedTransfer(prepared as Parameters<typeof snapshotUnsignedTransfer>[0], network);
               const signed = keyring.signPreparedEvmTransaction({
