@@ -9,6 +9,7 @@ on:
       - 'source/wallet/**'
       - 'source/types/utxoTransaction.ts'
       - 'source/utils/nativeBalance.ts'
+      - 'source/utils/personalSignReview.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/assets/all_assets/favicon-128.png'
       - '.github/workflows/mobile.yml'

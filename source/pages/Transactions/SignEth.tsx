@@ -27,7 +27,7 @@ import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import { getNetworkChain } from 'utils/network';
 import {
   getPersonalSignParams,
-  getPersonalSignReview,
+  preparePersonalSignReview,
 } from 'utils/personalSignReview';
 import {
   assertPaliErc7739TypedDataV4Method,
@@ -155,26 +155,24 @@ const EthSign: React.FC<ISign> = () => {
   const isActiveAccountAddress = (value: unknown) =>
     typeof value === 'string' && value.toLowerCase() === address.toLowerCase();
 
-  const getPersonalSignRequest = () => {
-    const request = getPersonalSignParams(data);
-    if (!request || !isActiveAccountAddress(request.address))
-      throw { message: t('send.signingForWrongAddress') };
-    return request;
-  };
-  const getPersonalSignMessage = () => getPersonalSignRequest().message;
-
-  const reviewPersonalSign = () => {
-    try {
-      return getPersonalSignReview(getPersonalSignMessage(), host, address);
-    } catch {
-      return { message: '', error: 'send.signingForWrongAddress' as const };
-    }
-  };
-
   const personalSignReview = useMemo(
-    () => (data.eventName === 'personal_sign' ? reviewPersonalSign() : null),
-    [data.eventName, data[0], data[1], host, address]
+    () =>
+      data.eventName === 'personal_sign'
+        ? preparePersonalSignReview(data, host, address)
+        : null,
+    [
+      data.eventName,
+      data[0],
+      data[1],
+      host,
+      address,
+      activeAccountMeta.type,
+      activeAccountMeta.id,
+      activeNetwork.chainId,
+      isBitcoinBased,
+    ]
   );
+  const displayMessage = personalSignReview?.message ?? message;
   const currentPersonalSignReviewRef = React.useRef(personalSignReview);
   currentPersonalSignReviewRef.current = personalSignReview;
 
@@ -351,20 +349,19 @@ const EthSign: React.FC<ISign> = () => {
     });
   };
 
-  const getSmartAccountPersonalHash = () => {
-    if (data.eventName === 'personal_sign') {
-      const msg = getPersonalSignMessage();
-      return hashMessage(isHexString(msg) ? arrayify(msg) : String(msg));
+  const getSmartAccountPersonalHash = (payload?: string) => {
+    if (data.eventName === 'personal_sign' && payload !== undefined) {
+      return hashMessage(isHexString(payload) ? arrayify(payload) : payload);
     }
 
     if (data.eventName === 'eth_sign') {
-      const payload = getEthSignPayload();
-      if (!isHexString(payload, 32)) {
+      const ethSignPayload = getEthSignPayload();
+      if (!isHexString(ethSignPayload, 32)) {
         throw {
           message: t('send.smartAccountEthSignHashRequired'),
         };
       }
-      return payload;
+      return ethSignPayload;
     }
 
     throw { message: t('send.smartAccountUnsupportedSigningRequest') };
@@ -378,15 +375,16 @@ const EthSign: React.FC<ISign> = () => {
       setErrorMsg(typedOrderRequest.error);
       return;
     }
-    // Recheck the current account/origin and the original signed bytes before
-    // any signer call, including callbacks captured before a state change.
+    // Only the currently displayed request may reach a signer, including
+    // callbacks captured before an account, origin or payload change.
+    const personalRequest = personalSignReview?.request;
     if (data.eventName === 'personal_sign') {
       if (personalSignReview !== currentPersonalSignReviewRef.current) return;
-      const review = reviewPersonalSign();
-      if (review.error) {
-        setErrorMsg(t(review.error));
+      if (personalSignReview?.error) {
+        setErrorMsg(t(personalSignReview.error));
         return;
       }
+      if (!personalRequest) return;
     }
     // An error deadline belongs only to the failed attempt that created it.
     // The alarm may already be queued when a retry starts, so invalidate it
@@ -426,7 +424,7 @@ const EthSign: React.FC<ISign> = () => {
           response = await signSmartAccountErc7739TypedDataV4(typedData);
         } else {
           response = await encodeSmartAccountPersonalSignature(
-            getSmartAccountPersonalHash()
+            getSmartAccountPersonalHash(personalRequest?.message)
           );
         }
       } else if (
@@ -450,11 +448,10 @@ const EthSign: React.FC<ISign> = () => {
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
         )) as string;
-      else if (data.eventName === 'personal_sign') {
-        const request = getPersonalSignRequest();
+      else if (personalRequest) {
         response = (await controllerEmitter(
           ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
-          [{ ...data, 0: request.address, 1: request.message }],
+          [{ ...data, 0: personalRequest.address, 1: personalRequest.message }],
           activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
             ? 300000 // 5 minutes timeout for hardware wallet operations
             : 10000 // Default 10 seconds for regular wallets
@@ -536,10 +533,9 @@ const EthSign: React.FC<ISign> = () => {
     }
   };
 
-  // Review locally so display and confirmation share the same validation.
+  // The message itself is rendered directly from the prepared review.
   useEffect(() => {
     if (!personalSignReview) return;
-    setMessage(personalSignReview.message);
     setErrorMsg(
       isBitcoinBased
         ? t('send.ethSigningNotAvailable')
@@ -1304,7 +1300,7 @@ const EthSign: React.FC<ISign> = () => {
             </div>
 
             {/* Message Preview Section */}
-            {message && (
+            {displayMessage && (
               <div className="w-full max-w-md mx-auto mb-6 px-6">
                 <div className="bg-gray-900 rounded-lg p-4 border border-gray-700">
                   <div className="flex items-center justify-between mb-2">
@@ -1314,7 +1310,7 @@ const EthSign: React.FC<ISign> = () => {
                     <IconButton
                       aria-label={t('buttons.copy')}
                       className="inline-flex min-h-[32px] min-w-[32px] items-center justify-center"
-                      onClick={() => copy(message)}
+                      onClick={() => copy(displayMessage)}
                     >
                       <Icon
                         name="copy"
@@ -1325,7 +1321,7 @@ const EthSign: React.FC<ISign> = () => {
                   </div>
                   <div className="max-h-24 overflow-auto">
                     <p className="text-sm text-white font-mono whitespace-pre-wrap [overflow-wrap:anywhere]">
-                      {message}
+                      {displayMessage}
                     </p>
                   </div>
                 </div>
