@@ -12,16 +12,14 @@ import { useController } from 'hooks/useController';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
-import {
-  formatSyscoinValue,
-  formatDisplayValue,
-} from 'utils/formatSyscoinValue';
+import { formatSyscoinValue } from 'utils/formatSyscoinValue';
 import { camelCaseToText, ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinOperationAmount,
+  formatSyscoinTokenAmount,
   isSyscoinTokenOperation,
   getSyscoinNativeTransferAmount,
   getSyscoinAccountChange,
@@ -563,7 +561,9 @@ export const SyscoinTransactionDetails = ({
                     <span className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-200 ease-out motion-reduce:transition-none pointer-events-none" />
                   </span>
                   <p className="text-white text-base min-w-0 break-words">
-                    {formatDisplayValue(intent.amount, decimals)} {symbol}
+                    {formatSyscoinTokenAmount(intent.amount, decimals) ??
+                      t('settings.unavailable')}{' '}
+                    {symbol}
                   </p>
                 </div>
               );

@@ -1372,3 +1372,29 @@ it.each(
     expect(screen.queryByText('stale-from')).toBeNull();
   }
 );
+
+it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
+  'renders the exact large asset quantity in hydrated %s details',
+  async (tokenType) => {
+    const value = '9007199254740993';
+    const transaction = tokenTransaction('123456', 'BIG');
+    transaction.tokenType = tokenType;
+    transaction.accountAssetTransfers = [
+      { assetGuid: '123456', symbol: 'BIG', decimals: 0, value },
+    ];
+    transaction.tokenTransfers = [
+      { token: '123456', symbol: 'BIG', decimals: 0 },
+    ];
+    if (tokenType === 'SPTAssetAllocationBurnToNEVM')
+      transaction.vout = [
+        {
+          addresses: ['OP_RETURN'],
+          value: '0',
+          assetInfo: { assetGuid: '123456', value },
+        },
+      ] as any;
+    await mountHydratedDetails(transaction);
+    expect(screen.getByText(`${value} BIG`)).toBeTruthy();
+    expect(screen.queryByText('9007199254740992 BIG')).toBeNull();
+  }
+);

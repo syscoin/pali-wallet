@@ -66,3 +66,112 @@ it.each(['2', '9007199254740993'])(
     );
   }
 );
+
+it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
+  'preserves an exact large SPT %s quantity in its notification payload',
+  (tokenType) => {
+    const value = '9007199254740993';
+    notificationManager.notifyTransaction({
+      account: { address: 'public-syscoin-address' },
+      isEvm: false,
+      network: { chainId: 57, currency: 'SYS', label: 'Syscoin' } as any,
+      transaction: {
+        txid: 'ab'.repeat(32),
+        tokenType,
+        accountAssetTransfers: [
+          { assetGuid: '123456', value, decimals: 0, symbol: 'BIG' },
+        ],
+      },
+      type: 'confirmed',
+    });
+    expect(showTransactionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ value, tokenSymbol: 'BIG' })
+    );
+  }
+);
+
+it.each([Number.MAX_SAFE_INTEGER + 1, '9'.repeat(79)])(
+  'does not report native funding as an unavailable SPT quantity %s',
+  (value) => {
+    notificationManager.notifyTransaction({
+      account: { address: 'public-syscoin-address' },
+      isEvm: false,
+      network: { chainId: 57, currency: 'SYS', label: 'Syscoin' } as any,
+      transaction: {
+        txid: 'ab'.repeat(32),
+        tokenType: 'SPTAssetAllocationSend',
+        symbol: 'BIG',
+        decimals: 0,
+        accountAssetTransfers: [
+          { assetGuid: '123456', value, decimals: 0, symbol: 'BIG' },
+        ],
+        addressValueIn: '100000000',
+        addressValueOut: '0',
+        value: '100000000',
+      },
+      type: 'confirmed',
+    });
+    expect(showTransactionNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ value: undefined, tokenSymbol: 'BIG' })
+    );
+  }
+);
+it('keeps an ordinary native notification amount', () => {
+  notificationManager.notifyTransaction({
+    account: { address: 'public-syscoin-address' },
+    isEvm: false,
+    network: { chainId: 57, currency: 'SYS', label: 'Syscoin' } as any,
+    transaction: {
+      txid: 'ab'.repeat(32),
+      addressValueIn: '100000000',
+      addressValueOut: '0',
+    },
+    type: 'confirmed',
+  });
+  expect(showTransactionNotification).toHaveBeenCalledWith(
+    expect.objectContaining({ value: '1.0000', tokenSymbol: 'SYS' })
+  );
+});
+it('recognizes a metadata-only exact SPT quantity without a tokenType tag', () => {
+  notificationManager.notifyTransaction({
+    account: { address: 'public-syscoin-address' },
+    isEvm: false,
+    network: { chainId: 57, currency: 'SYS', label: 'Syscoin' } as any,
+    transaction: {
+      txid: 'ab'.repeat(32),
+      accountAssetTransfers: [
+        {
+          assetGuid: '123456',
+          value: '9007199254740993',
+          decimals: 0,
+          symbol: 'BIG',
+        },
+      ],
+      addressValueIn: '100000000',
+      addressValueOut: '0',
+    },
+    type: 'confirmed',
+  });
+  expect(showTransactionNotification).toHaveBeenCalledWith(
+    expect.objectContaining({ value: '9007199254740993', tokenSymbol: 'BIG' })
+  );
+});
+it('does not substitute native funding when SPT metadata has no amount', () => {
+  notificationManager.notifyTransaction({
+    account: { address: 'public-syscoin-address' },
+    isEvm: false,
+    network: { chainId: 57, currency: 'SYS', label: 'Syscoin' } as any,
+    transaction: {
+      txid: 'ab'.repeat(32),
+      tokenTransfers: [{ token: '123456', decimals: 0, symbol: 'BIG' }],
+      symbol: 'BIG',
+      decimals: 0,
+      addressValueIn: '100000000',
+      addressValueOut: '0',
+    },
+    type: 'confirmed',
+  });
+  expect(showTransactionNotification).toHaveBeenCalledWith(
+    expect.objectContaining({ value: undefined, tokenSymbol: 'BIG' })
+  );
+});

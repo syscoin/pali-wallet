@@ -1,3 +1,4 @@
+import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import ZkSysIcon from 'assets/all_assets/zksys-icon.svg';
 
@@ -14,7 +15,7 @@ const SYSCOIN_LOGO_URL =
 const BITCOIN_LOGO_URL =
   'https://raw.githubusercontent.com/spothq/cryptocurrency-icons/master/128/color/btc.png';
 
-export const SYSX_ASSET_GUID = '123456';
+export { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds';
 
 interface IKnownSyscoinAsset {
   coinGeckoId: string;
