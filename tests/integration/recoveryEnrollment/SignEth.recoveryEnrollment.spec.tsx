@@ -109,7 +109,7 @@ const sdk = new EthereumTransactions(
     } as any),
   {} as any,
   {} as any,
-  undefined,
+  () => () => mockApproval.assertCurrent(),
   null
 );
 const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
