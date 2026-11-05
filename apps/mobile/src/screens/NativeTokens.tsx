@@ -15,7 +15,9 @@ import {
   View,
 } from 'react-native';
 import { formatTokenUnits } from '../../../../source/shared/erc20';
+import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
+import type { OwnedCollectibleSuggestion } from '../portfolio/ownedTokenReader';
 import type {
   NativeTokenSnapshot,
   NativeTokenView,
@@ -33,6 +35,7 @@ type Route =
   | { kind: 'list' }
   | { kind: 'import' }
   | { kind: 'collectibles' }
+  | { kind: 'collectible'; item: OwnedCollectibleSuggestion }
   | { kind: 'detail' | 'remove'; contract: string };
 const scopeOf = (snapshot: NativeTokenSnapshot) =>
   snapshot.account
@@ -69,6 +72,10 @@ function TokenContent({
   const [contract, setContract] = useState('');
   const [localError, setLocalError] = useState('');
   const lifetime = useRef({ alive: false, epoch: 0, running: false });
+  const leaveCollectible = useRef<(() => void) | null>(null);
+  const setCollectibleLeave = useCallback((leave: (() => void) | null) => {
+    leaveCollectible.current = leave;
+  }, []);
   const network = snapshot.network ?? { name: snapshot.account?.network ?? 'Network', chainId: '', symbol: '', testnet: false };
   const token =
     route.kind === 'detail' || route.kind === 'remove'
@@ -85,6 +92,8 @@ function TokenContent({
       ? 'Import token'
       : route.kind === 'collectibles'
       ? 'Collectibles'
+      : route.kind === 'collectible'
+      ? 'Collectible'
       : route.kind === 'detail'
       ? 'Token details'
       : route.kind === 'remove'
@@ -99,6 +108,7 @@ function TokenContent({
     if (snapshot.busy) return true;
     lifetime.current.epoch++;
     lifetime.current.running = false;
+    if (route.kind === 'collectible') leaveCollectible.current?.();
     if ((route.kind === 'import' || route.kind === 'collectibles') &&
       controller.getSnapshot().account === snapshot.account) {
       controller.closeDiscovery();
@@ -109,6 +119,8 @@ function TokenContent({
     setRoute(
       route.kind === 'remove'
         ? { kind: 'detail', contract: route.contract }
+        : route.kind === 'collectible'
+        ? { kind: 'collectibles' }
         : { kind: 'list' }
     );
     return true;
@@ -224,7 +236,7 @@ function TokenContent({
           </Text>
           {route.kind !== 'list' && (
             <Button
-              title="Back to tokens"
+              title={route.kind === 'collectible' ? 'Back to collectibles' : 'Back to tokens'}
               variant="quiet"
               disabled={snapshot.busy}
               onPress={() => {
@@ -343,8 +355,9 @@ function TokenContent({
               {discovery.status === 'ready' && !discovery.collectibles?.length && (
                 <Notice title="No collectibles found" body="The explorer returned no collectible suggestions for this account." />
               )}
-              {discovery.collectibles?.map(({ contractAddress, name, tokenStandard, tokenId, units }) => (
-                <Card key={`${contractAddress}:${tokenId ?? ''}`} style={s.tokenRow}>
+              {discovery.collectibles?.map((item) => {
+                const { contractAddress, name, tokenStandard, tokenId, units } = item;
+                return <Card key={`${contractAddress}:${tokenId ?? ''}`} style={s.tokenRow}>
                   <Text style={s.name}>{name}</Text>
                   <Text style={styles.muted}>{tokenStandard}</Text>
                   <Text selectable style={s.contract}>{contractAddress}</Text>
@@ -352,8 +365,14 @@ function TokenContent({
                   <Text selectable style={s.contract}>
                     {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {units}
                   </Text>
-                </Card>
-              ))}
+                  {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
+                    accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
+                    style={s.collectibleLink}
+                    onPress={() => {
+                      if (controller.getSnapshot().discovery === discovery) setRoute({ kind: 'collectible', item });
+                    }}><Text style={s.provenance}>View collectible ›</Text></IdlePressable>}
+                </Card>;
+              })}
               {discovery.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
               {discovery.status !== 'loading' && (
                 <Button
@@ -367,6 +386,12 @@ function TokenContent({
                 />
               )}
             </View>
+          ) : route.kind === 'collectible' && discovery?.collectibles?.includes(route.item) ? (
+            <CollectibleOwnership
+              item={route.item}
+              check={controller.checkCollectible}
+              onLeaveChange={setCollectibleLeave}
+            />
           ) : route.kind === 'import' ? (
             <>
               <Text style={styles.muted}>
@@ -656,6 +681,84 @@ function TokenContent({
   );
 }
 
+function CollectibleOwnership({ item, check, onLeaveChange }: {
+  item: OwnedCollectibleSuggestion;
+  check: NativeTokenView['checkCollectible'];
+  onLeaveChange(leave: (() => void) | null): void;
+}) {
+  const [id, setId] = useState(item.tokenId ?? '');
+  const currentId = useRef(id);
+  const [result, setResult] = useState<
+    | { kind: 'idle' | 'loading' | 'error' | 'invalid' }
+    | { kind: 'ready'; units: string }
+  >({ kind: 'idle' });
+  const active = useRef<AbortController | null>(null);
+  const alive = useRef(false);
+  const cancel = useCallback(() => {
+    const request = active.current;
+    active.current = null;
+    request?.abort();
+  }, []);
+  useLayoutEffect(() => {
+    alive.current = true;
+    const leave = () => {
+      alive.current = false;
+      cancel();
+    };
+    onLeaveChange(leave);
+    return () => {
+      onLeaveChange(null);
+      leave();
+    };
+  }, [cancel, item, onLeaveChange]);
+  const read = async () => {
+    if (!alive.current || active.current) return;
+    let tokenId: string;
+    try { tokenId = normalizeNftTokenId(currentId.current.trim()); }
+    catch { setResult({ kind: 'invalid' }); return; }
+    const request = new AbortController();
+    active.current = request;
+    Keyboard.dismiss();
+    setResult({ kind: 'loading' });
+    try {
+      const { units } = await check(item, tokenId, request.signal);
+      if (active.current === request) setResult({ kind: 'ready', units });
+    } catch {
+      if (active.current === request) setResult({ kind: 'error' });
+    } finally {
+      if (active.current === request) active.current = null;
+    }
+  };
+  return <View style={s.section} testID="native-collectible-ownership">
+    <Card style={s.tokenRow}>
+      <Text style={s.provenance}>Explorer-reported name</Text>
+      <Text style={s.name}>{item.name}</Text>
+      <Text style={styles.muted}>{item.tokenStandard}</Text>
+      <Text selectable style={s.contract}>{item.contractAddress}</Text>
+    </Card>
+    {item.tokenId === undefined ? <View style={s.field}>
+      <Text style={s.label}>TOKEN ID</Text>
+      <IdleTextInput accessibilityLabel="Token ID" value={id}
+        onChangeText={(value) => {
+          if (!alive.current) return;
+          cancel();
+          currentId.current = value;
+          setId(value);
+          setResult({ kind: 'idle' });
+        }}
+        keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
+        maxLength={256} style={s.input} />
+    </View> : <Text selectable style={s.contract}>Token ID {item.tokenId}</Text>}
+    {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>Enter a valid token ID.</Text>}
+    {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
+    {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
+      {item.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
+    </Text>}
+    <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'} disabled={!id.trim() || result.kind === 'loading'} onPress={() => void read()} />
+    {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}
+  </View>;
+}
+
 const s = StyleSheet.create({
   section: { gap: 16 },
   heading: {
@@ -695,6 +798,7 @@ const s = StyleSheet.create({
   identityTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   name: { fontSize: 17, lineHeight: 25, fontWeight: '600', flexShrink: 1 },
   tokenRow: { padding: 16, gap: 9 },
+  collectibleLink: { minHeight: 44, justifyContent: 'center' },
   tokenName: { gap: 3, flex: 1 },
   contract: { fontSize: 13, lineHeight: 22 },
   rowContract: { fontSize: 11, lineHeight: 18, color: colors.muted },

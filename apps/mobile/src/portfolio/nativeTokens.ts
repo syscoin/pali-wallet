@@ -14,9 +14,11 @@ import type {
 } from './nativePortfolio.ts';
 import { getNativeNetwork, getNativeSendContext, type NativeSendContext } from '../custody/networkContext.ts';
 import type {
+  OwnedCollectibleSuggestion,
   OwnedTokenReader,
   OwnedTokenSuggestions,
 } from './ownedTokenReader.ts';
+import type { createNftOwnershipReader } from './nftOwnershipReadRpc.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
@@ -52,6 +54,7 @@ export type NativeTokenSnapshot = Readonly<{
   preview: Readonly<{ metadata: Erc20Metadata; units: string }> | null;
   previewStatus: 'idle' | 'loading' | 'ready' | 'error';
   discovery: TokenDiscovery | null;
+  canCheckCollectible?: true;
   busy: boolean;
   error: string | null;
 }>;
@@ -66,6 +69,7 @@ export type NativeTokenView = Readonly<
     | 'cancelPreview'
     | 'discover'
     | 'closeDiscovery'
+    | 'checkCollectible'
     | 'refresh'
     | 'remove'
   >
@@ -126,6 +130,8 @@ export class NativeTokens {
     cancelPreview: () => this.cancelPreview(),
     discover: (kind?: 'collectibles') => this.discover(kind),
     closeDiscovery: () => this.closeDiscovery(),
+    checkCollectible: (item: OwnedCollectibleSuggestion, id: string, signal: AbortSignal) =>
+      this.checkCollectible(item, id, signal),
     refresh: (contract?: string) => this.refresh(contract),
     remove: (contract: string) => this.remove(contract),
   });
@@ -136,6 +142,7 @@ export class NativeTokens {
   private epoch = 0;
   private request: Request | null = null;
   private discoveryRequest: AbortController | null = null;
+  private collectibleRequest: AbortController | null = null;
   private discoveryApi = '';
   private registrationHash: string | null = null;
   private inventoryRevision: number | null = null;
@@ -147,13 +154,15 @@ export class NativeTokens {
   private readonly now: () => number;
   private readonly revoke: () => void;
   private readonly readHoldings?: OwnedTokenReader;
+  private readonly readNft?: ReturnType<typeof createNftOwnershipReader>;
   constructor(
     source: PublicCustodySource,
     runtime: () => NativeTokenRuntime | undefined,
     reader: Erc20Reader = createErc20Reader(),
     now: () => number = Date.now,
     revoke: () => void = () => undefined,
-    readHoldings?: OwnedTokenReader
+    readHoldings?: OwnedTokenReader,
+    readNft?: ReturnType<typeof createNftOwnershipReader>
   ) {
     this.source = source;
     this.runtime = runtime;
@@ -161,6 +170,7 @@ export class NativeTokens {
     this.now = now;
     this.revoke = revoke;
     this.readHoldings = readHoldings;
+    this.readNft = readNft;
   }
   private runtimeFailed(error: unknown): void {
     if (
@@ -210,6 +220,9 @@ export class NativeTokens {
     const request = this.discoveryRequest;
     request?.abort();
     if (this.discoveryRequest === request) this.discoveryRequest = null;
+    const collectible = this.collectibleRequest;
+    this.collectibleRequest = null;
+    collectible?.abort();
   }
   private emit(): void {
     this.unpublished = false;
@@ -247,6 +260,7 @@ export class NativeTokens {
         ...initial(account),
         network: scope?.network ?? null,
         discovery: this.discoveryApi ? idleDiscovery : null,
+        ...(this.readNft && this.discoveryApi ? { canCheckCollectible: true as const } : {}),
       });
       this.unpublished = true;
       this.stopDiscovery();
@@ -469,6 +483,39 @@ export class NativeTokens {
     this.stopDiscovery();
     if (this.state.discovery && this.state.discovery !== idleDiscovery)
       this.publish({ discovery: idleDiscovery });
+  };
+  checkCollectible = async (item: OwnedCollectibleSuggestion, tokenId: string, signal: AbortSignal) => {
+    this.synchronize(false);
+    const { account, discovery } = this.state;
+    const connection = this.connection, registration = this.registrationHash;
+    const read = this.readNft;
+    if (!read || !account || !connection || !registration || signal.aborted ||
+      this.collectibleRequest || !discovery?.collectibles?.includes(item) ||
+      (item.tokenId !== undefined && tokenId !== item.tokenId)) throw new Error('CANCELLED');
+    const request = new AbortController();
+    this.collectibleRequest = request;
+    const stop = () => {
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    };
+    signal.addEventListener('abort', stop, { once: true });
+    const current = () => {
+      this.synchronize(false);
+      if (signal.aborted || request.signal.aborted || this.collectibleRequest !== request ||
+        this.connection !== connection || this.state.account !== account ||
+        this.registrationHash !== registration || this.state.discovery !== discovery) throw new Error('CANCELLED');
+    };
+    try {
+      current();
+      const result = await bounded(read({ networkId: account.network, owner: account.address,
+        contractAddress: item.contractAddress, tokenStandard: item.tokenStandard, tokenId }, request.signal, current), request.signal);
+      current();
+      return result;
+    } finally {
+      signal.removeEventListener('abort', stop);
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    }
   };
   refresh = async (contract?: string): Promise<void> => {
     if (this.state.busy) return;

@@ -185,6 +185,8 @@ export async function verifyERC721OwnershipHelper(
       const promises = batch.map(async (tokenId) => {
         try {
           const owner = await contract.ownerOf!(tokenId);
+          // A valid ERC-721 owner is never the zero address.
+          if (/^0x0{40}$/.test(owner)) throw new Error('Invalid ERC-721 owner');
           return {
             tokenId,
             isOwner: owner.toLowerCase() === ownerAddress.toLowerCase(),

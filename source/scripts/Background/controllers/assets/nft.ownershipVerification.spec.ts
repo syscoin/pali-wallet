@@ -198,6 +198,15 @@ it('distinguishes a confirmed other owner from an unverified unminted ERC721 tok
   ]);
 });
 
+it('does not treat a zero ERC721 owner as confirmed absence', async () => {
+  const zero = '0x0000000000000000000000000000000000000000';
+  const runner = runner721(new Map([['7', zero]]));
+  expect(
+    await verifyERC721OwnershipHelper(CONTRACT, OWNER, ['7'], runner)
+  ).toEqual([{ tokenId: '7', balance: 0, verified: false }]);
+  expect(runner.calls).toEqual(['42', '7']);
+});
+
 it('does not report ERC1155 holdings for another owner or an unminted token', async () => {
   expect(
     await verifyERC1155OwnershipHelper(

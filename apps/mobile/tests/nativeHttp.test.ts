@@ -357,6 +357,12 @@ test('native factory explicitly wires one owned transport to all network consume
         return 'holdings-reader';
       },
     },
+    '../portfolio/nftOwnershipReadRpc.ts': {
+      createNftOwnershipReader: (options: unknown) => {
+        captures.nft = [options];
+        return 'nft-reader';
+      },
+    },
     '../core/utxoBalanceReader.ts': {
       createUtxoBalanceReader() {
         assert.fail('unexpected UTXO balance read');
@@ -395,6 +401,8 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.holdings![0], fetcher);
   assert.equal(captures.tokens![0][2], 'token-reader');
   assert.equal(captures.tokens![0][5], 'holdings-reader');
+  assert.equal(captures.tokens![0][6], 'nft-reader');
+  assert.equal(captures.nft![0], captures.erc20![0]);
   assert.equal(captures.activity![0].length, 4);
   factory.createNativeRecoveryCoordinator(bundle);
   const recovery = captures.recovery![0][0];
