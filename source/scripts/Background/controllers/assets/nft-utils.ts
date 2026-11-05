@@ -8,6 +8,11 @@ export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
 
 const MAX_REVERT_HEX_LENGTH = 2 + 4096 * 2;
 
+const isBoundedRevertData = (data: unknown): data is string =>
+  typeof data === 'string' &&
+  data.length <= MAX_REVERT_HEX_LENGTH &&
+  isHexString(data, true);
+
 /** Normalize an explicit raw eth_call execution revert for the ethers ABI. */
 export function normalizeNftExecutionRevert(
   error: unknown,
@@ -22,9 +27,7 @@ export function normalizeNftExecutionRevert(
     typeof error.message !== 'string' ||
     !/^execution reverted(?:$|:)/i.test(error.message) ||
     !('data' in error) ||
-    typeof error.data !== 'string' ||
-    error.data.length > MAX_REVERT_HEX_LENGTH ||
-    !isHexString(error.data, true) ||
+    !isBoundedRevertData(error.data) ||
     typeof tx.to !== 'string' ||
     typeof tx.data !== 'string'
   ) {
@@ -44,6 +47,18 @@ const readContract = (address: string, abi: string[], runner: NftReadRunner) =>
       try {
         return await runner.call(tx);
       } catch (error) {
+        if (isCallException(error)) {
+          // ethers re-reads data before ABI decoding. Its errors store data
+          // directly, so refuse inherited values and accessors.
+          const property = Object.getOwnPropertyDescriptor(error, 'data');
+          const data: unknown = property?.value;
+          if (
+            (property ? !('value' in property) : 'data' in error) ||
+            (data !== null && data !== undefined && !isBoundedRevertData(data))
+          )
+            throw new Error('Invalid NFT execution revert data');
+          throw error;
+        }
         // CustomJsonRpcProvider preserves RPC code and data on plain Errors.
         throw normalizeNftExecutionRevert(error, tx) ?? error;
       }
