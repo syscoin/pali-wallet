@@ -457,13 +457,21 @@ test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and
     const signer = new Wallet('0x' + '1'.padStart(64, '0'));
     const owner = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
     const history = new NativeActivityHistory(f.storage.keyringStorage);
+    const archiveConfirmed = async (activity: import('../src/activity/types.ts').LocalActivityRecord) => {
+      const { operation, transactionType, originalHash, ...record } = activity;
+      assert.equal(operation, 'send');
+      assert.equal(transactionType, 2);
+      assert.equal(originalHash, undefined);
+      assert.ok(record.recipient);
+      await history.archiveTerminal({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
+    };
     const originalView = store.view(signer.address, 0, before);
     const previousRaw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 2n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
     const previous = await originalView.saveSigned(previousRaw);
     await originalView.transition(previous.hash, 'confirmed');
     const previousActivity = (await originalView.activities()).records[0];
     assert.ok(previousActivity?.recipient);
-    await history.archiveTerminal({ ...previousActivity, recipient: previousActivity.recipient, phase: 'confirmed' }, current);
+    await archiveConfirmed(previousActivity);
     const previousHistory = await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, before), current);
     const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 1, to: '0x1111111111111111111111111111111111111111', value: 1n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });
     const pending = await originalView.saveSigned(raw); await originalView.transition(pending.hash, 'attempted');
@@ -487,7 +495,7 @@ test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and
     await changed.transition(pending.hash, 'confirmed');
     const activity = (await changed.activities()).records.at(-1);
     assert.ok(activity?.recipient); assert.equal(activity.phase, 'confirmed');
-    await history.archiveTerminal({ ...activity, recipient: activity.recipient, phase: 'confirmed' }, current);
+    await archiveConfirmed(activity);
     assert.deepEqual(new Set((await history.load(createActivityScope(owner.walletFingerprint, 'hd:60:0', owner.address, edited), current)).archived.map((row) => row.hash)), new Set([previous.hash, pending.hash]));
     await f.reopen();
     await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current);
