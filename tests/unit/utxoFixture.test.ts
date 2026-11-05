@@ -377,13 +377,14 @@ describe('offline UTXO browser fixture', () => {
           });
           return server;
         };
-        const file = process.argv[1], mod = new Module(file, module);
-        mod.filename = file; mod.paths = Module._nodeModulePaths(require('node:path').dirname(file));
-        mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
-          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
-        }).outputText, file);
+        Module._extensions['.ts'] = (mod, file) => {
+          mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
+          }).outputText, file);
+        };
+        const { startUtxoFixtureServer } = require(process.argv[1]);
         (async () => {
-          const proxy = await mod.exports.startUtxoFixtureServer(), url = new URL(proxy.url);
+          const proxy = await startUtxoFixtureServer(), url = new URL(proxy.url);
           try {
             if (process.argv[2] === 'forced-errors') fixtureServer.on('connect', (_req, socket) => {
               for (const code of ['ECONNRESET', 'EPIPE']) socket.emit('error', Object.assign(new Error(code), { code }));
@@ -424,8 +425,8 @@ describe('offline UTXO browser fixture', () => {
         { encoding: 'utf8', timeout: 5000, maxBuffer: 16384 }
       );
       expect(run.error).toBeUndefined();
-      expect(run.status).toBe(0);
       expect(run.stderr).toBe('');
+      expect(run.status).toBe(0);
       const result = JSON.parse(run.stdout.trim());
       expect(result.status).toBe(200);
       expect(result.deniedStatus).toBe(403);
