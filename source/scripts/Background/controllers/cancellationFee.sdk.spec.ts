@@ -88,7 +88,7 @@ describe.each([true, false])(
         () => state,
         {} as any,
         {} as any,
-        undefined,
+        () => () => undefined,
         createTestEvmSubmissionCapture()
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
@@ -185,7 +185,7 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
           () => state,
           ledger as any,
           trezor as any,
-          undefined,
+          () => () => undefined,
           createTestEvmSubmissionCapture()
         );
         Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
@@ -264,7 +264,7 @@ it.each([undefined, '', '-1', '00', '1e6', '1'.repeat(79)])(
       () => state,
       {} as any,
       {} as any,
-      undefined,
+      () => () => undefined,
       createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
@@ -311,7 +311,7 @@ it('rejects a cancellation quote if the original-validation or session guard cha
     () => state,
     {} as any,
     {} as any,
-    undefined,
+    () => () => undefined,
     createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
@@ -363,7 +363,7 @@ it('keeps selected smart-account state untouched during overlapping held payer p
     () => state,
     {} as any,
     {} as any,
-    undefined,
+    () => () => undefined,
     createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });

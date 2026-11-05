@@ -168,7 +168,7 @@ beforeEach(() => {
     }),
     ledger,
     undefined as any,
-    undefined,
+    () => () => undefined,
     null
   );
   mockEmitter.mockImplementation(async (path, args) => {

@@ -119,7 +119,7 @@ beforeEach(() => {
     readSecrets as any,
     undefined as never,
     undefined as never,
-    undefined,
+    () => () => undefined,
     null
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => originalProvider });

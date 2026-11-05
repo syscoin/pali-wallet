@@ -107,12 +107,18 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     const mnemonic = jest.spyOn(manager, 'getDecryptedMnemonic');
     const sign = jest.spyOn(transactions, 'signPSBTWithSigner');
     const broadcast = jest.spyOn(transactions, 'sendTransaction');
+    const ownedRead = {
+      assertCurrent: () => undefined,
+      fetch: jest.fn(denyNetwork),
+      signal: new AbortController().signal,
+    };
 
     // A real signature control proves that the PSBT, prevout and installed
     // signer work; a parser/scope/setup failure cannot satisfy the negative.
-    const signed = await transactions.signPSBT({
-      psbt: JSON.parse(JSON.stringify(fixture.single)),
-    });
+    const signed = await transactions.signPSBT(
+      { psbt: JSON.parse(JSON.stringify(fixture.single)) },
+      ownedRead
+    );
     expect(verifyFixtureSignature(fixture, signed, false)).toBeTruthy();
     expect(hd).toHaveBeenCalledWith(0);
     expect(fresh).toHaveBeenCalled();
@@ -126,10 +132,12 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     const method = jest.spyOn(transactions, 'signPSBTWithMethod');
     let result: unknown;
     await expect(
-      transactions.signPSBT({ psbt: request }).then((value: unknown) => {
-        result = value;
-        return value;
-      })
+      transactions
+        .signPSBT({ psbt: request }, ownedRead)
+        .then((value: unknown) => {
+          result = value;
+          return value;
+        })
     ).rejects.toThrow('Failed to decrypt imported account key');
     expect(result).toBeUndefined();
     expect(method).toHaveBeenCalledTimes(1);
@@ -148,6 +156,7 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     for (const spy of [hd, fresh, mnemonic, sign, broadcast])
       expect(spy).not.toHaveBeenCalled();
     expect(mockBlockbookLookup).not.toHaveBeenCalled();
+    expect(ownedRead.fetch).not.toHaveBeenCalled();
     for (const transport of transports)
       expect(transport).not.toHaveBeenCalled();
   } finally {

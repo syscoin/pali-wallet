@@ -65,7 +65,7 @@ export async function freshSdkGasEstimate(
     refuseSigning,
     undefined as never,
     undefined as never,
-    undefined,
+    refuseSigning,
     null
   );
   reader.setGasOverrides(policy);

@@ -124,6 +124,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       };
       const makeProvider = () => ({
         getTransactionCount: jest.fn().mockResolvedValue(7),
+        verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
         sendTransaction: jest.fn(async (raw: string) => ({
           hash: Transaction.from(raw).hash,
         })),
@@ -211,7 +212,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
         () => state,
         ledger,
         trezor,
-        undefined,
+        () => () => undefined,
         createTestEvmSubmissionCapture()
       );
       // Retain the real lazy provider getter and its network identity check.

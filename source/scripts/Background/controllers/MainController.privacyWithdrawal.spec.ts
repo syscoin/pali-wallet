@@ -390,7 +390,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
       }),
       {},
       {},
-      undefined,
+      () => () => undefined,
       createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {

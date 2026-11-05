@@ -242,7 +242,7 @@ describe('published keyring account-scoped replacement signing', () => {
       () => state,
       ledger,
       trezor,
-      undefined,
+      () => () => undefined,
       createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {

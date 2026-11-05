@@ -577,7 +577,7 @@ describe('SmartAccountController smart account execution fees', () => {
           } as any),
         {} as any,
         {} as any,
-        undefined,
+        () => () => undefined,
         createTestEvmSubmissionCapture()
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });

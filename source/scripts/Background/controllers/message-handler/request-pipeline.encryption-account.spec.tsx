@@ -246,7 +246,7 @@ beforeEach(() => {
     }),
     {} as any,
     {} as any,
-    undefined,
+    () => () => undefined,
     null
   );
   const wallet = Object.create(MainController.prototype);

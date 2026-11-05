@@ -20,7 +20,10 @@ import ManageNetwork from 'pages/Settings/ManageNetwork';
 import { getController } from 'scripts/Background';
 import MainController from 'scripts/Background/controllers/MainController';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
-import store, { persistCommittedWalletState } from 'state/store';
+import store, {
+  persistCommittedWalletState,
+  persistNetworkRegistry,
+} from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import {
@@ -451,15 +454,21 @@ it('keeps the active network removal control disabled', () => {
 
 it('removes a healthy inactive UTXO registration with its explicit fingerprint', async () => {
   const utxo: INetwork = {
-    chainId: 11111,
+    chainId: 2,
     kind: INetworkType.Syscoin,
-    slip44: 111,
+    slip44: 2,
     label: 'UTXO public fixture',
-    currency: 'test',
+    currency: 'ltc',
     url: 'https://utxo.synthetic.invalid',
+    utxoBackendChain: 'main',
     default: false,
   };
-  await wallet.addCustomRpc(utxo);
+  await persistNetworkRegistry(
+    utxo,
+    false,
+    () => undefined,
+    () => true
+  );
   render(
     <Provider store={store}>
       <MemoryRouter initialEntries={['/settings/networks/edit']}>
@@ -476,7 +485,9 @@ it('removes a healthy inactive UTXO registration with its explicit fingerprint',
     within(dialog).getByRole('button', { name: 'buttons.remove' })
   );
   await waitFor(() =>
-    expect(store.getState().vaultGlobal.networks.syscoin[11111]).toBeUndefined()
+    expect(
+      store.getState().vaultGlobal.networks.syscoin[utxo.chainId]
+    ).toBeUndefined()
   );
   expect(
     (await loadState()).vaultGlobal.networks.syscoin[11111]

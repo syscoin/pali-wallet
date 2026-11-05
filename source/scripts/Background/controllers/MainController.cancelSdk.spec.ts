@@ -173,7 +173,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       }),
       { evm: { signEVMTransaction: hardwareDenied } } as any,
       { signEthTransaction: hardwareDenied } as any,
-      undefined,
+      () => () => undefined,
       createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {

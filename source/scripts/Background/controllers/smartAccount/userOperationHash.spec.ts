@@ -147,7 +147,7 @@ describe('smart-account owner signing intent', () => {
           } as any),
         {} as any,
         {} as any,
-        undefined,
+        () => () => undefined,
         null
       );
       const signature = await signSmartAccountActionHash({

@@ -600,7 +600,10 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
       {
         type: 'CONTROLLER_ACTION',
         data: {
-          methods: ['wallet', 'ethereumTransaction', method],
+          methods:
+            method === 'sendAndSaveEthTransaction'
+              ? ['wallet', method]
+              : ['wallet', 'ethereumTransaction', method],
           params: [],
         },
       },
@@ -650,10 +653,10 @@ it('keeps healthy message signing and an already acknowledged transaction result
   const completed = deferred<void>();
   Object.assign(manager.ethereumTransaction, {
     signPersonalMessage: jest.fn().mockResolvedValue('synthetic signature'),
-    sendFormattedTransaction: jest.fn(() => {
-      started.resolve();
-      return result.promise;
-    }),
+  });
+  wallet.sendAndSaveEthTransaction = jest.fn(() => {
+    started.resolve();
+    return result.promise;
   });
   const healthy = deferred<void>();
   const healthyResponse = jest.fn(() => healthy.resolve());
@@ -662,7 +665,7 @@ it('keeps healthy message signing and an already acknowledged transaction result
   expect(healthyResponse).toHaveBeenCalledWith('synthetic signature');
 
   const sendResponse = jest.fn(() => completed.resolve());
-  invokeSdk('sendFormattedTransaction', sendResponse);
+  invokeSdk('sendAndSaveEthTransaction', sendResponse);
   await started.promise;
   const retained = await failImportRepair();
   const acknowledged = { hash: `0x${'a'.repeat(64)}` };
