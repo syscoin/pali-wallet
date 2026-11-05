@@ -112,6 +112,23 @@ function fixture() {
   };
 }
 
+test('inventory reuses each authenticated note identity without another derivation', async () => {
+  const f = fixture();
+  const identify = jest.fn(identifyClassicNote);
+  const vault = core.createPrivateVaultController(f.host, {
+    ...f.dependencies,
+    identify,
+  });
+  const first = await vault.importNote(NOTE);
+  const second = await vault.importNote(SECOND_NOTE);
+  identify.mockClear();
+  f.storage.setItem.mockClear();
+
+  await expect(vault.getNotes()).resolves.toEqual({ notes: [first, second] });
+  expect(identify.mock.calls).toEqual([[NOTE], [SECOND_NOTE]]);
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+});
+
 test('shared core imports and runs without browser storage or global mutex modules', async () => {
   const originalChrome = Object.getOwnPropertyDescriptor(globalThis, 'chrome');
   jest.doMock('../utils/storageAPI', () => {

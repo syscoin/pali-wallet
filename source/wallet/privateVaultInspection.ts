@@ -32,6 +32,7 @@ import {
   parsePrivateVaultBundle,
   snapshotPrivateVaultBundle,
 } from './privateVaultEnvelope.ts';
+import type { IClassicNoteIdentity } from '../utils/privacy/note.ts';
 import type { PrivateVaultCapacity } from '../utils/privacy/privateVaultTypes.ts';
 import type {
   IPrivacyWithdrawalJournal,
@@ -502,7 +503,8 @@ export async function readPrivateVaultBundle(
   value: unknown,
   session: IPrivateVaultSession,
   identify: typeof identifyClassicNote = identifyClassicNote,
-  encoding: 'object' | 'serialized' = 'object'
+  encoding: 'object' | 'serialized' = 'object',
+  identities?: WeakMap<IStoredNote, IClassicNoteIdentity>
 ): Promise<
   Readonly<{
     capacity: PrivateVaultCapacity;
@@ -718,7 +720,7 @@ export async function readPrivateVaultBundle(
       if (commitments.has(key)) throw new Error('privacy_vault_corrupt');
       commitments.add(key);
       ids.add(entry.id);
-      return {
+      const note: IStoredNote = {
         id: entry.id,
         note: entry.note,
         createdAt: entry.createdAt,
@@ -727,6 +729,8 @@ export async function readPrivateVaultBundle(
         ...(withdrawal ? { withdrawal } : {}),
         ...(restoreGuard ? { restoreGuard } : {}),
       };
+      identities?.set(note, { ...identity });
+      return note;
     });
     for (const note of notes) privateNoteExportHistory(note);
     return {
