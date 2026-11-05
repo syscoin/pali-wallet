@@ -486,6 +486,14 @@ module.exports = {
           minChunks: 2,
           enforce: true,
         },
+        // Home uses the labels without loading the full transaction review UI.
+        transactionDisplay: {
+          test: /[\\/]source[\\/]utils[\\/]transactionDisplay\.ts$/,
+          chunks: 'async',
+          name: 'transaction-display',
+          minChunks: 2,
+          enforce: true,
+        },
         // Activity and Details already ship copies of this cache and its work
         // budget helper. Keep them lazy and leave the worker's initial copy.
         utxoHistoryDetails: {
