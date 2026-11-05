@@ -5,6 +5,7 @@ import {
   EVM_CHAIN_CATALOGUE_URL,
   parseEvmChainCatalogue,
 } from '../../../../shared/chainCatalogueData';
+import { projectUtxoChainCatalogue } from '../../../../shared/utxoChainCatalogue';
 import { chromeStorage } from 'utils/storageAPI';
 
 import type { ChainInfo } from '../../../../shared/chainCatalogue';
@@ -67,66 +68,7 @@ class ChainListService {
   }
 
   private initializeUTXOChains(): void {
-    // Convert UTXO coins to ChainInfo format
-    this.utxoChainData = utxoCoins
-      .filter(
-        (coin) =>
-          coin.blockchainLink &&
-          coin.blockchainLink.url &&
-          coin.blockchainLink.url.length > 0
-      )
-      .map((coin) => {
-        // Map coin data to ChainInfo format
-        const rpcUrls = Array.isArray(coin.blockchainLink!.url)
-          ? coin.blockchainLink!.url
-          : [coin.blockchainLink!.url];
-
-        // Generate dynamic icon name using coin properties
-        const getIconName = (coinData: any): string => {
-          // Use coin name as primary identifier (most universal)
-          const coinName =
-            coinData.coinName?.toLowerCase().replace(/\s+/g, '') || '';
-          const coinLabel =
-            coinData.coinLabel?.toLowerCase().replace(/\s+/g, '') || '';
-          const shortcut = coinData.shortcut?.toLowerCase() || '';
-          const coinShortcut = coinData.coinShortcut?.toLowerCase() || '';
-
-          // Return the most descriptive identifier
-          return coinName || coinLabel || shortcut || coinShortcut;
-        };
-
-        // Consistent chainId assignment: use slip44 (same as constants.ts)
-        const chainId = coin.chainId || coin.slip44;
-
-        return {
-          chain: INetworkType.Syscoin,
-          chainId,
-          chainSlug: coin.shortcut?.toLowerCase(),
-          explorers: rpcUrls.map((url) => ({
-            name: coin.name,
-            standard: 'blockbook',
-            url: url,
-          })),
-          icon: getIconName(coin),
-          name: coin.name || coin.coinLabel,
-          nativeCurrency: {
-            decimals: coin.decimals,
-            name: coin.coinName,
-            symbol: coin.coinShortcut || coin.shortcut || '',
-          },
-          networkId: chainId,
-          rpc: rpcUrls.map((url) => ({
-            isOpenSource: true,
-            tracking: 'none',
-            url: url,
-          })),
-          shortName: coin.shortcut,
-          // Additional UTXO fields - preserve original slip44
-          slip44: coin.slip44,
-          coinLabel: coin.coinLabel,
-          coinShortcut: coin.coinShortcut,
-        };
-      });
+    this.utxoChainData = projectUtxoChainCatalogue(utxoCoins);
 
     console.log(
       `[ChainListService] Initialized ${this.utxoChainData.length} UTXO chains`

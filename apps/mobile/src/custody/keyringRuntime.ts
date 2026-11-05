@@ -11,7 +11,6 @@ import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sys
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
-import { RPC_ENDPOINTS } from '../platformRpc.ts';
 import { WalletStorageError, type OpenWalletStorage, type WalletIdentityRead } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
@@ -119,16 +118,14 @@ export function createKeyringRuntimeFactory(
         const sdk = await (dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js'));
         if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
         const host = sdk.createSoftwareKeyringHost(storage.keyringStorage, { captureEvmSubmission: (context) => captureSignedSubmission(context) });
+        const initialEvmNetwork = getNativeNetwork('ethereum');
+        const sdkEvmNetwork = (network: NativeNetworkRegistration): SdkNetwork => ({
+          kind: sdk.INetworkType.Ethereum, chainId: Number(network.chainId), slip44: network.slip44,
+          url: network.rpcUrl, currency: network.symbol, label: network.name,
+        });
         const initialState = () => ({
           activeAccount: { id: 0, type: sdk.KeyringAccountType.HDAccount },
-          activeNetwork: {
-            kind: sdk.INetworkType.Ethereum,
-            chainId: 1,
-            slip44: 60,
-            currency: 'ETH',
-            label: 'Ethereum',
-            url: RPC_ENDPOINTS.ethereum!,
-          } as SdkNetwork,
+          activeNetwork: sdkEvmNetwork(initialEvmNetwork),
           accounts: {
             HDAccount: {} as Record<number, IKeyringAccountState>,
             Imported: {} as Record<number, IKeyringAccountState>, Ledger: {}, Trezor: {}, SmartAccount: {},
@@ -285,11 +282,7 @@ export function createKeyringRuntimeFactory(
             type: selection.type === 'Imported' ? sdk.KeyringAccountType.Imported : sdk.KeyringAccountType.HDAccount,
           };
           if (utxo) next.activeNetwork = getUtxoSdkNetwork(utxo.id) as SdkNetwork;
-          else {
-            const network = getNativeNetwork(networkId, records.networks);
-            next.activeNetwork = { ...next.activeNetwork, chainId: Number(network.chainId), slip44: network.slip44,
-              url: network.rpcUrl, currency: network.symbol, label: network.name };
-          }
+          else next.activeNetwork = sdkEvmNetwork(getNativeNetwork(networkId, records.networks));
           return next;
         };
         const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
@@ -401,7 +394,7 @@ export function createKeyringRuntimeFactory(
           )
             throw new KeyringRuntimeError('NOT_READY');
           const staged = await stageInitialWallet(
-            { key: '60', network: initialState().activeNetwork, password, phrase },
+            { key: String(initialEvmNetwork.slip44), network: sdkEvmNetwork(initialEvmNetwork), password, phrase },
             { assertCurrent: guard, loadSdk: dependencies.loadSdk }
           );
           guard();
