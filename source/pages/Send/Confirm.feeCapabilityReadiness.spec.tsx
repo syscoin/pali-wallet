@@ -252,16 +252,21 @@ beforeEach(() => {
     }),
   };
   mockEstimateProvider = provider;
+  const rejectSigning = () => {
+    throw new Error('Signing is not allowed in this test');
+  };
   sdk = new EthereumTransactions(
     () => mockState.vault.activeNetwork,
-    () => {
-      throw new Error('Signing is not allowed in this test');
-    },
+    rejectSigning,
     () => ({
       ...mockState.vault,
       activeAccountType: 'HDAccount',
       activeAccountId: 0,
-    })
+    }),
+    undefined,
+    undefined,
+    rejectSigning,
+    null
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
@@ -278,7 +283,7 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
-  sdk._web3Provider?.destroy();
+  sdk?._web3Provider?.destroy();
   jest.clearAllTimers();
   jest.useRealTimers();
   jest.restoreAllMocks();
