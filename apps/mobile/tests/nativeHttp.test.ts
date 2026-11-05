@@ -350,6 +350,11 @@ test('native factory explicitly wires one owned transport to all network consume
         return 'token-reader';
       },
     },
+    '../core/utxoBalanceReader.ts': {
+      createUtxoBalanceReader() {
+        assert.fail('unexpected UTXO balance read');
+      },
+    },
     '../platformRpc.ts': {
       createBalanceReader: (options: unknown) => {
         captures.balance = [options];
@@ -369,7 +374,9 @@ test('native factory explicitly wires one owned transport to all network consume
     './http': { walletFetch: fetcher },
   });
   const bundle = factory.createNativeWalletControllers();
-  assert.equal(bundle.balanceReader, balance);
+  assert.equal(bundle.balanceReader.readBalance, balance.readBalance);
+  assert.equal(typeof bundle.balanceReader.readUtxoBalance, 'function');
+  assert.equal(typeof captures.factory![0].readUtxoAccount, 'function');
   for (const options of [
     captures.balance![0],
     captures.erc20![0],
