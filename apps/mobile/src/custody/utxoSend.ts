@@ -113,7 +113,7 @@ export function createNativeUtxoSend(
         }
         const read = ownedRead(check);
         try {
-          const excludedOutpoints = await records.excludedOutpoints(
+          const { outpoints: excludedOutpoints } = await records.fundingExclusions(
             { ...session, assertCurrent: check },
             owner
           );

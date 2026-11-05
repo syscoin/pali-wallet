@@ -569,21 +569,30 @@ export class UtxoSignedRecords {
     return record as UtxoDurableSubmission;
   }
 
-  async excludedOutpoints(
-    session: UtxoRecordSession,
-    network: UtxoRecordChain
-  ) {
-    const chain = chainKey(network);
+  async fundingExclusions(session: UtxoRecordSession, owner: UtxoRecordOwner) {
+    const chain = chainKey(owner);
+    const identity = ownerIdForChain(chain, accountIdentity(owner.account));
     const { entries } = await this.load(session);
-    const points = new Set(
-      entries
-        .filter((entry) => entry.chain === chain && entry.phase !== 'confirmed')
-        .flatMap((entry) => entry.outpoints)
-    );
-    return [...points].map((point) => ({
-      txid: point.slice(0, 64),
-      vout: Number(point.slice(65)),
-    }));
+    const points = new Set<string>();
+    const submitted = new Set<string>();
+    for (const entry of entries) {
+      if (entry.chain !== chain || entry.phase === 'confirmed') continue;
+      // An exact POST acknowledgment or raw network observation can set
+      // submitted. Locally signed bytes alone only protect the outpoint.
+      const acknowledged =
+        entry.owner === identity && entry.phase === 'submitted';
+      for (const point of entry.outpoints) {
+        points.add(point);
+        if (acknowledged) submitted.add(point);
+      }
+    }
+    return {
+      outpoints: [...points].map((point) => ({
+        txid: point.slice(0, 64),
+        vout: Number(point.slice(65)),
+      })),
+      submitted,
+    };
   }
 
   async list(

@@ -305,6 +305,7 @@ import {
 import {
   assertNoRecentAcknowledgedInputOverlap,
   createUtxoAcknowledgedInputs,
+  utxoNetworkCatchingUpError,
   utxoInputOutpoints,
   type UtxoAcknowledgedInputs,
 } from 'utils/utxoAcknowledgedInputs';
@@ -1941,17 +1942,33 @@ class MainController {
       store.getState().vault.activeNetwork,
       signing.context.account
     );
-    const pending = await this.getRetainedUtxoRecords().excludedOutpoints(
+    const journal = await this.getRetainedUtxoRecords().fundingExclusions(
       { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
       owner
     );
     signing.assertCurrent();
-    const excludedOutpoints = [...collateral, ...pending];
+    const excludedOutpoints = [...collateral, ...journal.outpoints];
     return signing.withRead(async (read) => {
-      const result = await signing.transactions.getEstimateSysTransactionFee(
-        { ...params, excludedOutpoints },
-        read
-      );
+      const result = await signing.transactions
+        .getEstimateSysTransactionFee({ ...params, excludedOutpoints }, read)
+        .catch((error) => {
+          read.assertCurrent();
+          if (
+            params.nativeSweep === true &&
+            journal.submitted.size > 0 &&
+            error?.error === true &&
+            error.code === 'INSUFFICIENT_FUNDS' &&
+            Array.isArray(error.excludedNativeOutpoints)
+          ) {
+            if (
+              error.excludedNativeOutpoints.some((point: string) =>
+                journal.submitted.has(point)
+              )
+            )
+              throw utxoNetworkCatchingUpError();
+          }
+          throw error;
+        });
       read.assertCurrent();
       if (!result?.psbt) return result;
       const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
