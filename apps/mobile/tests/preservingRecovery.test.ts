@@ -105,9 +105,9 @@ async function fixture(
       const module = await (loadRuntimeSdk?.() ?? sdk);
       class ObservedKeyring extends module.SoftwareKeyring {
         constructor(
-          host: ConstructorParameters<typeof module.SoftwareKeyring>[0]
+          ...options: ConstructorParameters<typeof module.SoftwareKeyring>
         ) {
-          super(host);
+          super(...options);
           liveKeyrings.push(this);
         }
       }
@@ -1324,8 +1324,8 @@ test('UTXO custody balance sends the selected account key only after verified Bl
 test('UTXO custody lock revokes the sole staged owner before a held derivation returns', async () => {
   const hold = latch();
   class HeldKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const createFirstAccount = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         const account = await createFirstAccount(...args);
@@ -1411,8 +1411,8 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
   const requests: string[] = [];
   const recoveryEndpoints = new Map<number, string>();
   class ObservedRecoverySigner extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const encrypt = this.getEncryptedXprv;
       this.getEncryptedXprv = (signer) => {
         recoveryEndpoints.set(signer.Signer.SLIP44, signer.blockbookURL);

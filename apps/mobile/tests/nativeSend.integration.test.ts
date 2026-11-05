@@ -193,8 +193,8 @@ async function cancellationFixture() {
   // Keep the real SDK signer; pause only storage/RPC boundaries that still exist
   // in the unlocked-session flow. There is no per-send password or hydration.
   class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       sdkInstances.push(this);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {

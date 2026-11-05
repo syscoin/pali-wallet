@@ -14,6 +14,7 @@ import http from 'http';
 import https from 'https';
 
 import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import DAppController from '../DAppController';
 import MainController from '../MainController';
 import dappReducer from 'state/dapp';
@@ -135,7 +136,10 @@ beforeEach(() => {
       getDefaultMiddleware({ serializableCheck: false }),
   });
   hardwareManager = new HardwareWalletManager();
-  manager = createTestKeyringManager(undefined, { hardwareManager });
+  manager = createTestKeyringManager(undefined, {
+    hardwareManager,
+    captureEvmSubmission: createTestEvmSubmissionCapture(),
+  });
   manager.setVaultStateGetter(() => mockStore.getState().vault);
   manager.isUnlocked = () => true;
   // Keep the SDK's real account/type selection; only its eventual backend

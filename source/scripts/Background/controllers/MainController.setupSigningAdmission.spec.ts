@@ -188,9 +188,11 @@ describe('wallet setup signing capability admission', () => {
       return acknowledged;
     });
     wallet.sendAndSaveTransaction = jest.fn();
-    await expect(wallet.sendAndSaveEthTransaction({})).resolves.toEqual(
-      acknowledged
-    );
+    await expect(
+      wallet.sendAndSaveEthTransaction({}, false, undefined, undefined, {
+        assertCurrentContext: () => undefined,
+      })
+    ).resolves.toEqual(acknowledged);
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   });
 
@@ -215,7 +217,16 @@ describe('wallet setup signing capability admission', () => {
   it.each([
     ['speedUpEvmTransaction', ['hash', false, 1]],
     ['cancelEvmTransaction', ['hash']],
-    ['sendAndSaveEthTransaction', [{}]],
+    [
+      'sendAndSaveEthTransaction',
+      [
+        {},
+        false,
+        undefined,
+        undefined,
+        { assertCurrentContext: () => undefined },
+      ],
+    ],
     ['sendAndSaveTokenTransaction', ['ERC20', {}]],
     ['signSendAndSaveTransaction', [{ psbt: 'fixture' }]],
     [

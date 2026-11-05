@@ -258,8 +258,8 @@ async function controlledSdk() {
   let unlockCalls = 0;
   let hydrations = 0;
   class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => { hydrations++; return hydrate(...args); };
     }
@@ -559,8 +559,8 @@ async function raceSdk() {
     const current = gate; current.entered.resolve(); await current.released.promise;
   };
   class RaceKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const allocate = this.addNewAccount.bind(this);
       this.addNewAccount = async (...args) => {
         allocations++; await hold('create-before');

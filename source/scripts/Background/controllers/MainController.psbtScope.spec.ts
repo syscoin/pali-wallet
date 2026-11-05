@@ -136,7 +136,7 @@ describe('PSBT approval context', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('uses owned prevouts and refuses the exact legacy WIF funding mismatch before review', async () => {
-    const { SoftwareKeyring, createSoftwareKeyringHost } = jest.requireActual(
+    const { SoftwareKeyring, createKeyringHost } = jest.requireActual(
       '@sidhujag/sysweb3-keyring/cjs/software.js'
     );
     const actualPsbtUtils = jest.requireActual(
@@ -144,7 +144,7 @@ describe('PSBT approval context', () => {
     ).PsbtUtils;
     const storage = new Map<string, unknown>();
     const ring = new SoftwareKeyring(
-      createSoftwareKeyringHost({
+      createKeyringHost({
         get: async (key: string) => storage.get(key),
         set: async (key: string, value: unknown) => {
           storage.set(key, value);
@@ -158,7 +158,8 @@ describe('PSBT approval context', () => {
             storage.set(key, value);
           return true;
         },
-      })
+      }),
+      { captureEvmSubmission: null }
     );
     const bitcoin = syscoinUtils.bitcoinjs;
     const network = syscoinUtils.syscoinNetworks.testnet;

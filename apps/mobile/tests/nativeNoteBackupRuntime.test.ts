@@ -50,7 +50,7 @@ async function fixture() {
   let noteCommits = 0;
   const owners: sdk.SoftwareKeyring[] = [];
   class ObservedKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) { super(host); owners.push(this); }
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); owners.push(this); }
     override async unlock(password: string) {
       unlockCalls++;
       const before = beforeUnlock, after = afterUnlock;
