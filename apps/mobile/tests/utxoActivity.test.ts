@@ -156,6 +156,137 @@ test('older/newer windows stay at most100 rows while loading beyond page five',a
 test('fresh reorg and pending observations replace prior same-txid rows',async()=>{
   let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
 });
+
+function pendingObservation(row: ReturnType<typeof tx>) {
+  return { ...row, blockHeight: -1, blockHash: undefined, blockTime: undefined, confirmations: 0 };
+}
+
+test('an owned first-page confirmation produces one generic indication from the existing refresh', async () => {
+  let mined = false;
+  const f = fixture({ count: 2, replace(path, body) {
+    if (!mined && path.includes('/address/')) body.transactions = body.transactions.map(pendingObservation);
+    return body;
+  } });
+  const a = authority(f); a.unlock();
+  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  await settle(c);
+  assert.equal(c.getSnapshot().rows.filter((row) => row.block === null).length, 2);
+  assert.equal(await c.refresh(), undefined);
+
+  // Clearing detail publishes synchronously, so a subscriber can try to start
+  // a second refresh before the first request has reached its transport.
+  await c.selectDetail(ID(1));
+  assert.ok(c.getSnapshot().detail);
+  let duplicate: ReturnType<typeof c.refresh> | undefined;
+  const stop = c.subscribe(() => {
+    if (!c.getSnapshot().detail && !duplicate) duplicate = c.refresh();
+  });
+  mined = true;
+  const before = f.calls.length;
+  const indication = await c.refresh();
+  stop();
+  assert.ok(duplicate);
+  assert.equal(await duplicate, undefined);
+  assert.equal(f.calls.slice(before).filter((path) => path.includes('/address/')).length, 1);
+  assert.ok(indication);
+  assert.deepEqual(Object.keys(indication), ['consume']);
+  assert.equal(JSON.stringify(indication), '{}');
+  assert.equal(indication.consume(), true);
+  assert.equal(indication.consume(), false);
+  assert.equal(await c.refresh(), undefined);
+  c.dispose();
+});
+
+test('paging, retained pending rows and an unsuccessful observation cannot seed an indication', async () => {
+  let phase: 'pending' | 'omitted' | 'fail' | 'mined' = 'pending';
+  const f = fixture({ count: 23, replace(path, body) {
+    if (!path.includes('/address/')) return body;
+    if (phase === 'fail') return new Response('', { status: 503 });
+    if (path.includes('page=2')) body.transactions[0] = tx(ID(1));
+    else if (phase === 'pending') body.transactions[0] = pendingObservation(body.transactions[0]);
+    else if (phase === 'omitted') body.transactions.shift();
+    return body;
+  } });
+  const a = authority(f); a.unlock();
+  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  await settle(c);
+  assert.equal(await c.loadMore(), undefined);
+  assert.equal(c.getSnapshot().rows.find((row) => row.txid === ID(1))?.observedConfirmations, 11);
+  phase = 'pending';
+  assert.equal(await c.refresh(), undefined);
+  phase = 'omitted';
+  assert.equal(await c.refresh(), undefined);
+  assert.equal(c.getSnapshot().rows.find((row) => row.txid === ID(1))?.block, null);
+  phase = 'mined';
+  assert.equal(await c.refresh(), undefined);
+
+  phase = 'pending';
+  assert.equal(await c.refresh(), undefined);
+  phase = 'fail';
+  assert.equal(await c.refresh(), undefined);
+  assert.equal(c.getSnapshot().status, 'stale');
+  phase = 'mined';
+  assert.equal(await c.refresh(), undefined);
+  c.dispose();
+});
+
+test('a positive confirmation count and block placement must occur together in the fresh row', async () => {
+  for (const incomplete of [{ blockHeight: -1, blockHash: undefined }, { confirmations: 0 }]) {
+    let pending = true;
+    const f = fixture({ count: 1, replace(path, body) {
+      if (path.includes('/address/')) body.transactions[0] = pending
+        ? pendingObservation(body.transactions[0])
+        : { ...body.transactions[0], ...incomplete };
+      return body;
+    } });
+    const a = authority(f); a.unlock();
+    const c = new UtxoWatchActivity(a, () => true); c.activate();
+    await settle(c);
+    pending = false;
+    assert.equal(await c.refresh(), undefined);
+    assert.equal(c.getSnapshot().status, 'ready');
+    c.dispose();
+  }
+});
+
+test('confirmation indications expire across scope changes and late account responses cannot mint them', async () => {
+  let mined = false, held = false;
+  const entered = gate(), pause = gate();
+  const f = fixture({ count: 1, async hold(path) {
+    if (held && path.includes(`/address/${BTC}`)) { entered.resolve(); await pause.promise; }
+  }, replace(path, body) {
+    if (!mined && path.includes('/address/')) body.transactions[0] = pendingObservation(body.transactions[0]);
+    return body;
+  } });
+  const a = new WatchOnlyAuthority([
+    { id: 'watch', name: 'First', addresses: { bitcoin: BTC } },
+    { id: 'other', name: 'Second', addresses: { bitcoin: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' } },
+  ], { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
+  a.unlock();
+  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  await settle(c);
+  mined = true;
+  const indication = await c.refresh();
+  assert.ok(indication);
+  a.selectAccount('other');
+  mined = false;
+  a.selectAccount('watch');
+  await settle(c);
+  assert.equal(indication.consume(), false);
+
+  held = true; mined = true;
+  const late = c.refresh();
+  await entered.promise;
+  a.selectAccount('other');
+  held = false;
+  a.selectAccount('watch');
+  pause.resolve();
+  assert.equal(await late, undefined);
+  await settle(c);
+  assert.equal(await c.refresh(), undefined);
+  c.dispose();
+});
+
 test('failed page keeps prior rows stale with no automatic retry',async()=>{
   let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
 });

@@ -234,6 +234,8 @@ export type UtxoActivityState = Readonly<{
   status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'stale'; context: UtxoActivityContext | null;
   rows: readonly UtxoActivityRow[]; detail: Readonly<{ txid: string; status: 'loading' | 'ready' | 'unavailable'; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }> | null; firstPage: number; page: number; hasMore: boolean; hasNewer: boolean; windowed: boolean;
 }>;
+/** A generic indication that can be consumed once while its refresh still owns the view. */
+export type WatchActivityConfirmation = Readonly<{ consume(): boolean }>;
 const same = (a: UtxoActivityContext | null, b: UtxoActivityContext | null) => a !== null && b !== null &&
   a.accountId === b.accountId && a.networkId === b.networkId && a.address === b.address && a.generation === b.generation;
 const wrap = (row: UtxoActivityRow) => ({ txid: row.txid, confirmations: row.observedConfirmations,
@@ -248,7 +250,7 @@ export class UtxoWatchActivity {
   private detailRequest: AbortController | null = null;
   private active = false;
   private focused = true;
-  private pages = new Map<number, { rows: readonly UtxoActivityRow[]; hasMore: boolean }>();
+  private pages = new Map<number, { rows: readonly UtxoActivityRow[]; hasMore: boolean; freshPending?: WeakSet<UtxoActivityRow> }>();
   private readonly authority: PublicAuthority;
   private readonly foreground: () => boolean;
   constructor(authority: PublicAuthority, foreground: () => boolean) { this.authority = authority; this.foreground = foreground; this.state = this.empty(); }
@@ -291,29 +293,40 @@ export class UtxoWatchActivity {
     } finally { if (this.detailRequest === request) this.detailRequest = null; request.abort(); }
   };
   retryDetail = (): Promise<void> => this.state.detail ? this.selectDetail(this.state.detail.txid) : Promise.resolve();
-  load = (): Promise<void> => this.run('refresh');
-  refresh = (): Promise<void> => this.run('refresh');
-  loadMore = (): Promise<void> => this.state.status !== 'ready' || !this.state.hasMore ? Promise.resolve() : this.run('older');
-  loadNewer = (): Promise<void> => this.state.status !== 'ready' || !this.state.hasNewer ? Promise.resolve() : this.run('newer');
-  private async run(mode: 'refresh' | 'older' | 'newer'): Promise<void> {
+  load = async (): Promise<void> => { await this.run('refresh'); };
+  refresh = (): Promise<WatchActivityConfirmation | undefined> => this.run('refresh', true);
+  loadMore = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasMore) await this.run('older'); };
+  loadNewer = async (): Promise<void> => { if (this.state.status === 'ready' && this.state.hasNewer) await this.run('newer'); };
+  private async run(mode: 'refresh' | 'older' | 'newer', indicate = false): Promise<WatchActivityConfirmation | undefined> {
     if (this.pending || !this.isCurrent()) return;
     const before = this.state, owner = before.context!, epoch = ++this.epoch, pending = new AbortController();
     const page = mode === 'older' ? before.page + 1 : mode === 'newer' ? before.firstPage - 1 : 1;
-    this.clearDetail();
-    this.pending = pending; this.publish({ ...this.state, status: 'loading' });
+    this.pending = pending;
     const current = () => this.pending === pending && epoch === this.epoch && !pending.signal.aborted && this.isCurrent(owner);
     try {
+      this.clearDetail();
+      if (!current()) return;
+      this.publish({ ...this.state, status: 'loading' });
       if (!current()) return;
       const value = await this.authority.readUtxoActivityPage({ page }, pending.signal);
       if (!current()) return;
       if (!same(value.context, owner) || value.page !== page) return fail('CHANGED');
+      const previous = this.pages.get(page);
+      const previousPending = indicate && before.status === 'ready'
+        ? previous?.rows.filter((row) => previous.freshPending?.has(row))
+        : undefined;
       if (mode === 'refresh' && before.firstPage > 1 || value.emptyAccount && !before.rows.some((row) => row.block === null)) this.pages.clear();
       for (const [number, saved] of this.pages) {
         const retained = mergeFreshBlockbookHistory(value.rows, saved.rows).slice(value.rows.length);
         this.pages.set(number, { ...saved, rows: retained });
       }
       const prior = this.pages.get(page)?.rows ?? [];
-      this.pages.set(page, { rows: mergeFreshBlockbookHistory(value.rows, prior), hasMore: value.hasMore });
+      // Mark only observations in this response. The page can retain older rows
+      // for display, but weak membership gives those rows no fresh evidence.
+      const freshPending = mode === 'refresh'
+        ? new WeakSet(value.rows.filter((row) => row.block === null && row.observedConfirmations === 0))
+        : undefined;
+      this.pages.set(page, { rows: mergeFreshBlockbookHistory(value.rows, prior), hasMore: value.hasMore, freshPending });
       while (this.pages.size > UTXO_ACTIVITY_LIMITS.windowPages) {
         const indices = [...this.pages.keys()]; this.pages.delete(mode === 'newer' ? Math.max(...indices) : Math.min(...indices));
       }
@@ -325,6 +338,16 @@ export class UtxoWatchActivity {
       this.authority.retainUtxoActivityRows(rows);
       this.publish({ status: 'ready', context: owner, rows, detail: null, firstPage, page: lastPage,
         hasMore: this.pages.get(lastPage)!.hasMore, hasNewer: firstPage > 1, windowed: firstPage > 1 || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows });
+      const confirmed = previousPending?.some((priorRow) => rows.some((row) =>
+        row.txid === priorRow.txid && row.block !== null && row.observedConfirmations > 0 && value.rows.includes(row)));
+      if (confirmed && current()) {
+        let consumed = false;
+        return Object.freeze({ consume: () => {
+          if (consumed) return false;
+          consumed = true;
+          return this.isCurrent(owner) && this.epoch === epoch;
+        } });
+      }
     } catch { if (current()) this.publish({ ...before, detail: null, status: before.rows.length ? 'stale' : 'unavailable', hasMore: false }); }
     finally { pending.abort(); if (this.pending === pending) this.pending = null; }
   }
