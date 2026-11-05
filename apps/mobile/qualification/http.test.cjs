@@ -10,7 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { createCommandRunner } = require('./command-runner.cjs');
-const { createHttpFixture, ROUTES } = require('./http-server.cjs');
+const { createHttpFixture, ROUTES, HELD_ROUTES } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
 const { qualifyNativeHttp } = require('./http-native.ts');
 const { qualifyNativePost } = require('./post-native.ts');
@@ -25,7 +25,7 @@ const report = () => ({ version: 1, kind: 'native-http', status: 'passed', nativ
   ...expected, sessionId: '11111111-1111-1111-1111-111111111111', networkCalls: 0, cases: [...HTTP_CASES] });
 const audit = () => ({ token: expected.token, port: 45454, invalid: 0,
   counts: Object.fromEntries(ROUTES.map((route) => [route, route === 'target' ? 0 : 1])),
-  closed: { before: true, body: true, oversize: true } });
+  closed: Object.fromEntries(HELD_ROUTES.map((route) => [route, true])) });
 const digest = value => createHash('sha256').update(value).digest('hex');
 const postAudit = token => ({ version: 1, token, port: 45454, invalid: 0, lostResponses: 1,
   counts: Object.fromEntries(POST_ROUTES.map(route => { const n = POST_CONTROLS.includes(route) ? 1 : POST_BODIES[route].length; return [route, { started: n, completed: n }]; })),
@@ -50,7 +50,8 @@ test('HTTP report and server audit require every current-run field, case and clo
     { ...report(), networkCalls: 1 }, { ...report(), cases: [...HTTP_CASES].reverse() },
     { ...report(), sourceRevision: 'd'.repeat(40) }, { ...report(), rawBody: 'unexpected' }]) assert.throws(() => assertHttpReport(value, expected));
   for (const value of [{ ...audit(), port: 45455 }, { ...audit(), invalid: 1 }, { ...audit(), token: 'd'.repeat(32) },
-    { ...audit(), counts: { ...audit().counts, target: 1 } }, { ...audit(), closed: { ...audit().closed, body: false } }])
+    { ...audit(), counts: { ...audit().counts, target: 1 } },
+    ...HELD_ROUTES.map((route) => ({ ...audit(), closed: { ...audit().closed, [route]: false } }))])
     assert.throws(() => assertAudit(value, expected.token, 45454));
 });
 
@@ -127,13 +128,14 @@ for (const [name, chunks, complete, passes] of [
     else await assert.rejects(operation, (error) => error.failedCase === 'abort-stream');
   } finally { await fixture.close(); }
 });
-test('cache-busting or foreign-token URLs fail closed without a generic proxy', async () => {
+test('cache-busting, foreign-token and aliased quote URLs fail closed without a generic proxy', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
-    for (const route of [`/${expected.token}/exact?q=exact&_=1`, `/${'d'.repeat(32)}/exact?q=exact`]) {
+    for (const route of [`/${expected.token}/exact?q=exact&_=1`, `/${'d'.repeat(32)}/exact?q=exact`,
+      `/${expected.token}/quote-non-ok?q=exact`, `/${expected.token}/quote-oversize/api/v2/tickers/currency?_=1`]) {
       const response = await fetch(`http://127.0.0.1:${fixture.port}${route}`); assert.equal(response.status, 400);
     }
-    assert.equal(fixture.snapshot(expected.token).invalid, 2);
+    assert.equal(fixture.snapshot(expected.token).invalid, 4);
   } finally { await fixture.close(); }
 });
 

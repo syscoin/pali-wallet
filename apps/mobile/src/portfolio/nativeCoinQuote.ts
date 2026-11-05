@@ -40,6 +40,7 @@ export function createNativeCoinQuoteReader(fetch: WalletHttpFetch, now = () => 
     const { signal } = request;
     owner.addEventListener('abort', cancel, { once: true });
     const timer = setTimeout(cancel, REQUEST_TIMEOUT_MS);
+    let accepted = false;
     try {
       const pending = fetch(url, { method: 'GET', signal, credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer' }).then((response) => {
         if (signal.aborted) cancelResponseBody(response);
@@ -60,8 +61,14 @@ export function createNativeCoinQuoteReader(fetch: WalletHttpFetch, now = () => 
         cache.set(key, value);
         if (cache.size > MAX_QUOTES) cache.delete(cache.keys().next().value!);
       }
+      accepted = true;
       return value;
     } catch { return null; }
-    finally { clearTimeout(timer); owner.removeEventListener('abort', cancel); }
+    finally {
+      clearTimeout(timer);
+      owner.removeEventListener('abort', cancel);
+      // Cancelling the response stream alone can leave the native request open.
+      if (!accepted && !signal.aborted) cancel();
+    }
   };
 }
