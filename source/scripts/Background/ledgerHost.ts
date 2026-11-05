@@ -42,7 +42,10 @@ export class LedgerHostBroker {
     const request =
       (method: LedgerMethod) =>
       (params: unknown, options?: LedgerOperationOptions) =>
-        this.abortable(() => this.request(method, params), options);
+        this.abortable(
+          (assertCurrent) => this.request(method, params, assertCurrent),
+          options
+        );
     this.host = {
       connect: (_request, options) =>
         this.abortable(() => this.connect(), options),
@@ -71,12 +74,13 @@ export class LedgerHostBroker {
   }
 
   private async abortable<T>(
-    operation: () => Promise<T>,
+    operation: (assertCurrent: () => void) => Promise<T>,
     options?: LedgerOperationOptions
   ): Promise<T> {
     if (options?.signal?.aborted) throw CANCELLED();
     const generation = this.generation;
     const assertCurrent = () => {
+      options?.assertCurrent?.();
       if (options?.signal?.aborted || generation !== this.generation)
         throw CANCELLED();
     };
@@ -94,7 +98,7 @@ export class LedgerHostBroker {
     progress('pending');
     try {
       assertCurrent();
-      const result = await operation();
+      const result = await operation(assertCurrent);
       assertCurrent();
       progress('completed');
       assertCurrent();
@@ -251,7 +255,11 @@ export class LedgerHostBroker {
     return promise;
   }
 
-  private async request(method: LedgerMethod, request: unknown): Promise<any> {
+  private async request(
+    method: LedgerMethod,
+    request: unknown,
+    assertCurrent: () => void
+  ): Promise<any> {
     const generation = this.generation;
     const params = snapshotLedgerMessage(request);
     const id = ++this.sequence;
@@ -264,6 +272,7 @@ export class LedgerHostBroker {
     if (generation !== this.generation) throw CANCELLED();
     await this.connect();
     if (generation !== this.generation || !this.port) throw CANCELLED();
+    assertCurrent();
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => void this.disconnect(), 300000);
       this.pending.set(id, { resolve, reject, timer });

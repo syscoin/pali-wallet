@@ -128,6 +128,53 @@ describe('Ledger authority host broker', () => {
     expect(f.broker.host.getStatus().connected).toBe(false);
   });
 
+  it('does not post an EVM signer request when its approval changes while focusing the device window', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+    let focus!: () => void;
+    f.api.windows.update.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          focus = resolve;
+        })
+    );
+    let live = true;
+    const options = {
+      signal: new AbortController().signal,
+      assertCurrent() {
+        if (!live)
+          throw Object.assign(new Error('Approval expired'), {
+            code: 'HARDWARE_REQUEST_CANCELLED',
+          });
+      },
+    };
+    const pending = f.broker.host.evm.signTransaction(
+      {
+        accountIndex: 0,
+        expectedAddress: `0x${'11'.repeat(20)}`,
+        unsignedTxHex: 'f8',
+      },
+      options
+    );
+    live = false;
+    focus();
+    await flush();
+    const posted = port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request'
+    );
+    // If the regression dispatches, settle it so failure is immediate.
+    if (posted) port.onMessage.emit({ id: posted[0].id, ok: true, value: {} });
+    await expect(pending).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    expect(posted).toBeUndefined();
+    await f.broker.disconnect();
+  });
+
   it('does not close a replacement session when an older focus request fails late', async () => {
     const f = fixture();
     const connected = f.broker.host.connect();
