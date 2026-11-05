@@ -1,3 +1,4 @@
+import type { DeviceUnlockEnrollmentSnapshot } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
 import { ACCOUNT_RECORD_KEY, ACCOUNT_RECORD_LIMITS, encodeAccountRecord, decodeAccountRecord } from './accountRecordKey.ts';
 import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
@@ -11,7 +12,6 @@ import { WalletStorageError } from './types.ts';
 import { readWalletIdentity } from './walletIdentity.ts';
 import { sameRecoverySnapshot } from './recoverySnapshot.ts';
 import type {
-  DeviceUnlockEnrollmentSnapshot,
   DeviceUnlockVaultPair,
   KeyringStoragePort,
   OpenWalletStorage,

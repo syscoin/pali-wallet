@@ -4,7 +4,7 @@ import { createDeviceUnlockCredentialStore } from '../storage/deviceUnlockCreden
 // Keep this namespace separate from the database key and every unprotected item.
 const protectedItem = Object.freeze<SecureStore.SecureStoreOptions>({
   keychainService: 'org.pali.mobile.device-unlock.v1',
-  keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  keychainAccessible: SecureStore.WHEN_PASSCODE_SET_THIS_DEVICE_ONLY,
   requireAuthentication: true,
   authenticationPrompt: 'Confirm biometrics for Pali',
 });
