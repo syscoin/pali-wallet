@@ -50,6 +50,6 @@ export function WatchSession({ authority, onAccounts, onExit }: {
     ? <WatchActivity authority={authority} reader={activityReader} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
     : <UnavailableActivity accountLabel={`${label} · ${network.name}`} watchOnly onBack={() => shell.select('wallet')} />;
   else if (shell.tab === 'tools') content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts} onBack={() => shell.select('wallet')} />;
-  else content = <RealSettings accountLabel={label} watchOnly onAutoLock={() => setAutoLockScope(currentScope())} onLock={onExit} onBack={() => shell.select('wallet')} />;
+  else content = <RealSettings navigation={shell.navigation} accountLabel={label} watchOnly onAutoLock={() => setAutoLockScope(currentScope())} onLock={onExit} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }

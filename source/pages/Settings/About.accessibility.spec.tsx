@@ -76,3 +76,22 @@ it('reports clipboard denial without claiming the support URL was copied', async
   );
   expect(mockAlert.info).not.toHaveBeenCalled();
 });
+
+it('keeps the original documentation, attribution and copied support destinations', async () => {
+  const open = jest.spyOn(window, 'open').mockImplementation(() => null);
+  render(<About />);
+  fireEvent.click(screen.getByRole('button', { name: 'Pali API' }));
+  expect(open).toHaveBeenCalledWith('https://docs.paliwallet.com/');
+  expect(
+    screen
+      .getByRole('link', { name: 'settings.tokenDataProvider' })
+      .getAttribute('href')
+  ).toBe('https://routescan.io');
+  fireEvent.click(
+    screen.getByRole('button', { name: 'buttons.copy settings.userSupport' })
+  );
+  await waitFor(() =>
+    expect(mockCopy).toHaveBeenCalledWith('https://discord.com/invite/syscoin')
+  );
+  open.mockRestore();
+});

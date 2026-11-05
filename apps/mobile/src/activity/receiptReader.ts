@@ -298,7 +298,7 @@ function assertPair(transaction: Transaction, receipt: Receipt) {
     fail('CONTEXT_CHANGED');
 }
 
-/** Indexed rows are hints; this adapter only returns bounded observations from the registered Ethereum RPC. */
+/** Indexed rows are hints; this adapter returns bounded observations from the selected registration’s EVM RPC. */
 export class ActivityReceiptReader {
   private readonly fetcher: (
     url: string,

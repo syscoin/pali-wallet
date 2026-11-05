@@ -159,7 +159,8 @@ test('account management, imported-key review and send approval exclude tabs', a
 test('watch shell is operational without borrowing native permissions or demo activity', async ({ page }) => {
   await openWatch(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByText('Activity unavailable for watch accounts', { exact: true })).toBeVisible();
+  await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
+  await expect(page.getByText('Transaction history for this watch account is not available on the selected network yet. Balance and receive remain available.', { exact: true })).toBeVisible();
   await expect(page.getByText(/Starbucks|Spotify|Coffee|Sample transaction/)).toHaveCount(0);
   await chooseTab(page, 'Tools');
   await expect(page.getByRole('button', { name: 'Accounts', exact: false })).toBeVisible();
@@ -308,7 +309,39 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
       expect(metrics.scroll).toBeLessThanOrEqual(metrics.client + 1);
     }
     expect(await page.getByRole('heading', { name, exact: true }).evaluate((element) => getComputedStyle(element).fontSize)).toBe('24px');
-    if (name === 'Settings') await expect(page.getByText('Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`${name.toLowerCase()}-320-large.png`), fullPage: true });
+    if (name === 'Settings') {
+      await page.getByRole('button', { name: 'Help & about', exact: false }).click();
+      await expect(page.getByRole('heading', { name: 'Help & about', exact: true })).toBeVisible();
+      await expect(page.getByText('Biometric unlock and connected apps are not available. Use only test wallets and testnet funds.', { exact: true })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Copy support link', exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+      await page.screenshot({ path: testInfo.outputPath('help-about-320-large.png'), fullPage: true });
+      await page.getByRole('button', { name: 'Routescan', exact: true }).scrollIntoViewIfNeeded();
+      await page.evaluate(() => {
+        const write = navigator.clipboard.writeText, exec = document.execCommand;
+        navigator.clipboard.writeText = async () => { throw Error('Public fixture clipboard denied'); };
+        document.execCommand = () => { throw Error('Public fixture fallback denied'); };
+        (window as unknown as { restoreHelpClipboard(): void }).restoreHelpClipboard = () => { navigator.clipboard.writeText = write; document.execCommand = exec; };
+      });
+      await page.getByRole('button', { name: 'Copy support link', exact: true }).click();
+      await expect(page.getByText('Could not copy the support link.', { exact: true })).toBeVisible();
+      const assertFeedbackVisible = async () => {
+        const feedback = await page.getByTestId('help-copy-feedback').boundingBox();
+        const done = await page.getByRole('button', { name: 'Done', exact: true }).boundingBox();
+        expect(feedback).not.toBeNull(); expect(done).not.toBeNull();
+        expect(feedback!.y).toBeGreaterThanOrEqual(0);
+        expect(feedback!.y + feedback!.height).toBeLessThanOrEqual(done!.y);
+      };
+      await assertFeedbackVisible();
+      await page.screenshot({ path: testInfo.outputPath('help-about-copy-error-320-large.png'), fullPage: true });
+      await page.evaluate(() => (window as unknown as { restoreHelpClipboard(): void }).restoreHelpClipboard());
+      await page.getByRole('button', { name: 'Copy support link', exact: true }).click();
+      await expect(page.getByText('Support link copied.', { exact: true })).toBeVisible();
+      await assertFeedbackVisible();
+      await page.screenshot({ path: testInfo.outputPath('help-about-copy-success-320-large.png'), fullPage: true });
+      await page.getByRole('button', { name: 'Done', exact: true }).click();
+      await tabs(page, 'Settings');
+    }
   }
 });

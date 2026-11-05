@@ -466,7 +466,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       networkLabel={EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}
       onAccounts={onAccounts} onNetworks={networkView ? () => openStage('networks') : undefined} onBack={() => shell.select('wallet')} />;
-    else content = <RealSettings accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')} onLock={revoke} onBack={() => shell.select('wallet')} />;
+    else content = <RealSettings navigation={shell.navigation} accountLabel={accountLabel} watchOnly={false} onSecurity={() => openStage('security')} onAutoLock={() => openStage('auto-lock')} onLock={revoke} onBack={() => shell.select('wallet')} />;
     return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>{content}</RealAppShell>;
   }
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
