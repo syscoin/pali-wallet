@@ -34,6 +34,7 @@ import { getWalletNavigationScope } from 'utils/navigationState';
 import {
   getSyscoinTransactionTypeStyle,
   getSyscoinActivityOperationAmount,
+  formatSyscoinTokenAmount,
   isSyscoinTokenOperation,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
@@ -170,7 +171,9 @@ const UtxoTransactionsListComponentBase = ({
       intent.symbol ??
       (sptAssetInfo as any)?.symbol ??
       `SPT (${intent.assetGuid || '?'})`;
-    const amountText = formatDisplayValue(intent.amount, decimals);
+    const amountText =
+      formatSyscoinTokenAmount(intent.amount, decimals) ??
+      t('settings.unavailable');
     sptAmountDisplay = `${amountText} ${symbol}`;
   }
   const isSentByUs = nativeChange?.startsWith('-') === true;

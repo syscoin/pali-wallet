@@ -18,6 +18,8 @@ import {
 import {
   getSyscoinTransactionTypeLabel,
   getSyscoinIntentAmount,
+  isSyscoinTokenOperation,
+  formatSyscoinTokenAmount,
 } from 'utils/syscoinTransactionUtils';
 import { getTransactionDisplayInfo } from 'utils/transactions';
 import { isTransactionInBlock } from 'utils/transactionUtils';
@@ -142,6 +144,8 @@ class NotificationManager {
   ) {
     // Calculate net value for UTXO transactions
     let value = '0';
+    let exactTokenAmount: string | null = null;
+    const tokenOperation = isSyscoinTokenOperation(tx);
     let tokenSymbol = network.currency.toUpperCase();
     let decimals = 8; // Default for SYS
     const metadata: any = {};
@@ -150,13 +154,14 @@ class NotificationManager {
     let detectedTokenType: string | null = null;
 
     // Use stored transaction data directly (no need to decode hex again)
-    if (tx.tokenType) {
+    if (tokenOperation) {
       detectedTokenType = tx.tokenType;
 
       // Use getSyscoinIntentAmount for robust amount calculation
       const intent = getSyscoinIntentAmount(tx);
       if (intent) {
-        value = intent.amount.toString();
+        value = intent.amount;
+        exactTokenAmount = intent.amount;
         tokenSymbol = intent.symbol ?? 'SYSX';
         decimals = intent.decimals ?? 8;
       }
@@ -168,15 +173,21 @@ class NotificationManager {
       transactionTypeLabel = getSyscoinTransactionTypeLabel(finalTokenType);
     }
 
-    // If we still don't have a proper value but have basic transaction info, use it
-    const summaryValue = getSummaryAccountDelta(tx);
-    if ((!value || value === '0') && summaryValue) {
-      const formattedValue = formatSyscoinValue(summaryValue, decimals);
-      value = parseFloat(formattedValue).toString();
-    } else if ((!value || value === '0') && tx.value) {
-      // tx.value is in raw satoshis, so we need to format it properly
-      const formattedValue = formatSyscoinValue(tx.value.toString(), decimals);
-      value = parseFloat(formattedValue).toString();
+    // A token quantity must never be inferred from its native funding. The
+    // existing native fallback applies only to non-token transactions.
+    if (!tokenOperation) {
+      const summaryValue = getSummaryAccountDelta(tx);
+      if ((!value || value === '0') && summaryValue) {
+        const formattedValue = formatSyscoinValue(summaryValue, decimals);
+        value = parseFloat(formattedValue).toString();
+      } else if ((!value || value === '0') && tx.value) {
+        // tx.value is in raw satoshis, so we need to format it properly
+        const formattedValue = formatSyscoinValue(
+          tx.value.toString(),
+          decimals
+        );
+        value = parseFloat(formattedValue).toString();
+      }
     }
 
     // If we have symbol/decimals from transaction metadata, use them
@@ -193,7 +204,9 @@ class NotificationManager {
       from: account.address,
       to: account.address, // UTXO doesn't have simple to/from
       value:
-        value && value !== '0'
+        exactTokenAmount !== null
+          ? formatSyscoinTokenAmount(exactTokenAmount, decimals) ?? undefined
+          : value && value !== '0'
           ? formatDisplayValue(parseFloat(value), decimals)
           : undefined,
       tokenSymbol,

@@ -28,7 +28,7 @@ describe('getSyscoinIntentAmount', () => {
         ],
       };
       const expected = {
-        amount: 2,
+        amount: '2',
         assetGuid: SYSX_ASSET_GUID,
         decimals: 8,
         symbol: 'SYSX',
@@ -54,8 +54,12 @@ describe('getSyscoinIntentAmount', () => {
       const intent = getSyscoinIntentAmount(transaction);
       const operation = getSyscoinOperationAmount(transaction);
 
-      expect(intent).toMatchObject({ amount: 2, decimals: 8, symbol: 'SYSX' });
-      expect(operation).toMatchObject({ amount: 2, scope: 'account' });
+      expect(intent).toMatchObject({
+        amount: '2',
+        decimals: 8,
+        symbol: 'SYSX',
+      });
+      expect(operation).toMatchObject({ amount: '2', scope: 'account' });
       expect(intent?.assetGuid).not.toBe(SYSX_ASSET_GUID);
       expect(operation?.assetGuid).not.toBe(SYSX_ASSET_GUID);
       expect(
@@ -84,7 +88,7 @@ describe('getSyscoinIntentAmount', () => {
     } as any);
 
     expect(intent).toEqual({
-      amount: 50,
+      amount: '50',
       assetGuid: 'zero-decimal-asset',
       decimals: 0,
       symbol: 'ZERO',
@@ -103,7 +107,7 @@ describe('getSyscoinIntentAmount', () => {
 
   it('preserves the decimal-normalized amount of the compact account asset', () => {
     expect(getSyscoinIntentAmount(compactBridgeWithAccountAsset)).toEqual({
-      amount: 0.1,
+      amount: '0.1',
       assetGuid: '123456',
       decimals: 8,
       symbol: 'SYSX',
@@ -295,7 +299,7 @@ describe('getSyscoinOperationAmount', () => {
       tokenTransfers: [{ token: '123456', symbol: 'SYSX', decimals: 8 }],
     };
     expect(getSyscoinOperationAmount(full)).toMatchObject({
-      amount: 1,
+      amount: '1',
       symbol: 'SYSX',
       scope: 'transaction',
     });
@@ -309,7 +313,7 @@ describe('getSyscoinOperationAmount', () => {
         ...compactBridgeWithAccountAsset,
         tokenType: 'SPTAssetAllocationSend',
       })
-    ).toMatchObject({ amount: 0.1, scope: 'account' });
+    ).toMatchObject({ amount: '0.1', scope: 'account' });
     expect(
       getSyscoinOperationAmount({
         tokenType: 'SPTAssetAllocationSend',
@@ -337,7 +341,7 @@ describe('getSyscoinOperationAmount', () => {
         ],
       })
     ).toMatchObject({
-      amount: 5,
+      amount: '5',
       symbol: 'BURN',
       decimals: 2,
       scope: 'transaction',
@@ -376,13 +380,13 @@ describe('getSyscoinOperationAmount', () => {
         vout: [{ assetInfo: { assetGuid: 'minted', value: '300000000' } }],
         tokenTransfers: [{ token: 'minted', decimals: 8, symbol: 'MINT' }],
       })
-    ).toMatchObject({ amount: 2, symbol: 'MINT', scope: 'transaction' });
+    ).toMatchObject({ amount: '2', symbol: 'MINT', scope: 'transaction' });
     expect(
       getSyscoinOperationAmount({
         tokenType: 'SPTSyscoinBurnToAssetAllocation',
         vout: [{ addresses: ['OP_RETURN'], value: '300000000' }],
       })
-    ).toMatchObject({ amount: 3, symbol: 'SYSX', scope: 'transaction' });
+    ).toMatchObject({ amount: '3', symbol: 'SYSX', scope: 'transaction' });
   });
 
   it('keeps SPT receive direction independent of native funding', () => {
@@ -406,7 +410,7 @@ describe('getSyscoinOperationAmount', () => {
           },
         ],
       })
-    ).toMatchObject({ amount: 0.1, direction: 'received', scope: 'account' });
+    ).toMatchObject({ amount: '0.1', direction: 'received', scope: 'account' });
   });
 
   it.each(['sent', 'received'])(
@@ -418,7 +422,11 @@ describe('getSyscoinOperationAmount', () => {
           tokenType: 'SPTAssetAllocationSend',
           direction: nativeDirection,
         })
-      ).toMatchObject({ amount: 0.1, direction: undefined, scope: 'account' });
+      ).toMatchObject({
+        amount: '0.1',
+        direction: undefined,
+        scope: 'account',
+      });
     }
   );
 });
@@ -435,7 +443,7 @@ describe('getSyscoinActivityOperationAmount', () => {
         tokenTransfers: compactBridgeWithAccountAsset.accountAssetTransfers,
       };
       expect(getSyscoinActivityOperationAmount(transaction)).toEqual({
-        amount: 0.1,
+        amount: '0.1',
         assetGuid: '123456',
         decimals: 8,
         symbol: 'SYSX',
@@ -448,7 +456,7 @@ describe('getSyscoinActivityOperationAmount', () => {
     expect(getSyscoinOperationAmount(compactBridgeWithAccountAsset)).toBeNull();
     expect(
       getSyscoinActivityOperationAmount(compactBridgeWithAccountAsset)
-    ).toMatchObject({ amount: 0.1, scope: 'account' });
+    ).toMatchObject({ amount: '0.1', scope: 'account' });
     expect(
       getSyscoinActivityOperationAmount(compactBridgeNativeOffset)
     ).toBeNull();
@@ -464,7 +472,7 @@ describe('getSyscoinActivityOperationAmount', () => {
           },
         ],
       })
-    ).toMatchObject({ amount: 2, scope: 'transaction' });
+    ).toMatchObject({ amount: '2', scope: 'transaction' });
   });
   it.each([
     { value: '0' },
