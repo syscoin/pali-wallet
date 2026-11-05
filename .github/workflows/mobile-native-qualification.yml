@@ -120,6 +120,7 @@ jobs:
           mkdir -p "$PALI_TOOLS_STAGE" "$PALI_SDK_ROOT/cmdline-tools"
           unzip -q "$PALI_TOOLS_ARCHIVE" -d "$PALI_TOOLS_STAGE"
           mv "$PALI_TOOLS_STAGE/cmdline-tools" "$PALI_SDK_ROOT/cmdline-tools/pali-15859902"
+          rm -f -- "$PALI_TOOLS_ARCHIVE"
           echo "ANDROID_HOME=$PALI_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$PALI_SDK_ROOT" >> "$GITHUB_ENV"
           echo "$PALI_SDK_ROOT/cmdline-tools/pali-15859902/bin" >> "$GITHUB_PATH"
@@ -138,6 +139,11 @@ jobs:
             android/app/build/generated/assets/react/release/index.android.bundle \
             android/app/build/generated/sourcemaps/react/release/index.android.bundle.map \
             "$RUNNER_TEMP/pali-native-android"
+          # The emulator only needs the completed APK, platform tools and build tools.
+          # Discard build-only files on this fresh hosted runner before installing the image.
+          test -s android/app/build/outputs/apk/release/app-release.apk
+          rm -rf -- android/app/build/intermediates android/app/.cxx "$HOME/.gradle/caches"
+          sdkmanager --uninstall 'ndk;27.1.12297006'
       - name: Start isolated API 35 emulator
         timeout-minutes: 15
         run: |
@@ -160,6 +166,12 @@ jobs:
           "$ANDROID_HOME/emulator/emulator" -list-avds > "$RUNNER_TEMP/pali-native-android/emulator-avds.log" 2>&1
           test -f "$ANDROID_AVD_HOME/PaliQualification.ini"
           grep -Fxq PaliQualification "$RUNNER_TEMP/pali-native-android/emulator-avds.log"
+          # Match the emulator's first-boot minimum for API 35, without its larger device default.
+          PALI_AVD_CONFIG="$ANDROID_AVD_HOME/PaliQualification.avd/config.ini"
+          sed '/^disk\.dataPartition\.size=/d' "$PALI_AVD_CONFIG" > "$PALI_AVD_CONFIG.new"
+          printf 'disk.dataPartition.size=6G\n' >> "$PALI_AVD_CONFIG.new"
+          mv "$PALI_AVD_CONFIG.new" "$PALI_AVD_CONFIG"
+          df -h "$ANDROID_AVD_HOME" | tee "$RUNNER_TEMP/pali-native-android/emulator-disk.log"
           "$ANDROID_HOME/emulator/emulator" -avd PaliQualification -no-window -no-audio -no-snapshot -no-boot-anim -gpu swiftshader > "$RUNNER_TEMP/pali-emulator.log" 2>&1 &
           PALI_EMULATOR_PID=$!
           for attempt in $(seq 1 60); do

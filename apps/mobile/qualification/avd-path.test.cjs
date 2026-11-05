@@ -29,7 +29,7 @@ for (const mode of ['created', 'missing']) {
       fs.mkdirSync(bin, { recursive: true });
       fs.mkdirSync(emulator, { recursive: true });
       fs.mkdirSync(path.join(root, 'pali-native-android'));
-      const stub = `#!/usr/bin/env node\nconst fs=require('node:fs'),path=require('node:path');\nconst home=process.env.ANDROID_AVD_HOME;\nfs.appendFileSync(process.env.PALI_CALLS,JSON.stringify({tool:path.basename(process.argv[1]),home,args:process.argv.slice(2)})+'\\n');\nif(process.argv.includes('create')){const p=process.argv[process.argv.indexOf('--path')+1];if(p!==path.join(home,'PaliQualification.avd'))process.exit(2);if(process.env.PALI_MODE!=='missing'){fs.mkdirSync(p,{recursive:true});fs.writeFileSync(path.join(home,'PaliQualification.ini'),'path='+p);}}\nelse if(process.argv.includes('-list-avds')){if(fs.existsSync(path.join(home,'PaliQualification.ini')))process.stdout.write('PaliQualification\\n');}\nelse process.stdout.write('Public AVD inventory '+home+'\\n');\n`;
+      const stub = `#!/usr/bin/env node\nconst fs=require('node:fs'),path=require('node:path');\nconst home=process.env.ANDROID_AVD_HOME;\nfs.appendFileSync(process.env.PALI_CALLS,JSON.stringify({tool:path.basename(process.argv[1]),home,args:process.argv.slice(2)})+'\\n');\nif(process.argv.includes('create')){const p=process.argv[process.argv.indexOf('--path')+1];if(p!==path.join(home,'PaliQualification.avd'))process.exit(2);if(process.env.PALI_MODE!=='missing'){fs.mkdirSync(p,{recursive:true});fs.writeFileSync(path.join(home,'PaliQualification.ini'),'path='+p);fs.writeFileSync(path.join(p,'config.ini'),'hw.keyboard=yes\\ndisk.dataPartition.size=10G\\n');}}\nelse if(process.argv.includes('-list-avds')){if(fs.existsSync(path.join(home,'PaliQualification.ini')))process.stdout.write('PaliQualification\\n');}\nelse process.stdout.write('Public AVD inventory '+home+'\\n');\n`;
       fs.writeFileSync(path.join(bin, 'avdmanager'), stub, { mode: 0o755 });
       fs.writeFileSync(path.join(emulator, 'emulator'), stub, { mode: 0o755 });
       const start = script.indexOf('echo no | avdmanager create avd');
@@ -39,8 +39,11 @@ for (const mode of ['created', 'missing']) {
         encoding: 'utf8', timeout: 5000,
         env: { ...process.env, PATH: bin + path.delimiter + process.env.PATH, RUNNER_TEMP: root, ANDROID_HOME: path.join(root, 'sdk'), ANDROID_AVD_HOME: path.join(root, 'wrong-inherited'), PALI_CALLS: path.join(root, 'calls.jsonl'), PALI_MODE: mode },
       });
-      if (mode === 'created') assert.equal(result.status, 0, result.stderr);
-      else assert.notEqual(result.status, 0);
+      if (mode === 'created') {
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(fs.readFileSync(path.join(root, 'pali-android-avd/PaliQualification.avd/config.ini'), 'utf8'), 'hw.keyboard=yes\ndisk.dataPartition.size=6G\n');
+        assert.match(fs.readFileSync(path.join(root, 'pali-native-android/emulator-disk.log'), 'utf8'), /Filesystem/);
+      } else assert.notEqual(result.status, 0);
       const calls = fs.readFileSync(path.join(root, 'calls.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
       assert(calls.length >= 3);
       assert(calls.every((call) => call.home === path.join(root, 'pali-android-avd')));
