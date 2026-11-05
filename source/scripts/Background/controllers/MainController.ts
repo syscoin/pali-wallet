@@ -1003,7 +1003,7 @@ class MainController {
     });
     this.account = {
       eth: EthAccountController(),
-      sys: SysAccountController(() => this.getActiveKeyring()),
+      sys: SysAccountController(() => this.updateUtxoReceivingAddress()),
     };
 
     this.bindMethods();
@@ -1997,15 +1997,52 @@ class MainController {
   }
 
   public getChangeAddress(id: number) {
-    return this.getActiveKeyring().getChangeAddress(id);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getChangeAddress(id, read)
+    );
   }
 
   public getCurrentAddressPubkey(id: number, isChangeAddress: boolean) {
-    return this.getActiveKeyring().getPubkey(id, isChangeAddress);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getPubkey(id, isChangeAddress, read)
+    );
   }
 
   public getBip32Path(id: number, isChangeAddress: boolean) {
-    return this.getActiveKeyring().getBip32Path(id, isChangeAddress);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getBip32Path(id, isChangeAddress, read)
+    );
+  }
+
+  private withUtxoAddressRead<T>(
+    id: number,
+    operation: (
+      keyring: KeyringManager,
+      read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+    ) => Promise<T>
+  ): Promise<T> {
+    const owner = this.captureUtxoSigningContext();
+    if (id !== owner.context.account.id)
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    return owner.withRead((read) => operation(owner.keyring, read));
+  }
+
+  private async updateUtxoReceivingAddress(): Promise<string> {
+    const owner = this.captureUtxoSigningContext();
+    const { id, type } = owner.context.account;
+    const address = await owner.withRead((read) =>
+      owner.keyring.updateReceivingAddress(read)
+    );
+    owner.assertWalletReviewCurrent();
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id,
+        type,
+        property: 'address',
+        value: address,
+      })
+    );
+    return address;
   }
 
   public async getSeed(pwd: string) {
@@ -11460,7 +11497,7 @@ class MainController {
             xpub: context.account.xpub,
             address: context.account.address,
           },
-          assertCurrent,
+          assertWalletReviewCurrent,
           operation
         ),
     };

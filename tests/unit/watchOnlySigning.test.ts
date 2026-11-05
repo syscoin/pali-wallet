@@ -22,10 +22,13 @@ const mockBlockbookLookup = jest.fn((...args: unknown[]) => {
   void args;
   throw new Error('Offline signing test must not request Blockbook');
 });
-jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
-  fetchBackendAccountCached: (...args: unknown[]) =>
-    mockBlockbookLookup(...args),
-}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/utils/owned-blockbook-account',
+  () => ({
+    fetchOwnedBlockbookAccount: (...args: unknown[]) =>
+      mockBlockbookLookup(...args),
+  })
+);
 
 it('the installed SDK refuses a selected watch-only account without signatures, HD fallback or broadcast', async () => {
   const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');

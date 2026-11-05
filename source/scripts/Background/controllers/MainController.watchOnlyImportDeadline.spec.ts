@@ -430,10 +430,15 @@ it('persists an EVM public address without Blockbook and retains the real SDK wa
     type: KeyringAccountType.Imported,
   });
   expect((manager as any).isWatchOnlyAccount(account)).toBe(true);
-  await expect(manager.getPubkey(0, false)).rejects.toThrow(
-    'Public key not available for single-address imported accounts'
+  const read = {
+    assertCurrent: () => undefined,
+    fetch: globalThis.fetch,
+    signal: new AbortController().signal,
+  };
+  await expect(manager.getPubkey(0, false, read)).rejects.toThrow(
+    'Wallet signing context changed'
   );
-  await expect(manager.getBip32Path(0, false)).rejects.toThrow(
-    'BIP32 path not available for single-address imported accounts'
+  await expect(manager.getBip32Path(0, false, read)).rejects.toThrow(
+    'Wallet signing context changed'
   );
 });

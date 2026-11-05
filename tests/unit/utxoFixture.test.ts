@@ -22,10 +22,13 @@ const mockBlockbookLookup = jest.fn((..._args: unknown[]) => {
   void _args;
   throw new Error('Offline fixture must not request Blockbook');
 });
-jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
-  fetchBackendAccountCached: (...args: unknown[]) =>
-    mockBlockbookLookup(...args),
-}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/utils/owned-blockbook-account',
+  () => ({
+    fetchOwnedBlockbookAccount: (...args: unknown[]) =>
+      mockBlockbookLookup(...args),
+  })
+);
 
 async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
   const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);

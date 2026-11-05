@@ -1,9 +1,8 @@
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import axios from 'axios';
 import isEmpty from 'lodash/isEmpty';
 
 import store from 'state/store';
-import { setAccountPropertyByIdAndType, setAccountAssets } from 'state/vault';
+import { setAccountAssets } from 'state/vault';
 import { ITokenSysProps } from 'types/tokens';
 
 import { getAccountAssets, requireAssetArray } from './getAccountAssets';
@@ -27,25 +26,8 @@ export interface ISysAccountController {
 }
 
 const SysAccountController = (
-  getKeyring: () => KeyringManager
+  setAddress: () => Promise<string>
 ): ISysAccountController => {
-  const setAddress = async (): Promise<string> => {
-    const keyringManager = getKeyring();
-    const { activeAccount } = store.getState().vault;
-    const address = await keyringManager.updateReceivingAddress();
-
-    store.dispatch(
-      setAccountPropertyByIdAndType({
-        id: activeAccount.id,
-        type: activeAccount.type,
-        property: 'address',
-        value: String(address),
-      })
-    );
-
-    return address;
-  };
-
   const prepareTokenAddition = async (token: ITokenSysProps) => {
     const { activeAccount, activeNetwork, accountAssets } =
       store.getState().vault;
