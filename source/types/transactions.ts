@@ -42,6 +42,14 @@ export interface ICustomRpcParams {
   url: string;
 }
 
+export type RpcConnectionResult = {
+  chainId?: number;
+  error?: string;
+  latency?: number;
+  requiresAuth?: boolean;
+  success: boolean;
+};
+
 export type EvmRpcDraft = Omit<ICustomRpcParams, 'isSyscoinRpc'> & {
   isSyscoinRpc?: false;
 };
@@ -53,9 +61,9 @@ export type UtxoRpcDraft = Pick<
   (
     | { purpose: 'first-use' }
     | {
-        purpose: 'edit' | 'pin-existing';
         chainId: number;
         expectedRegistration: string;
+        purpose: 'edit' | 'pin-existing';
       }
   );
 

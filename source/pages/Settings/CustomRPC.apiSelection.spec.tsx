@@ -35,6 +35,7 @@ import {
 
 import CustomRPC from './CustomRPC';
 import { clearCustomRpcDrafts } from './customRpcDraft';
+import type { ChainInfo } from '../../shared/chainCatalogue';
 
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
@@ -145,6 +146,7 @@ let heldAlpha: { promise: Promise<void>; resolve: () => void } | null;
 
 let httpRules: chrome.declarativeNetRequest.Rule[];
 let holdBlockbookRule: (() => Promise<void>) | null;
+let blockbookCatalogue: ChainInfo[];
 
 beforeEach(async () => {
   httpRules = [];
@@ -177,6 +179,7 @@ beforeEach(async () => {
   unexpectedReads = 0;
   heldAlpha = null;
   holdBlockbookRule = null;
+  blockbookCatalogue = [];
   globalThis.fetch = jest.fn(async (input, options) => {
     const url = String(input);
     expect(
@@ -221,7 +224,7 @@ beforeEach(async () => {
               consumed = true;
               return { done: false, value: bytes };
             },
-            async cancel() {},
+            cancel: () => Promise.resolve(),
           }),
         },
       } as unknown as Response;
@@ -348,7 +351,7 @@ beforeEach(async () => {
   mockEmitter.mockImplementation(async ([family, method], args) => {
     expect(family).toBe('wallet');
     if (method === 'getChainData')
-      return args[0] === INetworkType.Ethereum ? chains : [];
+      return args[0] === INetworkType.Ethereum ? chains : blockbookCatalogue;
     if (
       [
         'getRpc',
@@ -627,6 +630,62 @@ it('refuses the old generic UTXO registration call before transport', async () =
     })
   ).rejects.toThrow('Use explicit UTXO registration');
   expect(reads).toEqual([]);
+});
+
+it.each([5700, 57])(
+  'uses verified metadata and genesis for a catalogue selection with chain ID %s',
+  async (chainId) => {
+    const name = 'Synthetic catalogue Blockbook';
+    blockbookCatalogue = [
+      {
+        chain: INetworkType.Syscoin,
+        chainId,
+        name,
+        nativeCurrency: { decimals: 8, name: 'Syscoin', symbol: 'SYS' },
+        networkId: chainId,
+        rpc: [{ url: BLOCKBOOK }],
+      },
+    ];
+    const user = open();
+    await user.click(
+      screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
+    );
+    const field = screen.getByRole('combobox');
+    await user.type(field, name);
+    await user.click(
+      await screen.findByRole('option', { name: new RegExp(name) })
+    );
+    await act(async () => jest.advanceTimersByTimeAsync(400));
+    expect(
+      mockEmitter.mock.calls.some(
+        ([[, method]]) => method === 'testRpcConnection'
+      )
+    ).toBe(false);
+    expect(reads.map(({ method }) => method)).toEqual([
+      'blockbook-info',
+      'blockbook-genesis',
+    ]);
+    if (chainId === 5700)
+      expect(mockAlert.success).toHaveBeenCalledWith(
+        'settings.rpcConnectedVia',
+        expect.any(Object)
+      );
+    else
+      expect(mockAlert.error).toHaveBeenCalledWith(
+        'settings.unableToConnectToNetwork',
+        expect.any(Object)
+      );
+  }
+);
+
+it('refuses the former status-only UTXO catalogue test before making a request', async () => {
+  await expect(
+    wallet.testRpcConnection(BLOCKBOOK, INetworkType.Syscoin, 5700)
+  ).resolves.toEqual({
+    success: false,
+    error: 'Use explicit UTXO registration',
+  });
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it('observes a new endpoint, then verifies the approved identity at save', async () => {

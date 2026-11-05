@@ -276,10 +276,10 @@ it('keeps the working UTXO fallback instead of the first failed catalogue endpoi
         { ...chains.syscoin, rpc: [...chains.syscoin.rpc, { url: fallback }] },
       ];
     if (
-      method[1] === 'testRpcConnection' &&
-      args[0] === chains.syscoin.rpc[0].url
+      method[1] === 'previewUtxoRpc' &&
+      args[0].url === chains.syscoin.rpc[0].url
     )
-      return { success: false, error: 'Synthetic unavailable endpoint' };
+      throw new Error('Synthetic unavailable endpoint');
     return normal(method, args);
   });
   jest.useFakeTimers();
@@ -293,13 +293,18 @@ it('keeps the working UTXO fallback instead of the first failed catalogue endpoi
       // both explicitly instead of racing their sum against waitFor's deadline.
       await act(async () => jest.advanceTimersByTimeAsync(300));
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'testRpcConnection'],
-        [chains.syscoin.rpc[0].url, INetworkType.Syscoin, 2, 5000, 500]
+        ['wallet', 'previewUtxoRpc'],
+        [
+          expect.objectContaining({
+            purpose: 'first-use',
+            url: chains.syscoin.rpc[0].url,
+          }),
+        ]
       );
       expect(
         mockEmitter.mock.calls.some(
           ([[, method], args]) =>
-            method === 'testRpcConnection' && args[0] === fallback
+            method === 'previewUtxoRpc' && args[0].url === fallback
         )
       ).toBe(false);
       expect(
@@ -307,8 +312,8 @@ it('keeps the working UTXO fallback instead of the first failed catalogue endpoi
       ).toBeDisabled();
       await act(async () => jest.advanceTimersByTimeAsync(300));
       expect(mockEmitter).toHaveBeenCalledWith(
-        ['wallet', 'testRpcConnection'],
-        [fallback, INetworkType.Syscoin, 2, 5000, 500]
+        ['wallet', 'previewUtxoRpc'],
+        [expect.objectContaining({ purpose: 'first-use', url: fallback })]
       );
     });
     const saved = await save(user);

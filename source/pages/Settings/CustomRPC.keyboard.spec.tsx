@@ -102,6 +102,7 @@ beforeEach(() => {
   mockEmitter.mockReset().mockImplementation(async ([, method]) => {
     if (method === 'getChainData') return chains;
     if (method === 'testRpcConnection') return { success: true, chainId: 72 };
+    if (method === 'previewUtxoRpc') return { chainId: 72 };
     return undefined;
   });
   Object.defineProperty(window, 'matchMedia', {
@@ -282,8 +283,13 @@ it('dismisses the old family and supports keyboard selection for UTXO networks',
   expect(input).toHaveAttribute('aria-expanded', 'false');
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
-      ['wallet', 'testRpcConnection'],
-      ['https://beta.example', INetworkType.Syscoin, 72, 5000, 500]
+      ['wallet', 'previewUtxoRpc'],
+      [
+        expect.objectContaining({
+          purpose: 'first-use',
+          url: 'https://beta.example',
+        }),
+      ]
     )
   );
 });

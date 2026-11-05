@@ -15,7 +15,7 @@ import {
   INetwork,
   clearRpcCaches,
   retryableFetch,
-  validateRpcBatchUniversal,
+  validateEvmRpcBatch,
   getNetworkConfig,
 } from '@sidhujag/sysweb3-network';
 import { txUtils, ITxid } from '@sidhujag/sysweb3-utils';
@@ -159,7 +159,12 @@ import {
   INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
-import { EvmRpcDraft, IDecodedTx, UtxoRpcDraft } from 'types/transactions';
+import {
+  EvmRpcDraft,
+  IDecodedTx,
+  RpcConnectionResult,
+  UtxoRpcDraft,
+} from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
   AsyncMutex,
@@ -12295,25 +12300,19 @@ class MainController {
     return result;
   }
 
-  /**
-   * Test RPC connection using validateRpcBatchUniversal
-   */
+  /** Probe EVM availability. UTXO endpoints go through previewUtxoRpc. */
   public async testRpcConnection(
     url: string,
-    networkType: INetworkType,
+    networkType: INetworkType.Ethereum,
     chainId: number,
     maxLatency: number = 5000,
     minLatency: number = 500
-  ): Promise<{ data?: any; error?: string; success: boolean }> {
+  ): Promise<RpcConnectionResult> {
+    if (networkType !== INetworkType.Ethereum)
+      return { success: false, error: 'Use explicit UTXO registration' };
     try {
       const result = await withWalletBackend(url, () =>
-        validateRpcBatchUniversal(
-          url,
-          networkType,
-          chainId,
-          maxLatency,
-          minLatency
-        )
+        validateEvmRpcBatch(url, chainId, maxLatency, minLatency)
       );
       return result;
     } catch (error: any) {
