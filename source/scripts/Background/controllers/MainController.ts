@@ -310,6 +310,8 @@ import {
 } from 'utils/utxoAcknowledgedInputs';
 import {
   IUtxoSigningContext,
+  isUtxoWalletFeeReview,
+  type UtxoWalletFeeReview,
   UTXO_SIGNING_CONTEXT_CHANGED,
 } from 'utils/utxoSigningContext';
 import {
@@ -490,6 +492,7 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private utxoWalletReviewKey?: Promise<CryptoKey>;
   private activeUtxoReads?: Set<AbortController>;
   private utxoFeeCache?: { fee: number; observedAt: number; url: string };
   private fiatQuoteGeneration = 0;
@@ -1875,6 +1878,52 @@ class MainController {
     }
   }
 
+  private utxoWalletReviewMessage(scope: string, review: UtxoFeeReview) {
+    return new TextEncoder().encode(
+      JSON.stringify([scope, review.feeSatoshis, review.unsignedHash])
+    );
+  }
+
+  private async attestUtxoWalletReview(
+    scope: string,
+    review: UtxoFeeReview
+  ): Promise<UtxoWalletFeeReview> {
+    this.utxoWalletReviewKey ??= crypto.subtle.generateKey(
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      await this.utxoWalletReviewKey,
+      this.utxoWalletReviewMessage(scope, review)
+    );
+    return Object.freeze({
+      ...review,
+      approvalTag: Buffer.from(signature).toString('hex'),
+    });
+  }
+
+  private async assertUtxoWalletReview(
+    scope: string,
+    review: UtxoWalletFeeReview | undefined
+  ): Promise<void> {
+    if (
+      !review ||
+      !this.utxoWalletReviewKey ||
+      !(await crypto.subtle.verify(
+        'HMAC',
+        await this.utxoWalletReviewKey,
+        Uint8Array.from(Buffer.from(review.approvalTag, 'hex')),
+        this.utxoWalletReviewMessage(scope, review)
+      ))
+    )
+      throw Object.assign(new Error(UTXO_SIGNING_CONTEXT_CHANGED), {
+        code: UTXO_SIGNING_CONTEXT_CHANGED,
+        transactionNotBroadcast: true,
+      });
+  }
+
   // Protect linked collateral during selection as well as at the signing boundary.
   public async getEstimateSysTransactionFee(
     params: Parameters<
@@ -1909,10 +1958,12 @@ class MainController {
       // The builder reports a numeric fee derived from the funding snapshot.
       // Never display or authorize it if authenticated prevouts disagree.
       assertUtxoBuilderFee(result.fee, summary.feeSatoshis);
-      return {
-        ...result,
-        utxoFeeReview: createUtxoFeeReview(psbt, summary.feeSatoshis),
-      };
+      const utxoFeeReview = await this.attestUtxoWalletReview(
+        signing.walletReviewScope,
+        createUtxoFeeReview(psbt, summary.feeSatoshis)
+      );
+      signing.assertWalletReviewCurrent();
+      return { ...result, utxoFeeReview };
     });
   }
 
@@ -7842,13 +7893,21 @@ class MainController {
    */
   public async signSendAndSaveTransaction(
     params: {
-      expectedContext?: IUtxoSigningContext;
       isLedger?: boolean; // For UTXO transactions
       isTrezor?: boolean;
-      ordinaryWalletSend?: boolean;
       psbt?: any;
-      utxoFeeReview?: UtxoFeeReview;
-    },
+    } & (
+      | {
+          expectedContext?: never;
+          ordinaryWalletSend: true;
+          utxoFeeReview: UtxoWalletFeeReview;
+        }
+      | {
+          expectedContext?: IUtxoSigningContext;
+          ordinaryWalletSend?: false;
+          utxoFeeReview?: never;
+        }
+    ),
     authorizeDapp?: () => void
   ): Promise<any> {
     let senderInvoked = false;
@@ -7866,7 +7925,27 @@ class MainController {
           params.expectedContext,
           authorizeDapp
         );
+        const ordinary = params.ordinaryWalletSend === true;
+        const assertCurrent = ordinary
+          ? signing.assertWalletReviewCurrent
+          : signing.assertCurrent;
+        const review =
+          ordinary && isUtxoWalletFeeReview(params.utxoFeeReview)
+            ? Object.freeze({
+                feeSatoshis: params.utxoFeeReview.feeSatoshis,
+                unsignedHash: params.utxoFeeReview.unsignedHash,
+                approvalTag: params.utxoFeeReview.approvalTag,
+              })
+            : undefined;
+        if (ordinary) {
+          await this.assertUtxoWalletReview(signing.walletReviewScope, review);
+          assertCurrent();
+        }
         const approvedPsbt = PsbtUtils.fromPali(params.psbt, activeNetwork);
+        // Reject a different unsigned envelope before resolving its inputs.
+        // The actual fee is checked separately against verified prevouts.
+        if (review)
+          assertUtxoFeeReview(approvedPsbt, review.feeSatoshis, review);
         if (syscoinTransactionTypes.isPoDATx(approvedPsbt.version))
           throw new Error(
             'This wallet can sign PoDA PSBTs for external submission'
@@ -7875,20 +7954,7 @@ class MainController {
           activeNetwork,
           signing.context.account
         );
-        const review =
-          params.ordinaryWalletSend === true ? params.utxoFeeReview : undefined;
-        if (params.ordinaryWalletSend === true && !review)
-          throw Object.assign(
-            new Error(
-              'Transaction or network fee changed. Review a new quote.'
-            ),
-            {
-              code: 'UTXO_QUOTE_FEE_CHANGED',
-              transactionNotBroadcast: true,
-            }
-          );
-
-        if (params.ordinaryWalletSend === true) {
+        if (ordinary) {
           this.assertOrdinaryUtxoInputsCurrent(approvedPsbt, signing.context);
         }
 
@@ -7901,9 +7967,9 @@ class MainController {
             expectedContext: signing.context,
             ...(review && { utxoFeeReview: review }),
           },
-          signing.assertCurrent
+          assertCurrent
         );
-        signing.assertCurrent();
+        assertCurrent();
 
         // Reject incomplete or excessive-fee signatures before the sender can
         // publish anything. Keep the normal PSBT fee safety check enabled.
@@ -7931,7 +7997,7 @@ class MainController {
           }
           throw error;
         }
-        signing.assertCurrent();
+        assertCurrent();
         if (review)
           assertUtxoFeeReview(
             verifiedSignedPsbt,
@@ -7939,7 +8005,7 @@ class MainController {
             review
           );
 
-        if (params.ordinaryWalletSend === true) {
+        if (ordinary) {
           this.assertOrdinaryUtxoInputsCurrent(
             verifiedSignedPsbt,
             signing.context
@@ -7950,10 +8016,7 @@ class MainController {
         const sentryScope = this.getSentryCollateralScope();
         const record = Object.freeze({
           owner,
-          operation:
-            params.ordinaryWalletSend === true
-              ? ('wallet' as const)
-              : ('external' as const),
+          operation: ordinary ? ('wallet' as const) : ('external' as const),
           url: utxoSubmissionUrl(signing.context.rpcUrl),
           txid: transaction.getId(),
           rawTransaction: transaction.toHex(),
@@ -7963,14 +8026,14 @@ class MainController {
         });
         const submit = async (markInvoked: () => void) => {
           await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
-          signing.assertCurrent();
+          assertCurrent();
           return withWalletBackend(signing.context.rpcUrl, () =>
             submitReviewedUtxo({
               record,
               sender: signing.transactions,
               session: {
                 keyring: signing.keyring,
-                assertCurrent: signing.assertCurrent,
+                assertCurrent,
               },
               records: this.getRetainedUtxoRecords(),
               intent: 'initial',
@@ -7988,7 +8051,7 @@ class MainController {
         // Broadcast acknowledgement is authoritative even if the user changes
         // context or local history persistence fails afterward.
         try {
-          signing.assertCurrent();
+          assertCurrent();
           await this.sendAndSaveTransaction(txResult, signing.context.account, {
             localAcknowledgedInputs: createUtxoAcknowledgedInputs(
               verifiedSignedPsbt.txInputs,
@@ -11296,6 +11359,7 @@ class MainController {
   ) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
     const keyring = this.getActiveKeyring();
     const { vault, vaultGlobal } = store.getState();
     const { currency } = vault.activeNetwork;
@@ -11364,10 +11428,24 @@ class MainController {
       )
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
+    const walletReviewScope = JSON.stringify([
+      generation,
+      networkGeneration,
+      pin,
+      currency,
+      context,
+    ]);
+    const assertWalletReviewCurrent = () => {
+      assertCurrent();
+      if (networkGeneration !== this.networkRequestGeneration)
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
     assertCurrent();
     return {
       context,
       assertCurrent,
+      walletReviewScope,
+      assertWalletReviewCurrent,
       keyring,
       transactions: keyring.syscoinTransaction,
       withRead: <T>(

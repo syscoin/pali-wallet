@@ -52,7 +52,8 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
-type UtxoFeeReview = import('utils/syscoinPsbtValues').UtxoFeeReview;
+type UtxoWalletFeeReview =
+  import('utils/utxoSigningContext').UtxoWalletFeeReview;
 
 const nativeAtomicAmount = (value: unknown) =>
   parseUnits(String(removeScientificNotation(String(value))), 8);
@@ -589,7 +590,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
         let psbt = null;
-        let utxoFeeReview: UtxoFeeReview | undefined;
+        let utxoFeeReview: UtxoWalletFeeReview | undefined;
         try {
           const quote = (await controllerEmitter(
             ['wallet', 'getEstimateSysTransactionFee'],
@@ -609,7 +610,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             grossAmount?: string;
             psbt: any;
             recipientAmount?: string;
-            utxoFeeReview: UtxoFeeReview;
+            utxoFeeReview: UtxoWalletFeeReview;
           };
           if (!isCurrentPreparation()) return;
 
@@ -751,7 +752,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // For tokens, we need to estimate the fee for display
         let tokenFeeEstimate = MINIMUM_FEE; // Default
         let tokenPsbt = null;
-        let utxoFeeReview: UtxoFeeReview | undefined;
+        let utxoFeeReview: UtxoWalletFeeReview | undefined;
         try {
           const {
             fee: estimatedFee,
@@ -771,7 +772,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 },
               },
             ]
-          )) as { fee: number; psbt: any; utxoFeeReview: UtxoFeeReview };
+          )) as { fee: number; psbt: any; utxoFeeReview: UtxoWalletFeeReview };
           if (!isCurrentPreparation()) return;
 
           tokenFeeEstimate = estimatedFee;

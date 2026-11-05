@@ -1229,9 +1229,7 @@ export const SendConfirm = () => {
               [
                 {
                   psbt: basicTxValues.psbt,
-                  ...(basicTxValues.utxoFeeReview && {
-                    utxoFeeReview: basicTxValues.utxoFeeReview,
-                  }),
+                  utxoFeeReview: basicTxValues.utxoFeeReview,
                   ordinaryWalletSend:
                     location.pathname === '/send/confirm' &&
                     location.state?.external !== true,

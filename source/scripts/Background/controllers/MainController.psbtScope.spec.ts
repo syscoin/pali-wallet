@@ -33,7 +33,10 @@ import {
 } from 'utils/sentry/collateral';
 import { SENTRY_NETWORKS } from 'utils/sentry/network';
 import { chromeStorage } from 'utils/storageAPI';
-import { getVerifiedSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
+import {
+  createUtxoFeeReview,
+  getVerifiedSyscoinPsbtValueSummary,
+} from 'utils/syscoinPsbtValues';
 import {
   createUtxoAcknowledgedInputs,
   UTXO_NETWORK_CATCHING_UP,
@@ -66,19 +69,18 @@ const syntheticPsbt = (fee: bigint, finalized = true, replaceable = false) => {
   return psbt;
 };
 
-const reviewedFee = (psbt: any, feeSatoshis: string) => ({
-  feeSatoshis,
-  unsignedHash: Buffer.from(
-    syscoinUtils.bitcoinjs.crypto.hash256(
-      psbt.data.globalMap.unsignedTx.toBuffer()
-    )
-  ).toString('hex'),
-});
-
 describe('PSBT approval context', () => {
   let wallet: any;
   let state: any;
   let keyring: any;
+  const reviewedFee = (
+    psbt: ReturnType<typeof syntheticPsbt>,
+    feeSatoshis: string
+  ) =>
+    wallet.attestUtxoWalletReview(
+      wallet.captureUtxoSigningContext().walletReviewScope,
+      createUtxoFeeReview(psbt, feeSatoshis)
+    );
   const authorize = () => undefined;
   const defaultTxid = syntheticPsbt(BigInt(1000)).extractTransaction().getId();
   const dispatch = async (raw: string, port: any) => {
@@ -144,6 +146,7 @@ describe('PSBT approval context', () => {
     };
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 0;
+    wallet.networkRequestGeneration = 0;
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.verifySyscoinPsbt = jest.fn(async (psbt) => ({
       psbt:
@@ -926,13 +929,92 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'endpoint',
+    'selection round trip',
+    'wallet session',
+    'fee',
+    'unsigned hash',
+    'missing proof',
+  ])(
+    'refuses a stale or substituted ordinary UTXO quote after %s before parse or signer entry',
+    async (change) => {
+      const quote = await wallet.getEstimateSysTransactionFee({ amount: '1' });
+      expect(quote.utxoFeeReview.approvalTag).toMatch(/^[a-f0-9]{64}$/);
+      let review = quote.utxoFeeReview;
+      if (change === 'endpoint') {
+        state.vault.activeNetwork.url = 'https://rpc-b.invalid';
+        state.vaultGlobal.networks.syscoin[57].url =
+          state.vault.activeNetwork.url;
+      }
+      if (change === 'selection round trip')
+        wallet.networkRequestGeneration += 1;
+      if (change === 'wallet session') wallet.walletSessionGeneration += 1;
+      if (change === 'fee') review = { ...review, feeSatoshis: '999' };
+      if (change === 'unsigned hash')
+        review = { ...review, unsignedHash: '12'.repeat(32) };
+      if (change === 'missing proof')
+        review = createUtxoFeeReview(syntheticPsbt(BigInt(1000)), '1000');
+      jest.mocked(PsbtUtils.fromPali).mockClear();
+      wallet.verifySyscoinPsbt.mockClear();
+      await expect(
+        wallet.signSendAndSaveTransaction({
+          psbt: quote.psbt,
+          ordinaryWalletSend: true,
+          utxoFeeReview: review,
+        })
+      ).rejects.toMatchObject({
+        code: UTXO_SIGNING_CONTEXT_CHANGED,
+        transactionNotBroadcast: true,
+      });
+      expect(PsbtUtils.fromPali).not.toHaveBeenCalled();
+      expect(wallet.verifySyscoinPsbt).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it('sends the exact ordinary quote through the captured endpoint', async () => {
+    const quote = await wallet.getEstimateSysTransactionFee({ amount: '1' });
+    await expect(
+      wallet.signSendAndSaveTransaction({
+        psbt: quote.psbt,
+        ordinaryWalletSend: true,
+        utxoFeeReview: quote.utxoFeeReview,
+      })
+    ).resolves.toEqual({ txid: defaultTxid });
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+    expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a substituted PSBT with a valid tag before its prevout reads', async () => {
+    const quote = await wallet.getEstimateSysTransactionFee({ amount: '1' });
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValueOnce(
+      syntheticPsbt(BigInt(1000), true, true)
+    );
+    wallet.verifySyscoinPsbt.mockClear();
+    await expect(
+      wallet.signSendAndSaveTransaction({
+        psbt: 'substituted',
+        ordinaryWalletSend: true,
+        utxoFeeReview: quote.utxoFeeReview,
+      })
+    ).rejects.toMatchObject({
+      code: 'UTXO_QUOTE_FEE_CHANGED',
+      transactionNotBroadcast: true,
+    });
+    expect(wallet.verifySyscoinPsbt).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+  });
+
   it('rejects stale ordinary Confirm before invoking any signer', async () => {
     retainAcknowledgedInput();
     await expect(
       wallet.signSendAndSaveTransaction({
         psbt: 'fixture',
         ordinaryWalletSend: true,
-        utxoFeeReview: reviewedFee(syntheticPsbt(BigInt(1000)), '1000'),
+        utxoFeeReview: await reviewedFee(syntheticPsbt(BigInt(1000)), '1000'),
       })
     ).rejects.toMatchObject({
       code: UTXO_NETWORK_CATCHING_UP,
@@ -957,7 +1039,7 @@ describe('PSBT approval context', () => {
       wallet.signSendAndSaveTransaction({
         psbt: 'fixture',
         ordinaryWalletSend: true,
-        utxoFeeReview: reviewedFee(psbt, '1000'),
+        utxoFeeReview: await reviewedFee(psbt, '1000'),
       })
     ).rejects.toMatchObject({
       code: UTXO_NETWORK_CATCHING_UP,
@@ -980,7 +1062,7 @@ describe('PSBT approval context', () => {
       wallet.signSendAndSaveTransaction({
         psbt: 'fixture',
         ordinaryWalletSend: true,
-        utxoFeeReview: reviewedFee(psbt, '1000'),
+        utxoFeeReview: await reviewedFee(psbt, '1000'),
       })
     ).rejects.toMatchObject({
       code: 'UTXO_QUOTE_FEE_CHANGED',
