@@ -54,7 +54,7 @@ export type CustodyStoredState =
 /**
  * Internal host boundary, not an application/UI service. A native factory must
  * qualify crypto/storage before returning a runtime. It owns one SDK authority,
- * never rebinds its store, and exposes only the selected Ethereum address here.
+ * never rebinds its store, and exposes only the selected public address here.
  */
 export interface CustodyRuntime {
   readonly accounts?: NativeAccountRuntime;
@@ -66,7 +66,7 @@ export interface CustodyRuntime {
     importWallet(phrase: string, password: string): Promise<void>;
     /** Only the SDK's explicit credential rejection maps to false. */
     unlock(password: string): Promise<Readonly<{ authenticated: boolean }>>;
-    readEthereumAddress(): Promise<string>;
+    readSelectedAddress(): Promise<string>;
     /** Must revoke secrets synchronously, before any asynchronous cleanup. */
     lock(): Promise<void>;
   };

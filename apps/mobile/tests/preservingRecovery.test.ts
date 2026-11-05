@@ -14,7 +14,11 @@ import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import type { OpenWalletStorage } from '../src/storage/types.ts';
 import { encodeStorageValue } from '../src/storage/json.ts';
-import { WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
+import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
+import { metadata as utxoMetadata, UTXO_ADDRESSES } from './publicWatchFixtures.ts';
+import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
 import { createActivityScope } from '../src/activity/types.ts';
@@ -55,7 +59,8 @@ function latch() {
 async function fixture(
   loadRuntimeSdk?: () => Promise<typeof sdk>,
   confirmed = true,
-  clocks?: { wall: () => number; monotonic: () => number }
+  clocks?: { wall: () => number; monotonic: () => number },
+  readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount']
 ) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
@@ -95,6 +100,7 @@ async function fixture(
   const factory = createKeyringRuntimeFactory({
     ensureCryptoReady: async () => undefined,
     openStorage: open,
+    readUtxoAccount,
     loadSdk: async () => {
       const module = await (loadRuntimeSdk?.() ?? sdk);
       class ObservedKeyring extends module.SoftwareKeyring {
@@ -148,6 +154,7 @@ async function fixture(
     get store() {
       return store;
     },
+    unlockedKeyrings: () => liveKeyrings.filter((keyring) => keyring.isUnlocked()).length,
     open,
     read,
     write,
@@ -182,8 +189,9 @@ async function fixture(
     pauseFailure(value: ReturnType<typeof latch>) {
       failurePause = value;
     },
-    async reopen() {
-      await owner.dispose();
+    async reopen(quarantined = false) {
+      if (quarantined) await assert.rejects(owner.dispose(), { code: 'CLEANUP_FAILED' });
+      else await owner.dispose();
       owner = await newOwner();
       return owner;
     },
@@ -1009,3 +1017,338 @@ test('shared actualSDK inspector rejects an authenticated bundle containing513un
     await assert.rejects(readPrivateVaultBundle(data.bundle, { keyring: data.keyring, generation: 1, assertCurrent() {} }), { message: 'privacy_vault_corrupt' });
   } finally { await data.keyring.lockWallet(); }
 });
+
+
+type RecoveryFixture = Awaited<ReturnType<typeof fixture>>;
+const selectNetwork = (f: RecoveryFixture, id: string) => f.owner.selectNetwork(
+  id, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision
+);
+const accountRecord = async (f: RecoveryFixture) =>
+  await f.store.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+
+test('UTXO custody uses SDK groups, preserves EVM selection and survives real password recovery', async () => {
+  const f = await fixture();
+  let recovery: NativeRecoveryCoordinator | undefined;
+  const manage = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
+    f.owner.manageAccounts(request, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+  try {
+    await manage({ kind: 'create', label: 'EVM account two', password: OLD });
+    const evm = f.owner.getSnapshot().account!;
+    assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:60:1');
+    const originalRoot = (await f.store.recovery.readIdentity())!;
+    await assert.rejects(selectNetwork(f, 'utxo:999999'), { code: 'INVALID_INPUT' });
+    assert.deepEqual(f.owner.getSnapshot().account, evm);
+    for (const id of ['syscoin', 'utxo:5700', 'bitcoin'] as const) {
+      await selectNetwork(f, id);
+      const network = getUtxoNetwork(id);
+      const account = f.owner.getSnapshot().account!;
+      assert.equal(account.network, id);
+      assert.equal(f.owner.getCatalogue()?.active.accountId, `hd:${network.slip44}:0`);
+      assert.equal(f.unlockedKeyrings(), 1);
+      const group = (await accountRecord(f)).groups.find((value) => value.key === String(network.slip44))!;
+      const first = group.accounts.HDAccount[0]!;
+      assert.equal(group.activeNetwork.chainId, network.chainId);
+      assert.equal(parseUtxoPublicIdentifier(first.xpub, id).address, account.address);
+      assert.equal(first.address, account.address);
+      assert(!JSON.stringify(f.owner.getCatalogue()).includes(first.xpub));
+      assert(!JSON.stringify(f.owner.getSnapshot()).includes(first.xpub));
+    }
+    await manage({ kind: 'create', label: 'Bitcoin account two', password: OLD });
+    const gap = f.owner.getSnapshot().account!;
+    assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:1');
+    await manage({ kind: 'create', label: 'Bitcoin account three', password: OLD });
+    await manage({ kind: 'remove', id: 'hd:0:1', password: OLD });
+    await manage({ kind: 'create', label: 'Bitcoin gap reused', password: OLD });
+    assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:1');
+    assert.deepEqual(f.owner.getSnapshot().account, gap);
+    assert.deepEqual(f.owner.getCatalogue()?.accounts.map((account) => account.id), ['hd:0:0', 'hd:0:1', 'hd:0:2']);
+    await assert.rejects(f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'EVM only' },
+      OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision), { code: 'NOT_READY' });
+    await selectNetwork(f, 'syscoin-nevm-testnet');
+    assert.equal(getNativeNetwork('syscoin-nevm-testnet').chainId, '5700');
+    assert.equal(f.owner.getSnapshot().account?.address, evm.address);
+    assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:60:1');
+    await selectNetwork(f, 'utxo:5700');
+    assert.notEqual(f.owner.getSnapshot().account?.address, evm.address);
+    await selectNetwork(f, 'bitcoin');
+    assert.deepEqual(f.owner.getSnapshot().account, gap);
+
+    await f.reopen();
+    await f.owner.unlock(OLD);
+    assert.deepEqual(f.owner.getSnapshot().account, gap);
+    assert.equal(f.unlockedKeyrings(), 1);
+    assert.deepEqual((await accountRecord(f)).groups.map((group) => group.key), ['60', '57', '1', '0']);
+    const inventory = await readRecoveryInventory(f.store);
+    assert.equal(inventory.counts?.hdAccounts, 7);
+    const before = f.read();
+    f.owner.lock();
+    recovery = f.coordinator();
+    const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    assert.deepEqual(retained(f.read()), retained(before));
+    await f.reopen();
+    await f.owner.unlock(NEXT);
+    assert.deepEqual(f.owner.getSnapshot().account, gap);
+    assert.deepEqual((await f.store.recovery.readIdentity())?.root, originalRoot.root);
+    assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, originalRoot.walletBindingId);
+    await selectNetwork(f, 'ethereum');
+    assert.deepEqual(f.owner.getSnapshot().account, evm);
+    assert.equal(f.unlockedKeyrings(), 1);
+  } finally {
+    await recovery?.dispose();
+    await f.close();
+  }
+});
+
+test('UTXO custody balance sends the selected account key only after verified Blockbook status and genesis', async () => {
+  const calls: string[] = [];
+  const hold = latch();
+  let wrongGenesis = true;
+  let holdStatus = false;
+  let expectedXpub = '';
+  let activeSignal: AbortSignal | undefined;
+  const read: NonNullable<Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount']> = (id, xpub, signal, guard) =>
+    createUtxoBalanceReader({ fetch: async (url, init) => {
+      guard();
+      calls.push(url);
+      assert.equal(init.method, 'GET');
+      const network = getUtxoNetwork(id);
+      if (url === `${network.endpoint}/api/v2/`) {
+        if (holdStatus) {
+          activeSignal = init.signal ?? undefined;
+          hold.enter();
+          await hold.gate;
+        }
+        return Response.json(utxoMetadata(id));
+      }
+      if (url === `${network.endpoint}/api/v2/block-index/0`)
+        return Response.json({ blockHash: wrongGenesis ? 'a'.repeat(64) : network.genesisHash });
+      assert.equal(url, `${network.endpoint}/api/v2/xpub/${expectedXpub}?details=tokenBalances&tokens=nonzero`);
+      assert.equal(xpub, expectedXpub);
+      return Response.json({ address: xpub, balance: '9007199254740993', unconfirmedBalance: '-123', unconfirmedTxs: 1 });
+    } }).readAccount(id, xpub, signal);
+  const f = await fixture(undefined, true, undefined, read);
+  try {
+    const id = 'bitcoin' satisfies UtxoNetworkId;
+    await selectNetwork(f, id);
+    const address = f.owner.getSnapshot().account!.address;
+    expectedXpub = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[0]!.xpub;
+    const readBalance = (value = address) =>
+      f.runtime.readUtxoBalance!(id, value, new AbortController().signal);
+    await assert.rejects(readBalance('bc1invalid'), { code: 'CANCELLED' });
+    assert.equal(calls.length, 0);
+    await assert.rejects(readBalance(), { code: 'NETWORK_MISMATCH' });
+    assert.equal(calls.length, 2);
+    assert(calls.every((url) => !url.includes(expectedXpub)));
+    wrongGenesis = false;
+    calls.length = 0;
+    const balance = await readBalance();
+    assert.equal(balance.confirmedUnits, '9007199254740993');
+    assert.equal(balance.pendingDeltaUnits, '-123');
+    assert.equal(calls.length, 3);
+    assert(!JSON.stringify(balance).includes(expectedXpub));
+
+    calls.length = 0;
+    holdStatus = true;
+    const pending = readBalance();
+    const denied = assert.rejects(pending, { code: 'CANCELLED' });
+    await hold.reached;
+    await selectNetwork(f, 'ethereum');
+    assert.equal(activeSignal?.aborted, true);
+    hold.release();
+    await denied;
+    assert.equal(calls.length, 1);
+    assert(!calls[0]!.includes(expectedXpub));
+  } finally {
+    hold.release();
+    await f.close();
+  }
+});
+
+test('UTXO custody lock revokes the sole staged owner before a held derivation returns', async () => {
+  const hold = latch();
+  class HeldKeyring extends sdk.SoftwareKeyring {
+    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
+      super(host);
+      const createFirstAccount = this.createFirstAccount;
+      this.createFirstAccount = async (...args) => {
+        const account = await createFirstAccount(...args);
+        if (account.address.startsWith('bc1')) {
+          hold.enter();
+          await hold.gate;
+        }
+        return account;
+      };
+    }
+  }
+  const f = await fixture(async () => ({ ...sdk, SoftwareKeyring: HeldKeyring }));
+  try {
+    const before = await accountRecord(f);
+    const pending = selectNetwork(f, 'bitcoin');
+    const denied = assert.rejects(pending, { code: 'CANCELLED' });
+    await hold.reached;
+    assert.equal(f.unlockedKeyrings(), 1);
+    assert.equal(f.owner.getSnapshot().account, null);
+    f.owner.lock();
+    assert.equal(f.unlockedKeyrings(), 0);
+    hold.release();
+    await denied;
+    assert.deepEqual(await accountRecord(f), before);
+    await f.reopen();
+    await f.owner.unlock(OLD);
+    assert.equal(f.owner.getSnapshot().account?.network, 'ethereum');
+    await selectNetwork(f, 'bitcoin');
+    assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:0');
+  } finally {
+    hold.release();
+    await f.close();
+  }
+});
+
+for (const fault of ['CAS miss', 'lost COMMIT acknowledgement']) {
+  test(`UTXO custody ${fault} leaves the durable selection for cold reopen`, async () => {
+    const f = await fixture();
+    try {
+      const before = await accountRecord(f);
+      let injected = false;
+      if (fault === 'CAS miss') {
+        f.setHook((kind, sql) => {
+          if (!injected && kind === 'exec' && sql === 'BEGIN IMMEDIATE') {
+            injected = true;
+            f.write(WALLET_CATALOGUE_KEY, { ...before, revision: before.revision + 1 });
+          }
+        });
+      } else {
+        let updatingCatalogue = false;
+        f.setHook((kind, sql) => {
+          if (kind === 'run' && sql === 'UPDATE keyring_records SET value = ? WHERE key = ?')
+            updatingCatalogue = true;
+        });
+        f.setAfter((kind, sql) => {
+          if (updatingCatalogue && kind === 'exec' && sql === 'COMMIT') {
+            injected = true;
+            throw new Error('Commit acknowledgement lost');
+          }
+        });
+      }
+      await assert.rejects(selectNetwork(f, 'bitcoin'));
+      assert.equal(injected, true);
+      assert.equal(f.unlockedKeyrings(), 0);
+      assert.equal(f.owner.getSnapshot().account, null);
+      f.setHook(); f.setAfter();
+      await f.reopen(fault === 'lost COMMIT acknowledgement');
+      await f.owner.unlock(OLD);
+      assert.equal(f.owner.getSnapshot().account?.network, fault === 'CAS miss' ? 'ethereum' : 'bitcoin');
+      assert.equal((await accountRecord(f)).groups.length, fault === 'CAS miss' ? 1 : 2);
+      assert.equal(f.unlockedKeyrings(), 1);
+    } finally {
+      f.setHook(); f.setAfter();
+      await f.close();
+    }
+  });
+}
+
+
+test('UTXO custody reopens and recovers using current defaults when saved endpoints change', async () => {
+  const bitcoin = getUtxoNetwork('bitcoin');
+  const retiredEndpoint = 'https://previous-provider.invalid/';
+  const requests: string[] = [];
+  const recoveryEndpoints = new Map<number, string>();
+  class ObservedRecoverySigner extends sdk.SoftwareKeyring {
+    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
+      super(host);
+      const encrypt = this.getEncryptedXprv;
+      this.getEncryptedXprv = (signer) => {
+        recoveryEndpoints.set(signer.Signer.SLIP44, signer.blockbookURL);
+        return encrypt(signer);
+      };
+    }
+  }
+  const f = await fixture(undefined, true, undefined, (id, xpub, signal, guard) =>
+    createUtxoBalanceReader({ fetch: async (url) => {
+      guard();
+      requests.push(url);
+      if (url === `${bitcoin.endpoint}/api/v2/`) return Response.json(utxoMetadata(id));
+      if (url === `${bitcoin.endpoint}/api/v2/block-index/0`)
+        return Response.json({ blockHash: bitcoin.genesisHash });
+      assert.equal(url, `${bitcoin.endpoint}/api/v2/xpub/${xpub}?details=tokenBalances&tokens=nonzero`);
+      return Response.json({ address: xpub, balance: '123', unconfirmedBalance: '0', unconfirmedTxs: 0 });
+    } }).readAccount(id, xpub, signal)
+  );
+  let recovery: NativeRecoveryCoordinator | undefined;
+  try {
+    await selectNetwork(f, 'syscoin');
+    await selectNetwork(f, bitcoin.id);
+    const account = f.owner.getSnapshot().account!;
+    const root = (await f.store.recovery.readIdentity())!.root;
+    const before = await accountRecord(f);
+    const changed = {
+      ...before,
+      groups: before.groups.map((group) => group.activeNetwork.kind === 'syscoin'
+        ? { ...group, activeNetwork: { ...group.activeNetwork, url: retiredEndpoint } }
+        : group),
+    };
+    f.write(WALLET_CATALOGUE_KEY, changed);
+    await f.reopen();
+    await f.owner.unlock(OLD);
+    assert.deepEqual(f.owner.getSnapshot().account, account);
+    assert.deepEqual(await accountRecord(f), changed, 'unlock must not rewrite the account row');
+    const observed = await f.runtime.readUtxoBalance!(
+      bitcoin.id, account.address, new AbortController().signal
+    );
+    assert.equal(observed.confirmedUnits, '123');
+    assert.equal(requests.length, 3);
+    assert(requests.every((url) => url.startsWith(bitcoin.endpoint + '/')));
+
+    f.owner.lock();
+    recovery = f.coordinator(async () => ({ ...sdk, SoftwareKeyring: ObservedRecoverySigner }));
+    const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+    assert.equal(await recovery.commit(proof), 'committed-locked');
+    assert.deepEqual(recoveryEndpoints, new Map([
+      [57, getUtxoSdkNetwork('syscoin').url],
+      [0, getUtxoSdkNetwork('bitcoin').url],
+    ]));
+    assert.equal(requests.length, 3, 'recovery must remain local');
+    await f.reopen();
+    await f.owner.unlock(NEXT);
+    assert.deepEqual(f.owner.getSnapshot().account, account);
+    assert.deepEqual((await f.store.recovery.readIdentity())?.root, root);
+    assert.deepEqual((await accountRecord(f)).groups.map((group) => group.activeNetwork.url),
+      before.groups.map((group) => group.activeNetwork.url));
+  } finally {
+    await recovery?.dispose();
+    await f.close();
+  }
+});
+
+for (const field of ['chain', 'account'] as const) {
+  test(`UTXO endpoint rotation still refuses a wrong saved ${field} identity`, async () => {
+    const f = await fixture();
+    try {
+      await selectNetwork(f, 'bitcoin');
+      const before = await accountRecord(f);
+      const changed = {
+        ...before,
+        groups: before.groups.map((group) => {
+          if (group.key !== '0') return group;
+          if (field === 'chain') return {
+            ...group, activeNetwork: { ...group.activeNetwork, chainId: 57 },
+          };
+          return {
+            ...group,
+            accounts: { ...group.accounts,
+              HDAccount: { 0: { ...group.accounts.HDAccount[0]!, address: UTXO_ADDRESSES.bitcoin } } },
+          };
+        }),
+      };
+      f.write(WALLET_CATALOGUE_KEY, changed);
+      await f.reopen();
+      await assert.rejects(f.owner.unlock(OLD), { code: 'OPERATION_FAILED' });
+      assert.equal(f.owner.getSnapshot().account, null);
+      assert.equal(f.unlockedKeyrings(), 0);
+      assert.deepEqual(await accountRecord(f), changed);
+    } finally {
+      await f.close();
+    }
+  });
+}

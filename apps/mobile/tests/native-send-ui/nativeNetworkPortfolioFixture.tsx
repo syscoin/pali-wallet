@@ -3,10 +3,14 @@ import type { CustodySnapshot } from '../../src/custody/types';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
 import { createNativeNetworkView } from '../../src/custody/networkView';
 import { getNativeNetwork, NATIVE_NETWORKS, type EvmNetworkId } from '../../src/custody/networkContext';
+import { nativeAccountId } from '../../src/custody/accountIdentity';
+import { findUtxoNetwork, getUtxoNetwork, type UtxoNetworkId } from '../../src/core/utxoNetworks';
+import { UTXO_ADDRESSES } from '../publicWatchFixtures';
 import { NativePortfolio } from '../../src/screens/NativePortfolio';
 import { NativeNetworks } from '../../src/screens/NativeNetworks';
 import type { BalanceReader } from '../../src/core/watchOnlyAuthority';
 
+const utxoAddresses: Partial<Record<UtxoNetworkId, string>> = UTXO_ADDRESSES;
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
 let state = Object.freeze<CustodySnapshot>({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null });
 let catalogue = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 1, networks: NATIVE_NETWORKS,
@@ -21,19 +25,35 @@ const authority = {
   getCatalogue: () => state.phase === 'ready' ? catalogue : null,
   subscribe(listener: (value: CustodySnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
   async selectNetwork(id: string, revision: number, catalogueRevision: number) {
-    const network = getNativeNetwork(id);
+    const utxo = findUtxoNetwork(id);
+    const network = utxo ?? getNativeNetwork(id);
+    const selectedAddress = utxo ? utxoAddresses[utxo.id] : address;
+    if (!selectedAddress) throw Error('Unsupported fixture network');
     if (state.phase !== 'ready' || revision !== state.revision || catalogueRevision !== catalogue.revision) throw Error('CANCELLED');
     state = Object.freeze({ ...state, revision: state.revision + 1, phase: 'authenticating', account: null }); publish();
     await Promise.resolve();
-    catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, networkId: network.id } });
-    state = Object.freeze({ ...state, phase: 'ready', account: { network: network.id, address } }); publish();
+    const slip44 = utxo?.slip44 ?? 60;
+    const accountId = nativeAccountId('HDAccount', 0, slip44);
+    catalogue = Object.freeze<NativeWalletCatalogueSnapshot>({ ...catalogue, revision: catalogue.revision + 1,
+      accounts: [{ id: accountId, type: 'HDAccount', index: 0, slip44, address: selectedAddress, label: 'Account 1' }],
+      active: { accountId, networkId: network.id } });
+    state = Object.freeze({ ...state, phase: 'ready', account: { network: network.id, address: selectedAddress } }); publish();
   },
   cancelAccountOperation() {},
 };
 const networks = createNativeNetworkView(authority);
-const reader: BalanceReader = { async readBalance(id) {
-  reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };
-} };
+const reader: BalanceReader = {
+  async readBalance(id) {
+    reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };
+  },
+  async readUtxoBalance(id, selectedAddress) {
+    if (selectedAddress !== utxoAddresses[id]) throw Error('Wrong account');
+    const network = getUtxoNetwork(id);
+    reads.push(id);
+    return { kind: 'utxo', networkId: id, chainId: network.chainId, genesisHash: network.genesisHash,
+      confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123 };
+  },
+};
 
 declare global { interface Window { __nativeNetworkPortfolio: { reads(): readonly string[]; sends(): number; select(id: EvmNetworkId): Promise<void> }; } }
 window.__nativeNetworkPortfolio = { reads: () => [...reads], sends: () => sends,

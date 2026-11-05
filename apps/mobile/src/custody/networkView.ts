@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../core/utxoNetworks.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { createNativeChainCatalogue, type NativeNetworkSuggestion } from './networkCatalogue.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
@@ -49,13 +50,19 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
         cached = Object.freeze({
           revision: catalogue.revision,
           selectedId: catalogue.active.networkId,
-          networks: Object.freeze(catalogue.networks.map((registration) => Object.freeze({
-            id: registration.id,
-            name: getNativeSendContext(registration).name,
-            symbol: registration.symbol,
-            testnet: registration.testnet,
-            canSign: nativeSigningEnabled(registration.id, catalogue.networks), registration,
-          }))),
+          networks: Object.freeze([
+            ...catalogue.networks.map((registration) => Object.freeze({
+              id: registration.id,
+              name: getNativeSendContext(registration).name,
+              symbol: registration.symbol,
+              testnet: registration.testnet,
+              canSign: nativeSigningEnabled(registration.id, catalogue.networks), registration,
+            })),
+            ...UTXO_NETWORKS.map((network) => Object.freeze({
+              id: network.id, name: network.name, symbol: network.symbol,
+              testnet: network.testnet, canSign: false,
+            })),
+          ]),
         });
         cachedCatalogue = catalogue;
       }

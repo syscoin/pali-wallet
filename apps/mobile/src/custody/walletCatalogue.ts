@@ -1,5 +1,8 @@
 import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
+import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
+import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
+import { findUtxoNetwork, getUtxoSdkNetwork, UTXO_NETWORKS } from '../core/utxoNetworks.ts';
 import {
   NATIVE_NETWORKS,
   getNativeNetwork,
@@ -40,7 +43,7 @@ export type NativeCatalogueAccount = Readonly<{
   id: string;
   type: 'HDAccount' | 'Imported';
   index: number;
-  slip44: 60;
+  slip44: number;
   address: string;
   label: string;
 }>;
@@ -77,7 +80,7 @@ export type CatalogueMutation =
       recovery: ImportedRecoveryEntry;
     }>
   | Readonly<{ kind: 'select'; id: string }>
-  | Readonly<{ kind: 'select-network'; id: EvmNetworkId }>
+  | Readonly<{ kind: 'select-network'; id: EvmNetworkId; initialGroup?: RecoveryAccountGroup }>
   | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
@@ -148,6 +151,16 @@ function softwareGroup(record: NativeAccountRecord): RecoveryAccountGroup {
   );
   return group ?? invalid();
 }
+export function catalogueAccountGroup(
+  record: NativeAccountRecord,
+  networkId = record.active.networkId
+): RecoveryAccountGroup | undefined {
+  const network = findUtxoNetwork(networkId);
+  return network
+    ? record.groups.find((group) => group.activeNetwork.slip44 === network.slip44)
+    : softwareGroup(record);
+}
+
 function decode(value: unknown, binding: string): NativeAccountRecord {
   const raw = object(snapshot(value), [
     'version',
@@ -173,6 +186,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
   )
     return invalid();
   const groupKeys = new Set<string>();
+  const groups: RecoveryAccountGroup[] = [];
   for (const group of raw.groups as RecoveryAccountGroup[]) {
     object(group, ['key', 'activeNetwork', 'activeAccount', 'accounts']);
     const network = group.activeNetwork;
@@ -186,10 +200,20 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     )
       return invalid();
     groupKeys.add(group.key);
+    const utxo = network.kind === 'syscoin'
+      ? UTXO_NETWORKS.find((registration) => registration.chainId === network.chainId && registration.slip44 === network.slip44)
+      : undefined;
+    const currentNetwork = utxo && getUtxoSdkNetwork(utxo.id);
+    if (network.kind === 'syscoin') {
+      if (!currentNetwork || network.currency !== currentNetwork.currency ||
+          typeof network.url !== 'string')
+        return invalid();
+    } else if (network.slip44 !== 60) return invalid();
     object(group.accounts, Object.values(KeyringAccountType));
     assertCompleteHDAccountData(group.accounts.HDAccount);
     for (const [type, accounts] of Object.entries(group.accounts)) {
-      if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts))
+      if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts) ||
+          (utxo && type !== 'HDAccount' && Object.keys(accounts).length))
         return invalid();
       for (const [id, account] of Object.entries(accounts)) {
         if (
@@ -219,10 +243,17 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           account.xprv
         )
           publicIdentity({ address: account.address, publicKey: account.xpub });
+        if (utxo &&
+            (normalizeUtxoAddress(account.address, utxo.id) !== account.address ||
+             !/^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub)))
+          return invalid();
       }
     }
     if (!group.accounts[group.activeAccount.type]?.[group.activeAccount.id])
       return invalid();
+    // The group stores chain identity. Its saved endpoint cannot configure
+    // custody or recovery after the shared default changes.
+    groups.push(currentNetwork ? { ...group, activeNetwork: currentNetwork } : group);
   }
   const recoveries = raw.recovery.map((entry: unknown) =>
     snapshotImportedRecoveryEntry(entry)
@@ -232,10 +263,9 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     const key = `${entry.identity.slip44}:${entry.identity.id}`;
     if (identities.has(key)) return invalid();
     identities.add(key);
-    const group = raw.groups.find(
-      (group: RecoveryAccountGroup) =>
-        group.activeNetwork.slip44 === entry.identity.slip44
-    ) as RecoveryAccountGroup | undefined;
+    const group = groups.find(
+      (group) => group.activeNetwork.slip44 === entry.identity.slip44
+    );
     const account = group?.accounts.Imported[entry.identity.id];
     if (!group || !account?.xprv || !account.isImported) return invalid();
     assertImportedRecoveryAccount(entry, {
@@ -246,7 +276,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
       xpub: account.xpub,
     });
   }
-  for (const group of raw.groups as RecoveryAccountGroup[]) {
+  for (const group of groups) {
     for (const account of Object.values(group.accounts.Imported))
       if (
         account.xprv &&
@@ -259,44 +289,53 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
   ) as NativeNetworkRegistration[];
   if (
     new Set(networks.map((network) => network.id)).size !== networks.length ||
-    new Set(networks.map((network) => network.chainId)).size !== networks.length
+    new Set(networks.map((network) => network.chainId)).size !== networks.length ||
+    networks.some((network) => findUtxoNetwork(network.id))
   )
     return invalid();
-  if (!softwareGroup(raw as NativeAccountRecord).accounts.HDAccount[0])
+  const record = { ...(raw as NativeAccountRecord), groups };
+  if (!softwareGroup(record).accounts.HDAccount[0])
     return invalid();
-  const active = object(raw.active, ['accountId', 'networkId']);
+  const active = object(raw.active, ['accountId', 'networkId']) as NativeAccountRecord['active'];
   const selected = parseNativeAccountId(active.accountId);
-  const native = softwareGroup(raw as NativeAccountRecord);
+  const group = catalogueAccountGroup(record, active.networkId);
+  const account = group?.accounts[selected.type]?.[selected.index];
+  const utxo = findUtxoNetwork(active.networkId);
   if (
-    !networks.some((network) => network.id === active.networkId) ||
-    !native.accounts[selected.type]?.[selected.index]
+    (!utxo && !networks.some((network) => network.id === active.networkId)) ||
+    !group || selected.slip44 !== group.activeNetwork.slip44 || !account
   )
     return invalid();
+  if (utxo) {
+    const identity = parseUtxoPublicIdentifier(account.xpub, utxo.id);
+    if (identity.kind !== 'account' || identity.identifier !== account.xpub ||
+        identity.address !== account.address)
+      return invalid();
+  }
   return Object.freeze({
-    ...raw,
+    ...record,
     networks: Object.freeze(networks),
     active: Object.freeze({ ...active }),
-  }) as NativeAccountRecord;
+  });
 }
-function projection(
-  record: NativeAccountRecord
-): NativeWalletCatalogueSnapshot {
-  const group = softwareGroup(record);
-  const accounts = (['HDAccount', 'Imported'] as const).flatMap((type) =>
-    Object.values(group.accounts[type]).map((account) =>
-      Object.freeze({
-        id: nativeAccountId(type, account.id),
-        type,
-        index: account.id,
-        slip44: 60 as const,
-        address: account.address,
-        label: account.label,
-      })
-    )
+function publicAccounts(group: RecoveryAccountGroup): NativeCatalogueAccount[] {
+  const slip44 = group.activeNetwork.slip44;
+  return (['HDAccount', 'Imported'] as const).flatMap((type) =>
+    Object.values(group.accounts[type]).map((account) => Object.freeze({
+      id: nativeAccountId(type, account.id, slip44),
+      type,
+      index: account.id,
+      slip44,
+      address: account.address,
+      label: account.label,
+    }))
   );
+}
+function projection(record: NativeAccountRecord): NativeWalletCatalogueSnapshot {
+  const group = catalogueAccountGroup(record) ?? invalid();
   return Object.freeze({
     revision: record.revision,
-    accounts: Object.freeze(accounts),
+    accounts: Object.freeze(publicAccounts(group)),
     networks: record.networks,
     active: record.active,
   });
@@ -342,7 +381,7 @@ export function inspectRecoveryCatalogue(value: unknown, binding: string) {
     first = group.accounts.HDAccount[0]!;
   return Object.freeze({
     root: publicIdentity({ address: first.address, publicKey: first.xpub }),
-    accounts: projection(record).accounts,
+    accounts: Object.freeze(record.groups.flatMap(publicAccounts)),
     importedProfiles: Object.freeze(
       record.recovery.map((entry) => entry.envelope.profileId)
     ),
@@ -434,16 +473,19 @@ export class NativeWalletCatalogue {
       )
         return changed();
       const next = snapshot(record) as NativeAccountRecord;
-      const group = softwareGroup(next);
+      const group = catalogueAccountGroup(next) ?? invalid();
       const mutation = snapshot(input);
       let active = next.active,
         networks = [...next.networks],
-        recovery = [...next.recovery];
+        recovery = [...next.recovery],
+        groups = [...next.groups];
       if (mutation.kind === 'create' || mutation.kind === 'import') {
         const type =
           mutation.kind === 'create'
             ? KeyringAccountType.HDAccount
             : KeyringAccountType.Imported;
+        if (mutation.kind === 'import' && group.activeNetwork.slip44 !== 60)
+          return invalid();
         assertAccountCreationAvailable(
           group.accounts,
           type,
@@ -460,7 +502,7 @@ export class NativeWalletCatalogue {
           { id: mutation.account.id, type }
         );
         active = {
-          accountId: nativeAccountId(type, mutation.account.id),
+          accountId: nativeAccountId(type, mutation.account.id, group.activeNetwork.slip44),
           networkId: active.networkId,
         };
         if (mutation.kind === 'import')
@@ -488,12 +530,24 @@ export class NativeWalletCatalogue {
         getNativeNetwork(mutation.id, networks);
         networks = networks.filter((network) => network.id !== mutation.id);
       } else if (mutation.kind === 'select-network') {
-        getNativeNetwork(mutation.id, networks);
-        active = { ...active, networkId: mutation.id };
+        const utxo = findUtxoNetwork(mutation.id);
+        if (!utxo) getNativeNetwork(mutation.id, networks);
+        let target = catalogueAccountGroup(next, mutation.id);
+        if (mutation.initialGroup) {
+          if (target || !utxo || mutation.initialGroup.key !== String(utxo.slip44) ||
+              mutation.initialGroup.activeNetwork.chainId !== utxo.chainId)
+            return invalid();
+          target = mutation.initialGroup;
+          groups.push(target);
+        }
+        if (!target) return invalid();
+        const accountId = target === group ? active.accountId
+          : nativeAccountId(target.activeAccount.type as 'HDAccount' | 'Imported', target.activeAccount.id, target.activeNetwork.slip44);
+        active = { accountId, networkId: mutation.id };
       } else {
         const selected = parseNativeAccountId(mutation.id),
           account = group.accounts[selected.type]?.[selected.index];
-        if (!account) return changed();
+        if (!account || selected.slip44 !== group.activeNetwork.slip44) return changed();
         if (mutation.kind === 'select') {
           active = { ...active, accountId: mutation.id };
           setActiveAccountRecord(
@@ -530,7 +584,7 @@ export class NativeWalletCatalogue {
         } else return invalid();
       }
       const validated = decode(
-        { ...next, revision: next.revision + 1, active, networks, recovery },
+        { ...next, revision: next.revision + 1, active, networks, recovery, groups },
         this.root.walletFingerprint
       );
       guard();

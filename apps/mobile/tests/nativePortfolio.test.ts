@@ -5,6 +5,9 @@ import type { PublicCustodySource } from '../src/portfolio/nativePortfolio.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { BalanceReader } from '../src/core/watchOnlyAuthority.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
+import type { UtxoBalance } from '../src/core/utxoBalanceReader.ts';
+import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { UTXO_ADDRESSES } from './publicWatchFixtures.ts';
 import { createBalanceReader, RPC_ENDPOINTS } from '../src/platformRpc.ts';
 
 const A = '0x52908400098527886E0F7030069857D2E4169EE7';
@@ -385,4 +388,42 @@ test('network A-B-A discards old balances even with identical address and a reus
   f.calls[2]!.resolve({ chainId: 1, units: '30' }); await tick();
   assert.equal(f.controller.getSnapshot().units, '30');
   stop();
+});
+
+
+test('UTXO portfolio exposes exact confirmed and pending units only for the selected registration', async () => {
+  const network = getUtxoNetwork('bitcoin');
+  const address = UTXO_ADDRESSES.bitcoin;
+  const source = new Source({ ...ready(), account: { network: network.id, address } });
+  const calls: (ReturnType<typeof deferred<UtxoBalance>> & { signal: AbortSignal })[] = [];
+  const controller = new NativePortfolioController(source, {
+    async readBalance() { assert.fail('UTXO balance must not enter EVM transport'); },
+    readUtxoBalance(id, selectedAddress, signal) {
+      assert.equal(id, network.id);
+      assert.equal(selectedAddress, address);
+      const call = { ...deferred<UtxoBalance>(), signal };
+      calls.push(call);
+      return call.promise;
+    },
+  }, () => 1000);
+  const disconnect = controller.connect();
+  try {
+    const result: UtxoBalance = { networkId: network.id, kind: 'utxo', chainId: network.chainId,
+      genesisHash: network.genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123',
+      unconfirmedTransactions: 1, observedHeight: 42 };
+    calls[0]!.resolve({ ...result, genesisHash: '0'.repeat(64) });
+    await tick();
+    assert.equal(controller.getSnapshot().status, 'error');
+    const good = controller.refresh();
+    calls[1]!.resolve(result);
+    await good;
+    assert.equal(controller.getSnapshot().units, '9007199254740993');
+    assert.equal(controller.getSnapshot().pendingDeltaUnits, '-123');
+    const late = controller.refresh();
+    source.set({ ...ready(address, 2), phase: 'locked', account: null });
+    assert.equal(calls[2]!.signal.aborted, true);
+    calls[2]!.resolve(result);
+    await late;
+    assert.deepEqual(controller.getSnapshot(), { account: null, status: 'unavailable', units: null, updatedAt: null });
+  } finally { disconnect(); }
 });

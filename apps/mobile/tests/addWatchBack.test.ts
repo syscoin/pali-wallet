@@ -9,7 +9,7 @@ import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
-import { UTXO_NETWORKS, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
@@ -116,7 +116,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const idle = createIdleComponentFixture(render.api, native);
       const dependencies = { '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
-        '../core/utxoNetworks': { getUtxoNetwork }, '../core/watchOnlyAuthority': core,
+        '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},

@@ -45,6 +45,11 @@ export function formatBaseUnits(units: string, decimals: number): string {
   return formatUnits(units, decimals);
 }
 
+export function formatBalanceDelta(units: string, decimals: number): string {
+  const prefix = units.startsWith('-') ? '-' : units === '0' ? '' : '+';
+  return prefix + formatBaseUnits(units.replace(/^-/, ''), decimals);
+}
+
 /** Keeps the extension's known-zero / unavailable distinction. */
 export function loadedBalance(units: string, updatedAt: number): PublicBalance {
   assertBaseUnits(units);

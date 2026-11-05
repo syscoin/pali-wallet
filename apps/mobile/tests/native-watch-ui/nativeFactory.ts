@@ -126,7 +126,7 @@ export function createNativeWalletControllers() {
         events.push('unlock:finish');
         return { authenticated: sessionUnlocked };
       },
-      async readEthereumAddress() {
+      async readSelectedAddress() {
         if (!sessionUnlocked) throw Error('Locked fixture session');
         return catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.address;
       },

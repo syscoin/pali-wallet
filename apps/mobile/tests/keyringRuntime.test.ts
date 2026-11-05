@@ -301,7 +301,7 @@ test('lifecycle cancellation still records each explicit wrong-password failure 
     }
     await assert.rejects(runtime.session.unlock(PASSWORD), /AUTH_THROTTLED/);
     assert.equal(controlled.unlockCalls - initialUnlocks, 5, 'backoff rejects before another SDK KDF');
-    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
 
@@ -325,7 +325,7 @@ test('cancelled successful authentication neither clears failures nor hydrates a
     assert.equal(disk.failureWrites, 1);
     assert.equal(disk.successWrites, 0);
     assert.equal(controlled.hydrations, hydrated);
-    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); }
 });
 
@@ -378,7 +378,7 @@ test('an incomplete canonical account record is refused unchanged before account
     assert.equal(disk.failureWrites, 0, 'invalid record admission precedes any password check');
     assert.equal(runtime.catalogue.getSnapshot(), null);
     assert.equal(JSON.stringify([...disk.records]), incomplete);
-    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
     await runtime.storage.close();
     disk.records.set(WALLET_CATALOGUE_KEY, record);
     const restored = JSON.stringify([...disk.records]);
@@ -388,7 +388,7 @@ test('an incomplete canonical account record is refused unchanged before account
     assert.equal(JSON.stringify([...disk.records]), restored);
     await runtime.session.lock();
     assert.equal(runtime.catalogue.getSnapshot(), null);
-    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });
 
@@ -404,7 +404,7 @@ test('catalogue identity corruption retires the authenticated SDK session withou
     runtime = await disk.factory.open() as KeyringRuntime;
     await assert.rejects(runtime.session.unlock(PASSWORD), /OPERATION_FAILED/);
     assert.equal(runtime.catalogue.getSnapshot(), null);
-    await assert.rejects(runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(runtime.session.readSelectedAddress(), /NOT_READY/);
     assert.deepEqual(disk.records.get(WALLET_CATALOGUE_KEY), record);
   } finally { await runtime.storage.close(); disk.restoreNetwork(); }
 });
@@ -1251,7 +1251,7 @@ test('journal ambiguity retires an already-running secret operation before it re
     await assert.rejects(journal.transition(signed.hash, 'attempted'), /REOPEN_REQUIRED/);
     hold.release();
     await assert.rejects(secret, /CLEANUP_FAILED/);
-    await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+    await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 
@@ -1773,7 +1773,7 @@ for (const boundary of ['queued', 'sdk-guard'] as const) {
       await assert.rejects(signing, /CANCELLED/);
       assert.equal(signatures, boundary === 'queued' ? 0 : 1);
       assert.equal(f.authority.getSnapshot().phase, 'locked');
-      await assert.rejects(f.runtime.session.readEthereumAddress(), /NOT_READY/);
+      await assert.rejects(f.runtime.session.readSelectedAddress(), /NOT_READY/);
       assert.equal(f.disk.records.has('native-evm-transfer-v1'), false);
       assert.deepEqual([sdk.unlocks, sdk.hydrations], before);
     } finally { await f.authority.dispose(); f.disk.restoreNetwork(); }

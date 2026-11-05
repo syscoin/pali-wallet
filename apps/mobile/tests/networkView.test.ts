@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createNativeNetworkView } from '../src/custody/networkView.ts';
+import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
@@ -34,11 +35,14 @@ test('network projection is stable, frozen, public-only and projects all saved E
   assert.equal(Object.isFrozen(first.networks), true);
   assert.equal(first.selectedId, 'ethereum');
   assert.equal(first.revision, 3);
-  assert.equal(first.networks.length, 7);
+  assert.equal(first.networks.length, NATIVE_NETWORKS.length + UTXO_NETWORKS.length);
   assert.deepEqual(first.networks.filter(network => network.canSign).map(network => network.id), NATIVE_NETWORKS.map((network) => network.id));
+  assert.deepEqual(first.networks.filter((network) => !network.canSign).map((network) => network.id), UTXO_NETWORKS.map((network) => network.id));
   for (const network of first.networks) {
     assert.equal(Object.isFrozen(network), true);
-    assert.deepEqual(Object.keys(network).sort(), ['canSign', 'id', 'name', 'registration', 'symbol', 'testnet']);
+    assert.deepEqual(Object.keys(network).sort(), network.canSign
+      ? ['canSign', 'id', 'name', 'registration', 'symbol', 'testnet']
+      : ['canSign', 'id', 'name', 'symbol', 'testnet']);
   }
   assert.equal(f.requests.length, 0);
 });

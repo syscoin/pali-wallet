@@ -46,3 +46,30 @@ test('public address copy uses the selected network and OS browser clipboard', a
   await expect(page.getByText('Rollux address copied.', { exact: true })).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('0x52908400098527886E0F7030069857D2E4169EE7');
 });
+
+
+test('Bitcoin selection renders the scoped Receive address and exact balance without Send', async ({ page, context }, testInfo) => {
+  const address = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179'
+    ? route.continue() : route.abort());
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?network-portfolio');
+  await page.getByText('Network', { exact: true }).click();
+  const bitcoin = page.getByRole('radio', { name: 'Bitcoin, BTC, balance and receive only', exact: true });
+  await bitcoin.click();
+  await expect(bitcoin).toBeChecked();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Bitcoin balance 1.234 BTC');
+  await expect(page.getByText('Pending -0.00000123 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await page.getByTestId('native-portfolio-receive').click();
+  await expect(page.getByTestId('native-receive-address')).toHaveText(address);
+  await expect(page.getByTestId('native-receive-qr')).toHaveAttribute('aria-label', `QR code for Bitcoin address ${address}`);
+  await page.getByTestId('native-receive-copy').click();
+  await expect(page.getByText('Bitcoin address copied.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(address);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('native-bitcoin-receive.png'), fullPage: true });
+  expect(await page.evaluate(() => window.__nativeNetworkPortfolio.reads())).toEqual(['ethereum', 'bitcoin']);
+});

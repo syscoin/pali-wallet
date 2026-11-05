@@ -826,7 +826,7 @@ for (const phase of ['signed', 'submitted'] as const) {
       assert.equal(f.authority.getSnapshot().account, null);
       assert.equal(f.sdkUnlocked, false, 'the actual SDK session is retired');
       await assert.rejects(
-        f.runtime.session.readEthereumAddress(),
+        f.runtime.session.readSelectedAddress(),
         /NOT_READY/
       );
       assert.equal(f.broadcasts.length, phase === 'signed' ? 0 : 1);
@@ -893,7 +893,7 @@ for (const phase of ['signed', 'submitted'] as const) {
       assert.equal(replacement.authority.getSnapshot(), before);
       assert.equal(replacement.sdkUnlocked, true);
       assert.equal(
-        await replacement.runtime.session.readEthereumAddress(),
+        await replacement.runtime.session.readSelectedAddress(),
         before.account!.address
       );
       assert.equal(await replacement.readDurableJournal(), undefined);

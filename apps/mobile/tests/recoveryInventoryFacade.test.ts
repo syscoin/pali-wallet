@@ -60,7 +60,7 @@ async function fixture(existing = true) {
     },
     session: {
       async lock() {}, async unlock() { return { authenticated: true }; },
-      async readEthereumAddress() { return root.address; },
+      async readSelectedAddress() { return root.address; },
       async createWallet() { assert.fail('unexpected create'); },
       async importWallet() { assert.fail('unexpected import'); },
     },
@@ -89,6 +89,7 @@ async function fixture(existing = true) {
     '../activity/explorerReader.ts': { ActivityExplorerReader: PassiveController },
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },
     '../portfolio/erc20ReadRpc.ts': { createErc20Reader: () => ({}) },
+    '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
     '../platformRpc.ts': { createBalanceReader: () => ({}) },
     './http': { walletFetch() { assert.fail('inventory must not fetch'); } },
     '../storage/native': { async openNativeWalletStorage() { counts.opens++; return storage; } },
