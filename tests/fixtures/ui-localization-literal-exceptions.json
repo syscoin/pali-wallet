@@ -213,13 +213,6 @@
       "reason": "Proper name of the Pali API reference link, not natural-language instructions."
     },
     {
-      "file": "source/pages/Settings/About.tsx",
-      "kind": "jsx-text",
-      "text": "https://discord.com/invite/syscoin",
-      "count": 1,
-      "reason": "Literal public community destination URL, which must not be translated."
-    },
-    {
       "file": "source/pages/Settings/ConnectHardwareWallet.tsx",
       "kind": "jsx-text",
       "text": "Ledger",
