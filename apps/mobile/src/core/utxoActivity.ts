@@ -4,6 +4,8 @@ import { mergeFreshBlockbookHistory } from '../../../../source/shared/blockbookH
 import { selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
 import { getTransactionBlockInfo } from '../../../../source/shared/transactionBlockStatus.ts';
 import { getSyscoinAccountChange, getSyscoinNativeTransferAmount, isSyscoinTokenOperation } from '../../../../source/shared/utxoNativeAmounts.ts';
+import { parseErc20Text } from '../../../../source/shared/erc20.ts';
+import { getSyscoinActivityOperationAmount } from '../../../../source/shared/utxoTokenAmounts.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { assertBaseUnits } from './amounts.ts';
@@ -14,10 +16,11 @@ import type { PublicSnapshot } from './types.ts';
 
 export const UTXO_ACTIVITY_LIMITS = Object.freeze({ pageSize: 20, nativeIntegerDigits: 78, displayRows: 100, windowPages: 5, bytes: 1024 * 1024, nodes: 20000, timeoutMs: 30000 });
 export type UtxoActivityContext = Readonly<{ accountId: string; networkId: UtxoNetworkId; address: string; generation: number }>;
+export type UtxoActivityAssetAmount = Readonly<NonNullable<ReturnType<typeof getSyscoinActivityOperationAmount>>>;
 export type UtxoActivityRow = Readonly<{
   txid: string; block: Readonly<{ height: number; hash: string | null; timestamp: number | null }> | null;
   observedConfirmations: number; receivedUnits: string | null; spentUnits: string | null; netUnits: string | null;
-  transactionFeeUnits: string | null; hasUnsupportedAssetData: boolean;
+  transactionFeeUnits: string | null; hasAssetData: boolean; assetAmount: UtxoActivityAssetAmount | null;
   nativeTransfer: Readonly<NonNullable<ReturnType<typeof getSyscoinNativeTransferAmount>>> | null;
 }>;
 export type UtxoActivityPage = Readonly<{
@@ -63,6 +66,24 @@ function assertNativeHistoryWork(value: unknown): void {
     }
   }
 }
+/** Shared token interpretation; this adapter exposes only bounded display metadata.
+ * parseErc20Text supplies the existing wallet symbol rendering budget only. No
+ * ERC20 address, precision or amount rule is applied to the Syscoin asset.
+ */
+function projectAssetAmount(tx: Record<string, any>): UtxoActivityAssetAmount | null {
+  const amount = getSyscoinActivityOperationAmount(tx);
+  if (amount === null) return null;
+  let symbol: string | undefined;
+  try { symbol = parseErc20Text(amount.symbol, 'symbol'); } catch { /* Neutral asset label for unavailable display text. */ }
+  // Blockbook's SPT asset GUID is serialized from uint64, including NFT IDs.
+  const assetGuid = typeof amount.assetGuid === 'string' && /^(0|[1-9][0-9]{0,19})$/.test(amount.assetGuid) &&
+    (amount.assetGuid.length < 20 || amount.assetGuid <= '18446744073709551615') ? amount.assetGuid : undefined;
+  return Object.freeze({ amount: amount.amount, scope: amount.scope,
+    ...(assetGuid === undefined ? {} : { assetGuid }),
+    ...(amount.decimals === undefined ? {} : { decimals: amount.decimals }),
+    ...(amount.direction === undefined ? {} : { direction: amount.direction }),
+    ...(symbol === undefined ? {} : { symbol }) });
+}
 function projectTransaction(value: unknown): UtxoActivityRow {
   const tx = utxoObject(value), txid = hash(tx.txid);
   const confirmations = tx.confirmations === undefined ? 0 : readHistoryCount(tx.confirmations);
@@ -74,7 +95,7 @@ function projectTransaction(value: unknown): UtxoActivityRow {
   if (height !== null && (!Number.isSafeInteger(height) || height < 1) || timestamp !== null && timestamp > 8640000000000) return fail();
   const receivedUnits = units(tx.addressValueOut), spentUnits = units(tx.addressValueIn);
   const netUnits = receivedUnits === null || spentUnits === null ? null : getSyscoinAccountChange({ addressValueIn: spentUnits, addressValueOut: receivedUnits });
-  const hasUnsupportedAssetData = isSyscoinTokenOperation(tx);
+  const hasAssetData = isSyscoinTokenOperation(tx);
   // The shared amount helper owns interpretation. Bound its work without
   // interpreting unbounded numeric text or scanning addresses ourselves.
   const boundedValues = [tx.fees, tx.addressValueIn, tx.addressValueOut, ...[tx.vin, tx.vout].flatMap((entries) => Array.isArray(entries) ? entries.map((entry) => entry?.value) : [])]
@@ -83,7 +104,7 @@ function projectTransaction(value: unknown): UtxoActivityRow {
   if (nativeTransfer) { try { assertBaseUnits(nativeTransfer.amount); } catch { nativeTransfer = null; } }
   return Object.freeze({ txid, block: height === null ? null : Object.freeze({ height, hash: blockHash, timestamp }),
     observedConfirmations: confirmations, receivedUnits, spentUnits, netUnits, transactionFeeUnits: units(tx.fees),
-    hasUnsupportedAssetData, nativeTransfer: nativeTransfer === null ? null : Object.freeze(nativeTransfer) });
+    hasAssetData, assetAmount: hasAssetData ? projectAssetAmount(tx) : null, nativeTransfer: nativeTransfer === null ? null : Object.freeze(nativeTransfer) });
 }
 
 /** Actual SJS account routing with the existing bounded, genesis-verified transport. */

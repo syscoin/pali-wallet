@@ -4,7 +4,7 @@
  */
 import '@testing-library/jest-dom';
 import { clearRpcCaches } from '@sidhujag/sysweb3-network';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createInstance } from 'i18next';
 import React from 'react';
@@ -52,6 +52,9 @@ const originalFetch = globalThis.fetch;
 const originalMessageChannel = globalThis.MessageChannel;
 const originalMatchMedia = window.matchMedia;
 let reads: { method: string; url: string }[];
+let mockRpcWork: Promise<unknown> | undefined;
+let mockAfterTab: (() => void) | undefined;
+let mockHttpHold: { entered(): void; wait: Promise<void> } | undefined;
 
 jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
@@ -110,6 +113,9 @@ jest.mock('components/index', () => ({
 let httpRules: chrome.declarativeNetRequest.Rule[];
 
 beforeEach(() => {
+  mockRpcWork = undefined;
+  mockAfterTab = undefined;
+  mockHttpHold = undefined;
   httpRules = [];
   jest.clearAllMocks();
   clearRpcCaches();
@@ -167,6 +173,11 @@ beforeEach(() => {
     expect(body.method).toBe('eth_chainId');
     expect(body.params).toEqual([]);
     reads.push({ method: body.method, url });
+    const hold = mockHttpHold;
+    if (hold) {
+      hold.entered();
+      await hold.wait;
+    }
     const status = url === AUTH ? 401 : url === UNKNOWN ? 400 : 200;
     return {
       ok: status === 200,
@@ -179,7 +190,10 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async ([area, method], args) => {
     expect(area).toBe('wallet');
     if (method === 'getChainData') return [];
-    if (method === 'getRpc') return controller.getRpc(...args);
+    if (method === 'getRpc') {
+      mockRpcWork = controller.getRpc(...args);
+      return mockRpcWork;
+    }
     throw new Error('Regression does not admit mutations: ' + method);
   });
 });
@@ -236,6 +250,10 @@ async function show(kind: FormKind, locale: Locale, proposedChainId = 31337) {
     await user.clear(url);
     await user.type(url, value);
     await user.tab();
+    mockAfterTab?.();
+    await act(async () => {
+      await mockRpcWork?.catch(() => undefined);
+    });
   };
   return { user, text, i18n, url, save, enterUrl };
 }
@@ -347,4 +365,39 @@ describe('exact app-owned authentication message mapping', () => {
       }
     }
   );
+});
+
+it('readiness waits for the actual blur validation before reporting completion', async () => {
+  const { enterUrl, text } = await show('external', 'ru');
+  let release!: () => void, afterTab!: () => void, entered!: () => void;
+  const wait = new Promise<void>((resolve) => (release = resolve)),
+    tabbed = new Promise<void>((resolve) => (afterTab = resolve)),
+    requested = new Promise<void>((resolve) => (entered = resolve));
+  mockHttpHold = { entered, wait };
+  mockAfterTab = afterTab;
+  let returned = false;
+  const work = enterUrl(AUTH).then(() => {
+    returned = true;
+  });
+  await Promise.all([tabbed, requested]);
+  await Promise.resolve();
+  try {
+    expect(reads).toEqual([{ method: 'eth_chainId', url: AUTH }]);
+    expect(returned).toBe(false);
+    release();
+    await work;
+    expect(
+      await screen.findByText(
+        (
+          text.settings as typeof text.settings & {
+            rpcAuthenticationRequired: string;
+          }
+        ).rpcAuthenticationRequired
+      )
+    ).toBeVisible();
+    expect(mutationCalls()).toEqual([]);
+  } finally {
+    release();
+    await work;
+  }
 });

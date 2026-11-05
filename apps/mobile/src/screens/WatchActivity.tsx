@@ -2,6 +2,7 @@ import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSync
 import { ActivityIndicator, AppState, FlatList, Linking, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
+import { formatSyscoinTokenAmount } from '../../../../source/shared/utxoTokenAmounts';
 import { formatBaseUnits } from '../core/amounts';
 import { UtxoWatchActivity, type UtxoActivityRow } from '../core/utxoActivity';
 import { getUtxoNetwork } from '../core/utxoNetworks';
@@ -12,6 +13,14 @@ import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 function signed(units: string, symbol: string): string {
   const negative = units.startsWith('-');
   return `${negative ? '−' : units === '0' ? '' : '+'}${formatBaseUnits(negative ? units.slice(1) : units, 8)} ${symbol}`;
+}
+function assetQuantity(row: UtxoActivityRow): string | null {
+  const value = row.assetAmount;
+  if (!value) return null;
+  const formatted = formatSyscoinTokenAmount(value.amount, value.decimals);
+  if (formatted === null) return null;
+  const direction = value.direction === 'sent' ? '−' : value.direction === 'received' ? '+' : '';
+  return `${direction}${formatted} ${value.symbol ?? 'SPT'}`;
 }
 /** The active screen follows the account-owned history capability. */
 export function WatchActivity({ authority, navigation, onBack }: {
@@ -79,8 +88,8 @@ export function WatchActivity({ authority, navigation, onBack }: {
   const status = (row: UtxoActivityRow) => row.block === null
     ? 'Pending'
     : `${row.observedConfirmations} confirmation${row.observedConfirmations === 1 ? '' : 's'} · Block ${row.block.height}`;
-  const detailAmount = chosen?.hasUnsupportedAssetData
-    ? 'Asset amount unavailable'
+  const detailAmount = chosen?.hasAssetData
+    ? assetQuantity(chosen) ?? 'Asset amount unavailable'
     : chosen?.nativeTransfer
       ? `${chosen.nativeTransfer.direction === 'sent' ? '−' : chosen.nativeTransfer.direction === 'received' ? '+' : ''}${units(chosen.nativeTransfer.amount)}`
       : chosen ? net(chosen.netUnits) : '';
@@ -94,8 +103,8 @@ export function WatchActivity({ authority, navigation, onBack }: {
             <Button title={state.status === 'unavailable' ? 'Try again' : 'Refresh activity'} variant="secondary" disabled={!!chosen || state.status === 'loading'} onPress={refresh} />
             {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
           </View>}
-          renderItem={({ item }) => <View testID={`watch-activity-row-${item.txid}`} style={s.row}><Button title={item.hasUnsupportedAssetData ? 'Asset activity' : item.netUnits === null ? 'Amount unavailable' : `Net change ${net(item.netUnits)}`} variant="quiet" disabled={!!chosen || state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
-            {item.hasUnsupportedAssetData && <Text style={styles.muted}>Native account change: {net(item.netUnits)}</Text>}
+          renderItem={({ item }) => <View testID={`watch-activity-row-${item.txid}`} style={s.row}><Button title={item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : item.netUnits === null ? 'Amount unavailable' : `Net change ${net(item.netUnits)}`} variant="quiet" disabled={!!chosen || state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
+            {item.hasAssetData && <Text style={styles.muted}>Native account change: {net(item.netUnits)}</Text>}
             <Text style={styles.muted}>{status(item)}</Text>
             <Text style={s.hash}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
           </View>}
@@ -110,10 +119,11 @@ export function WatchActivity({ authority, navigation, onBack }: {
       </View>
       {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={s.content}>
         <Text style={s.amount}>{detailAmount}</Text>
-        <Text style={styles.muted}>{chosen.hasUnsupportedAssetData ? 'Native amounts are shown separately below.' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
+        <Text style={styles.muted}>{chosen.hasAssetData ? chosen.assetAmount ? chosen.assetAmount.scope === 'account' ? 'Account asset amount' : 'Asset operation amount' : 'Asset quantity unavailable' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
         {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
         <Card style={s.detail}>
           <Text style={s.label}>TRANSACTION ID</Text><Text selectable style={s.hash}>{chosen.txid}</Text>
+          {chosen.assetAmount?.assetGuid && <><Text style={s.label}>ASSET ID</Text><Text selectable style={s.hash}>{chosen.assetAmount.assetGuid}</Text></>}
           <Text style={s.label}>ACCOUNT</Text><Text>{account?.name ?? 'Watch account'}</Text>
           <Text>Native account change: {net(chosen.netUnits)}</Text>
           <Text>Received by this account: {units(chosen.receivedUnits)}</Text>

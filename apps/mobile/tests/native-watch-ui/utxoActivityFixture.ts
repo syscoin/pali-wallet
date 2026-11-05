@@ -1,8 +1,8 @@
 // Public synthetic account-history data. The real authority, shared SJS reader
 // and WatchSession remain in use; no signing or live endpoint is available.
 import { getUtxoNetwork } from '../../src/core/utxoNetworks';
-export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window';
-const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window'];
+export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max';
+const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max'];
 const initial = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('activity-mode');
 let mode: ActivityMode = modes.includes(initial ?? '') ? initial as ActivityMode : 'value';
 let release: (() => void) | null = null;
@@ -14,6 +14,21 @@ export const activityFixture = {
   open(url: string) { opened.push(url); },
 };
 const id = (n: number) => n.toString(16).padStart(64, '0');
+// Account-page SPT shape follows Blockbook accountAssetTransfersFromSummary:
+// decimal uint64 identity and absolute atomic value, without asset direction.
+function assetData() {
+  if (!mode.startsWith('asset-')) return {};
+  const guid = mode === 'asset-hostile' ? 'xpub-provider-metadata' : '987654321';
+  const decimals = mode === 'asset-owned' ? 8 : 0;
+  const symbol = mode === 'asset-hostile' ? 'BIG\u202eSPOOF' : mode === 'asset-owned' ? 'ATOM' : 'BIG';
+  const transfer = { type: 'SPT', standard: 'SPT', contract: guid, assetGuid: guid, decimals, symbol,
+    value: mode === 'asset-invalid' ? '9'.repeat(79) : mode === 'asset-max' ? '9'.repeat(78) : '9007199254740993' };
+  return { tokenType: mode === 'asset-bridge' ? 'SPTAssetAllocationBurnToNEVM' : 'SPTAssetAllocationSend',
+    tokenTransfers: [transfer], ...(mode === 'asset-owned' ? {
+      vin: [{ isOwn: true, value: '1100000000', assetInfo: { assetGuid: guid, value: '9007199254740992' } }],
+      vout: [{ isOwn: true, value: '100000000', assetInfo: { assetGuid: guid, value: '9007199254740993' } }],
+    } : { accountAssetTransfers: [transfer], vin: [], vout: [] }) };
+}
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 export async function activityFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response | null> {
   const url = String(input), network = (['bitcoin', 'syscoin'] as const).map(getUtxoNetwork).find(n => url.startsWith(n.endpoint + '/'));
@@ -45,7 +60,7 @@ export async function activityFetch(input: RequestInfo | URL, init?: RequestInit
       ...(mode === 'unknown' ? {} : { addressValueIn: '1100000000', addressValueOut: '100000000' }),
       ...(mode === 'asset' ? { tokenType: 'SPT', memo: '<img src=hostile>', tokenTransfers: [{ value: '999999999' }] } : {}),
       vin: [{ n: 0, txid: id(900), addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '1100000000' }],
-      vout: [{ n: 0, addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '100000000' }, { n: 1, addresses: ['1UnrelatedLegacyAddress'], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: false }), value: '900000000' }] };
+      vout: [{ n: 0, addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '100000000' }, { n: 1, addresses: ['1UnrelatedLegacyAddress'], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: false }), value: '900000000' }], ...assetData() };
   });
   return json({ address: identifier, balance: '100000000', unconfirmedBalance: '0', txs: count, unconfirmedTxs: mode === 'pending' ? 1 : 0,
     page, itemsOnPage: pageSize, totalPages: Math.max(1, Math.ceil(count / (pageSize || 20))), transactions: rows });
