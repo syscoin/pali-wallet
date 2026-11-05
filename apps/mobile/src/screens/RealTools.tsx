@@ -23,7 +23,7 @@ export function RealTools({ accountLabel, networkLabel, watchOnly, onAccounts, o
     <Card><Row title="Accounts" subtitle={watchOnly ? 'Manage public watch addresses' : 'Manage wallet and watch accounts'} icon="wallet" onPress={onAccounts} />
       {onNetworks && <Row title="Network" subtitle="Choose a registered network" icon="globe" onPress={onNetworks} />}
       <Row title="Check a site" subtitle="Look up a domain on Pali’s list" icon="shield" onPress={() => setLookup(true)} last={!onPrivateNotes} />
-      {onPrivateNotes && <Row title="Private notes" subtitle="Back up or restore notes" icon="lock" onPress={onPrivateNotes} last />}</Card>
+      {onPrivateNotes && <Row title="Private notes" subtitle="View, back up or restore notes" icon="lock" onPress={onPrivateNotes} last />}</Card>
     {watchOnly && <Notice title="Public address tools" body="These tools manage saved public addresses. They cannot sign transactions or recover their wallets." />}
     <Text style={{ color: colors.muted, fontSize: 14, lineHeight: 22 }}>Receive and any supported testnet faucet are available on Wallet. QR scanning, swaps and connected apps are not available yet.</Text>
   </Screen></SafeAreaView>;

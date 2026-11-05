@@ -17,6 +17,12 @@ import { WalletStorageError, type OpenWalletStorage } from '../storage/types.ts'
 /** Internal file authority. Exported bytes go only to the trusted file adapter. */
 export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose'>>;
 export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
+export type NativeSavedNote = Readonly<{
+  amount: string;
+  createdAt: number;
+  reconciliation?: 'restored-note' | 'withdrawal-history';
+}>;
+export type NativeNoteInventory = readonly NativeSavedNote[];
 
 type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
@@ -58,7 +64,9 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   const vault = createPrivateVaultController({
     captureSession,
     authenticate: ports.authenticate,
-    readNote: async () => { throw new Error('privacy_vault_unavailable'); },
+    // The native inventory only reads the local manifest. Waiting satisfies
+    // getNotes without asserting a pool observation, and is never projected.
+    readNote: async () => ({ phase: 'waiting' }),
   }, {
     identify: identifyClassicNote,
     generate: () => { throw new Error('privacy_vault_unavailable'); },
@@ -100,6 +108,20 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   return {
     invalidate: () => invalidate?.(),
     dispose: () => service.dispose(),
+    async readInventory(session: IPrivateVaultSession): Promise<NativeNoteInventory> {
+      session.assertCurrent();
+      const { notes } = await withSession(session, vault.getNotes);
+      session.assertCurrent();
+      return Object.freeze(notes.map((note): NativeSavedNote => Object.freeze({
+        amount: note.amount,
+        createdAt: note.createdAt,
+        ...(note.withdrawal || note.restoration === 'withdrawal-pending'
+          ? { reconciliation: 'withdrawal-history' }
+          : note.restoration === 'review-required'
+            ? { reconciliation: 'restored-note' }
+            : {}),
+      })).sort((left, right) => right.createdAt - left.createdAt));
+    },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {
       const run = async (action: () => Promise<IPrivateVaultCapacity>) => {
         session.assertCurrent();

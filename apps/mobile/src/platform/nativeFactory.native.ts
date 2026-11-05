@@ -23,7 +23,7 @@ import { ensureNativeCryptoReady } from './cryptoBootstrap';
 import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
-import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime } from '../custody/noteBackupRuntime.ts';
+import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
 
 async function openStorage() {
   const crypto = await ensureNativeCryptoReady();
@@ -163,6 +163,14 @@ export function createNativeWalletControllers() {
       setCapacity: (limit) => observeFailure(() => capacity.setCapacity(limit)),
     });
   };
+  const readNoteInventory = async (assertOwner: () => void): Promise<NativeNoteInventory> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const read = selected.readNoteInventory;
+    if (!read) throw new CustodyOperationError('NOT_READY');
+    const inventory = await observeFailure(() => read(assertCurrent));
+    assertCurrent();
+    return inventory;
+  };
   // Bound to the exact durable vault without handing its fingerprint to a view.
   const captureNoteFileOwner = async (assertOwner: () => void) => {
     const storage = ownedStorage;
@@ -184,6 +192,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, captureNoteFileOwner, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

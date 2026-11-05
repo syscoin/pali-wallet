@@ -42,7 +42,7 @@ import { importAccountWithRecovery } from '../../../../source/wallet/importedAcc
 import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
 import type { IPrivateVaultSession } from '../../../../source/wallet/privateVault.ts';
-import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime } from './noteBackupRuntime.ts';
+import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -78,6 +78,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
+  readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
   /** Public metadata only; no selection/signing authority. Cleared on lock. */
   readonly catalogue: { getSnapshot(): NativeWalletCatalogueSnapshot | null };
   readonly backup: {
@@ -523,7 +524,7 @@ export function createKeyringRuntimeFactory(
           assertCurrent();
           return Object.freeze({ generation: captured, keyring: ring, assertCurrent });
         };
-        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T) => runNote(async (captured) => {
+        const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>) => runNote(async (captured): Promise<T> => {
           const session = noteSession(captured, assertOwner);
           if (!noteBackups) {
             const notes = storage.notes;
@@ -571,6 +572,8 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => notes.bind(session));
         const openNoteCapacity: NonNullable<KeyringRuntime['openNoteCapacity']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
+        const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
+          openNotes(assertOwner, (notes, session) => notes.readInventory(session));
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
@@ -765,7 +768,7 @@ export function createKeyringRuntimeFactory(
           return task;
         };
         return {
-          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity } : {}),
+          ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory } : {}),
           accounts,
           security: {
             reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {

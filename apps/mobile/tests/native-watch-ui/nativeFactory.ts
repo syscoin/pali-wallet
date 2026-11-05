@@ -17,6 +17,47 @@ import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
+import type { NativeNoteInventory } from '../../src/custody/noteBackupRuntime';
+
+const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
+const recorded = Date.UTC(2024, 5, 15);
+const noteResults = {
+  empty: [],
+  saved: [
+    { amount: '1', createdAt: recorded, reconciliation: 'restored-note' },
+    { amount: '10', createdAt: recorded, reconciliation: 'withdrawal-history' },
+    { amount: '0.1', createdAt: recorded },
+  ],
+  paged: Array.from({ length: 21 }, () => ({ amount: '1', createdAt: recorded })),
+  stale: [{ amount: '100', createdAt: recorded }],
+} satisfies Record<string, NativeNoteInventory>;
+type NoteResult = keyof typeof noteResults | 'error';
+let nextNoteRead: { result: NoteResult; held: boolean } = { result: 'empty', held: false };
+let releaseNoteRead: (() => void) | undefined;
+let noteReads = 0, noteSettled = 0, noteRevoked = 0, fixtureRpcCalls = 0;
+export const noteInventoryFixture = {
+  next(result: NoteResult, held = false) { nextNoteRead = { result, held }; },
+  release() { const release = releaseNoteRead; releaseNoteRead = undefined; release?.(); },
+  audit() { return { reads: noteReads, settled: noteSettled, revoked: noteRevoked }; },
+  rpcCalls() { return fixtureRpcCalls; },
+  lockAuthority() {
+    if (!latestAuthority) throw Error('No opened native authority');
+    latestAuthority.lock();
+  },
+};
+async function readFixtureNoteInventory(check: () => void): Promise<NativeNoteInventory> {
+  check();
+  const { result, held } = nextNoteRead;
+  nextNoteRead = { result: 'empty', held: false };
+  noteReads++;
+  if (held) await new Promise<void>((resolve) => { releaseNoteRead = resolve; });
+  // Deliberately finish after a refused guard to also exercise the screen's
+  // final ownership check, independently of the production runtime.
+  try { check(); } catch { noteRevoked++; }
+  noteSettled++;
+  if (result === 'error') throw Error('Synthetic private storage diagnostic');
+  return noteResults[result];
+}
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
@@ -194,6 +235,16 @@ export function createNativeWalletControllers() {
   keyExport.onClear(() => events.push('key:cancel'));
   const imports: NativeImportView = { submit: (...args) => authority.importEvmAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports, balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    ...(noteFixtureEnabled ? {
+      readNoteInventory: readFixtureNoteInventory,
+      async openNoteCapacity(check: () => void) {
+        check();
+        return {
+          async getCapacity() { check(); return { capacity: 128 as const, noteCount: 0, bundleLimitBytes: 4 * 1024 * 1024, storedBytes: 0 }; },
+          async setCapacity() { throw Error('Fixture does not change note capacity'); },
+        };
+      },
+    } : {}),
     async readRecoveryInventory(): Promise<RecoveryInventory> {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
         counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
@@ -226,6 +277,7 @@ export function createNativeRecoveryCoordinator(controllers: ReturnType<typeof c
   };
 }
 export const fixtureFetch: typeof fetch = async (_url, init) => {
+  fixtureRpcCalls++;
   const request = JSON.parse(String(init?.body));
   let result: unknown;
   switch (request.method) {
