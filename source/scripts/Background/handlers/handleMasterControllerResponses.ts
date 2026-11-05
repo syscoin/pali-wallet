@@ -7,6 +7,7 @@ import {
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
+import { assertWalletControllerRoute } from './walletControllerRoutes';
 
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
@@ -193,6 +194,7 @@ export const handleMasterControllerResponses = (
           );
       };
       assertSetupAdmission();
+      assertWalletControllerRoute(methods, params);
       const personalSignApproval = requirePersonalSignApproval(
         sender,
         methods,
