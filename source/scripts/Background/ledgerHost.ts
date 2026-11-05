@@ -41,11 +41,21 @@ export class LedgerHostBroker {
   constructor(private readonly api: typeof chrome = chrome) {
     const request =
       (method: LedgerMethod) =>
-      (params: unknown, options?: LedgerOperationOptions) =>
-        this.abortable(
+      (params: unknown, options?: LedgerOperationOptions) => {
+        const owner = options && { ...options };
+        if (
+          method === 'utxo.signPsbt' &&
+          (typeof owner?.assertCurrent !== 'function' ||
+            typeof owner.signal?.aborted !== 'boolean' ||
+            typeof owner.signal.addEventListener !== 'function' ||
+            typeof owner.signal.removeEventListener !== 'function')
+        )
+          return Promise.reject(CANCELLED());
+        return this.abortable(
           (assertCurrent) => this.request(method, params, assertCurrent),
-          options
+          owner
         );
+      };
     this.host = {
       connect: (_request, options) =>
         this.abortable(() => this.connect(), options),
@@ -80,7 +90,11 @@ export class LedgerHostBroker {
     if (options?.signal?.aborted) throw CANCELLED();
     const generation = this.generation;
     const assertCurrent = () => {
-      options?.assertCurrent?.();
+      const result: unknown = options?.assertCurrent?.();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw CANCELLED();
+      }
       if (options?.signal?.aborted || generation !== this.generation)
         throw CANCELLED();
     };

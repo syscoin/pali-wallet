@@ -128,52 +128,95 @@ describe('Ledger authority host broker', () => {
     expect(f.broker.host.getStatus().connected).toBe(false);
   });
 
-  it('does not post an EVM signer request when its approval changes while focusing the device window', async () => {
-    const f = fixture();
-    const connected = f.broker.host.connect();
-    const port = f.port();
-    await flush();
-    port.onMessage.emit({ type: 'ready' });
-    await connected;
-    let focus!: () => void;
-    f.api.windows.update.mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          focus = resolve;
-        })
-    );
-    let live = true;
-    const options = {
+  it.each([
+    undefined,
+    {
+      assertCurrent: async () => undefined,
       signal: new AbortController().signal,
-      assertCurrent() {
-        if (!live)
-          throw Object.assign(new Error('Approval expired'), {
-            code: 'HARDWARE_REQUEST_CANCELLED',
-          });
-      },
-    };
-    const pending = f.broker.host.evm.signTransaction(
-      {
+    },
+  ])(
+    'rejects an omitted or asynchronous PSBT owner before opening the device window',
+    async (owner) => {
+      const f = fixture();
+      const request = {
+        currency: 'sys',
+        slip44: 57,
         accountIndex: 0,
-        expectedAddress: `0x${'11'.repeat(20)}`,
-        unsignedTxHex: 'f8',
-      },
-      options
-    );
-    live = false;
-    focus();
-    await flush();
-    const posted = port.postMessage.mock.calls.find(
-      ([value]) => value.type === 'request'
-    );
-    // If the regression dispatches, settle it so failure is immediate.
-    if (posted) port.onMessage.emit({ id: posted[0].id, ok: true, value: {} });
-    await expect(pending).rejects.toMatchObject({
-      code: 'HARDWARE_REQUEST_CANCELLED',
-    });
-    expect(posted).toBeUndefined();
-    await f.broker.disconnect();
-  });
+        accountXpub: 'fixture xpub',
+        psbtBase64: 'fixture PSBT',
+      };
+      await expect(
+        Reflect.apply(f.broker.host.utxo.signPsbt, f.broker.host.utxo, [
+          request,
+          owner,
+        ])
+      ).rejects.toMatchObject({ code: 'HARDWARE_REQUEST_CANCELLED' });
+      expect(f.api.windows.create).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['evm.signTransaction', 'utxo.signPsbt'] as const)(
+    'does not post %s when approval changes while focusing the device window',
+    async (method) => {
+      const f = fixture();
+      const connected = f.broker.host.connect();
+      const port = f.port();
+      await flush();
+      port.onMessage.emit({ type: 'ready' });
+      await connected;
+      let focus!: () => void;
+      f.api.windows.update.mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            focus = resolve;
+          })
+      );
+      let live = true;
+      const options = {
+        signal: new AbortController().signal,
+        assertCurrent() {
+          if (!live)
+            throw Object.assign(new Error('Approval expired'), {
+              code: 'HARDWARE_REQUEST_CANCELLED',
+            });
+        },
+      };
+      const pending =
+        method === 'evm.signTransaction'
+          ? f.broker.host.evm.signTransaction(
+              {
+                accountIndex: 0,
+                expectedAddress: `0x${'11'.repeat(20)}`,
+                unsignedTxHex: 'f8',
+              },
+              options
+            )
+          : f.broker.host.utxo.signPsbt(
+              {
+                accountIndex: 0,
+                currency: 'sys',
+                slip44: 57,
+                accountXpub: 'fixture xpub',
+                psbtBase64: 'fixture PSBT',
+              },
+              options
+            );
+      live = false;
+      focus();
+      await flush();
+      const posted = port.postMessage.mock.calls.find(
+        ([value]) => value.type === 'request'
+      );
+      // If the regression dispatches, settle it so failure is immediate.
+      if (posted)
+        port.onMessage.emit({ id: posted[0].id, ok: true, value: {} });
+      await expect(pending).rejects.toMatchObject({
+        code: 'HARDWARE_REQUEST_CANCELLED',
+      });
+      expect(posted).toBeUndefined();
+      await f.broker.disconnect();
+    }
+  );
 
   it('does not close a replacement session when an older focus request fails late', async () => {
     const f = fixture();
