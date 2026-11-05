@@ -327,7 +327,10 @@ for (const width of [400, 320]) {
               const rejected = await dismissRejectedApproval({
                 click: () =>
                   popup
-                    .getByRole('button', { name: en.buttons.cancel, exact: true })
+                    .getByRole('button', {
+                      name: en.buttons.cancel,
+                      exact: true,
+                    })
                     .click(),
                 isClosed: () => popup.isClosed(),
                 settle: () => settle(dapp, id),
