@@ -22,7 +22,10 @@ export type NativeSavedNote = Readonly<{
   createdAt: number;
   reconciliation?: 'restored-note' | 'withdrawal-history';
 }>;
-export type NativeNoteInventory = readonly NativeSavedNote[];
+export type NativeNoteInventory = Readonly<{
+  notes: readonly NativeSavedNote[];
+  revealNote(note: NativeSavedNote, password: string, assertCurrent: () => void): Promise<string>;
+}>;
 
 type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
@@ -112,15 +115,43 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       session.assertCurrent();
       const { notes } = await withSession(session, vault.getNotes);
       session.assertCurrent();
-      return Object.freeze(notes.map((note): NativeSavedNote => Object.freeze({
-        amount: note.amount,
-        createdAt: note.createdAt,
-        ...(note.withdrawal || note.restoration === 'withdrawal-pending'
-          ? { reconciliation: 'withdrawal-history' }
-          : note.restoration === 'review-required'
-            ? { reconciliation: 'restored-note' }
-            : {}),
-      })).sort((left, right) => right.createdAt - left.createdAt));
+      const selections = new WeakMap<NativeSavedNote, string>();
+      const rows = notes.map((note) => {
+        const row = Object.freeze<NativeSavedNote>({
+          amount: note.amount,
+          createdAt: note.createdAt,
+          ...(note.withdrawal || note.restoration === 'withdrawal-pending'
+            ? { reconciliation: 'withdrawal-history' }
+            : note.restoration === 'review-required'
+              ? { reconciliation: 'restored-note' }
+              : {}),
+        });
+        selections.set(row, note.id);
+        return row;
+      }).sort((left, right) => right.createdAt - left.createdAt);
+      return Object.freeze<NativeNoteInventory>({
+        notes: Object.freeze(rows),
+        async revealNote(note, password, assertCurrent) {
+          const id = selections.get(note);
+          if (!id || typeof assertCurrent !== 'function') throw new Error('privacy_note_missing');
+          const selected = Object.freeze<IPrivateVaultSession>({
+            ...session,
+            assertCurrent() {
+              session.assertCurrent();
+              const result: unknown = assertCurrent();
+              if (result !== undefined) {
+                if (result && (typeof result === 'object' || typeof result === 'function'))
+                  void Promise.resolve(result).catch(() => undefined);
+                throw new Error('privacy_vault_session_changed');
+              }
+              session.assertCurrent();
+            },
+          });
+          const secret = await ports.run(() => withSession(selected, () => vault.revealNote(id, password)));
+          selected.assertCurrent();
+          return secret;
+        },
+      });
     },
     bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {
       const run = async (action: () => Promise<IPrivateVaultCapacity>) => {

@@ -70,7 +70,7 @@ test('saved-note detail shows unchecked status and separate local hints at 320px
   await expect(page.getByText('Restored note needs review', { exact: true })).toBeVisible();
   await expect(page.getByText('Saved withdrawal history', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('textbox')).toHaveCount(0);
-  await expect(page.getByRole('button')).toHaveCount(2); // Back and Lock wallet
+  await expect(page.getByRole('button')).toHaveCount(3); // Back, individual backup, and Lock wallet
   await expect(page.getByRole('link')).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('saved-note-detail-320.png') });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
@@ -153,4 +153,117 @@ test('an authority-owned lock closes note details and does not reopen them on un
   await unlock(page);
   await expect(heading(page, 'Private notes')).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.notes.audit())).toEqual({ reads: 1, settled: 1, revoked: 0 });
+});
+
+const fixtureNote = (position: 1 | 2) => `tornado-eth-1-1-0x${`0${position}`.repeat(62)}`;
+const shownNote = (page: Page, position: 1 | 2) => page.getByText(fixtureNote(position), { exact: true });
+const revealPassword = (page: Page) => page.getByRole('textbox', { name: 'Confirm your wallet password', exact: true });
+
+async function openTwinNotes(page: Page) {
+  await page.evaluate(() => window.__watchFixture.notes.next('twins'));
+  await button(page, /^Saved notes/).click();
+}
+
+async function selectTwin(page: Page, position: 1 | 2) {
+  await button(page, new RegExp(`^1 ETH pool.*Note ${position}`)).click();
+  await button(page, 'Back up this note').click();
+  await expect(heading(page, 'Back up this note')).toBeVisible();
+}
+
+test('individual backup authenticates once and reveals only the exact selected note', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.addInitScript(() => {
+    document.addEventListener('copy', () => { document.documentElement.dataset.noteClipboard = 'used'; });
+    const attempted = async () => { document.documentElement.dataset.noteClipboard = 'used'; throw Error('Unexpected clipboard access'); };
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { readText: attempted, writeText: attempted, read: attempted, write: attempted } });
+  });
+  await openNoteTools(page);
+  const rpcBefore = await page.evaluate(() => window.__watchFixture.notes.rpcCalls());
+  await openTwinNotes(page);
+  await selectTwin(page, 1);
+  await expect(revealPassword(page)).toHaveValue('');
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('individual-note-backup-320.png') });
+  await page.evaluate(() => window.__watchFixture.notes.holdReveal());
+  await revealPassword(page).fill('public-wrong-password');
+  await button(page, 'Reveal private note').evaluate((element) => {
+    if (!(element instanceof HTMLElement)) throw Error('Expected a reveal button');
+    element.click();
+    element.click();
+  });
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
+  await page.evaluate(() => window.__watchFixture.notes.releaseReveal());
+  await expect(page.getByRole('alert')).toHaveText('Could not show this note. Confirm your wallet password and try again.');
+  await expect(page.getByText('Synthetic private authentication diagnostic')).toHaveCount(0);
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  await expect(revealPassword(page)).toHaveValue('');
+
+  await revealPassword(page).fill('public-password');
+  await button(page, 'Reveal private note').click();
+  await expect(shownNote(page, 1)).toBeVisible();
+  await expect(shownNote(page, 2)).toHaveCount(0);
+  await expect(page.getByText(/Anyone with this note can withdraw/)).toBeVisible();
+  await expect(revealPassword(page)).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /copy|share|download/i })).toHaveCount(0);
+  expect(await shownNote(page, 1).evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await button(page, 'Hide note').click();
+  await expect(heading(page, 'Note details')).toBeVisible();
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  await button(page, 'Back').click();
+  await selectTwin(page, 2);
+  await expect(revealPassword(page)).toHaveValue('');
+  await revealPassword(page).fill('public-password');
+  await button(page, 'Reveal private note').click();
+  await expect(shownNote(page, 2)).toBeVisible();
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1, 1, 2], settled: 3, revoked: 0 });
+  expect(await page.evaluate(() => window.__watchFixture.notes.rpcCalls())).toBe(rpcBefore);
+  expect(await page.evaluate(() => window.__watchFixture.shares())).toEqual([]);
+  await expect(page.locator('html')).not.toHaveAttribute('data-note-clipboard', 'used');
+});
+
+test('the revealed note expires and requires fresh authentication', async ({ page }) => {
+  await page.clock.install();
+  await openNoteTools(page);
+  await openTwinNotes(page);
+  await selectTwin(page, 1);
+  await revealPassword(page).fill('public-password');
+  await button(page, 'Reveal private note').click();
+  await expect(shownNote(page, 1)).toBeVisible();
+  await page.clock.fastForward(30_100);
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  await expect(page.getByText('Private note hidden. Confirm your password to view it again.', { exact: true })).toBeVisible();
+  await expect(revealPassword(page)).toHaveValue('');
+  await expect(button(page, 'Reveal private note')).toBeDisabled();
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
+});
+
+test('leaving rejects a late reveal and Android blur clears the current secret', async ({ page }) => {
+  await openNoteTools(page, true);
+  await openTwinNotes(page);
+  await selectTwin(page, 1);
+  await page.evaluate(() => window.__watchFixture.notes.holdReveal());
+  await revealPassword(page).fill('public-password');
+  await button(page, 'Reveal private note').click();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1]);
+  await button(page, 'Back').click();
+  await expect(heading(page, 'Note details')).toBeVisible();
+  await button(page, 'Back').click();
+  await selectTwin(page, 2);
+  await revealPassword(page).fill('public-password');
+  await button(page, 'Reveal private note').click();
+  await expect(shownNote(page, 2)).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.notes.releaseReveal());
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.notes.revealAudit())).toEqual({ attempts: [1, 2], settled: 2, revoked: 1 });
+  await expect(shownNote(page, 1)).toHaveCount(0);
+  await expect(shownNote(page, 2)).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.blur());
+  await expect(button(page, 'Unlock wallet')).toBeVisible();
+  await expect(heading(page, 'Back up this note')).toHaveCount(0);
+  await expect(shownNote(page, 2)).toHaveCount(0);
+  await unlock(page);
+  await expect(heading(page, 'Private notes')).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.notes.revealAudit().attempts)).toEqual([1, 2]);
 });

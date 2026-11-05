@@ -169,7 +169,15 @@ export function createNativeWalletControllers() {
     if (!read) throw new CustodyOperationError('NOT_READY');
     const inventory = await observeFailure(() => read(assertCurrent));
     assertCurrent();
-    return inventory;
+    return Object.freeze<NativeNoteInventory>({
+      notes: inventory.notes,
+      async revealNote(...args) {
+        assertCurrent();
+        const secret = await observeFailure(() => inventory.revealNote(...args));
+        assertCurrent();
+        return secret;
+      },
+    });
   };
   // Bound to the exact durable vault without handing its fingerprint to a view.
   const captureNoteFileOwner = async (assertOwner: () => void) => {

@@ -17,7 +17,7 @@ import { NATIVE_NETWORKS } from '../../src/custody/networkContext';
 import { ADDRESS, SECOND, audit, events, unlockGate, signGate, keyReadGate, PUBLIC_TEST_KEY, keyFailure, importGate, importFailure } from './state';
 import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
-import type { NativeNoteInventory } from '../../src/custody/noteBackupRuntime';
+import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
 
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
 const recorded = Date.UTC(2024, 5, 15);
@@ -28,17 +28,24 @@ const noteResults = {
     { amount: '10', createdAt: recorded, reconciliation: 'withdrawal-history' },
     { amount: '0.1', createdAt: recorded },
   ],
+  twins: Array.from({ length: 2 }, () => ({ amount: '1', createdAt: recorded })),
   paged: Array.from({ length: 21 }, () => ({ amount: '1', createdAt: recorded })),
   stale: [{ amount: '100', createdAt: recorded }],
-} satisfies Record<string, NativeNoteInventory>;
+} satisfies Record<string, readonly NativeSavedNote[]>;
 type NoteResult = keyof typeof noteResults | 'error';
 let nextNoteRead: { result: NoteResult; held: boolean } = { result: 'empty', held: false };
 let releaseNoteRead: (() => void) | undefined;
 let noteReads = 0, noteSettled = 0, noteRevoked = 0, fixtureRpcCalls = 0;
+let holdReveal = false, releaseReveal: (() => void) | undefined;
+const revealAttempts: number[] = [];
+let revealSettled = 0, revealRevoked = 0;
 export const noteInventoryFixture = {
   next(result: NoteResult, held = false) { nextNoteRead = { result, held }; },
   release() { const release = releaseNoteRead; releaseNoteRead = undefined; release?.(); },
   audit() { return { reads: noteReads, settled: noteSettled, revoked: noteRevoked }; },
+  holdReveal() { holdReveal = true; },
+  releaseReveal() { const release = releaseReveal; releaseReveal = undefined; release?.(); },
+  revealAudit() { return { attempts: [...revealAttempts], settled: revealSettled, revoked: revealRevoked }; },
   rpcCalls() { return fixtureRpcCalls; },
   lockAuthority() {
     if (!latestAuthority) throw Error('No opened native authority');
@@ -56,7 +63,28 @@ async function readFixtureNoteInventory(check: () => void): Promise<NativeNoteIn
   try { check(); } catch { noteRevoked++; }
   noteSettled++;
   if (result === 'error') throw Error('Synthetic private storage diagnostic');
-  return noteResults[result];
+  const notes = Object.freeze(noteResults[result].map((note) => Object.freeze({ ...note })));
+  return Object.freeze<NativeNoteInventory>({
+    notes,
+    async revealNote(note, password, checkAttempt) {
+      check();
+      checkAttempt();
+      const index = notes.indexOf(note);
+      if (index < 0) throw Error('Unexpected fixture selection');
+      revealAttempts.push(index + 1);
+      if (holdReveal) {
+        holdReveal = false;
+        await new Promise<void>((resolve) => { releaseReveal = resolve; });
+      }
+      // Let a stale synthetic result cross the fake adapter to independently
+      // check publication by the real screen after a refused ownership guard.
+      try { check(); checkAttempt(); } catch { revealRevoked++; }
+      revealSettled++;
+      if (password !== fixturePassword) throw Error('Synthetic private authentication diagnostic');
+      const bytes = (index + 1).toString(16).padStart(2, '0').repeat(62);
+      return `tornado-eth-${note.amount}-1-0x${bytes}`;
+    },
+  });
 }
 
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
