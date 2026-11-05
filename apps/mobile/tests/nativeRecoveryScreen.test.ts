@@ -201,6 +201,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   };
   const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
+  const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
     react: root.hook, 'react-native': leaf.native, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
@@ -210,6 +211,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     '../custody/password': passwordPolicy,
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
     './NativeRecovery': { NativeRecovery: leaf.component }, '../custody/networkView': { createNativeNetworkView: () => ({}) },
+    './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
     './useRealShell': { useRealShell: () => ({ tab: 'wallet', navigation: {}, goBack() { exits++; }, restoreRoot() {} }) },
   });
   const Root = evaluate(source, dependencies).NativeWalletScreen as (props: object) => Element;
