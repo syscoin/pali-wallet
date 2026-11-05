@@ -372,21 +372,25 @@ export class NativeTokenRegistry {
         return fail('CAPACITY');
       }
       const checked = decode(next, current);
-      guard(assertCurrent);
+      const check = () => guard(assertCurrent);
+      check();
       writing(true);
       const committed =
         raw === undefined
           ? await this.storage.createManyIfAbsent({
               [NATIVE_TOKEN_REGISTRY_KEY]: checked,
-            })
+            }, check)
           : await this.storage.compareAndSet(
               NATIVE_TOKEN_REGISTRY_KEY,
               raw,
-              checked
+              checked,
+              undefined,
+              check
             );
       if (typeof committed !== 'boolean') return fail('INVALID');
       if (!committed) {
         writing(false);
+        check();
         return fail('CHANGED');
       }
       guard(assertCurrent);

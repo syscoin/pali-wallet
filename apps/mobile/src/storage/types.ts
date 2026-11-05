@@ -48,13 +48,14 @@ export interface KeyringStoragePort {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   deleteItem(key: string): Promise<void>;
-  createManyIfAbsent(items: Record<string, unknown>): Promise<boolean>;
+  createManyIfAbsent(items: Record<string, unknown>, assertCurrent?: () => void): Promise<boolean>;
   /** Read one bounded snapshot of the current encrypted vault and salt. */
   readDeviceUnlockVaultPair?(): Promise<DeviceUnlockVaultPair | null>;
   /** Atomically replace an exact snapshot. Optional cleanup keys must equal their
-   * snapshots (undefined requires absence); matching present rows are deleted. */
+   * snapshots (undefined requires absence); matching present rows are deleted.
+   * A supplied synchronous owner guard must still pass immediately before COMMIT. */
   compareAndSet(key: string, expected: unknown, value: unknown,
-    removeIfEqual?: Readonly<Record<string, unknown>>): Promise<boolean>;
+    removeIfEqual?: Readonly<Record<string, unknown>>, assertCurrent?: () => void): Promise<boolean>;
 }
 
 export type WalletStoredState = Readonly<
