@@ -112,10 +112,12 @@ const ABI = new Interface([
   'function supportsInterface(bytes4) view returns (bool)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
   'function balanceOf(address) view returns (uint256)',
 ]);
 let unavailable: boolean;
 let owned: string;
+let fungibleDecimals: number | undefined;
 let unexpectedFetches: number;
 let reads: Array<{ failed?: boolean; name: string }>;
 const actualResults: Array<{ method: string; result: any }> = [];
@@ -132,15 +134,20 @@ const runner = {
     if (decoded.name === 'supportsInterface') {
       reads.push({ name: decoded.name });
       return ABI.encodeFunctionResult(decoded.name, [
-        decoded.args[0] === '0x80ac58cd',
+        fungibleDecimals === undefined && decoded.args[0] === '0x80ac58cd',
       ]);
     }
     if (decoded.name === 'name')
       return ABI.encodeFunctionResult(decoded.name, ['Recovery Collection']);
     if (decoded.name === 'symbol')
       return ABI.encodeFunctionResult(decoded.name, [SYMBOL]);
+    if (decoded.name === 'decimals' && fungibleDecimals !== undefined)
+      return ABI.encodeFunctionResult(decoded.name, [fungibleDecimals]);
     expect(decoded.name).toBe('balanceOf');
-    expect(decoded.args[0].toLowerCase()).toBe(OWNER);
+    const holder = decoded.args[0].toLowerCase();
+    if (fungibleDecimals !== undefined && holder === CONTRACT)
+      return ABI.encodeFunctionResult('balanceOf', [0]);
+    expect(holder).toBe(OWNER);
     reads.push({ name: decoded.name, failed: unavailable });
     if (unavailable)
       throw new Error('Synthetic public RPC balance read failed');
@@ -166,6 +173,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
   unavailable = false;
   owned = '3';
+  fungibleDecimals = undefined;
   unexpectedFetches = 0;
   reads = [];
   actualResults.length = 0;
@@ -239,7 +247,7 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, 'fetch');
 });
 
-const ordinaryImportAndPreview = async () => {
+const openManualImport = async () => {
   render(
     <Provider store={mockStore}>
       <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
@@ -255,6 +263,10 @@ const ordinaryImportAndPreview = async () => {
   });
   await act(async () => jest.advanceTimersByTimeAsync(500));
   expect(importButton()).toBeEnabled();
+};
+
+const ordinaryImportAndPreview = async () => {
+  await openManualImport();
   expect(actualResults[0]).toMatchObject({
     method: 'getTokenDetailsWithMarketData',
     result: {
@@ -287,6 +299,52 @@ const ordinaryImportAndPreview = async () => {
   expect(mockAlert.success).toHaveBeenCalledTimes(1);
   return { ownedText, hasUnavailable, storedBalance: holdings()[0].balance };
 };
+
+it.each([
+  { method: 'getTokenDetailsWithMarketData', decimals: 7 },
+  { method: 'validateERC20Only', decimals: 7 },
+  { method: 'getTokenDetailsWithMarketData', decimals: 255 },
+  { method: 'validateERC20Only', decimals: 255 },
+])(
+  'shows the exact fungible balance from $method at $decimals decimals while preserving the import payload',
+  async ({ method, decimals }) => {
+    fungibleDecimals = decimals;
+    owned = '90071992547409931234567';
+    const exact =
+      decimals === 7
+        ? '9007199254740993.1234567'
+        : `0.${'0'.repeat(232)}${owned}`;
+    const numericBalance = Number(exact);
+    if (method === 'validateERC20Only') {
+      const emit = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation(async (path, args) =>
+        path[1] === 'getTokenDetailsWithMarketData' ? null : emit(path, args)
+      );
+    }
+
+    await openManualImport();
+
+    expect(screen.getByText(exact, { exact: true })).toBeVisible();
+    expect(actualResults).toContainEqual({
+      method,
+      result: expect.objectContaining({
+        balance: numericBalance,
+        rawBalance: owned,
+      }),
+    });
+    await act(async () => fireEvent.click(importButton()));
+    const [, [payload]] = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'saveTokenInfo'
+    )!;
+    expect(payload).toMatchObject({
+      contractAddress: CONTRACT,
+      decimals: fungibleDecimals,
+      balance: numericBalance,
+      tokenStandard: 'ERC-20',
+    });
+    expect(payload).not.toHaveProperty('rawBalance');
+  }
+);
 
 it.each(['0', '3'])(
   'healthy ERC721 balance %s is retained through import and preview',
