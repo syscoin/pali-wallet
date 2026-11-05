@@ -167,6 +167,25 @@ test('explicit recheck replaces its previous observation and refresh restores in
   expect((await rpcCalls(page)).length).toBe(reads);
 });
 
+test('fresh pending reorg details restore Cancel for a previously confirmed local transaction', async ({ page }, testInfo) => {
+  await page.goto('/?fresh-status=retained-terminal-confirmed');
+  await expect(listRow(page)).toBeVisible();
+  expect(await rpcCalls(page)).toEqual([]);
+  await listRow(page).click();
+  await expect(detailStatus(page, 'Confirmed')).toBeVisible();
+  const cancel = page.getByRole('button', { name: 'Cancel pending transaction', exact: true });
+  await expect(cancel).toHaveCount(0);
+
+  await page.evaluate(() => window.__freshActivityFixture.observation('pending'));
+  await page.getByRole('button', { name: 'Check transaction again', exact: true }).click();
+  await expect(detailStatus(page, 'Pending')).toBeVisible();
+  await expect(cancel).toBeVisible();
+  await cancel.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('reorg-cancellation.png'), animations: 'disabled' });
+  await cancel.click();
+  await expect(page.getByRole('button', { name: 'Open Activity' })).toBeVisible();
+});
+
 test('a context change cancels the selected read and cannot revive its stale success', async ({
   page,
 }) => {

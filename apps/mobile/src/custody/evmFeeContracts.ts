@@ -2,6 +2,7 @@ import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import { getAddress } from 'ethers/address';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { assertEvmCancellationEnvelope, type EvmCancellationEnvelopeIntent } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-cancellation.js';
 import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 export class EvmTransferReadError extends Error {
@@ -45,7 +46,7 @@ export function checkedReadHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return rejectRead('INVALID_RESPONSE');
   return value.toLowerCase();
 }
-export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
+function snapshotEvmEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
   const type = Object.getOwnPropertyDescriptor(value, 'type')?.value;
   const feeFields = type === 0 ? ['gasPrice'] : ['maxFeePerGas', 'maxPriorityFeePerGas'];
   const data = readOwnData(value, ['type', 'from', 'to', 'chainId', 'nonce', 'value', 'gasLimit', 'data', ...feeFields]);
@@ -55,13 +56,25 @@ export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: Na
   try { from = getAddress(data.from as string); to = getAddress(data.to as string); } catch { return rejectRead('INVALID_INPUT'); }
   const nonce = units(data.nonce), valueUnits = units(data.value), gas = units(data.gasLimit);
   if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to) || nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
-      gas < 21000n || gas > BigInt(Number.MAX_SAFE_INTEGER) || (data.data === '0x' && valueUnits === 0n)) return rejectRead('INVALID_INPUT');
+      gas < 21000n || gas > BigInt(Number.MAX_SAFE_INTEGER)) return rejectRead('INVALID_INPUT');
   try { assertEvmGasLimit(gas, BigInt(network.chainId)); } catch { return rejectRead('INVALID_INPUT'); }
   const common = { from, to, chainId: network.chainId, nonce: nonce.toString(), value: valueUnits.toString(), gasLimit: gas.toString(), data: data.data };
   if (data.type === 0) return Object.freeze({ ...common, type: 0, gasPrice: units(data.gasPrice).toString() });
   const cap = units(data.maxFeePerGas), tip = units(data.maxPriorityFeePerGas);
   if (cap === 0n || tip > cap) return rejectRead('INVALID_INPUT');
   return Object.freeze({ ...common, type: 2, maxFeePerGas: cap.toString(), maxPriorityFeePerGas: tip.toString() });
+}
+export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
+  const transaction = snapshotEvmEnvelope(value, network);
+  if (transaction.data === '0x' && transaction.value === '0') return rejectRead('INVALID_INPUT');
+  return transaction;
+}
+export function snapshotCancellationTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration,
+  payer: string, feePlan: EvmCancellationEnvelopeIntent['feePlan']): EvmUnsignedTransfer {
+  const transaction = snapshotEvmEnvelope(value, network);
+  if (transaction.from.toLowerCase() !== payer.toLowerCase()) return rejectRead('INVALID_INPUT');
+  assertEvmCancellationEnvelope(unsignedTransferBytes(transaction), { payer, chainId: network.chainId, nonce: transaction.nonce, feePlan });
+  return transaction;
 }
 export function unsignedTransferBytes(transaction: EvmUnsignedTransfer): string {
   const tx = Transaction.from({ type: transaction.type, to: transaction.to, chainId: BigInt(transaction.chainId),

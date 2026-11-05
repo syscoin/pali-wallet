@@ -3,6 +3,7 @@ import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmCancellationQuote } from './evmTransferReadRpc.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -11,7 +12,7 @@ import {
   TransferJournalError,
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
-import { NativeTransferRpc, NativeTransferRpcError } from './transferRpc.ts';
+import { NativeTransferRpc, NativeTransferRpcError, type NativeCancellationOriginal, type NativeTransferQuote } from './transferRpc.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { getNativeSendContext, erc20SigningEnabled, type NativeSendContext } from './networkContext.ts';
 import {
@@ -40,6 +41,7 @@ export type NativeTransferReview = Readonly<{
   retry: boolean;
   intent?: Erc20TransferIntent;
   replay?: EvmReplayReview;
+  cancellation?: Readonly<{ originalHash: string }>;
 }>;
 export type NativeTransferSnapshot = Readonly<{
   context?: NativeSendContext | null;
@@ -72,6 +74,7 @@ export interface NativeTransferRuntime {
     contractAddress: string,
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
+  cancellationOriginal?(hash: string, assertCurrent: () => void, signal: AbortSignal): Promise<string | null>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
   submit(
     rawTransaction: string,
@@ -79,15 +82,21 @@ export interface NativeTransferRuntime {
     assertCurrent: () => void,
     broadcast: (approvedBytes: string) => Promise<unknown>,
     intent: Erc20TransferIntent | undefined,
-    approved: PreparedEvmTransaction
+    approved: PreparedEvmTransaction,
+    cancellation?: NativeCancellationApproval
   ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
-    intent?: Erc20TransferIntent
+    intent?: Erc20TransferIntent,
+    cancellation?: NativeCancellationApproval
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
   assertUnlocked(assertCurrent: () => void): void;
 }
+export type NativeCancellationApproval = Readonly<{
+  original: NativeCancellationOriginal;
+  feePlan: EvmCancellationQuote['feePlan'];
+}>;
 type Source = {
   getCatalogue?(): NativeWalletCatalogueSnapshot | null;
   getSnapshot(): CustodySnapshot;
@@ -120,6 +129,7 @@ export type NativeTransferView = Readonly<
     | 'subscribe'
     | 'cancel'
     | 'prepare'
+    | 'prepareCancellation'
     | 'prepareToken'
     | 'confirm'
     | 'recover'
@@ -132,6 +142,7 @@ type PrivateReview = {
   transaction?: PreparedEvmTransaction;
   expires: number;
   replay?: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
+  cancellation?: NativeCancellationApproval;
 };
 const isTerminal = (
   phase: string
@@ -155,6 +166,7 @@ export class NativeTransfers {
     cancel: () => this.cancel(),
     prepare: (recipient: string, amount: string) =>
       this.prepare(recipient, amount),
+    prepareCancellation: (hash: string) => this.prepareCancellation(hash),
     prepareToken: (contract: string, recipient: string, amount: string) =>
       this.prepareToken(contract, recipient, amount),
     confirm: (id: string) => this.confirm(id),
@@ -452,7 +464,8 @@ export class NativeTransfers {
   private showReview(
     transaction: PreparedEvmTransaction,
     inputIntent?: Erc20TransferIntent,
-    context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks)
+    context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks),
+    cancellation?: NativeCancellationApproval
   ) {
     const intent = inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
@@ -487,10 +500,12 @@ export class NativeTransfers {
       nonce: transaction.nonce,
       retry: false,
       ...(intent ? { intent } : {}),
+      ...(cancellation ? { cancellation: Object.freeze({ originalHash: cancellation.original.hash }) } : {}),
     });
     this.review = {
       public: publicReview,
       transaction,
+      cancellation,
       expires: this.now() + 90000,
     };
     if (this.expiry !== null) clearTimeout(this.expiry);
@@ -503,6 +518,21 @@ export class NativeTransfers {
       intent: intent ?? null,
       hash: null,
       message: null,
+    });
+  }
+  prepareCancellation(hash: string): Promise<void> {
+    if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/.test(hash))
+      return Promise.reject(new NativeTransferError('INVALID_INPUT'));
+    return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
+      if (!runtime.cancellationOriginal) throw new NativeTransferError('NOT_READY');
+      this.review = null;
+      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null });
+      const raw = await runtime.cancellationOriginal(hash, assertCurrent, signal);
+      if (!raw) throw new NativeTransferError('EXPIRED');
+      const quote = await rpc.prepareCancellation(hash, raw, address, signal, assertCurrent);
+      assertCurrent();
+      this.showReview(quote.transaction, undefined, context,
+        Object.freeze({ original: quote.original, feePlan: quote.feePlan }));
     });
   }
   prepare(recipient: string, amount: string): Promise<void> {
@@ -645,9 +675,17 @@ export class NativeTransfers {
       let rawTransaction: string;
       let transactionHash: string;
       {
-        const latest = await rpc.requote(approved.transaction!, signal, approved.public.intent);
+        const cancellation = approved.cancellation;
+        const original = cancellation && await runtime.cancellationOriginal?.(cancellation.original.hash, guard, signal);
+        if (cancellation && !original) throw new NativeTransferError('EXPIRED');
+        const latest: NativeTransferQuote = cancellation
+          ? await rpc.prepareCancellation(cancellation.original.hash, original!, address, signal, guard)
+          : await rpc.requote(approved.transaction!, signal, approved.public.intent);
         guard();
         if (
+          (cancellation && (latest.transaction.type !== approved.transaction!.type ||
+            (latest.transaction.type === 2 && approved.transaction!.type === 2 &&
+              BigInt(latest.transaction.maxPriorityFeePerGas) > BigInt(approved.transaction!.maxPriorityFeePerGas)))) ||
           latest.transaction.to !== approved.transaction!.to ||
           latest.transaction.value !== approved.transaction!.value ||
           latest.transaction.data !== approved.transaction!.data ||
@@ -671,7 +709,8 @@ export class NativeTransfers {
           runtime.sign(
             approved.transaction!,
             guard,
-            approved.public.intent
+            approved.public.intent,
+            cancellation
           )
         );
         guard();
@@ -685,21 +724,27 @@ export class NativeTransfers {
         message: null,
       });
       try {
+        const beforeBroadcast = (): undefined => {
+          guard();
+          startedSubmission = true;
+        };
         await runtime.submit(
           rawTransaction,
           transactionHash,
           guard,
           (approvedBytes) =>
-            rpc.broadcast(approvedBytes, transactionHash, signal, {
+            rpc.broadcast(approvedBytes, transactionHash, signal, approved.cancellation ? {
+              mode: 'cancel',
+              original: approved.cancellation.original,
+              beforeBroadcast,
+            } : {
               mode: 'new-send',
               intent: approved.public.intent,
-              beforeBroadcast: () => {
-                guard();
-                startedSubmission = true;
-              },
+              beforeBroadcast,
             }),
           approved.public.intent,
-          approved.transaction!
+          approved.transaction!,
+          approved.cancellation
         );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
