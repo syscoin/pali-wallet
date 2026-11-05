@@ -142,6 +142,43 @@ async function fixture() {
   };
 }
 
+test('lock releases an inventory yield even if the native timer never fires', async (context) => {
+  const f = await fixture();
+  const setTimer = globalThis.setTimeout;
+  let held: (() => void) | undefined;
+  let slow: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const file = await encrypted(Array.from({ length: 5 }, (_, index) => ({
+      note: `tornado-eth-1-1-0x${String(index + 1).padStart(2, '0').repeat(62)}`, createdAt: index + 1,
+    })));
+    const view = await f.runtime.openNoteBackup!(current), id = view.begin();
+    await view.prepareImport(id, file, BACKUP_PASSWORD);
+    await view.commitImport(id, PASSWORD);
+    await f.reopen();
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => { entered = resolve; });
+    context.mock.method(globalThis, 'setTimeout', ((action: () => void, delay?: number) => {
+      if (delay !== 0 || held) return setTimer(action, delay);
+      held = action;
+      slow = setTimer(action, 60_000);
+      entered();
+      return slow;
+    }) as typeof setTimeout);
+    const read = assert.rejects(f.runtime.readNoteInventory!(current), /privacy_vault_unavailable/);
+    await started;
+    await f.runtime.session.lock();
+    const drained = await Promise.race([read.then(() => true), new Promise<boolean>((resolve) => setTimer(() => resolve(false), 250))]);
+    assert.equal(drained, true);
+    assert.equal(f.unlocked, false);
+    assert.equal(f.noteWrites, 1);
+  } finally {
+    clearTimeout(slow);
+    held?.();
+    context.mock.restoreAll();
+    await f.dispose();
+  }
+});
+
 test('actual native owner imports and verifies an exact encrypted backup, with explicit one-use approval', async () => {
   const f = await fixture();
   try {

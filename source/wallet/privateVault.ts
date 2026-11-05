@@ -361,6 +361,8 @@ export interface IPrivateVaultDependencies {
   now: () => number;
   randomId: () => string;
   storage: IPrivateVaultStorage;
+  // Optional host task yield during inventory reads, outside signing or writes.
+  yieldInventory?: () => Promise<void>;
 }
 
 function uint(value: unknown, positive = false): bigint {
@@ -850,7 +852,8 @@ export function createPrivateVaultController(
       context.session,
       identify,
       compareAndSet ? 'serialized' : 'object',
-      identities
+      identities,
+      identities ? dependencies.yieldInventory : undefined
     );
     assertSession(context.session);
     context.capacity = result.capacity;

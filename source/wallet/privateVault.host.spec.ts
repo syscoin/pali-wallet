@@ -51,6 +51,7 @@ function fixture() {
   keyring.getDecryptedMnemonic = () => ROOT;
   const records: Record<string, unknown> = {};
   let generation = 0;
+  let sessionError = 'privacy_vault_session_changed';
   let sequence = 10;
   let elapsed = 0;
   const storage = {
@@ -67,8 +68,7 @@ function fixture() {
       keyring,
       generation: captured,
       assertCurrent: () => {
-        if (generation !== captured)
-          throw new Error('privacy_vault_session_changed');
+        if (generation !== captured) throw new Error(sessionError);
       },
     };
   };
@@ -106,7 +106,8 @@ function fixture() {
     setElapsed: (value: number) => {
       elapsed = value;
     },
-    cycleSession: () => {
+    cycleSession: (error = sessionError) => {
+      sessionError = error;
       generation += 2;
     },
   };
@@ -128,6 +129,38 @@ test('inventory reuses each authenticated note identity without another derivati
   expect(identify.mock.calls).toEqual([[NOTE], [SECOND_NOTE]]);
   expect(f.storage.setItem).not.toHaveBeenCalled();
 });
+
+test.each([
+  ['privacy_vault_session_changed', 'privacy_vault_session_changed'],
+  ['CANCELLED', 'privacy_vault_unavailable'],
+])(
+  'inventory stops at the first yield if the owner reports %s',
+  async (stale, expected) => {
+    const f = fixture();
+    const identify = jest.fn(identifyClassicNote);
+    const yieldInventory = jest.fn(async () => f.cycleSession(stale));
+    const vault = core.createPrivateVaultController(f.host, {
+      ...f.dependencies,
+      identify,
+      yieldInventory,
+    });
+    for (let index = 1; index <= 5; index++) {
+      await vault.importNote(
+        `tornado-eth-1-1-0x${String(index).padStart(2, '0').repeat(62)}`
+      );
+    }
+    expect(yieldInventory).not.toHaveBeenCalled();
+    identify.mockClear();
+    jest.mocked(f.host.readNote).mockClear();
+    f.storage.setItem.mockClear();
+
+    await expect(vault.getNotes()).rejects.toThrow(expected);
+    expect(identify).toHaveBeenCalledTimes(4);
+    expect(yieldInventory).toHaveBeenCalledTimes(1);
+    expect(f.host.readNote).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+  }
+);
 
 test('shared core imports and runs without browser storage or global mutex modules', async () => {
   const originalChrome = Object.getOwnPropertyDescriptor(globalThis, 'chrome');

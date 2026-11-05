@@ -504,7 +504,8 @@ export async function readPrivateVaultBundle(
   session: IPrivateVaultSession,
   identify: typeof identifyClassicNote = identifyClassicNote,
   encoding: 'object' | 'serialized' = 'object',
-  identities?: WeakMap<IStoredNote, IClassicNoteIdentity>
+  identities?: WeakMap<IStoredNote, IClassicNoteIdentity>,
+  yieldInventory?: () => Promise<void>
 ): Promise<
   Readonly<{
     capacity: PrivateVaultCapacity;
@@ -676,7 +677,8 @@ export async function readPrivateVaultBundle(
     const recordId = bundle.root.recordId;
     const ids = new Set<string>();
     const commitments = new Set<string>();
-    const notes = data.notes.map((entry: IStoredNote) => {
+    const notes: IStoredNote[] = [];
+    for (const entry of data.notes) {
       snapshotBackupObject(entry, [
         'id',
         'createdAt',
@@ -730,8 +732,22 @@ export async function readPrivateVaultBundle(
         ...(restoreGuard ? { restoreGuard } : {}),
       };
       identities?.set(note, { ...identity });
-      return note;
-    });
+      notes.push(note);
+      if (
+        yieldInventory &&
+        notes.length % 4 === 0 &&
+        notes.length < data.notes.length
+      ) {
+        // Keep the same validation and owner across an opt-in foreground yield.
+        try {
+          assertPrivateVaultSession(session, strictSession);
+          await yieldInventory();
+          assertPrivateVaultSession(session, strictSession);
+        } catch (error) {
+          throw publicError(error);
+        }
+      }
+    }
     for (const note of notes) privateNoteExportHistory(note);
     return {
       manifest: { version: 1, notes },
