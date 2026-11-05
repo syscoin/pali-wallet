@@ -5,8 +5,8 @@ import {
   CustomJsonRpcProvider,
   PsbtUtils,
   readPublicSyscoinFee,
-  type ISendSignedErc20TransactionProps,
-  type ISendSignedErcTransactionProps,
+  type IReviewedEvmTokenFees,
+  type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
 import {
   getSysRpc,
@@ -47,10 +47,12 @@ import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
+import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import {
-  walletErc20ReviewError,
-  type WalletErc20ReviewRequest,
-} from '../../../shared/walletErc20Review';
+  walletTokenReviewError,
+  type WalletTokenReviewPayload,
+  type WalletTokenReviewRequest,
+} from '../../../shared/walletTokenReview';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -8713,8 +8715,8 @@ class MainController {
   }
 
   /** Capture the reviewed ERC20 fields before accepting a submission ticket. */
-  public captureWalletErc20Review(request: unknown) {
-    const input = request as Partial<WalletErc20ReviewRequest> | null;
+  public captureWalletTokenReview(request: unknown) {
+    const input = request as Partial<WalletTokenReviewRequest> | null;
     const reviewed = input?.transaction;
     if (
       !input ||
@@ -8724,36 +8726,31 @@ class MainController {
       input.chainId! <= 0 ||
       typeof reviewed.networkUrl !== 'string' ||
       typeof reviewed.isLegacy !== 'boolean' ||
-      'tokenAmount' in reviewed ||
-      'decimals' in reviewed ||
       (reviewed.isLegacy
         ? reviewed.maxFeePerGas !== undefined ||
           reviewed.maxPriorityFeePerGas !== undefined
         : reviewed.gasPrice !== undefined)
     )
-      throw walletErc20ReviewError();
+      throw walletTokenReviewError();
     const scope = { ...input.walletScope };
-    const chainId = input.chainId;
-    const networkUrl = reviewed.networkUrl;
+    const chainId = input.chainId!;
+    const { networkUrl } = reviewed;
+    this.assertWalletReadyForSigning();
+    const session = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const keyring = this.getActiveKeyring();
+    const { activeAccount, accounts } = store.getState().vault;
+    const from = accounts[activeAccount.type]?.[activeAccount.id]?.address;
     const receiver = getAddress(reviewed.receiver);
     const tokenAddress = getAddress(reviewed.tokenAddress);
-    const tokenAmountUnits = parseErc20Units(reviewed.tokenAmountUnits);
-    encodeErc20Transfer(receiver, tokenAmountUnits);
-    if (/^0x0{40}$/i.test(tokenAddress)) throw walletErc20ReviewError();
+    if (/^0x0{40}$/i.test(tokenAddress)) throw walletTokenReviewError();
     const gasLimit = parseErc20Units(reviewed.gasLimit);
-    if (gasLimit === '0') throw walletErc20ReviewError();
-    const common = {
-      networkUrl,
-      receiver,
-      tokenAddress,
-      tokenAmountUnits,
-      gasLimit,
-    };
-    let transaction: Readonly<ISendSignedErc20TransactionProps>;
+    if (gasLimit === '0') throw walletTokenReviewError();
+    let fees: IReviewedEvmTokenFees;
     if (reviewed.isLegacy) {
       const gasPrice = parseErc20Units(reviewed.gasPrice);
-      if (gasPrice === '0') throw walletErc20ReviewError();
-      transaction = Object.freeze({ ...common, isLegacy: true, gasPrice });
+      if (gasPrice === '0') throw walletTokenReviewError();
+      fees = { gasLimit, isLegacy: true, gasPrice };
     } else {
       const maxFeePerGas = parseErc20Units(reviewed.maxFeePerGas);
       const maxPriorityFeePerGas = parseErc20Units(
@@ -8763,25 +8760,65 @@ class MainController {
         maxFeePerGas === '0' ||
         BigInt(maxPriorityFeePerGas) > BigInt(maxFeePerGas)
       )
-        throw walletErc20ReviewError();
-      transaction = Object.freeze({
-        ...common,
-        isLegacy: false,
-        maxFeePerGas,
-        maxPriorityFeePerGas,
-      });
+        throw walletTokenReviewError();
+      fees = { gasLimit, isLegacy: false, maxFeePerGas, maxPriorityFeePerGas };
     }
-    this.assertWalletReadyForSigning();
-    const session = this.walletSessionGeneration;
-    const networkRequest = this.networkRequestGeneration;
-    const keyring = this.getActiveKeyring();
+    const common = { networkUrl, receiver, tokenAddress, ...fees };
+    let payload: WalletTokenReviewPayload;
+    if (input.type === 'ERC20') {
+      if (
+        'tokenAmount' in input.transaction! ||
+        'decimals' in input.transaction! ||
+        'tokenId' in input.transaction!
+      )
+        throw walletTokenReviewError();
+      const tokenAmountUnits = parseErc20Units(
+        input.transaction!.tokenAmountUnits
+      );
+      if (tokenAmountUnits === '0') throw walletTokenReviewError();
+      encodeErc20Transfer(receiver, tokenAmountUnits);
+      payload = Object.freeze({
+        type: 'ERC20',
+        transaction: Object.freeze({ ...common, tokenAmountUnits }),
+      });
+    } else if (input.type === 'ERC721' || input.type === 'ERC1155') {
+      if (
+        'tokenAmountUnits' in input.transaction! ||
+        (input.type === 'ERC721' && 'tokenAmount' in input.transaction!)
+      )
+        throw walletTokenReviewError();
+      const intent = snapshotNftTransferIntent({
+        kind: 'nft-transfer',
+        chainId: String(chainId),
+        from,
+        recipient: receiver,
+        contractAddress: tokenAddress,
+        tokenStandard: input.type === 'ERC721' ? 'ERC-721' : 'ERC-1155',
+        tokenId: input.transaction!.tokenId,
+        amountUnits:
+          input.type === 'ERC1155' ? input.transaction!.tokenAmount : '1',
+      });
+      const nft = { ...common, tokenId: intent.tokenId };
+      payload =
+        input.type === 'ERC721'
+          ? Object.freeze({ type: 'ERC721', transaction: Object.freeze(nft) })
+          : Object.freeze({
+              type: 'ERC1155',
+              transaction: Object.freeze({
+                ...nft,
+                tokenAmount: intent.amountUnits,
+              }),
+            });
+    } else {
+      throw walletTokenReviewError();
+    }
     const assertCurrent = () => {
       try {
         this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(session, keyring);
         this.assertAssetMutationContext(scope);
       } catch {
-        throw walletErc20ReviewError();
+        throw walletTokenReviewError();
       }
       const { vault } = store.getState();
       if (
@@ -8792,10 +8829,10 @@ class MainController {
         vault.activeNetwork.chainId !== chainId ||
         vault.activeNetwork.url !== networkUrl
       )
-        throw walletErc20ReviewError();
+        throw walletTokenReviewError();
     };
     assertCurrent();
-    return { transaction, assertCurrent };
+    return { payload, assertCurrent };
   }
 
   /**
@@ -8803,29 +8840,21 @@ class MainController {
    * Combines send and save operations to ensure completion
    */
   public async sendAndSaveTokenTransaction(
-    ...[tokenType, params, assertApproved]:
-      | [
-          tokenType: 'ERC20',
-          params: ISendSignedErc20TransactionProps,
-          assertApproved: () => void
-        ]
-      | [
-          tokenType: 'ERC721' | 'ERC1155',
-          params: ISendSignedErcTransactionProps
-        ]
+    approval: WalletTokenReviewPayload,
+    authority: IReviewedEvmTokenApproval
   ): Promise<IEvmTransactionResponse> {
     this.assertWalletReadyForSigning();
-    if (tokenType === 'ERC20') {
-      if (typeof assertApproved !== 'function') throw walletErc20ReviewError();
-      assertApproved();
+    if (!authority || typeof authority.assertCurrent !== 'function')
+      throw walletTokenReviewError();
+    authority.assertCurrent();
+    const { transaction: params } = approval;
+    if (approval.type === 'ERC20') {
       try {
         if (
-          !params ||
-          typeof params !== 'object' ||
           'tokenAmount' in params ||
           'decimals' in params ||
-          typeof params.tokenAmountUnits !== 'string' ||
-          parseErc20Units(params.tokenAmountUnits) === '0'
+          typeof approval.transaction.tokenAmountUnits !== 'string' ||
+          parseErc20Units(approval.transaction.tokenAmountUnits) === '0'
         )
           throw new Error('Invalid ERC20 amount');
       } catch {
@@ -8898,30 +8927,29 @@ class MainController {
           transactionNotBroadcast: true,
         });
 
-      // Call the appropriate method based on token type
-      switch (tokenType) {
+      authority.assertCurrent();
+      switch (approval.type) {
         case 'ERC20':
-          assertApproved();
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
-              params,
-              assertApproved
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC721':
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc721Transaction(
-              params
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC1155':
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc1155Transaction(
-              params
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
-        default:
-          throw new Error(`Unsupported token type: ${tokenType}`);
       }
 
       // A published hash remains authoritative after a context switch. Do not

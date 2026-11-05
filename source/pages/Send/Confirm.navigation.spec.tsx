@@ -21,15 +21,17 @@ import {
 
 import { SendConfirm } from './Confirm';
 
-const mockOpenWalletErc20Review = jest.fn<
-  { close: jest.Mock; ready: Promise<string> },
-  [any]
->(() => ({
-  ready: Promise.resolve('reviewed-erc20-id'),
+const mockOpenWalletTokenReview = jest.fn((request: any) => ({
+  ready: Promise.resolve(),
+  submit: () =>
+    mockControllerEmitter(
+      ['wallet', 'sendAndSaveTokenTransaction'],
+      [request.type, request.transaction]
+    ),
   close: jest.fn(),
 }));
-jest.mock('./walletErc20ReviewPort', () => ({
-  openWalletErc20Review: (request: any) => mockOpenWalletErc20Review(request),
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: (request: any) => mockOpenWalletTokenReview(request),
 }));
 
 const mockControllerEmitter = jest.fn();
@@ -556,11 +558,11 @@ it.each(
     expect(submitted[1][1].tokenId).toBe(tokenId);
     expect(submitted[1][1]).toMatchObject({
       isLegacy: true,
-      gasPrice: '0x3b9aca00',
+      gasPrice: '1000000000',
     });
     expect(submitted[1][1].gasLimit.toString()).toBe('21000');
-    expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
-    expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
+    expect(submitted[1][1]).not.toHaveProperty('maxFeePerGas');
+    expect(submitted[1][1]).not.toHaveProperty('maxPriorityFeePerGas');
   }
 );
 
@@ -707,8 +709,8 @@ it.each([24, 255])(
     const submitted = mockControllerEmitter.mock.calls.find(
       ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
     )!;
-    expect(submitted[1][1]).toEqual({ approvalId: 'reviewed-erc20-id' });
-    const reviewed = mockOpenWalletErc20Review.mock.calls[0][0].transaction;
+    expect(submitted[1][0]).toBe('ERC20');
+    const reviewed = mockOpenWalletTokenReview.mock.calls[0][0].transaction;
     expect(reviewed).toMatchObject({
       tokenAmountUnits: '1',
       isLegacy: true,
@@ -1415,7 +1417,7 @@ it.each([
       transactionType === TransactionType.NATIVE_ETH
         ? args[0]
         : transactionType === TransactionType.ERC20
-        ? mockOpenWalletErc20Review.mock.calls[0][0].transaction
+        ? mockOpenWalletTokenReview.mock.calls[0][0].transaction
         : args[1];
     expect(BigNumber.from(sent.maxFeePerGas).toString()).toBe('2000000000');
     expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
@@ -1423,9 +1425,7 @@ it.each([
       expect(args[1]).not.toBe(true);
     else {
       expect(sent.isLegacy).toBe(false);
-      if (transactionType === TransactionType.ERC20)
-        expect(sent).not.toHaveProperty('gasPrice');
-      else expect(sent.gasPrice).toBe('0x00');
+      expect(sent).not.toHaveProperty('gasPrice');
       expect(sent.gasLimit.toString()).toBe('21000');
     }
   }

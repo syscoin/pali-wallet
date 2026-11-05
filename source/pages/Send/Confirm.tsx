@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { parseErc20Units } from '../../shared/erc20';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
 import {
   ICustomFeeParams,
@@ -78,7 +79,9 @@ import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
 import { EditPriorityModal } from './EditPriority';
 import { parseWalletErc20SendAmount } from './erc20SendAmount';
 import { useConfirmSubmission } from './useConfirmSubmission';
-import { openWalletErc20Review } from './walletErc20ReviewPort';
+import { openWalletTokenReview } from './walletTokenReviewPort';
+import type { WalletTokenReviewPayload } from '../../shared/walletTokenReview';
+
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
@@ -159,8 +162,19 @@ export const SendConfirm = () => {
     connectionUnavailable,
   });
   const { state } = submission;
-  const tokenReviewPort = useRef<ReturnType<typeof openWalletErc20Review>>();
-  useEffect(() => () => tokenReviewPort.current?.close(), []);
+  const tokenReviewPort = useRef<ReturnType<typeof openWalletTokenReview>>();
+  useEffect(() => {
+    const retireOnDeparture = () => {
+      if (!submission.isActive()) tokenReviewPort.current?.close();
+    };
+    window.addEventListener('hashchange', retireOnDeparture);
+    window.addEventListener('popstate', retireOnDeparture);
+    return () => {
+      tokenReviewPort.current?.close();
+      window.removeEventListener('hashchange', retireOnDeparture);
+      window.removeEventListener('popstate', retireOnDeparture);
+    };
+  }, []);
   useEffect(() => {
     if (!submission.isActive()) tokenReviewPort.current?.close();
   }, [location, state]);
@@ -448,17 +462,29 @@ export const SendConfirm = () => {
         (!basicTxValues.transactionType ||
           basicTxValues.transactionType === TransactionType.NATIVE_ETH)
     );
-  const fixedNativeReview = (() => {
-    if (!isFixedNativeSoftwareSend || isEIP1559Compatible === undefined) return;
+  const isOrdinaryTokenSend =
+    !isBitcoinBased &&
+    !isSmartAccountSend &&
+    Boolean(basicTxValues?.token) &&
+    [
+      TransactionType.ERC20,
+      TransactionType.ERC721,
+      TransactionType.ERC1155,
+    ].includes(basicTxValues?.transactionType);
+  const exactWalletFeeReview = (() => {
+    if (
+      (!isFixedNativeSoftwareSend && !isOrdinaryTokenSend) ||
+      isEIP1559Compatible === undefined
+    )
+      return;
     try {
-      const value = parseUnits(
-        String(basicTxValues.amount),
-        'ether'
-      ).toBigInt();
+      const value = isFixedNativeSoftwareSend
+        ? parseUnits(String(basicTxValues.amount), 'ether').toBigInt()
+        : BigInt(0);
       const gasLimit = BigInt(
         validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
       );
-      if (value <= BigInt(0)) return;
+      if (isFixedNativeSoftwareSend && value <= BigInt(0)) return;
       const fees = isEIP1559Compatible
         ? {
             maxFeePerGas:
@@ -496,6 +522,11 @@ export const SendConfirm = () => {
       return undefined;
     }
   })();
+
+  const fixedNativeReview = isFixedNativeSoftwareSend
+    ? exactWalletFeeReview
+    : undefined;
+  const tokenFeeReview = isOrdinaryTokenSend ? exactWalletFeeReview : undefined;
 
   const smartAccountFeeOverrides = useMemo(() => {
     try {
@@ -556,7 +587,8 @@ export const SendConfirm = () => {
     (!isCalculatingFees &&
       !feeCalculationError &&
       isEIP1559Compatible !== undefined &&
-      (!isFixedNativeSoftwareSend || Boolean(fixedNativeReview)) &&
+      (!(isFixedNativeSoftwareSend || isOrdinaryTokenSend) ||
+        Boolean(exactWalletFeeReview)) &&
       (isSmartAccountSend
         ? smartAccountQuoteReady
         : quotedEvmFeeMode === isEIP1559Compatible));
@@ -961,28 +993,6 @@ export const SendConfirm = () => {
     stableGetLegacyGasPrice.current = getLegacyGasPrice;
   }, [navigate, alert, t, getLegacyGasPrice]);
 
-  const getTokenFeeParams = (fallbackGasLimit?: number) => ({
-    isLegacy: !isEIP1559Compatible,
-    gasPrice: BigNumber.from(gasPrice).toHexString(),
-    maxPriorityFeePerGas: parseUnits(
-      Boolean(customFee.isCustom && customFee.maxPriorityFeePerGas >= 0)
-        ? safeToFixed(customFee.maxPriorityFeePerGas)
-        : safeToFixed(fee.maxPriorityFeePerGas),
-      9
-    ),
-    maxFeePerGas: parseUnits(
-      Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
-        ? safeToFixed(customFee.maxFeePerGas)
-        : safeToFixed(fee.maxFeePerGas),
-      9
-    ),
-    gasLimit: validateCustomGasLimit
-      ? BigNumber.from(customFee.gasLimit)
-      : BigNumber.from(
-          fee.gasLimit || basicTxValues.defaultGasLimit || fallbackGasLimit || 0
-        ),
-  });
-
   const handleTokenSendError = (error: any, label: string) => {
     const handled = handleTransactionError(
       error,
@@ -1000,7 +1010,13 @@ export const SendConfirm = () => {
     return handled;
   };
 
-  const performConfirm = async () => {
+  const performConfirm = async (approvedFeeSelection: string) => {
+    if (
+      !isBitcoinBased &&
+      (!confirmationFeeReadyRef.current ||
+        feeSelectionRef.current !== approvedFeeSelection)
+    )
+      return;
     if (tokenReviewInvalid) return;
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
@@ -1008,7 +1024,6 @@ export const SendConfirm = () => {
       return;
     }
     const submitEmitter = submission.controllerEmitter;
-    const approvedFeeSelection = feeSelectionRef.current;
     // Capture the exact amount the user reviewed before any asynchronous reads.
     const nativeMax =
       !isBitcoinBased &&
@@ -1071,11 +1086,7 @@ export const SendConfirm = () => {
         }
       }
     }
-    if (
-      nativeMax ||
-      isFixedNativeSoftwareSend ||
-      (reviewedErc20Units && !isSmartAccountSend)
-    ) {
+    if (nativeMax || isFixedNativeSoftwareSend || isOrdinaryTokenSend) {
       if (!submission.isActive()) return;
       if (feeSelectionRef.current !== approvedFeeSelection) return;
     }
@@ -1512,140 +1523,111 @@ export const SendConfirm = () => {
 
           //HANDLE DIFFERENT TOKEN TRANSACTION TYPES
           switch (transactionType) {
-            //HANDLE ERC20 TRANSACTION
             case TransactionType.ERC20:
+            case TransactionType.ERC721:
+            case TransactionType.ERC1155:
               try {
-                if (!reviewedErc20Units)
-                  throw new Error('ERC20 review required');
-                const reviewedFees = getTokenFeeParams();
-                const review = openWalletErc20Review({
+                if (!tokenFeeReview)
+                  throw new Error('Token fee review required');
+                const common = {
+                  networkUrl: activeNetwork.url,
+                  receiver: destinationTo,
+                  tokenAddress: basicTxValues.token.contractAddress,
+                  gasLimit: tokenFeeReview.gasLimit.toString(),
+                  ...(isEIP1559Compatible
+                    ? {
+                        isLegacy: false as const,
+                        maxFeePerGas: tokenFeeReview.fees.maxFeePerGas!,
+                        maxPriorityFeePerGas:
+                          tokenFeeReview.fees.maxPriorityFeePerGas!,
+                      }
+                    : {
+                        isLegacy: true as const,
+                        gasPrice: tokenFeeReview.fees.gasPrice!,
+                      }),
+                };
+                let payload: WalletTokenReviewPayload;
+                if (transactionType === TransactionType.ERC20) {
+                  if (!reviewedErc20Units)
+                    throw new Error('ERC20 review required');
+                  payload = {
+                    type: 'ERC20',
+                    transaction: {
+                      ...common,
+                      tokenAmountUnits: reviewedErc20Units,
+                    },
+                  };
+                } else {
+                  let tokenId: string;
+                  try {
+                    tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
+                  } catch {
+                    alert.error(t('send.invalidTokenId'));
+                    setLoading(false);
+                    return;
+                  }
+                  if (transactionType === TransactionType.ERC721) {
+                    payload = {
+                      type: 'ERC721',
+                      transaction: { ...common, tokenId },
+                    };
+                  } else {
+                    const { amount } = basicTxValues;
+                    const quantity = String(amount);
+                    if (
+                      (typeof amount !== 'string' &&
+                        !Number.isSafeInteger(amount)) ||
+                      !/^\d{1,256}$/.test(quantity)
+                    )
+                      throw new Error('Invalid ERC1155 amount');
+                    const tokenAmount = parseErc20Units(
+                      normalizeNftTokenId(quantity)
+                    );
+                    if (tokenAmount === '0')
+                      throw new Error('Invalid ERC1155 amount');
+                    payload = {
+                      type: 'ERC1155',
+                      transaction: { ...common, tokenId, tokenAmount },
+                    };
+                  }
+                }
+                const review = openWalletTokenReview({
                   chainId: activeNetwork.chainId,
                   walletScope: state.walletScope,
-                  transaction: {
-                    networkUrl: activeNetwork.url,
-                    receiver: destinationTo,
-                    tokenAddress: basicTxValues.token.contractAddress,
-                    tokenAmountUnits: reviewedErc20Units,
-                    gasLimit: reviewedFees.gasLimit.toString(),
-                    ...(reviewedFees.isLegacy
-                      ? {
-                          isLegacy: true,
-                          gasPrice: BigNumber.from(
-                            reviewedFees.gasPrice
-                          ).toString(),
-                        }
-                      : {
-                          isLegacy: false,
-                          maxFeePerGas: reviewedFees.maxFeePerGas.toString(),
-                          maxPriorityFeePerGas:
-                            reviewedFees.maxPriorityFeePerGas.toString(),
-                        }),
-                  },
+                  ...payload,
                 });
                 tokenReviewPort.current = review;
                 try {
-                  const approvalId = await review.ready;
+                  await review.ready;
                   if (
                     !submission.isActive() ||
+                    !confirmationFeeReadyRef.current ||
                     feeSelectionRef.current !== approvedFeeSelection
                   )
-                    throw Object.assign(new Error('ERC20 review changed'), {
+                    throw Object.assign(new Error('Token review changed'), {
                       transactionNotBroadcast: true,
                     });
-                  await submitEmitter(
-                    ['wallet', 'sendAndSaveTokenTransaction'],
-                    ['ERC20', { approvalId }],
-                    activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                      ? 300000
-                      : 10000
+                  await submission.submit(() =>
+                    review.submit(
+                      activeAccount.isTrezorWallet ||
+                        activeAccount.isLedgerWallet
+                        ? 300000
+                        : 10000
+                    )
                   );
                 } finally {
                   if (tokenReviewPort.current === review)
                     tokenReviewPort.current = undefined;
                   review.close();
                 }
-
                 setConfirmed(true);
                 setLoading(false);
               } catch (error: any) {
-                if (handleTokenSendError(error, 'error send ERC20')) return;
-              }
-              break;
-
-            //HANDLE ERC721 NFT TRANSACTIONS
-            case TransactionType.ERC721:
-              try {
-                // Validate tokenId before conversion
-                let tokenId: string;
-                try {
-                  tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
-                } catch {
-                  alert.error(t('send.invalidTokenId'));
-                  setLoading(false);
+                if (
+                  handleTokenSendError(error, `error send ${transactionType}`)
+                )
                   return;
-                }
-
-                await submitEmitter(
-                  ['wallet', 'sendAndSaveTokenTransaction'],
-                  [
-                    'ERC721',
-                    {
-                      networkUrl: activeNetwork.url,
-                      receiver: destinationTo,
-                      tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId,
-                      ...getTokenFeeParams(150000),
-                    },
-                  ],
-                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000
-                    : 10000
-                );
-
-                setConfirmed(true);
-                setLoading(false);
-              } catch (error: any) {
-                if (handleTokenSendError(error, 'error send ERC721')) return;
               }
-              break;
-
-            //HANDLE ERC1155 NFT TRANSACTIONS
-            case TransactionType.ERC1155:
-              try {
-                // Validate tokenId before conversion
-                let tokenId: string;
-                try {
-                  tokenId = normalizeNftTokenId(basicTxValues.token.tokenId);
-                } catch {
-                  alert.error(t('send.invalidTokenId'));
-                  setLoading(false);
-                  return;
-                }
-
-                await submitEmitter(
-                  ['wallet', 'sendAndSaveTokenTransaction'],
-                  [
-                    'ERC1155',
-                    {
-                      networkUrl: activeNetwork.url,
-                      receiver: destinationTo,
-                      tokenAddress: basicTxValues.token.contractAddress,
-                      tokenId,
-                      tokenAmount: String(basicTxValues.amount),
-                      ...getTokenFeeParams(90000),
-                    },
-                  ],
-                  activeAccount.isTrezorWallet || activeAccount.isLedgerWallet
-                    ? 300000
-                    : 10000
-                );
-
-                setConfirmed(true);
-                setLoading(false);
-              } catch (error: any) {
-                if (handleTokenSendError(error, 'error send ERC1155')) return;
-              }
-
               break;
           }
 
@@ -1674,11 +1656,13 @@ export const SendConfirm = () => {
       (!isBitcoinBased && renderedFeeSelection !== feeSelectionRef.current)
     )
       return;
-    return submission.run(performConfirm).catch((error) => {
-      if (!submission.isActive()) return;
-      logError('error', 'Transaction', error);
-      alert.error(t('send.cantCompleteTxs'));
-    });
+    return submission
+      .run(() => performConfirm(renderedFeeSelection))
+      .catch((error) => {
+        if (!submission.isActive()) return;
+        logError('error', 'Transaction', error);
+        alert.error(t('send.cantCompleteTxs'));
+      });
   };
 
   // Initialize fee for UTXO transactions
@@ -1963,9 +1947,9 @@ export const SendConfirm = () => {
 
   const getCalculatedFee = useMemo(() => {
     if (isBitcoinBased) return 0;
-    if (isFixedNativeSoftwareSend)
-      return confirmationFeeReady && fixedNativeReview
-        ? formatEther(fixedNativeReview.maximumFee.toString())
+    if (isFixedNativeSoftwareSend || isOrdinaryTokenSend)
+      return confirmationFeeReady && exactWalletFeeReview
+        ? formatEther(exactWalletFeeReview.maximumFee.toString())
         : undefined;
     if (isSmartAccountSend)
       return smartAccountQuoteReady
@@ -2026,7 +2010,8 @@ export const SendConfirm = () => {
     customFee,
     isBitcoinBased,
     isFixedNativeSoftwareSend,
-    fixedNativeReview,
+    isOrdinaryTokenSend,
+    exactWalletFeeReview,
     confirmationFeeReady,
     isEIP1559Compatible,
     gasPrice,
@@ -2409,7 +2394,7 @@ export const SendConfirm = () => {
                         );
 
                       let feeAmount;
-                      if (isFixedNativeSoftwareSend) {
+                      if (isFixedNativeSoftwareSend || isOrdinaryTokenSend) {
                         feeAmount = getCalculatedFee;
                       } else if (
                         !isSmartAccountSend &&

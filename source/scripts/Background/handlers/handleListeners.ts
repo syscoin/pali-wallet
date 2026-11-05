@@ -1,4 +1,7 @@
-import { WALLET_ERC20_REVIEW_PORT } from '../../../shared/walletErc20Review';
+import {
+  WALLET_TOKEN_REVIEW_PORT,
+  walletTokenReviewError,
+} from '../../../shared/walletTokenReview';
 import { onMessage } from '../controllers/message-handler';
 import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
 import { IMasterController } from 'scripts/Background/controllers';
@@ -9,7 +12,8 @@ import vaultCache from 'state/vaultCache';
 import type { PrivacyPoolId } from 'utils/privacy/types';
 import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
 
-import { watchWalletErc20Review } from './approvalSubmission';
+import { watchWalletTokenReview } from './approvalSubmission';
+import { controllerErrorResponse } from './handleMasterControllerResponses';
 import { checkForUpdates } from './handlePaliUpdates';
 import {
   isPrivilegedInternalMessage,
@@ -262,9 +266,24 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // 🚀 NEW: Port connection approach for popup close detection (no permissions needed)
   chrome.runtime.onConnect.addListener((port) => {
-    if (port.name === WALLET_ERC20_REVIEW_PORT) {
-      watchWalletErc20Review(port, (request) =>
-        currentMasterController.wallet.captureWalletErc20Review(request)
+    if (port.name === WALLET_TOKEN_REVIEW_PORT) {
+      const wallet = currentMasterController.wallet;
+      watchWalletTokenReview(
+        port,
+        (request) => wallet.captureWalletTokenReview(request),
+        (payload, approval) =>
+          wallet.sendAndSaveTokenTransaction(
+            payload,
+            Object.freeze({
+              signal: approval.signal,
+              assertCurrent: () => {
+                if (wallet !== currentMasterController.wallet)
+                  throw walletTokenReviewError();
+                approval.assertCurrent();
+              },
+            })
+          ),
+        controllerErrorResponse
       );
       return;
     }

@@ -1,3 +1,4 @@
+import { walletTokenReviewError } from '../../../shared/walletTokenReview';
 import { IMasterController } from 'scripts/Background/controllers';
 import { isExternalWalletUrl } from 'utils/extensionContexts';
 import { extractErrorMessage } from 'utils/index';
@@ -6,7 +7,6 @@ import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
   captureDappUtxoSubmission,
-  consumeWalletErc20Review,
   utxoDappApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
@@ -104,7 +104,7 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   return extractErrorMessage(error, 'Unknown error');
 };
 
-const controllerErrorResponse = (error: any) => {
+export const controllerErrorResponse = (error: any) => {
   const message = normalizeControllerErrorMessage(error);
   const submission: {
     code?: string;
@@ -179,6 +179,12 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
+      if (
+        Array.isArray(methods) &&
+        methods[0] === 'wallet' &&
+        methods[1] === 'sendAndSaveTokenTransaction'
+      )
+        throw walletTokenReviewError();
       const assertSetupAdmission = () => {
         if (!MasterControllerInstance.wallet?.getWalletSetupStatus?.()) return;
         // Member traversal also reaches SDK objects and TypeScript-private
@@ -261,20 +267,8 @@ export const handleMasterControllerResponses = (
             )
               throw utxoDappApprovalExpired();
 
-            const sendsWalletErc20 =
-              walletMethod === 'sendAndSaveTokenTransaction' &&
-              params?.[0] === 'ERC20';
-            const tokenApproval = sendsWalletErc20
-              ? consumeWalletErc20Review(sender, params[1]?.approvalId)
-              : undefined;
             let argumentsForCall = params;
-            if (tokenApproval) {
-              argumentsForCall = [
-                'ERC20',
-                tokenApproval.transaction,
-                tokenApproval.assertCurrent,
-              ];
-            } else if (sendsEvm) {
+            if (sendsEvm) {
               argumentsForCall = [
                 params?.[0],
                 params?.[1],

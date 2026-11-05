@@ -53,15 +53,17 @@ jest.mock('scripts/Background/handlers/approvalSubmission', () => ({
 }));
 let mockWallet: any;
 let mockListener: any;
-const mockOpenWalletErc20Review = jest.fn<
-  { close: jest.Mock; ready: Promise<string> },
-  [any]
->(() => ({
-  ready: Promise.resolve('reviewed-erc20-id'),
+const mockOpenWalletTokenReview = jest.fn((request: any) => ({
+  ready: Promise.resolve(),
+  submit: () =>
+    mockEmitter(
+      ['wallet', 'sendAndSaveTokenTransaction'],
+      [request.type, request.transaction]
+    ),
   close: jest.fn(),
 }));
-jest.mock('./walletErc20ReviewPort', () => ({
-  openWalletErc20Review: (request: any) => mockOpenWalletErc20Review(request),
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: (request: any) => mockOpenWalletTokenReview(request),
 }));
 
 const mockSdkSend = jest.fn();

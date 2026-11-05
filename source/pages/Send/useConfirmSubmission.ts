@@ -14,7 +14,6 @@ const consumedEntries = new Map<string, symbol>();
 const BROADCAST_METHODS = new Set([
   'signSendAndSaveTransaction',
   'sendAndSaveEthTransaction',
-  'sendAndSaveTokenTransaction',
   'submitSmartAccountExecution',
 ]);
 
@@ -185,8 +184,10 @@ export const useConfirmSubmission = ({
       attemptRef.current.definitelyNotBroadcast = true;
     }
   };
-  const invoke = async (...args: any[]) => {
-    const broadcasting = BROADCAST_METHODS.has(args[0]?.[1]);
+  const dispatch = async <T>(
+    operation: () => Promise<T>,
+    broadcasting: boolean
+  ): Promise<T> => {
     if (broadcasting && attemptRef.current) {
       assertCurrent();
       attemptRef.current.mayBroadcast = true;
@@ -194,7 +195,7 @@ export const useConfirmSubmission = ({
       attemptRef.current.successful = false;
     }
     try {
-      const response = await controllerEmitter(...args);
+      const response = await operation();
       if (broadcasting && attemptRef.current)
         attemptRef.current.successful = true;
       return response;
@@ -203,6 +204,11 @@ export const useConfirmSubmission = ({
       throw error;
     }
   };
+  const invoke = (...args: any[]) =>
+    dispatch(
+      () => controllerEmitter(...args),
+      BROADCAST_METHODS.has(args[0]?.[1])
+    );
   const run = async (action: () => Promise<void>) => {
     if (blockedRef.current || !stateRef.current?.tx || !isCurrent()) return;
     blockedRef.current = true;
@@ -284,6 +290,7 @@ export const useConfirmSubmission = ({
         ? undefined
         : stateRef.current,
     controllerEmitter: invoke,
+    submit: <T>(operation: () => Promise<T>) => dispatch(operation, true),
     recordError,
     beforeBroadcast: async () => {
       assertCurrent();

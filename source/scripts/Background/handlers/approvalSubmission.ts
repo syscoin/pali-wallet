@@ -1,9 +1,12 @@
-import { walletErc20ReviewError } from '../../../shared/walletErc20Review';
+import {
+  walletTokenReviewError,
+  type WalletTokenReviewPayload,
+} from '../../../shared/walletTokenReview';
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import type { IUtxoSigningContext } from 'utils/utxoSigningContext';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
-import type { WalletErc20ReviewRequest } from '../../../shared/walletErc20Review';
+import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
 
 export type DappUtxoReview = Readonly<{
   assertCurrent: () => void;
@@ -164,81 +167,102 @@ export const beginApprovalSubmission = (
   };
 };
 
-type WalletErc20ReviewAdmission = Readonly<{
+type WalletTokenReviewAdmission = Readonly<{
   assertCurrent: () => void;
-  transaction: WalletErc20ReviewRequest['transaction'];
+  payload: WalletTokenReviewPayload;
 }>;
-type Erc20Review = WalletErc20ReviewAdmission & {
-  id: string;
-  retire: () => void;
-  used: boolean;
-};
+const WALLET_TOKEN_REVIEW_TTL_MS = 300_000;
 
-const walletErc20Reviews = new Map<string, Erc20Review>();
-const WALLET_ERC20_REVIEW_TTL_MS = 300_000;
-
-export function watchWalletErc20Review(
+export function watchWalletTokenReview(
   port: chrome.runtime.Port,
-  capture: (request: unknown) => WalletErc20ReviewAdmission
+  capture: (request: unknown) => WalletTokenReviewAdmission,
+  submit: (
+    payload: WalletTokenReviewPayload,
+    approval: IReviewedEvmTokenApproval
+  ) => Promise<{ hash: string }>,
+  formatError: (error: unknown) => { error: unknown; success: boolean }
 ): void {
   const sender = port.sender;
-  if (!sender || !isTrustedExtensionPageSender(sender) || !sender.documentId) {
+  if (
+    !sender?.url ||
+    !isTrustedExtensionPageSender(sender) ||
+    new URL(sender.url).pathname !== '/app.html'
+  ) {
     port.disconnect();
     return;
   }
-  const { documentId } = sender;
-  let live = true;
-  let approvalId: string | undefined;
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  const retire = () => {
-    live = false;
-    if (walletErc20Reviews.get(documentId)?.id === approvalId)
-      walletErc20Reviews.delete(documentId);
-    if (deadline !== undefined) clearTimeout(deadline);
-  };
-  port.onDisconnect.addListener(retire);
-  port.onMessage.addListener((request: unknown) => {
-    try {
-      if (!live || approvalId) throw walletErc20ReviewError();
-      const { transaction, assertCurrent } = capture(request);
-      const expires = performance.now() + WALLET_ERC20_REVIEW_TTL_MS;
-      const id = crypto.randomUUID();
-      approvalId = id;
-      walletErc20Reviews.get(documentId)?.retire();
-      walletErc20Reviews.set(documentId, {
-        id,
-        used: false,
-        retire,
-        transaction,
-        assertCurrent: () => {
-          if (!live || performance.now() >= expires)
-            throw walletErc20ReviewError();
-          assertCurrent();
-        },
-      });
-      deadline = setTimeout(retire, WALLET_ERC20_REVIEW_TTL_MS);
-      port.postMessage(id);
-    } catch {
-      retire();
-      port.disconnect();
-    }
-  });
-}
 
-export function consumeWalletErc20Review(
-  sender: chrome.runtime.MessageSender,
-  approvalId: unknown
-): WalletErc20ReviewAdmission {
-  if (
-    !isTrustedExtensionPageSender(sender) ||
-    !sender.documentId ||
-    typeof approvalId !== 'string'
-  )
-    throw walletErc20ReviewError();
-  const review = walletErc20Reviews.get(sender.documentId);
-  if (!review || review.id !== approvalId || review.used)
-    throw walletErc20ReviewError();
-  review.used = true;
-  review.assertCurrent();
-  return review;
+  let phase: 'review' | 'submit' | 'submitted' | 'closed' = 'review';
+  let approved: WalletTokenReviewAdmission;
+  let expires: number;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const authority = new AbortController();
+  const close = () => {
+    phase = 'closed';
+    clearTimeout(timeout);
+    authority.abort();
+  };
+  port.onDisconnect.addListener(close);
+  const reply = (value: unknown) => {
+    if (phase === 'closed') return;
+    try {
+      port.postMessage(value);
+    } catch {
+      close();
+    }
+  };
+  port.onMessage.addListener((message: unknown) => {
+    if (phase === 'closed') return;
+    if (phase === 'review') {
+      try {
+        approved = capture(message);
+        expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
+        timeout = setTimeout(
+          () => authority.abort(),
+          WALLET_TOKEN_REVIEW_TTL_MS
+        );
+        phase = 'submit';
+        reply({ type: 'reviewed' });
+      } catch (error) {
+        reply({ type: 'failure', ...formatError(error) });
+        close();
+      }
+      return;
+    }
+    if (phase !== 'submit' || message !== 'submit') {
+      close();
+      port.disconnect();
+      return;
+    }
+    phase = 'submitted';
+    const assertCurrent = () => {
+      if (
+        phase !== 'submitted' ||
+        authority.signal.aborted ||
+        performance.now() >= expires
+      )
+        throw walletTokenReviewError();
+      approved.assertCurrent();
+    };
+    void Promise.resolve()
+      .then(() => {
+        assertCurrent();
+        return submit(
+          approved.payload,
+          Object.freeze({ assertCurrent, signal: authority.signal })
+        );
+      })
+      .then(
+        ({ hash }) => {
+          // Preserve a known acknowledgement even if the approval expired
+          // after the POST. A disconnected renderer reconciles its journal.
+          reply({ type: 'submitted', hash });
+          close();
+        },
+        (error) => {
+          reply({ type: 'failure', ...formatError(error) });
+          close();
+        }
+      );
+  });
 }

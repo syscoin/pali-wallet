@@ -21,6 +21,8 @@ import https from 'https';
 
 import { createTestEvmSubmissionCapture } from '../helpers/evmSubmission';
 
+import type { IReviewedEvmTokenFees } from '@sidhujag/sysweb3-keyring';
+
 // The semantic Ledger host and Connect are the explicitly mocked device boundaries.
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
 
@@ -384,32 +386,40 @@ describe.each(['Ledger', 'Trezor'] as const)(
               ? { gasPrice: '100' }
               : { maxFeePerGas: '100', maxPriorityFeePerGas: '2' }),
           };
+          const fee: IReviewedEvmTokenFees = legacy
+            ? { gasLimit: request.gasLimit, isLegacy: true, gasPrice: '100' }
+            : {
+                gasLimit: request.gasLimit,
+                isLegacy: false,
+                maxFeePerGas: '100',
+                maxPriorityFeePerGas: '2',
+              };
+          const reviewed = {
+            networkUrl: request.networkUrl,
+            tokenAddress,
+            receiver: recipient,
+            ...fee,
+          };
+          const approval = {
+            assertCurrent: () => undefined,
+            signal: new AbortController().signal,
+          };
           const sending =
             method === 'sendSignedErc20Transaction'
-              ? sdk.sendSignedErc20Transaction(
-                  {
-                    networkUrl: request.networkUrl,
-                    tokenAddress,
-                    receiver: recipient,
-                    gasLimit: request.gasLimit,
-                    tokenAmountUnits: atomic,
-                    ...(legacy
-                      ? { isLegacy: true, gasPrice: '100' }
-                      : {
-                          isLegacy: false,
-                          maxFeePerGas: '100',
-                          maxPriorityFeePerGas: '2',
-                        }),
-                  },
-                  () => undefined
+              ? sdk[method]({ ...reviewed, tokenAmountUnits: atomic }, approval)
+              : method === 'sendSignedErc721Transaction'
+              ? sdk[method](
+                  { ...reviewed, tokenId: '9007199254740993' },
+                  approval
                 )
-              : sdk[method]({
-                  ...request,
-                  tokenId: '9007199254740993',
-                  ...(method === 'sendSignedErc1155Transaction' && {
+              : sdk[method](
+                  {
+                    ...reviewed,
+                    tokenId: '9007199254740993',
                     tokenAmount: atomic,
-                  }),
-                });
+                  },
+                  approval
+                );
           await finishDelay();
           const response = await sending;
           expect(device).toHaveBeenCalledTimes(1);

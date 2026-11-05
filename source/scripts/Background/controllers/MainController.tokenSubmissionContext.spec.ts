@@ -57,12 +57,14 @@ describe.each([
       ? { tokenAmountUnits: '9007199254740993' }
       : { tokenAmount: '1' }),
   };
-  const assertApproved = () => undefined;
+  const authority = {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  };
   const send = () =>
     wallet.sendAndSaveTokenTransaction(
-      standard,
-      params,
-      ...(standard === 'ERC20' ? [assertApproved] : [])
+      { type: standard, transaction: params },
+      authority
     );
   const mutate = (change: string) => {
     if (change === 'account') mockState.vault.activeAccount.id = 1;
@@ -124,13 +126,15 @@ describe.each([
       async (amount) => {
         await expect(
           wallet.sendAndSaveTokenTransaction(
-            standard,
             {
-              receiver: RECEIVER,
-              tokenAddress: TOKEN,
-              ...amount,
+              type: standard,
+              transaction: {
+                receiver: RECEIVER,
+                tokenAddress: TOKEN,
+                ...amount,
+              },
             },
-            assertApproved
+            authority
           )
         ).rejects.toMatchObject({ transactionNotBroadcast: true });
         expect(blacklistService.checkAddress).not.toHaveBeenCalled();
@@ -143,9 +147,7 @@ describe.each([
   it('saves one unchanged ACK to the captured original account and chain', async () => {
     await expect(send()).resolves.toBe(RESPONSE);
     expect(sdk).toHaveBeenCalledTimes(1);
-    if (standard === 'ERC20')
-      expect(sdk).toHaveBeenCalledWith(params, assertApproved);
-    else expect(sdk).toHaveBeenCalledWith(params);
+    expect(sdk).toHaveBeenCalledWith(params, authority);
     expect(store.dispatch).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({
