@@ -19,6 +19,7 @@ import React from 'react';
 import { Provider } from 'react-redux';
 import * as ts from 'typescript';
 
+import { mapEvmExplorerTransaction } from '../../../shared/evmHistory';
 import { ConnectionStatusIndicator } from 'components/Header/ConnectionStatusIndicator';
 import { NetworkMenu } from 'components/Header/Menus/NetworkMenu';
 import CustomRPC from 'pages/Settings/CustomRPC';
@@ -28,10 +29,14 @@ import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
-import { restoreVaultSnapshot } from 'state/vault';
+import { restoreVaultSnapshot, setActiveAccount } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import * as actions from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { walletPersistenceMutex } from 'utils/asyncMutex';
+import { getWalletNavigationScope } from 'utils/navigationState';
+
+import type { IEvmTransaction } from './transactions/types';
 
 const { CustomJsonRpcProvider } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/providers'
@@ -75,7 +80,12 @@ jest.mock('hooks/controllerStatus', () => ({
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => ({ wallet, dapp: { handleStateChange: jest.fn() } }),
-  notificationManager: { cleanup: jest.fn(), notifyNetworkChange: jest.fn() },
+  notificationManager: {
+    cleanup: jest.fn(),
+    notifyNetworkChange: jest.fn(),
+    updatePendingTransactionBadge: jest.fn(),
+    notifyTransaction: jest.fn(),
+  },
 }));
 jest.mock(
   'scripts/Background/controllers/providers/patchFetchWithPaliHeaders',
@@ -444,16 +454,7 @@ const waitForHydration = async () => {
   await act(async () => {
     await pendingSwitch;
   });
-  await waitFor(() =>
-    expect(hydrationSpy).toHaveBeenCalledWith(
-      false,
-      true,
-      false,
-      false,
-      false,
-      { savePostSwitchHistory: true }
-    )
-  );
+  await waitFor(() => expect(hydrationSpy).toHaveBeenCalledWith(false, true));
   await waitFor(() => expect(releaseHydration).toBeDefined());
   expect(store.getState().vaultGlobal.networkStatus).toBe('idle');
   expect(store.getState().vaultGlobal.networkTarget).toBeUndefined();
@@ -621,5 +622,207 @@ it.each([
       wallet.setActiveNetworkLogic({ ...OLD, ...change }, resolve, reject)
     );
     expect(store.getState().vaultGlobal.networkQuality).toBeUndefined();
+  }
+);
+
+it.each([
+  ['acknowledged', 31338],
+  ['account changed', 31339],
+  ['refused', 31340],
+  ['already in submitted snapshot', 31341],
+  ['changed back during acknowledgement', 31342],
+] as const)(
+  'handles changed EVM history while the real switch storage callback is held: %s',
+  async (outcome, chainId) => {
+    const changedBack = outcome === 'changed back during acknowledgement';
+    const queued = changedBack || outcome === 'already in submitted snapshot';
+    const target = {
+      ...OLD,
+      chainId,
+      url: NEW_URL,
+      apiUrl: 'https://history.synthetic.invalid/api',
+    };
+    nextChain = target.chainId;
+    const { vault } = store.getState();
+    const account = vault.accounts.HDAccount[0];
+    const row = mapEvmExplorerTransaction(
+      {
+        hash: `0x${'ab'.repeat(32)}`,
+        from: account.address,
+        to: `0x${'33'.repeat(20)}`,
+        value: '1',
+        nonce: '1',
+        input: '0x',
+        blockNumber: '100',
+        confirmations: '1',
+        timeStamp: '1',
+      },
+      chainId
+    );
+    const original = { ...row, hash: `0x${'cd'.repeat(32)}`, nonce: 2 };
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...vault,
+        accounts: {
+          ...vault.accounts,
+          HDAccount: {
+            0: account,
+            1: { ...account, id: 1, address: `0x${'22'.repeat(20)}` },
+          },
+        },
+        accountTransactions: {
+          ...vault.accountTransactions,
+          HDAccount: {
+            0: {
+              // Preserve the serializable summary shape used by explorer history.
+              ethereum: changedBack
+                ? { [chainId]: [original as unknown as IEvmTransaction] }
+                : {},
+              syscoin: {},
+            },
+          },
+        },
+      })
+    );
+    store.dispatch(
+      actions.setNetworks({
+        ethereum: { [OLD.chainId]: OLD, [target.chainId]: target },
+        syscoin: {},
+      })
+    );
+    const read = jest.fn().mockResolvedValue([row]);
+    Object.assign(wallet, {
+      transactionUpdateRequestId: 0,
+      transactionUpdateCommitId: 0,
+      transactionsManager: {
+        utils: {
+          updateTransactionsFromCurrentAccount: read,
+          clearCache: jest.fn(),
+        },
+      },
+      updateUserTransactionsState:
+        MainController.prototype.updateUserTransactionsState,
+      saveWalletState: (MainController.prototype as any).saveWalletState,
+      refreshBalancesAfterHistory: jest.fn(),
+      reconcileLocalPendingEvmSmartAccountTransactions: jest
+        .fn()
+        .mockResolvedValue(undefined),
+    });
+    // Include main state on the success control so the real persistence
+    // helper invokes its currentness callback again after acknowledgement.
+    if (outcome === 'acknowledged') wallet.isNetworkSwitchMainStateDirty = true;
+    let releaseFiat: (() => void) | undefined;
+    wallet.setFiat.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          releaseFiat = resolve;
+        })
+    );
+
+    const nativeSet = chrome.storage.local.set;
+    let submitted: any;
+    let releaseStorage: (() => void) | undefined;
+    const write = jest.spyOn(chrome.storage.local, 'set');
+    const hold: typeof chrome.storage.local.set = (
+      items: any,
+      callback?: any
+    ) => {
+      submitted = clone(items);
+      releaseStorage = () => {
+        releaseStorage = undefined;
+        if (outcome === 'refused') {
+          const runtime = chrome.runtime as any;
+          runtime.lastError = { message: 'Synthetic storage refusal' };
+          try {
+            callback();
+          } finally {
+            delete runtime.lastError;
+          }
+        } else nativeSet(submitted, callback);
+      };
+      return undefined as never;
+    };
+    write.mockImplementationOnce(hold);
+    const historyHashes = (snapshot: any) =>
+      (
+        snapshot?.accountTransactions?.HDAccount?.[0]?.ethereum?.[
+          target.chainId
+        ] || []
+      ).map((tx: any) => tx.hash);
+    let releaseMutex: (() => void) | undefined;
+    const ahead = queued
+      ? walletPersistenceMutex.runExclusive(
+          () =>
+            new Promise<void>((resolve) => {
+              releaseMutex = () => {
+                releaseMutex = undefined;
+                resolve();
+              };
+            })
+        )
+      : undefined;
+    if (ahead) await waitFor(() => expect(releaseMutex).toBeDefined());
+    const activation = wallet.setActiveNetwork(target).then(
+      () => 'acknowledged',
+      (error: Error) => error.message
+    );
+
+    try {
+      if (queued) {
+        await waitFor(() => {
+          expect(store.getState().vaultGlobal.networkStatus).toBe('idle');
+          expect(store.getState().vault.activeNetwork.url).toBe(target.url);
+        });
+        expect(write).not.toHaveBeenCalled();
+        await wallet.refreshTransactionHistory(getWalletNavigationScope());
+        expect(historyHashes(store.getState().vault)).toEqual([row.hash]);
+        releaseMutex!();
+        await ahead;
+      }
+      await waitFor(() => expect(releaseStorage).toBeDefined());
+      expect(store.getState().vaultGlobal.networkStatus).toBe('idle');
+      expect(submitted['state-vault-60'].activeNetwork.url).toBe(target.url);
+      if (outcome === 'acknowledged') expect(submitted.state).toBeDefined();
+      expect(historyHashes(submitted['state-vault-60'])).toEqual(
+        queued ? [row.hash] : []
+      );
+
+      if (!queued)
+        await wallet.refreshTransactionHistory(getWalletNavigationScope());
+      if (changedBack) {
+        read.mockResolvedValueOnce([original]);
+        await wallet.refreshTransactionHistory(getWalletNavigationScope());
+      }
+      expect(read).toHaveBeenCalledTimes(changedBack ? 2 : 1);
+      const expectedLive = changedBack ? original : row;
+      expect(historyHashes(store.getState().vault)).toEqual([
+        expectedLive.hash,
+      ]);
+      await advance(100);
+      expect(write).toHaveBeenCalledTimes(1);
+      expect(historyHashes(records['state-vault-60'])).toEqual([]);
+
+      if (outcome === 'account changed')
+        store.dispatch(
+          setActiveAccount({ id: 1, type: KeyringAccountType.HDAccount })
+        );
+      releaseStorage!();
+      await expect(activation).resolves.toBe(
+        outcome === 'refused' ? 'Synthetic storage refusal' : 'acknowledged'
+      );
+      await advance(100);
+      expect(hydrationSpy).not.toHaveBeenCalled();
+      const needsFollowUp = outcome === 'acknowledged' || changedBack;
+      expect(write).toHaveBeenCalledTimes(needsFollowUp ? 2 : 1);
+      expect(historyHashes(records['state-vault-60'])).toEqual(
+        needsFollowUp || queued ? [expectedLive.hash] : []
+      );
+    } finally {
+      wallet.networkRequestGeneration += 1;
+      releaseMutex?.();
+      releaseStorage?.();
+      releaseFiat?.();
+      await activation;
+    }
   }
 );

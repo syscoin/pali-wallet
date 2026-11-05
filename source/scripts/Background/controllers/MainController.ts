@@ -392,6 +392,7 @@ class MainController {
   private assetUpdateRequestId = 0;
   private transactionUpdateRequestId = 0;
   private transactionUpdateCommitId = 0;
+  private postSwitchHistorySave?: () => boolean;
   private historyRetry?: {
     generation: string;
     promise: Promise<void>;
@@ -2102,6 +2103,7 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    this.postSwitchHistorySave = undefined;
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
@@ -5025,6 +5027,7 @@ class MainController {
     }
     this.assertWalletReadyForSigning();
     const requestGeneration = ++this.networkRequestGeneration;
+    this.postSwitchHistorySave = undefined;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {
       if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
@@ -6824,6 +6827,50 @@ class MainController {
       : 'confirmed';
   }
 
+  private capturePostSwitchHistoryScope(isCurrentNetwork: () => boolean) {
+    const { activeAccount, activeNetwork } = store.getState().vault;
+    const chainId = activeNetwork.chainId;
+    const readHistory = () =>
+      store.getState().vault.accountTransactions[activeAccount.type]?.[
+        activeAccount.id
+      ]?.ethereum?.[chainId] || [];
+    let submittedHistory: ReturnType<typeof readHistory> | undefined;
+    const session = this.walletSessionGeneration;
+    const scope = getWalletNavigationScope();
+    const isCurrent = () => {
+      if (
+        !isCurrentNetwork() ||
+        session !== this.walletSessionGeneration ||
+        activeAccount !== store.getState().vault.activeAccount
+      )
+        return false;
+      const currentScope = getWalletNavigationScope();
+      return (
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network
+      );
+    };
+    return {
+      isCurrent,
+      captureSubmittedHistory: () => {
+        submittedHistory ??= readHistory();
+      },
+      historyChanged: () =>
+        submittedHistory !== undefined &&
+        !isEqual(submittedHistory, readHistory()),
+    };
+  }
+
+  private schedulePostSwitchHistorySave(isCurrent: () => boolean) {
+    this.postSwitchHistorySave = undefined;
+    void this.saveWalletState(
+      NETWORK_SWITCH_AFTER_UPDATES,
+      false,
+      false,
+      isCurrent
+    );
+  }
+
   public refreshTransactionHistory(expectedScope: IWalletNavigationScope) {
     this.assertWalletReadyForSigning();
     const scope = getWalletNavigationScope();
@@ -6864,7 +6911,6 @@ class MainController {
     isRapidPolling = false,
     forceRefresh = false,
     bypassCompletedCache = false,
-    savePostSwitchHistory = false,
   }: {
     activeNetwork: INetwork;
     bypassCompletedCache?: boolean;
@@ -6872,7 +6918,6 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
     isRapidPolling?: boolean;
-    savePostSwitchHistory?: boolean;
   }) {
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
@@ -7086,26 +7131,19 @@ class MainController {
               this.transactionUpdateCommitId = requestId;
               setHistoryStatus('ready');
 
-              if (savePostSwitchHistory && !isBitcoinBased) {
-                const committed =
-                  store.getState().vault.accountTransactions[
-                    activeAccount.type
-                  ]?.[activeAccount.id]?.ethereum?.[activeNetwork.chainId] ||
-                  [];
-                if (!isEqual(previousTxs, committed))
-                  void this.saveWalletState(
-                    NETWORK_SWITCH_AFTER_UPDATES,
-                    false,
-                    false,
-                    () => {
-                      const latest = store.getState().vault.activeAccount;
-                      return (
-                        isCurrentRead() &&
-                        latest.id === activeAccount.id &&
-                        latest.type === activeAccount.type
-                      );
-                    }
-                  );
+              const historySave = this.postSwitchHistorySave;
+              if (historySave && !isBitcoinBased) {
+                if (!historySave()) {
+                  this.postSwitchHistorySave = undefined;
+                } else {
+                  const committed =
+                    store.getState().vault.accountTransactions[
+                      activeAccount.type
+                    ]?.[activeAccount.id]?.ethereum?.[activeNetwork.chainId] ||
+                    [];
+                  if (!isEqual(previousTxs, committed))
+                    this.schedulePostSwitchHistorySave(historySave);
+                }
               }
 
               // Update pending transaction badge
@@ -8909,8 +8947,7 @@ class MainController {
     forceUpdate = false, // Force update even if just unlocked
     isRapidPolling = false, // Skip expensive operations for rapid polling
     skipHeavyUpdates = false,
-    bypassHistoryCache = false,
-    { savePostSwitchHistory = false } = {}
+    bypassHistoryCache = false
   ): Promise<boolean> {
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
@@ -9053,7 +9090,6 @@ class MainController {
           isPolling: true, // background
           isRapidPolling,
           bypassCompletedCache: bypassHistoryCache,
-          savePostSwitchHistory,
         }).catch((error) =>
           console.error(
             '[MainController] Background transaction refresh failed:',
@@ -10014,6 +10050,9 @@ class MainController {
       await this.ensureActiveAccountCompatibleWithNetwork(network);
     assertCurrent();
 
+    const historySaveScope = isBitcoinBased
+      ? undefined
+      : this.capturePostSwitchHistoryScope(isCurrent);
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
 
@@ -10028,11 +10067,18 @@ class MainController {
         previousSlip44 !== activeSlip44 ||
         dappStateChanged ||
         hadPendingWalletSave;
+      // The persistence guard first runs under the mutex immediately before
+      // the vault snapshot. Capture once so the post-ACK guard cannot replace it.
+      const isCurrentAtSnapshot = () => {
+        if (!isCurrent()) return false;
+        historySaveScope?.captureSubmittedHistory();
+        return true;
+      };
       try {
         await persistCommittedWalletState(
           this.isNetworkSwitchMainStateDirty,
           false,
-          isCurrent
+          isCurrentAtSnapshot
         );
         assertCurrent();
         this.isNetworkSwitchMainStateDirty = false;
@@ -10045,6 +10091,16 @@ class MainController {
       }
     }
 
+    // A same-scope read can commit after the switch snapshot is submitted
+    // and before storage acknowledges it. Cover that change now, or leave
+    // one obligation for the first changed history commit after the barrier.
+    if (historySaveScope?.isCurrent()) {
+      const { isCurrent: isCurrentHistory, historyChanged } = historySaveScope;
+      if (historyChanged())
+        this.schedulePostSwitchHistorySave(isCurrentHistory);
+      else this.postSwitchHistorySave = isCurrentHistory;
+    }
+
     // Notify about network change (notification manager handles validation)
     notificationManager.notifyNetworkChange(network);
 
@@ -10053,14 +10109,7 @@ class MainController {
       try {
         await this.setFiat();
         assertCurrent();
-        await this.getLatestUpdateForCurrentAccount(
-          false,
-          false,
-          false,
-          false,
-          false,
-          { savePostSwitchHistory: true }
-        );
+        await this.getLatestUpdateForCurrentAccount(false);
         assertCurrent();
       } finally {
         if (isCurrent())
@@ -10074,16 +10123,7 @@ class MainController {
         try {
           await this.setFiat();
           if (!isCurrent()) return;
-          // The balance marks the UI ready without waiting for the explorer.
-          // A later changed history commit must still reach the wallet save.
-          await this.getLatestUpdateForCurrentAccount(
-            false,
-            true,
-            false,
-            false,
-            false,
-            { savePostSwitchHistory: true }
-          );
+          await this.getLatestUpdateForCurrentAccount(false, true);
         } catch (error) {
           console.error(
             '[MainController] Failed to update after network change:',
