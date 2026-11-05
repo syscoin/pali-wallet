@@ -160,7 +160,7 @@ const openApprovalPopup = async (
       ? 'signSyscoinPsbt'
       : undefined;
   const utxoReview:
-    | Omit<DappUtxoReview, 'assertCurrent' | 'checkDocument'>
+    | Omit<DappUtxoReview, 'assertCurrent' | 'checkDocument' | 'getSignal'>
     | undefined =
     utxoMethod &&
     approvedContext &&
@@ -180,6 +180,7 @@ const openApprovalPopup = async (
   let submissionStarted = false;
   let stopWatchingSubmission: (() => void) | undefined;
   let unbindApprovalDocument: (() => void) | undefined;
+  let utxoHardwareLifetime = utxoReview ? new AbortController() : undefined;
   let utxoApprovalRetired = false;
   let utxoDocumentCheck = 0;
   let utxoNavigationPending = false;
@@ -275,6 +276,7 @@ const openApprovalPopup = async (
           const retire = () => {
             if (utxoReview) {
               utxoApprovalRetired = true;
+              utxoHardwareLifetime?.abort();
               onAbort?.();
             }
             personalSignApproval?.retire();
@@ -296,9 +298,21 @@ const openApprovalPopup = async (
               // Resolve the originally enrolled client before treating it as a reload.
               const check = ++utxoDocumentCheck;
               utxoNavigationPending = Boolean(utxoReview);
+              // Stop device work while checking the approval document. If the
+              // same document survived, only a new signing attempt can proceed.
+              utxoHardwareLifetime?.abort();
               void approverIsLive().then((live) => {
                 if (!live) retire();
-                if (check === utxoDocumentCheck) utxoNavigationPending = false;
+                if (check === utxoDocumentCheck) {
+                  utxoNavigationPending = false;
+                  if (
+                    utxoReview &&
+                    live &&
+                    !utxoApprovalRetired &&
+                    !signal?.aborted
+                  )
+                    utxoHardwareLifetime = new AbortController();
+                }
               });
             }
           };
@@ -330,6 +344,7 @@ const openApprovalPopup = async (
             utxoReview
               ? {
                   ...utxoReview,
+                  getSignal: () => utxoHardwareLifetime!.signal,
                   assertCurrent: () => {
                     if (
                       signal?.aborted ||
@@ -399,6 +414,7 @@ const openApprovalPopup = async (
 
     // Clean up function to remove listeners
     const cleanup = () => {
+      utxoHardwareLifetime?.abort();
       unbindApprovalDocument?.();
       stopWatchingSubmission?.();
       stopWatchingSubmission = undefined;

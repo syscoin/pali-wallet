@@ -311,6 +311,7 @@ import {
 import {
   IUtxoSigningContext,
   isUtxoWalletFeeReview,
+  type UtxoDappSigningAuthority,
   type UtxoWalletFeeReview,
   UTXO_SIGNING_CONTEXT_CHANGED,
 } from 'utils/utxoSigningContext';
@@ -7945,7 +7946,7 @@ class MainController {
           utxoFeeReview?: never;
         }
     ),
-    authorizeDapp?: () => void
+    dappAuthority?: UtxoDappSigningAuthority
   ): Promise<any> {
     let senderInvoked = false;
     try {
@@ -7953,14 +7954,11 @@ class MainController {
       const { isBitcoinBased, activeNetwork } = store.getState().vault;
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
-        if (
-          params.ordinaryWalletSend !== true &&
-          typeof authorizeDapp !== 'function'
-        )
+        if (params.ordinaryWalletSend !== true && !dappAuthority)
           throw new Error('Explicit PSBT submission approval is required');
         const signing = this.captureUtxoSigningContext(
           params.expectedContext,
-          authorizeDapp
+          dappAuthority
         );
         const ordinary = params.ordinaryWalletSend === true;
         const assertCurrent = ordinary
@@ -7996,15 +7994,14 @@ class MainController {
         }
 
         // Step 1: Sign the PSBT
-        const signedPsbt = await this.signSyscoinPsbt(
+        const signedPsbt = await this.signReviewedSyscoinPsbt(
           {
             psbt: params.psbt,
             isTrezor: params.isTrezor,
             isLedger: params.isLedger,
-            expectedContext: signing.context,
             ...(review && { utxoFeeReview: review }),
           },
-          assertCurrent
+          signing
         );
         assertCurrent();
 
@@ -11333,10 +11330,14 @@ class MainController {
     assertCurrent: () => void,
     operation: (
       read: ReturnType<typeof createOwnedUtxoBlockbookRead>
-    ) => Promise<T>
+    ) => Promise<T>,
+    approvalSignal?: AbortSignal
   ): Promise<T> {
     assertCurrent();
     const controller = new AbortController();
+    const abort = () => controller.abort();
+    approvalSignal?.addEventListener('abort', abort, { once: true });
+    if (approvalSignal?.aborted) abort();
     (this.activeUtxoReads ??= new Set()).add(controller);
     try {
       return await withWalletBackend(scope.url, async () => {
@@ -11355,6 +11356,7 @@ class MainController {
       throw error;
     } finally {
       this.activeUtxoReads.delete(controller);
+      approvalSignal?.removeEventListener('abort', abort);
       controller.abort();
     }
   }
@@ -11392,7 +11394,7 @@ class MainController {
 
   private captureUtxoSigningContext(
     expected?: IUtxoSigningContext,
-    authorize?: () => void
+    authority?: UtxoDappSigningAuthority
   ) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
@@ -11432,6 +11434,16 @@ class MainController {
       value.slip44 === context.slip44;
     if (expected && !matches(expected))
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const { assertCurrent: authorize, signal: approvalSignal } =
+      authority ?? {};
+    if (
+      authority &&
+      (typeof authorize !== 'function' ||
+        typeof approvalSignal?.aborted !== 'boolean' ||
+        typeof approvalSignal.addEventListener !== 'function' ||
+        typeof approvalSignal.removeEventListener !== 'function')
+    )
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const assertCurrent = () => {
       const result: unknown = authorize?.();
       if (result !== undefined) {
@@ -11448,6 +11460,7 @@ class MainController {
       const currentAccount =
         current.vault.accounts[selected.type]?.[selected.id];
       if (
+        approvalSignal?.aborted ||
         !current.vault.isBitcoinBased ||
         current.vault.activeAccount.id !== selected.id ||
         current.vault.activeAccount.type !== selected.type ||
@@ -11498,7 +11511,8 @@ class MainController {
             address: context.account.address,
           },
           assertWalletReviewCurrent,
-          operation
+          operation,
+          approvalSignal
         ),
     };
   }
@@ -11511,16 +11525,27 @@ class MainController {
       psbt: any;
       utxoFeeReview?: UtxoFeeReview;
     },
-    authorizeDapp?: () => void
+    dappAuthority?: UtxoDappSigningAuthority
   ) {
-    const { utxoFeeReview, ...signingParams } = params;
     const signing = this.captureUtxoSigningContext(
       params.expectedContext,
-      authorizeDapp
+      dappAuthority
     );
+    return this.signReviewedSyscoinPsbt(params, signing);
+  }
+
+  private async signReviewedSyscoinPsbt(
+    params: Omit<
+      Parameters<MainController['signSyscoinPsbt']>[0],
+      'expectedContext'
+    >,
+    signing: ReturnType<MainController['captureUtxoSigningContext']>
+  ) {
+    const { utxoFeeReview, ...signingParams } = params;
+    const assertCurrent = signing.assertWalletReviewCurrent;
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
-      signing.assertCurrent();
+      assertCurrent();
       if (utxoFeeReview)
         assertUtxoFeeReview(
           verified.psbt,
@@ -11532,9 +11557,9 @@ class MainController {
         verified.psbt,
         feeAuthorization
       );
-      signing.assertCurrent();
+      assertCurrent();
       await this.assertNoSentryCollateralInputs(verified.psbt);
-      signing.assertCurrent();
+      assertCurrent();
       const finishFee = sentryFee
         ? (await this.getSentryController()).beginFeeSigning(
             feeAuthorization,
@@ -11551,7 +11576,7 @@ class MainController {
           },
           read
         );
-        signing.assertCurrent();
+        assertCurrent();
         const sentryScope = this.getSentryCollateralScope();
         const release = async (markDisclosed: () => void) => {
           await this.assertNoSentryCollateralInputs(() =>
@@ -11562,7 +11587,7 @@ class MainController {
               PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
               feeAuthorization
             );
-          signing.assertCurrent();
+          assertCurrent();
           finishFee?.(true);
           markDisclosed();
           return signed;

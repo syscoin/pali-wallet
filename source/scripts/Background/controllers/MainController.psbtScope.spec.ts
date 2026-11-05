@@ -81,7 +81,10 @@ describe('PSBT approval context', () => {
       wallet.captureUtxoSigningContext().walletReviewScope,
       createUtxoFeeReview(psbt, feeSatoshis)
     );
-  const authorize = () => undefined;
+  const authorize = {
+    assertCurrent: () => undefined,
+    signal: new AbortController().signal,
+  };
   const defaultTxid = syntheticPsbt(BigInt(1000)).extractTransaction().getId();
   const dispatch = async (raw: string, port: any) => {
     const url = 'https://rpc-a.invalid/api/v2/sendtx/';
@@ -593,6 +596,36 @@ describe('PSBT approval context', () => {
     });
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  });
+
+  it('aborts the owned hardware transport as soon as the dapp approval closes', async () => {
+    const approval = new AbortController();
+    let enter!: (signal: AbortSignal) => void;
+    let release!: () => void;
+    const entered = new Promise<AbortSignal>((resolve) => (enter = resolve));
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const sign = jest.fn();
+    keyring.syscoinTransaction.signPSBT.mockImplementation(
+      async (_psbt: unknown, read: { signal: AbortSignal }) => {
+        enter(read.signal);
+        await held;
+        read.signal.throwIfAborted();
+        return sign();
+      }
+    );
+    const signing = wallet.signSyscoinPsbt(
+      { psbt: 'external-sign-only' },
+      { assertCurrent: () => undefined, signal: approval.signal }
+    );
+    const reached = await Promise.race([
+      entered,
+      signing.catch((error: unknown) => error),
+    ]);
+    approval.abort();
+    release();
+    await expect(signing).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
+    expect(reached).toMatchObject({ aborted: true });
+    expect(sign).not.toHaveBeenCalled();
   });
 
   it('classifies a signing rejection before the sender as safe to edit', async () => {

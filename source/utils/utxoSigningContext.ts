@@ -18,6 +18,12 @@ export interface IUtxoSigningContext {
 
 export const UTXO_SIGNING_CONTEXT_CHANGED = 'PALI_PSBT_SIGNING_CONTEXT_CHANGED';
 
+/** Browser-owned approval lifetime. The capability stays in the worker. */
+export type UtxoDappSigningAuthority = Readonly<{
+  assertCurrent: () => void;
+  signal: AbortSignal;
+}>;
+
 /** Exact fee and unsigned transaction attested by this worker for its current scope. */
 export type UtxoWalletFeeReview = UtxoFeeReview &
   Readonly<{ approvalTag: string }>;

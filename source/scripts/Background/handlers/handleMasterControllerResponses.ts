@@ -286,15 +286,12 @@ export const handleMasterControllerResponses = (
                 },
               ];
             } else if (utxoApproval) {
-              argumentsForCall = [
-                utxoApproval.input,
-                utxoApproval.assertCurrent,
-              ];
+              argumentsForCall = [utxoApproval.input, utxoApproval.authority];
             } else if (utxoMethod) {
               argumentsForCall = [params[0]];
             }
             // Always execute the method; never attempt to send functions over messaging
-            utxoApproval?.assertCurrent();
+            utxoApproval?.authority.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
                 ? [
@@ -322,7 +319,7 @@ export const handleMasterControllerResponses = (
               await personalSignApproval.checkDocument();
             if (utxoMethod === 'signSyscoinPsbt' && utxoApproval) {
               await utxoApproval.checkDocument();
-              assertUtxoSignatureCurrent = utxoApproval.assertCurrent;
+              assertUtxoSignatureCurrent = utxoApproval.authority.assertCurrent;
             }
             return response;
           })

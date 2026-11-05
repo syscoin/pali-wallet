@@ -279,11 +279,12 @@ describe('transaction approval submission lifetime', () => {
         release = resolve;
       });
       const dispatch = jest.fn();
-      send.mockImplementation(async (input, assertCurrent) => {
+      send.mockImplementation(async (input, { assertCurrent, signal }) => {
         expect(input).toEqual({ psbt: utxoPsbt, expectedContext: utxoContext });
         assertCurrent();
         enter();
         await held;
+        expect(signal.aborted).toBe(true);
         assertCurrent();
         return dispatch();
       });
@@ -302,6 +303,47 @@ describe('transaction approval submission lifetime', () => {
     }
   );
 
+  it('aborts the owned hardware lifetime when an approval window closes', async () => {
+    const { pending } = await begin(undefined, 'sys_sign');
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    await submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }]);
+    const authority = send.mock.calls[0][1];
+    expect(authority?.signal?.aborted).toBe(false);
+    closeWindow(9);
+    await rejected;
+    expect(authority.signal.aborted).toBe(true);
+  });
+
+  it('retires the old hardware operation before checking if the approval document survived navigation', async () => {
+    const { pending } = await begin(undefined, 'sys_sign');
+    const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    await submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }]);
+    const first = send.mock.calls[0][1];
+
+    let finishCheck!: (client: ReturnType<typeof source>) => void;
+    (self as any).clients.get.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCheck = resolve;
+        })
+    );
+    const onNavigation = (chrome.tabs.onUpdated.addListener as jest.Mock).mock
+      .calls[0][0];
+    onNavigation(19, { status: 'loading', url: source().url });
+    expect(first.signal.aborted).toBe(true);
+    expect(first.assertCurrent).toThrow('no longer current');
+    finishCheck(source());
+    await new Promise(setImmediate);
+
+    await submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }]);
+    const second = send.mock.calls[1][1];
+    expect(second.signal).not.toBe(first.signal);
+    expect(second.signal.aborted).toBe(false);
+    expect(first.assertCurrent).toThrow('no longer current');
+    closeWindow(9);
+    await rejected;
+  });
+
   it.each([
     ['sys_sign', 'signSyscoinPsbt', 4001],
     ['sys_signAndSend', 'signSendAndSaveTransaction', -32603],
@@ -318,7 +360,7 @@ describe('transaction approval submission lifetime', () => {
       const result = new Promise<any>((resolve) => {
         acknowledge = resolve;
       });
-      send.mockImplementation((_input, assertCurrent) => {
+      send.mockImplementation((_input, { assertCurrent }) => {
         assertCurrent();
         enter();
         return result;

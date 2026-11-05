@@ -253,6 +253,39 @@ describe('Ledger authority host broker', () => {
     await f.broker.disconnect();
   });
 
+  it('disconnects the authenticated device port when an already posted PSBT owner aborts', async () => {
+    const f = fixture();
+    const connected = f.broker.host.connect();
+    const port = f.port();
+    await flush();
+    port.onMessage.emit({ type: 'ready' });
+    await connected;
+
+    const approval = new AbortController();
+    const pending = f.broker.host.utxo.signPsbt(
+      {
+        accountIndex: 0,
+        currency: 'sys',
+        slip44: 57,
+        accountXpub: 'fixture xpub',
+        psbtBase64: 'fixture PSBT',
+      },
+      { assertCurrent: () => undefined, signal: approval.signal }
+    );
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    await flush();
+    const [posted] = port.postMessage.mock.calls.find(
+      ([value]) => value.type === 'request' && value.method === 'utxo.signPsbt'
+    );
+    approval.abort();
+    expect(port.disconnect).toHaveBeenCalledTimes(1);
+    expect(f.broker.host.getStatus().connected).toBe(false);
+    port.onMessage.emit({ id: posted.id, ok: true, value: {} });
+    await rejected;
+  });
+
   it('rejects the current connection if its window creation fails', async () => {
     const f = fixture();
     f.api.windows.create.mockRejectedValueOnce(new Error('Cannot open window'));

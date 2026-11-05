@@ -3,7 +3,10 @@ import {
   type WalletTokenReviewPayload,
 } from '../../../shared/walletTokenReview';
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
-import type { IUtxoSigningContext } from 'utils/utxoSigningContext';
+import type {
+  IUtxoSigningContext,
+  UtxoDappSigningAuthority,
+} from 'utils/utxoSigningContext';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
@@ -12,6 +15,7 @@ export type DappUtxoReview = Readonly<{
   assertCurrent: () => void;
   checkDocument: () => Promise<void>;
   context: IUtxoSigningContext;
+  getSignal: () => AbortSignal;
   method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
   psbt: Readonly<{
     assets: string;
@@ -82,8 +86,10 @@ export const captureDappUtxoSubmission = (
   );
   if (!watch?.utxo) return;
   const review = watch.utxo;
+  const signal = review.getSignal();
   const assertCurrent = () => {
-    if (!watches.get(documentId)?.has(watch)) throw utxoDappApprovalExpired();
+    if (signal.aborted || !watches.get(documentId)?.has(watch))
+      throw utxoDappApprovalExpired();
     review.assertCurrent();
   };
   assertCurrent();
@@ -94,8 +100,12 @@ export const captureDappUtxoSubmission = (
     input.psbt.sentryFeeAuthorization !== review.psbt.sentryFeeAuthorization
   )
     throw utxoDappApprovalExpired();
-  return {
+  const authority: UtxoDappSigningAuthority = Object.freeze({
     assertCurrent,
+    signal,
+  });
+  return {
+    authority,
     async checkDocument() {
       assertCurrent();
       await review.checkDocument();
