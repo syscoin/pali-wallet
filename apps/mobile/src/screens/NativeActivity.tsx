@@ -30,8 +30,24 @@ import type {
   NativeActivitySnapshot,
 } from '../activity/nativeActivity';
 
-const status = (row: ActivityRow) =>
-  row.indexedStatus === 'confirmed'
+// The controller admits observations only for its current account/network generation.
+// Unknown or unavailable RPC results leave the existing indexed/local fallback intact.
+const currentObservation = (row: ActivityRow) =>
+  !row.unavailable &&
+  (row.observation?.status === 'confirmed' ||
+    row.observation?.status === 'reverted' ||
+    row.observation?.status === 'pending')
+    ? row.observation
+    : undefined;
+const status = (row: ActivityRow) => {
+  const observation = currentObservation(row);
+  if (observation)
+    return observation.status === 'confirmed'
+      ? 'Confirmed'
+      : observation.status === 'reverted'
+      ? 'Reverted'
+      : 'Pending';
+  return row.indexedStatus === 'confirmed'
     ? 'Confirmed'
     : row.indexedStatus === 'failed'
     ? 'Reverted'
@@ -47,12 +63,6 @@ const status = (row: ActivityRow) =>
       : 'Reverted'
     : !row.indexed && row.retainedObservation?.status === 'missing'
     ? 'Submission unconfirmed'
-    : row.observation?.status === 'confirmed'
-    ? 'Confirmed'
-    : row.observation?.status === 'reverted'
-    ? 'Reverted'
-    : row.observation?.status === 'pending'
-    ? 'Pending'
     : row.local?.phase === 'nonce-consumed'
     ? 'Nonce consumed · outcome unavailable'
     : row.local?.phase === 'confirmed'
@@ -64,6 +74,7 @@ const status = (row: ActivityRow) =>
     : row.checking
     ? 'Checking transaction…'
     : 'Indexed · not verified';
+};
 function direction(
   row: ActivityRow,
   owner: string
@@ -215,6 +226,10 @@ function NativeActivityContent({
         direction(row, owner) === snapshot.view.filter)
   );
   const chosen = snapshot.rows.find((row) => row.hash === selected);
+  const chosenObservation = chosen ? currentObservation(chosen) : undefined;
+  const chosenBlock = chosenObservation
+    ? chosenObservation.block?.number
+    : chosen?.indexed?.blockNumber || chosen?.observation?.block?.number;
   const hiddenCount = snapshot.rows.filter((row) => zeroOnly(row)).length;
   const savePosition = async (): Promise<void> => {
     const first =
@@ -578,13 +593,10 @@ function NativeActivityContent({
             )}
             <Text style={s.label}>NETWORK FEE</Text>
             <Text>{fee(chosen, snapshot.nativeSymbol ?? 'ETH')}</Text>
-            {(chosen.indexed?.blockNumber || chosen.observation?.block) && (
+            {chosenBlock !== undefined && (
               <>
                 <Text style={s.label}>BLOCK</Text>
-                <Text>
-                  {chosen.indexed?.blockNumber ??
-                    chosen.observation?.block?.number}
-                </Text>
+                <Text>{chosenBlock}</Text>
               </>
             )}
           </Card>
