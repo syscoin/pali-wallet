@@ -26,6 +26,7 @@ import type { CustodySnapshot } from '../../src/custody/types';
 import { Button, Header, Notice, Screen } from '../../src/ui';
 import { RealAppShell } from '../../src/screens/RealAppShell';
 import { useRealShell } from '../../src/screens/useRealShell';
+import { freshStatusFixture } from './freshStatusFixture';
 
 const owner = `0x${'11'.repeat(20)}`,
   recipient = `0x${'22'.repeat(20)}`;
@@ -181,11 +182,15 @@ class Receipts extends ActivityReceiptReader {
     };
   }
 }
+const freshStatus = freshStatusFixture(
+  new URLSearchParams(window.location.search).get('fresh-status'),
+  scope
+);
 const runtime: NativeActivityRuntime = {
   async load() {
     return {
       scope,
-      locals: [],
+      locals: freshStatus?.locals ?? [],
       saved: {
         archived: [],
         candidates: [],
@@ -194,6 +199,7 @@ const runtime: NativeActivityRuntime = {
       },
     };
   },
+  observeLocal: freshStatus?.observeLocal,
   async saveCache() {},
   async saveView(_scope, view, guard) {
     saveRequests++;
@@ -210,8 +216,8 @@ const runtime: NativeActivityRuntime = {
 const controller = new NativeActivity(
   { getSnapshot: getState, subscribe },
   () => runtime,
-  new Explorer(),
-  new Receipts()
+  freshStatus?.explorer ?? new Explorer(),
+  freshStatus?.receipts ?? new Receipts()
 );
 declare global {
   interface Window {
@@ -229,6 +235,14 @@ declare global {
       lock(): void;
       feedReads(): number;
       receiptReads(): number;
+      rowState(): {
+        indexedStatus?: string;
+        observation?: string;
+        block: string | null;
+        unavailable: boolean;
+        checking: boolean;
+      }[];
+      changeContext(): void;
     };
   }
 }
@@ -263,6 +277,17 @@ window.__activityFixture = {
   lock,
   feedReads: () => feedReads,
   receiptReads: () => receiptReads,
+  rowState: () => controller.getSnapshot().rows.map(row => ({
+    indexedStatus: row.indexedStatus,
+    observation: row.observation?.status,
+    block: row.observation?.block?.number ?? null,
+    unavailable: row.unavailable,
+    checking: row.checking,
+  })),
+  changeContext() {
+    state = { ...state, revision: state.revision + 1 };
+    for (const listener of stateListeners) listener(state);
+  },
 };
 function ShellFixture() {
   const current = useSyncExternalStore(subscribe, getState, getState);
