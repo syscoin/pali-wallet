@@ -3,45 +3,17 @@ import { coins as utxoCoins, retryableFetch } from '@sidhujag/sysweb3-network';
 
 import { chromeStorage } from 'utils/storageAPI';
 
-interface IChainInfo {
-  chain: INetworkType;
-  chainId: number;
-  chainSlug?: string;
-  coinLabel?: string;
-  coinShortcut?: string;
-  explorers?: Array<{
-    name: string;
-    standard?: string;
-    url: string;
-  }>;
-  icon?: string;
-  infoURL?: string;
-  name: string;
-  nativeCurrency: {
-    decimals: number;
-    name: string;
-    symbol: string;
-  };
-  networkId: number;
-  rpc: Array<{
-    isOpenSource?: boolean;
-    tracking?: string;
-    url: string;
-  }>;
-  shortName?: string;
-  // Additional fields for UTXO networks
-  slip44?: number;
-}
+import type { ChainInfo } from '../../../../shared/chainCatalogue';
 
 class ChainListService {
   private static instance: ChainListService;
-  private chainData: IChainInfo[] | null = null;
-  private utxoChainData: IChainInfo[] | null = null;
+  private chainData: ChainInfo[] | null = null;
+  private utxoChainData: ChainInfo[] | null = null;
   private lastFetchTime = 0;
   private readonly CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours
   private readonly CHAINLIST_URL = 'https://chainlist.org/rpcs.json';
   private readonly STORAGE_KEY = 'chainlist_data_cache';
-  private fetchPromise: Promise<IChainInfo[]> | null = null;
+  private fetchPromise: Promise<ChainInfo[]> | null = null;
 
   private constructor() {
     // Private constructor for singleton pattern
@@ -159,7 +131,7 @@ class ChainListService {
   }
 
   private async loadFromCache(): Promise<{
-    data: IChainInfo[];
+    data: ChainInfo[];
     timestamp: number;
   } | null> {
     try {
@@ -172,7 +144,7 @@ class ChainListService {
   }
 
   private async saveToCache(
-    data: IChainInfo[],
+    data: ChainInfo[],
     timestamp: number
   ): Promise<void> {
     try {
@@ -201,7 +173,7 @@ class ChainListService {
     });
   }
 
-  async fetchData(): Promise<IChainInfo[]> {
+  async fetchData(): Promise<ChainInfo[]> {
     // Return existing promise if already fetching
     if (this.fetchPromise) {
       return this.fetchPromise;
@@ -217,7 +189,7 @@ class ChainListService {
     }
   }
 
-  private async _fetchData(): Promise<IChainInfo[]> {
+  private async _fetchData(): Promise<ChainInfo[]> {
     try {
       const response = await retryableFetch(this.CHAINLIST_URL, {
         headers: {
@@ -237,8 +209,8 @@ class ChainListService {
         throw new Error('Invalid chain data format');
       }
 
-      // Transform raw chainlist.org data to match IChainInfo interface
-      const data: IChainInfo[] = rawData.map((rawChain) => ({
+      // Transform raw chainlist.org data to match ChainInfo.
+      const data: ChainInfo[] = rawData.map((rawChain) => ({
         ...rawChain,
         chain: INetworkType.Ethereum, // All EVM networks should use this enum value
       }));
@@ -258,7 +230,7 @@ class ChainListService {
     }
   }
 
-  async getChainData(networkType?: INetworkType): Promise<IChainInfo[]> {
+  async getChainData(networkType?: INetworkType): Promise<ChainInfo[]> {
     // If network type is specified, only load that type
     if (networkType === INetworkType.Syscoin) {
       // Only load UTXO chains
@@ -283,7 +255,7 @@ class ChainListService {
   async searchChains(
     query: string,
     networkType?: INetworkType
-  ): Promise<IChainInfo[]> {
+  ): Promise<ChainInfo[]> {
     // Only load chains for the specified network type
     const chains = await this.getChainData(networkType);
     const lowerQuery = query.toLowerCase();
@@ -302,7 +274,7 @@ class ChainListService {
   async getChainById(
     chainId: number,
     networkType?: INetworkType
-  ): Promise<IChainInfo | undefined> {
+  ): Promise<ChainInfo | undefined> {
     // Only load chains for the specified network type
     const chains = await this.getChainData(networkType);
     return chains.find((chain) => chain.chainId === chainId);
@@ -310,4 +282,4 @@ class ChainListService {
 }
 
 export default ChainListService;
-export type { IChainInfo as ChainInfo };
+export type { ChainInfo };
