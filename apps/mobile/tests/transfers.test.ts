@@ -10,7 +10,7 @@ import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
 import { signedRecordTestSession, historicalSignedBundle } from './signedRecordTestSession.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
-import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { NativeTransferRpc, NativeTransferRpcError } from '../src/custody/transferRpc.ts';
 import type { Erc20TransferIntent } from '../src/custody/transferIntent.ts';
 const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
@@ -42,6 +42,7 @@ function fixture() {
   let signatures = 0;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
+  let beforeCommit: (() => Promise<void>) | undefined;
   let failWrite = false;
   const broadcasts: string[] = [];
   const rpcMethods: string[] = [];
@@ -64,6 +65,7 @@ function fixture() {
   const signedRecords = new EvmSignedRecords({
     async read(profile) { return records[profile] as string | undefined; },
     async compareAndSet(profile, expected, value, check) {
+      if (beforeCommit) await beforeCommit();
       check(); if (records[profile] !== expected) return false;
       if (failWrite) throw Error('Storage unavailable');
       records[profile] = value; return true;
@@ -186,6 +188,7 @@ function fixture() {
     records,
     broadcasts,
     rpcMethods,
+    rpc,
     runtime,
     source,
     signatures: () => signatures,
@@ -217,6 +220,9 @@ function fixture() {
     },
     holdSigning(promise: Promise<void>) {
       signGate = promise;
+    },
+    holdWrite(wait: () => Promise<void>) {
+      beforeCommit = wait;
     },
     failStorage() {
       failWrite = true;
@@ -579,30 +585,66 @@ test('insufficient funds is reported without inventing a pending transaction', a
   }
 });
 
-test('unexpected post-broadcast journal failure stays truthful after locking clears the visible hash', async () => {
+test('acknowledged transfer keeps its hash while the submitted marker is held and then fails', async () => {
   const f = fixture();
+  const { promise: started, resolve: enter } = Promise.withResolvers<void>();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   const open = f.runtime.journal;
   f.runtime.journal = async (guard) => {
     const journal = await open(guard);
     const transition = journal.transition.bind(journal);
     journal.transition = async (hash, phase) => {
-      if (phase === 'submitted') throw Error('Unexpected storage failure after broadcast');
+      if (phase === 'submitted') {
+        enter();
+        await held;
+        throw Error('Submitted marker write failed');
+      }
       return transition(hash, phase);
     };
     return journal;
   };
   try {
     const approved = await review(f);
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'FAILED' });
+    const pending = f.transfers.confirm(approved.id);
+    const completion = pending.catch((error: unknown) => error);
+    await Promise.race([started, pending]);
+    const whileMarking = f.transfers.getSnapshot();
+    release();
+    const error = await completion;
     assert.equal(f.broadcasts.length, 1);
-    assert.equal(f.source.getSnapshot().phase, 'locked');
+    const hash = keccak256(f.broadcasts[0]!);
+    assert.equal(whileMarking.hash, hash);
+    assert.equal(error, undefined);
+    assert.equal(f.source.getSnapshot().phase, 'ready');
     const state = f.transfers.getSnapshot();
-    assert.equal(state.hash, null);
-    assert.match(state.message ?? '', /check Activity for an existing transaction/);
-    assert.doesNotMatch(state.message ?? '', /not sent|no new transaction|pending transaction.*preserved/i);
+    assert.equal(state.phase, 'pending');
+    assert.equal(state.hash, hash);
+    assert.match(state.message ?? '', /submitted.*activity may take longer/i);
     const saved = await (await f.runtime.journal(() => undefined)).load();
     assert.equal(saved!.rawTransaction, f.broadcasts[0]);
     assert.equal(saved!.phase, 'signed');
+  } finally {
+    release();
+    f.close();
+  }
+});
+
+test('a definite no-POST from the dispatch callback retains only the already saved identity', async () => {
+  const f = fixture();
+  f.rpc.broadcast = async () => {
+    throw Object.assign(new NativeTransferRpcError('REVIEW_REQUIRED'), { transactionNotBroadcast: true });
+  };
+  try {
+    const approved = await review(f);
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert(saved);
+    assert.equal(f.broadcasts.length, 0);
+    const outcome = f.transfers.getSnapshot();
+    assert.equal(outcome.phase, 'unknown');
+    assert.equal(outcome.hash, saved.hash);
+    assert.match(outcome.message ?? '', /saved/i);
+    assert.doesNotMatch(outcome.message ?? '', /submission may have completed/i);
   } finally { f.close(); }
 });
 
@@ -633,6 +675,34 @@ test('expiry after a durable signed record preserves its recovery identity witho
   const f = fixture(); const original = f.runtime.journal;
   f.runtime.journal = async (guard) => { const journal = await original(guard); const save = journal.saveSigned.bind(journal); journal.saveSigned = async (raw) => { const entry = await save(raw); f.expire(); return entry; }; return journal; };
   try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
+});
+
+test('expiry before the signed record commits exposes no saved hash or retry', async () => {
+  const f = fixture();
+  const { promise: started, resolve: enter } = Promise.withResolvers<void>();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
+  f.holdWrite(async () => { enter(); await held; });
+  try {
+    const approved = await review(f);
+    const pending = f.transfers.confirm(approved.id);
+    const expired = assert.rejects(pending, { code: 'EXPIRED' });
+    await Promise.race([started, pending]);
+    const whilePersisting = f.transfers.getSnapshot();
+    f.expire();
+    release();
+    await expired;
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    assert.equal(Object.keys(f.records).length, 0);
+    const outcome = f.transfers.getSnapshot();
+    assert.equal(outcome.phase, 'idle');
+    assert.equal(outcome.hash, null);
+    assert.doesNotMatch(outcome.message ?? '', /saved|retry/i);
+    assert.equal(whilePersisting.hash, null);
+  } finally {
+    release();
+    f.close();
+  }
 });
 
 
