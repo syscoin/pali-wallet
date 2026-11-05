@@ -213,3 +213,62 @@ test('Android initial connection failure stops before root and records the faile
   assert.deepEqual(calls, [['wait-for-device']]);
   assert.deepEqual(evidence, [{ version: 1, status: 'failed', stage: 'connection', rootTransportRecovered: false }]);
 });
+
+
+test('iOS launch query excludes unrelated system output before the unchanged command bound', () => {
+  const expected = '(process == "SpringBoard" OR process == "runningboardd" OR process == "launchd") AND eventMessage CONTAINS "com.paliwallet.qualification"';
+  const primary = Error('original launch failure'), calls = [], evidence = [];
+  const secret = 'synthetic_log_message_must_not_be_retained';
+  const services = '12\t0\tcom.apple.SpringBoard\n';
+  const messages = [
+    `${PACKAGE} launch failed timeout ${secret}`,
+    `unrelated.app ${secret}`,
+    `${PACKAGE} exited`,
+    'COM.PALIWALLET.QUALIFICATION unrelated case',
+  ];
+  const lines = (values) => values.map((eventMessage) => JSON.stringify({ eventMessage })).join('\n');
+  const command = createCommandRunner((_command, args, options) => {
+    calls.push({ args, options });
+    if (args.includes('launchctl')) return ok(services);
+    const predicate = args[args.indexOf('--predicate') + 1];
+    if (predicate !== expected) return { status: 143, error: Object.assign(Error('unrelated system output exceeds bound'), { code: 'ENOBUFS' }) };
+    return ok(lines(messages.filter((message) => message.includes(PACKAGE))));
+  });
+  const run = (name, args, ...rest) => { if (args[1] === 'launch') { calls.push({ args, launch: true }); throw primary; } return command(name, args, ...rest); };
+  const times = [0, 180000, 180010, 180020];
+  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => evidence.push(value), () => times.shift()), (error) => error === primary);
+  const query = calls.find((call) => call.args.includes('--predicate'));
+  assert.equal(query.args[query.args.indexOf('--predicate') + 1], expected);
+  assert.equal(query.args[query.args.indexOf('--last') + 1], '5m');
+  assert.equal(query.options.timeout, 10000);
+  assert.equal(query.options.maxBuffer, 8 * 1024 * 1024);
+  assert.equal(calls.filter((call) => call.launch).length, 1);
+  assert.equal(calls.length, 3);
+  assert.equal(evidence[0].logsAvailable, true);
+  assert.equal(evidence[0].logCountConfidence, 'complete-for-query');
+  assert.deepEqual(evidence[0].logCounts, summarizeIosLaunch(services, lines(messages), true).logCounts);
+  assert.deepEqual(evidence[0].logCounts, { matched: 2, failure: 1, timeout: 1, termination: 1 });
+  assert(!JSON.stringify(evidence).includes(secret));
+});
+
+test('iOS package-scoped log overflow stays unavailable and cannot replace the original launch failure', () => {
+  const primary = Error('original launch failure'), calls = [], evidence = [];
+  const secret = 'synthetic_overflow_message_must_not_be_retained';
+  const command = createCommandRunner((_command, args, options) => {
+    calls.push({ args, options });
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
+    return { status: 143, signal: null, stdout: secret, stderr: secret,
+      error: Object.assign(Error(secret), { code: 'ENOBUFS' }) };
+  });
+  const run = (name, args, ...rest) => { if (args[1] === 'launch') { calls.push({ args, launch: true }); throw primary; } return command(name, args, ...rest); };
+  const times = [0, 180000, 180010, 180020, 183020];
+  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => { evidence.push(value); throw Error('diagnostic write failed'); }, () => times.shift()), (error) => error === primary);
+  assert.equal(calls.filter((call) => call.launch).length, 1);
+  assert.equal(calls.length, 3);
+  assert.equal(evidence[0].logsAvailable, false);
+  assert.equal(evidence[0].logCountConfidence, 'unavailable');
+  assert.equal(evidence[0].logQueryFailure.errorCode, 'ENOBUFS');
+  assert.equal(evidence[0].logQueryFailure.timeoutMs, 10000);
+  assert.equal(evidence[0].logQueryFailure.status, 143);
+  assert(!JSON.stringify(evidence).includes(secret));
+});
