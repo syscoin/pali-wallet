@@ -12,7 +12,7 @@ import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 
 import {
-  formatTokenUnits,
+  formatErc20Balance,
   parseErc20Decimals,
   parseErc20ReadFields,
   parseErc20Units,
@@ -34,7 +34,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress, parseUnits } from 'utils/ethersV6Compat';
+import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
@@ -256,8 +256,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
         contract.balanceOf(walletAddress),
       ]);
       const precision = parseErc20Decimals(decimals);
-      const rawBalance = parseErc20Units(balanceRaw);
-      const balance = Number(formatTokenUnits(rawBalance, precision));
+      const { balance, rawBalance } = formatErc20Balance(balanceRaw, precision);
 
       // Lightweight token type detection (optional, non-blocking)
       let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
@@ -522,11 +521,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
         if (balance === undefined) return token;
-        const updated = {
-          ...token,
-          balance: parseFloat(balance),
-          rawBalance: parseUnits(balance, token.decimals).toString(),
-        };
+        const updated = { ...token, ...balance };
         onBalanceRead?.(updated);
         return updated;
       });
@@ -908,8 +903,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
         w3Provider
       );
       const decimals = parseErc20Decimals(metadata.decimals ?? 18);
-      const rawBalance = parseErc20Units(metadata.balance || '0');
-      const balance = Number(formatTokenUnits(rawBalance, decimals));
+      const { balance, rawBalance } = formatErc20Balance(
+        metadata.balance,
+        decimals
+      );
 
       if (!contextIsCurrent(context.key)) return null;
       return {

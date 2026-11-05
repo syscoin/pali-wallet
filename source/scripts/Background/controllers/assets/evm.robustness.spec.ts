@@ -417,7 +417,7 @@ describe('discovery availability is not an empty wallet', () => {
 
 it('uses RPC for tracked balances with a configured API and preserves a failed token', async () => {
   const second = `0x${'44'.repeat(20)}`;
-  const balances = new Map([[TOKEN, '0']]);
+  const balances = new Map([[TOKEN, { balance: 0, rawBalance: '0' }]]);
   (BatchBalanceController as jest.Mock).mockImplementation(() => ({
     getBatchTokenBalances: async () => balances,
   }));
@@ -477,7 +477,8 @@ it('deduplicates same-chain metadata but not a switched chain; old results canno
 
 it('reports a successful unchanged balance read even when the legacy result is an empty update', async () => {
   (BatchBalanceController as jest.Mock).mockImplementation(() => ({
-    getBatchTokenBalances: async () => new Map([[TOKEN, '0']]),
+    getBatchTokenBalances: async () =>
+      new Map([[TOKEN, { balance: 0, rawBalance: '0' }]]),
   }));
   const token = {
     contractAddress: TOKEN,
@@ -512,7 +513,8 @@ it.each([
   'reports exact raw ERC20 balance for %s without a Number round trip',
   async (balance, decimals, rawBalance) => {
     (BatchBalanceController as jest.Mock).mockImplementation(() => ({
-      getBatchTokenBalances: async () => new Map([[TOKEN, balance]]),
+      getBatchTokenBalances: async () =>
+        new Map([[TOKEN, { balance: Number(balance), rawBalance }]]),
     }));
     const read = jest.fn();
     const result = await EvmAssetsController().updateAllEvmTokens(

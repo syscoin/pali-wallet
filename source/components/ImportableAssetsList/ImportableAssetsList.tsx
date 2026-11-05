@@ -26,6 +26,7 @@ interface IImportableAsset {
   logo?: string;
   name?: string;
   originDecimals?: number;
+  rawBalance?: string;
   symbol: string;
   tokenId?: string;
   tokenStandard?: string;

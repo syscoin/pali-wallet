@@ -48,7 +48,9 @@ it('omits failed multicall results but records real zero balances', async () => 
   const balances = await new BatchBalanceController(
     provider
   ).getBatchTokenBalances(list, 'owner');
-  expect([...balances]).toEqual([[list[1].contractAddress, '0']]);
+  expect([...balances]).toEqual([
+    [list[1].contractAddress, { balance: 0, rawBalance: '0' }],
+  ]);
 });
 
 it('isolates a failed fallback token and uses constant pacing with three workers', async () => {
@@ -79,5 +81,8 @@ it('isolates a failed fallback token and uses constant pacing with three workers
   expect(peak).toBeLessThanOrEqual(3);
   expect(balances.size).toBe(99);
   expect(balances.has(list[0].contractAddress)).toBe(false);
-  expect(balances.get(list[1].contractAddress)).toBe('0');
+  expect(balances.get(list[1].contractAddress)).toEqual({
+    balance: 0,
+    rawBalance: '0',
+  });
 });

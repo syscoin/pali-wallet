@@ -182,6 +182,23 @@ export function formatTokenUnits(units: string, decimals: number): string {
   return `${integer}.${fraction}`;
 }
 
+/** Keep authoritative units alongside the existing extension balance field. */
+export function formatErc20Balance(
+  raw: unknown,
+  decimals: string | number
+): { balance: number; rawBalance: string } {
+  const precision = parseErc20Decimals(
+    typeof decimals === 'string' && /^\d+$/.test(decimals.trim())
+      ? Number(decimals)
+      : decimals
+  );
+  const rawBalance = parseErc20Units(raw);
+  return {
+    balance: Number(formatTokenUnits(rawBalance, precision)),
+    rawBalance,
+  };
+}
+
 /** Exact decimal input for the full uint8 precision range, without rounding. */
 export function parseTokenAmount(value: unknown, decimals: number): string {
   const precision = parseErc20Decimals(decimals);

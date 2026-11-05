@@ -36,6 +36,11 @@ import {
 } from 'types/network';
 import { Interface } from 'utils/ethersV6Compat';
 import { getNftQuantity, isErc721BalanceAvailable } from 'utils/nftQuantity';
+import {
+  clearMulticall3AddressCache,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
+  PALI_MULTICALL3_CANONICAL_ADDRESS,
+} from 'utils/smartAccount';
 
 let mockStore: any;
 const mockEmitter = jest.fn();
@@ -118,17 +123,48 @@ const ABI = new Interface([
 let unavailable: boolean;
 let owned: string;
 let fungibleDecimals: number | undefined;
+let multicallDeployed: boolean;
+const multicallAddress = PALI_MULTICALL3_CANONICAL_ADDRESS.toLowerCase();
+const multicallAbi = new Interface([
+  'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) view returns ((bool success,bytes returnData)[] returnData)',
+]);
 let unexpectedFetches: number;
 let reads: Array<{ failed?: boolean; name: string }>;
 const actualResults: Array<{ method: string; result: any }> = [];
 const originalFetch = globalThis.fetch;
 let assetsController: ReturnType<typeof EvmAssetsController>;
 const runner = {
+  getNetwork: async () => ({ chainId: 31337 }),
   getCode: async (address: string) => {
-    expect(address.toLowerCase()).toBe(CONTRACT);
-    return '0x6000';
+    const target = address.toLowerCase();
+    if (target === CONTRACT) return '0x6000';
+    expect([
+      multicallAddress,
+      PALI_INFRASTRUCTURE_METADATA_BY_ID.multicall3.address.toLowerCase(),
+    ]).toContain(target);
+    reads.push({ name: 'multicallCode' });
+    return target === multicallAddress && multicallDeployed ? '0x6000' : '0x';
   },
   call: async (transaction: { data: string; to: string }) => {
+    if (transaction.to.toLowerCase() === multicallAddress) {
+      expect(multicallDeployed).toBe(true);
+      const { args } = multicallAbi.parseTransaction(transaction)!;
+      const [[target, allowFailure, data]] = args[0];
+      expect(target.toLowerCase()).toBe(CONTRACT);
+      expect(allowFailure).toBe(true);
+      expect(data).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
+      reads.push({ name: 'aggregate3' });
+      return multicallAbi.encodeFunctionResult('aggregate3', [
+        [
+          {
+            success: !unavailable,
+            returnData: unavailable
+              ? '0x'
+              : ABI.encodeFunctionResult('balanceOf', [owned]),
+          },
+        ],
+      ]);
+    }
     expect(transaction.to.toLowerCase()).toBe(CONTRACT);
     const decoded = ABI.parseTransaction(transaction)!;
     if (decoded.name === 'supportsInterface') {
@@ -174,6 +210,8 @@ beforeEach(() => {
   unavailable = false;
   owned = '3';
   fungibleDecimals = undefined;
+  multicallDeployed = false;
+  clearMulticall3AddressCache(31337);
   unexpectedFetches = 0;
   reads = [];
   actualResults.length = 0;
@@ -340,9 +378,52 @@ it.each([
       contractAddress: CONTRACT,
       decimals: fungibleDecimals,
       balance: numericBalance,
+      rawBalance: owned,
       tokenStandard: 'ERC-20',
     });
-    expect(payload).not.toHaveProperty('rawBalance');
+  }
+);
+
+it.each(['multicall', 'individual'])(
+  'refreshes an imported 255-decimal token through %s without losing an atom',
+  async (mode) => {
+    fungibleDecimals = 255;
+    multicallDeployed = mode === 'multicall';
+    owned = '90071992547409931234567';
+    const originalUnits = owned;
+    await openManualImport();
+    await act(async () => fireEvent.click(importButton()));
+    const imported = holdings();
+    expect(imported).toHaveLength(1);
+
+    const read = jest.fn();
+    const refresh = async () => {
+      reads = [];
+      const pending = assetsController.updateAllEvmTokens(
+        mockStore.getState().vault.accounts.HDAccount[0],
+        31337,
+        runner as any,
+        imported,
+        read
+      );
+      await jest.advanceTimersByTimeAsync(100);
+      const updated = await pending;
+      expect(reads.map(({ name }) => name)).toEqual(
+        mode === 'multicall'
+          ? ['multicallCode', 'aggregate3']
+          : ['multicallCode', 'multicallCode', 'balanceOf']
+      );
+      return updated;
+    };
+    owned = '90071992547409931234568';
+    const updated = await refresh();
+    expect(updated[0]).toMatchObject({
+      balance: imported[0].balance,
+      rawBalance: owned,
+      decimals: 255,
+    });
+    expect(read).toHaveBeenCalledWith(updated[0]);
+    expect(imported[0]).toHaveProperty('rawBalance', originalUnits);
   }
 );
 

@@ -7,7 +7,7 @@ const { CustomJsonRpcProvider } = jest.requireActual(
 const A = `0x${'11'.repeat(20)}`;
 const T = `0x${'33'.repeat(20)}`;
 
-it('passes the same abort signal and captured endpoint to each minimal receipt RPC', async () => {
+it.each([0, 255, '255'])('uses scoped RPC at %s decimals', async (decimals) => {
   const abort = new AbortController();
   const provider = new CustomJsonRpcProvider(
     abort.signal,
@@ -44,7 +44,7 @@ it('passes the same abort signal and captured endpoint to each minimal receipt R
         {
           chainId: 1,
           contractAddress: T,
-          decimals: 0,
+          decimals,
           balance: 0,
           isNft: false,
           tokenSymbol: 'T',
@@ -52,7 +52,7 @@ it('passes the same abort signal and captured endpoint to each minimal receipt R
         },
         20
       )
-    ).toEqual({ balance: 7, rawBalance: '7' });
+    ).toEqual({ balance: decimals === 0 ? 7 : 7e-255, rawBalance: '7' });
     expect(calls.map(({ request }) => request.method)).toEqual([
       'eth_blockNumber',
       'eth_getBalance',

@@ -602,7 +602,9 @@ export const ImportToken: React.FC = () => {
         let tokenId =
           activeTab === 'custom' ? customTokenId.trim() : asset.tokenId;
         const rawBalance =
-          activeTab === 'custom' ? verifiedTokenRawBalance : asset.rawBalance;
+          activeTab === 'custom' && asset.tokenStandard === 'ERC-1155'
+            ? verifiedTokenRawBalance
+            : asset.rawBalance;
 
         if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
           throw new Error(t('tokens.tokenIdRequired'));
@@ -642,9 +644,7 @@ export const ImportToken: React.FC = () => {
           logo: tokenLogo,
           tokenStandard: asset.tokenStandard || 'ERC-20',
           ...(asset.tokenStandard === 'ERC-1155' && tokenId ? { tokenId } : {}),
-          ...(asset.tokenStandard === 'ERC-1155' && rawBalance
-            ? { rawBalance }
-            : {}),
+          ...(rawBalance ? { rawBalance } : {}),
         };
 
         await controllerEmitter(
@@ -785,7 +785,7 @@ export const ImportToken: React.FC = () => {
       try {
         const exactBalance =
           rawBalance === '0' ? '—' : formatTokenUnits(rawBalance, decimals);
-        return assets.map((asset) => ({ ...asset, exactBalance }));
+        return assets.map((asset) => ({ ...asset, exactBalance, rawBalance }));
       } catch {
         // Older or invalid navigation data keeps the compatible display.
         return assets;
