@@ -4,6 +4,7 @@ import {
   KeyringManager,
   CustomJsonRpcProvider,
   PsbtUtils,
+  readPublicSyscoinFee,
   type ISendSignedErc20TransactionProps,
   type ISendSignedErcTransactionProps,
 } from '@sidhujag/sysweb3-keyring';
@@ -59,6 +60,10 @@ import {
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
+import {
+  createOwnedUtxoBlockbookRead,
+  type UtxoBlockbookReadScope,
+} from '../../../wallet/utxoBlockbookReads';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -258,7 +263,12 @@ import type {
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
-import { getVerifiedSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
+import {
+  assertUtxoFeeReview,
+  createUtxoFeeReview,
+  getVerifiedSyscoinPsbtValueSummary,
+  type UtxoFeeReview,
+} from 'utils/syscoinPsbtValues';
 import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
@@ -433,6 +443,8 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private activeUtxoReads?: Set<AbortController>;
+  private utxoFeeCache?: { fee: number; observedAt: number; url: string };
   private fiatQuoteGeneration = 0;
   private fiatPreferenceGeneration = 0;
   // Session changes cancel in-flight work; only reset invalidates valid queued
@@ -1686,12 +1698,6 @@ class MainController {
     }
   }
 
-  // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
-  public get syscoinTransaction() {
-    this.assertWalletReadyForSigning();
-    return this.getActiveKeyring().syscoinTransaction;
-  }
-
   // Protect linked collateral during selection as well as at the signing boundary.
   public async getEstimateSysTransactionFee(
     params: Parameters<
@@ -1699,25 +1705,36 @@ class MainController {
     >[0]
   ) {
     const signing = this.captureUtxoSigningContext();
-    const activeNetwork = store.getState().vault.activeNetwork;
     const excludedOutpoints = await this.getProtectedSentryOutpoints();
     signing.assertCurrent();
-    const result = await signing.transactions.getEstimateSysTransactionFee({
-      ...params,
-      excludedOutpoints,
+    return signing.withRead(async (read) => {
+      const result = await signing.transactions.getEstimateSysTransactionFee(
+        { ...params, excludedOutpoints },
+        read
+      );
+      read.assertCurrent();
+      if (!result?.psbt) return result;
+      const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
+      read.assertCurrent();
+      await this.assertNoSentryCollateralInputs(psbt);
+      read.assertCurrent();
+      this.assertOrdinaryUtxoInputsCurrent(psbt, signing.context);
+      const exactFee = Number(summary.feeSatoshis);
+      // The builder reports a numeric fee derived from the funding snapshot.
+      // Never display or authorize it if authenticated prevouts disagree.
+      if (!Number.isSafeInteger(exactFee) || exactFee / 1e8 !== result.fee)
+        throw Object.assign(
+          new Error('Transaction or network fee changed. Review a new quote.'),
+          {
+            code: 'UTXO_QUOTE_FEE_CHANGED',
+            transactionNotBroadcast: true,
+          }
+        );
+      return {
+        ...result,
+        utxoFeeReview: createUtxoFeeReview(psbt, summary.feeSatoshis),
+      };
     });
-    signing.assertCurrent();
-    if (result?.psbt) {
-      await this.assertNoSentryCollateralInputs(
-        PsbtUtils.fromPali(result.psbt, activeNetwork)
-      );
-      signing.assertCurrent();
-      this.assertOrdinaryUtxoInputsCurrent(
-        PsbtUtils.fromPali(result.psbt, activeNetwork),
-        signing.context
-      );
-    }
-    return result;
   }
 
   public get ethereumTransaction() {
@@ -2150,6 +2167,8 @@ class MainController {
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
     this.postSwitchHistorySave = undefined;
+    this.activeUtxoReads?.forEach((operation) => operation.abort());
+    this.utxoFeeCache = undefined;
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
@@ -6001,8 +6020,34 @@ class MainController {
 
     try {
       if (isBitcoinBased) {
-        return await this.syscoinTransaction.getRecommendedFee(
-          activeNetwork.url
+        const generation = this.walletSessionGeneration;
+        const { chainId, kind, slip44, url } = activeNetwork;
+        const assertCurrent = () => {
+          const { vault } = store.getState();
+          if (
+            this.getWalletSetupStatus() ||
+            this.walletSessionGeneration !== generation ||
+            !vault.isBitcoinBased ||
+            vault.activeNetwork.kind !== kind ||
+            vault.activeNetwork.chainId !== chainId ||
+            vault.activeNetwork.slip44 !== slip44 ||
+            vault.activeNetwork.url !== url
+          )
+            throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+        };
+        assertCurrent();
+        const cached = this.utxoFeeCache;
+        if (cached?.url === url && Date.now() - cached.observedAt < 60_000)
+          return cached.fee;
+        return await this.withOwnedUtxoRead(
+          { kind: 'fee', url },
+          assertCurrent,
+          async (read) => {
+            const fee = await readPublicSyscoinFee(url, read);
+            read.assertCurrent();
+            this.utxoFeeCache = { fee, observedAt: Date.now(), url };
+            return fee;
+          }
         );
       } else {
         // Return gas price in wei as a string (BigNumber-safe, no precision loss)
@@ -6011,6 +6056,7 @@ class MainController {
         )) as string;
       }
     } catch (error) {
+      if (error?.message === UTXO_SIGNING_CONTEXT_CHANGED) throw error;
       console.error('[MainController] Error getting recommended fee:', error);
       // Return fallback values
       return isBitcoinBased ? 0.0000001 : '20000000000'; // 20 gwei
@@ -7591,6 +7637,7 @@ class MainController {
     isTrezor?: boolean;
     ordinaryWalletSend?: boolean;
     psbt?: any;
+    utxoFeeReview?: UtxoFeeReview;
   }): Promise<any> {
     let senderInvoked = false;
     try {
@@ -7599,6 +7646,18 @@ class MainController {
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
         const signing = this.captureUtxoSigningContext(params.expectedContext);
+        const review =
+          params.ordinaryWalletSend === true ? params.utxoFeeReview : undefined;
+        if (params.ordinaryWalletSend === true && !review)
+          throw Object.assign(
+            new Error(
+              'Transaction or network fee changed. Review a new quote.'
+            ),
+            {
+              code: 'UTXO_QUOTE_FEE_CHANGED',
+              transactionNotBroadcast: true,
+            }
+          );
 
         if (params.ordinaryWalletSend === true) {
           this.assertOrdinaryUtxoInputsCurrent(
@@ -7613,6 +7672,7 @@ class MainController {
           isTrezor: params.isTrezor,
           isLedger: params.isLedger,
           expectedContext: signing.context,
+          ...(review && { utxoFeeReview: review }),
         });
         signing.assertCurrent();
 
@@ -7640,6 +7700,12 @@ class MainController {
           throw error;
         }
         signing.assertCurrent();
+        if (review)
+          assertUtxoFeeReview(
+            verifiedSignedPsbt,
+            verifiedSignedPsbt.getFee().toString(),
+            review
+          );
 
         if (params.ordinaryWalletSend === true) {
           this.assertOrdinaryUtxoInputsCurrent(
@@ -10491,15 +10557,17 @@ class MainController {
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();
 
-  // Expose txUtils methods individually for better type safety
-  public getRawTransaction = this.txUtils.getRawTransaction;
-
-  private verifySyscoinPsbt = async (psbtData: any) => {
+  private verifySyscoinPsbt = async (
+    psbtData: any,
+    read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+  ) => {
+    read.assertCurrent();
     const activeNetwork = store.getState().vault.activeNetwork;
     const psbt = PsbtUtils.fromPali(psbtData, activeNetwork);
     const summary = await getVerifiedSyscoinPsbtValueSummary(psbt, (txid) =>
-      this.txUtils.getRawTransaction(activeNetwork.url, txid)
+      syscoinjs.utils.fetchBackendRawTx(activeNetwork.url, txid, read)
     );
+    read.assertCurrent();
 
     return { psbt, summary };
   };
@@ -10774,6 +10842,37 @@ class MainController {
     });
   }
 
+  private async withOwnedUtxoRead<T>(
+    scope: UtxoBlockbookReadScope,
+    assertCurrent: () => void,
+    operation: (
+      read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+    ) => Promise<T>
+  ): Promise<T> {
+    assertCurrent();
+    const controller = new AbortController();
+    (this.activeUtxoReads ??= new Set()).add(controller);
+    try {
+      return await withWalletBackend(scope.url, async () => {
+        const read = createOwnedUtxoBlockbookRead(
+          scope,
+          controller.signal,
+          assertCurrent,
+          globalThis.fetch.bind(globalThis)
+        );
+        const result = await operation(read);
+        read.assertCurrent();
+        return result;
+      });
+    } catch (error) {
+      assertCurrent();
+      throw error;
+    } finally {
+      this.activeUtxoReads.delete(controller);
+      controller.abort();
+    }
+  }
+
   private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
@@ -10831,7 +10930,26 @@ class MainController {
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
     assertCurrent();
-    return { context, assertCurrent, transactions: keyring.syscoinTransaction };
+    return {
+      context,
+      assertCurrent,
+      transactions: keyring.syscoinTransaction,
+      withRead: <T>(
+        operation: (
+          read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+        ) => Promise<T>
+      ) =>
+        this.withOwnedUtxoRead(
+          {
+            kind: 'wallet',
+            url: context.rpcUrl,
+            xpub: context.account.xpub,
+            address: context.account.address,
+          },
+          assertCurrent,
+          operation
+        ),
+    };
   }
 
   public async signSyscoinPsbt(params: {
@@ -10839,86 +10957,105 @@ class MainController {
     isLedger?: boolean;
     isTrezor?: boolean;
     psbt: any;
+    utxoFeeReview?: UtxoFeeReview;
   }) {
+    const { utxoFeeReview, ...signingParams } = params;
     const signing = this.captureUtxoSigningContext(params.expectedContext);
-    const verified = await this.verifySyscoinPsbt(params.psbt);
-    signing.assertCurrent();
-    const feeAuthorization = params.psbt?.sentryFeeAuthorization;
-    const sentryFee = await this.verifySentryFeePsbt(
-      verified.psbt,
-      feeAuthorization
-    );
-    signing.assertCurrent();
-    await this.assertNoSentryCollateralInputs(verified.psbt);
-    signing.assertCurrent();
-    const finishFee = sentryFee
-      ? (await this.getSentryController()).beginFeeSigning(
-          feeAuthorization,
-          Buffer.from(
-            verified.psbt.data.globalMap.unsignedTx.toBuffer()
-          ).toString('hex')
-        )
-      : undefined;
-    try {
-      const signed = await signing.transactions.signPSBT({
-        ...params,
-        psbt: PsbtUtils.toPali(verified.psbt),
-      });
+    return signing.withRead(async (read) => {
+      const verified = await this.verifySyscoinPsbt(params.psbt, read);
       signing.assertCurrent();
-      const sentryScope = this.getSentryCollateralScope();
-      const release = async (markDisclosed: () => void) => {
-        await this.assertNoSentryCollateralInputs(() =>
-          PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+      if (utxoFeeReview)
+        assertUtxoFeeReview(
+          verified.psbt,
+          verified.summary.feeSatoshis,
+          utxoFeeReview
         );
-        if (sentryFee)
-          await this.verifySentryFeePsbt(
-            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
-            feeAuthorization
-          );
+      const feeAuthorization = params.psbt?.sentryFeeAuthorization;
+      const sentryFee = await this.verifySentryFeePsbt(
+        verified.psbt,
+        feeAuthorization
+      );
+      signing.assertCurrent();
+      await this.assertNoSentryCollateralInputs(verified.psbt);
+      signing.assertCurrent();
+      const finishFee = sentryFee
+        ? (await this.getSentryController()).beginFeeSigning(
+            feeAuthorization,
+            Buffer.from(
+              verified.psbt.data.globalMap.unsignedTx.toBuffer()
+            ).toString('hex')
+          )
+        : undefined;
+      try {
+        const signed = await signing.transactions.signPSBT(
+          {
+            ...signingParams,
+            psbt: PsbtUtils.toPali(verified.psbt),
+          },
+          read
+        );
         signing.assertCurrent();
-        finishFee?.(true);
-        markDisclosed();
-        return signed;
-      };
-      return await (sentryScope
-        ? withSentryCollateralSignatureRelease(sentryScope, release)
-        : release(() => undefined));
-    } finally {
-      finishFee?.();
-    }
+        const sentryScope = this.getSentryCollateralScope();
+        const release = async (markDisclosed: () => void) => {
+          await this.assertNoSentryCollateralInputs(() =>
+            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+          );
+          if (sentryFee)
+            await this.verifySentryFeePsbt(
+              PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
+              feeAuthorization
+            );
+          signing.assertCurrent();
+          finishFee?.(true);
+          markDisclosed();
+          return signed;
+        };
+        return await (sentryScope
+          ? withSentryCollateralSignatureRelease(sentryScope, release)
+          : release(() => undefined));
+      } finally {
+        finishFee?.();
+      }
+    });
   }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = async (psbtOrHex: any, isRawHex = false) => {
     try {
-      const decoded = this.syscoinTransaction.decodeRawTransaction(
-        psbtOrHex,
-        isRawHex
-      );
-
-      if (!isRawHex) {
-        const { psbt, summary } = await this.verifySyscoinPsbt(psbtOrHex);
-        if (
-          !Array.isArray(decoded.vout) ||
-          decoded.vout.length !== summary.outputValuesSatoshis.length
-        ) {
-          throw new Error('Decoded outputs do not match the PSBT');
-        }
-        decoded.feeSatoshis = summary.feeSatoshis;
-        const sentry = await this.verifySentryFeePsbt(
-          psbt,
-          psbtOrHex?.sentryFeeAuthorization
+      if (isRawHex) {
+        this.assertWalletReadyForSigning();
+        return this.getActiveKeyring().syscoinTransaction.decodeRawTransaction(
+          psbtOrHex,
+          true
         );
-        if (sentry) decoded.sentry = sentry;
-        decoded.vout.forEach((output: any, index: number) => {
-          output.valueSatoshis = summary.outputValuesSatoshis[index];
-        });
-        if (decoded.syscoin) {
-          decoded.syscoin.allocations = summary.assetAllocations.length
-            ? { assets: summary.assetAllocations }
-            : null;
-          decoded.syscoin.inputAssets = summary.inputAssets;
-        }
+      }
+      const signing = this.captureUtxoSigningContext();
+      const decoded = signing.transactions.decodeRawTransaction(psbtOrHex);
+
+      const { psbt, summary } = await signing.withRead((read) =>
+        this.verifySyscoinPsbt(psbtOrHex, read)
+      );
+      if (
+        !Array.isArray(decoded.vout) ||
+        decoded.vout.length !== summary.outputValuesSatoshis.length
+      ) {
+        throw new Error('Decoded outputs do not match the PSBT');
+      }
+      decoded.feeSatoshis = summary.feeSatoshis;
+      const sentry = await this.verifySentryFeePsbt(
+        psbt,
+        psbtOrHex?.sentryFeeAuthorization
+      );
+      signing.assertCurrent();
+      if (sentry) decoded.sentry = sentry;
+      decoded.vout.forEach((output: any, index: number) => {
+        output.valueSatoshis = summary.outputValuesSatoshis[index];
+      });
+      if (decoded.syscoin) {
+        decoded.syscoin.allocations = summary.assetAllocations.length
+          ? { assets: summary.assetAllocations }
+          : null;
+        decoded.syscoin.inputAssets = summary.inputAssets;
       }
 
       return decoded;

@@ -10,7 +10,11 @@ jest.mock('@trezor/connect-webextension', () => ({
 
 import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager';
 import { LedgerKeyring } from '@sidhujag/sysweb3-keyring/cjs/ledger';
-import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
+import {
+  createLedgerPsbtSigner,
+  createTrezorPsbtSigner,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/hardware-psbt';
+import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core';
 import { TrezorKeyring } from '@sidhujag/sysweb3-keyring/cjs/trezor';
 import TrezorTransport from '@sidhujag/sysweb3-keyring/cjs/trezor/connect';
 import http from 'http';
@@ -42,7 +46,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
   'installed %s UTXO signing boundary (mock physical device)',
   (kind) => {
     let fixture: ReturnType<typeof createUtxoFixture>;
-    let sdk: SyscoinTransactions;
+    let sdk: SyscoinTransactionsCore;
     let state: any;
     let device: jest.Mock;
     let signedDeviceReply: any;
@@ -54,7 +58,12 @@ describe.each(['Ledger', 'Trezor'] as const)(
     let trezorAdapter: any;
 
     const request = () => JSON.parse(JSON.stringify(fixture.single));
-    const sign = () => sdk.signPSBT({ psbt: request() });
+    const ownedRead = () => ({
+      assertCurrent: () => undefined,
+      fetch: globalThis.fetch,
+      signal: new AbortController().signal,
+    });
+    const sign = () => sdk.signPSBT({ psbt: request() }, ownedRead());
 
     beforeEach(async () => {
       jest.clearAllMocks();
@@ -171,13 +180,14 @@ describe.each(['Ledger', 'Trezor'] as const)(
       softwareSigner = jest.fn(() => {
         throw new Error('Hardware account must not use a software signer');
       });
-      sdk = new SyscoinTransactions(
+      sdk = new SyscoinTransactionsCore(
         softwareSigner,
         softwareSigner,
         () => state,
-        () => fixture.userAddress,
-        ledger,
-        trezor,
+        {
+          ledger: createLedgerPsbtSigner(ledger),
+          trezor: createTrezorPsbtSigner(trezor),
+        },
         () => () => {
           if (!sessionCurrent)
             throw new Error('Wallet signing context changed');
@@ -292,8 +302,12 @@ describe.each(['Ledger', 'Trezor'] as const)(
           };
         if (change === 'session') sessionCurrent = false;
         response.resolve(signedDeviceReply);
-        await expect(signing).rejects.toThrow('Wallet signing context changed');
+        await expect(signing).rejects.toMatchObject({
+          name: 'AbortError',
+          message: 'Wallet signing context changed',
+        });
         expect(device).toHaveBeenCalledTimes(1);
+        expect(manager.delay).not.toHaveBeenCalled();
         // Caller-owned request is never mutated, even if the Trezor adapter has
         // finalized its private parsed copy before the enclosing SDK guard runs.
         expect(
@@ -306,7 +320,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
       const invalid = importFixturePsbt(request());
       invalid.data.inputs[0].bip32Derivation[0].path = "m/84'/1'/1'/0/0";
       await expect(
-        sdk.signPSBT({ psbt: exportFixturePsbt(invalid) })
+        sdk.signPSBT({ psbt: exportFixturePsbt(invalid) }, ownedRead())
       ).rejects.toThrow();
       expect(device).not.toHaveBeenCalled();
     });

@@ -1,7 +1,7 @@
 import {
   assertJsonWorkBudget,
   payloadBudgetError,
-} from './requestPayloadBudget';
+} from './requestPayloadBudget.ts';
 
 export const PSBT_WORK_LIMITS = {
   bytes: 512 * 1024,

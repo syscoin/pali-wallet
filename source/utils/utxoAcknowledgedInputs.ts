@@ -23,7 +23,7 @@ const validOutpoint = (value: unknown): value is string => {
   return Number.isSafeInteger(index) && index <= 0xffffffff;
 };
 
-const inputOutpoints = (inputs: readonly Input[]): string[] => {
+export const utxoInputOutpoints = (inputs: readonly Input[]): string[] => {
   if (!Array.isArray(inputs) || inputs.length === 0)
     throw new Error('Transaction inputs are unavailable.');
   const values = inputs.map((input) => {
@@ -62,7 +62,7 @@ export const createUtxoAcknowledgedInputs = (
     networkUrl: scope.networkUrl,
     accountXpub: scope.accountXpub,
     acknowledgedAt,
-    outpoints: inputOutpoints(inputs),
+    outpoints: utxoInputOutpoints(inputs),
   };
 };
 
@@ -105,7 +105,7 @@ export const assertNoRecentAcknowledgedInputOverlap = (
   now = Date.now()
 ) => {
   const acknowledged = getRecentAcknowledgedInputOutpoints(history, scope, now);
-  if (inputOutpoints(inputs).some((outpoint) => acknowledged.has(outpoint)))
+  if (utxoInputOutpoints(inputs).some((outpoint) => acknowledged.has(outpoint)))
     throw Object.assign(
       new Error(
         'The network is still updating your previous transaction. Please try again shortly.'

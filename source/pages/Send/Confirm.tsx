@@ -1209,6 +1209,9 @@ export const SendConfirm = () => {
               [
                 {
                   psbt: basicTxValues.psbt,
+                  ...(basicTxValues.utxoFeeReview && {
+                    utxoFeeReview: basicTxValues.utxoFeeReview,
+                  }),
                   ordinaryWalletSend:
                     location.pathname === '/send/confirm' &&
                     location.state?.external !== true,
@@ -2357,6 +2360,13 @@ export const SendConfirm = () => {
                       if (feeCalculationError) {
                         return renderFeeError();
                       }
+
+                      if (isBitcoinBased && basicTxValues.utxoFeeReview)
+                        return renderFeeAmount(
+                          formatSyscoinValue(
+                            basicTxValues.utxoFeeReview.feeSatoshis
+                          )
+                        );
 
                       let feeAmount;
                       if (isFixedNativeSoftwareSend) {

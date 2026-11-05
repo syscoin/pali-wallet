@@ -3,6 +3,10 @@ jest.mock('..', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
 }));
+jest.mock('./providers/walletHttpIdentity', () => ({
+  withWalletBackend: (_endpoint: string, read: () => Promise<unknown>) =>
+    read(),
+}));
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
@@ -10,6 +14,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: { toPali: jest.fn((psbt) => psbt) },
+  readPublicSyscoinFee: jest.fn(async () => 0.000001),
 }));
 jest.mock('./walletRecovery', () => ({
   runWalletSetup: jest.fn(),
@@ -149,7 +154,7 @@ describe('wallet setup signing capability admission', () => {
     async (flag) => {
       wallet[flag] = true;
       expect(() => wallet.ethereumTransaction).toThrow('Wallet setup');
-      expect(() => wallet.syscoinTransaction).toThrow('Wallet setup');
+      expect(wallet.syscoinTransaction).toBeUndefined();
       await expect(wallet.getSeed('password fixture')).rejects.toThrow(
         'Wallet setup'
       );
@@ -167,7 +172,8 @@ describe('wallet setup signing capability admission', () => {
     expect(wallet.ethereumTransaction.web3Provider).toBe(
       keyring.ethereumTransaction.web3Provider
     );
-    expect(wallet.syscoinTransaction).toBe(keyring.syscoinTransaction);
+    expect(wallet.syscoinTransaction).toBeUndefined();
+    await expect(wallet.getRecommendedFee()).resolves.toBe(0.000001);
     keyring.isUnlocked.mockReturnValue(true);
     await expect(wallet.getSeed('password fixture')).resolves.toBe(
       'synthetic seed fixture'

@@ -1,6 +1,6 @@
 jest.unmock('syscoinjs-lib');
 
-import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
+import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core';
 
 import { toEightDecimalBuilderAmount } from './syscoinAssetAmount';
 
@@ -18,6 +18,7 @@ describe('Pali asset amount to keyring builder', () => {
     });
     const readOnlySigner = {
       main: { assetAllocationSend, blockbookURL: 'https://blockbook.test' },
+      getOwnedAddress: async () => 'sys1-change',
     };
     const state = {
       accounts: {
@@ -25,23 +26,39 @@ describe('Pali asset amount to keyring builder', () => {
       },
       activeAccountId: 0,
       activeAccountType: 'HDAccount',
-      activeNetwork: { chainId: 57, currency: 'sys', slip44: 57 },
+      activeNetwork: {
+        chainId: 57,
+        kind: 'syscoin',
+        currency: 'sys',
+        slip44: 57,
+        url: 'https://blockbook.test',
+      },
     };
-    const transactions = new SyscoinTransactions(
-      () => ({ hd: {}, main: readOnlySigner.main }),
+    const transactions = new SyscoinTransactionsCore(
+      () => {
+        throw new Error('An asset quote must not invoke a signer');
+      },
       () => readOnlySigner,
-      () => state,
-      async () => 'sys1-change',
+      () => state as never,
       {},
-      {}
+      () => () => undefined
     );
 
-    await transactions.getEstimateSysTransactionFee({
-      amount: toEightDecimalBuilderAmount(amount, 0, assetType),
-      feeRate: 0.00000001,
-      receivingAddress: 'sys1-recipient',
-      token: { guid: '4294967297', symbol: 'NFT' },
-    });
+    await transactions.getEstimateSysTransactionFee(
+      {
+        amount: toEightDecimalBuilderAmount(amount, 0, assetType),
+        feeRate: 0.00000001,
+        receivingAddress: 'sys1-recipient',
+        token: { guid: '4294967297', symbol: 'NFT' },
+      },
+      {
+        assertCurrent: () => undefined,
+        signal: new AbortController().signal,
+        fetch: jest.fn(async () => {
+          throw new Error('Unexpected asset quote request');
+        }),
+      }
+    );
 
     const assetMap = assetAllocationSend.mock.calls[0][1] as Map<
       string,

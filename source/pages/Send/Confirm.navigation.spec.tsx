@@ -1716,6 +1716,8 @@ it.each([
   async ({ pathname, external, ordinaryWalletSend }) => {
     mockLocation.pathname = pathname;
     mockLocation.state.external = external;
+    const utxoFeeReview = { feeSatoshis: '452', unsignedHash: 'a'.repeat(64) };
+    if (ordinaryWalletSend) mockLocation.state.tx.utxoFeeReview = utxoFeeReview;
     let finishDiscard!: () => void;
     mockClearNavigationState.mockImplementation(
       () =>
@@ -1724,6 +1726,8 @@ it.each([
         })
     );
     render(<SendConfirm />);
+    if (ordinaryWalletSend)
+      expect(screen.getByText('0.00000452 SYS')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     expect(mockClearNavigationState).toHaveBeenCalledTimes(1);
     expect(mockClearNavigationState).toHaveBeenCalledWith({
@@ -1742,6 +1746,7 @@ it.each([
             isTrezor: undefined,
             isLedger: undefined,
             ordinaryWalletSend,
+            ...(ordinaryWalletSend && { utxoFeeReview }),
           },
         ],
         30000

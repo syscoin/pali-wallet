@@ -51,6 +51,8 @@ import {
   useSendPreparationGuard,
 } from './useSendDraftWriter';
 
+type UtxoFeeReview = import('utils/syscoinPsbtValues').UtxoFeeReview;
+
 const nativeAtomicAmount = (value: unknown) =>
   parseUnits(String(removeScientificNotation(String(value))), 8);
 
@@ -586,6 +588,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // For validation, we need to estimate the total fee to ensure sufficient funds
         let estimatedTotalFee = 0.001; // Conservative default
         let psbt = null;
+        let utxoFeeReview: UtxoFeeReview | undefined;
         try {
           const quote = (await controllerEmitter(
             ['wallet', 'getEstimateSysTransactionFee'],
@@ -605,6 +608,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
             grossAmount?: string;
             psbt: any;
             recipientAmount?: string;
+            utxoFeeReview: UtxoFeeReview;
           };
           if (!isCurrentPreparation()) return;
 
@@ -637,6 +641,7 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
 
           estimatedTotalFee = estimatedFee;
           psbt = estimatedPsbt;
+          utxoFeeReview = quote.utxoFeeReview;
 
           // Critical validation: If PSBT creation failed, we cannot proceed
           if (!psbt || !estimatedPsbt) {
@@ -714,7 +719,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
           sender: activeAccount?.address,
           receivingAddress: receiver,
           amount: quotedGrossAmount,
-          fee: estimatedTotalFee, // Actual fee amount (compliant with SysProvider API)
+          fee: estimatedTotalFee,
+          utxoFeeReview,
           feeRate: feeRate, // Add fee rate for transaction details display
           rbf: RBF, // RBF state for transaction details display
           token: null,
@@ -744,8 +750,13 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
         // For tokens, we need to estimate the fee for display
         let tokenFeeEstimate = MINIMUM_FEE; // Default
         let tokenPsbt = null;
+        let utxoFeeReview: UtxoFeeReview | undefined;
         try {
-          const { fee: estimatedFee, psbt } = (await controllerEmitter(
+          const {
+            fee: estimatedFee,
+            psbt,
+            utxoFeeReview: review,
+          } = (await controllerEmitter(
             ['wallet', 'getEstimateSysTransactionFee'],
             [
               {
@@ -759,11 +770,12 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
                 },
               },
             ]
-          )) as { fee: number; psbt: any };
+          )) as { fee: number; psbt: any; utxoFeeReview: UtxoFeeReview };
           if (!isCurrentPreparation()) return;
 
           tokenFeeEstimate = estimatedFee;
           tokenPsbt = psbt;
+          utxoFeeReview = review;
 
           // Critical validation: If PSBT creation failed, we cannot proceed
           if (!psbt || !tokenPsbt) {
@@ -831,7 +843,8 @@ const SendSysForm = ({ scopeKey }: { scopeKey: string }) => {
               sender: activeAccount?.address,
               receivingAddress: receiver,
               amount: amount, // Keep as string to preserve precision
-              fee: tokenFeeEstimate, // Actual fee amount (compliant with SysProvider API)
+              fee: tokenFeeEstimate,
+              utxoFeeReview,
               feeRate: feeRate, // Add fee rate for transaction details display
               rbf: RBF, // RBF state for transaction details display
               psbt: tokenPsbt,

@@ -1,6 +1,6 @@
 jest.unmock('syscoinjs-lib');
 
-import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
+import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core';
 import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';
 import { spawnSync } from 'child_process';
 import { EventEmitter } from 'events';
@@ -43,17 +43,26 @@ async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
       url: 'https://offline.invalid',
     },
   };
-  const transactions = new SyscoinTransactions(
-    () => ({ hd }),
-    () => ({ hd }),
-    () => state,
-    async () => f.userAddress,
-    {},
+  const transactions = new SyscoinTransactionsCore(
+    () => ({ hd, main: undefined }),
+    () => {
+      throw new Error('Offline signing must not create a Blockbook builder');
+    },
+    () => state as never,
     {},
     () => () => undefined
   );
   mockBlockbookLookup.mockClear();
-  const result = await transactions.signPSBT({ psbt: f.mixed });
+  const result = await transactions.signPSBT(
+    { psbt: f.mixed },
+    {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+      fetch: async () => {
+        throw new Error('Offline fixture must not request Blockbook');
+      },
+    }
+  );
   expect(mockBlockbookLookup).not.toHaveBeenCalled();
   return result;
 }
