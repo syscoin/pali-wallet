@@ -218,7 +218,8 @@ export interface ISysTransaction {
       };
       isOwn?: boolean;
     }
-  >; // Transaction outputs
+  >;
+  walletHistoryObservation?: string; // Transaction outputs
 }
 
 export interface ISysTransactionsController {

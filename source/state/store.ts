@@ -641,8 +641,13 @@ function persistVaultMutation(
         current.vaultGlobal.activeSlip44 !== sourceSlip44 &&
         vaultCache.isVaultCached(sourceSlip44)
       ) {
-        repairVault =
-          (await vaultCache.getSlip44Vault(sourceSlip44)) || sourceVault;
+        const cachedVault = await vaultCache.getSlip44Vault(sourceSlip44);
+        if (cachedVault)
+          repairVault = vaultCache.prepareSlip44Vault(
+            sourceSlip44,
+            cachedVault,
+            false
+          );
       }
       assertWalletPersistenceAllowed();
       if (isSameWallet && !isSameWallet()) throw error;

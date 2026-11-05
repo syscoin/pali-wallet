@@ -248,7 +248,7 @@ it.each([false, true])(
   }
 );
 
-it('lets a reopened consumer adopt queued work before dispatch without cancelling the shared job', async () => {
+it('lets a reopened consumer supply the live reader to an already queued job', async () => {
   const cache = createUtxoTransactionDetailsCache();
   const blocks = [held(), held()];
   const active = blocks.map((block, i) =>
@@ -263,13 +263,14 @@ it('lets a reopened consumer adopt queued work before dispatch without cancellin
     expect(signal.aborted).toBe(false);
     return { txid: hash };
   });
+  const retiredRead = jest.fn(async () => ({ txid: hash }));
   const left = jest.fn(),
     next = jest.fn(),
     error = jest.fn();
   const stopFirst = cache.watchUtxoTransactionDetails(
     'queued',
     hash,
-    read,
+    retiredRead,
     () => true,
     left,
     error
@@ -289,6 +290,7 @@ it('lets a reopened consumer adopt queued work before dispatch without cancellin
   await Promise.all(active);
   await flush();
   expect(read).toHaveBeenCalledTimes(1);
+  expect(retiredRead).not.toHaveBeenCalled();
   expect(left).not.toHaveBeenCalled();
   expect(next).toHaveBeenCalledWith({ txid: hash });
   expect(error).not.toHaveBeenCalled();

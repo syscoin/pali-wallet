@@ -9,7 +9,9 @@ import {
   within,
 } from '@testing-library/react';
 import React from 'react';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
+import { DetailsView } from '../../Details';
 import { clearTokenIconCache } from 'components/TokenIcon';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
@@ -56,6 +58,7 @@ jest.mock('components/Icon/Icon', () => ({
   ArrowUpSvg: () => null,
   ReceivedArrowSvg: () => null,
   NftFallbackSvg: () => null,
+  ExternalLinkSvg: () => null,
 }));
 jest.mock('hooks/index', () => ({
   useTransactionsListConfig: jest.requireActual(
@@ -68,6 +71,16 @@ jest.mock('hooks/index', () => ({
 }));
 jest.mock('utils/navigationState', () => ({
   getWalletNavigationScope: () => mockState.scope,
+}));
+jest.mock('hooks/useUtils', () => ({
+  useUtils: () => ({
+    navigate: jest.requireActual('react-router-dom').useNavigate(),
+  }),
+}));
+jest.mock('../../AssetDetails', () => ({ AssetDetails: () => null }));
+jest.mock('../../Nfts', () => ({ NftsDetails: () => null }));
+jest.mock('../EVM/EvmDetailsEnhanced', () => ({
+  EvmTransactionDetailsEnhanced: () => null,
 }));
 jest.mock('utils/index', () => {
   const format = jest.requireActual('utils/format');
@@ -192,6 +205,7 @@ beforeEach(() => {
       isBitcoinBased: true,
       activeAccount: { type: 'HDAccount', id: 0 },
       accountAssets: { HDAccount: { 0: { ethereum: [], syscoin: [] } } },
+      accountTransactions: { HDAccount: { 0: { ethereum: {}, syscoin: {} } } },
       activeNetwork: {
         currency: 'sys',
         chainId: 57,
@@ -1032,6 +1046,121 @@ it('uses a new pending summary over an older confirmed cached body without leaki
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
+it.each([false, true])(
+  'reopens the full observation over the unchanged summary (initially pending: %s)',
+  async (initiallyPending) => {
+    const confirmed = {
+      blockHash: 'observed-block',
+      blockHeight: 123,
+      confirmations: 6,
+    };
+    const summary = rawTransaction({
+      ...(initiallyPending ? {} : confirmed),
+      vin: [],
+    });
+    mockEmitter.mockResolvedValue(
+      rawTransaction(initiallyPending ? confirmed : {})
+    );
+
+    const first = render(
+      <SyscoinTransactionDetails hash={mockHash} tx={summary} />
+    );
+    await screen.findByText('raw-from');
+    const count = initiallyPending ? '6' : '0';
+    expect(confirmationValue().textContent).toBe(count);
+    first.unmount();
+
+    render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
+    await waitFor(() => expect(confirmationValue().textContent).toBe(count));
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each(['redux', 'paged-route'] as const)(
+  'reopens real Details without treating cloned %s data as a new observation',
+  async (delivery) => {
+    const observation = 'abcdef1234567890abcdef1234567890:1';
+    const summary = rawTransaction({
+      confirmations: 6,
+      blockHeight: 123,
+      blockHash: 'old-confirmed-block',
+      walletHistoryObservation: observation,
+    });
+    mockEmitter.mockResolvedValue(
+      rawTransaction({
+        vin: [
+          {
+            addresses: ['full-only-from'],
+            value: 900001000,
+            isAddress: true,
+            n: 0,
+            sequence: 0,
+            txid: mockHash,
+            vout: 0,
+          },
+        ],
+      })
+    );
+    const installVaultClone = () => {
+      if (delivery === 'redux')
+        mockState.vault = JSON.parse(
+          JSON.stringify({
+            ...mockState.vault,
+            accountTransactions: {
+              HDAccount: { 0: { ethereum: {}, syscoin: { 57: [summary] } } },
+            },
+          })
+        );
+    };
+    const Open = () => {
+      const navigate = useNavigate();
+      return (
+        <button
+          onClick={() => {
+            installVaultClone();
+            navigate('/home/details', {
+              state: {
+                hash: mockHash,
+                walletScope: mockState.scope,
+                ...(delivery === 'paged-route'
+                  ? { tx: JSON.parse(JSON.stringify(summary)) }
+                  : {}),
+              },
+            });
+          }}
+        >
+          Open details
+        </button>
+      );
+    };
+    const Details = () => {
+      const navigate = useNavigate();
+      return (
+        <>
+          <button onClick={() => navigate(-1)}>Back</button>
+          <DetailsView />
+        </>
+      );
+    };
+    render(
+      <MemoryRouter initialEntries={['/home']}>
+        <Routes>
+          <Route path="/home" element={<Open />} />
+          <Route path="/home/details" element={<Details />} />
+        </Routes>
+      </MemoryRouter>
+    );
+    for (let open = 0; open < 2; open++) {
+      fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
+      await screen.findByText('full-only-from');
+      expect(confirmationValue().textContent).toBe('0');
+      expect(screen.queryByText('old-confirmed-block')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    }
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
 it('uses a same-height replacement block from a current summary over the cached block', async () => {
   const cached = rawTransaction({
     confirmations: 6,
@@ -1053,10 +1182,163 @@ it('uses a same-height replacement block from a current summary over the cached 
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
-it('uses a newly fetched body until a later summary observation demotes it', async () => {
+it.each(['same', 'restarted'] as const)(
+  'keeps raw status when a route falls back to an older paged summary after a %s worker epoch',
+  async (worker) => {
+    const oldEpoch = 'abcdef1234567890abcdef1234567890';
+    const activeEpoch = worker === 'same' ? oldEpoch : 'b'.repeat(32);
+    const setVaultSummary = (summary?: ISysTransaction) => {
+      mockState = {
+        ...mockState,
+        vault: {
+          ...mockState.vault,
+          accountTransactions: {
+            HDAccount: {
+              0: { ethereum: {}, syscoin: { 57: summary ? [summary] : [] } },
+            },
+          },
+        },
+      };
+    };
+    const summary = rawTransaction({
+      confirmations: 6,
+      blockHeight: 123,
+      blockHash: 'older-page-block',
+      walletHistoryObservation: `${oldEpoch}:1`,
+    });
+    setVaultSummary({
+      ...summary,
+      blockHash: 'active-summary-block',
+      walletHistoryObservation: `${activeEpoch}:2`,
+    });
+    mockEmitter.mockResolvedValue({
+      ...rawTransaction({
+        confirmations: 7,
+        blockHeight: 124,
+        blockHash: 'full-block',
+      }),
+      walletDetailObservation: `${activeEpoch}:3`,
+    });
+    const route = {
+      pathname: '/home/details',
+      state: {
+        hash: mockHash,
+        walletScope: mockState.scope,
+        tx: JSON.parse(JSON.stringify(summary)),
+      },
+    };
+    const element = () => (
+      <MemoryRouter initialEntries={[route]}>
+        <DetailsView />
+      </MemoryRouter>
+    );
+    const view = render(element());
+    expect(await screen.findByText('full-block')).toBeTruthy();
+
+    setVaultSummary();
+    view.rerender(element());
+    expect(screen.getByText('full-block')).toBeTruthy();
+    expect(screen.queryByText('older-page-block')).toBeNull();
+
+    const { walletHistoryObservation: _revision, ...restoredPage } = summary;
+    void _revision;
+    setVaultSummary(restoredPage);
+    view.rerender(element());
+    expect(screen.getByText('full-block')).toBeTruthy();
+    expect(screen.queryByText('older-page-block')).toBeNull();
+
+    setVaultSummary(
+      rawTransaction({
+        confirmations: 1,
+        blockHeight: 130,
+        blockHash: 'new-epoch-block',
+        walletHistoryObservation: `${'c'.repeat(32)}:1`,
+      })
+    );
+    view.rerender(element());
+    expect(confirmationValue().textContent).toBe('1');
+    expect(screen.getByText('new-epoch-block')).toBeTruthy();
+    expect(screen.queryByText('full-block')).toBeNull();
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([false, true])(
+  'keeps raw detail status after the worker restores the same unversioned Redux row (initially pending: %s)',
+  async (initiallyPending) => {
+    const epoch = 'abcdef1234567890abcdef1234567890';
+    const mined = {
+      confirmations: 7,
+      blockHeight: 123,
+      blockHash: 'observed-block',
+    };
+    const savedSummary = rawTransaction({
+      vin: [],
+      ...(initiallyPending ? {} : mined),
+    });
+    const setVaultSummary = (row: ISysTransaction) => {
+      mockState = {
+        ...mockState,
+        vault: {
+          ...mockState.vault,
+          accountTransactions: {
+            HDAccount: { 0: { ethereum: {}, syscoin: { 57: [row] } } },
+          },
+        },
+      };
+    };
+    setVaultSummary({
+      ...savedSummary,
+      walletHistoryObservation: `${epoch}:1`,
+    });
+    mockEmitter.mockResolvedValue({
+      ...rawTransaction(initiallyPending ? mined : {}),
+      walletDetailObservation: `${epoch}:2`,
+    });
+    const route = {
+      pathname: '/home/details',
+      state: { hash: mockHash, walletScope: mockState.scope },
+    };
+    const element = () => (
+      <MemoryRouter initialEntries={[route]}>
+        <DetailsView />
+      </MemoryRouter>
+    );
+    const view = render(element());
+    await screen.findByText('raw-from');
+    const rawConfirmations = initiallyPending ? '7' : '0';
+    expect(confirmationValue().textContent).toBe(rawConfirmations);
+
+    setVaultSummary(JSON.parse(JSON.stringify(savedSummary)));
+    view.rerender(element());
+    expect(confirmationValue().textContent).toBe(rawConfirmations);
+
+    setVaultSummary({
+      ...savedSummary,
+      confirmations: 1,
+      blockHeight: 124,
+      blockHash: 'saved-block-2',
+    });
+    view.rerender(element());
+    expect(confirmationValue().textContent).toBe('1');
+    expect(screen.getByText('saved-block-2')).toBeTruthy();
+
+    setVaultSummary({
+      ...savedSummary,
+      walletHistoryObservation: `${'b'.repeat(32)}:1`,
+    });
+    view.rerender(element());
+    expect(confirmationValue().textContent).toBe(initiallyPending ? '0' : '7');
+    expect(mockEmitter).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('uses a fresh body across an unrelated summary clone until a real identical-facts observation replaces it', async () => {
   const response = deferred<ISysTransaction>();
   mockEmitter.mockReturnValue(response.promise);
-  const summary = rawTransaction();
+  const summary = rawTransaction({
+    walletHistoryObservation: 'abcdef1234567890abcdef1234567890:1',
+  });
   const view = render(
     <SyscoinTransactionDetails hash={mockHash} tx={summary} />
   );
@@ -1074,9 +1356,102 @@ it('uses a newly fetched body until a later summary observation demotes it', asy
   view.rerender(
     <SyscoinTransactionDetails hash={mockHash} tx={{ ...summary }} />
   );
+  expect(confirmationValue().textContent).toBe('6');
+  view.rerender(
+    <SyscoinTransactionDetails
+      hash={mockHash}
+      tx={{
+        ...summary,
+        walletHistoryObservation: 'abcdef1234567890abcdef1234567890:2',
+      }}
+    />
+  );
   expect(confirmationValue().textContent).toBe('0');
   expect(screen.queryByText('fresh-block')).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('uses a new summary admitted while the physical detail read is pending', async () => {
+  const response = deferred<ISysTransaction>();
+  mockEmitter.mockReturnValue(response.promise);
+  const summary = rawTransaction({
+    vin: [],
+    walletHistoryObservation: 'abcdef1234567890abcdef1234567890:1',
+  });
+  const view = render(
+    <SyscoinTransactionDetails hash={mockHash} tx={summary} />
+  );
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(1));
+  view.rerender(
+    <SyscoinTransactionDetails
+      hash={mockHash}
+      tx={{
+        ...summary,
+        walletHistoryObservation: 'abcdef1234567890abcdef1234567890:2',
+      }}
+    />
+  );
+  await act(async () =>
+    response.resolve(
+      rawTransaction({
+        confirmations: 6,
+        blockHeight: 123,
+        blockHash: 'held-block',
+      })
+    )
+  );
+  expect(await screen.findByText('raw-from')).toBeTruthy();
+  expect(confirmationValue().textContent).toBe('0');
+  expect(screen.queryByText('held-block')).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+});
+
+it('uses the live viewer for a queued raw dispatch after the worker restarts', async () => {
+  const epoch = 'abcdef1234567890abcdef1234567890';
+  const blockers = ['1'.repeat(64), '2'.repeat(64)];
+  const responses = blockers.map(() => deferred<ISysTransaction>());
+  mockEmitter.mockImplementation((_method, [hash]) => {
+    const index = blockers.indexOf(hash);
+    if (index !== -1) return responses[index].promise;
+    return Promise.resolve({
+      ...rawTransaction({
+        confirmations: 7,
+        blockHeight: 124,
+        blockHash: 'queued-full-block',
+      }),
+      walletDetailObservation: `${'b'.repeat(32)}:1`,
+    });
+  });
+  const list = (revision?: number) => (
+    <>
+      {blockers.map((hash) => (
+        <SyscoinTransactionDetails key={hash} hash={hash} />
+      ))}
+      {revision !== undefined && (
+        <SyscoinTransactionDetails
+          key={mockHash}
+          hash={mockHash}
+          tx={rawTransaction({
+            walletHistoryObservation: `${epoch}:${revision}`,
+          })}
+        />
+      )}
+    </>
+  );
+  const view = render(list(1));
+  await waitFor(() => expect(mockEmitter).toHaveBeenCalledTimes(2));
+  view.rerender(list());
+  view.rerender(list(2));
+  expect(mockEmitter).toHaveBeenCalledTimes(2);
+  await act(async () =>
+    responses.forEach((response, index) =>
+      response.resolve(rawTransaction({ txid: blockers[index] }))
+    )
+  );
+  expect(await screen.findByText('queued-full-block')).toBeTruthy();
+  expect(
+    mockEmitter.mock.calls.filter(([, [hash]]) => hash === mockHash)
+  ).toHaveLength(1);
 });
 
 it('uses current summary confirmation and separate native change over pending raw cached metadata', async () => {

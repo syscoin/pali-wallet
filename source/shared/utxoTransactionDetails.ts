@@ -1,4 +1,8 @@
 import {
+  detailFollowsUtxoSummary,
+  type UtxoSummaryObservation,
+} from './utxoDetailFreshness.ts';
+import {
   isSyscoinTokenOperation,
   normalizeSyscoinTransactionType,
 } from './utxoNativeAmounts.ts';
@@ -97,25 +101,21 @@ export const getReceivingAddresses = (
   return [...addresses];
 };
 
-const selectFresherStatusTransaction = (
-  accountTransaction: UtxoDetailTransaction,
-  fullTransaction: UtxoDetailTransaction,
-  preferAccountStatus: boolean
-) => (preferAccountStatus ? accountTransaction : fullTransaction);
-
 export const mergeAccountSummaryWithFullTransaction = <
   T extends UtxoDetailTransaction
 >(
   accountTransaction: T | undefined,
   fullTransaction: T,
-  preferAccountStatus: boolean
+  summaryObservation: UtxoSummaryObservation | undefined
 ): T => {
   if (!accountTransaction) return fullTransaction;
-  const statusTransaction = selectFresherStatusTransaction(
-    accountTransaction,
-    fullTransaction,
-    preferAccountStatus
-  );
+  // Reopening a cached body is not a new summary observation. A real new
+  // summary can change placement in either direction, at any confirmation count.
+  const statusTransaction =
+    summaryObservation !== undefined &&
+    detailFollowsUtxoSummary(fullTransaction, summaryObservation)
+      ? fullTransaction
+      : accountTransaction;
 
   return {
     ...fullTransaction,

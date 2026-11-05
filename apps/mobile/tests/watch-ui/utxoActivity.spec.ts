@@ -413,3 +413,34 @@ test('Back cancels only selected detail work and a fresh reorg observation may b
   await expect(detail.getByText(/Block time:/)).toHaveCount(0);
   await expect(detail.getByText('Native account change: −10.0 BTC', { exact: true })).toBeVisible();
 });
+
+for (const initiallyPending of [false, true]) test(`reopening keeps the detail observation from an unchanged ${initiallyPending ? 'pending' : 'confirmed'} summary`, async ({ page }) => {
+  await open(page, 'bitcoin', false, initiallyPending ? 'pending' : 'value');
+  await load(page);
+  const row = page.getByTestId(`watch-activity-row-${ID(1)}`);
+  const details = row.getByRole('button', { name: 'Net change −10.0 BTC', exact: true });
+  const detail = page.getByTestId('watch-activity-detail');
+  const rawCalls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => /\/api\/v2\/tx\//.test(url)).length);
+  await page.evaluate(pending => {
+    window.__watchFixture.activity.mode('value');
+    window.__watchFixture.activity.detail(pending ? 'value' : 'reorg');
+  }, initiallyPending);
+  const status = initiallyPending ? '11 confirmations · Block 190' : 'Pending';
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(status, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(status, { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.evaluate(pending => window.__watchFixture.activity.mode(pending ? 'pending' : 'value'), initiallyPending);
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
+  await load(page);
+  await details.click();
+  await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
+  await expect(detail.getByText(initiallyPending ? 'Pending' : '11 confirmations · Block 190', { exact: true })).toBeVisible();
+  expect(await rawCalls()).toBe(1);
+});

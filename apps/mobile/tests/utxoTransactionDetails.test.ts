@@ -73,6 +73,22 @@ test('warm detail rechecks records and uses the newer account status with no raw
   } finally { owner.lock(); }
 });
 
+for (const initiallyPending of [false, true]) test(`reopening uses the full observation over the unchanged ${initiallyPending ? 'pending' : 'confirmed'} summary`, async () => {
+  const f = fixture(), owner = await f.open();
+  const pending = { blockHeight: -1, blockHash: null, blockTime: 0, confirmations: 0 };
+  try {
+    f.summaryRows = [{ ...f.summary(), ...(initiallyPending ? pending : {}) }];
+    f.full = { ...f.summary(), ...(!initiallyPending ? pending : {}) };
+    await owner.readUtxoActivityPage({ page: 1 }, signal());
+    const first = await owner.readUtxoActivityDetail({ txid: H }, signal());
+    assert.equal(first.row.block?.height ?? null, initiallyPending ? 100 : null);
+    const count = f.calls.length;
+    const reopened = await owner.readUtxoActivityDetail({ txid: H }, signal());
+    assert.deepEqual(reopened, first);
+    assert.equal(f.calls.length, count);
+  } finally { owner.lock(); }
+});
+
 for (const stage of ['external', 'lock', 'aba', 'records', 'release'] as const) test(`${stage} revokes a held selected detail and never admits its late body`, async () => {
   const f = fixture(), owner = await f.open(); await owner.readUtxoActivityPage({ page: 1 }, signal());
   const wait = deferred<void>(), abort = new AbortController(); f.hold = wait.promise;
@@ -181,6 +197,34 @@ test('one cancelled detail subscriber does not abort another live subscriber of 
     assert.equal(f.signals.at(-1)?.aborted, false, 'physical read still serves the other subscriber');
     wait.resolve(); assert.equal((await second).row.nativeTransfer?.amount, '900000000');
     assert.equal(f.calls.filter(path => path.startsWith('/api/v2/tx/')).length, 1);
+  } finally { wait.resolve(); owner.lock(); }
+});
+
+test('a revived queued detail uses raw dispatch after the newly admitted summary', async () => {
+  const f = fixture(3), owner = await f.open(), wait = deferred<void>(), abort = new AbortController();
+  const original = await owner.readUtxoActivityPage({ page: 1 }, signal());
+  f.hold = wait.promise;
+  const rawCalls = () => f.calls.filter(path => path.startsWith('/api/v2/tx/'));
+  try {
+    const blockers = [ID(1), ID(2)].map(txid => owner.readUtxoActivityDetail({ txid }, signal()));
+    await f.entered.promise; await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rawCalls().length, 2);
+    const stale = owner.readUtxoActivityDetail({ txid: ID(3) }, abort.signal);
+    const cancelled = assert.rejects(stale);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rawCalls().length, 2, 'the first target subscriber is queued');
+    abort.abort(); await cancelled;
+
+    f.summaryHeight = 99;
+    const fresh = await owner.readUtxoActivityPage({ page: 1 }, signal());
+    owner.retainUtxoActivityRows([original.rows[0]!, original.rows[1]!, fresh.rows[2]!]);
+    const revived = owner.readUtxoActivityDetail({ txid: ID(3) }, signal());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rawCalls().length, 2, 'the new subscriber joins the queued target');
+    wait.resolve();
+    assert.equal((await revived).row.block?.height, 101);
+    await Promise.all(blockers);
+    assert.equal(rawCalls().filter(path => path.endsWith(ID(3))).length, 1);
   } finally { wait.resolve(); owner.lock(); }
 });
 

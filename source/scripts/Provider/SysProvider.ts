@@ -1,5 +1,6 @@
 // isValidSYSAddress removed - validation should use message passing to background
 
+import { UTXO_SUMMARY_OBSERVATION } from '../../shared/utxoDetailFreshness';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import { getSentryNetwork } from 'utils/sentry/network';
@@ -76,14 +77,16 @@ export const SysProvider = (host: string) => {
       accountTransactions[connection.accountType]?.[connection.accountId]
         ?.syscoin?.[activeNetwork.chainId] || [];
 
-    // Local acknowledgement provenance is an internal read-after-write fence,
-    // not part of a dapp transaction response. In particular it can contain the
-    // wallet's configured backend URL. Preserve every ordinary public field and
-    // return new rows so the guard remains intact in the wallet's own store.
+    // Local acknowledgement provenance can contain the configured backend URL.
+    // Keep it and the wallet's observation marker out of dapp responses.
     return transactions.map((transaction) => {
-      const { localAcknowledgedInputs: _local, ...publicTransaction } =
-        transaction;
+      const {
+        localAcknowledgedInputs: _local,
+        [UTXO_SUMMARY_OBSERVATION]: _observation,
+        ...publicTransaction
+      } = transaction;
       void _local;
+      void _observation;
       return publicTransaction;
     });
   };

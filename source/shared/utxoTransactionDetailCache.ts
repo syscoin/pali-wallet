@@ -38,8 +38,8 @@ export const createUtxoTransactionDetailsCache = () => {
       abort: AbortController;
       drain: () => void;
       drained: Promise<void>;
-      guards: Set<() => boolean>;
       promise: Promise<any>;
+      readers: Map<() => boolean, (signal: AbortSignal) => Promise<any>>;
       reject: (error: Error) => void;
       started: () => boolean;
     }
@@ -114,7 +114,7 @@ export const createUtxoTransactionDetailsCache = () => {
         return inflight.drained.then(() =>
           readUtxoTransactionDetails(scope, hash, read, isCurrent)
         );
-      inflight.guards.add(isCurrent);
+      inflight.readers.set(isCurrent, read);
       return inflight.promise;
     }
     if (queue.length >= 30)
@@ -122,11 +122,14 @@ export const createUtxoTransactionDetailsCache = () => {
         new HistoryReadQueueFullError('History read queue full')
       );
 
-    const guards = new Set([isCurrent]);
+    const readers = new Map([[isCurrent, read]]);
     const assertLive = () => {
-      const current = [...guards].some((guard) => guard());
+      const current = [...readers]
+        .reverse()
+        .find(([guard]) => guard() && readers.has(guard));
       if (disposed || abort.signal.aborted || !current)
         throw new Error('History scope changed');
+      return current[1];
     };
     const abort = new AbortController();
     let rejectPending!: (error: Error) => void;
@@ -141,12 +144,9 @@ export const createUtxoTransactionDetailsCache = () => {
         started = true;
         active += 1;
         Promise.resolve()
-          .then(() => {
-            // Only cancel queued work once every Details subscriber has left
-            // the scope; concurrent views can share the same pending read.
-            assertLive();
-            return read(abort.signal);
-          })
+          // A queued selection may reopen before dispatch. Its latest live
+          // reader owns the physical request and its observation baseline.
+          .then(() => assertLive()(abort.signal))
           .then((data) => {
             assertLive();
             if (
@@ -200,7 +200,7 @@ export const createUtxoTransactionDetailsCache = () => {
       else queue.push(start);
     });
     pending.set(scope, {
-      guards,
+      readers,
       promise: result,
       abort,
       reject: rejectPending,
@@ -245,7 +245,8 @@ export const createUtxoTransactionDetailsCache = () => {
       stopped = true;
       capacityListeners.delete(attempt);
       const job = pending.get(scope);
-      if (job?.started() && ![...job.guards].some((guard) => guard()))
+      job?.readers.delete(current);
+      if (job?.started() && ![...job.readers.keys()].some((guard) => guard()))
         job.abort.abort();
     };
   };

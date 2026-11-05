@@ -40,7 +40,7 @@ describe('SysProvider account privacy', () => {
     expect(provider.transaction(['unrelated'])).toBeNull();
   });
 
-  it('strips local acknowledgement provenance from both public history methods without changing stored or public transaction data', () => {
+  it('keeps internal provenance out of both public history methods without changing transaction data', () => {
     const publicTransaction = {
       txid: 'connected',
       fees: '226',
@@ -59,6 +59,7 @@ describe('SysProvider account privacy', () => {
     };
     const stored = {
       ...publicTransaction,
+      walletHistoryObservation: 'abcdef1234567890abcdef1234567890',
       localAcknowledgedInputs: {
         accountXpub: 'internal-account-xpub',
         acknowledgedAt: 1800000000000,

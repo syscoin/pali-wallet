@@ -3,6 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
 import {
+  bindUtxoDetailObservation,
+  isSerializedUtxoObservation,
+  UTXO_DETAIL_OBSERVATION,
+  type UtxoSummaryStatus,
+} from '../../../../../../shared/utxoDetailFreshness';
+import {
   getSendingAddresses,
   getReceivingAddresses,
   mergeAccountSummaryWithFullTransaction,
@@ -39,7 +45,7 @@ import {
 import { isTransactionInBlock } from 'utils/transactionUtils';
 
 import {
-  getCachedUtxoTransactionDetails,
+  getUtxoSummaryObservation,
   watchUtxoTransactionDetails,
 } from './utxoTransactionDetails';
 
@@ -55,12 +61,14 @@ CopyIcon.displayName = 'CopyIcon';
 
 interface ISyscoinTransactionDetailsProps {
   hash: string;
+  routeSummaryObservation?: UtxoSummaryStatus;
   tx?: ISysTransaction;
 }
 
 export const SyscoinTransactionDetails = ({
   hash,
   tx,
+  routeSummaryObservation,
 }: ISyscoinTransactionDetailsProps) => {
   const { activeNetwork } = useSelector((state: RootState) => state.vault);
   const activeAssets = useSelector(selectActiveAccountAssets);
@@ -77,9 +85,7 @@ export const SyscoinTransactionDetails = ({
   const { t, i18n } = useTranslation();
 
   const [enhancedTransaction, setEnhancedTransaction] = useState<{
-    accountSummaryAtRead: ISysTransaction | undefined;
     data: ISysTransaction;
-    fromCache: boolean;
     scope: string;
   } | null>(null);
   const scopeRef = useRef(scope);
@@ -92,8 +98,15 @@ export const SyscoinTransactionDetails = ({
       copyContextRef.current.sequence += 1;
     };
   }, [scope]);
-  const accountSummaryRef = useRef(accountTransaction);
-  accountSummaryRef.current = accountTransaction;
+  const observation = getUtxoSummaryObservation(accountTransaction);
+  const observationRef = useRef({
+    summary: observation,
+    routeSummary: routeSummaryObservation,
+  });
+  observationRef.current = {
+    summary: observation,
+    routeSummary: routeSummaryObservation,
+  };
   const matchingEnhancedTransaction =
     enhancedTransaction?.scope === scope ? enhancedTransaction : null;
   // Cache only chain data; always merge the latest account summary at render time.
@@ -101,12 +114,7 @@ export const SyscoinTransactionDetails = ({
     ? mergeAccountSummaryWithFullTransaction(
         accountTransaction,
         matchingEnhancedTransaction.data,
-        // Confirmations can decrease after a reorg. Reopened cache data is
-        // older than the current summary; a new body is authoritative until
-        // another summary is observed, not until it has a larger count.
-        matchingEnhancedTransaction.fromCache ||
-          accountTransaction !==
-            matchingEnhancedTransaction.accountSummaryAtRead
+        observation?.revision ?? observation?.facts
       )
     : accountTransaction;
   const tokenIntent = getSyscoinOperationAmount(rawTransaction);
@@ -126,15 +134,28 @@ export const SyscoinTransactionDetails = ({
 
     if (!hash || !networkUrl) return;
     setEnhancedTransaction(null);
-    const cachedTransaction = getCachedUtxoTransactionDetails(scope);
     const stop = watchUtxoTransactionDetails(
       scope,
       hash,
-      () =>
-        controllerEmitter(
+      async () => {
+        const summaryAtRead = observationRef.current;
+        const data = await controllerEmitter(
           ['wallet', 'getSysTransactionFromBlockbook'],
           [hash, networkUrl]
-        ),
+        );
+        if (!data || typeof data !== 'object' || Array.isArray(data))
+          return data;
+        const { [UTXO_DETAIL_OBSERVATION]: dispatch, ...body } =
+          data as ISysTransaction & {
+            [UTXO_DETAIL_OBSERVATION]?: unknown;
+          };
+        return bindUtxoDetailObservation(body, {
+          ...summaryAtRead,
+          dispatch: isSerializedUtxoObservation(dispatch)
+            ? dispatch
+            : undefined,
+        });
+      },
       isCurrent,
       (fullTransaction: ISysTransaction | null) => {
         if (
@@ -144,8 +165,6 @@ export const SyscoinTransactionDetails = ({
           setEnhancedTransaction({
             scope,
             data: fullTransaction,
-            fromCache: fullTransaction === cachedTransaction,
-            accountSummaryAtRead: accountSummaryRef.current,
           });
         }
       },

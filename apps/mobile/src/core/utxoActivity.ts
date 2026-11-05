@@ -1,6 +1,7 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
 import { getSendingAddresses, getReceivingAddresses, mergeAccountSummaryWithFullTransaction, type UtxoDetailTransaction } from '../../../../source/shared/utxoTransactionDetails.ts';
+import { bindUtxoDetailObservation } from '../../../../source/shared/utxoDetailFreshness.ts';
 import { createBlockbookAccountHistory, readHistoryCount } from '../../../../source/shared/blockbookAccountHistory.ts';
 import { mergeFreshBlockbookHistory } from '../../../../source/shared/blockbookHistoryMerge.ts';
 import { selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
@@ -120,7 +121,8 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
   const checked = utxoFetchOptions(options, UTXO_ACTIVITY_LIMITS.timeoutMs);
   const sjsAccount = syscoinUtils.fetchBackendAccount, sjsRaw = syscoinUtils.fetchBackendRawTx;
   const history = createBlockbookAccountHistory(async () => fail('INVALID'));
-  const summaries = new WeakMap<UtxoActivityRow, { source: UtxoActivitySource; raw: UtxoDetailTransaction; charge: number }>();
+  const summaries = new WeakMap<UtxoActivityRow, { source: UtxoActivitySource; raw: UtxoDetailTransaction; charge: number; observation: number }>();
+  let observationSequence = 0;
   return Object.freeze({ async readPage(input: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal) {
     const owner = context(input.context), page = request.page, identifier = input.identifier, isAccount = input.isAccount;
     if (!Number.isSafeInteger(page) || page < 1 || typeof isAccount !== 'boolean') return fail();
@@ -165,11 +167,12 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
         hasMore: totalPages === null ? raw.transactions.length === UTXO_ACTIVITY_LIMITS.pageSize : page < totalPages,
         emptyAccount: rows.length === 0 && readHistoryCount(raw.txs) === 0 && readHistoryCount(raw.unconfirmedTxs) === 0 });
       const captured = Object.freeze({ context: owner, identifier, isAccount });
+    const observation = ++observationSequence;
       for (let index = 0; index < rows.length; index++) {
         const summary = raw.transactions[index] as UtxoDetailTransaction;
         try {
           const charge = measureJsonWorkBudget(summary, UTXO_DETAIL_CACHE_BYTES, 16, UTXO_ACTIVITY_LIMITS.nodes);
-          summaries.set(rows[index]!, { source: captured, raw: summary, charge });
+          summaries.set(rows[index]!, { source: captured, raw: summary, charge, observation });
         } catch { /* Optional detail metadata; the compact row remains valid. */ }
       }
       return result;
@@ -183,12 +186,12 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
     if (!accepted || !summary || hash(summary.txid) !== txid || request.row.txid !== txid || !same(accepted.source.context, owner) || accepted.source.identifier !== identifier || accepted.source.isAccount !== isAccount) return fail('CHANGED');
     const check = () => { guard(); if (signal.aborted) fail('CANCELLED'); };
     check();
-    const cached = cache.getCachedUtxoTransactionDetails(txid);
     const read = async (physicalSignal: AbortSignal) => {
       let session: UtxoReadSession | undefined;
       try {
         session = await openUtxoReadSession(owner.networkId, checked, physicalSignal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes);
         const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
+        const dispatch = ++observationSequence;
         const result = await sjsRaw(prefix, txid, { signal: physicalSignal, fetch: async (target: string, init: RequestInit) => {
           if (init.method !== 'GET' || init.signal !== physicalSignal || target !== prefix + '/api/v2/tx/' + txid) return fail();
           const value = await active.read('/api/v2/tx/' + txid);
@@ -199,7 +202,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
         if (physicalSignal.aborted) return fail('CANCELLED');
         const value = utxoObject(result);
         if (hash(value.txid) !== txid) return fail('INVALID');
-        return value;
+        return bindUtxoDetailObservation(value, { dispatch });
       } finally { session?.close(); }
     };
     let stop: (() => void) | undefined;
@@ -212,7 +215,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
         if (signal.aborted) abort();
       });
       check();
-      const merged = mergeAccountSummaryWithFullTransaction(summary, full, full === cached);
+      const merged = mergeAccountSummaryWithFullTransaction(summary, full, accepted.observation);
       const row = projectTransaction(merged), from = getSendingAddresses(merged), to = getReceivingAddresses(merged);
       assertJsonWorkBudget({ from, to }, 32768, 4, 2048);
       if (isAccount && [...from, ...to].some(value => value === identifier)) return fail('INVALID');
