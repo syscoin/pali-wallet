@@ -145,6 +145,7 @@ const EvmTransactionItem = React.memo(
       React.useState(true);
     const [displayInfo, setDisplayInfo] = React.useState<{
       actualRecipient: string;
+      amountUnavailable?: true;
       displaySymbol: string;
       displayValue: number | string;
       formattedValue: string;
@@ -250,7 +251,8 @@ const EvmTransactionItem = React.memo(
       const showFiat =
         isNativeTransfer &&
         !displayInfo.isNft &&
-        !displayInfo.hasUnknownDecimals;
+        !displayInfo.hasUnknownDecimals &&
+        !displayInfo.amountUnavailable;
       const fiatText =
         showFiat && isFiatAvailable
           ? getFiatAmount(Number(finalTxValue), 6)
@@ -278,7 +280,9 @@ const EvmTransactionItem = React.memo(
             ? getERC1155TransferValue(displayTx)?.toString() ?? formattedValue
             : '')
         : '';
-      const amountStr = displayInfo.hasUnknownDecimals
+      const amountStr = displayInfo.amountUnavailable
+        ? `? ${finalSymbol}`
+        : displayInfo.hasUnknownDecimals
         ? t('transactions.symbolTransfer', { symbol: finalSymbol })
         : isNftWithId
         ? `${

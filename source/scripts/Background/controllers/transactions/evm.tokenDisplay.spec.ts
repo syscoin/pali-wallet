@@ -243,7 +243,7 @@ it.each([false, true])(
       getTransactionDisplayInfo(rows[0], 'ETH', true)
     ).resolves.toMatchObject({
       actualRecipient: TOKEN,
-      displayValue: 2,
+      displayValue: '2',
       displaySymbol: 'ETH',
       isErc20Transfer: false,
     });

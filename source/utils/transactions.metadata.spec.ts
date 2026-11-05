@@ -3,6 +3,7 @@ jest.mock('state/store', () => ({
   default: { getState: jest.fn() },
 }));
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../shared/evmHistory';
 import store from 'state/store';
 
 import { defaultAbiCoder, id } from './ethersV6Compat';
@@ -46,7 +47,7 @@ describe('transaction token metadata isolation', () => {
     await expect(
       getTransactionDisplayInfo(tx, 'ETH', true)
     ).resolves.toMatchObject({
-      displayValue: 1,
+      displayValue: '1',
       displaySymbol: 'RIGHT',
     });
   });
@@ -77,3 +78,51 @@ describe('transaction token metadata isolation', () => {
     await expect(result).resolves.toMatchObject({ hasUnknownDecimals: true });
   });
 });
+
+it('discards lookup metadata after in-place mutation of the captured network/account objects', async () => {
+  let resolve!: (value: any) => void;
+  const state = { vault: vault() };
+  (store.getState as jest.Mock).mockReturnValue(state);
+  const pending = getTransactionDisplayInfo(tx, 'ETH', false, {
+    wallet: {
+      getTokenDetails: () =>
+        new Promise((r) => {
+          resolve = r;
+        }),
+    },
+  });
+  state.vault.activeNetwork.url = 'https://changed.invalid';
+  state.vault.activeAccount.id = 1;
+  resolve({ decimals: 6, symbol: 'STALE' });
+  expect(await pending).toMatchObject({ hasUnknownDecimals: true });
+});
+
+it.each([7, { malformed: true }])(
+  'keeps indexed-token precedence over irrelevant calldata %#',
+  async (input) => {
+    (store.getState as jest.Mock).mockReturnValue({ vault: vault() });
+    const indexed = {
+      chainId: 1,
+      to: tokenAddress,
+      input,
+      value: '1000000',
+      historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer,
+      tokenTransfer: {
+        chainId: 1,
+        contractAddress: tokenAddress,
+        recipient,
+        value: '1000000',
+        decimals: 6,
+        symbol: 'TOK',
+      },
+    };
+    await expect(
+      getTransactionDisplayInfo(indexed, 'ETH', true)
+    ).resolves.toMatchObject({
+      formattedValue: '1.0',
+      displaySymbol: 'TOK',
+      actualRecipient: recipient,
+      isErc20Transfer: true,
+    });
+  }
+);

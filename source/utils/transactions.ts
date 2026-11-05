@@ -1,413 +1,94 @@
 import omit from 'lodash/omit';
 
+import { EVM_TRANSACTION_HISTORY_SOURCE } from '../shared/evmHistory';
+import {
+  getEvmTransactionDisplayInfo,
+  isTokenTransfer,
+  type EvmTransactionDisplayInfo,
+} from '../shared/evmTransactionDisplay';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
-import { formatUnits } from 'utils/ethersV6Compat';
 import { id } from 'utils/ethersV6Compat';
 import { getAddress } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
-import { EVM_TRANSACTION_HISTORY_SOURCE } from './evmNonce';
 import { formatCurrency, truncate, formatFullPrecisionBalance } from './format';
 import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from './navigationState';
 
-const ERC721_SAFE_TRANSFER_SIGNATURE =
-  'safeTransferFrom(address,address,uint256)';
-const ERC721_SAFE_TRANSFER_DATA_SIGNATURE =
-  'safeTransferFrom(address,address,uint256,bytes)';
-const TOKEN_TRANSFER_FROM_SIGNATURE = 'transferFrom(address,address,uint256)';
-const ERC1155_SAFE_TRANSFER_SIGNATURE =
-  'safeTransferFrom(address,address,uint256,uint256,bytes)';
+export {
+  isERC1155Transfer,
+  isERC20Transfer,
+  isTokenTransfer,
+  getERC20TransferValue,
+  getERC721TokenId,
+  getERC20Recipient,
+  getERC1155TransferValue,
+  getERC1155TokenId,
+  getERC1155Recipient,
+} from '../shared/evmTransactionDisplay';
 
-/**
- * Get proper display information for a transaction (value, symbol, recipient, and type)
- * Uses the same logic as notification manager for consistent display
- * @param tx Transaction object
- * @param currency Network currency (e.g., 'ETH', 'NEVM')
- * @param skipUnknownTokenFetch Skip fetching unknown tokens
- * @param controller Optional controller instance for background context calls
- * @returns Object with displayValue, displaySymbol, isErc20Transfer, actualRecipient, isNft, and hasUnknownDecimals
- */
+/** Extension host adapter: retain its metadata lookup and stale-result guards. */
 export const getTransactionDisplayInfo = async (
   tx: any,
   currency: string,
   skipUnknownTokenFetch = false,
   controller?: any
-): Promise<{
-  actualRecipient: string;
-  displaySymbol: string;
-  displayValue: number | string;
-  formattedValue: string;
-  hasUnknownDecimals?: boolean;
-  isErc20Transfer: boolean; // Note: This includes all token transfers (ERC20/721/1155), not just ERC20
-  isNft: boolean;
-  nftQuantity?: string;
-  tokenId?: string; // Token ID for NFTs
-}> => {
-  const smartAccountInnerTx = getSmartAccountDisplayTransaction(tx);
-  if (smartAccountInnerTx) {
+): Promise<EvmTransactionDisplayInfo> => {
+  const inner = getSmartAccountDisplayTransaction(tx);
+  if (inner)
     return getTransactionDisplayInfo(
-      smartAccountInnerTx,
+      inner,
       currency,
       skipUnknownTokenFetch,
       controller
     );
-  }
-
-  // A token endpoint returns event amounts and recipients. Its `value` is not
-  // the outer transaction's native payment and its input may be unavailable.
   if (
-    tx?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer
+    tx?.historySource !==
+      EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer &&
+    !isTokenTransfer(tx)
   ) {
-    const { activeAccount, accountAssets, activeNetwork } =
-      store.getState().vault;
-    const chainId = Number(tx.chainId ?? activeNetwork.chainId);
-    const event = tx.tokenTransfer || {
-      chainId,
-      contractAddress: tx.to,
-      recipient: tx.tokenRecipient,
-      value: tx.value,
-    };
-    const validAddress = (value: unknown): value is string =>
-      typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value);
-    const uint = (value: unknown): string | undefined => {
-      const text = typeof value === 'string' ? value : String(value ?? '');
-      return /^\d{1,78}$/.test(text) &&
-        BigInt(text) <=
-          BigInt(
-            '0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-          )
-        ? text
-        : undefined;
-    };
-    if (
-      Number(event.chainId) === chainId &&
-      validAddress(event.contractAddress) &&
-      validAddress(event.recipient)
-    ) {
-      const asset = accountAssets[activeAccount.type]?.[
-        activeAccount.id
-      ]?.ethereum?.find(
-        (candidate) =>
-          Number(candidate.chainId) === chainId &&
-          candidate.contractAddress?.toLowerCase() ===
-            event.contractAddress.toLowerCase()
-      );
-      const tokenId = uint(event.tokenId);
-      const isNft = tokenId !== undefined || asset?.isNft === true;
-      const isErc1155 =
-        (event.tokenStandard || asset?.tokenStandard) === 'ERC-1155';
-      const amount = isNft && !isErc1155 ? '1' : uint(event.value);
-      const rawDecimals = asset?.decimals ?? event.decimals;
-      const decimals = Number(rawDecimals);
-      const hasDecimals =
-        rawDecimals !== undefined &&
-        rawDecimals !== null &&
-        rawDecimals !== '' &&
-        Number.isInteger(decimals) &&
-        decimals >= 0 &&
-        decimals <= 255;
-      const symbol = asset?.tokenSymbol || event.symbol;
-      const displaySymbol =
-        typeof symbol === 'string' && symbol.trim()
-          ? symbol.toUpperCase()
-          : isNft
-          ? 'NFT'
-          : `${event.contractAddress.slice(
-              0,
-              6
-            )}...${event.contractAddress.slice(-4)}`;
-      const knownAmount = amount !== undefined && (isNft || hasDecimals);
-      const formattedValue =
-        amount === undefined
-          ? '?'
-          : isNft || !hasDecimals
-          ? amount
-          : formatUnits(amount, decimals);
-      return {
-        actualRecipient: event.recipient,
-        displaySymbol,
-        displayValue: formattedValue,
-        formattedValue,
-        isErc20Transfer: true,
-        isNft,
-        ...(isErc1155 && amount !== undefined ? { nftQuantity: amount } : {}),
-        ...(tokenId !== undefined ? { tokenId } : {}),
-        ...(!knownAmount ? { hasUnknownDecimals: true } : {}),
-      };
-    }
+    return getEvmTransactionDisplayInfo(tx, currency);
   }
-
-  const isTokenTx = isTokenTransfer(tx);
-
-  if (isTokenTx) {
-    // This is an ERC-20/ERC-721/ERC-1155 transfer
-    const isErc1155Tx = isERC1155Transfer(tx);
-    const tokenValue = isErc1155Tx
-      ? getERC1155TransferValue(tx)
-      : getERC20TransferValue(tx);
-    const tokenAddress = tx.to; // The 'to' address is the token contract for token transfers
-    const actualRecipient = isErc1155Tx
-      ? getERC1155Recipient(tx)
-      : getERC20Recipient(tx); // Extract the actual recipient from input data
-
-    // Get token ID for NFTs
-    const tokenId = isErc1155Tx ? getERC1155TokenId(tx) : getERC721TokenId(tx);
-
-    if (tokenValue !== null && tokenValue !== undefined && tokenAddress) {
-      // Try to get token info from user's assets or fetch from controller
-      try {
-        const { accounts, activeAccount, accountAssets, activeNetwork } =
-          store.getState().vault;
-        const transactionChainId = Number(tx.chainId ?? activeNetwork.chainId);
-        const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
-        const userAssets =
-          accountAssets[activeAccount.type]?.[activeAccount.id];
-
-        // Check user's account assets first (fastest)
-        if (userAssets?.ethereum) {
-          const token = userAssets.ethereum.find(
-            (asset) =>
-              Number(asset.chainId) === transactionChainId &&
-              asset.contractAddress?.toLowerCase() ===
-                tokenAddress.toLowerCase()
-          );
-
-          if (token) {
-            const isNft = token.isNft || false;
-            const rawDecimals = isNft ? 0 : Number(token.decimals ?? 18);
-            const decimals =
-              Number.isFinite(rawDecimals) && rawDecimals >= 0
-                ? rawDecimals
-                : 18;
-
-            if (isNft) {
-              // For NFTs: if ERC-721, displayValue should be 1 and tokenId is the ID
-              // If ERC-1155, tokenValue represents the amount transferred
-              const nftCount = isErc1155Tx ? tokenValue.toString() : 1;
-              return {
-                displayValue: nftCount,
-                formattedValue: String(nftCount),
-                displaySymbol: token.tokenSymbol.toUpperCase(),
-                isErc20Transfer: true,
-                actualRecipient: actualRecipient || tokenAddress,
-                isNft: true,
-                tokenId: tokenId || undefined,
-              };
-            } else {
-              // Regular ERC-20 token
-              const numeric = parseFloat(formatUnits(tokenValue, decimals));
-              return {
-                displayValue: numeric,
-                formattedValue: formatFullPrecisionBalance(numeric, 4),
-                displaySymbol: token.tokenSymbol.toUpperCase(),
-                isErc20Transfer: true,
-                actualRecipient: actualRecipient || tokenAddress,
-                isNft: false,
-              };
-            }
-          }
-        }
-
-        // If not in user's assets, try to fetch from controller
-        // The metadata RPC always targets the current network. It must never
-        // label a historical transaction from another chain.
-        if (
-          !skipUnknownTokenFetch &&
-          transactionChainId === Number(activeNetwork.chainId)
-        ) {
-          try {
-            let tokenDetails: ITokenDetails | null;
-
-            // If controller is provided (background context), use direct call
-            if (controller?.wallet?.getTokenDetails) {
-              tokenDetails = await controller.wallet.getTokenDetails(
-                tokenAddress,
-                currentAccount?.address
-              );
-            } else {
-              // Otherwise use controllerEmitter for frontend contexts
-              tokenDetails = (await controllerEmitter(
-                ['wallet', 'getTokenDetails'],
-                [tokenAddress, currentAccount?.address]
-              )) as ITokenDetails | null;
-            }
-
-            const latestVault = store.getState().vault;
+  const { accounts, activeAccount, accountAssets, activeNetwork } =
+    store.getState().vault;
+  const chainId = Number(tx.chainId ?? activeNetwork.chainId);
+  const currentAccount = accounts[activeAccount.type]?.[activeAccount.id];
+  const accountId = activeAccount.id;
+  const accountType = activeAccount.type;
+  const networkUrl = activeNetwork.url;
+  return getEvmTransactionDisplayInfo(tx, currency, {
+    chainId: activeNetwork.chainId,
+    assets: accountAssets[activeAccount.type]?.[activeAccount.id]?.ethereum,
+    ...(!skipUnknownTokenFetch && chainId === Number(activeNetwork.chainId)
+      ? {
+          lookupToken: async (tokenAddress: string) => {
+            const details = controller?.wallet?.getTokenDetails
+              ? await controller.wallet.getTokenDetails(
+                  tokenAddress,
+                  currentAccount?.address
+                )
+              : await controllerEmitter(
+                  ['wallet', 'getTokenDetails'],
+                  [tokenAddress, currentAccount?.address]
+                );
+            const latest = store.getState().vault;
             const sameContext =
-              Number(latestVault.activeNetwork.chainId) ===
-                transactionChainId &&
-              latestVault.activeNetwork.url === activeNetwork.url &&
-              latestVault.activeAccount.id === activeAccount.id &&
-              latestVault.activeAccount.type === activeAccount.type;
-            if (tokenDetails && sameContext) {
-              const isNft = tokenDetails.isNft || false;
-              const rawDecimals = isNft
-                ? 0
-                : Number(tokenDetails.decimals ?? 18);
-              const decimals =
-                Number.isFinite(rawDecimals) && rawDecimals >= 0
-                  ? rawDecimals
-                  : 18;
-
-              if (isNft) {
-                // For NFTs: if ERC-721, count is 1; if ERC-1155, use provided amount
-                const nftCount = isErc1155Tx ? tokenValue.toString() : 1;
-                return {
-                  displayValue: nftCount,
-                  formattedValue: String(nftCount),
-                  displaySymbol: tokenDetails.symbol.toUpperCase(),
-                  isErc20Transfer: true,
-                  actualRecipient: actualRecipient || tokenAddress,
-                  isNft: true,
-                  tokenId: tokenId || undefined,
-                };
-              } else {
-                // Regular ERC-20 token
-                const numeric = parseFloat(formatUnits(tokenValue, decimals));
-                return {
-                  displayValue: numeric,
-                  formattedValue: formatFullPrecisionBalance(numeric, 4),
-                  displaySymbol: tokenDetails.symbol.toUpperCase(),
-                  isErc20Transfer: true,
-                  actualRecipient: actualRecipient || tokenAddress,
-                  isNft: false,
-                };
-              }
-            }
-          } catch (controllerError) {
-            console.warn('Controller token lookup failed:', controllerError);
-          }
+              Number(latest.activeNetwork.chainId) === chainId &&
+              latest.activeNetwork.url === networkUrl &&
+              latest.activeAccount.id === accountId &&
+              latest.activeAccount.type === accountType;
+            return details && sameContext ? (details as ITokenDetails) : null;
+          },
         }
-      } catch (error) {
-        console.error('Error getting token info:', error);
-      }
-
-      // Fallbacks when token metadata is not available (e.g., list view skips fetch):
-      // - Best-effort NFT identification to improve Activity list display without network calls
-      // - Otherwise, show a generic token transfer with unknown decimals
-
-      // If we can infer NFT type purely from the method selector, surface that so
-      // the Activity list can render helpful strings like "1 NFT #123" or "2 NFT #3"
-      try {
-        // ERC-1155 safeTransferFrom has an unambiguous selector
-        if (isErc1155Tx) {
-          const erc1155Value = getERC1155TransferValue(tx);
-          const nftAmount =
-            erc1155Value === null || erc1155Value === undefined
-              ? '1'
-              : erc1155Value.toString();
-          const inferredTokenId = getERC1155TokenId(tx) || undefined;
-          return {
-            displayValue: nftAmount,
-            formattedValue: String(nftAmount),
-            displaySymbol: 'NFT',
-            isErc20Transfer: true,
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: true,
-            tokenId: inferredTokenId,
-          };
-        }
-
-        // Only the safeTransferFrom selectors identify ERC-721 without
-        // metadata. ERC-20 shares transferFrom(address,address,uint256).
-        const safeTransferFrom3Selector = id(
-          ERC721_SAFE_TRANSFER_SIGNATURE
-        ).slice(0, 10);
-        const safeTransferFrom4Selector = id(
-          ERC721_SAFE_TRANSFER_DATA_SIGNATURE
-        ).slice(0, 10);
-        const isErc721Candidate =
-          !!tx?.input &&
-          (tx.input.startsWith(safeTransferFrom3Selector) ||
-            tx.input.startsWith(safeTransferFrom4Selector));
-
-        const erc721TokenId = isErc721Candidate ? getERC721TokenId(tx) : null;
-        if (isErc721Candidate && erc721TokenId) {
-          return {
-            displayValue: 1,
-            formattedValue: '1',
-            displaySymbol: 'NFT',
-            isErc20Transfer: true,
-            actualRecipient: actualRecipient || tokenAddress,
-            isNft: true,
-            tokenId: erc721TokenId,
-          };
-        }
-      } catch (nftInferenceError) {
-        // Non-fatal: fall through to generic unknown token handling below
-        // console.warn('NFT inference failed', nftInferenceError);
-      }
-
-      // Generic unknown token fallback: show raw value with truncated contract address as symbol
-      // Since we don't know if it's an NFT or the decimals, flag it
-      // and format it as if it might be 18 decimals (most common)
-      const possibleFormattedValue = parseFloat(formatUnits(tokenValue, 18));
-      const isLikelyWholeNumber = Number(tokenValue) < 1000000; // Less than 1M raw units
-
-      const unknownStr = isLikelyWholeNumber
-        ? tokenValue.toString() // Likely an NFT or low decimal token
-        : possibleFormattedValue < 0.000001
-        ? `~${possibleFormattedValue.toExponential(2)}` // Very small amount
-        : `~${possibleFormattedValue.toFixed(6)}`; // Regular amount with ~ to indicate uncertainty
-      return {
-        displayValue: unknownStr,
-        formattedValue: unknownStr,
-        displaySymbol: `${tokenAddress.slice(0, 6)}...${tokenAddress.slice(
-          -4
-        )}`,
-        isErc20Transfer: true, // This includes all token transfers (ERC20/721/1155)
-        actualRecipient: actualRecipient || tokenAddress,
-        isNft: false,
-        hasUnknownDecimals: true, // Flag that we don't know the decimals
-      };
-    }
-  }
-
-  // Native currency transaction
-  const rawValue = tx.value;
-  let numericValue = 0;
-
-  try {
-    // Use formatUnits to avoid precision loss and handle BigNumberish inputs
-    // Accept hex string, decimal string, BigNumber-like, or number
-    // Normalize to a value acceptable by formatUnits
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let bigNumberishValue: any = rawValue;
-    if (rawValue && typeof rawValue === 'object') {
-      // Support ethers-style objects with hex/_hex
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const asAny: any = rawValue;
-      if (typeof asAny.hex === 'string') {
-        bigNumberishValue = asAny.hex;
-      } else if (typeof asAny._hex === 'string') {
-        bigNumberishValue = asAny._hex;
-      }
-    }
-
-    const formatted = formatUnits(bigNumberishValue ?? '0', 18);
-    numericValue = Number.isFinite(Number(formatted))
-      ? parseFloat(formatted)
-      : 0;
-  } catch {
-    numericValue = 0;
-  }
-
-  return {
-    displayValue: numericValue,
-    formattedValue: formatFullPrecisionBalance(numericValue, 4),
-    displaySymbol: currency.toUpperCase(),
-    isErc20Transfer: false,
-    actualRecipient: tx.to || '', // For native transfers, tx.to is the actual recipient
-    isNft: false,
-  };
+      : {}),
+  });
 };
 
 const ENTRYPOINT_HANDLE_OPS_SELECTOR = id(
@@ -969,260 +650,4 @@ export const handleUpdateTransaction = async ({
         walletScope
       );
   }
-};
-
-export const isERC1155Transfer = (tx: IEvmTransactionResponse) => {
-  // ERC1155 uses safeTransferFrom with 5 parameters: from, to, id, amount, data
-  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-
-  if (tx?.input) {
-    return tx.input.startsWith(safeTransferFromSelector);
-  }
-
-  return false;
-};
-
-export const isERC20Transfer = (tx: IEvmTransactionResponse) => {
-  // This detects ERC20 and ERC721 transfers (they use the same method signatures)
-  const transferSelector = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromSelector = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(0, 10);
-  // ERC721 also has safeTransferFrom methods
-  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom4Selector = id(
-    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
-  ).slice(0, 10);
-
-  if (tx?.input) {
-    return (
-      tx.input.startsWith(transferSelector) ||
-      tx.input.startsWith(transferFromSelector) ||
-      tx.input.startsWith(safeTransferFrom3Selector) ||
-      tx.input.startsWith(safeTransferFrom4Selector)
-    );
-  }
-
-  return false;
-};
-
-export const isTokenTransfer = (tx: IEvmTransactionResponse) =>
-  isERC20Transfer(tx) || isERC1155Transfer(tx);
-
-export const getERC20TransferValue = (tx: IEvmTransactionResponse) => {
-  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom4Selector = id(
-    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
-  ).slice(0, 10);
-
-  if (tx?.input) {
-    if (tx.input.startsWith(transferMethodSignature)) {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'uint256'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[1]; // the second element is the value transferred
-    } else if (tx.input.startsWith(transferFromMethodSignature)) {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[2]; // the third element is the value transferred
-    } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[2]; // the third element is the tokenId (for ERC721)
-    } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256', 'bytes'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[2]; // the third element is the tokenId (for ERC721)
-    }
-  }
-
-  return null; // return null if the transaction is not a token transfer
-};
-
-export const getERC721TokenId = (
-  tx: IEvmTransactionResponse
-): string | null => {
-  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom4Selector = id(
-    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
-  ).slice(0, 10);
-
-  if (tx?.input) {
-    try {
-      if (tx.input.startsWith(transferMethodSignature)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[1].toString(); // the second element is the tokenId
-      } else if (tx.input.startsWith(transferFromMethodSignature)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[2].toString(); // the third element is the tokenId
-      } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[2].toString(); // the third element is the tokenId
-      } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256', 'bytes'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[2].toString(); // the third element is the tokenId
-      }
-    } catch (error) {
-      console.error('Error parsing ERC721 token ID:', error);
-    }
-  }
-
-  return null;
-};
-
-export const getERC20Recipient = (
-  tx: IEvmTransactionResponse
-): string | null => {
-  const transferMethodSignature = id('transfer(address,uint256)').slice(0, 10);
-  const transferFromMethodSignature = id(TOKEN_TRANSFER_FROM_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom3Selector = id(ERC721_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-  const safeTransferFrom4Selector = id(
-    ERC721_SAFE_TRANSFER_DATA_SIGNATURE
-  ).slice(0, 10);
-
-  if (tx?.input) {
-    try {
-      if (tx.input.startsWith(transferMethodSignature)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[0]; // the first element is the recipient
-      } else if (tx.input.startsWith(transferFromMethodSignature)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[1]; // the second element is the recipient
-      } else if (tx.input.startsWith(safeTransferFrom3Selector)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[1]; // the second element is the recipient
-      } else if (tx.input.startsWith(safeTransferFrom4Selector)) {
-        const decodedInput = defaultAbiCoder.decode(
-          ['address', 'address', 'uint256', 'bytes'],
-          '0x' + tx.input.slice(10)
-        );
-        return decodedInput[1]; // the second element is the recipient
-      }
-    } catch (error) {
-      console.error('Error parsing ERC20 recipient:', error);
-    }
-  }
-
-  return null; // return null if the transaction is not a token transfer
-};
-
-export const getERC1155TransferValue = (tx: IEvmTransactionResponse) => {
-  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-
-  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
-    try {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256', 'uint256', 'bytes'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[3]; // the fourth element is the amount transferred
-    } catch (error) {
-      console.error('Error parsing ERC1155 transfer value:', error);
-    }
-  }
-
-  return null;
-};
-
-export const getERC1155TokenId = (
-  tx: IEvmTransactionResponse
-): string | null => {
-  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-
-  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
-    try {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256', 'uint256', 'bytes'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[2].toString(); // the third element is the token ID
-    } catch (error) {
-      console.error('Error parsing ERC1155 token ID:', error);
-    }
-  }
-
-  return null;
-};
-
-export const getERC1155Recipient = (
-  tx: IEvmTransactionResponse
-): string | null => {
-  const safeTransferFromSelector = id(ERC1155_SAFE_TRANSFER_SIGNATURE).slice(
-    0,
-    10
-  );
-
-  if (tx?.input && tx.input.startsWith(safeTransferFromSelector)) {
-    try {
-      const decodedInput = defaultAbiCoder.decode(
-        ['address', 'address', 'uint256', 'uint256', 'bytes'],
-        '0x' + tx.input.slice(10)
-      );
-      return decodedInput[1]; // the second element is the recipient
-    } catch (error) {
-      console.error('Error parsing ERC1155 recipient:', error);
-    }
-  }
-
-  return null;
 };
