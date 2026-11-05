@@ -537,6 +537,10 @@ export type SmartAccountSLHDSASigner = (params: {
 
 type SLHDSAAuthenticatorRuntimeContext = {
   signActionHash?: SmartAccountSLHDSASigner;
+  signPersonalActionHash?: (
+    keyId: string,
+    validator: string
+  ) => Promise<string>;
 };
 
 const stringifyError = (error: unknown): string => {
@@ -651,6 +655,16 @@ export const getSmartAccountLocalOwnerContexts = ({
     )
   );
 
+  const signPersonalActionHash =
+    personalSignValidator === undefined
+      ? undefined
+      : (signer: SmartAccountLocalOwner | string, validator: string) =>
+          controllerEmitter(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [signer, personalSignValidator, validator],
+            typeof signer === 'string' ? 600000 : undefined
+          );
+
   return {
     ecdsa: {
       localOwners,
@@ -662,12 +676,8 @@ export const getSmartAccountLocalOwnerContexts = ({
       }: Parameters<SmartAccountLocalEcdsaSigner>[0]) => {
         const software =
           owner.type === 'HDAccount' || owner.type === 'Imported';
-        if (software && personalSignValidator !== undefined) {
-          return controllerEmitter(
-            ['wallet', 'signSmartAccountPersonalDigest'],
-            [owner, personalSignValidator, validator]
-          );
-        }
+        if (software && signPersonalActionHash)
+          return signPersonalActionHash(owner, validator);
         return controllerEmitter(
           ['wallet', 'signSmartAccountActionDigestInternal'],
           [
@@ -681,12 +691,9 @@ export const getSmartAccountLocalOwnerContexts = ({
     },
     'slh-dsa': {
       signActionHash: (params) =>
-        controllerEmitter(
-          ['wallet', 'signSLHDSAActionHash'],
-          [params],
-          600000
-        ) as Promise<string>,
-    },
+        controllerEmitter(['wallet', 'signSLHDSAActionHash'], [params], 600000),
+      signPersonalActionHash,
+    } satisfies SLHDSAAuthenticatorRuntimeContext,
   };
 };
 
@@ -867,16 +874,21 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     const slhDsaContext = runtimeContext as
       | SLHDSAAuthenticatorRuntimeContext
       | undefined;
-    const signature = await slhDsaContext?.signActionHash?.({
-      accountId,
-      actionHash,
-      ...(executionContextId ? { executionContextId } : {}),
-      allowReservedSignature: allowReservedSLHDSASignature,
-      keyId: validator.config.keyId,
-      parameterSet: validator.config.parameterSet,
-      pkRoot: validator.config.pkRoot,
-      pkSeed: validator.config.pkSeed,
-    });
+    const signature = slhDsaContext?.signPersonalActionHash
+      ? await slhDsaContext.signPersonalActionHash(
+          validator.config.keyId,
+          validator.address
+        )
+      : await slhDsaContext?.signActionHash?.({
+          accountId,
+          actionHash,
+          ...(executionContextId ? { executionContextId } : {}),
+          allowReservedSignature: allowReservedSLHDSASignature,
+          keyId: validator.config.keyId,
+          parameterSet: validator.config.parameterSet,
+          pkRoot: validator.config.pkRoot,
+          pkSeed: validator.config.pkSeed,
+        });
 
     if (!signature) {
       throw new SmartAccountExternalSignatureRequired(

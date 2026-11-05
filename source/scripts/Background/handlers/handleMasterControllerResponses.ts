@@ -198,9 +198,8 @@ export const handleMasterControllerResponses = (
 
       let targetMethod = MasterControllerInstance;
 
-      const route = personalSignApproval?.signerArgs
-        ? ['wallet', 'signSmartAccountActionDigestInternal']
-        : methods;
+      const signer = personalSignApproval?.signer;
+      const route = signer ? ['wallet', signer.method] : methods;
       for (const method of route) {
         if (targetMethod && method in targetMethod) {
           targetMethod = targetMethod[method];
@@ -219,11 +218,12 @@ export const handleMasterControllerResponses = (
             personalSignApproval?.assertCurrent();
             // Always execute the method; never attempt to send functions over messaging
             const response = await (targetMethod as any)(
-              ...(personalSignApproval?.signerArgs
+              ...(signer
                 ? [
-                    ...personalSignApproval.signerArgs,
-                    undefined,
-                    personalSignApproval.assertCurrent,
+                    ...signer.args,
+                    signer.method === 'signSLHDSAActionHash'
+                      ? personalSignApproval
+                      : personalSignApproval.assertCurrent,
                   ]
                 : params)
             );

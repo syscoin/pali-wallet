@@ -1,4 +1,7 @@
-import type { SLHDSASignActionHashParams } from './types';
+import type {
+  SLHDSADispatchApproval,
+  SLHDSASignActionHashParams,
+} from './types';
 
 export type SLHDSAOffscreenResponse =
   | {
@@ -92,11 +95,16 @@ export const signSLHDSAInOffscreen = async (
   params: SLHDSASignActionHashParams & {
     secretKeyHex?: string;
   },
-  assertCurrentSession?: () => void
+  assertCurrentSession?: () => void,
+  approval?: SLHDSADispatchApproval
 ): Promise<string> => {
   assertCurrentSession?.();
   await ensureOffscreenDocument();
+  // Dapp consent gates dispatch. The wallet session owns usage accounting
+  // after dispatch, including when the dapp grant changes.
+  if (approval) await approval.checkDocument(true);
   assertCurrentSession?.();
+  approval?.assertCurrent();
 
   const response = (await chrome.runtime.sendMessage({
     payload: params,

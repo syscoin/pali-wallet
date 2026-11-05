@@ -1,5 +1,9 @@
 const mockStorageGet = jest.fn<Promise<any>, any[]>(async () => null);
 const mockStorageSet = jest.fn();
+const mockStorageGetItems = jest.fn<
+  Promise<Record<string, unknown>>,
+  [string[]]
+>();
 const mockApprovalController = jest.fn();
 jest.mock('scripts/Background', () => ({
   getController: () => mockApprovalController(),
@@ -7,6 +11,7 @@ jest.mock('scripts/Background', () => ({
 jest.mock('utils/storageAPI', () => ({
   chromeStorage: {
     getItem: (...args: any[]) => mockStorageGet(...args),
+    getItems: (keys: string[]) => mockStorageGetItems(keys),
     setItem: (...args: any[]) => mockStorageSet(...args),
   },
 }));
@@ -27,10 +32,26 @@ import { restoreVaultSnapshot, setActiveAccount } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import { hashMessage } from 'utils/ethersV6Compat';
+import {
+  SLH_DSA_PARAMETER_SET,
+  SLH_DSA_SIGNATURE_LENGTH,
+  clearRuntimeSLHDSAStates,
+  configureSLHDSASessionStateCrypto,
+  createSLHDSAProvisionedState,
+  getSLHDSAKeyId,
+  getSLHDSAStateStorageKey,
+  loadEncryptedSLHDSAState,
+  putRuntimeSLHDSAState,
+  saveEncryptedSLHDSAState,
+} from 'utils/slhDsa';
 import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount/erc7739';
-import { getSmartAccountLocalOwnerContexts } from 'utils/smartAccount/execution';
+import {
+  getSmartAccountLocalOwnerContexts,
+  signSmartAccountActionHash,
+} from 'utils/smartAccount/execution';
 
 import DAppController from './DAppController';
+import MainController from './MainController';
 import { EthMethodHandler } from './message-handler/method-handlers';
 import { getMethodConfig } from './message-handler/method-registry';
 import {
@@ -74,6 +95,7 @@ const holdWrite = () => {
 
 beforeEach(async () => {
   jest.clearAllMocks();
+  mockStorageGetItems.mockResolvedValue({});
   walletPersistenceGate.blocked = false;
   store.dispatch(rehydrate({ dapps: {} }));
   const vault = store.getState().vault;
@@ -356,7 +378,19 @@ describe('connected personal-sign approval authority', () => {
   const signSmartAccountActionDigestInternal = jest.fn(
     async () => 'synthetic-owner-signature'
   );
+  const slhSigningHost = Object.assign(
+    Object.create(MainController.prototype),
+    {
+      assertWalletReadyForSigning: jest.fn(),
+      assertCurrentWalletSession: jest.fn(),
+      configureSLHDSASessionStateCrypto: jest.fn(),
+      getSLHDSASessionStateCrypto: jest.fn(),
+      walletSessionGeneration: 1,
+    }
+  );
   const wallet = {
+    signSLHDSAActionHash:
+      MainController.prototype.signSLHDSAActionHash.bind(slhSigningHost),
     signSmartAccountActionDigestInternal,
     getWalletSessionGeneration: () => sessionGeneration,
     ethereumTransaction: { signPersonalMessage },
@@ -415,7 +449,8 @@ describe('connected personal-sign approval authority', () => {
     start = (request: IEnhancedRequestContext) =>
       new EthMethodHandler().handle(request),
     method = 'personal_sign',
-    params: unknown[] = [message, address]
+    params: unknown[] = [message, address],
+    frameId = 0
   ) => {
     let opened!: (data: object) => void;
     const created = new Promise<object>((resolve) => (opened = resolve));
@@ -433,7 +468,7 @@ describe('connected personal-sign approval authority', () => {
         params,
         sender: {
           documentId: 'site-document',
-          frameId: 0,
+          frameId,
           tab: { id: 7 },
           url: `${host}/page`,
         } as chrome.runtime.MessageSender,
@@ -894,6 +929,367 @@ describe('connected personal-sign approval authority', () => {
     expect(result).toMatchObject({ success: false });
     expect(await approval.outcome).toEqual({ code: 4001 });
     expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+  });
+
+  const openSlhApproval = async ({
+    composite = false,
+    cold = false,
+    frameId = 0,
+  } = {}) => {
+    const smartType = KeyringAccountType.SmartAccount;
+    const smartAddress = `0x${'33'.repeat(20)}`;
+    const slhAddress = `0x${'44'.repeat(20)}`;
+    const activeValidator = composite ? `0x${'55'.repeat(20)}` : slhAddress;
+    const keys = {
+      pkRoot: `0x${'11'.repeat(16)}${'00'.repeat(16)}`,
+      pkSeed: `0x${'22'.repeat(16)}${'00'.repeat(16)}`,
+    };
+    const keyId = getSLHDSAKeyId(keys);
+    const storageKey = getSLHDSAStateStorageKey(keyId);
+    const stateCrypto = {
+      decrypt: (value: string) => value,
+      encrypt: (value: string) => value,
+    };
+    let persisted: unknown;
+    mockStorageGetItems.mockImplementation(async (requested) =>
+      requested.includes(storageKey) && persisted
+        ? { [storageKey]: persisted }
+        : {}
+    );
+    mockStorageSet.mockImplementation(async (key, value) => {
+      if (key === storageKey) persisted = clone(value);
+      else disk = clone(value);
+    });
+    clearRuntimeSLHDSAStates();
+    configureSLHDSASessionStateCrypto(stateCrypto);
+    slhSigningHost.getSLHDSASessionStateCrypto.mockReturnValue(stateCrypto);
+    const provisioned = createSLHDSAProvisionedState({
+      ...keys,
+      accountIndex: 0,
+      derivationLabel: 'account/0',
+      keyId,
+      secretKeyHex: `0x${'66'.repeat(64)}`,
+    });
+    await saveEncryptedSLHDSAState(provisioned, stateCrypto);
+    if (!cold) putRuntimeSLHDSAState(provisioned);
+
+    const metadata = {
+      auth: {
+        module: composite ? 'composite' : 'slh-dsa',
+        validator: activeValidator,
+      },
+      chainId: 1,
+      installedModules: [
+        {
+          address: slhAddress,
+          config: {
+            ...keys,
+            keyId,
+            parameterSet: SLH_DSA_PARAMETER_SET,
+            signatureLimit: provisioned.signatureLimit,
+          },
+          id: 'slh-dsa',
+          type: 'validator',
+        },
+        ...(composite
+          ? [
+              {
+                address: activeValidator,
+                config: { childValidators: [slhAddress], threshold: 1 },
+                id: 'composite',
+                type: 'validator',
+              },
+            ]
+          : []),
+      ],
+    } as any;
+    const vault = store.getState().vault;
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...vault,
+        activeAccount: { id: 0, type: smartType },
+        accounts: {
+          ...vault.accounts,
+          [smartType]: {
+            0: {
+              address: smartAddress,
+              id: 0,
+              isSmartAccount: true,
+              smartAccount: metadata,
+              type: smartType,
+            },
+          },
+        },
+      } as any)
+    );
+    await controller.connect(
+      { ...details(), accountType: smartType },
+      { address: smartAddress, network: { ...vault.activeNetwork } }
+    );
+    const approval = await openApproval(
+      undefined,
+      'personal_sign',
+      [message, smartAddress],
+      frameId
+    );
+    const actionHash = getPaliErc7739PersonalSignHash({
+      accountAddress: smartAddress,
+      chainId: 1,
+      hash: hashMessage(message),
+    });
+    const sign = (signingMetadata = metadata, rendererDigest = actionHash) =>
+      signSmartAccountActionHash({
+        actionHash: rendererDigest,
+        authenticatorContexts: getSmartAccountLocalOwnerContexts({
+          accounts: store.getState().vault.accounts,
+          controllerEmitter: async (methods, params) => {
+            const response = await approval.invoke(methods, params ?? []);
+            if (response && typeof response === 'object' && 'error' in response)
+              throw new Error(String(response.error));
+            return response;
+          },
+          personalSignValidator: signingMetadata.auth.validator,
+        }),
+        smartAccount: signingMetadata,
+      });
+    const {
+      getContexts: originalGetContexts,
+      sendMessage: originalSendMessage,
+    } = chrome.runtime;
+    return {
+      actionHash,
+      activeValidator,
+      approval,
+      keyId,
+      keys,
+      metadata,
+      sign,
+      slhAddress,
+      dispose() {
+        Object.assign(chrome.runtime, {
+          getContexts: originalGetContexts,
+          sendMessage: originalSendMessage,
+        });
+        clearRuntimeSLHDSAStates();
+      },
+      readCount: async () =>
+        (await loadEncryptedSLHDSAState({ crypto: stateCrypto, keyId }))
+          ?.signatureCount,
+    };
+  };
+
+  it.each(['before offscreen dispatch', 'after offscreen dispatch'])(
+    'retires a connected SLH-DSA personal-sign approval revoked %s without losing usage accounting',
+    async (phase) => {
+      const fixture = await openSlhApproval();
+      const signature = `0x${'77'.repeat(SLH_DSA_SIGNATURE_LENGTH)}`;
+      const response = { success: true, result: { signature } };
+      let beginHold!: () => void;
+      let endHold!: () => void;
+      const started = new Promise<void>((resolve) => (beginHold = resolve));
+      const held = new Promise<void>((resolve) => (endHold = resolve));
+      const getContexts = jest.fn(async () => {
+        if (phase === 'before offscreen dispatch') {
+          beginHold();
+          await held;
+        }
+        return [{}];
+      });
+      const sendOffscreen = jest.fn(async () => {
+        if (phase === 'after offscreen dispatch') {
+          beginHold();
+          await held;
+        }
+        return response;
+      });
+      Object.assign(chrome.runtime, {
+        getContexts,
+        sendMessage: sendOffscreen,
+      });
+      try {
+        const signing = fixture.sign().then(
+          () => true,
+          () => false
+        );
+        await started;
+        await controller.disconnect(host, true, { propagateErrors: true });
+        expect(await fixture.approval.outcome).toEqual({ code: 4001 });
+        expect(disk.dapp.dapps[host]).toBeUndefined();
+        endHold();
+        const afterDispatch = phase === 'after offscreen dispatch';
+        expect({
+          dispatches: sendOffscreen.mock.calls.length,
+          returnedSignature: await signing,
+          persistedCount: await fixture.readCount(),
+        }).toEqual({
+          dispatches: Number(afterDispatch),
+          returnedSignature: false,
+          persistedCount: Number(afterDispatch),
+        });
+      } finally {
+        fixture.dispose();
+      }
+    }
+  );
+
+  it('rechecks the approved popup after the offscreen context lookup', async () => {
+    const fixture = await openSlhApproval();
+    let beginHold!: () => void;
+    let endHold!: () => void;
+    const started = new Promise<void>((resolve) => (beginHold = resolve));
+    const held = new Promise<void>((resolve) => (endHold = resolve));
+    const sendOffscreen = jest.fn();
+    Object.assign(chrome.runtime, {
+      getContexts: jest.fn(async () => {
+        beginHold();
+        await held;
+        return [{}];
+      }),
+      sendMessage: sendOffscreen,
+    });
+    try {
+      const outcome = expect(fixture.sign()).rejects.toThrow(
+        'approval is no longer current'
+      );
+      await started;
+      getClient.mockResolvedValue(undefined);
+      endHold();
+      await outcome;
+      expect(controller.isConnected(host)).toBe(true);
+      expect(await fixture.approval.outcome).toEqual({ code: 4001 });
+      expect(sendOffscreen).not.toHaveBeenCalled();
+      expect(await fixture.readCount()).toBe(0);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  it('rechecks a removed requesting iframe after the held offscreen approver probe', async () => {
+    // Keep the popup's periodic site check from masking the dispatch race.
+    jest.useFakeTimers({
+      doNotFake: ['setImmediate', 'setTimeout', 'clearTimeout'],
+    });
+    try {
+      const fixture = await openSlhApproval({ frameId: 4 });
+      const sendOffscreen = jest.fn(async () => ({
+        success: true,
+        result: { signature: `0x${'77'.repeat(SLH_DSA_SIGNATURE_LENGTH)}` },
+      }));
+      let beginHold!: () => void;
+      let endHold!: () => void;
+      const started = new Promise<void>((resolve) => (beginHold = resolve));
+      const held = new Promise<void>((resolve) => (endHold = resolve));
+      let checkingDispatch = false;
+      let siteProbedForDispatch = false;
+      let sitePresent = true;
+      Object.assign(chrome.runtime, {
+        getContexts: jest.fn(async () => {
+          checkingDispatch = true;
+          return [{}];
+        }),
+        sendMessage: sendOffscreen,
+      });
+      sendMessage.mockImplementation(async () => {
+        if (!sitePresent) throw new Error('Receiving end does not exist');
+        if (checkingDispatch) siteProbedForDispatch = true;
+        return { documentActive: true };
+      });
+      getClient.mockImplementation(async () => {
+        if (checkingDispatch) {
+          beginHold();
+          await held;
+        }
+        return { url: fixture.approval.source.url };
+      });
+      try {
+        const signing = fixture.sign().then(
+          () => '',
+          (error: Error) => error.message
+        );
+        await started;
+        expect(siteProbedForDispatch).toBe(true);
+        expect(sendMessage).toHaveBeenLastCalledWith(
+          7,
+          { type: 'PALI_PROVIDER_DOCUMENT_CHECK' },
+          { documentId: 'site-document', frameId: 4 }
+        );
+        sitePresent = false;
+        endHold();
+        expect(await signing).toContain('approval is no longer current');
+        expect(controller.isConnected(host)).toBe(true);
+        expect(await fixture.approval.outcome).toEqual({ code: 4001 });
+        expect({
+          dispatches: sendOffscreen.mock.calls.length,
+          count: await fixture.readCount(),
+        }).toEqual({ dispatches: 0, count: 0 });
+      } finally {
+        endHold();
+        sendMessage.mockResolvedValue({ documentActive: true });
+        getClient.mockResolvedValue({ url: fixture.approval.source.url });
+        fixture.dispose();
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('hydrates and signs only the selected composite SLH-DSA child using worker-owned inputs', async () => {
+    const fixture = await openSlhApproval({ composite: true, cold: true });
+    const signature = `0x${'77'.repeat(SLH_DSA_SIGNATURE_LENGTH)}`;
+    const offscreenReply = { success: true, result: { signature } };
+    const sendOffscreen = jest
+      .fn<Promise<typeof offscreenReply>, [unknown]>()
+      .mockResolvedValue(offscreenReply);
+    Object.assign(chrome.runtime, {
+      getContexts: jest.fn(async () => [{}]),
+      sendMessage: sendOffscreen,
+    });
+    try {
+      for (const [key, child] of [
+        ['different-key', fixture.slhAddress],
+        [fixture.keyId, fixture.activeValidator],
+      ]) {
+        await expect(
+          fixture.approval.invoke(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [key, fixture.activeValidator, child]
+          )
+        ).resolves.toMatchObject({ success: false });
+      }
+      expect(sendOffscreen).not.toHaveBeenCalled();
+      const rendererMetadata = clone(fixture.metadata);
+      rendererMetadata.installedModules[0].config.pkRoot = `0x${'99'.repeat(
+        16
+      )}${'00'.repeat(16)}`;
+      const signed = await fixture.sign(
+        rendererMetadata,
+        `0x${'ab'.repeat(32)}`
+      );
+      expect(sendOffscreen).toHaveBeenCalledTimes(1);
+      expect(sendOffscreen).toHaveBeenCalledWith({
+        type: 'PALI_SLH_DSA_SIGN',
+        payload: expect.objectContaining({
+          accountId: 0,
+          actionHash: fixture.actionHash,
+          keyId: fixture.keyId,
+          ...fixture.keys,
+        }),
+      });
+      expect(sendOffscreen.mock.calls[0][0]).not.toHaveProperty(
+        'payload.allowReservedSignature'
+      );
+      expect(slhSigningHost.getSLHDSASessionStateCrypto).toHaveBeenCalledTimes(
+        1
+      );
+      expect(await fixture.readCount()).toBe(1);
+      expect(signed.validator).toBe(fixture.activeValidator);
+      fixture.approval.reply(signed.signature);
+      expect(await fixture.approval.outcome).toEqual({
+        value: signed.signature,
+      });
+    } finally {
+      fixture.dispose();
+    }
   });
 
   it('binds the registered popup and original payload without affecting another origin', async () => {
