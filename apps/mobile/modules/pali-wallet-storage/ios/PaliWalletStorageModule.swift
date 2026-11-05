@@ -50,6 +50,9 @@ private final class WalletStorageLeaseState: @unchecked Sendable {
 }
 
 public final class PaliWalletStorageModule: Module {
+  #if os(iOS)
+  private let noteBackupPickerOwner = PaliNoteBackupPickerOwner()
+  #endif
   private let state = WalletStorageLeaseState.shared
   private let files = FileManager.default
   private let allowedNames: Set<String> = ["wallet.sqlite", "wallet.sqlite-wal", "wallet.sqlite-shm", "wallet.sqlite-journal"]
@@ -133,6 +136,35 @@ public final class PaliWalletStorageModule: Module {
 
   public func definition() -> ModuleDefinition {
     Name("PaliWalletStorage")
+    #if os(iOS)
+    AsyncFunction("pickEncryptedNoteBackup") { (promise: Promise) in
+      MainActor.assumeIsolated {
+        PaliNoteBackupPicker.shared.pick(owner: self.noteBackupPickerOwner,
+          presenter: self.appContext?.utilities?.currentViewController(), promise: promise)
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("pickEncryptedNoteBackupDestination") { (promise: Promise) in
+      MainActor.assumeIsolated {
+        PaliNoteBackupPicker.shared.pickDestination(owner: self.noteBackupPickerOwner,
+          presenter: self.appContext?.utilities?.currentViewController(), promise: promise)
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("writeEncryptedNoteBackup") { (token: String, bytes: Data, promise: Promise) in
+      MainActor.assumeIsolated {
+        PaliNoteBackupPicker.shared.write(owner: self.noteBackupPickerOwner, token: token, bytes: bytes, promise: promise)
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("revokeEncryptedNoteBackupDestination") { (token: String) in
+      MainActor.assumeIsolated {
+        PaliNoteBackupPicker.shared.revokeDestination(owner: self.noteBackupPickerOwner, token: token)
+      }
+    }.runOnQueue(.main)
+    OnDestroy {
+      let owner = self.noteBackupPickerOwner
+      owner.retire()
+      DispatchQueue.main.async { PaliNoteBackupPicker.shared.invalidate(owner: owner) }
+    }
+    #endif
     AsyncFunction("acquire") { () throws -> [String: Any] in
       self.state.mutex.lock()
       defer { self.state.mutex.unlock() }

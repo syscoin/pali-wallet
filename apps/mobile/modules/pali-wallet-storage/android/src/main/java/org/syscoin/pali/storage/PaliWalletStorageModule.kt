@@ -2,12 +2,16 @@ package org.syscoin.pali.storage
 
 import android.system.Os
 import android.system.OsConstants
+import expo.modules.kotlin.Promise
+import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
 import java.util.UUID
 
 class PaliWalletStorageModule : Module() {
+  private val noteBackupPickerOwner = PaliNoteBackupPicker.Owner()
+
   companion object {
     private val mutex = Any()
     private var lease: String? = null
@@ -51,6 +55,26 @@ class PaliWalletStorageModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("PaliWalletStorage")
+    AsyncFunction("pickEncryptedNoteBackup") { promise: Promise ->
+      val activity = appContext.currentActivity.takeIf { appContext.hasActiveReactInstance }
+      PaliNoteBackupPicker.pick(noteBackupPickerOwner, activity, false, promise)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("pickEncryptedNoteBackupDestination") { promise: Promise ->
+      val activity = appContext.currentActivity.takeIf { appContext.hasActiveReactInstance }
+      PaliNoteBackupPicker.pick(noteBackupPickerOwner, activity, true, promise)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("writeEncryptedNoteBackup") { token: String, bytes: ByteArray, promise: Promise ->
+      PaliNoteBackupPicker.write(noteBackupPickerOwner, token, bytes, promise)
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("revokeEncryptedNoteBackupDestination") { token: String ->
+      PaliNoteBackupPicker.revokeDestination(noteBackupPickerOwner, token)
+    }.runOnQueue(Queues.MAIN)
+    OnActivityResult { activity, result ->
+      PaliNoteBackupPicker.receive(noteBackupPickerOwner, activity, result.requestCode, result.resultCode, result.data)
+    }
+    OnActivityDestroys { PaliNoteBackupPicker.activityDestroyed(noteBackupPickerOwner) }
+    OnDestroy { PaliNoteBackupPicker.invalidate(noteBackupPickerOwner) }
+
     AsyncFunction("acquire") {
       synchronized(mutex) {
         if (lease != null) failure()
