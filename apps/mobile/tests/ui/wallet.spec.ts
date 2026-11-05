@@ -22,6 +22,8 @@ for (const network of watchFixtures) {
   const { id, address } = network;
   test(`default App watches one ${id} address through the real public platform`, async ({ page }) => {
     const calls: string[] = [];
+    const prices: string[] = [];
+    const ticker = `${network.endpoint}/api/v2/tickers/currency`;
     const responses: Record<string, unknown> = {
       [`${network.endpoint}/api/v2/`]: {
         blockbook: { coin: network.coin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 },
@@ -33,6 +35,11 @@ for (const network of watchFixtures) {
     await page.route('**/*', async (route) => {
       const request = route.request(), url = request.url();
       if (new URL(url).origin === 'http://127.0.0.1:4178') { await route.continue(); return; }
+      if (network.chain === 'main' && request.method() === 'GET' && url === ticker) {
+        prices.push(url);
+        await route.fulfill({ headers: { 'access-control-allow-origin': 'http://127.0.0.1:4178' }, json: { rates: { usd: 100 } } });
+        return;
+      }
       if (request.method() !== 'GET' || !Object.hasOwn(responses, url)) {
         await route.abort('blockedbyclient');
         throw Error('Unexpected external request in public watch test');
@@ -48,10 +55,13 @@ for (const network of watchFixtures) {
     await page.getByRole('button', { name: 'Review account', exact: true }).click();
     await expect(page.getByLabel(`Review ${network.name} address ${address}`, { exact: true })).toBeVisible();
     expect(calls).toEqual([]);
+    expect(prices).toEqual([]);
     await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
     await expect(page.getByLabel(`${network.name} confirmed balance 0.0 ${network.symbol}`, { exact: true })).toBeVisible();
     await expect(page.getByLabel(`Pending balance change -0.00000123 ${network.symbol}`, { exact: true })).toBeVisible();
     expect(calls).toEqual([`${network.endpoint}/api/v2/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]);
+    if (network.chain === 'main') await expect.poll(() => prices).toEqual([ticker]);
+    else expect(prices).toEqual([]);
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await expect(page.getByRole('img', { name: `QR code for ${network.name} address ${address}` })).toBeVisible();
@@ -154,10 +164,23 @@ test('a new watch-only address can switch across every offered EVM network', asy
   ];
   const errors: string[] = [];
   const calls: { chain: number; method: string }[] = [];
+  const prices: string[] = [];
+  const quoteUrls = new Map(['ethereum', 'syscoin'].map((asset) => [
+    `https://api.coingecko.com/api/v3/simple/price?ids=${asset}&vs_currencies=usd&include_24hr_change=true`, asset,
+  ]));
   page.on('pageerror', (error) => errors.push(error.message));
   await page.route(/^https?:\/\/(?!127\.0\.0\.1(?::|\/))/, async (route) => {
+    const asset = quoteUrls.get(route.request().url());
+    if (asset && route.request().method() === 'GET') {
+      prices.push(asset);
+      await route.fulfill({ headers: { 'access-control-allow-origin': 'http://127.0.0.1:4178' }, json: { [asset]: { usd: 100, usd_24h_change: 0 } } });
+      return;
+    }
     const network = networks.find((entry) => new URL(entry.url).href === new URL(route.request().url()).href);
-    if (!network) throw new Error('Unexpected network request');
+    if (!network || route.request().method() !== 'POST') {
+      await route.abort('blockedbyclient');
+      throw new Error('Unexpected network request');
+    }
     const request = route.request().postDataJSON();
     calls.push({ chain: network.chain, method: request.method });
     await route.fulfill({ json: { jsonrpc: '2.0', id: request.id,
@@ -169,16 +192,19 @@ test('a new watch-only address can switch across every offered EVM network', asy
   await page.getByRole('button', { name: 'Review account' }).click();
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await expect(page.getByLabel('Ethereum balance 0.0 ETH', { exact: true })).toBeVisible();
+  await expect.poll(() => prices).toEqual(['ethereum']);
   let selected = 'Ethereum';
   for (const network of networks) {
     await page.getByRole('button', { name: `Network ${selected}`, exact: true }).click();
     await page.getByRole('button').filter({ has: page.getByText(network.name, { exact: true }) }).click();
     await expect(page.getByRole('button', { name: `Network ${network.name}`, exact: true })).toBeVisible({ timeout: 5000 });
     await expect.poll(() => calls.filter((call) => call.chain === network.chain && call.method === 'eth_getBalance').length).toBeGreaterThan(0);
+    if (network.chain === 57) await expect.poll(() => prices).toEqual(['ethereum', 'syscoin']);
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
     selected = network.name;
   }
   expect(errors).toEqual([]);
+  expect(prices).toEqual(['ethereum', 'syscoin']);
   expect(calls.every((call) => ['eth_chainId', 'eth_getBalance'].includes(call.method))).toBe(true);
 });
 test('activity filters show the selected sample direction', async ({

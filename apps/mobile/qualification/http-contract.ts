@@ -1,8 +1,13 @@
 /** Public, fixed-loopback qualification only; never a wallet network registration. */
 export const HTTP_CASES = Object.freeze([
   'exact-get-url', 'client-identification', 'redirect-refused', 'seeded-cookie-omitted',
-  'abort-before-headers', 'abort-stream', 'limit-stream', 'healthy-after-cancel',
+  'abort-before-headers', 'abort-stream', 'limit-stream', 'quote-early-rejection', 'quote-stalled-deadline', 'healthy-after-cancel',
 ] as const);
+export const QUOTE_EARLY_REJECTIONS = Object.freeze([
+  { route: 'quote-non-ok', status: 503, length: '64' },
+  { route: 'quote-oversize', status: 200, length: '16385' },
+] as const);
+export const STALLED_QUOTE_ROUTE = 'quote-stalled';
 export type HttpCase = typeof HTTP_CASES[number];
 export type HttpFailureCase = HttpCase | 'host-verification' | 'unavailable';
 export type HttpLaunch = Readonly<{ port: number; token: string }>;

@@ -21,7 +21,18 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
   listeners.get(event)!.add(listener);
   return { remove() { listeners.get(event)!.delete(listener); } };
 }) as typeof AppState.addEventListener;
-globalThis.fetch = async (input, init) => await activityFetch(input, init) ?? await evmActivityFetch(input, init) ?? fixtureFetch(input, init);
+const quoteRequests: string[] = [];
+globalThis.fetch = async (input, init) => {
+  const url = new URL(String(input), window.location.href);
+  if ((url.origin === 'https://api.coingecko.com' && url.pathname === '/api/v3/simple/price') || url.pathname.endsWith('/api/v2/tickers/currency')) {
+    if (!new URLSearchParams(window.location.search).has('fiat-fixture')) return new Response(null, { status: 503 });
+    if (init?.method !== 'GET' || init.body !== undefined || init.credentials !== 'omit' || init.redirect !== 'error')
+      throw new Error('Unexpected quote request options');
+    quoteRequests.push(url.href);
+    return Response.json(url.origin === 'https://api.coingecko.com' ? { ethereum: { usd: 100, eur: 200 } } : { rates: { usd: 100, eur: 200 } });
+  }
+  return await activityFetch(input, init) ?? await evmActivityFetch(input, init) ?? fixtureFetch(input, init);
+};
 const originalOpen = Linking.openURL;
 Linking.openURL = async (url) => { if (UTXO_NETWORKS.some(({ explorer }) => url.startsWith(new URL('tx/', explorer).href))) { activityFixture.open(url); return; } if (evmActivityFixture.open(url)) return; return originalOpen(url); };
 Share.share = async (content) => { publicShares.push(content.message ?? ''); return { action: Share.sharedAction, activityType: undefined }; };
@@ -41,6 +52,7 @@ declare global {
       evmActivity: typeof evmActivityFixture;
       notes: typeof noteInventoryFixture;
       idle: typeof idleFixture;
+      quotes(): string[];
       audit(): typeof audit;
       events(): string[];
       shares(): string[];
@@ -76,7 +88,7 @@ declare global {
 }
 window.__watchFixture = {
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
-  audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
+  quotes: () => [...quoteRequests], audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },

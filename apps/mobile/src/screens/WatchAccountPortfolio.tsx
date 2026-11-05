@@ -8,6 +8,7 @@ import { getNetwork } from '../core/networks';
 import { getWatchNetworks, type WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
+import { useNativeCoinQuote } from '../portfolio/useNativeCoinQuote';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import { Button, Card, Coin, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import type { ShellLeafNavigation } from './RealAppShell';
@@ -61,6 +62,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     finally { if (action === lifecycle.current.action) { lifecycle.current.busy = false; if (lifecycle.current.alive) { setBusy(false); setOpeningFaucet(false); } } }
   };
   const amount = snapshot.balance.status === 'available' ? formatBaseUnits(snapshot.balance.units, network.decimals) : null;
+  const quote = useNativeCoinQuote(mode === 'home' && snapshot.status === 'ready' ? network.id : null, amount);
   const utxo = network.kind === 'utxo';
   const pending = snapshot.balance.status === 'available' && 'kind' in snapshot.balance && snapshot.balance.kind === 'utxo'
     ? snapshot.balance.pendingDeltaUnits : null;
@@ -81,7 +83,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
       {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
       {faucetCard}
     </> : <>
-      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={s.amount} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{loading && <ActivityIndicator color={colors.pink} />}</View>
+      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{quote && <Text style={styles.muted} testID="watch-portfolio-quote">{quote}</Text>}{loading && <ActivityIndicator color={colors.pink} />}</View>
       {utxo && <Card style={{ padding: 18, gap: 6 }}><Text style={s.label}>Pending balance change</Text><Text accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`} style={s.name}>{pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text><Text style={styles.muted}>Incoming and outgoing transactions waiting for confirmation.</Text></Card>}
 
       {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}
