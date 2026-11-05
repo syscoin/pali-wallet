@@ -392,6 +392,7 @@ class MainController {
   private assetUpdateRequestId = 0;
   private transactionUpdateRequestId = 0;
   private transactionUpdateCommitId = 0;
+  private postSwitchHistorySave?: () => boolean;
   private historyRetry?: {
     generation: string;
     promise: Promise<void>;
@@ -469,6 +470,7 @@ class MainController {
 
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
+  private saveTimeoutIsScoped = false;
 
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
@@ -1482,13 +1484,15 @@ class MainController {
     });
   }
 
+  private clearWalletSaveTimeout(): void {
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveTimeoutIsScoped = false;
+  }
+
   // Clear all pending timers to prevent memory leaks
   private clearAllTimers(): void {
-    // Clear save timeout
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
+    this.clearWalletSaveTimeout();
 
     // Clear all rapid polling timeouts
     this.activeRapidPolls.forEach((timeoutId) => {
@@ -2099,6 +2103,7 @@ class MainController {
 
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
+    this.postSwitchHistorySave = undefined;
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
@@ -3607,13 +3612,16 @@ class MainController {
   }
 
   // Internal method to perform the actual save
-  private async performSave(operation: string): Promise<void> {
+  private async performSave(
+    operation: string,
+    isCurrent?: () => boolean
+  ): Promise<void> {
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
     if (activeSlip44 !== null) {
       // Serialize with network-switch and emergency commits. The storage helper
       // batches vault + changed main state into one Chrome storage operation.
-      await persistCommittedWalletState(true, true);
+      await persistCommittedWalletState(true, true, isCurrent);
 
       console.log(
         `[MainController] Wallet state saved successfully for operation: ${operation}`
@@ -3629,9 +3637,11 @@ class MainController {
   private async saveWalletState(
     operation: string,
     isUserActivity = false,
-    sync = false
+    sync = false,
+    isCurrent?: () => boolean
   ): Promise<void> {
     try {
+      if (isCurrent && !isCurrent()) return;
       // Only reset auto-lock timer for explicit user activities, not automatic saves
       if (isUserActivity) {
         this.resetAutoLockTimer();
@@ -3640,13 +3650,10 @@ class MainController {
       // If sync is true, save immediately
       if (sync) {
         // Clear any pending debounced save to prevent duplicate saves
-        if (this.saveTimeout) {
-          clearTimeout(this.saveTimeout);
-          this.saveTimeout = null;
-        }
+        this.clearWalletSaveTimeout();
 
         try {
-          await this.performSave(operation);
+          await this.performSave(operation, isCurrent);
         } catch (error) {
           console.error(
             `[MainController] Failed to save wallet state for operation ${operation}:`,
@@ -3657,25 +3664,29 @@ class MainController {
         return;
       }
 
-      // Clear any existing save timeout to debounce rapid calls
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-      }
+      // A pending unscoped save already includes the latest vault snapshot.
+      // A scoped follow-up must never replace it with a cancellable save.
+      if (isCurrent && this.saveTimeout && !this.saveTimeoutIsScoped) return;
+      this.clearWalletSaveTimeout();
 
-      // Debounce the actual save to prevent rapid consecutive storage writes.
-      this.saveTimeout = setTimeout(async () => {
+      const timeout = setTimeout(async () => {
+        if (this.saveTimeout !== timeout) return;
+        // Release this timer before I/O so another save can be queued while
+        // the current one owns (or waits for) the persistence mutex.
+        this.saveTimeout = null;
+        this.saveTimeoutIsScoped = false;
+        if (isCurrent && !isCurrent()) return;
         try {
-          await this.performSave(operation);
+          await this.performSave(operation, isCurrent);
         } catch (error) {
           console.error(
             `[MainController] Failed to save wallet state for operation ${operation}:`,
             error
           );
-          // Don't throw - the operation already succeeded, saving is just persistence
-        } finally {
-          this.saveTimeout = null;
         }
       }, 100);
+      this.saveTimeout = timeout;
+      this.saveTimeoutIsScoped = Boolean(isCurrent);
     } catch (error) {
       console.error(
         `[MainController] Error in saveWalletState for operation ${operation}:`,
@@ -5016,6 +5027,7 @@ class MainController {
     }
     this.assertWalletReadyForSigning();
     const requestGeneration = ++this.networkRequestGeneration;
+    this.postSwitchHistorySave = undefined;
     const isCurrent = () => requestGeneration === this.networkRequestGeneration;
     const assertCurrent = () => {
       if (!isCurrent()) throw new Error(NETWORK_CHANGE_CANCELLED_ERROR);
@@ -6815,6 +6827,50 @@ class MainController {
       : 'confirmed';
   }
 
+  private capturePostSwitchHistoryScope(isCurrentNetwork: () => boolean) {
+    const { activeAccount, activeNetwork } = store.getState().vault;
+    const chainId = activeNetwork.chainId;
+    const readHistory = () =>
+      store.getState().vault.accountTransactions[activeAccount.type]?.[
+        activeAccount.id
+      ]?.ethereum?.[chainId] || [];
+    let submittedHistory: ReturnType<typeof readHistory> | undefined;
+    const session = this.walletSessionGeneration;
+    const scope = getWalletNavigationScope();
+    const isCurrent = () => {
+      if (
+        !isCurrentNetwork() ||
+        session !== this.walletSessionGeneration ||
+        activeAccount !== store.getState().vault.activeAccount
+      )
+        return false;
+      const currentScope = getWalletNavigationScope();
+      return (
+        currentScope.account === scope.account &&
+        currentScope.network === scope.network
+      );
+    };
+    return {
+      isCurrent,
+      captureSubmittedHistory: () => {
+        submittedHistory ??= readHistory();
+      },
+      historyChanged: () =>
+        submittedHistory !== undefined &&
+        !isEqual(submittedHistory, readHistory()),
+    };
+  }
+
+  private schedulePostSwitchHistorySave(isCurrent: () => boolean) {
+    this.postSwitchHistorySave = undefined;
+    void this.saveWalletState(
+      NETWORK_SWITCH_AFTER_UPDATES,
+      false,
+      false,
+      isCurrent
+    );
+  }
+
   public refreshTransactionHistory(expectedScope: IWalletNavigationScope) {
     this.assertWalletReadyForSigning();
     const scope = getWalletNavigationScope();
@@ -7074,6 +7130,21 @@ class MainController {
               );
               this.transactionUpdateCommitId = requestId;
               setHistoryStatus('ready');
+
+              const historySave = this.postSwitchHistorySave;
+              if (historySave && !isBitcoinBased) {
+                if (!historySave()) {
+                  this.postSwitchHistorySave = undefined;
+                } else {
+                  const committed =
+                    store.getState().vault.accountTransactions[
+                      activeAccount.type
+                    ]?.[activeAccount.id]?.ethereum?.[activeNetwork.chainId] ||
+                    [];
+                  if (!isEqual(previousTxs, committed))
+                    this.schedulePostSwitchHistorySave(historySave);
+                }
+              }
 
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
@@ -9979,6 +10050,9 @@ class MainController {
       await this.ensureActiveAccountCompatibleWithNetwork(network);
     assertCurrent();
 
+    const historySaveScope = isBitcoinBased
+      ? undefined
+      : this.capturePostSwitchHistoryScope(isCurrent);
     // Dispatch success immediately to prevent getting stuck in "switching" state
     store.dispatch(switchNetworkSuccess());
 
@@ -9987,20 +10061,24 @@ class MainController {
     // activeSlip44 or dapp connections changed, using one storage operation.
     if (!syncUpdates) {
       const hadPendingWalletSave = Boolean(this.saveTimeout);
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-        this.saveTimeout = null;
-      }
+      this.clearWalletSaveTimeout();
       this.isNetworkSwitchMainStateDirty =
         this.isNetworkSwitchMainStateDirty ||
         previousSlip44 !== activeSlip44 ||
         dappStateChanged ||
         hadPendingWalletSave;
+      // The persistence guard first runs under the mutex immediately before
+      // the vault snapshot. Capture once so the post-ACK guard cannot replace it.
+      const isCurrentAtSnapshot = () => {
+        if (!isCurrent()) return false;
+        historySaveScope?.captureSubmittedHistory();
+        return true;
+      };
       try {
         await persistCommittedWalletState(
           this.isNetworkSwitchMainStateDirty,
           false,
-          isCurrent
+          isCurrentAtSnapshot
         );
         assertCurrent();
         this.isNetworkSwitchMainStateDirty = false;
@@ -10011,6 +10089,16 @@ class MainController {
         if (isCurrent()) this.isNetworkSwitchMainStateDirty = true;
         throw error;
       }
+    }
+
+    // A same-scope read can commit after the switch snapshot is submitted
+    // and before storage acknowledges it. Cover that change now, or leave
+    // one obligation for the first changed history commit after the barrier.
+    if (historySaveScope?.isCurrent()) {
+      const { isCurrent: isCurrentHistory, historyChanged } = historySaveScope;
+      if (historyChanged())
+        this.schedulePostSwitchHistorySave(isCurrentHistory);
+      else this.postSwitchHistorySave = isCurrentHistory;
     }
 
     // Notify about network change (notification manager handles validation)
