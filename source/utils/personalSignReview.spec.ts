@@ -2,6 +2,7 @@ import {
   getPersonalSignParams,
   getPersonalSignReview,
   isValidPersonalSignMessage,
+  preparePersonalSignReview,
 } from './personalSignReview';
 
 const ADDRESS = '0x1111111111111111111111111111111111111111';
@@ -9,6 +10,25 @@ const ORIGIN = 'https://metamask.github.io';
 const message = (header = 'metamask.github.io', address = ADDRESS) =>
   `${header} wants you to sign in with your Ethereum account:\n${address}\n\nI accept the MetaMask Terms of Service: https://community.metamask.io/tos\n\nURI: https://metamask.github.io\nVersion: 1\nChain ID: 1\nNonce: 32891757\nIssued At: 2021-09-30T16:25:24.000Z`;
 const encode = (value: string) => `0x${Buffer.from(value).toString('hex')}`;
+
+it('returns unchanged signing bytes only for the admitted signer and origin', () => {
+  const text = message();
+  const bytes = encode(text);
+  expect(preparePersonalSignReview([bytes, ADDRESS], ORIGIN, ADDRESS)).toEqual({
+    message: text,
+    request: { address: ADDRESS, message: bytes },
+  });
+  expect(
+    preparePersonalSignReview(
+      [ADDRESS, bytes],
+      'https://attacker.test',
+      ADDRESS
+    )
+  ).toEqual({ message: text, error: 'send.suspiciousSignInRequest' });
+  expect(
+    preparePersonalSignReview([bytes, `0x${'22'.repeat(20)}`], ORIGIN, ADDRESS)
+  ).toEqual({ message: '', error: 'send.signingForWrongAddress' });
+});
 
 describe('personal_sign parameter order', () => {
   it.each([

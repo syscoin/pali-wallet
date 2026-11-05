@@ -170,3 +170,35 @@ export const getPersonalSignReview = (
     return { message, error: 'send.signingForWrongAddress' };
   return { message };
 };
+
+export interface IPreparedPersonalSignReview extends IPersonalSignReview {
+  request?: Readonly<NonNullable<ReturnType<typeof getPersonalSignParams>>>;
+}
+
+/** The caller admits and bounds the provider request before presenting it. */
+export const preparePersonalSignReview = (
+  params: Parameters<typeof getPersonalSignParams>[0],
+  requesterOrigin: string,
+  signerAddress: string
+): IPreparedPersonalSignReview => {
+  const wrongSigner = {
+    message: '',
+    error: 'send.signingForWrongAddress',
+  } as const;
+  try {
+    const request = getPersonalSignParams(params);
+    if (
+      !request ||
+      request.address.toLowerCase() !== signerAddress.toLowerCase()
+    )
+      return wrongSigner;
+    const review = getPersonalSignReview(
+      request.message,
+      requesterOrigin,
+      signerAddress
+    );
+    return review.error ? review : { ...review, request };
+  } catch {
+    return wrongSigner;
+  }
+};

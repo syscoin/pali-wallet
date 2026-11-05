@@ -240,6 +240,26 @@ it.each(['account', 'origin', 'message'])(
   }
 );
 
+it('retires the displayed confirmation when the selected chain changes', async () => {
+  const payload = encode('An ordinary message');
+  const view = await prepare(payload);
+  const staleConfirm = mockConfirm;
+  mockState.vault.activeNetwork.chainId = 137;
+  view.rerender(<EthSign />);
+  await act(async () => {
+    await staleConfirm();
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
+  await act(async () => {
+    await mockConfirm();
+  });
+  expect(mockEmitter).toHaveBeenCalledTimes(1);
+  expect(dispatchBackgroundEvent).toHaveBeenCalledWith(
+    'personal_sign.https://metamask.github.io',
+    '0xsignature'
+  );
+});
+
 describe.each(['software', 'Ledger', 'Trezor', 'SmartAccount'])(
   'ambiguous personal_sign bytes for %s',
   (signer) => {
