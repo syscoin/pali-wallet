@@ -32,6 +32,7 @@ type Props = {
 type Route =
   | { kind: 'list' }
   | { kind: 'import' }
+  | { kind: 'collectibles' }
   | { kind: 'detail' | 'remove'; contract: string };
 const scopeOf = (snapshot: NativeTokenSnapshot) =>
   snapshot.account
@@ -82,6 +83,8 @@ function TokenContent({
   const title =
     route.kind === 'import'
       ? 'Import token'
+      : route.kind === 'collectibles'
+      ? 'Collectibles'
       : route.kind === 'detail'
       ? 'Token details'
       : route.kind === 'remove'
@@ -96,12 +99,10 @@ function TokenContent({
     if (snapshot.busy) return true;
     lifetime.current.epoch++;
     lifetime.current.running = false;
-    if (
-      route.kind === 'import' &&
-      controller.getSnapshot().account === snapshot.account
-    ) {
+    if ((route.kind === 'import' || route.kind === 'collectibles') &&
+      controller.getSnapshot().account === snapshot.account) {
       controller.closeDiscovery();
-      controller.cancelPreview();
+      if (route.kind === 'import') controller.cancelPreview();
     }
     Keyboard.dismiss();
     setLocalError('');
@@ -314,7 +315,58 @@ function TokenContent({
                 disabled={busy || snapshot.status === 'loading'}
                 onPress={() => run(() => controller.refresh())}
               />
+              {discovery && (
+                <Button
+                  title="Collectibles"
+                  variant="secondary"
+                  disabled={busy || snapshot.status !== 'ready'}
+                  onPress={() => {
+                    if (controller.getSnapshot().account !== snapshot.account) return;
+                    controller.closeDiscovery();
+                    setLocalError('');
+                    setRoute({ kind: 'collectibles' });
+                  }}
+                />
+              )}
             </>
+          ) : route.kind === 'collectibles' && discovery ? (
+            <View style={s.section} testID="native-collectibles">
+              <Text style={styles.muted}>
+                Reported by the explorer. Ownership hasn’t been verified.
+              </Text>
+              {discovery.status === 'loading' && (
+                <ActivityIndicator color={colors.pink} accessibilityLabel="Looking up collectibles" />
+              )}
+              {discovery.status === 'error' && (
+                <Notice title="Collectibles unavailable" body="The explorer did not return results. Try again." tone="amber" />
+              )}
+              {discovery.status === 'ready' && !discovery.collectibles?.length && (
+                <Notice title="No collectibles found" body="The explorer returned no collectible suggestions for this account." />
+              )}
+              {discovery.collectibles?.map(({ contractAddress, name, tokenStandard, tokenId, units }) => (
+                <Card key={`${contractAddress}:${tokenId ?? ''}`} style={s.tokenRow}>
+                  <Text style={s.name}>{name}</Text>
+                  <Text style={styles.muted}>{tokenStandard}</Text>
+                  <Text selectable style={s.contract}>{contractAddress}</Text>
+                  {tokenId !== undefined && <Text selectable style={s.contract}>Token ID {tokenId}</Text>}
+                  <Text selectable style={s.contract}>
+                    {tokenStandard === 'ERC-721' ? 'Items reported' : 'Quantity reported'}: {units}
+                  </Text>
+                </Card>
+              ))}
+              {discovery.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
+              {discovery.status !== 'loading' && (
+                <Button
+                  title={discovery.status === 'ready' ? 'Refresh results' : discovery.status === 'error' ? 'Try again' : 'Find collectibles'}
+                  variant="secondary"
+                  disabled={busy}
+                  onPress={() => {
+                    if (controller.getSnapshot().account === snapshot.account)
+                      void controller.discover('collectibles');
+                  }}
+                />
+              )}
+            </View>
           ) : route.kind === 'import' ? (
             <>
               <Text style={styles.muted}>

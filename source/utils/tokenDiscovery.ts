@@ -2,6 +2,9 @@ import {
   createRoutescanFetch,
   isRoutescanApiUrl,
 } from '../shared/evmExplorer.ts';
+
+import { normalizeNftTokenId } from './nftTokenId.ts';
+
 export { isRoutescanApiUrl } from '../shared/evmExplorer.ts';
 
 const ROUTESCAN_ORIGIN = 'https://api.routescan.io';
@@ -13,6 +16,7 @@ const MAX_CACHE_ENTRIES = 64;
 type TokenRow = Record<string, unknown>;
 /** The native owner supplies bounded I/O and never joins the extension cache. */
 type OwnedTokenDiscoveryIo = Readonly<{
+  collectiblesOnly?: true;
   fetch(url: string, init: RequestInit, routescan: boolean): Promise<Response>;
   readJson(response: Response): Promise<unknown>;
   signal: AbortSignal;
@@ -95,7 +99,11 @@ const requestRows = async (
     const rows: TokenRow[] = [];
     const collections = new Map<string, { ids: Set<string>; row: TokenRow }>();
     const kinds =
-      routescan && includeNfts ? ['erc20', 'erc721', 'erc1155'] : ['erc20'];
+      routescan && includeNfts
+        ? owned?.collectiblesOnly
+          ? ['erc721', 'erc1155']
+          : ['erc20', 'erc721', 'erc1155']
+        : ['erc20'];
     for (const kind of kinds) {
       if (routescan) {
         url.pathname = `/v2/network/mainnet/evm/${chainId}/address/${walletAddress}/${kind}-holdings`;
@@ -159,6 +167,12 @@ const requestRows = async (
             typeof item.tokenId === 'string' &&
             /^\d+$/.test(item.tokenId)
           ) {
+            let tokenId: string;
+            try {
+              tokenId = normalizeNftTokenId(item.tokenId);
+            } catch {
+              continue;
+            }
             if (kind === 'erc721' && typeof item.tokenAddress === 'string') {
               const key = item.tokenAddress.toLowerCase();
               let collection = collections.get(key);
@@ -175,7 +189,7 @@ const requestRows = async (
                 };
                 collections.set(key, collection);
               }
-              collection.ids.add(item.tokenId);
+              collection.ids.add(tokenId);
             } else if (
               kind === 'erc1155' &&
               typeof item.balance === 'string' &&
@@ -183,7 +197,7 @@ const requestRows = async (
             ) {
               rows.push({
                 contractAddress: item.tokenAddress,
-                id: item.tokenId,
+                id: tokenId,
                 balance: item.balance,
                 decimals: 0,
                 type: 'ERC-1155',
