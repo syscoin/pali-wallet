@@ -21,6 +21,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
@@ -575,7 +576,9 @@ describe('SmartAccountController smart account execution fees', () => {
             activeNetwork: { chainId: CHAIN_ID },
           } as any),
         {} as any,
-        {} as any
+        {} as any,
+        undefined,
+        createTestEvmSubmissionCapture()
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       const { controller, sendAndSaveEthTransaction } = buildController();

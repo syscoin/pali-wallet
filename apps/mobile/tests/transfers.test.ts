@@ -76,11 +76,11 @@ function fixture() {
       return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
-    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent) {
+    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: (approvedBytes: string) => Promise<unknown>, intent?: Erc20TransferIntent) {
       const journal = await runtime.journal(guard);
       try { await journal.saveSigned(rawTransaction,intent); guard(); }
       catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
-      await broadcast();
+      await broadcast(rawTransaction);
     },
     async token(contractAddress: string, guard: () => void) {
       guard();

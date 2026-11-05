@@ -4,6 +4,8 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring/cjs/types';
 import { Wallet, Transaction } from 'ethers';
 
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+
 const signer = new Wallet(`0x${'11'.repeat(32)}`); // disposable public test key
 const guard = { assertCurrentContext: jest.fn(), validateOriginal: jest.fn() };
 
@@ -85,7 +87,9 @@ describe.each([true, false])(
         key,
         () => state,
         {} as any,
-        {} as any
+        {} as any,
+        undefined,
+        createTestEvmSubmissionCapture()
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       jest
@@ -180,7 +184,9 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
           jest.fn(),
           () => state,
           ledger as any,
-          trezor as any
+          trezor as any,
+          undefined,
+          createTestEvmSubmissionCapture()
         );
         Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
         jest
@@ -257,7 +263,9 @@ it.each([undefined, '', '-1', '00', '1e6', '1'.repeat(79)])(
       key,
       () => state,
       {} as any,
-      {} as any
+      {} as any,
+      undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
     await expect(
@@ -302,7 +310,9 @@ it('rejects a cancellation quote if the original-validation or session guard cha
     key,
     () => state,
     {} as any,
-    {} as any
+    {} as any,
+    undefined,
+    createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   const pending = sdk.cancelSentTransaction(`0x${'22'.repeat(32)}`, true, 7, {
@@ -352,7 +362,9 @@ it('keeps selected smart-account state untouched during overlapping held payer p
     key,
     () => state,
     {} as any,
-    {} as any
+    {} as any,
+    undefined,
+    createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   const targetAccount = { type: KeyringAccountType.HDAccount, id: 0 };

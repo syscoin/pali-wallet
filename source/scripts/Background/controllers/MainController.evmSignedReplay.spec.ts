@@ -278,7 +278,8 @@ it('normal shared SDK submission rejects a network request epoch change after pe
     raw,
     dispatch,
     boundary,
-    () => undefined
+    () => undefined,
+    Transaction.from(raw).unsignedSerialized
   );
   const rejected = expect(pending).rejects.toThrow();
   await entered.promise;
@@ -321,7 +322,13 @@ it.each([false, true])(
       throw Error('Unexpected RPC');
     });
     const dispatch = jest.fn(async () => entry.hash);
-    const submit = submitSignedEvmTransaction(replacement, dispatch, boundary);
+    const submit = submitSignedEvmTransaction(
+      replacement,
+      dispatch,
+      boundary,
+      undefined,
+      Transaction.from(replacement).unsignedSerialized
+    );
     if (self) {
       await expect(submit).rejects.toThrow(
         'Unable to verify a code-free cancellation payer'
@@ -373,7 +380,13 @@ it.each([1, 2])(
     const hash = Transaction.from(replacement).hash;
     const dispatch = jest.fn(async () => hash);
     await expect(
-      submitSignedEvmTransaction(replacement, dispatch, boundary)
+      submitSignedEvmTransaction(
+        replacement,
+        dispatch,
+        boundary,
+        undefined,
+        Transaction.from(replacement).unsignedSerialized
+      )
     ).resolves.toBe(hash);
     expect(dispatch).toHaveBeenCalledWith(replacement);
     expect(provider._send).toHaveBeenCalledTimes(1);
@@ -420,7 +433,9 @@ it.each(['latest', 'pending', 'consumed', 'ready'])(
     const result = submitSignedEvmTransaction(
       cancellation,
       dispatch,
-      boundary
+      boundary,
+      undefined,
+      Transaction.from(cancellation).unsignedSerialized
     ).catch((error) => error);
     await entered.promise;
     expect(provider.send).not.toHaveBeenCalled();

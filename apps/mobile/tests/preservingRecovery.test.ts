@@ -501,8 +501,9 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
     const transfers = f.runtime.transfers!;
     const before = f.read().signedRecords;
     let broadcasts = 0;
-    const broadcast = async () => {
+    const broadcast = async (approvedBytes: string) => {
       broadcasts++;
+      assert.equal(approvedBytes, raw);
       assert.equal(f.read().signedRecords.length, before.length + 1);
       const record = await new EvmSignedRecords(f.store.signedRecords).readExact(
         { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash

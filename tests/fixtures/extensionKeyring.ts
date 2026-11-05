@@ -1,5 +1,7 @@
 import type { KeyringManagerOptions } from '@sidhujag/sysweb3-keyring';
 
+import { createTestEvmSubmissionCapture } from '../helpers/evmSubmission';
+
 type Sdk = typeof import('@sidhujag/sysweb3-keyring');
 
 type LedgerHost = NonNullable<KeyringManagerOptions['ledgerHost']>;
@@ -17,7 +19,10 @@ const offlineLedgerHost: LedgerHost = {
 
 export function createTestKeyringManager(
   sdk: Sdk = jest.requireActual('@sidhujag/sysweb3-keyring'),
-  options: KeyringManagerOptions = { ledgerHost: offlineLedgerHost }
+  options: KeyringManagerOptions = {
+    ledgerHost: offlineLedgerHost,
+    captureEvmSubmission: createTestEvmSubmissionCapture(),
+  }
 ) {
   const records = new Map<string, unknown>();
   const host = sdk.createKeyringHost({

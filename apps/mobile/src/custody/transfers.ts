@@ -73,7 +73,14 @@ export interface NativeTransferRuntime {
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
-  submit(rawTransaction: string, hash: string, assertCurrent: () => void, broadcast: () => Promise<unknown>, intent: Erc20TransferIntent | undefined, approved: PreparedEvmTransaction): Promise<void>;
+  submit(
+    rawTransaction: string,
+    hash: string,
+    assertCurrent: () => void,
+    broadcast: (approvedBytes: string) => Promise<unknown>,
+    intent: Erc20TransferIntent | undefined,
+    approved: PreparedEvmTransaction
+  ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
@@ -679,10 +686,10 @@ export class NativeTransfers {
       });
       try {
         await runtime.submit(rawTransaction, transactionHash, guard,
-          () => {
+          (approvedBytes) => {
             guard();
             startedSubmission = true;
-            return rpc.broadcast(rawTransaction, transactionHash, signal, approved.public.intent);
+            return rpc.broadcast(approvedBytes, transactionHash, signal, approved.public.intent);
           },
           approved.public.intent, approved.transaction!);
       } catch (error) {

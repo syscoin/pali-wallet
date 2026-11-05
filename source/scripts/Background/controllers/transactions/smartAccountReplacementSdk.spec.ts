@@ -2,6 +2,7 @@ import {
   BigNumber,
   serializeTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
+import { captureEvmSubmission } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import {
   privateKeyToAccount,
@@ -11,6 +12,7 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
 import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 jest.mock(
@@ -228,7 +230,9 @@ describe('published keyring account-scoped replacement signing', () => {
       getKey,
       () => state,
       ledger,
-      trezor
+      trezor,
+      undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {
       configurable: true,
@@ -1456,7 +1460,18 @@ describe('published keyring account-scoped replacement signing', () => {
         'mocked-private-key',
         transaction(),
         beforeBroadcast,
-        options().assertCurrentContext
+        options().assertCurrentContext,
+        undefined,
+        captureEvmSubmission(
+          {
+            account: { ...payer, address: PAYER },
+            network: { ...state.activeNetwork, slip44: 60 },
+            operation: 'speed-up',
+            originalHash: ORIGINAL,
+          },
+          options().assertCurrentContext,
+          createTestEvmSubmissionCapture()
+        )
       )
     ).rejects.toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
     expect(sign).not.toHaveBeenCalled();

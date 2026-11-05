@@ -19,6 +19,8 @@ import { Wallet } from 'ethers/wallet';
 import http from 'http';
 import https from 'https';
 
+import { createTestEvmSubmissionCapture } from '../helpers/evmSubmission';
+
 // The semantic Ledger host and Connect are the explicitly mocked device boundaries.
 const TrezorConnect = jest.requireMock('@trezor/connect-webextension').default;
 
@@ -206,7 +208,9 @@ describe.each(['Ledger', 'Trezor'] as const)(
         getPrivateKey,
         () => state,
         ledger,
-        trezor
+        trezor,
+        undefined,
+        createTestEvmSubmissionCapture()
       );
       // Retain the real lazy provider getter and its network identity check.
       // Substitute only provider construction/remote I/O with fixed local sinks.
