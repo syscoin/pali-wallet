@@ -51,7 +51,7 @@ function fixture(network:NativeNetworkRegistration,options:{block?:number;missin
 
 test('all saved EVM registrations use the same immutable context and native/token capability',()=>{
  for(const network of [...NATIVE_NETWORKS,custom]){
-  assert.deepEqual(getNativeSendCapabilities(network.id),{native:true,erc20:true});
+  assert.deepEqual(getNativeSendCapabilities(network.id, [network]),{native:true,erc20:true});
   const context=getNativeSendContext(network);assert.equal(context.chainId,network.chainId);assert.equal(context.rpcUrl,network.rpcUrl);assert.equal(context.registrationHash,network.registrationHash);
   assert.equal('settlement' in context,false);assert(Object.isFrozen(context));
   const f=fixture(network);assert.throws(()=>Object.assign(f.rpc,{context:{...context,rpcUrl:'https://wrong.invalid'}}));assert.throws(()=>Object.assign(f.rpc.context,{rpcUrl:'https://wrong.invalid'}));

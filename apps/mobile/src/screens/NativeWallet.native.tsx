@@ -23,7 +23,7 @@ import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
 import { createNativeNetworkView, type NativeNetworkView } from '../custody/networkView';
-import { erc20SigningEnabled, getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
+import { getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '../custody/networkContext';
 import { NativeAccounts } from './NativeAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
@@ -133,6 +133,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       ? { context: `${state.revision}:${current.active.accountId}:${state.account.network}`, identity: `${current.active.accountId}:${state.account.network}` } : null;
   }, []);
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
+  const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
@@ -157,7 +158,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView ||
-          stage === 'send' && snapshot.phase === 'ready' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network) ||
+          stage === 'send' && snapshot.phase === 'ready' && transferView && canSign ||
           stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
             (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1)) return false;
       if (snapshot.phase === 'ready' && stage === 'choose') shell.goBack(); else exit();
@@ -445,7 +446,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && nativeSigningEnabled(snapshot.account.network)) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransferHash} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransferHash(undefined); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransferHash} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransferHash(undefined); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
@@ -453,8 +454,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={snapshot.account && nativeSigningEnabled(snapshot.account.network) ? () => { setSendToken(null); setSavedTransferHash(undefined); openStage('send'); } : undefined}
-    onSendToken={snapshot.account && erc20SigningEnabled(snapshot.account.network) ? (token) => { setSendToken(token); setSavedTransferHash(undefined); openStage('send'); } : undefined}
+    onSend={canSign ? () => { setSendToken(null); setSavedTransferHash(undefined); openStage('send'); } : undefined}
+    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransferHash(undefined); openStage('send'); } : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
     onActivity={() => shell.select('activity')}

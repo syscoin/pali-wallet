@@ -62,7 +62,7 @@ export function snapshotWatchRecords(input: unknown): readonly StoredWatchAccoun
       return Object.freeze({ kind: 'address', ...account });
     }
     if (raw.kind !== 'utxo-public' || typeof raw.identifier !== 'string') return invalid();
-    const networkId = getUtxoNetwork(raw.networkId as UtxoNetworkId).id;
+    const networkId = getUtxoNetwork(raw.networkId).id;
     const source = parseUtxoPublicIdentifier(raw.identifier, networkId);
     if (source.kind !== 'account') return invalid();
     return Object.freeze({ kind: 'utxo-public', id: raw.id, name: raw.name, networkId, identifier: source.identifier });

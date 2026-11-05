@@ -1,6 +1,7 @@
 // Public synthetic account-history data. The real authority, shared SJS reader
 // and WatchSession remain in use; no signing or live endpoint is available.
-import { getUtxoNetwork } from '../../src/core/utxoNetworks';
+import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks';
+import { UTXO_ADDRESSES } from '../publicWatchFixtures';
 export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max';
 const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max'];
 const initial = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('activity-mode');
@@ -35,7 +36,7 @@ function assetData() {
     } : { accountAssetTransfers: [transfer], vin: [], vout: [] }) };
 }
 function transaction(n: number, network: ReturnType<typeof getUtxoNetwork>): Record<string, any> {
-  const address = network.id === 'bitcoin' ? 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' : 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
+  const address = UTXO_ADDRESSES[network.id as keyof typeof UTXO_ADDRESSES];
   const pending = mode === 'pending' && n === 1;
     return { txid: id(n + (mode.startsWith('asset') ? (modes.indexOf(mode) + 1) * 1000 : 0)), blockHeight: pending ? -1 : 190, blockHash: pending ? undefined : 'b'.repeat(64), confirmations: pending || mode === 'included' ? 0 : 11, blockTime: pending ? 0 : 1700000000,
       valueIn: '1100000000', value: '1000000000', fees: '100000000',
@@ -46,12 +47,12 @@ function transaction(n: number, network: ReturnType<typeof getUtxoNetwork>): Rec
 }
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 export async function activityFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response | null> {
-  const url = String(input), network = (['bitcoin', 'syscoin'] as const).map(getUtxoNetwork).find(n => url.startsWith(n.endpoint + '/'));
+  const url = String(input), network = UTXO_NETWORKS.find(n => url.startsWith(n.endpoint + '/'));
   if (!network) return null;
   calls.push(url);
   const parsed = new URL(url), path = parsed.pathname;
   if (mode === 'error') return new Response('fixture unavailable', { status: 503 });
-  if (path === '/api/') return json({ blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 200 }, backend: { chain: 'main' } });
+  if (path === '/api/v2/') return json({ blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: network.decimals, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 200 }, backend: { chain: network.backendChain } });
   if (path.endsWith('/block-index/0')) return json({ blockHash: network.genesisHash });
   if (path.startsWith('/api/v2/tx/')) {
     const observedMode = detailMode;

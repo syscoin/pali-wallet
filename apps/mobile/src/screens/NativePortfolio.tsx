@@ -66,7 +66,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const scope = account ? scopeOf(account) : null;
   const receiving = !!scope && receiveScope === scope;
   const loading = snapshot.status === 'loading';
-  const canSend = !!account && nativeSigningEnabled(account.network) && !!onSend;
+  const canSend = !!registration && nativeSigningEnabled(registration.id, [registration]) && !!onSend;
   const faucet = account ? getTestnetFaucet(registration!) : null;
 
   const invalidateActions = useCallback(() => {

@@ -10,9 +10,9 @@ import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
 
-function signed(units: string, symbol: string): string {
+function signed(units: string, decimals: number, symbol: string): string {
   const negative = units.startsWith('-');
-  return `${negative ? '−' : units === '0' ? '' : '+'}${formatBaseUnits(negative ? units.slice(1) : units, 8)} ${symbol}`;
+  return `${negative ? '−' : units === '0' ? '' : '+'}${formatBaseUnits(negative ? units.slice(1) : units, decimals)} ${symbol}`;
 }
 function assetQuantity(row: UtxoActivityRow): string | null {
   const value = row.assetAmount;
@@ -76,7 +76,7 @@ export function WatchActivity({ authority, navigation, onBack }: {
     try {
       if (!current()) return;
       if (kind === 'copy') { if (await Clipboard.setStringAsync(row.txid) === false) throw Error(); }
-      else await Linking.openURL(`${network.endpoint}/tx/${row.txid}`);
+      else await Linking.openURL(new URL(`tx/${row.txid}`, network.explorer).href);
       if (current()) setFeedback(kind === 'copy' ? 'Transaction ID copied.' : 'Explorer opened.');
     } catch { if (current()) setFeedback(kind === 'copy' ? 'Could not copy the transaction ID.' : 'Could not open the explorer.'); }
     finally {
@@ -86,8 +86,8 @@ export function WatchActivity({ authority, navigation, onBack }: {
     }
   };
   const refresh = () => { selectTransaction(null); list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
-  const units = (value: string | null) => value === null ? 'Unavailable' : `${formatBaseUnits(value, 8)} ${network?.symbol ?? ''}`;
-  const net = (value: string | null) => value === null ? 'Unavailable' : signed(value, network?.symbol ?? '');
+  const units = (value: string | null) => value === null || !network ? 'Unavailable' : `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
+  const net = (value: string | null) => value === null || !network ? 'Unavailable' : signed(value, network.decimals, network.symbol);
   const status = (row: UtxoActivityRow) => row.block === null
     ? 'Pending'
     : `${row.observedConfirmations} confirmation${row.observedConfirmations === 1 ? '' : 's'} · Block ${row.block.height}`;

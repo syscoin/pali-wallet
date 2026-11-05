@@ -6,7 +6,7 @@ import { openUtxoReadSession, utxoCount, utxoFailure, utxoFetchOptions, utxoObje
 export { UtxoBalanceError, type UtxoBalanceErrorCode } from './utxoReadSession.ts';
 
 export type UtxoBalance = Readonly<{
-  networkId: UtxoNetworkId; kind: 'utxo'; chainId: 0 | 57; genesisHash: string;
+  networkId: UtxoNetworkId; kind: 'utxo'; chainId: number; genesisHash: string;
   confirmedUnits: string; pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number;
 }>;
 export interface UtxoBalanceReader {

@@ -24,7 +24,7 @@ function fixture(options: { count?: number; network?: 'bitcoin' | 'syscoin'; rep
     assert.ok(url.startsWith(network.endpoint)); assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
     const path = url.slice(network.endpoint.length); calls.push(path); signals.push(init.signal!); await options.hold?.(path);
     let value: any;
-    if (path === '/api/') value = status(network);
+    if (path === '/api/v2/') value = status(network);
     else if (path === '/api/v2/block-index/0') value = { blockHash: network.genesisHash };
     else if (/^\/api\/v2\/(?:address|xpub)\//.test(path)) {
       const query = new URL(url).searchParams, page = Number(query.get('page')), count = options.count ?? 23;
@@ -48,7 +48,7 @@ function authority(f: ReturnType<typeof fixture>) {
 }
 test('actual SJS account read is bounded and does not fan out transactions or enforce an anchor', async () => {
   const f = fixture(), page = await read(f);
-  assert.deepEqual(f.calls, ['/api/', '/api/v2/block-index/0', `/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
+  assert.deepEqual(f.calls, ['/api/v2/', '/api/v2/block-index/0', `/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
   assert.equal(page.rows.length, 20); assert.equal(page.rows[0]?.netUnits, '-1000000000'); assert.equal(page.rows[0]?.nativeTransfer?.amount, '900000000');
   assert.equal(page.rows[0]?.observedConfirmations, 11); assert.equal(page.hasMore, true); assert.ok(f.signals.every(s => s.aborted));
   assert.ok(Object.isFrozen(page) && Object.isFrozen(page.rows) && Object.isFrozen(page.rows[0]?.block));
@@ -110,7 +110,7 @@ test('bad local context, page or source rejects before I/O', async () => {
 });
 test('metadata, syncing and genesis mismatch fail before account disclosure', async () => {
   for (const kind of ['coin', 'sync', 'genesis']) {
-    const f = fixture({ replace(path, body) { if (path === '/api/' && kind === 'coin') body.blockbook.coin='other'; if (path === '/api/' && kind === 'sync') body.blockbook.inSyncMempool=false; if (path.endsWith('/0') && kind === 'genesis') body.blockHash=H; return body; } });
+    const f = fixture({ replace(path, body) { if (path === '/api/v2/' && kind === 'coin') body.blockbook.coin='other'; if (path === '/api/v2/' && kind === 'sync') body.blockbook.inSyncMempool=false; if (path.endsWith('/0') && kind === 'genesis') body.blockHash=H; return body; } });
     await assert.rejects(read(f)); assert.equal(f.calls.some(p => p.includes('/address/')), false);
   }
 });
@@ -129,17 +129,17 @@ test('body ceilings, invalid JSON and HTTP failure remain unavailable', async ()
   }
 });
 test('request/source scalars detach before awaiting metadata', async () => {
-  const entered=gate(), pause=gate(), f=fixture({count:1, async hold(path){if(path==='/api/'){entered.resolve();await pause.promise;}}});
+  const entered=gate(), pause=gate(), f=fixture({count:1, async hold(path){if(path==='/api/v2/'){entered.resolve();await pause.promise;}}});
   const mutable={...source}, request={page:1};const pending=createUtxoActivityReader(f).readPage(mutable,request,signal()); await entered.promise;
   mutable.identifier=SYS;request.page=6;pause.resolve(); const page=await pending;assert.equal(page.page,1);assert.ok(f.calls[2]?.includes(BTC));
 });
 test('cancellation settles ignored transport and prevents all fallback/account calls', async () => {
-  const entered=gate(), pause=gate(), abort=new AbortController(), f=fixture({async hold(path){if(path==='/api/'){entered.resolve();await pause.promise;}}});
+  const entered=gate(), pause=gate(), abort=new AbortController(), f=fixture({async hold(path){if(path==='/api/v2/'){entered.resolve();await pause.promise;}}});
   const pending=createUtxoActivityReader(f).readPage(source,{page:1},abort.signal);await entered.promise;abort.abort();await assert.rejects(pending);pause.resolve();await tick();assert.equal(f.calls.length,1);
 });
 test('timeout and redirect rejection do not disclose the identifier', async () => {
   let finish!: (r:Response)=>void;const reader=createUtxoActivityReader({timeoutMs:5,fetch:()=>new Promise(r=>{finish=r;})});await assert.rejects(reader.readPage(source,{page:1},signal()));finish(json(status()));await tick();
-  for(const changed of [{redirected:true},{url:'https://different.invalid/api/'}]) {let calls=0;const reader=createUtxoActivityReader({async fetch(){calls++;return Object.assign({ok:true,headers:new Headers(),body:null,text:async()=>JSON.stringify(status()),redirected:false,url:''},changed) as Response;}});await assert.rejects(reader.readPage(source,{page:1},signal()));assert.equal(calls,1);}
+  for(const changed of [{redirected:true},{url:'https://different.invalid/api/v2/'}]) {let calls=0;const reader=createUtxoActivityReader({async fetch(){calls++;return Object.assign({ok:true,headers:new Headers(),body:null,text:async()=>JSON.stringify(status()),redirected:false,url:''},changed) as Response;}});await assert.rejects(reader.readPage(source,{page:1},signal()));assert.equal(calls,1);}
 });
 for(const address of ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa','3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy']) test('Base58 request identity is preserved exactly',async()=>{
   const f=fixture({count:1});const result=await read(f,1,{context:{...owner,address},identifier:address,isAccount:false});assert.equal(result.context.address,address);assert.ok(f.calls[2]?.includes(address));
@@ -252,7 +252,7 @@ async function readAsset(asset: unknown) {
   const f = fixture({ count: 1, network: 'syscoin', replace(path, body) { if (path.includes('/address/')) body.transactions = [asset]; return body; } });
   const input = { ...source, context: { ...owner, networkId: 'syscoin' as const, address: SYS }, identifier: SYS };
   const page = await read(f, 1, input);
-  assert.deepEqual(f.calls, ['/api/', '/api/v2/block-index/0', `/api/v2/address/${SYS}?details=txsummary&page=1&pageSize=20`]);
+  assert.deepEqual(f.calls, ['/api/v2/', '/api/v2/block-index/0', `/api/v2/address/${SYS}?details=txsummary&page=1&pageSize=20`]);
   return page.rows[0]!;
 }
 test('real compact account SPT fields retain exact quantity, unknown direction and independent native funding', async () => {

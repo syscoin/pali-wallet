@@ -1,13 +1,32 @@
 import { test, expect } from '@playwright/test';
-import { getUtxoNetwork } from '../../src/core/utxoNetworks';
 
-for (const id of ['syscoin', 'bitcoin'] as const) {
+const watchFixtures = [
+  {
+    id: 'syscoin', name: 'Syscoin Mainnet', coin: 'Syscoin', symbol: 'SYS', chain: 'main',
+    endpoint: 'https://blockbook.syscoin.org', address: 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58',
+    genesisHash: '0000022642db0346b6e01c2a397471f4f12e65d4f4251ec96c1f85367a61a7ab',
+  },
+  {
+    id: 'bitcoin', name: 'Bitcoin', coin: 'Bitcoin', symbol: 'BTC', chain: 'main',
+    endpoint: 'https://btc1.trezor.io', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
+    genesisHash: '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
+  },
+  {
+    id: 'utxo:5700', name: 'Syscoin Testnet', coin: 'Syscoin Testnet', symbol: 'tSYS', chain: 'test',
+    endpoint: 'https://blockbook-dev.syscoin.org', address: 'tsys1qw508d6qejxtdg4y5r3zarvary0c5xw7kn9mz8d',
+    genesisHash: '0000066e1a6b9cfeac8295dce0cc8d9170690a74bc4878cf8a0b412554f5c222',
+  },
+] as const;
+
+for (const network of watchFixtures) {
+  const { id, address } = network;
   test(`default App watches one ${id} address through the real public platform`, async ({ page }) => {
-    const network = getUtxoNetwork(id);
-    const address = id === 'syscoin' ? 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58' : 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
     const calls: string[] = [];
     const responses: Record<string, unknown> = {
-      [`${network.endpoint}/api/`]: { blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 }, backend: { chain: 'main' } },
+      [`${network.endpoint}/api/v2/`]: {
+        blockbook: { coin: network.coin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 123 },
+        backend: { chain: network.chain },
+      },
       [`${network.endpoint}/api/v2/block-index/0`]: { blockHash: network.genesisHash },
       [`${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]: { address, balance: '0', unconfirmedBalance: '-123', unconfirmedTxs: 1 },
     };
@@ -25,14 +44,14 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
     await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
     await page.getByRole('button', { name: network.name, exact: true }).click();
     await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(`Public ${network.symbol}`);
-    await page.getByRole('textbox', { name: id === 'syscoin' ? 'Public address, account key or descriptor' : 'Public address, account key or descriptor', exact: true }).fill(address);
+    await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(address);
     await page.getByRole('button', { name: 'Review account', exact: true }).click();
     await expect(page.getByLabel(`Review ${network.name} address ${address}`, { exact: true })).toBeVisible();
     expect(calls).toEqual([]);
     await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
     await expect(page.getByLabel(`${network.name} confirmed balance 0.0 ${network.symbol}`, { exact: true })).toBeVisible();
     await expect(page.getByLabel(`Pending balance change -0.00000123 ${network.symbol}`, { exact: true })).toBeVisible();
-    expect(calls).toEqual([`${network.endpoint}/api/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]);
+    expect(calls).toEqual([`${network.endpoint}/api/v2/`, `${network.endpoint}/api/v2/block-index/0`, `${network.endpoint}/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`]);
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Receive', exact: true }).click();
     await expect(page.getByRole('img', { name: `QR code for ${network.name} address ${address}` })).toBeVisible();

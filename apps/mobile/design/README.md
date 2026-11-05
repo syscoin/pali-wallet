@@ -6,7 +6,7 @@ The target is feature equivalence with the existing extension. The [current capa
 
 Run `npm run build:web` and serve the preview as described in [the mobile README](../README.md). From the welcome screen choose **Review full wallet design**. The explorer supports screen search, connected flow navigation, account-kind comparisons and loading/offline/locked/changed/expired/unavailable scenarios. All secret fields, addresses and QR codes are inert samples.
 
-The operational native and watch navigation is **Wallet / Activity / Tools / Settings** for the capabilities in the current ledger. Wallet retains account/network context; Tools currently opens account management and native network selection; Settings currently opens native Security & backups, lock/hide and development-build information. Only native Ethereum accounts have operational Activity. Sensitive reviews, backup and authorization occupy dedicated screens without tabs. The broader target adds Connected apps, Private assets, Smart accounts and Sentry in Tools, with relevant Wallet shortcuts; those modules and full language/currency/support settings remain unimplemented.
+The operational native and watch navigation is **Wallet / Activity / Tools / Settings**. Wallet retains the selected account and network. Activity supports signing EVM accounts and public EVM and UTXO watch accounts. Tools opens account management and, where available, registered networks. Settings includes auto-lock, native Security & backups, and Help & about. Sensitive reviews, backup and authorization occupy dedicated screens. Connected apps, private assets, smart accounts and Sentry remain designed but unimplemented, as do biometric unlock and the full language and currency settings.
 
 ## Design records
 

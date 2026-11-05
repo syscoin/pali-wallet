@@ -25,19 +25,14 @@ import {
   WatchOnlyAuthority,
   type BalanceReader,
 } from '../src/core/watchOnlyAuthority.ts';
+import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import {
-  getUtxoNetwork,
-  type UtxoNetworkId,
-} from '../src/core/utxoNetworks.ts';
-import {
+  createNativeNetwork,
   NATIVE_NETWORKS,
   nativeSigningEnabled,
 } from '../src/custody/networkContext.ts';
+import { UTXO_ADDRESSES as addresses, metadata } from './publicWatchFixtures.ts';
 
-const addresses = {
-  syscoin: 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58',
-  bitcoin: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4',
-};
 function evaluate(path: string, dependencies: Record<string, unknown>) {
   const module = { exports: {} as Record<string, unknown> };
   const source = readFileSync(new NodeURL(path, import.meta.url), 'utf8');
@@ -87,29 +82,13 @@ function json(value: unknown) {
     headers: { 'content-type': 'application/json' },
   });
 }
-function metadata(id: UtxoNetworkId) {
-  const network = getUtxoNetwork(id);
-  return {
-    blockbook: {
-      coin: network.blockbookCoin,
-      network: network.symbol,
-      decimals: 8,
-      initialSync: false,
-      inSync: true,
-      inSyncMempool: true,
-      bestHeight: 123,
-    },
-    backend: { chain: 'main' },
-  };
-}
-
-for (const id of ['syscoin', 'bitcoin'] as const) {
+for (const id of ['syscoin', 'bitcoin', 'utxo:5700'] as const) {
   test(`native public platform routes ${id} through owned HTTP with exact identity and no signing`, async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const network = getUtxoNetwork(id);
     const reader = platform(async (url, init) => {
       calls.push({ url, init });
-      if (url === `${network.endpoint}/api/`) return json(metadata(id));
+      if (url === `${network.endpoint}/api/v2/`) return json(metadata(id));
       if (url === `${network.endpoint}/api/v2/block-index/0`)
         return json({ blockHash: network.genesisHash });
       assert.equal(
@@ -123,7 +102,7 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
         unconfirmedTxs: 1,
       });
     });
-    const account = createWatchAccount(id, id, addresses[id], id);
+    const account = createWatchAccount('public', id, addresses[id], id);
     assert.deepEqual(
       getWatchNetworks(account).map((n) => n.id),
       [id]
@@ -165,6 +144,8 @@ for (const id of ['syscoin', 'bitcoin'] as const) {
       false
     );
     assert.equal(nativeSigningEnabled(id), false);
+    const { registrationHash: _, ...base } = NATIVE_NETWORKS[0]!;
+    assert.equal(nativeSigningEnabled(id, [createNativeNetwork({ ...base, id })]), false);
   });
 }
 
@@ -207,7 +188,7 @@ for (const failure of ['identity', 'redirect', 'malformed'] as const) {
       reader.readUtxoBalance!('bitcoin', addresses.bitcoin, caller.signal)
     );
     assert.equal(calls.length, 1);
-    assert.equal(calls[0]!.url, `${getUtxoNetwork('bitcoin').endpoint}/api/`);
+    assert.equal(calls[0]!.url, `${getUtxoNetwork('bitcoin').endpoint}/api/v2/`);
     assert.equal(calls[0]!.init.signal?.aborted, true);
     assert.equal(caller.signal.aborted, false);
   });
@@ -218,7 +199,7 @@ test('native platform history uses the owned identified HTTP transport and actua
     calls: { url: string; init: RequestInit }[] = [];
   const exports = platformExports(async (url, init) => {
     calls.push({ url, init });
-    if (url === `${network.endpoint}/api/`) return json(metadata('bitcoin'));
+    if (url === `${network.endpoint}/api/v2/`) return json(metadata('bitcoin'));
     if (url === `${network.endpoint}/api/v2/block-index/0`)
       return json({ blockHash: network.genesisHash });
     assert.equal(

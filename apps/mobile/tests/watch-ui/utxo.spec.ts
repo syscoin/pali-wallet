@@ -2,13 +2,14 @@ import { test, expect, type Page } from '@playwright/test';
 
 const SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4';
-async function form(page: Page, network: 'Syscoin UTXO' | 'Bitcoin') {
+type NetworkChoice = 'Syscoin Mainnet' | 'Bitcoin' | 'Syscoin Testnet';
+async function form(page: Page, network: NetworkChoice) {
   await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('button', { name: network, exact: true }).click();
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(network === 'Bitcoin' ? 'BTC savings watch' : 'SYS savings watch');
 }
-async function review(page: Page, network: 'Syscoin UTXO' | 'Bitcoin', address: string) {
-  await page.getByRole('textbox', { name: network === 'Bitcoin' ? 'Public address, account key or descriptor' : 'Public address, account key or descriptor', exact: true }).fill(address);
+async function review(page: Page, network: NetworkChoice, address: string) {
+  await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(address);
   await page.getByRole('button', { name: 'Review account', exact: true }).click();
   await expect(page.getByLabel(`Review ${network} address ${address.toLowerCase()}`, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.audit().writes)).toBe(0);
@@ -28,32 +29,32 @@ test.beforeEach(async ({ page }) => {
 
 test('SYS actual paste, full-address review, fixed scope, QR, copy/share and rename roundtrip', async ({ page, context }, testInfo) => {
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-  await page.goto('/?empty=1'); await form(page, 'Syscoin UTXO');
+  await page.goto('/?empty=1'); await form(page, 'Syscoin Mainnet');
   await page.evaluate((address) => navigator.clipboard.writeText(address), SYS.toUpperCase());
   const input = page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true });
   await input.focus(); await page.keyboard.press('ControlOrMeta+V'); await expect(input).toHaveValue(SYS.toUpperCase());
   await page.getByRole('button', { name: 'Review account', exact: true }).click();
-  await expect(page.getByLabel(`Review Syscoin UTXO address ${SYS}`, { exact: true })).toBeVisible();
+  await expect(page.getByLabel(`Review Syscoin Mainnet address ${SYS}`, { exact: true })).toBeVisible();
   await expect(page.getByText(/A public account key or descriptor includes/)).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('sys-full-address-review.png'), fullPage: true });
   expect(await page.evaluate(() => window.__watchFixture.audit().writes)).toBe(0);
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
-  await expect(page.getByLabel('Syscoin UTXO confirmed balance 1.23456789 SYS', { exact: true })).toBeVisible();
+  await expect(page.getByLabel('Syscoin Mainnet confirmed balance 1.23456789 SYS', { exact: true })).toBeVisible();
   await expect(page.getByLabel('Pending balance change +0.00000123 SYS', { exact: true })).toBeVisible();
-  await expect(page.getByText('Syscoin UTXO', { exact: true })).toBeVisible();
+  await expect(page.getByText('Syscoin Mainnet', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: /^Network/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Receive', exact: true }).click();
-  await expect(page.getByRole('img', { name: `QR code for Syscoin UTXO address ${SYS}` })).toBeVisible();
+  await expect(page.getByRole('img', { name: `QR code for Syscoin Mainnet address ${SYS}` })).toBeVisible();
   await page.evaluate(() => navigator.clipboard.writeText('before-watch-copy'));
   await page.getByRole('button', { name: 'Copy address', exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(SYS);
   await page.getByRole('button', { name: 'Share address', exact: true }).click();
-  expect(await page.evaluate(() => window.__watchFixture.shares())).toEqual([`Syscoin UTXO (SYS) address\n${SYS}`]);
+  expect(await page.evaluate(() => window.__watchFixture.shares())).toEqual([`Syscoin Mainnet (SYS) address\n${SYS}`]);
   await page.addStyleTag({ content: '[dir="auto"] { font-size: 23px !important; line-height: 1.4 !important; }' });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('sys-large-text-receive.png'), fullPage: true });
   await page.getByRole('button', { name: 'Back', exact: true }).click(); await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-  await expect(page.getByText('Watch-only · Syscoin UTXO', { exact: true })).toBeVisible();
+  await expect(page.getByText('Watch-only · Syscoin Mainnet', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Rename SYS savings watch', exact: true }).click();
   await page.getByRole('textbox', { name: 'Watch account name', exact: true }).fill('Renamed SYS');
   await page.getByRole('button', { name: 'Save name', exact: true }).click();
@@ -75,6 +76,36 @@ test('BTC shows confirmed and negative pending separately without fiat or networ
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false); await watchOnly(page);
 });
 
+test('Syscoin Testnet uses its own watch address, indexed history and explorer', async ({ page }, testInfo) => {
+  const address = 'tsys1qw508d6qejxtdg4y5r3zarvary0c5xw7kn9mz8d';
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?empty=1'); await form(page, 'Syscoin Testnet');
+  await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(SYS);
+  await page.getByRole('button', { name: 'Review account', exact: true }).click();
+  await expect(page.getByRole('alert')).toBeVisible();
+  await review(page, 'Syscoin Testnet', address);
+  await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
+  await expect(page.getByLabel('Syscoin Testnet confirmed balance 1.23456789 tSYS', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(page.getByText('20 transactions shown', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.activity.calls())).toEqual([
+    'https://blockbook-dev.syscoin.org/api/v2/',
+    'https://blockbook-dev.syscoin.org/api/v2/block-index/0',
+    `https://blockbook-dev.syscoin.org/api/v2/address/${address}?details=txsummary&page=1&pageSize=20`,
+  ]);
+  await page.getByRole('button', { name: 'Net change −10.0 tSYS', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
+  await expect(page.getByText('Received by this account: 1.0 tSYS', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Open transaction in explorer', exact: true }).click();
+  expect(await page.evaluate(() => window.__watchFixture.activity.opened())).toEqual([
+    `https://explorer-blockbook-dev.syscoin.org/tx/${'1'.padStart(64, '0')}`,
+  ]);
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 23px !important; line-height: 1.4 !important; }' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('syscoin-testnet-activity-320.png'), fullPage: true });
+});
+
 test('known zero and unavailable remain distinct while Receive stays available offline', async ({ page }) => {
   await page.goto('/?empty=1'); await page.evaluate(() => window.__watchFixture.watchBalance('zero'));
   await form(page, 'Bitcoin'); await review(page, 'Bitcoin', BTC); await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
@@ -89,7 +120,7 @@ test('known zero and unavailable remain distinct while Receive stays available o
 });
 
 test('wrong-family input is rejected before save and choosing another network clears the address', async ({ page }) => {
-  await page.goto('/?empty=1'); await form(page, 'Syscoin UTXO');
+  await page.goto('/?empty=1'); await form(page, 'Syscoin Mainnet');
   await page.getByRole('textbox', { name: 'Public address, account key or descriptor', exact: true }).fill(BTC);
   await page.getByRole('button', { name: 'Review account', exact: true }).click(); await expect(page.getByRole('alert')).toBeVisible();
   expect(await page.evaluate(() => window.__watchFixture.audit().writes)).toBe(0);
@@ -107,8 +138,9 @@ test('backgrounding the public review cannot save it or reveal private account c
 
 test('UTXO choices remain disabled when the host has not enabled them', async ({ page }) => {
   await page.goto('/?empty=1&disabled-utxo=1'); await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Syscoin UTXO', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Syscoin Mainnet', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Bitcoin', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Syscoin Testnet', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: 'EVM networks', exact: true })).toBeEnabled();
 });
 

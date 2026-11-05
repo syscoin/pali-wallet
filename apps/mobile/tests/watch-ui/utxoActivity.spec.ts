@@ -52,7 +52,7 @@ test('actual WatchSession automatically loads account activity, preserves list a
   await page.getByRole('button', { name: 'Copy transaction ID', exact: true }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(ID(6));
   await page.getByRole('button', { name: 'Open transaction in explorer', exact: true }).click();
-  expect(await page.evaluate(() => window.__watchFixture.activity.opened())).toEqual([`https://blockbook.btc.zelcore.io/tx/${ID(6)}`]);
+  expect(await page.evaluate(() => window.__watchFixture.activity.opened())).toEqual([`https://btc1.trezor.io/tx/${ID(6)}`]);
   await page.screenshot({ path: testInfo.outputPath('btc-watch-activity-detail.png'), fullPage: true });
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await expect.poll(() => page.getByTestId('watch-activity-list').evaluate(element => element.scrollTop)).toBe(scroll);

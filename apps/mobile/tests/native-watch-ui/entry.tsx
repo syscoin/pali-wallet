@@ -6,6 +6,7 @@ import { AppState, Linking, Platform, Share } from 'react-native';
 import { activityFetch, activityFixture } from './utxoActivityFixture';
 import { evmActivityFetch, evmActivityFixture } from './evmActivityFixture';
 import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
+import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue } from './nativeFactory';
 import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
@@ -22,7 +23,7 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
 }) as typeof AppState.addEventListener;
 globalThis.fetch = async (input, init) => await activityFetch(input, init) ?? await evmActivityFetch(input, init) ?? fixtureFetch(input, init);
 const originalOpen = Linking.openURL;
-Linking.openURL = async (url) => { if (url.startsWith('https://blockbook.btc.zelcore.io/tx/') || url.startsWith('https://explorer-blockbook.syscoin.org/tx/')) { activityFixture.open(url); return; } if (evmActivityFixture.open(url)) return; return originalOpen(url); };
+Linking.openURL = async (url) => { if (UTXO_NETWORKS.some(({ explorer }) => url.startsWith(new URL('tx/', explorer).href))) { activityFixture.open(url); return; } if (evmActivityFixture.open(url)) return; return originalOpen(url); };
 Share.share = async (content) => { publicShares.push(content.message ?? ''); return { action: Share.sharedAction, activityType: undefined }; };
 // Delegate normal opening and retain the actual authority only for lifecycle
 // controls. Selection still runs its production account/network guards.
@@ -92,4 +93,4 @@ window.__watchFixture = {
   async confirmReview(id) { try { await latestTransfers!.view.confirm(id); return 'accepted'; } catch (cause) { return cause instanceof Error ? cause.message : 'rejected'; } },
   recoveryAudit: () => ({ ...recoveryAudit }), holdRecovery, releaseRecovery,
 };
-registerRootComponent(() => <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : ['evm', 'syscoin', 'bitcoin']} />);
+registerRootComponent(() => <App availableWatchNetworks={new URLSearchParams(window.location.search).has('disabled-utxo') ? ['evm'] : undefined} />);

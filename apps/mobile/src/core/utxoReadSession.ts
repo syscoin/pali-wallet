@@ -99,7 +99,7 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
     }
   }
   try {
-    const observedHeight = statusIdentity(await read('/api/'), network);
+    const observedHeight = statusIdentity(await read('/api/v2/'), network);
     if (utxoObject(await read('/api/v2/block-index/0')).blockHash !== network.genesisHash) return utxoFailure('NETWORK_MISMATCH');
     let anchorHash: string | null = null;
     if (sampled) {
@@ -112,7 +112,7 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
         try {
           if (!sampled) return utxoFailure('INVALID_INPUT');
           if (utxoObject(await read(`/api/v2/block-index/${observedHeight}`)).blockHash !== anchorHash) return utxoFailure('NETWORK_MISMATCH');
-          const current = statusIdentity(await read('/api/'), network);
+          const current = statusIdentity(await read('/api/v2/'), network);
           if (current < observedHeight) return utxoFailure('NETWORK_MISMATCH');
           check(); return current;
         } catch (cause) { close(); throw cause; }

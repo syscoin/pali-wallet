@@ -449,7 +449,8 @@ export class NativeTransfers {
   ) {
     const intent = inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
-    if (transaction.chainId !== context.chainId || intent && !erc20SigningEnabled(context.networkId)) throw new NativeTransferError('FAILED');
+    if (transaction.chainId !== context.chainId ||
+        intent && !erc20SigningEnabled(context.networkId, this.source.getCatalogue?.()?.networks)) throw new NativeTransferError('FAILED');
     const entropy = this.randomBytes(16);
     if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
       throw new NativeTransferError('FAILED');
@@ -548,7 +549,7 @@ export class NativeTransfers {
       return Promise.reject(new NativeTransferError('INVALID_INPUT'));
     }
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      if (!erc20SigningEnabled(context.networkId)) throw new NativeTransferError('NOT_READY');
+      if (!erc20SigningEnabled(context.networkId, this.source.getCatalogue?.()?.networks)) throw new NativeTransferError('NOT_READY');
       this.review = null;
       this.publish({
         phase: 'preparing',

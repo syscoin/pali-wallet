@@ -30,7 +30,7 @@ function fixture(count = 1, networkId: 'bitcoin' | 'syscoin' = 'bitcoin') {
     const endpoint = getUtxoNetwork(networkId).endpoint;
     assert.ok(url.startsWith(endpoint)); assert.equal(init.method, 'GET'); assert.equal(init.credentials, 'omit'); assert.equal(init.redirect, 'error');
     const path = url.slice(endpoint.length); calls.push(path); signals.push(init.signal!);
-    if (path === '/api/') return json(metadata(networkId));
+    if (path === '/api/v2/') return json(metadata(networkId));
     if (path === '/api/v2/block-index/0') return json({ blockHash: getUtxoNetwork(networkId).genesisHash });
     if (path.startsWith('/api/v2/tx/')) { entered.resolve(); await held; if (failure) throw Error('Synthetic unavailable detail'); return json(full ?? { ...defaultFull(), txid: path.split('/').at(-1)! }); }
     assert.match(path, /^\/api\/v2\/(xpub|address)\//);
@@ -51,7 +51,7 @@ test('selected detail uses actual SJS raw transport/shared ownership and keeps D
     const page = await owner.readUtxoActivityPage({ page: 1 }, signal());
     assert.equal(f.calls.length, 3); assert.equal(page.rows[0]?.transactionFeeUnits, '100000000');
     const result = await owner.readUtxoActivityDetail({ txid: H.toUpperCase() }, signal());
-    assert.deepEqual(f.calls.slice(3), ['/api/', '/api/v2/block-index/0', '/api/v2/tx/' + H]);
+    assert.deepEqual(f.calls.slice(3), ['/api/v2/', '/api/v2/block-index/0', '/api/v2/tx/' + H]);
     assert.equal(result.row.nativeTransfer?.amount, '900000000'); assert.equal(result.row.netUnits, '-1000000000');
     assert.equal(result.row.transactionFeeUnits, '100000000'); assert.equal(result.row.block?.height, 101);
     assert.deepEqual(result.from, [f.address]); assert.deepEqual(result.to, [f.address, OTHER]);

@@ -407,7 +407,6 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.publish();
     try {
       if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
-      const isUtxo = network.id === 'syscoin' || network.id === 'bitcoin';
       const source = this.currentSource(), session = this.recordSession;
       if (source && session) {
         const current = recordView(await session.repository.load());
@@ -416,8 +415,8 @@ export class WatchOnlyAuthority implements WalletAuthority {
       }
       const response = source
         ? await this.reader.readUtxoAccount?.(source.networkId, source.identifier, request.signal)
-        : isUtxo
-          ? await this.reader.readUtxoBalance?.(network.id as UtxoNetworkId, address, request.signal)
+        : network.kind === 'utxo'
+          ? await this.reader.readUtxoBalance?.(network.id, address, request.signal)
           : await this.reader.readBalance(network.id, address, request.signal);
       if (
         request.signal.aborted ||
@@ -426,8 +425,8 @@ export class WatchOnlyAuthority implements WalletAuthority {
         this.locked
       )
         return;
-      if (isUtxo) {
-        this.balance = utxoObservation(response as UtxoBalance, network.id as UtxoNetworkId, this.now());
+      if (network.kind === 'utxo') {
+        this.balance = utxoObservation(response as UtxoBalance, network.id, this.now());
       } else {
         if (!response || 'kind' in response || response.chainId !== network.chainId)
           throw new Error('Network identity mismatch');
@@ -458,8 +457,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
     assertCurrent: () => void, action: (owner: { accountId: string; address: string; networkId: NetworkId; generation: number;
       source: AccountSource | undefined; recordIdentity: string }, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
     const snapshot = this.getSnapshot();
-    const isUtxo = this.networkId === 'bitcoin' || this.networkId === 'syscoin';
-    if (snapshot.status !== 'ready' || external?.aborted || isUtxo !== (kind === 'utxo')) throw new Error('Account activity unavailable');
+    if (snapshot.status !== 'ready' || external?.aborted || getNetwork(this.networkId).kind !== kind) throw new Error('Account activity unavailable');
     const account = this.accounts.find((row) => row.id === this.accountId), networkId = this.networkId;
     const address = account?.addresses[networkId];
     if (!account || !address) throw new Error('Account activity unavailable');

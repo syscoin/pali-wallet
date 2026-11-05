@@ -3,9 +3,10 @@ import test from 'node:test';
 import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { type StoredWatchAccount } from '../src/core/watchAccountCodec.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
+import { convertExtendedKeyVersion } from '@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths.js';
 import { XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
 function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   let raw = JSON.stringify({ version: 1, records }), fail = false, gate: Promise<void> | undefined;
@@ -13,9 +14,10 @@ function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   const storage = createPublicAccountStorage({ async get() { if (fail) throw Error('unavailable'); return raw; }, async set(_key, value) { writes.push(value); raw = value; } });
   const balance = createUtxoBalanceReader({ async fetch(url, init) {
     calls.push({ url, signal: init.signal });
-    const id: UtxoNetworkId = url.startsWith(getUtxoNetwork('bitcoin').endpoint) ? 'bitcoin' : 'syscoin';
-    if (url.endsWith('/api/')) return json(metadata(id));
-    if (url.includes('/block-index/')) return json({ blockHash: getUtxoNetwork(id).genesisHash });
+    const network = UTXO_NETWORKS.find((entry) => url.startsWith(entry.endpoint + '/'));
+    assert.ok(network);
+    if (url.endsWith('/api/v2/')) return json(metadata(network.id));
+    if (url.includes('/block-index/')) return json({ blockHash: network.genesisHash });
     entered.resolve(); if (gate) await gate;
     const address = decodeURIComponent(url.split('/xpub/')[1]!.split('?')[0]!);
     return json({ address, balance: '12345678901234567890', unconfirmedBalance: '-23', unconfirmedTxs: 1 });
@@ -23,7 +25,7 @@ function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   const options = { repository: storage.records, reader: { readBalance: async () => ({ chainId: 1, units: '7' }), readUtxoAccount: balance.readAccount }, signal: new AbortController().signal };
   return { options, calls, writes, entered, set gate(value: Promise<void> | undefined) { gate = value; }, set fail(value: boolean) { fail = value; }, get raw() { return raw; }, set raw(value: string) { raw = value; } };
 }
-for (const id of ['bitcoin', 'syscoin'] as const) {
+for (const id of ['bitcoin', 'syscoin', 'utxo:5700'] as const) {
   test(`${id} account refresh uses actual SJS xpub query once and exact Blockbook aggregate balance`, async () => {
     const f = fixture([keyRecord('key', id)]), owner = await WatchOnlyAuthority.openRecords(f.options);
     assert.equal(f.calls.length, 0); assert.equal(f.writes.length, 0); owner.unlock(); await owner.refresh();
@@ -42,6 +44,21 @@ test('public descriptor passes to existing Blockbook route without changing its 
   const owner = await WatchOnlyAuthority.openRecords(f.options); owner.unlock(); await owner.refresh();
   assert.equal(f.calls[2]?.url, `${getUtxoNetwork('bitcoin').endpoint}/api/v2/xpub/${encodeURIComponent(identifier)}?details=tokenBalances&tokens=nonzero`);
   assert.equal(owner.getSnapshot().balance.status, 'available');
+});
+test('Syscoin testnet public aliases and descriptors use the SDK network and canonical record without rewriting storage', async () => {
+  const id = 'utxo:5700', sdk = getUtxoNetwork(id);
+  const tpub = convertExtendedKeyVersion(XPUB, sdk.addressNetwork.bip32.public.toString(16).padStart(8, '0'));
+  assert.match(tpub, /^tpub/);
+  const key = parseUtxoPublicIdentifier(XPUB, id);
+  assert.match(key.identifier, /^vpub/);
+  assert.equal(key.address, 'tsys1qalwlmdxd2ggue4290ekzxl9tetg56neeepgwhk');
+  assert.deepEqual(parseUtxoPublicIdentifier(tpub, id), key);
+  const descriptor = `wpkh(${XPUB}/0/*)`;
+  assert.deepEqual(parseUtxoPublicIdentifier(descriptor, id), { ...key, identifier: descriptor });
+  const f = fixture([keyRecord('testnet', id, key.identifier)]), before = f.raw;
+  const reopened = await WatchOnlyAuthority.openRecords(f.options); reopened.unlock();
+  assert.deepEqual(reopened.getSnapshot().accounts[0]?.addresses, { [id]: key.address });
+  assert.equal(f.raw, before); assert.deepEqual(f.calls, []); assert.deepEqual(f.writes, []);
 });
 test('opening cancellation and corrupt storage dispatch no account query and do not write', async () => {
   const f = fixture(), abort = new AbortController(); abort.abort();

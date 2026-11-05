@@ -45,7 +45,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   const openAccounts = () => { if (AppState.currentState === 'active' && currentScope()) onAccounts(); };
   let content: React.ReactNode;
   if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={onExit} navigation={shell.navigation} />;
-  else if (shell.tab === 'activity') content = network.id === 'bitcoin' || network.id === 'syscoin'
+  else if (shell.tab === 'activity') content = network.kind === 'utxo'
     ? <WatchActivity authority={authority} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
     : <NativeActivityScreen controller={evmActivity} accountLabel={label} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
   else if (shell.tab === 'tools') content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts} onBack={() => shell.select('wallet')} />;

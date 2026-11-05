@@ -22,6 +22,12 @@
       "@sidhujag/sysweb3-network": [
         "./node_modules/@sidhujag/sysweb3-network/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-network/cjs/coins.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/coins.d.ts"
+      ],
+      "@sidhujag/sysweb3-network/cjs/networks.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/networks.d.ts"
+      ],
       "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
       "ethers/address": ["./node_modules/ethers/lib.esm/address/index.d.ts"],
       "ethers/contract": ["./node_modules/ethers/lib.esm/contract/index.d.ts"],
