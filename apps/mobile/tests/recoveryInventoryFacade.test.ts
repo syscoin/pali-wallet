@@ -80,6 +80,7 @@ async function fixture(existing = true) {
     },
     '../custody/recoveryInventory.ts': { readRecoveryInventory },
     '../custody/recovery.ts': { NativeRecoveryCoordinator: PassiveController },
+    '../custody/walletRemoval.ts': { NativeWalletRemoval: PassiveController },
     '../custody/seedBackup.ts': { SeedBackupFlow: PassiveController },
     '../custody/hdKeyExport.ts': { HdKeyExportFlow: PassiveController },
     '../custody/transfers.ts': { NativeTransfers: PassiveController },

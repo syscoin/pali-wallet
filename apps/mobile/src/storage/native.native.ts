@@ -26,7 +26,8 @@ export async function openNativeWalletStorage(
     randomBytes(length: number): Uint8Array;
     digest: StorageDigest;
   },
-  observeOpen?: StorageOpenObserver
+  observeOpen?: StorageOpenObserver,
+  expectedInstallationId?: string
 ): Promise<OpenWalletStorage> {
   observeStorageOpen(observeOpen, 'native-module');
   const nativePolicy = requireNativeModule<StoragePolicy>('PaliWalletStorage');
@@ -80,5 +81,5 @@ export async function openNativeWalletStorage(
         throw new WalletStorageError('STORAGE_UNAVAILABLE');
       }
     },
-  });
+  }, expectedInstallationId);
 }

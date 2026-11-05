@@ -11,7 +11,7 @@ import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sys
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
-import { WalletStorageError, type OpenWalletStorage, type WalletIdentityRead } from '../storage/types.ts';
+import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type WalletIdentityRead } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
 import { TransferJournalError } from './transferJournal.ts';
@@ -79,6 +79,11 @@ export interface KeyringRuntime extends CustodyRuntime {
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
   readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
+  /** Internal removal authorization. The protected snapshot never reaches a screen. */
+  authorizeWalletRemoval?(password: string, assertCurrent: () => void): Promise<Readonly<{
+    snapshot: RecoveryStorageSnapshot;
+    assertCurrent(): void;
+  }>>;
   /** Public metadata only; no selection/signing authority. Cleared on lock. */
   readonly catalogue: { getSnapshot(): NativeWalletCatalogueSnapshot | null };
   readonly backup: {
@@ -196,7 +201,7 @@ export function createKeyringRuntimeFactory(
             if (requiresReopen()) throw new KeyringRuntimeError('CLEANUP_FAILED');
           });
         };
-        const closeRuntime = (capturePair: boolean): Promise<void> => {
+        const closeRuntime = (capturePair: boolean, beforeClose?: () => Promise<void>): Promise<void> => {
           if (closing) return closing;
           let resolveClose!: () => void, rejectClose!: (error: KeyringRuntimeError) => void;
           let pairFingerprint: string | undefined;
@@ -212,7 +217,7 @@ export function createKeyringRuntimeFactory(
           try { revocation = lock(); } catch { revocation = Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED')); }
           noteBackups?.dispose();
           void (async () => {
-            await Promise.allSettled([work, revocation, ...pendingSubmissions]);
+            const [, revoked] = await Promise.allSettled([work, revocation, ...pendingSubmissions]);
             let failed = false;
             try { await keyring.lockWallet(); } catch { failed = true; }
             if (capturePair && !failed) {
@@ -221,6 +226,10 @@ export function createKeyringRuntimeFactory(
                 if (typeof fingerprint !== 'string' || !/^[0-9a-f]{64}$/.test(fingerprint)) throw new Error('Invalid retirement');
                 pairFingerprint = fingerprint;
               } catch { failed = true; }
+            }
+            if (beforeClose && !failed) {
+              if (revoked?.status !== 'fulfilled' || requiresReopen()) failed = true;
+              else { try { await beforeClose(); } catch { failed = true; } }
             }
             try { await storage.close(); } catch { failed = true; }
             if (failed) throw new KeyringRuntimeError('CLEANUP_FAILED');
@@ -524,6 +533,22 @@ export function createKeyringRuntimeFactory(
           assertCurrent();
           return Object.freeze({ generation: captured, keyring: ring, assertCurrent });
         };
+        const authenticateVerifiedOwner = async (password: string, request: IPrivateVaultSession) => {
+          request.assertCurrent();
+          const owner = keyring, identity = verifiedIdentity;
+          if (!identity || request.keyring !== owner) throw new KeyringRuntimeError('CANCELLED');
+          try {
+            const authenticated = await authenticate(password, request.generation, {
+              identity, assertCurrent: request.assertCurrent,
+            });
+            request.assertCurrent();
+            return authenticated;
+          } catch (error) {
+            if (request.generation !== generation && owner.isUnlocked()) await owner.lockWallet();
+            if (error instanceof WalletStorageError && error.code === 'STORAGE_REOPEN_REQUIRED') requireNoteReopen();
+            throw error;
+          }
+        };
         const openNotes = <T>(assertOwner: () => void, bind: (notes: NoteRuntime, session: IPrivateVaultSession) => T | Promise<T>) => runNote(async (captured): Promise<T> => {
           const session = noteSession(captured, assertOwner);
           if (!noteBackups) {
@@ -544,20 +569,13 @@ export function createKeyringRuntimeFactory(
               },
               async authenticate(password, request, reveal) {
                 request.assertCurrent();
-                const owner = keyring, identity = verifiedIdentity;
-                if (!identity || request.keyring !== owner) throw new KeyringRuntimeError('CANCELLED');
                 if (!isNativePasswordInput(password)) throw new Error('BACKUP_AUTHENTICATION_FAILED');
                 let authenticated: boolean;
                 try {
-                  authenticated = await authenticate(password, request.generation, {
-                    identity, assertCurrent: request.assertCurrent,
-                  });
+                  authenticated = await authenticateVerifiedOwner(password, request);
                 } catch (error) {
-                  if (request.generation !== generation && owner.isUnlocked()) await owner.lockWallet();
-                  if (error instanceof WalletStorageError) {
-                    if (error.code === 'STORAGE_REOPEN_REQUIRED') requireNoteReopen();
-                    if (error.code === 'AUTH_THROTTLED') throw new Error('BACKUP_AUTHENTICATION_FAILED');
-                  }
+                  if (error instanceof WalletStorageError && error.code === 'AUTH_THROTTLED')
+                    throw new Error('BACKUP_AUTHENTICATION_FAILED');
                   throw error;
                 }
                 request.assertCurrent();
@@ -574,6 +592,24 @@ export function createKeyringRuntimeFactory(
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.readInventory(session));
+        const authorizeWalletRemoval: NonNullable<KeyringRuntime['authorizeWalletRemoval']> = (password, assertOwner) => runNote(async (captured) => {
+          const recovery = storage.recovery;
+          if (!recovery || !storage.removal) throw new KeyringRuntimeError('NOT_READY');
+          const session = noteSession(captured, assertOwner);
+          const identity = verifiedIdentity;
+          if (!(await authenticateVerifiedOwner(password, session))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
+          const snapshot = await recovery.readSnapshot();
+          session.assertCurrent();
+          if (snapshot.state.presence !== 'existing' || !identity || JSON.stringify(snapshot.identity) !== JSON.stringify(identity))
+            throw new KeyringRuntimeError('CANCELLED');
+          return Object.freeze({ snapshot, assertCurrent() {
+            try { session.assertCurrent(); }
+            catch (error) {
+              if (captured !== generation || closed) throw new KeyringRuntimeError('CANCELLED');
+              throw error;
+            }
+          } });
+        });
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
             if (closed || !keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
@@ -769,6 +805,7 @@ export function createKeyringRuntimeFactory(
         };
         return {
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory } : {}),
+          ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
           accounts,
           security: {
             reauthenticateIdlePolicy: (password, assertCurrent) => run(async (captured) => {
@@ -1030,6 +1067,10 @@ export function createKeyringRuntimeFactory(
               if (closing) return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
               closeRuntime(true);
               return recoveryRetirement!;
+            },
+            retireForRemoval(remove) {
+              if (closing) return Promise.reject(new KeyringRuntimeError('CLEANUP_FAILED'));
+              return closeRuntime(false, remove);
             },
             close: () => closeRuntime(false),
           },

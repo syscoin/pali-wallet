@@ -21,16 +21,17 @@ import type { NativeAccountView } from '../custody/accounts.ts';
 import { openNativeWalletStorage } from '../storage/native';
 import { ensureNativeCryptoReady } from './cryptoBootstrap';
 import { NativeRecoveryCoordinator } from '../custody/recovery.ts';
+import { NativeWalletRemoval } from '../custody/walletRemoval.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
 
-async function openStorage() {
+async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
   return openNativeWalletStorage({
     randomBytes(length) { return crypto.getRandomValues(new Uint8Array(length)); },
     async digest(bytes) { return new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)); },
-  });
+  }, undefined, expectedInstallationId);
 }
 
 function custodyGuard() {
@@ -77,6 +78,16 @@ export function createNativeWalletControllers() {
   const authority = new NativeCustodyAuthority({
     async open() { runtime = await base.open() as KeyringRuntime; return runtime; },
   }, { preferences: securityPreferences, assertActive });
+  const removal = new NativeWalletRemoval({
+    owner: authority,
+    source: () => runtime && ownedStorage ? { runtime, storage: ownedStorage } : undefined,
+    reopen: openStorage,
+    async clearNativeSelection(check) {
+      const { clearNativeAccountSelection } = await import('../platform.ts');
+      await clearNativeAccountSelection(check);
+    },
+    assertActive,
+  });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
   const evmBalances = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
@@ -200,6 +211,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

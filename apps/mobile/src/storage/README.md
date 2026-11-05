@@ -122,4 +122,20 @@ advisory native selection can also remain there. The future app flow must
 clear its obsolete native selection without removing an independent watch
 selection. Any requirement to retire the installation key or reset preferences
 must be completed and verified separately before reporting a wider removal
-result. The seam is dormant until an authenticated app flow calls it.
+result.
+
+The private native removal backend uses the existing SDK password check and
+durable wallet throttle. Its opaque ticket expires after 30 seconds and admits
+one separate confirmation. Confirmation retires signing and drains pending
+runtime work while retaining the original storage owner. It clears an advisory
+native selection on the existing public-store queue before SQL dispatch. If SQL
+later rejects, that hint may still be empty. Watch selection, saved watch rows
+and idle preferences are outside the removal scope.
+
+Once dispatched, the backend closes the original owner and checks the complete
+scope from a fresh protected connection constrained to the same installation.
+This reopen cannot provision a replacement. It verifies logical removal or,
+after an uncertain acknowledgement, an exact unchanged wallet. The native
+lifecycle permits an empty replacement only after verified removal and after
+both owners have drained. The user interface and its explicit warning and
+confirmation controls are separate work.

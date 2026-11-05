@@ -8,6 +8,7 @@ export interface ManagedNativeControllers {
   authority: { getSnapshot(): CustodySnapshot; initialize(): Promise<void>; lock(): void; dispose(): Promise<void> };
   keyExport: { dispose(): void };
   backup: { dispose(): void };
+  removal?: RecoveryOwner & { hasVerifiedRemoval(): boolean };
   disposeTokens(): void;
   disposeTransfers(): void;
 }
@@ -42,14 +43,21 @@ export class NativeControllerLifecycle<T extends ManagedNativeControllers, R ext
     const invoke = (action: () => unknown) => { try { work.push(Promise.resolve(action())); } catch { failed = true; } };
     // Reserve retirement before any injected callback can reenter this gate.
     invoke(() => entry.recovery?.cancel());
+    invoke(() => entry.value.removal?.cancel());
     invoke(() => entry.value.disposeTokens()); invoke(() => entry.value.disposeTransfers());
     invoke(() => entry.value.keyExport.dispose()); invoke(() => entry.value.backup.dispose());
     invoke(() => entry.value.authority.lock());
     invoke(() => entry.recovery?.dispose()); invoke(() => entry.value.authority.dispose());
+    invoke(() => entry.value.removal?.dispose());
     void Promise.allSettled(work).then((results) => {
       if (failed || results.some((result) => result.status === 'rejected')) {
         this.poisoned = true; reject(new Error('REOPEN_REQUIRED'));
-      } else resolve();
+      } else {
+        try {
+          if (entry.value.removal?.hasVerifiedRemoval()) this.knownExisting = false;
+          resolve();
+        } catch { this.poisoned = true; reject(new Error('REOPEN_REQUIRED')); }
+      }
     });
     return entry.retiring;
   }
