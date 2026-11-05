@@ -59,11 +59,15 @@ test('portable recovery output is exercised in the existing CI budget and upload
 });
 
 
-test('both mobile workflows include shared wallet code and native runner dependency resolution', () => {
+test('both mobile workflows include shared wallet and token discovery code', () => {
   for (const name of ['mobile.yml', 'mobile-native-qualification.yml']) {
     const workflow = yaml.load(fs.readFileSync(path.join(root, '.github/workflows', name), 'utf8'));
     assert(workflow.on.pull_request.paths.includes('source/wallet/**'));
+    assert(workflow.on.pull_request.paths.includes('source/utils/tokenDiscovery.ts'), name);
   }
+});
+
+test('native qualification includes native runner dependency resolution', () => {
   const native = yaml.load(fs.readFileSync(path.join(root, '.github/workflows/mobile-native-qualification.yml'), 'utf8'));
   assert(native.on.pull_request.paths.includes('apps/mobile/scripts/register-shared-test-dependencies.mjs'));
   for (const job of Object.values(native.jobs)) {
