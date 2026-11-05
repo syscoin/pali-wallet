@@ -193,7 +193,7 @@ test('same-address native to watch switch revokes native owner before public tab
   expect(await page.evaluate(() => window.__watchFixture.audit().unlocks)).toBe(1);
 });
 
-test('fixed Bitcoin watch Activity requires consent and its Wallet scope survives tab changes', async ({ page }) => {
+test('fixed Bitcoin watch Activity loads automatically and its Wallet scope survives tab changes', async ({ page }) => {
   await page.goto('/?empty=1');
   await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
   await page.getByRole('button', { name: 'Bitcoin', exact: true }).click();
@@ -204,8 +204,11 @@ test('fixed Bitcoin watch Activity requires consent and its Wallet scope survive
   await page.getByRole('button', { name: 'Confirm watch account', exact: true }).click();
   await tabs(page);
   await chooseTab(page, 'Activity');
-  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toBeVisible();
-  expect(await page.evaluate(() => window.__watchFixture.activity.calls())).toEqual([]);
+  await expect(page.getByRole('button', { name: 'Load confirmed activity', exact: true })).toHaveCount(0);
+  await expect(page.getByText('20 transactions shown', { exact: true })).toBeVisible();
+  const accountCalls = (await page.evaluate(() => window.__watchFixture.activity.calls()))
+    .filter(url => new URL(url).pathname.includes('/address/'));
+  expect(accountCalls).toEqual([`https://blockbook.btc.zelcore.io/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
   await chooseTab(page, 'Wallet');
   await expect(page.getByText('Network', { exact: true })).toBeVisible();
   await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();

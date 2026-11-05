@@ -1,3 +1,5 @@
+import { isTransactionInBlock as isHistoryTransactionInBlock } from './transactionBlockStatus.ts';
+
 export const EVM_TRANSACTION_HISTORY_SOURCE = {
   ExplorerPending: 'explorer-pendingtxlist',
   ExplorerTokenTransfer: 'explorer-tokentx',
@@ -246,18 +248,6 @@ export function belongsToEvmHistoryAccount(
     tx.smartAccountExecutionFrom?.toLowerCase?.() === owner.toLowerCase()
   );
 }
-function isHistoryTransactionInBlock(tx: any): boolean {
-  return (
-    (tx?.blockNumber !== null &&
-      tx?.blockNumber !== undefined &&
-      tx.blockNumber > 0) ||
-    (tx?.blockHeight !== null &&
-      tx?.blockHeight !== undefined &&
-      tx.blockHeight > 0) ||
-    (tx?.height !== null && tx?.height !== undefined && tx.height > 0)
-  );
-}
-
 export const selectEvmHistoryRepresentatives = <
   T extends { confirmations: number }
 >(

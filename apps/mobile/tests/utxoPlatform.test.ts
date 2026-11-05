@@ -1,3 +1,4 @@
+import { createUtxoActivityReader, type UtxoActivityReader } from '../src/core/utxoActivity.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
@@ -23,14 +24,15 @@ function evaluate(path: string, dependencies: Record<string, unknown>) {
   });
   return module.exports;
 }
-function platform(transport: WalletHttpFetch): BalanceReader {
+function platformExports(transport: WalletHttpFetch) {
   const http = evaluate('../src/platform/http.native.ts', { 'expo/fetch': { fetch: transport }, './httpPolicy.ts': { createNativeHttpFetch } });
   return evaluate('../src/platform.ts', {
     'react-native': { Platform: { OS: 'android' } }, 'expo-secure-store': {},
     './core/publicAccountStorage.ts': { createPublicAccountStorage }, './platformRpc.ts': { createBalanceReader },
-    './core/utxoBalanceReader.ts': { createUtxoBalanceReader }, './platform/http': http,
-  }).balanceReader as BalanceReader;
+    './core/utxoBalanceReader.ts': { createUtxoBalanceReader }, './core/utxoActivity.ts': { createUtxoActivityReader }, './platform/http': http,
+  });
 }
+function platform(transport: WalletHttpFetch): BalanceReader { return platformExports(transport).balanceReader as BalanceReader; }
 function json(value: unknown) { return new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } }); }
 function metadata(id: UtxoNetworkId) {
   const network = getUtxoNetwork(id);
@@ -93,3 +95,18 @@ for (const failure of ['identity', 'redirect', 'malformed'] as const) {
     assert.equal(calls[0]!.init.signal?.aborted, true); assert.equal(caller.signal.aborted, false);
   });
 }
+
+test('native platform history uses the owned identified HTTP transport and actual account reader', async () => {
+  const network = getUtxoNetwork('bitcoin'), calls: { url: string; init: RequestInit }[] = [];
+  const exports = platformExports(async (url, init) => {
+    calls.push({url,init});
+    if (url === `${network.endpoint}/api/`) return json(metadata('bitcoin'));
+    if (url === `${network.endpoint}/api/v2/block-index/0`) return json({blockHash:network.genesisHash});
+    assert.equal(url, `${network.endpoint}/api/v2/address/${addresses.bitcoin}?details=txsummary&page=1&pageSize=20`);
+    return json({address:addresses.bitcoin,txs:0,unconfirmedTxs:0,page:1,totalPages:1});
+  });
+  const reader=exports.activityReader as UtxoActivityReader;
+  const page=await reader.readPage({context:{accountId:'watch',networkId:'bitcoin',address:addresses.bitcoin,generation:1},identifier:addresses.bitcoin,isAccount:false},{page:1},new AbortController().signal);
+  assert.deepEqual(page.rows,[]);assert.equal(calls.length,3);
+  for (const {init} of calls) {assert.match(new Headers(init.headers).get('User-Agent')??'',/PaliWallet/);assert.equal(init.signal?.aborted,true);assert.equal(init.credentials,'omit');}
+});

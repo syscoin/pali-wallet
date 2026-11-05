@@ -3,7 +3,7 @@ import { ActivityIndicator, AppState, FlatList, Linking, Platform, ScrollView, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { formatBaseUnits } from '../core/amounts';
-import { UtxoWatchActivity, type UtxoActivityReader, type UtxoActivityRow } from '../core/utxoActivity';
+import { UtxoWatchActivity, type UtxoActivityRow } from '../core/utxoActivity';
 import { getUtxoNetwork } from '../core/utxoNetworks';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import type { ShellLeafNavigation } from './RealAppShell';
@@ -13,12 +13,12 @@ function signed(units: string, symbol: string): string {
   const negative = units.startsWith('-');
   return `${negative ? '−' : units === '0' ? '' : '+'}${formatBaseUnits(negative ? units.slice(1) : units, 8)} ${symbol}`;
 }
-/** Active-tab public history only. No request occurs until the user presses Load. */
-export function WatchActivity({ authority, reader, navigation, onBack }: {
-  authority: WatchOnlyAuthority; reader: UtxoActivityReader; navigation: ShellLeafNavigation; onBack(): void;
+/** The active screen follows the account-owned history capability. */
+export function WatchActivity({ authority, navigation, onBack }: {
+  authority: WatchOnlyAuthority; navigation: ShellLeafNavigation; onBack(): void;
 }) {
   const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null });
-  const controller = useMemo(() => new UtxoWatchActivity(authority, reader, () => AppState.currentState === 'active'), [authority, reader]);
+  const controller = useMemo(() => new UtxoWatchActivity(authority, () => AppState.currentState === 'active'), [authority]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
@@ -29,16 +29,23 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
     setSelected(txid); setFeedback('');
   }, []);
   const list = useRef<FlatList<UtxoActivityRow>>(null);
-  const scrollOffset = useRef(0);
   const chosen = state.rows.find((row) => row.txid === selected);
   const network = state.context ? getUtxoNetwork(state.context.networkId) : null;
   const account = authority.getSnapshot().accounts.find((row) => row.id === state.context?.accountId);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
-    const clear = controller.subscribe(() => { if (controller.getSnapshot().status === 'consent') { selectTransaction(null); setBusy(false); life.busy = false; life.pending = null; scrollOffset.current = 0; } });
+    let observedContext = '';
+    const clear = controller.subscribe(() => {
+      const value = controller.getSnapshot();
+      const key = value.context ? `${value.context.accountId}:${value.context.networkId}:${value.context.address}:${value.context.generation}` : '';
+      if (value.status === 'idle' || key !== observedContext) {
+        selectTransaction(null); setBusy(false); life.busy = false; life.pending = null;
+      }
+      observedContext = key;
+    });
     controller.activate();
     const revoke = () => { selectTransaction(null); life.busy = false; life.pending = null; setBusy(false); controller.revoke(); };
-    const change = AppState.addEventListener('change', (value) => { if (value !== 'active') revoke(); });
+    const change = AppState.addEventListener('change', (value) => { if (value !== 'active') revoke(); else controller.setFocused(true); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { controller.setFocused(false); revoke(); }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => { controller.setFocused(true); }) : null;
     return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; clear(); controller.dispose(); change.remove(); blur?.remove(); focus?.remove(); };
@@ -46,7 +53,6 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
   useLayoutEffect(() => navigation.registerBack(() => { if (chosen) selectTransaction(null); else onBack(); return true; }), [navigation, chosen, onBack, selectTransaction]);
   useLayoutEffect(() => navigation.registerLeave((navigate) => { controller.revoke(); navigate(); }), [navigation, controller]);
   useLayoutEffect(() => { navigation.setImmersive(!!chosen); return () => navigation.setImmersive(false); }, [navigation, chosen]);
-  useLayoutEffect(() => { if (!chosen) list.current?.scrollToOffset({ offset: scrollOffset.current, animated: false }); }, [chosen]);
   const back = () => { if (chosen) selectTransaction(null); else onBack(); };
   const act = async (kind: 'copy' | 'explorer') => {
     const life = lifetime.current;
@@ -67,58 +73,65 @@ export function WatchActivity({ authority, reader, navigation, onBack }: {
       if (life.pending === pending) { life.pending = null; life.busy = false; if (life.alive) setBusy(false); }
     }
   };
-  const refresh = () => { selectTransaction(null); scrollOffset.current = 0; list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
+  const refresh = () => { selectTransaction(null); list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
+  const units = (value: string | null) => value === null ? 'Unavailable' : `${formatBaseUnits(value, 8)} ${network?.symbol ?? ''}`;
+  const net = (value: string | null) => value === null ? 'Unavailable' : signed(value, network?.symbol ?? '');
+  const status = (row: UtxoActivityRow) => row.block === null
+    ? 'Pending'
+    : `${row.observedConfirmations} confirmation${row.observedConfirmations === 1 ? '' : 's'} · Block ${row.block.height}`;
+  const detailAmount = chosen?.hasUnsupportedAssetData
+    ? 'Asset amount unavailable'
+    : chosen?.nativeTransfer
+      ? `${chosen.nativeTransfer.direction === 'sent' ? '−' : chosen.nativeTransfer.direction === 'received' ? '+' : ''}${units(chosen.nativeTransfer.amount)}`
+      : chosen ? net(chosen.netUnits) : '';
   return <SafeAreaView edges={chosen ? ['top', 'bottom'] : ['top']} style={s.root}>
-    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Confirmed activity'} subtitle={`${account?.name ?? 'Watch account'} · ${network?.name ?? 'Public account'}`} onBack={back} /></View>
-    {!network || !state.context ? <ScrollView contentContainerStyle={s.content}><Notice title="Public activity hidden" body="Open a supported watch account to view its activity." /></ScrollView> : <>
-      <View style={[s.list, chosen && s.hidden]}>
-        <FlatList ref={list} testID="watch-activity-list" onScroll={(event) => { if (!chosen) scrollOffset.current = event.nativeEvent.contentOffset.y; }} scrollEventThrottle={16} data={state.rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
+    <View style={s.header}><Header title={chosen ? 'Transaction details' : 'Activity'} subtitle={`${account?.name ?? 'Watch account'} · ${network?.name ?? 'Public account'}`} onBack={back} /></View>
+    {!network || !state.context ? <ScrollView contentContainerStyle={s.content}><Notice title="Activity unavailable" body="Choose an account to view its activity." /></ScrollView> : <View style={s.body}>
+      <View aria-hidden={!!chosen} accessibilityElementsHidden={!!chosen} importantForAccessibility={chosen ? 'no-hide-descendants' : 'auto'} pointerEvents={chosen ? 'none' : 'auto'} style={[s.list, chosen && s.obscured]}>
+        <FlatList ref={list} testID="watch-activity-list" data={state.rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
           ListHeaderComponent={<View style={s.section}>
-            <Notice title="One address · Confirmed transactions only" body="Other receive and change addresses in the original wallet are not included. Pending balance change is on Wallet. This is indexed activity, not a complete wallet history or proof of payment." />
-            <Text selectable style={s.hash}>{state.context.address}</Text>
-            <Text style={styles.muted}>Loading shares this address and your IP address with {network.endpoint.replace('https://', '')}. Transaction details use the same provider.</Text>
-            {state.status === 'consent' ? <Button title="Load confirmed activity" onPress={() => void controller.load()} /> : <>
-              {state.anchor && <Text style={styles.muted}>Observed at block {state.anchor.height}. Confirmation counts refer to this snapshot.</Text>}
-              {(state.status === 'unavailable' || state.status === 'stale') && <Notice title={state.status === 'stale' ? 'Saved view is out of date' : 'Activity unavailable'} body={state.status === 'stale' ? 'The last request could not be verified. These previously loaded rows may be outdated. Refresh to start a new snapshot.' : 'No activity result could be verified. Try again; this does not mean there are no transactions.'} tone="amber" />}
-              <Button title={state.status === 'unavailable' ? 'Try loading again' : 'Refresh confirmed activity'} variant="secondary" disabled={state.status === 'loading'} onPress={refresh} />
-            </>}
-            {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading confirmed activity" color={colors.pink} />}
+            {(state.status === 'unavailable' || state.status === 'stale') && <Notice title={state.status === 'stale' ? 'Could not refresh activity' : 'Activity unavailable'} body={state.status === 'stale' ? 'Showing previously loaded activity. Try refreshing again.' : 'Activity could not be loaded. Try again.'} tone="amber" />}
+            <Button title={state.status === 'unavailable' ? 'Try again' : 'Refresh activity'} variant="secondary" disabled={!!chosen || state.status === 'loading'} onPress={refresh} />
+            {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
           </View>}
-          renderItem={({ item }) => <View style={s.row}><Button title={`Net change ${signed(item.netUnits, network.symbol)}`} variant="quiet" disabled={state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
-            <Text style={styles.muted}>{item.observedConfirmations} confirmation{item.observedConfirmations === 1 ? '' : 's'} at block {state.anchor?.height}</Text>
+          renderItem={({ item }) => <View testID={`watch-activity-row-${item.txid}`} style={s.row}><Button title={item.hasUnsupportedAssetData ? 'Asset activity' : item.netUnits === null ? 'Amount unavailable' : `Net change ${net(item.netUnits)}`} variant="quiet" disabled={!!chosen || state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
+            {item.hasUnsupportedAssetData && <Text style={styles.muted}>Native account change: {net(item.netUnits)}</Text>}
+            <Text style={styles.muted}>{status(item)}</Text>
             <Text style={s.hash}>{item.txid.slice(0, 12)}…{item.txid.slice(-8)}</Text>
-            {item.hasUnsupportedAssetData && <Text style={styles.muted}>Additional asset activity is not shown.</Text>}
           </View>}
-          ListEmptyComponent={state.status === 'ready' ? <Notice title="No confirmed activity in the loaded range" body="The provider returned no confirmed transactions in this snapshot. Other addresses and pending transactions are not included." /> : undefined}
+          ListEmptyComponent={state.status === 'ready' ? <Notice title="No activity yet" body="There are no transactions to show for this account." /> : undefined}
           ListFooterComponent={<View style={s.section}>
-            {state.status === 'ready' && state.hasMore && <Button title="Load older confirmed activity" variant="secondary" onPress={() => void controller.loadMore()} />}
-            {state.limitReached && <Notice title="100-transaction display limit" body="Older indexed activity may exist. This view does not establish a complete history." />}
-            {state.rows.length > 0 && <Text style={styles.muted}>{state.rows.length} loaded transaction{state.rows.length === 1 ? '' : 's'}. Amounts are changes to this address, not your entire wallet.</Text>}
+            {state.status === 'ready' && (state.hasNewer || state.hasMore) && <View style={s.pageActions}>
+              {state.hasNewer && <Button title="Newer activity" disabled={!!chosen} variant="secondary" style={s.pageButton} onPress={() => { selectTransaction(null); list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.loadNewer(); }} />}
+              {state.hasMore && <Button title="Older activity" disabled={!!chosen} variant="secondary" style={s.pageButton} onPress={() => void controller.loadMore()} />}
+            </View>}
+            {state.rows.length > 0 && <Text style={styles.muted}>{state.rows.length} transactions shown{state.windowed ? ` · Pages ${state.firstPage}–${state.page}` : ''}</Text>}
           </View>} />
       </View>
-      {chosen && <ScrollView contentContainerStyle={s.content}>
-        <Text style={s.amount}>{signed(chosen.netUnits, network.symbol)}</Text><Text style={styles.muted}>Net change to this address</Text>
-        {state.status === 'stale' && <Notice title="Previously loaded snapshot" body="Refresh the list to verify a new snapshot. This transaction may have changed." tone="amber" />}
+      {chosen && <ScrollView testID="watch-activity-detail" style={s.detailOverlay} contentContainerStyle={s.content}>
+        <Text style={s.amount}>{detailAmount}</Text>
+        <Text style={styles.muted}>{chosen.hasUnsupportedAssetData ? 'Native amounts are shown separately below.' : chosen.nativeTransfer ? chosen.nativeTransfer.kind === 'self' ? 'Native self-transfer' : 'Native transfer' : 'Native account change'}</Text>
+        {state.status === 'stale' && <Notice title="Previously loaded activity" body="Refresh the list to check this transaction again." tone="amber" />}
         <Card style={s.detail}>
           <Text style={s.label}>TRANSACTION ID</Text><Text selectable style={s.hash}>{chosen.txid}</Text>
-          <Text style={s.label}>WATCHED ADDRESS</Text><Text selectable style={s.hash}>{state.context.address}</Text>
-          <Text>Received by this address: {formatBaseUnits(chosen.receivedUnits, 8)} {network.symbol}</Text>
-          <Text>Spent from this address: {formatBaseUnits(chosen.spentUnits, 8)} {network.symbol}</Text>
-          <Text>Whole transaction fee: {chosen.transactionFeeUnits === null ? 'Not applicable (coinbase)' : `${formatBaseUnits(chosen.transactionFeeUnits, 8)} ${network.symbol}`}</Text>
-          <Text style={styles.muted}>The fee is for the whole transaction and may be paid from several inputs. It is already reflected in the address change where applicable.</Text>
-          <Text>Block {chosen.block.height} · {chosen.observedConfirmations} confirmations at block {state.anchor?.height}</Text>
-          {chosen.block.timestamp !== null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toISOString()}</Text>}
+          <Text style={s.label}>ACCOUNT</Text><Text>{account?.name ?? 'Watch account'}</Text>
+          <Text>Native account change: {net(chosen.netUnits)}</Text>
+          <Text>Received by this account: {units(chosen.receivedUnits)}</Text>
+          <Text>Spent from this account: {units(chosen.spentUnits)}</Text>
+          <Text>Whole transaction fee: {units(chosen.transactionFeeUnits)}</Text>
+          <Text style={styles.muted}>The fee may include inputs from other accounts.</Text>
+          <Text>{status(chosen)}</Text>
+          {chosen.block?.timestamp != null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toISOString()}</Text>}
         </Card>
-        {chosen.hasUnsupportedAssetData && <Notice title="Additional asset activity" body="This transaction also contains asset activity that is not shown. The amounts above are native coin only." />}
         {busy && <ActivityIndicator accessibilityLabel="Completing transaction action" color={colors.pink} />}
         <Button title="Copy transaction ID" variant="secondary" disabled={busy} onPress={() => void act('copy')} />
-        <Text style={styles.muted}>Opening the explorer shares your transaction interest and IP address with {network.endpoint.replace('https://', '')} in your browser.</Text>
         <Button title="Open transaction in explorer" variant="quiet" disabled={busy} onPress={() => void act('explorer')} />
         {!!feedback && <Text accessibilityLiveRegion="polite" style={styles.muted}>{feedback}</Text>}
       </ScrollView>}
-    </>}
+    </View>}
   </SafeAreaView>;
 }
-const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 24 }, list: { flex: 1 }, hidden: { display: 'none' },
-  content: { paddingHorizontal: 24, paddingBottom: 28, gap: 16 }, section: { gap: 14, paddingVertical: 12 }, row: { gap: 8, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
+
+const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 24 }, body: { flex: 1, minHeight: 0 }, list: { flex: 1 }, obscured: { opacity: 0 }, detailOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.bg },
+  pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 24, paddingBottom: 28, gap: 16 }, section: { gap: 14, paddingVertical: 12 }, row: { gap: 8, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
   hash: { color: colors.text, fontSize: 13, lineHeight: 21 }, amount: { color: colors.text, fontSize: 26, lineHeight: 36 }, detail: { padding: 18, gap: 14 }, label: { color: colors.muted, fontSize: 11, letterSpacing: 1 } });

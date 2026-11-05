@@ -173,9 +173,10 @@ test('public platform and native Portfolio fallback bind platform-owned fetch; N
     './core/publicAccountStorage.ts': { createPublicAccountStorage: () => ({}) },
     './platformRpc.ts': { createBalanceReader: (options: unknown) => { seen.push(options); return {}; } },
     './core/utxoBalanceReader.ts': { createUtxoBalanceReader: (options: unknown) => { seen.push(options); return {}; } },
+    './core/utxoActivity.ts': { createUtxoActivityReader: (options: unknown) => { seen.push(options); return {}; } },
     './platform/http': { walletFetch: fetcher },
   });
-  assert.equal(seen.length, 2);
+  assert.equal(seen.length, 3);
   for (const options of seen) assert.equal((options as any).fetch, fetcher);
   const source = read('../src/screens/NativePortfolio.tsx');
   const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from '([^']+)'/g)].map((match) => [match[1]!, {}]));

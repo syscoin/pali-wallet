@@ -256,3 +256,34 @@ it('keeps optional diagnostic propagation and explicit later-page admission', as
     )
   ).resolves.toEqual({ txs: 9, unconfirmedTxs: 0, transactions: [] });
 });
+
+it('request-scoped transport and revocation do not change default extension calls or leak a fallback', async () => {
+  const defaultFetch = jest.fn().mockResolvedValue(response);
+  const scopedFetch = jest.fn().mockResolvedValue({ txs: 1 });
+  const history = createBlockbookAccountHistory(defaultFetch);
+  let current = true;
+  scopedFetch.mockImplementation(async () => {
+    current = false;
+    return { txs: 1 };
+  });
+  await expect(
+    history.fetchAccountHistory(URL, ACCOUNT, 'details=txsummary', false, {
+      fetch: scopedFetch,
+      assertCurrent() {
+        if (!current) throw new Error('revoked');
+      },
+    })
+  ).rejects.toThrow('revoked');
+  expect(scopedFetch).toHaveBeenCalledTimes(1);
+  expect(defaultFetch).not.toHaveBeenCalled();
+  expect(history.getHistoryRequestOptions(URL, ACCOUNT)).toBe(
+    'details=txsummary&pageSize=30'
+  );
+  await history.fetchAccountHistory(URL, ACCOUNT, 'details=txsummary');
+  expect(defaultFetch).toHaveBeenCalledWith(
+    URL,
+    ACCOUNT,
+    'details=txsummary',
+    true
+  );
+});

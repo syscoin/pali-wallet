@@ -1,306 +1,240 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createUtxoActivityReader, parseUtxoActivityTransaction, UtxoWatchActivity, type UtxoActivityContext } from '../src/core/utxoActivity.ts';
+import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
-import { normalizeUtxoAddress } from '../src/core/utxoAddresses.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
+import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
+import { XPUB } from './publicWatchFixtures.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
 const owner: UtxoActivityContext = { accountId: 'watch', networkId: 'bitcoin', address: BTC, generation: 1 };
+const source: UtxoActivitySource = { context: owner, identifier: BTC, isAccount: false };
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 const status = (network = getUtxoNetwork('bitcoin')) => ({ blockbook: { coin: network.blockbookCoin, network: network.symbol, decimals: 8, initialSync: false, inSync: true, inSyncMempool: true, bestHeight: 200 }, backend: { chain: 'main' } });
-function tx(id = ID(1), address = BTC) {
-  return { txid: id, blockHeight: 190, blockHash: BLOCK, confirmations: 12, blockTime: 1700000000, valueIn: '1100000000', value: '1000000000', fees: '100000000',
-    vin: [{ n: 0, txid: ID(900), isAddress: true, addresses: [address], value: '1100000000' }],
-    vout: [{ n: 0, isAddress: true, addresses: [address], value: '100000000' }, { n: 1, isAddress: true, addresses: ['1OtherLegacyScript'], value: '900000000' }] };
-}
-function fixture(options: { count?: number; replace?: (path: string, value: any, calls: string[]) => unknown; network?: 'bitcoin' | 'syscoin'; address?: string; hold?: (path: string) => Promise<void> } = {}) {
-  const calls: string[] = [], signals: AbortSignal[] = [];
-  const network = getUtxoNetwork(options.network ?? 'bitcoin'), address = options.address ?? (network.id === 'bitcoin' ? BTC : SYS);
-  const count = options.count ?? 23;
-  let active = 0, maximum = 0;
-  const fetch = async (url: string, init: RequestInit) => {
-    assert.ok(url.startsWith(network.endpoint));
-    assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
-    const path = url.slice(network.endpoint.length); calls.push(path); signals.push(init.signal!);
-    active++; maximum = Math.max(maximum, active);
-    try {
-      await options.hold?.(path);
-      let value: any;
-      if (path === '/api/') value = status(network);
-      else if (path === '/api/v2/block-index/0') value = { blockHash: network.genesisHash };
-      else if (path.startsWith('/api/v2/block-index/')) value = { blockHash: path.endsWith('/200') ? H : BLOCK };
-      else if (path.startsWith('/api/v2/address/')) {
-        const query = new URL(url).searchParams, page = Number(query.get('page'));
-        assert.equal(query.get('to'), '200'); assert.equal(query.get('details'), 'txids'); assert.equal(query.get('pageSize'), '20');
-        value = { address, txs: count, unconfirmedTxs: 0, page, totalPages: Math.max(1, Math.ceil(count / 20)), itemsOnPage: 20,
-          txids: Array.from({ length: Math.min(20, Math.max(0, count - (page - 1) * 20)) }, (_, i) => ID((page - 1) * 20 + i + 1)) };
-      } else if (path.startsWith('/api/v2/tx/')) value = tx(path.split('/').at(-1), address);
-      else throw Error('Unplanned URL');
-      const replacement = options.replace?.(path, value, calls);
-      return replacement instanceof Response ? replacement : json(replacement ?? value);
-    } finally { active--; }
-  };
-  return { calls, signals, fetch, maximum: () => maximum };
-}
-const signal = () => new AbortController().signal;
-
-test('explicit reader validates identity before disclosure, hydrates twenty with two workers and anchors every page', async () => {
-  const f = fixture({ hold: async () => { await new Promise(r => setImmediate(r)); } }), reader = createUtxoActivityReader(f);
-  assert.equal(f.calls.length, 0);
-  const page = await reader.readPage(owner, { page: 1 }, signal());
-  assert.deepEqual(f.calls.slice(0, 4), ['/api/', '/api/v2/block-index/0', '/api/v2/block-index/200', `/api/v2/address/${BTC}?details=txids&pageSize=20&page=1&to=200`]);
-  assert.equal(page.rows.length, 20); assert.equal(page.rows[0]?.netUnits, '-1000000000'); assert.equal(page.rows[0]?.observedConfirmations, 11);
-  assert.equal(page.hasMore, true); assert.equal(f.maximum(), 2); assert.ok(f.signals.every(s => s.aborted));
-  assert.equal(f.calls.filter(p => p === '/api/v2/block-index/190').length, 1);
-  const second = await reader.readPage(owner, { page: 2, anchor: page.anchor }, signal());
-  assert.equal(second.rows.length, 3); assert.equal(second.hasMore, false); assert.deepEqual(second.anchor, page.anchor);
-  assert.ok(Object.isFrozen(page) && Object.isFrozen(page.rows) && Object.isFrozen(page.rows[0]?.block));
-});
-
-test('Syscoin uses its own fixed registration and never interprets SPT amounts or metadata', async () => {
-  const f = fixture({ network: 'syscoin', count: 1, replace(path, value) { if (path.includes('/tx/')) return { ...value, tokenType: 'SPT', memo: 'secret-looking text', tokenTransfers: [{ value: '999999999999' }], vout: value.vout.map((v: any) => ({ ...v, assetInfo: { symbol: '<img>', value: '999999999999' } })) }; } });
-  const page = await createUtxoActivityReader(f).readPage({ ...owner, networkId: 'syscoin', address: SYS }, { page: 1 }, signal());
-  assert.equal(page.rows[0]?.hasUnsupportedAssetData, true); assert.equal(page.rows[0]?.netUnits, '-1000000000');
-  assert.ok(!JSON.stringify(page).includes('999999') && !JSON.stringify(page).includes('<img>') && !JSON.stringify(page).includes('memo'));
-});
-
-test('zero results require valid paging; missing txids is an empty indexed range, not an error', async () => {
-  const f = fixture({ count: 0, replace(path, value) { if (path.includes('/address/')) { delete value.txids; return value; } } });
-  const page = await createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal());
-  assert.equal(page.rows.length, 0); assert.equal(page.hasMore, false); assert.equal(f.calls.some(p => p.includes('/tx/')), false);
-});
-
-test('bad local context or paging rejects before any HTTP', async () => {
-  const f = fixture(), reader = createUtxoActivityReader(f);
-  for (const bad of [{ ...owner, networkId: 'ethereum' }, { ...owner, address: SYS }, { ...owner, generation: -1 }]) await assert.rejects(reader.readPage(bad as UtxoActivityContext, { page: 1 }, signal()));
-  for (const request of [{ page: 0 }, { page: 6 }, { page: 2 }, { page: 1, anchor: { height: 200, hash: H } }]) await assert.rejects(reader.readPage(owner, request, signal()));
-  assert.equal(f.calls.length, 0);
-});
-
-test('metadata/genesis mismatch and zero-height sentinel never disclose the address', async () => {
-  for (const kind of ['coin', 'sync', 'genesis', 'height']) {
-    const f = fixture({ replace(path, value) {
-      if (path === '/api/' && kind === 'coin') value.blockbook.coin = 'Other';
-      if (path === '/api/' && kind === 'sync') value.blockbook.inSyncMempool = false;
-      if (path === '/api/' && kind === 'height') value.blockbook.bestHeight = 0;
-      if (path.endsWith('/0') && kind === 'genesis') value.blockHash = H;
-      return value;
-    } });
-    await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal()));
-    assert.equal(f.calls.some(p => p.includes('/address/')), false);
-  }
-});
-
-test('page capacity, count, identity, clamping and duplicate-ID anomalies reject atomically', async () => {
-  for (const change of [(v: any) => { v.address = SYS; }, (v: any) => { v.page = 2; }, (v: any) => { v.itemsOnPage = 19; },
-    (v: any) => { v.totalPages = 0; }, (v: any) => { v.txids = [ID(1), ID(1)]; }, (v: any) => { v.txids = [ID(1).toUpperCase() + 'x']; },
-    (v: any) => { v.txids = Array.from({ length: 21 }, (_, i) => ID(i)); }, (v: any) => { delete v.unconfirmedTxs; }]) {
-    const f = fixture({ replace(path, value) { if (path.includes('/address/')) change(value); return value; } });
-    await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal())); assert.ok(f.signals.every(s => s.aborted));
-  }
-});
-
-test('unknown total pages stays bounded and page five reports the display cap', async () => {
-  const f = fixture({ count: 120, replace(path, value) { if (path.includes('/address/')) value.totalPages = -1; return value; } });
-  const value = await createUtxoActivityReader(f).readPage(owner, { page: 5, anchor: { height: 200, hash: H } }, signal());
-  assert.equal(value.rows.length, 20); assert.equal(value.hasMore, false); assert.equal(value.limitReached, true);
-});
-
-test('native arithmetic distinguishes input/output/fee/net, large exact amounts, zero net and coinbase', () => {
-  const at = { height: 200, hash: H }, source = tx();
-  const original = parseUtxoActivityTransaction(source, ID(1), owner, at);
-  assert.equal(original.spentUnits, '1100000000'); assert.equal(original.receivedUnits, '100000000'); assert.equal(original.transactionFeeUnits, '100000000');
-  const large = '900719925474099300'; source.vin[0]!.value = large; source.vout[0]!.value = large; source.vout.pop(); source.valueIn = large; source.value = large; source.fees = '0';
-  const equal = parseUtxoActivityTransaction(source, ID(1), owner, at); assert.equal(equal.netUnits, '0'); assert.equal(equal.receivedUnits, large);
-  const coinbase = { ...tx(), vin: [{ n: 0, isAddress: false, coinbase: '0102' }], valueIn: '0', fees: '0' };
-  const reward = parseUtxoActivityTransaction(coinbase, ID(1), owner, at); assert.equal(reward.spentUnits, '0'); assert.equal(reward.netUnits, '100000000'); assert.equal(reward.transactionFeeUnits, null);
-});
-
-test('missing input/native values and unverified unrelated transaction do not become zero', () => {
-  for (const change of [(v: any) => { delete v.vin[0].value; }, (v: any) => { v.fees = '0'; }, (v: any) => { v.valueIn = '01'; },
-    (v: any) => { v.value = '1'; }, (v: any) => { v.vin[0].n = 1; }, (v: any) => { v.vout[0].addresses = ['other']; v.vin[0].addresses = ['other']; },
-    (v: any) => { v.vin[0].value = '1'; v.valueIn = '1'; v.fees = '0'; }, (v: any) => { v.vout[0].addresses.push('other'); }]) {
-    const value = tx(); change(value); assert.throws(() => parseUtxoActivityTransaction(value, ID(1), owner, { height: 200, hash: H }));
-  }
-});
-
-test('wrong tx identity, pending/above-anchor rows and block reorg invalidate the page', async () => {
-  for (const mode of ['id', 'pending', 'future', 'block', 'anchor']) {
-    const f = fixture({ count: 1, replace(path, value, calls) {
-      if (path.includes('/tx/') && mode === 'id') value.txid = ID(99);
-      if (path.includes('/tx/') && mode === 'pending') value.confirmations = 0;
-      if (path.includes('/tx/') && mode === 'future') value.blockHeight = 201;
-      if (path.endsWith('/190') && mode === 'block') value.blockHash = H;
-      if (path.endsWith('/200') && mode === 'anchor' && calls.filter(p => p.endsWith('/200')).length > 1) value.blockHash = BLOCK;
-      return value;
-    } });
-    await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal()));
-  }
-});
-
-test('later pages verify original anchor before disclosing address and reject changed chain', async () => {
-  const f = fixture({ replace(path, value) { if (path.endsWith('/199')) value.blockHash = BLOCK; return value; } });
-  await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 2, anchor: { height: 199, hash: H } }, signal()));
-  assert.equal(f.calls.some(p => p.includes('/address/')), false);
-});
-
-test('response ceilings, bad JSON and HTTP errors are not empty history', async () => {
-  for (const response of [new Response('x'.repeat(32769)), new Response('{bad'), new Response('not found', { status: 404 })]) {
-    const f = fixture({ replace(path) { if (path.includes('/address/')) return response; } });
-    await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal())); assert.ok(f.signals.every(s => s.aborted));
-  }
-});
-
-test('aggregate byte limit includes ignored padding across detail and block reads', async () => {
-  const f = fixture({ count: 20, replace(path, value) {
-    if (path.includes('/tx/')) value.blockHeight = 150 + Number(BigInt('0x' + value.txid));
-    if (path.includes('/tx/') || path.includes('/block-index/')) value.padding = 'x'.repeat(30000);
-    return value;
-  } });
-  await assert.rejects(createUtxoActivityReader(f).readPage(owner, { page: 1 }, signal())); assert.ok(f.signals.every(s => s.aborted));
-});
-
-function authority() {
-  return new WatchOnlyAuthority([{ id: 'a', name: 'First', addresses: { bitcoin: BTC } }, { id: 'b', name: 'Second', addresses: { syscoin: SYS } }], { async readBalance() { throw Error(); } });
+function tx(id = ID(1)) {
+  return { txid: id, blockHeight: 190, blockHash: BLOCK, confirmations: 11, blockTime: 1700000000,
+    addressValueIn: '1100000000', addressValueOut: '100000000', valueIn: '1100000000', value: '1000000000', fees: '100000000',
+    vin: [{ value: '1100000000', isOwn: true }], vout: [{ value: '100000000', isOwn: true }, { value: '900000000', isOwn: false }] };
 }
 function gate() { let resolve!: () => void; const promise = new Promise<void>(r => { resolve = r; }); return { promise, resolve }; }
-
-test('controller has no I/O on activation, explicit loads only, and successful page appends without duplicates', async () => {
-  const a = authority(); a.unlock(); const f = fixture(); const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => true); c.activate();
-  assert.equal(f.calls.length, 0); await c.refresh(); await c.loadMore(); assert.equal(f.calls.length, 0);
-  await c.load(); assert.equal(c.getSnapshot().rows.length, 20); await c.loadMore(); assert.equal(c.getSnapshot().rows.length, 23);
-  c.dispose(); assert.equal(c.getSnapshot().status, 'consent'); assert.equal(c.getSnapshot().rows.length, 0);
-});
-
-test('failed more retains only previous page as stale and requires explicit refresh', async () => {
-  let fail = false; const a = authority(); a.unlock();
-  const f = fixture({ replace(path) { if (fail && path.includes('/address/')) return new Response('', { status: 503 }); } });
-  const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => true); c.activate(); await c.load(); fail = true; await c.loadMore();
-  assert.equal(c.getSnapshot().status, 'stale'); assert.equal(c.getSnapshot().rows.length, 20); assert.equal(c.getSnapshot().hasMore, false);
-  const calls = f.calls.length; await c.loadMore(); assert.equal(f.calls.length, calls); fail = false; await c.refresh(); assert.equal(c.getSnapshot().status, 'ready'); c.dispose();
-});
-
-test('cross-page duplicate rejection never appends or pretends the history ended', async () => {
-  const a = authority(); a.unlock(); const f = fixture({ replace(path, value) { if (path.includes('page=2&')) value.txids = [ID(1)]; return value; } });
-  const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => true); c.activate(); await c.load(); await c.loadMore();
-  assert.equal(c.getSnapshot().status, 'stale'); assert.equal(c.getSnapshot().rows.length, 20); c.dispose();
-});
-
-test('A-B-A, lock and screen revocation cancel ignored-signal work and never reactivate it', async () => {
-  for (const mode of ['aba', 'lock', 'screen']) {
-    const a = authority(); a.unlock(); const hold = gate(), entered = gate();
-    const f = fixture({ async hold(path) { if (path.includes('/address/')) { entered.resolve(); await hold.promise; } } });
-    const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => true); c.activate(); const pending = c.load(); await entered.promise;
-    if (mode === 'aba') { a.selectAccount('b'); a.selectAccount('a'); } else if (mode === 'lock') { a.lock(); a.unlock(); } else c.revoke();
-    hold.resolve(); await pending; assert.equal(c.getSnapshot().status, 'consent'); assert.equal(c.getSnapshot().rows.length, 0); c.dispose();
-  }
-});
-
-test('foreground gate denies dispatch and a synchronous observer can revoke publication', async () => {
-  const a = authority(); a.unlock(); let active = false; const f = fixture(); const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => active); c.activate(); await c.load(); assert.equal(f.calls.length, 0);
-  active = true; c.subscribe(() => { if (c.getSnapshot().status === 'ready') a.lock(); }); await c.load(); assert.equal(c.getSnapshot().rows.length, 0); c.dispose();
-});
-
-test('page request is detached before the first asynchronous read', async () => {
-  const pause = gate(), entered = gate();
-  const f = fixture({ count: 1, async hold(path) { if (path === '/api/') { entered.resolve(); await pause.promise; } } });
-  const request = { page: 1 };
-  const pending = createUtxoActivityReader(f).readPage(owner, request, signal());
-  await entered.promise; request.page = 999999; pause.resolve();
-  assert.equal((await pending).page, 1); assert.ok(f.calls.some(path => path.includes('page=1&')));
-});
-
-test('timeout settles ignored transport and does not accept its late response', async () => {
-  let finish!: (response: Response) => void;
-  const reader = createUtxoActivityReader({ timeoutMs: 5, fetch: () => new Promise(resolve => { finish = resolve; }) });
-  await assert.rejects(reader.readPage(owner, { page: 1 }, signal()));
-  finish(json(status())); await new Promise(r => setImmediate(r));
-});
-
-test('redirect and response URL mismatch fail before any address disclosure', async () => {
-  for (const changed of [{ redirected: true }, { url: 'https://different.invalid/api/' }]) {
-    let calls = 0;
-    const reader = createUtxoActivityReader({ async fetch() {
-      calls++; return Object.assign({ ok: true, headers: new Headers(), body: null, text: async () => JSON.stringify(status()), redirected: false, url: '' }, changed) as Response;
-    } });
-    await assert.rejects(reader.readPage(owner, { page: 1 }, signal())); assert.equal(calls, 1);
-  }
-});
-
-test('duplicate load actions share no extra I/O and focus loss requires a fresh action', async () => {
-  const a = authority(); a.unlock(); const pause = gate(), entered = gate();
-  const f = fixture({ async hold(path) { if (path.includes('/address/')) { entered.resolve(); await pause.promise; } } });
-  const c = new UtxoWatchActivity(a, createUtxoActivityReader(f), () => true); c.activate();
-  const pending = c.load(); await entered.promise; await c.load(); await c.loadMore();
-  assert.equal(f.calls.filter(p => p.includes('/address/')).length, 1);
-  c.setFocused(false); pause.resolve(); await pending; assert.equal(c.getSnapshot().status, 'consent');
-  const calls = f.calls.length; await c.load(); c.setFocused(true); assert.equal(f.calls.length, calls); c.dispose();
-});
-
-
-const BASE58_OWNERS = [
-  ['P2PKH', '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'],
-  ['P2SH', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy'],
-] as const;
-for (const [kind, address] of BASE58_OWNERS) {
-  test(`${kind} activity preserves canonical Base58 ownership for outgoing, incoming and zero-net amounts`, () => {
-    assert.equal(normalizeUtxoAddress(address, 'bitcoin'), address);
-    const scope = { ...owner, address }, at = { height: 200, hash: H };
-    const outgoing = parseUtxoActivityTransaction(tx(ID(1), address), ID(1), scope, at);
-    assert.equal(outgoing.spentUnits, '1100000000');
-    assert.equal(outgoing.receivedUnits, '100000000');
-    assert.equal(outgoing.netUnits, '-1000000000');
-    const incoming = tx(ID(1), address);
-    incoming.vin[0]!.addresses = ['1UnrelatedScript'];
-    const received = parseUtxoActivityTransaction(incoming, ID(1), scope, at);
-    assert.equal(received.spentUnits, '0'); assert.equal(received.receivedUnits, '100000000'); assert.equal(received.netUnits, '100000000');
-    const self = tx(ID(1), address);
-    self.vout = [{ ...self.vout[0]!, value: '1100000000' }];
-    self.value = self.valueIn; self.fees = '0';
-    const same = parseUtxoActivityTransaction(self, ID(1), scope, at);
-    assert.equal(same.spentUnits, '1100000000'); assert.equal(same.receivedUnits, '1100000000'); assert.equal(same.netUnits, '0');
-  });
-
-  test(`${kind} full activity page uses exact-case address and retains verified transaction direction`, async () => {
-    const f = fixture({ address, count: 1 });
-    const page = await createUtxoActivityReader(f).readPage({ ...owner, address }, { page: 1 }, signal());
-    assert.equal(page.context.address, address);
-    assert.equal(page.rows.length, 1); assert.equal(page.rows[0]!.netUnits, '-1000000000');
-    assert(f.calls.includes(`/api/v2/address/${address}?details=txids&pageSize=20&page=1&to=200`));
-    assert(f.signals.every(value => value.aborted));
-  });
-
-  test(`${kind} unrelated addresses and case variants are never attributed to the owner`, () => {
-    const scope = { ...owner, address }, at = { height: 200, hash: H };
-    const other = BASE58_OWNERS.find(([, value]) => value !== address)![1];
-    const caseVariant = address.toLowerCase();
-    assert.notEqual(caseVariant, address);
-    for (const destination of [other, caseVariant, 'OP_RETURN 0102']) {
-      const raw = tx(ID(1), address);
-      raw.vout[0]!.addresses = [destination];
-      if (destination.startsWith('OP_RETURN')) raw.vout[0]!.isAddress = false;
-      const row = parseUtxoActivityTransaction(raw, ID(1), scope, at);
-      assert.equal(row.spentUnits, '1100000000'); assert.equal(row.receivedUnits, '0'); assert.equal(row.netUnits, '-1100000000');
-    }
-  });
-
-  test(`${kind} claimed ownership still requires an address and one bounded source`, () => {
-    for (const change of [
-      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.isAddress = false; },
-      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.addresses.push('unrelated'); },
-      (raw: ReturnType<typeof tx>) => { raw.vin[0]!.addresses = [address, ...Array(8).fill('unrelated')]; },
-    ]) {
-      const raw = tx(ID(1), address); change(raw);
-      assert.throws(() => parseUtxoActivityTransaction(raw, ID(1), { ...owner, address }, { height: 200, hash: H }));
-    }
-  });
+function fixture(options: { count?: number; network?: 'bitcoin' | 'syscoin'; replace?: (path: string, value: any, calls: string[]) => unknown; hold?: (path: string) => Promise<void> } = {}) {
+  const calls: string[] = [], signals: AbortSignal[] = [], network = getUtxoNetwork(options.network ?? 'bitcoin');
+  const fetch = async (url: string, init: RequestInit) => {
+    assert.ok(url.startsWith(network.endpoint)); assert.equal(init.redirect, 'error'); assert.equal(init.credentials, 'omit');
+    const path = url.slice(network.endpoint.length); calls.push(path); signals.push(init.signal!); await options.hold?.(path);
+    let value: any;
+    if (path === '/api/') value = status(network);
+    else if (path === '/api/v2/block-index/0') value = { blockHash: network.genesisHash };
+    else if (/^\/api\/v2\/(?:address|xpub)\//.test(path)) {
+      const query = new URL(url).searchParams, page = Number(query.get('page')), count = options.count ?? 23;
+      assert.ok(['txsummary', 'txslight'].includes(query.get('details')!)); assert.equal(query.get('pageSize'), '20');
+      const identifier = decodeURIComponent(new URL(url).pathname.split('/').at(-1)!);
+      value = { address: identifier, txs: count, unconfirmedTxs: 0, page, totalPages: Math.max(1, Math.ceil(count / 20)), itemsOnPage: 20,
+        transactions: Array.from({ length: Math.min(20, Math.max(0, count - (page - 1) * 20)) }, (_, i) => tx(ID((page - 1) * 20 + i + 1))) };
+    } else throw Error('Unplanned URL');
+    const replacement = options.replace?.(path, value, calls);
+    return replacement instanceof Response ? replacement : json(replacement ?? value);
+  };
+  return { fetch, calls, signals };
 }
-
-test('Bech32 uppercase normalizes for ownership while mixed-case ownership still fails closed', () => {
-  const at = { height: 200, hash: H };
-  const upper = parseUtxoActivityTransaction(tx(ID(1), BTC.toUpperCase()), ID(1), owner, at);
-  assert.equal(upper.spentUnits, '1100000000'); assert.equal(upper.receivedUnits, '100000000');
-  const mixed = BTC.slice(0, 4).toUpperCase() + BTC.slice(4);
-  assert.throws(() => parseUtxoActivityTransaction(tx(ID(1), mixed), ID(1), owner, at));
+const signal = () => new AbortController().signal;
+const read = (f: ReturnType<typeof fixture>, page = 1, input = source) => createUtxoActivityReader(f).readPage(input, { page }, signal());
+const tick = () => new Promise<void>(r => setImmediate(r));
+async function settle(c: UtxoWatchActivity) { for (let i = 0; i < 100 && ['idle', 'loading'].includes(c.getSnapshot().status); i++) await tick(); }
+function authority(f: ReturnType<typeof fixture>) {
+  return new WatchOnlyAuthority([{ id: 'watch', name: 'First', addresses: { bitcoin: BTC } }, { id: 'other', name: 'Second', addresses: { syscoin: SYS } }],
+    { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
+}
+test('actual SJS account read is bounded and does not fan out transactions or enforce an anchor', async () => {
+  const f = fixture(), page = await read(f);
+  assert.deepEqual(f.calls, ['/api/', '/api/v2/block-index/0', `/api/v2/address/${BTC}?details=txsummary&page=1&pageSize=20`]);
+  assert.equal(page.rows.length, 20); assert.equal(page.rows[0]?.netUnits, '-1000000000'); assert.equal(page.rows[0]?.nativeTransfer?.amount, '900000000');
+  assert.equal(page.rows[0]?.observedConfirmations, 11); assert.equal(page.hasMore, true); assert.ok(f.signals.every(s => s.aborted));
+  assert.ok(Object.isFrozen(page) && Object.isFrozen(page.rows) && Object.isFrozen(page.rows[0]?.block));
+});
+for (const identifier of [XPUB, `sh(wpkh(${XPUB}/0/*))`]) test('canonical public account/descriptor goes through actual SJS xpub route without public source output', async () => {
+  const parsed = parseUtxoPublicIdentifier(identifier, 'bitcoin'), f = fixture();
+  const input = { context: { ...owner, address: parsed.address }, identifier: parsed.identifier, isAccount: true };
+  const page = await read(f, 1, input);
+  assert.equal(f.calls[2], `/api/v2/xpub/${encodeURIComponent(parsed.identifier)}?details=txsummary&page=1&pageSize=20`);
+  assert.ok(!JSON.stringify(page).includes(parsed.identifier)); assert.equal(page.context.address, parsed.address);
+});
+test('whole-account input/change ownership comes from shared Blockbook normalization', async () => {
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) { const row = body.transactions[0]; delete row.addressValueIn; delete row.addressValueOut; row.vin = [{ value: '1100000000', isOwn: true, addresses: ['unrendered-receive'] }]; row.vout[0].addresses = ['unrendered-change']; } return body; } });
+  const [row] = (await read(f)).rows; assert.equal(row?.netUnits, '-1000000000'); assert.equal(row?.nativeTransfer?.amount, '900000000');
+  assert.ok(!JSON.stringify(row).includes('unrendered'));
+});
+test('pending and missing block observations remain valid activity', async () => {
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) Object.assign(body.transactions[0], { blockHeight: -1, blockHash: undefined, blockTime: undefined, confirmations: 0 }); return body; } });
+  const [row] = (await read(f)).rows; assert.equal(row?.block, null); assert.equal(row?.observedConfirmations, 0);
+});
+test('native exact quantities, fee, receipt, self and ambiguous collaborative intent share extension helpers', async () => {
+  const large = '900719925474099300';
+  for (const kind of ['large', 'receipt', 'self', 'collaborative', 'coinbase']) {
+    const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) {
+      const row = body.transactions[0];
+      if (kind === 'large') Object.assign(row, { addressValueIn: large, addressValueOut: '0', fees: '1', vin: [{ value: large }], vout: [{ value: '900719925474099299' }] });
+      if (kind === 'receipt' || kind === 'coinbase') Object.assign(row, { addressValueIn: '0', addressValueOut: large, ...(kind === 'coinbase' ? { vin: [{ coinbase: '0102' }], fees: '0' } : {}) });
+      if (kind === 'self') Object.assign(row, { addressValueOut: '1000000000' });
+      if (kind === 'collaborative') row.vin.push({ value: '2' });
+    } return body; } });
+    const row = (await read(f)).rows[0]!;
+    if (kind === 'large') { assert.equal(row.nativeTransfer?.amount, '900719925474099299'); assert.equal(row.transactionFeeUnits, '1'); }
+    if (kind === 'receipt' || kind === 'coinbase') { assert.equal(row.netUnits, large); assert.equal(row.nativeTransfer?.kind, 'received'); }
+    if (kind === 'self') assert.equal(row.nativeTransfer?.kind, 'self');
+    if (kind === 'collaborative') assert.equal(row.nativeTransfer, null);
+  }
+});
+test('asset quantities and script metadata never leak or become native amounts', async () => {
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) Object.assign(body.transactions[0], { tokenType: 'SPTAssetAllocationSend', memo: '<img>', tokenTransfers: [{ value: '999999999999999999' }] }); return body; } });
+  const page = await read(f); assert.equal(page.rows[0]?.hasUnsupportedAssetData, true); assert.equal(page.rows[0]?.nativeTransfer, null); assert.equal(page.rows[0]?.netUnits, '-1000000000');
+  assert.ok(!JSON.stringify(page).includes('999999999') && !JSON.stringify(page).includes('<img>'));
+});
+test('unknown account totals remain null rather than zero or transaction-wide aliases', async () => {
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) { delete body.transactions[0].addressValueIn; delete body.transactions[0].addressValueOut; body.transactions[0].vin=[]; } return body; } });
+  const row = (await read(f)).rows[0]!; assert.equal(row.netUnits, null); assert.equal(row.nativeTransfer, null);
+});
+test('explicit zero counts without transactions are empty; incomplete positive counts require fallback', async () => {
+  const empty = fixture({ count: 0, replace(path, body) { if (path.includes('/address/')) delete body.transactions; return body; } });
+  assert.equal((await read(empty)).rows.length, 0);
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('details=txsummary')) delete body.transactions; return body; } });
+  const reader = createUtxoActivityReader(f); assert.equal((await reader.readPage(source, { page: 1 }, signal())).rows.length, 1);
+  assert.ok(f.calls[3]?.includes('details=txslight')); await reader.readPage(source, { page: 2 }, signal()); assert.ok(f.calls.at(-1)?.includes('details=txslight'));
+});
+test('bad local context, page or source rejects before I/O', async () => {
+  const f = fixture(), reader = createUtxoActivityReader(f);
+  for (const value of [{ ...source, context: { ...owner, address: SYS } }, { ...source, context: { ...owner, generation: -1 } }, { ...source, isAccount: true, identifier: 'not-public' }]) await assert.rejects(reader.readPage(value, { page: 1 }, signal()));
+  for (const page of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) await assert.rejects(reader.readPage(source, { page }, signal()));
+  assert.equal(f.calls.length, 0);
+});
+test('metadata, syncing and genesis mismatch fail before account disclosure', async () => {
+  for (const kind of ['coin', 'sync', 'genesis']) {
+    const f = fixture({ replace(path, body) { if (path === '/api/' && kind === 'coin') body.blockbook.coin='other'; if (path === '/api/' && kind === 'sync') body.blockbook.inSyncMempool=false; if (path.endsWith('/0') && kind === 'genesis') body.blockHash=H; return body; } });
+    await assert.rejects(read(f)); assert.equal(f.calls.some(p => p.includes('/address/')), false);
+  }
+});
+test('wrong identity, malformed pagination and oversized pages are never partial success', async () => {
+  for (const change of [(v: any) => {v.address=SYS;}, (v: any) => {v.page=2;}, (v: any) => {v.itemsOnPage=19;}, (v: any) => {v.transactions.push(...Array(20).fill(tx()));}, (v: any) => {v.transactions[0].txid='bad';}, (v: any) => {v.transactions[0].confirmations=-1;}]) {
+    const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) change(body); return body; } }); await assert.rejects(read(f));
+  }
+});
+test('page six is a normal indexed request and unknown total is honest', async () => {
+  const f = fixture({ count: 140, replace(path, body) { if (path.includes('/address/')) body.totalPages=-1; return body; } });
+  const page = await read(f, 6); assert.equal(page.page,6); assert.equal(page.rows.length,20); assert.equal(page.hasMore,true); assert.ok(f.calls.at(-1)?.includes('page=6'));
+});
+test('body ceilings, invalid JSON and HTTP failure remain unavailable', async () => {
+  for (const response of [new Response('x'.repeat(1024*1024+1), {headers:{'content-type':'application/json'}}), new Response('{bad'), new Response('not found', {status:404})]) {
+    const f=fixture({replace(path){if(path.includes('/address/'))return response;}}); await assert.rejects(read(f)); assert.ok(f.signals.every(s=>s.aborted));
+  }
+});
+test('request/source scalars detach before awaiting metadata', async () => {
+  const entered=gate(), pause=gate(), f=fixture({count:1, async hold(path){if(path==='/api/'){entered.resolve();await pause.promise;}}});
+  const mutable={...source}, request={page:1};const pending=createUtxoActivityReader(f).readPage(mutable,request,signal()); await entered.promise;
+  mutable.identifier=SYS;request.page=6;pause.resolve(); const page=await pending;assert.equal(page.page,1);assert.ok(f.calls[2]?.includes(BTC));
+});
+test('cancellation settles ignored transport and prevents all fallback/account calls', async () => {
+  const entered=gate(), pause=gate(), abort=new AbortController(), f=fixture({async hold(path){if(path==='/api/'){entered.resolve();await pause.promise;}}});
+  const pending=createUtxoActivityReader(f).readPage(source,{page:1},abort.signal);await entered.promise;abort.abort();await assert.rejects(pending);pause.resolve();await tick();assert.equal(f.calls.length,1);
+});
+test('timeout and redirect rejection do not disclose the identifier', async () => {
+  let finish!: (r:Response)=>void;const reader=createUtxoActivityReader({timeoutMs:5,fetch:()=>new Promise(r=>{finish=r;})});await assert.rejects(reader.readPage(source,{page:1},signal()));finish(json(status()));await tick();
+  for(const changed of [{redirected:true},{url:'https://different.invalid/api/'}]) {let calls=0;const reader=createUtxoActivityReader({async fetch(){calls++;return Object.assign({ok:true,headers:new Headers(),body:null,text:async()=>JSON.stringify(status()),redirected:false,url:''},changed) as Response;}});await assert.rejects(reader.readPage(source,{page:1},signal()));assert.equal(calls,1);}
+});
+for(const address of ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa','3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy']) test('Base58 request identity is preserved exactly',async()=>{
+  const f=fixture({count:1});const result=await read(f,1,{context:{...owner,address},identifier:address,isAccount:false});assert.equal(result.context.address,address);assert.ok(f.calls[2]?.includes(address));
+});
+test('screen auto-loads only when current/foreground and coalesces duplicate loads', async()=>{
+  const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoWatchActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
+  foreground=true;c.setFocused(true);await c.load();await settle(c);assert.equal(c.getSnapshot().rows.length,20);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();
+});
+test('older/newer windows stay at most100 rows while loading beyond page five',async()=>{
+  const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);
+  for(let n=2;n<=6;n++)await c.loadMore();assert.equal(c.getSnapshot().page,6);assert.equal(c.getSnapshot().firstPage,2);assert.equal(c.getSnapshot().rows.length,100);assert.equal(c.getSnapshot().hasNewer,true);
+  await c.loadNewer();assert.equal(c.getSnapshot().firstPage,1);assert.equal(c.getSnapshot().page,5);assert.equal(c.getSnapshot().rows.length,100);c.dispose();
+});
+test('fresh reorg and pending observations replace prior same-txid rows',async()=>{
+  let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
+});
+test('failed page keeps prior rows stale with no automatic retry',async()=>{
+  let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
+});
+test('lock and departing screen suppress ignored late reads and hidden reloads',async()=>{
+  for(const action of ['lock','screen','focus']) {const entered=gate(),pause=gate(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await entered.promise;
+    if(action==='lock')a.lock();else if(action==='screen')c.dispose();else c.setFocused(false);pause.resolve();await tick();await tick();assert.equal(c.getSnapshot().rows.length,0);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();}
+});
+test('cancelled account response cannot dispatch the txsummary fallback',async()=>{
+  const entered=gate(),pause=gate(),abort=new AbortController(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}},replace(path,body){if(path.includes('/address/'))delete body.transactions;return body;}});
+  const pending=createUtxoActivityReader(f).readPage(source,{page:1},abort.signal);await entered.promise;abort.abort();await assert.rejects(pending);pause.resolve();await tick();assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);
+});
+test('concurrent reader operations keep their own source and abort lifetime',async()=>{
+  const pause=gate(),entered=gate(),other='1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa';
+  const f=fixture({async hold(path){if(path.includes(BTC)){entered.resolve();await pause.promise;}}}),reader=createUtxoActivityReader(f);
+  const first=reader.readPage(source,{page:1},signal());await entered.promise;
+  const second=await reader.readPage({context:{...owner,address:other},identifier:other,isAccount:false},{page:2},signal());assert.equal(second.context.address,other);pause.resolve();assert.equal((await first).context.address,BTC);
+});
+test('extension txslight fallback can follow an unavailable account read within the same bounded session',async()=>{
+  const f=fixture({count:1,replace(path){if(path.includes('details=txsummary'))return new Response('',{status:503});}});
+  const page=await read(f);assert.equal(page.rows.length,1);assert.equal(f.calls.filter(p=>p.includes('details=txsummary')).length,1);assert.equal(f.calls.filter(p=>p.includes('details=txslight')).length,1);
+});
+test('oversized native integer observations stay unavailable instead of crashing formatting',async()=>{
+  const f=fixture({count:1,replace(path,body){if(path.includes('/address/')){body.transactions[0].addressValueIn='9'.repeat(78);body.transactions[0].addressValueOut='9'.repeat(79);}return body;}});
+  await assert.rejects(read(f), { message: 'Account activity is unavailable' });
+});
+test('cross-page duplicates use the fresh observation and do not duplicate the list',async()=>{
+  const f=fixture({count:40,replace(path,body){if(path.includes('page=2'))body.transactions[0]={...body.transactions[0],txid:ID(1),blockHeight:-1,blockHash:undefined,confirmations:0};return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);await c.loadMore();
+  const rows=c.getSnapshot().rows;assert.equal(rows.length,39);assert.equal(rows.filter(r=>r.txid===ID(1)).length,1);assert.equal(rows.find(r=>r.txid===ID(1))?.block,null);c.dispose();
+});
+test('fresh moved block placement replaces an earlier block even with fewer confirmations',async()=>{
+  let moved=false;const f=fixture({count:1,replace(path,body){if(moved&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:191,blockHash:H,confirmations:10});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);moved=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block?.height,191);assert.equal(c.getSnapshot().rows[0]?.block?.hash,H);assert.equal(c.getSnapshot().rows[0]?.observedConfirmations,10);c.dispose();
+});
+test('zero summary counts with a nonempty accepted page do not erase retained rows',async()=>{
+  let refresh=false;const f=fixture({replace(path,body){if(refresh&&path.includes('/address/')){body.txs=0;body.unconfirmedTxs=0;body.transactions=[body.transactions[0]];}return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);assert.equal(c.getSnapshot().rows.length,20);refresh=true;await c.refresh();assert.equal(c.getSnapshot().rows.length,20);c.dispose();
+});
+test('an included block with zero confirmations remains an included observation',async()=>{
+  const f=fixture({count:1,replace(path,body){if(path.includes('/address/'))body.transactions[0].confirmations=0;return body;}});
+  const row=(await read(f)).rows[0]!;assert.equal(row.block?.height,190);assert.equal(row.observedConfirmations,0);
+});
+async function bigintWorkProbe(f: ReturnType<typeof fixture>) {
+  const original = globalThis.BigInt;
+  let calls = 0, oversized = 0, rejected = false;
+  globalThis.BigInt = ((value: string | number | bigint | boolean) => {
+    calls++; if (typeof value === 'string' && value.length > 78) oversized++;
+    return original(value);
+  }) as BigIntConstructor;
+  try { await read(f); } catch { rejected = true; }
+  finally { globalThis.BigInt = original; }
+  return { calls, oversized, rejected };
+}
+test('oversized native integer text is rejected before shared BigInt normalization', async () => {
+  const huge = '1' + '0'.repeat(78);
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) {
+    delete body.transactions[0].addressValueIn; delete body.transactions[0].addressValueOut;
+    Object.assign(body.transactions[0], { fees: '0', vin: [{ value: huge, isOwn: true }], vout: [{ value: huge, isOwn: true }] });
+  } return body; } });
+  const result = await bigintWorkProbe(f); assert.equal(result.oversized, 0); assert.equal(result.rejected, true);
+});
+test('more than the requested page rows is rejected before any shared integer normalization', async () => {
+  const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) {
+    body.transactions = Array.from({ length: 21 }, (_, index) => { const row = tx(ID(index + 1)); delete (row as any).addressValueIn; delete (row as any).addressValueOut; return row; });
+  } return body; } });
+  const result = await bigintWorkProbe(f); assert.equal(result.calls, 0); assert.equal(result.rejected, true);
+});
+test('a bounded body with very long native integer strings never reaches BigInt',async()=>{
+  const huge='9'.repeat(400000);
+  const f=fixture({count:1,replace(path,body){if(path.includes('/address/')){delete body.transactions[0].addressValueIn;delete body.transactions[0].addressValueOut;Object.assign(body.transactions[0],{fees:'0',vin:[{value:huge,isOwn:true}],vout:[{value:huge,isOwn:true}]});}return body;}});
+  const result=await bigintWorkProbe(f);assert.equal(result.oversized,0);assert.equal(result.rejected,true);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);
+});
+test('legitimate78-digit values still use shared exact ownership and transfer arithmetic',async()=>{
+  const maximum=((1n<<256n)-1n).toString();assert.equal(maximum.length,78);
+  const f=fixture({count:1,replace(path,body){if(path.includes('/address/')){delete body.transactions[0].addressValueIn;delete body.transactions[0].addressValueOut;Object.assign(body.transactions[0],{fees:'0',vin:[{value:maximum,isOwn:true}],vout:[{value:maximum,isOwn:true}]});}return body;}});
+  const row=(await read(f)).rows[0]!;assert.equal(row.spentUnits,maximum);assert.equal(row.receivedUnits,maximum);assert.equal(row.netUnits,'0');assert.equal(row.nativeTransfer?.amount,maximum);
+});
+test('small invalid native values retain the existing unavailable-field semantics',async()=>{
+  const f=fixture({count:1,replace(path,body){if(path.includes('/address/'))body.transactions[0].addressValueIn='bad';return body;}});
+  const row=(await read(f)).rows[0]!;assert.equal(row.spentUnits,null);assert.equal(row.netUnits,null);assert.equal(row.nativeTransfer,null);
+});
+test('work-budget rejection does not poison the shared backend capability for a later healthy read',async()=>{
+  let oversized=true;const f=fixture({count:1,replace(path,body){if(oversized&&path.includes('/address/'))body.transactions[0].fees='1'.repeat(79);return body;}}),reader=createUtxoActivityReader(f);
+  await assert.rejects(reader.readPage(source,{page:1},signal()));oversized=false;const before=f.calls.length;const page=await reader.readPage(source,{page:1},signal());
+  assert.equal(page.rows.length,1);assert.ok(f.calls.slice(before).at(-1)?.includes('details=txsummary'));assert.equal(f.calls.some(path=>path.includes('txslight')),false);
 });
