@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { formatSyscoinTokenAmount } from '../../../../source/shared/utxoTokenAmounts';
 import { formatBaseUnits } from '../core/amounts';
-import { UtxoWatchActivity, type UtxoActivityRow } from '../core/utxoActivity';
+import { UtxoWatchActivity, type UtxoActivityContext, type UtxoActivityRow } from '../core/utxoActivity';
 import { getUtxoNetwork } from '../core/utxoNetworks';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import type { ShellLeafNavigation } from './RealAppShell';
@@ -31,11 +31,12 @@ export function WatchActivity({ authority, navigation, onBack }: {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
+  const [confirmationOwner, setConfirmationOwner] = useState<UtxoActivityContext | null>(null);
   const [busy, setBusy] = useState(false);
   const selectTransaction = useCallback((txid: string | null) => {
     lifetime.current.selected = txid;
     lifetime.current.action++;
-    setSelected(txid); setFeedback('');
+    setSelected(txid); setFeedback(''); setConfirmationOwner(null);
     if (txid) controller.selectDetail(txid); else controller.clearDetail();
   }, [controller]);
   const list = useRef<FlatList<UtxoActivityRow>>(null);
@@ -52,6 +53,8 @@ export function WatchActivity({ authority, navigation, onBack }: {
       const key = value.context ? `${value.context.accountId}:${value.context.networkId}:${value.context.address}:${value.context.generation}` : '';
       if (value.status === 'idle' || key !== observedContext) {
         selectTransaction(null); setBusy(false); life.busy = false; life.pending = null;
+      } else if (value.status === 'loading') {
+        setConfirmationOwner(null);
       }
       observedContext = key;
     });
@@ -85,7 +88,15 @@ export function WatchActivity({ authority, navigation, onBack }: {
       if (life.pending === pending) { life.pending = null; life.busy = false; if (life.alive) setBusy(false); }
     }
   };
-  const refresh = () => { selectTransaction(null); list.current?.scrollToOffset({ offset: 0, animated: false }); void controller.refresh(); };
+  const refresh = async () => {
+    const life = lifetime.current, { context, status } = controller.getSnapshot();
+    if (!life.alive || !context || status === 'loading' || !controller.isCurrent(context)) return;
+    selectTransaction(null);
+    const action = life.action;
+    list.current?.scrollToOffset({ offset: 0, animated: false });
+    const confirmation = await controller.refresh();
+    if (life.alive && life.action === action && confirmation?.consume()) setConfirmationOwner(context);
+  };
   const units = (value: string | null) => value === null || !network ? 'Unavailable' : `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
   const net = (value: string | null) => value === null || !network ? 'Unavailable' : signed(value, network.decimals, network.symbol);
   const status = (row: UtxoActivityRow) => row.block === null
@@ -103,7 +114,14 @@ export function WatchActivity({ authority, navigation, onBack }: {
         <FlatList ref={list} testID="watch-activity-list" data={state.rows} keyExtractor={(row) => row.txid} contentContainerStyle={s.content}
           ListHeaderComponent={<View style={s.section}>
             {(state.status === 'unavailable' || state.status === 'stale') && <Notice title={state.status === 'stale' ? 'Could not refresh activity' : 'Activity unavailable'} body={state.status === 'stale' ? 'Showing previously loaded activity. Try refreshing again.' : 'Activity could not be loaded. Try again.'} tone="amber" />}
-            <Button title={state.status === 'unavailable' ? 'Try again' : 'Refresh activity'} variant="secondary" disabled={!!chosen || state.status === 'loading'} onPress={refresh} />
+            <View>
+              <Button title={state.status === 'unavailable' ? 'Try again' : 'Refresh activity'} variant="secondary" disabled={!!chosen || state.status === 'loading'} onPress={() => void refresh()} />
+              <View role="status" accessibilityLiveRegion="polite">
+                {confirmationOwner === state.context && state.status === 'ready' && (
+                  <Text style={[styles.muted, s.confirmation]}>Explorer reports a transaction now has confirmations.</Text>
+                )}
+              </View>
+            </View>
             {state.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading activity" color={colors.pink} />}
           </View>}
           renderItem={({ item }) => <View testID={`watch-activity-row-${item.txid}`} style={s.row}><Button title={item.hasAssetData ? assetQuantity(item) ?? 'Asset activity' : item.netUnits === null ? 'Amount unavailable' : `Net change ${net(item.netUnits)}`} variant="quiet" disabled={!!chosen || state.status === 'loading'} onPress={() => { if (controller.isCurrent()) selectTransaction(item.txid); }} />
@@ -154,4 +172,4 @@ export function WatchActivity({ authority, navigation, onBack }: {
 
 const s = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.bg }, header: { paddingHorizontal: 24 }, body: { flex: 1, minHeight: 0 }, list: { flex: 1 }, obscured: { opacity: 0 }, detailOverlay: { position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: colors.bg },
   pageActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, pageButton: { flexGrow: 1 }, content: { paddingHorizontal: 24, paddingBottom: 28, gap: 16 }, section: { gap: 14, paddingVertical: 12 }, row: { gap: 8, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: colors.border },
-  hash: { color: colors.text, fontSize: 13, lineHeight: 21 }, amount: { color: colors.text, fontSize: 26, lineHeight: 36 }, detail: { padding: 18, gap: 14 }, label: { color: colors.muted, fontSize: 11, letterSpacing: 1 } });
+  confirmation: { marginTop: 10 }, hash: { color: colors.text, fontSize: 13, lineHeight: 21 }, amount: { color: colors.text, fontSize: 26, lineHeight: 36 }, detail: { padding: 18, gap: 14 }, label: { color: colors.muted, fontSize: 11, letterSpacing: 1 } });

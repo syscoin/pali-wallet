@@ -23,6 +23,7 @@ async function open(page: Page, network = 'bitcoin', android = false, mode = 'va
 async function load(page: Page) {
   await expect(page.getByText('20 transactions shown', { exact: true })).toBeVisible();
 }
+const CONFIRMATION = 'Explorer reports a transaction now has confirmations.';
 test.beforeEach(async ({ page }) => {
   await page.route('**/*', async route => {
     if (new URL(route.request().url()).origin !== 'http://127.0.0.1:4182') { await route.abort(); throw Error('Unexpected live network request'); }
@@ -101,6 +102,80 @@ test('unavailable, empty, stale and asset amounts remain distinct', async ({ pag
   await page.getByRole('button', { name: 'Refresh activity', exact: true }).click();
   await expect(page.getByText('Could not refresh activity', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Asset activity', exact: true }).first()).toBeVisible();
+});
+
+test('an explicit watch refresh shows one quiet confirmation result without extra reads', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await open(page, 'bitcoin', false, 'pending');
+  await load(page);
+  const feedback = page.getByRole('status').getByText(CONFIRMATION, { exact: true });
+  const refresh = page.getByRole('button', { name: 'Refresh activity', exact: true });
+  const calls = () => page.evaluate(() => window.__watchFixture.activity.calls());
+  const firstPage = await calls();
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`).getByText('Pending', { exact: true })).toBeVisible();
+  await expect(feedback).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.activity.mode('value'));
+  await refresh.click();
+  await expect(feedback).toHaveCount(1);
+  await expect(feedback).toBeVisible();
+  await expect(page.getByRole('status')).toHaveAttribute('aria-live', 'polite');
+  expect((await calls()).slice(firstPage.length)).toEqual(firstPage);
+  await page.screenshot({ path: testInfo.outputPath('watch-confirmation-320.png') });
+  await page.addStyleTag({ content: '[data-testid="watch-activity-list"] [dir="auto"] { font-size: 22px !important; line-height: 1.45 !important; }' });
+  await expect(feedback).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('watch-confirmation-320-large-text.png') });
+
+  await refresh.click();
+  await expect(feedback).toHaveCount(0);
+  await expect(refresh).toBeEnabled();
+  expect((await calls()).slice(firstPage.length * 2)).toEqual(firstPage);
+
+  await page.evaluate(() => window.__watchFixture.activity.mode('pending'));
+  await refresh.click();
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`).getByText('Pending', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.activity.mode('error'));
+  await refresh.click();
+  await expect(page.getByText('Could not refresh activity', { exact: true })).toBeVisible();
+  await expect(feedback).toHaveCount(0);
+  await page.evaluate(() => window.__watchFixture.activity.mode('value'));
+  await refresh.click();
+  await expect(page.getByTestId(`watch-activity-row-${ID(1)}`).getByText('11 confirmations · Block 190', { exact: true })).toBeVisible();
+  await expect(feedback).toHaveCount(0);
+});
+
+test('leaving and reopening the same watch Activity cannot publish a late confirmation', async ({ page }) => {
+  await open(page, 'bitcoin', true, 'pending');
+  await load(page);
+  const feedback = page.getByRole('status').getByText(CONFIRMATION, { exact: true });
+  const refresh = page.getByRole('button', { name: 'Refresh activity', exact: true });
+  const row = page.getByTestId(`watch-activity-row-${ID(1)}`);
+  await page.evaluate(() => window.__watchFixture.activity.mode('late'));
+  await refresh.click();
+  await expect(refresh).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => url.includes('/address/')).length)).toBe(2);
+  await page.getByRole('tab', { name: 'Tools', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Tools', exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.activity.mode('value'));
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(row.getByText('11 confirmations · Block 190', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.activity.release());
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.activity.lateResponses())).toBe(1);
+  await expect(feedback).toHaveCount(0);
+
+  await page.evaluate(() => window.__watchFixture.activity.mode('pending'));
+  await refresh.click();
+  await expect(row.getByText('Pending', { exact: true })).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.activity.mode('value'));
+  await refresh.click();
+  await expect(feedback).toBeVisible();
+  await page.evaluate(() => window.__watchFixture.blur());
+  await expect(page.getByRole('button', { name: 'View my accounts', exact: true })).toBeVisible();
+  await expect(feedback).toHaveCount(0);
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await expect(row.getByText('11 confirmations · Block 190', { exact: true })).toBeVisible();
+  await expect(feedback).toHaveCount(0);
 });
 
 test('leaving a slow request and Android focus loss revoke the active account history', async ({ page }) => {

@@ -2,18 +2,20 @@
 // and WatchSession remain in use; no signing or live endpoint is available.
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import { UTXO_ADDRESSES } from '../publicWatchFixtures';
-export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max';
-const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max'];
+export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max' | 'late';
+const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max', 'late'];
 const initial = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('activity-mode');
 let mode: ActivityMode = modes.includes(initial ?? '') ? initial as ActivityMode : 'value';
 let release: (() => void) | null = null;
 let cancelled = 0;
+let lateResponses = 0;
 type DetailMode = 'value' | 'error' | 'slow' | 'wrong' | 'reorg';
 let detailMode: DetailMode = 'value';
 let releaseDetail: (() => void) | null = null;
 const calls: string[] = [], opened: string[] = [];
 export const activityFixture = {
   mode(value: ActivityMode) { mode = value; }, cancelled: () => cancelled, calls: () => [...calls], opened: () => [...opened],
+  lateResponses: () => lateResponses,
   release() { release?.(); release = null; mode = 'value'; },
   open(url: string) { opened.push(url); },
   detail(value: DetailMode) { detailMode = value; },
@@ -78,8 +80,10 @@ export async function activityFetch(input: RequestInfo | URL, init?: RequestInit
   const marker = path.includes('/xpub/') ? '/xpub/' : path.includes('/address/') ? '/address/' : null;
   if (!marker) throw Error('Unexpected account-history fixture path');
   if (init?.signal?.aborted) throw new DOMException('Fixture request cancelled', 'AbortError');
-  if (mode === 'slow') await new Promise<void>((resolve, reject) => {
-    const signal = init?.signal;
+  const late = mode === 'late';
+  if (mode === 'slow' || late) await new Promise<void>((resolve, reject) => {
+    // Model an indexer response arriving after its request owner was revoked.
+    const signal = late ? undefined : init?.signal;
     const clear = () => { signal?.removeEventListener('abort', abort); if (release === resume) release = null; };
     const resume = () => { clear(); resolve(); };
     const abort = () => { cancelled++; clear(); reject(new DOMException('Fixture request cancelled', 'AbortError')); };
@@ -90,6 +94,7 @@ export async function activityFetch(input: RequestInfo | URL, init?: RequestInit
   const page = Number(parsed.searchParams.get('page') ?? 1), pageSize = Number(parsed.searchParams.get('pageSize') ?? 20);
   const count = mode === 'empty' ? 0 : mode === 'window' ? 123 : 23;
   const rows = Array.from({ length: Math.min(pageSize, Math.max(0, count - (page - 1) * pageSize)) }, (_, offset) => transaction((page - 1) * pageSize + offset + 1, network));
+  if (late) lateResponses++;
   return json({ address: identifier, balance: '100000000', unconfirmedBalance: '0', txs: count, unconfirmedTxs: mode === 'pending' ? 1 : 0,
     page, itemsOnPage: pageSize, totalPages: Math.max(1, Math.ceil(count / (pageSize || 20))), transactions: rows });
 }
