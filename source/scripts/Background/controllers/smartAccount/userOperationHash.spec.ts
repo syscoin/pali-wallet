@@ -146,7 +146,9 @@ describe('smart-account owner signing intent', () => {
             activeNetwork: { chainId: 1 },
           } as any),
         {} as any,
-        {} as any
+        {} as any,
+        undefined,
+        null
       );
       const signature = await signSmartAccountActionHash({
         accountId: 7,

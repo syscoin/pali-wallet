@@ -47,7 +47,7 @@ test('pinned software SDK creates and reopens its real wallet through SQLite at 
       true
     );
     keyring = new SoftwareKeyring(
-      createKeyringHost(storage.keyringStorage)
+      createKeyringHost(storage.keyringStorage), { captureEvmSubmission: null }
     );
     assert.equal(keyring.getEncIterations(), 900000);
     const state = {
@@ -96,7 +96,7 @@ test('pinned software SDK creates and reopens its real wallet through SQLite at 
       false
     );
     keyring = new SoftwareKeyring(
-      createKeyringHost(storage.keyringStorage)
+      createKeyringHost(storage.keyringStorage), { captureEvmSubmission: null }
     );
     keyring.setVaultStateGetter(() => state);
     await storage.authGuard.checkAllowed();

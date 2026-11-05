@@ -33,7 +33,7 @@ async function makeCrypto() {
       if (Object.keys(items).some((k) => values.has(k))) return false;
       Object.entries(items).forEach(([k, v]) => values.set(k, v)); return true;
     } };
-  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(storage));
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(storage), { captureEvmSubmission: null });
   const state = { activeAccount: { id: 0, type: sdk.KeyringAccountType.HDAccount },
     activeNetwork: { kind: sdk.INetworkType.Ethereum, chainId: 1, slip44: 60, currency: 'ETH', url: 'https://offline.invalid' },
     accounts: { HDAccount: {}, Imported: {} as Record<number, any>, Ledger: {}, Trezor: {}, SmartAccount: {} } };

@@ -109,7 +109,9 @@ async function fixture(phrase = PHRASE, pwd = password) {
       return true;
     },
   };
-  const keyring = new SoftwareKeyring(createKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage), {
+    captureEvmSubmission: null,
+  });
   keyrings.push(keyring);
   keyring.setVaultStateGetter(() => ({
     activeAccount: { id: 0, type: 'HDAccount' },

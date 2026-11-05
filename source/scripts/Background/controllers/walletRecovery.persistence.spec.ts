@@ -262,7 +262,9 @@ async function establishOriginal(activeSlip44: number, retainSigned = false) {
       return true;
     },
   };
-  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(port));
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(port), {
+    captureEvmSubmission: null,
+  });
   keyring.setVaultStateGetter(() => activeVault);
   try {
     await keyring.initializeSession(PHRASE, ORIGINAL_PASSWORD);
@@ -482,7 +484,8 @@ function successfulHost() {
         createManyIfAbsent: async () => {
           throw Error('Unexpected wallet creation during unlock');
         },
-      })
+      }),
+      { captureEvmSubmission: null }
     );
     keyring.setVaultStateGetter(() => store.getState().vault);
     try {

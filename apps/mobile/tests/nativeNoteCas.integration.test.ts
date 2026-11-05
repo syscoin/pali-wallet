@@ -90,7 +90,7 @@ test('real SDK note restore revokes a locked write, consumes an uncertain commit
   };
   const createKeyring = (currentStorage: SqliteWalletStorage) => {
     const current = new SoftwareKeyring(
-      createKeyringHost(currentStorage.keyringStorage)
+      createKeyringHost(currentStorage.keyringStorage), { captureEvmSubmission: null }
     );
     current.setVaultStateGetter(() => state);
     return current;

@@ -64,7 +64,9 @@ export async function freshSdkGasEstimate(
     refuseSigning,
     refuseSigning,
     undefined as never,
-    undefined as never
+    undefined as never,
+    undefined,
+    null
   );
   reader.setGasOverrides(policy);
   // This SDK type also requires send-only fee fields. The actual estimator

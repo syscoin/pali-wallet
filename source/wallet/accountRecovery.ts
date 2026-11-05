@@ -131,7 +131,8 @@ async function stageWallet(
         }
         return true;
       },
-    })
+    }),
+    { captureEvmSubmission: null }
   );
   const emptyAccounts = (): AccountRecords => ({
     HDAccount: {},

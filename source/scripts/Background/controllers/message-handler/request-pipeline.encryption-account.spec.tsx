@@ -245,7 +245,9 @@ beforeEach(() => {
       activeAccountId: mockState.vault.activeAccount.id,
     }),
     {} as any,
-    {} as any
+    {} as any,
+    undefined,
+    null
   );
   const wallet = Object.create(MainController.prototype);
   Object.assign(wallet, {

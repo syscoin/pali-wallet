@@ -142,7 +142,7 @@ export function createKeyringRuntimeFactory(
         });
         type State = ReturnType<typeof initialState>;
         const openKeyring = (scope: State) => {
-          const instance = new sdk.SoftwareKeyring(host, { captureEvmSubmission: (context) => captureSignedSubmission(context) }) as IndexedKeyring;
+          const instance = new sdk.SoftwareKeyring(host, { captureEvmSubmission: null }) as IndexedKeyring;
           instance.setVaultStateGetter(() => scope);
           return instance;
         };
@@ -329,7 +329,7 @@ export function createKeyringRuntimeFactory(
             await (keyring === target ? source : target).destroy();
           }
         };
-        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void = () => undefined, metadata?: Readonly<Record<string, unknown>>) {
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);

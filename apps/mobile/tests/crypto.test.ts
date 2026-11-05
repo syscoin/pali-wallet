@@ -258,7 +258,7 @@ test('published SDK uses this facade for production-cost vault and private-recor
       return true;
     },
   };
-  const keyring = new SoftwareKeyring(createKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage), { captureEvmSubmission: null });
   const state = {
     activeAccount: { type: KeyringAccountType.HDAccount, id: 0 },
     activeNetwork: { kind: INetworkType.Ethereum, chainId: 1, slip44: 60, currency: 'ETH', label: 'Ethereum', url: 'https://offline.invalid' },

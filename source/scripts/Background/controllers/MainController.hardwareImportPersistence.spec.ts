@@ -270,7 +270,12 @@ describe.each(['Trezor', 'Ledger'] as const)(
       } as any;
       manager = new KeyringManager(
         createBrowserKeyringHost(chrome.storage.local),
-        { ledgerHost: ledgerHost as any }
+        {
+          captureEvmSubmission: () => {
+            throw new Error('EVM submission is outside this fixture');
+          },
+          ledgerHost: ledgerHost as any,
+        }
       );
       manager.setVaultStateGetter(() => store.getState().vault);
       const initialAccount = await manager.initializeWalletSecurely(

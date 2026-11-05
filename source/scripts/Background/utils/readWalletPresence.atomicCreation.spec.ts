@@ -78,6 +78,9 @@ describe('fresh keyring creation persistence', () => {
     const keyring: any = new KeyringManager(
       createBrowserKeyringHost(chrome.storage.local),
       {
+        captureEvmSubmission: () => {
+          throw new Error('EVM submission is outside this fixture');
+        },
         hardwareManager: new HardwareWalletManager(),
       }
     );

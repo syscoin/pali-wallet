@@ -66,6 +66,9 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
         },
       });
       manager = new KeyringManager(host, {
+        captureEvmSubmission: () => {
+          throw new Error('EVM submission is outside this fixture');
+        },
         hardwareManager: new HardwareWalletManager(),
       });
     });

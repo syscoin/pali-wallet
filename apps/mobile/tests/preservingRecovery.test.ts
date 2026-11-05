@@ -1019,7 +1019,7 @@ async function noteBundle(count = 17) {
   const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost({
     async get(key) { return values.get(key); }, async set(key, value) { values.set(key, value); }, async deleteItem(key) { values.delete(key); },
     async createManyIfAbsent(items) { if (Object.keys(items).some((key) => values.has(key))) return false; Object.entries(items).forEach(([k, v]) => values.set(k, v)); return true; },
-  }));
+  }), { captureEvmSubmission: null });
   await keyring.initializeSession(PHRASE, OLD);
   const profile = await keyring.getPrivateRecordProfileId(); let seq = 0;
   const id = () => `00000000-0000-4000-8000-${(++seq).toString().padStart(12, '0')}`;

@@ -128,7 +128,8 @@ async function fixture() {
     },
   };
   const keyring = new sdk.SoftwareKeyring(
-    createBrowserKeyringHost(chrome.storage.local)
+    createBrowserKeyringHost(chrome.storage.local),
+    { captureEvmSubmission: null }
   );
   keyring.setVaultStateGetter(() => state);
   await keyring.initializeSession(PHRASE, PASSWORD);

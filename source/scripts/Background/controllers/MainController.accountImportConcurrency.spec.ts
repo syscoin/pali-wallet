@@ -322,7 +322,8 @@ it('the real controller commits a real SDK recovery envelope after Chrome serial
         Object.entries(items).forEach(([key, value]) => values.set(key, value));
         return true;
       },
-    })
+    }),
+    { captureEvmSubmission: null }
   );
   software.setVaultStateGetter(() => store.getState().vault);
   try {

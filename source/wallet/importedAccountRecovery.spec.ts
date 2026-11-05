@@ -65,7 +65,9 @@ async function fixture(
       SmartAccount: {},
     },
   };
-  const keyring = new SoftwareKeyring(createKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage), {
+    captureEvmSubmission: null,
+  });
   keyring.setVaultStateGetter(() => state);
   await keyring.initializeSession(seed, password);
   return { keyring, network, state, records };
