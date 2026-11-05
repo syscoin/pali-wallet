@@ -204,14 +204,7 @@ export function NativeSend({
       'nonce-consumed',
       'unavailable',
     ].includes(snapshot.phase);
-  const footer = review ? (
-    <Button
-      title={review.retry ? 'Resend signed transaction' : 'Confirm and send'}
-      disabled={busy}
-      onPress={submit}
-      testID="native-send-confirm"
-    />
-  ) : !hasOutcome ? (
+  const footer = !review && !hasOutcome ? (
     <Button
       title="Review transfer"
       disabled={busy || !recipient.trim() || !amount}
@@ -276,7 +269,6 @@ export function NativeSend({
                   {networkLabel}
                 </Text>
               </View>
-              {reviewedToken && tokenIdentity(reviewedToken)}
               {!!review.replay?.predecessorCount && <Card style={s.summary}>
                 <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
                 <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
@@ -315,6 +307,7 @@ export function NativeSend({
                   </>
                 )}
               </Card>
+              {reviewedToken && tokenIdentity(reviewedToken)}
               {reviewedToken && (
                 <Notice
                   title="Token transfer"
@@ -335,6 +328,12 @@ export function NativeSend({
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>
+              <Button
+                title={review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+                disabled={busy}
+                onPress={submit}
+                testID="native-send-confirm"
+              />
               <Button
                 title={review.retry ? 'Close review' : 'Edit transfer'}
                 variant="quiet"

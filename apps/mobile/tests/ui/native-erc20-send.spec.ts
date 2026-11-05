@@ -233,6 +233,12 @@ test('narrow ERC20 review retains full identities, exact amount and reachable co
     contract
   );
   await expect(page.getByTestId('native-send-confirm')).toBeEnabled();
+  const reviewOrder = await page.evaluate(() =>
+    ['recipient', 'fee', 'token-contract', 'confirm'].map((field) =>
+      document.querySelector(`[data-testid="native-send-${field}"]`)!.getBoundingClientRect().top
+    )
+  );
+  expect(reviewOrder).toEqual([...reviewOrder].sort((a, b) => a - b));
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth
