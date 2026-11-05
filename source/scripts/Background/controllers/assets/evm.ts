@@ -147,7 +147,15 @@ const EvmAssetsController = (): IEvmAssetsController => {
             const tokenType = token?.type || 'ERC-20';
             if (tokenType === 'ERC-721' || tokenType === 'ERC-1155') {
               const nft = projectOwnedNftRow(token, activeNetwork.chainId);
-              if (nft) nft.symbol = cleanTokenSymbol(nft.symbol);
+              if (nft) {
+                nft.symbol = cleanTokenSymbol(nft.symbol);
+                // Keep the extension's exact stored spelling once validated.
+                if (
+                  nft.rawBalance !== undefined &&
+                  typeof token.balance === 'string'
+                )
+                  nft.rawBalance = token.balance;
+              }
               return nft;
             }
             if (
