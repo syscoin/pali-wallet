@@ -209,7 +209,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const attach = useCallback((local: Controllers) => {
     detachSubscriptions.current(); controllers.current = local;
     setCanRemoveWallet(!!local.removal);
-    const networks = createNativeNetworkView(local.authority, { fetch: walletFetch });
+    const networks = createNativeNetworkView(local.authority, { utxoSendAvailable: !!local.openUtxoSend, fetch: walletFetch });
     const publicView: PublicCustodySource = Object.freeze({
       getSnapshot: () => local.authority.getSnapshot(),
       getCatalogue: () => local.authority.getCatalogue(),
