@@ -21,12 +21,13 @@ type Props = {
   onBack(): void;
 };
 
-export function NativeNoteFilesMenu({ onBack, onExport, onRestore }: { onBack(): void; onExport(): void; onRestore(): void }) {
+export function NativeNoteFilesMenu({ onBack, onExport, onRestore, onCapacity }: { onBack(): void; onExport(): void; onRestore(): void; onCapacity?(): void }) {
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><Screen>
     <Header title="Private notes" onBack={onBack} />
     <Card>
       <Row title="Back up private notes" subtitle="Save an encrypted copy" icon="lock" onPress={onExport} />
-      <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last />
+      <Row title="Restore note backup" subtitle="Add notes from an encrypted file" icon="wallet" onPress={onRestore} last={!onCapacity} />
+      {onCapacity && <Row title="Note capacity" subtitle="Change the saved note limit" onPress={onCapacity} last />}
     </Card>
   </Screen></SafeAreaView>;
 }

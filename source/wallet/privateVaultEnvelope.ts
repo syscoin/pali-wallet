@@ -21,8 +21,13 @@ export const PRIVATE_VAULT_FORMAT = 'pali-private-note-vault';
 export const PRIVATE_VAULT_VERSION = 1;
 export const DEFAULT_CAPACITY = 128;
 export const MAX_NOTES = 512;
+export const PRIVATE_VAULT_CAPACITIES = Object.freeze([
+  DEFAULT_CAPACITY,
+  256,
+  MAX_NOTES,
+] as const);
 export const capacityValid = (value: unknown): value is 128 | 256 | 512 =>
-  value === 128 || value === 256 || value === 512;
+  PRIVATE_VAULT_CAPACITIES.some((capacity) => capacity === value);
 export const capacityBudget = (capacity: 128 | 256 | 512): number =>
   (capacity / 128) * 4 * 1024 * 1024;
 export const MAX_PLAINTEXT_BYTES = 64 * 1024;

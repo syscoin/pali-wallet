@@ -1,4 +1,5 @@
 import { identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
+import type { IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import { AsyncMutex } from '../../../../source/utils/asyncMutex.ts';
 import {
   createNoteBackupService,
@@ -15,6 +16,7 @@ import { WalletStorageError, type OpenWalletStorage } from '../storage/types.ts'
 
 /** Internal file authority. Exported bytes go only to the trusted file adapter. */
 export type NativeNoteBackupRuntime = Readonly<Omit<INoteBackupService, 'dispose'>>;
+export type NativeNoteCapacityRuntime = Readonly<Pick<IPrivateVaultController, 'getCapacity' | 'setCapacity'>>;
 
 type NativeNoteBackupPorts = Readonly<{
   assertAvailable(): void;
@@ -98,6 +100,18 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   return {
     invalidate: () => invalidate?.(),
     dispose: () => service.dispose(),
+    bindCapacity(session: IPrivateVaultSession): NativeNoteCapacityRuntime {
+      const run = async (action: () => Promise<IPrivateVaultCapacity>) => {
+        session.assertCurrent();
+        const result = await ports.run(() => withSession(session, action));
+        session.assertCurrent();
+        return Object.freeze(result);
+      };
+      return Object.freeze<NativeNoteCapacityRuntime>({
+        getCapacity: () => run(vault.getCapacity),
+        setCapacity: (capacity) => run(() => vault.setCapacity(capacity)),
+      });
+    },
     bind(session: IPrivateVaultSession): NativeNoteBackupRuntime {
       let ownedId: string | undefined;
       const assertLive = (id?: string) => {
