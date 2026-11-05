@@ -324,10 +324,15 @@ for (const width of [400, 320]) {
                 await shot('pending-validation-after-' + mode);
               }
               await capture(popup);
-              await popup
-                .getByRole('button', { name: en.buttons.cancel, exact: true })
-                .click();
-              expect((await settle(dapp, id)).error?.code).toBe(4001);
+              const rejected = await dismissRejectedApproval({
+                click: () =>
+                  popup
+                    .getByRole('button', { name: en.buttons.cancel, exact: true })
+                    .click(),
+                isClosed: () => popup.isClosed(),
+                settle: () => settle(dapp, id),
+              });
+              expect(rejected.error?.code).toBe(4001);
             }
           );
         } else {

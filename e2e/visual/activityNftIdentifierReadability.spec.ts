@@ -540,6 +540,9 @@ for (const viewport of [
     let wallet: PaliWallet | undefined;
     let status: 'passed' | 'failed' = 'failed';
     let baseline!: Awaited<ReturnType<typeof publicState>>;
+    const exerciseLateExplorer = viewport.width === 320;
+    const balanceFixture = exerciseLateExplorer ? '0xde0b6b3a7640000' : '0x0';
+    let postSwitchSaveBeforeExplorer: Promise<void> | undefined;
     const server = await startUtxoFixtureServer();
     try {
       expect(server.blocked).toEqual([]);
@@ -632,7 +635,8 @@ for (const viewport of [
               params[0].toLowerCase() === owner &&
               params[1] === 'latest'
             )
-              result = call.method === 'eth_getBalance' ? '0x0' : '0x3';
+              result =
+                call.method === 'eth_getBalance' ? balanceFixture : '0x3';
             if (
               call.method === 'eth_getCode' &&
               params.length === 2 &&
@@ -793,6 +797,36 @@ for (const viewport of [
               ...(paged ? ['page', 'offset'] : []),
             ])
           ) {
+            if (exerciseLateExplorer && action === 'txlist') {
+              postSwitchSaveBeforeExplorer ??= wallet!.page
+                .waitForFunction(
+                  async () => {
+                    const saved = (
+                      await chrome.storage.local.get('state-vault-60')
+                    )['state-vault-60'];
+                    return (
+                      saved?.activeNetwork?.chainId === 5700 &&
+                      saved.accounts?.HDAccount?.[0]?.balances?.ethereum ===
+                        '1.0' &&
+                      !saved.accountTransactions?.HDAccount?.[0]
+                        ?.ethereum?.[5700]?.length
+                    );
+                  },
+                  undefined,
+                  { timeout: 5000 }
+                )
+                .then(async (marker) => {
+                  await marker.dispose();
+                  // A bounded slow explorer response crosses the controller's
+                  // 100ms save window after the new balance is already durable.
+                  await new Promise((resolve) => setTimeout(resolve, 500));
+                  const state = await publicState(wallet!.page);
+                  expect(state.history).toEqual([]);
+                  expect(state.savedHistory).toEqual([]);
+                  observations.explorerReleasedAfterPostSwitchSave = true;
+                });
+              await postSwitchSaveBeforeExplorer;
+            }
             const rows =
               action === 'txlist'
                 ? txs.map((row) => row.explorer).reverse()
@@ -970,13 +1004,20 @@ for (const viewport of [
           await expect
             .poll(async () => {
               const state = await publicState(page);
-              return (
+              const match =
                 state.history.length === 2 &&
                 JSON.stringify(state.history) ===
-                  JSON.stringify(state.savedHistory)
-              );
+                  JSON.stringify(state.savedHistory);
+              observations.historyPersistence = {
+                liveRows: state.history.length,
+                savedRows: state.savedHistory.length,
+                match,
+              };
+              return match;
             })
             .toBe(true);
+          if (exerciseLateExplorer)
+            expect(observations.explorerReleasedAfterPostSwitchSave).toBe(true);
           baseline = await publicState(page);
           expect(baseline.active).toEqual({ id: 0, type: 'HDAccount' });
           expect(baseline.savedActive).toEqual(baseline.active);
