@@ -21,6 +21,7 @@ import {
   DEFAULT_ACTIVITY_VIEW,
   type DiscoveredActivityCandidate,
   type ActivityViewState,
+  type LocalActivityRecord,
 } from '../../src/activity/types';
 import type { CustodySnapshot } from '../../src/custody/types';
 import { Button, Header, Notice, Screen } from '../../src/ui';
@@ -64,6 +65,21 @@ let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
 const identityRegression = new URLSearchParams(window.location.search).get('history-identity');
 const tokenMetadata = new URLSearchParams(window.location.search).get('token-metadata');
+const retainedCollectible = new URLSearchParams(window.location.search).has('retained-collectible');
+const collectibleContract = `0x${'33'.repeat(20)}`;
+const collectibleLocals: readonly LocalActivityRecord[] = retainedCollectible ? [{
+  walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
+  address: owner, networkId: scope.network.id, registrationHash: scope.network.registrationHash,
+  chainId: scope.network.chainId, hash: hash(1), phase: 'signed', nonce: 0,
+  createdAt: 1700000000000, recipient: collectibleContract, amountUnits: '0',
+  maximumFeeUnits: '150000', inspectionOnly: true,
+  collectibleTransfer: {
+    kind: 'nft-transfer', chainId: scope.network.chainId, from: owner,
+    contractAddress: collectibleContract, recipient, tokenStandard: 'ERC-1155',
+    tokenId: '0', amountUnits: ((1n << 256n) - 1n).toString(),
+  },
+}] : [];
+
 let tokenPrecision: number | null = tokenMetadata ? 18 : null;
 let invalidFee = false;
 const contractCreation = new URLSearchParams(window.location.search).has(
@@ -81,6 +97,7 @@ class Explorer extends ActivityExplorerReader {
   ): Promise<readonly DiscoveredActivityCandidate[]> {
     feedReads++;
     if (fail) throw new Error('fixture unavailable');
+    if (retainedCollectible) return [];
     if (identityRegression) {
       const mixed = identityRegression === 'mixed-case';
       const raw = (index: number, token: boolean) => ({
@@ -190,7 +207,7 @@ const runtime: NativeActivityRuntime = {
   async load() {
     return {
       scope,
-      locals: freshStatus?.locals ?? [],
+      locals: freshStatus?.locals ?? collectibleLocals,
       saved: {
         archived: [],
         candidates: [],
@@ -341,6 +358,7 @@ function Fixture() {
           controller={controller}
           accountLabel="Public test account"
           onBack={() => setOpen(false)}
+          onReplay={retainedCollectible ? () => { throw new Error('Read-only collectible cannot replay'); } : undefined}
         />
       ) : (
         <Button title="Open Activity" onPress={() => setOpen(true)} />

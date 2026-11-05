@@ -100,6 +100,7 @@ function zeroOnly(row: ActivityRow) {
   );
 }
 function amount(row: ActivityRow, symbol: string): string {
+  if (row.local?.collectibleTransfer) return 'Collectible transfer';
   if (row.display) {
     if (row.display.amountUnavailable) return `? ${row.display.displaySymbol}`;
     if (row.display.hasUnknownDecimals) return `${row.display.displaySymbol} transfer`;
@@ -226,6 +227,7 @@ function NativeActivityContent({
         direction(row, owner) === snapshot.view.filter)
   );
   const chosen = snapshot.rows.find((row) => row.hash === selected);
+  const collectible = chosen?.local?.collectibleTransfer;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
@@ -600,6 +602,28 @@ function NativeActivityContent({
               </>
             )}
           </Card>
+          {collectible && (
+            <Card style={s.detail}>
+              <Text style={s.label}>SIGNED COLLECTIBLE TRANSFER</Text>
+              <Text>{collectible.tokenStandard}</Text>
+              <Text style={s.label}>TOKEN ID</Text>
+              <Text selectable style={s.full}>
+                {collectible.tokenId}
+              </Text>
+              <Text style={s.label}>QUANTITY</Text>
+              <Text selectable style={s.full}>
+                {collectible.amountUnits}
+              </Text>
+              <Text style={s.label}>TOKEN CONTRACT</Text>
+              <Text selectable style={s.full}>
+                {collectible.contractAddress}
+              </Text>
+              <Text style={s.label}>SIGNED RECIPIENT</Text>
+              <Text selectable style={s.full}>
+                {collectible.recipient}
+              </Text>
+            </Card>
+          )}
           {chosen.indexed?.tokenTransfer && (
             <Card style={s.detail}>
               <Text style={s.label}>INDEXED TOKEN TRANSFER</Text>
@@ -653,7 +677,7 @@ function NativeActivityContent({
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
-          {chosen.local && onReplay && (
+          {chosen.local && !chosen.local.inspectionOnly && onReplay && (
             <Button
               title="Review resend"
               onPress={() => onReplay(chosen.hash)}

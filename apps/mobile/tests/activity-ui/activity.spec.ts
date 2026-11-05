@@ -1,4 +1,29 @@
 import { test, expect } from '@playwright/test';
+test('retained collectible details show signed fields without a resend action at 320px', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?retained-collectible');
+  const row = page.getByRole('button', { name: /View transaction details/ });
+  await expect(row).toHaveAccessibleName('Collectible transfer, Submission unconfirmed. View transaction details');
+  const label = row.getByText('Collectible transfer', { exact: true });
+  await expect(label).toBeInViewport();
+  const labelBounds = await label.boundingBox();
+  expect(labelBounds!.x + labelBounds!.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('retained-collectible-row-320.png') });
+  await row.click();
+  await expect(page.getByText('SIGNED COLLECTIBLE TRANSFER', { exact: true })).toBeVisible();
+  await expect(page.getByText('ERC-1155', { exact: true })).toBeVisible();
+  await expect(page.getByText('0', { exact: true })).toBeVisible();
+  const quantity = page.getByText(((1n << 256n) - 1n).toString(), { exact: true });
+  await quantity.scrollIntoViewIfNeeded();
+  await expect(quantity).toBeInViewport();
+  const bounds = await quantity.boundingBox();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  await expect(page.getByText(`0x${'22'.repeat(20)}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`0x${'33'.repeat(20)}`, { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('retained-collectible-320.png') });
+});
+
 for (const decimals of [0, 18, 19, 255]) {
   test(`Activity renders a valid ${decimals}-decimal token in the list and details`, async ({
     page,

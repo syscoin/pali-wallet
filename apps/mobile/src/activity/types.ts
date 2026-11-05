@@ -1,4 +1,5 @@
 import type { EvmDisplayTransaction } from '../../../../source/shared/evmTransactionDisplay.ts';
+import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
@@ -49,6 +50,8 @@ export type LocalActivityRecord = Omit<
 > &
   Readonly<{
     recipient: string | null;
+    collectibleTransfer?: NftTransferIntent;
+    inspectionOnly?: true;
     phase:
       | 'signed'
       | 'attempted'
