@@ -112,13 +112,14 @@ const runner = {
     if (decoded.name === 'symbol')
       return abi.encodeFunctionResult('symbol', ['RECOVER']);
     rpcCalls.push(decoded.name);
+    // Keep the independent probe healthy when failing the requested reads.
+    if (decoded.name === 'balanceOf' && decoded.args[1].toString() === '42')
+      return abi.encodeFunctionResult('balanceOf', ['0']);
     if (failOwnershipReads)
       throw new Error('Synthetic public RPC read failure');
     const quantity = rawQuantity;
     if (decoded.name === 'balanceOf')
-      return abi.encodeFunctionResult('balanceOf', [
-        decoded.args[1].toString() === '42' ? '0' : rawQuantity,
-      ]);
+      return abi.encodeFunctionResult('balanceOf', [quantity]);
     expect(decoded.name).toBe('balanceOfBatch');
     if (heldBatch) {
       const read = heldBatch;
