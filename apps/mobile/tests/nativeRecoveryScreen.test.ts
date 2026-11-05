@@ -7,6 +7,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { createIdleComponentFixture } from './idleComponentFixture.ts';
+import { findUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { NativeControllerLifecycle } from '../src/custody/nativeControllerLifecycle.ts';
 import { NativeRecoveryFlow } from '../src/custody/recoveryFlow.ts';
 
@@ -205,6 +206,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
     react: root.hook, 'react-native': leaf.native, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
+    '../core/utxoNetworks': { findUtxoNetwork },
     '../custody/password': passwordPolicy,
     '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
     './NativeRecovery': { NativeRecovery: leaf.component }, '../custody/networkView': { createNativeNetworkView: () => ({}) },
