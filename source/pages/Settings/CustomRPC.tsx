@@ -8,6 +8,11 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { v4 as uuidv4 } from 'uuid';
 
+import {
+  orderChainRpcs,
+  rankChainSuggestions,
+  type ChainInfo,
+} from '../../shared/chainCatalogue';
 import { isNonBlankNetworkText } from '../../shared/networkText';
 import { ChainIcon } from 'components/ChainIcon';
 import { Icon } from 'components/Icon';
@@ -29,36 +34,6 @@ import {
   readCustomRpcDraft,
   writeCustomRpcDraft,
 } from './customRpcDraft';
-
-interface IChainInfo {
-  chain: INetworkType;
-  chainId: number;
-  chainSlug?: string;
-  coinLabel?: string;
-  coinShortcut?: string;
-  explorers?: Array<{
-    name: string;
-    standard?: string;
-    url: string;
-  }>;
-  icon?: string;
-  infoURL?: string;
-  name: string;
-  nativeCurrency: {
-    decimals: number;
-    name: string;
-    symbol: string;
-  };
-  networkId: number;
-  rpc: Array<{
-    isOpenSource?: boolean;
-    tracking?: string;
-    url: string;
-  }>;
-  shortName?: string;
-  // Additional fields for UTXO networks
-  slip44?: number;
-}
 
 const NETWORK_BADGE_CLASS =
   'text-xs px-2 py-0.5 text-white bg-brand-royalblue rounded-full font-medium shadow-sm group-hover:shadow-md group-hover:bg-brand-blue500 transform group-hover:scale-105 transition-all duration-300 flex-shrink-0';
@@ -172,7 +147,7 @@ const CustomRPCView = () => {
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const [testingRpcs, setTestingRpcs] = useState(false);
-  const [allChains, setAllChains] = useState<IChainInfo[]>([]);
+  const [allChains, setAllChains] = useState<ChainInfo[]>([]);
   const [currentRpcTest, setCurrentRpcTest] = useState<{
     index: number;
     total: number;
@@ -889,7 +864,7 @@ const CustomRPCView = () => {
         const chains = (await controllerEmitter(
           ['wallet', 'getChainData'],
           [networkType]
-        )) as IChainInfo[];
+        )) as ChainInfo[];
         if (!active) return;
         setAllChains(chains);
         console.log(
@@ -945,65 +920,10 @@ const CustomRPCView = () => {
 
   // Filtering is local and synchronous, so a delayed search cannot reopen the
   // list after Escape, blur, or a network-type change.
-  const networkSuggestions = React.useMemo(() => {
-    const query = networkQuery;
-    if (!query || !query.trim()) {
-      return [];
-    }
-
-    // Don't search if query is too short
-    if (query.trim().length < 2) {
-      return [];
-    }
-
-    // Early return if no chains loaded yet
-    if (allChains.length === 0) {
-      return [];
-    }
-
-    const lowerQuery = query.toLowerCase().trim();
-    const results: (IChainInfo & { score?: number })[] = [];
-
-    allChains.forEach((chain) => {
-      let score = 0;
-      const name = chain.name.toLowerCase();
-      const symbol = chain.nativeCurrency.symbol.toLowerCase();
-      const chainId = chain.chainId.toString();
-      const coinLabel = chain.coinLabel?.toLowerCase() || '';
-      const coinShortcut = chain.coinShortcut?.toLowerCase() || '';
-
-      // Scoring for relevance - exact matches score highest
-      if (name === lowerQuery) score += 100;
-      else if (name.startsWith(lowerQuery)) score += 50;
-      else if (name.includes(lowerQuery)) score += 25;
-
-      if (symbol === lowerQuery) score += 80;
-      else if (symbol.startsWith(lowerQuery)) score += 40;
-      else if (symbol.includes(lowerQuery)) score += 20;
-
-      if (chainId === query) score += 90;
-      else if (chainId.startsWith(query)) score += 45;
-
-      // UTXO specific scoring
-      if (coinLabel === lowerQuery) score += 100;
-      else if (coinLabel.startsWith(lowerQuery)) score += 50;
-      else if (coinLabel.includes(lowerQuery)) score += 25;
-
-      if (coinShortcut === lowerQuery) score += 80;
-      else if (coinShortcut.startsWith(lowerQuery)) score += 40;
-
-      if (score > 0 && chain.rpc && chain.rpc.length > 0) {
-        results.push({ ...chain, score });
-      }
-    });
-
-    // Sort by score and take top 6 for better UI
-    const sortedResults = results
-      .sort((a, b) => (b.score || 0) - (a.score || 0))
-      .slice(0, 6);
-
-    return sortedResults;
-  }, [networkQuery, allChains]);
+  const networkSuggestions = React.useMemo(
+    () => rankChainSuggestions(allChains, networkQuery),
+    [networkQuery, allChains]
+  );
   const showSuggestions =
     suggestionsOpen && networkSuggestions.length > 0 && !testingRpcs;
   const activeSuggestionId =
@@ -1027,7 +947,7 @@ const CustomRPCView = () => {
   }, [activeSuggestionId]);
 
   // Handle network selection from autocomplete
-  const handleNetworkSelect = async (chain: IChainInfo) => {
+  const handleNetworkSelect = async (chain: ChainInfo) => {
     invalidatePendingChecks();
     // Clear suggestions immediately to close dropdown
     closeSuggestions();
@@ -1064,7 +984,7 @@ const CustomRPCView = () => {
   };
 
   // Try multiple RPCs/Blockbooks until we find one that works - with latency testing
-  const tryBestWorkingRpc = async (chain: IChainInfo) => {
+  const tryBestWorkingRpc = async (chain: ChainInfo) => {
     if (!chain.rpc || chain.rpc.length === 0) return;
     const canApply = createOperationGuard();
     const draftRevision = draftRevisionRef.current;
@@ -1073,21 +993,7 @@ const CustomRPCView = () => {
 
     setTestingRpcs(true);
 
-    // Order RPCs by preference: no tracking + open source > no tracking > open source > others
-    const orderedRpcs = [...chain.rpc].sort((a, b) => {
-      let scoreA = 0;
-      let scoreB = 0;
-
-      if (a.tracking === 'none' && a.isOpenSource) scoreA += 100;
-      else if (a.tracking === 'none') scoreA += 50;
-      else if (a.isOpenSource) scoreA += 25;
-
-      if (b.tracking === 'none' && b.isOpenSource) scoreB += 100;
-      else if (b.tracking === 'none') scoreB += 50;
-      else if (b.isOpenSource) scoreB += 25;
-
-      return scoreB - scoreA;
-    });
+    const orderedRpcs = orderChainRpcs(chain.rpc);
 
     try {
       // Try each RPC until we find one that works for this same draft.
@@ -1209,7 +1115,7 @@ const CustomRPCView = () => {
   };
 
   // Custom icon component for autocomplete with proper caching
-  const AutoCompleteIcon: React.FC<{ chain: IChainInfo; size?: number }> =
+  const AutoCompleteIcon: React.FC<{ chain: ChainInfo; size?: number }> =
     React.memo(
       ({ chain, size = 24 }) => (
         <ChainIcon
@@ -1235,7 +1141,7 @@ const CustomRPCView = () => {
     onSelect,
   }: {
     active: boolean;
-    chain: IChainInfo;
+    chain: ChainInfo;
     id: string;
     onActivate: () => void;
     onSelect: () => void;
