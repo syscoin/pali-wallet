@@ -312,6 +312,13 @@
     "generationFailed": "新しいリカバリーフレーズを生成できませんでした。「生成」を選択してもう一度お試しください。"
   },
   "send": {
+    "savedUtxo": {
+      "title": "保存済みの送金",
+      "review": "保存済みの送金を確認",
+      "empty": "保存済みの送金はありません",
+      "seen": "ネットワークで送金を検出しました",
+      "check": "送金状況を確認"
+    },
     "openWalletTab": "ウォレットのタブで開く",
     "transactionFailureDetails": "トランザクション失敗：{{message}}",
     "transactionCreationFailureDetails": "トランザクション作成失敗（{{code}}）：{{message}}",

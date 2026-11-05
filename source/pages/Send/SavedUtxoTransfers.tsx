@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { useController } from 'hooks/useController';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
@@ -12,6 +13,7 @@ type Review = Readonly<{
 
 export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
   const { controllerEmitter } = useController();
+  const { t } = useTranslation();
   const [saved, setSaved] = useState<readonly Saved[]>([]);
   const [selected, setSelected] = useState<string>();
   const [review, setReview] = useState<Review>();
@@ -47,7 +49,7 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
     setStatus('');
     void work(owns)
       .catch(() => {
-        if (owns()) setStatus('Pali could not verify the saved transfer.');
+        if (owns()) setStatus(t('transactions.replay.unavailable'));
       })
       .finally(() => {
         if (owns()) setBusy(false);
@@ -75,12 +77,12 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
       }}
     >
       <summary className="cursor-pointer py-2 text-brand-royalblue">
-        Saved transfers
+        {t('send.savedUtxo.title')}
       </summary>
       <div className="flex flex-col gap-1 rounded-lg bg-brand-blue800 p-3">
         {review ? (
           <>
-            <p>Review saved transfer</p>
+            <p>{t('send.savedUtxo.review')}</p>
             {review.outputs.map((output, index) => (
               <div key={index}>
                 <p className="break-all">{output.address}</p>
@@ -90,7 +92,8 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
               </div>
             ))}
             <p>
-              Network fee {formatSyscoinValue(review.feeSatoshis)} {symbol}
+              {t('send.networkFee')} {formatSyscoinValue(review.feeSatoshis)}{' '}
+              {symbol}
             </p>
             <button
               className={button}
@@ -104,11 +107,11 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                     ['wallet', 'confirmRetainedUtxoRetry'],
                     [review.id]
                   );
-                  if (owns()) setStatus('Transfer submitted');
+                  if (owns()) setStatus(t('notifications.submitted'));
                 });
               }}
             >
-              Resend saved transfer
+              {t('transactions.replay.resend')}
             </button>
             <button
               className={button}
@@ -116,7 +119,7 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
               disabled={busy}
               onClick={cancelReview}
             >
-              Back
+              {t('buttons.back')}
             </button>
           </>
         ) : (
@@ -137,16 +140,19 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                     if (!owns()) return;
                     setStatus(
                       state === 'confirmed'
-                        ? 'Transfer confirmed'
+                        ? t('notifications.confirmed')
                         : state === 'seen'
-                        ? 'Transfer seen on the network'
-                        : 'Transfer status unverified'
+                        ? t('send.savedUtxo.seen')
+                        : t('transactions.replay.unknown')
                     );
                     if (state === 'unknown') setSelected(txid);
                   });
                 }}
               >
-                {accepted ? 'Submitted' : 'Check transfer'} {txid.slice(0, 8)}…
+                {accepted
+                  ? t('notifications.submitted')
+                  : t('send.savedUtxo.check')}{' '}
+                <span dir="ltr">{txid.slice(0, 8)}…</span>
               </button>
             ))}
             {saved.length > limit && (
@@ -156,10 +162,10 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                 disabled={busy}
                 onClick={() => setLimit(limit + 6)}
               >
-                Show more
+                {t('buttons.loadMore')}
               </button>
             )}
-            {!saved.length && !busy && <p>No saved transfers</p>}
+            {!saved.length && !busy && <p>{t('send.savedUtxo.empty')}</p>}
             {selected && (
               <button
                 className={button}
@@ -183,13 +189,13 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
                   });
                 }}
               >
-                Review saved transfer
+                {t('send.savedUtxo.review')}
               </button>
             )}
           </>
         )}
         <p role="status" aria-live="polite">
-          {busy ? 'Working…' : status}
+          {busy ? t('buttons.loading') : status}
         </p>
       </div>
     </details>

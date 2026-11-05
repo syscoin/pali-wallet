@@ -312,6 +312,13 @@
     "generationFailed": "Could not generate a new recovery phrase. Select Generate to try again."
   },
   "send": {
+    "savedUtxo": {
+      "title": "Saved transfers",
+      "review": "Review saved transfer",
+      "empty": "No saved transfers",
+      "seen": "Transfer seen on the network",
+      "check": "Check transfer"
+    },
     "openWalletTab": "Open in wallet tab",
     "transactionFailureDetails": "Transaction failed: {{message}}",
     "transactionCreationFailureDetails": "Transaction creation failed ({{code}}): {{message}}",
