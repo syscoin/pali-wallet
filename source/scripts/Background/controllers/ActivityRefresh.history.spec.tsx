@@ -11,7 +11,7 @@ import vaultReducer, {
   setActiveNetwork,
   setIsBitcoinBased,
 } from 'state/vault';
-import vaultGlobalReducer from 'state/vaultGlobal';
+import vaultGlobalReducer, { setActiveSlip44 } from 'state/vaultGlobal';
 
 import MasterController from './index';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -23,12 +23,15 @@ let mockController: any;
 let mockMaster: any;
 const mockTransport = jest.fn();
 const mockEvmPolling = jest.fn();
+const mockPersistCommittedWalletState = jest.fn().mockResolvedValue(undefined);
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
+  persistCommittedWalletState: (...args: any[]) =>
+    mockPersistCommittedWalletState(...args),
 }));
 jest.mock('./MainController', () => ({
   __esModule: true,
@@ -199,6 +202,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearFetchBackendAccountCache();
+  jest.useRealTimers();
   jest.restoreAllMocks();
   global.chrome = originalChrome;
 });
@@ -459,3 +463,232 @@ it.each(['account', 'network'] as const)(
     expect(mockTransport).toHaveBeenCalledTimes(1);
   }
 );
+
+const setupPostSwitchHistory = () => {
+  jest.useFakeTimers();
+  const address = `0x${'11'.repeat(20)}`;
+  const evmNetwork = {
+    chainId: 1,
+    kind: 'ethereum',
+    currency: 'eth',
+    url: 'https://rpc.synthetic.invalid',
+    apiUrl: 'https://explorer.synthetic.invalid/api',
+  };
+  mockStore.dispatch(
+    setAccounts({
+      ...mockStore.getState().vault.accounts,
+      HDAccount: {
+        0: { id: 0, address, balances: { ethereum: '1', syscoin: '0' } },
+        1: {
+          id: 1,
+          address: `0x${'22'.repeat(20)}`,
+          balances: { ethereum: '0', syscoin: '0' },
+        },
+      },
+    })
+  );
+  mockStore.dispatch(setActiveNetwork(evmNetwork as any));
+  mockStore.dispatch(setIsBitcoinBased(false));
+  Object.defineProperty(mockController, 'ethereumTransaction', {
+    value: { web3Provider: {} },
+  });
+  mockStore.dispatch(setActiveSlip44(60));
+  const row = {
+    hash: `0x${'ab'.repeat(32)}`,
+    from: address,
+    to: `0x${'44'.repeat(20)}`,
+    chainId: 1,
+    value: '1',
+    nonce: 1,
+    input: '0x',
+    blockNumber: 100,
+    confirmations: 1,
+    timestamp: 1700000000,
+  };
+  const arm = () => {
+    const request = mockController.networkRequestGeneration;
+    mockController.postSwitchHistorySave =
+      mockController.capturePostSwitchHistoryScope(
+        () => request === mockController.networkRequestGeneration
+      ).isCurrent;
+  };
+  const read = (): Promise<void> =>
+    mockController.updateUserTransactionsState({
+      isBitcoinBased: false,
+      activeNetwork: evmNetwork,
+      isPolling: true,
+    });
+  const hashes = () =>
+    (
+      mockStore.getState().vault.accountTransactions.HDAccount[0].ethereum[1] ||
+      []
+    ).map((entry: any) => entry.hash);
+  return { row, arm, read, hashes };
+};
+
+it.each([
+  'post-switch',
+  'ordinary poll',
+  'pending ordinary save',
+  'account changed before timer',
+  'session changed while queued',
+  'older save settles while newer timer is pending',
+] as const)(
+  'saves only owned changed EVM post-switch history: %s',
+  async (scenario) => {
+    const { row, arm, read, hashes } = setupPostSwitchHistory();
+    mockEvmPolling.mockResolvedValueOnce([row]);
+    let settlePriorWrite: (() => void) | undefined;
+    if (scenario === 'older save settles while newer timer is pending')
+      mockPersistCommittedWalletState.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          settlePriorWrite = resolve;
+        })
+      );
+    if (scenario === 'pending ordinary save')
+      await mockController.saveWalletState('network-switch-after-updates');
+    if (scenario !== 'ordinary poll') arm();
+    await read();
+    expect(hashes()).toEqual([row.hash]);
+    expect(mockPersistCommittedWalletState).not.toHaveBeenCalled();
+    if (scenario === 'account changed before timer')
+      mockStore.dispatch(setActiveAccount({ type: 'HDAccount' as any, id: 1 }));
+    await jest.advanceTimersByTimeAsync(100);
+    if (
+      scenario === 'ordinary poll' ||
+      scenario === 'account changed before timer'
+    ) {
+      expect(mockPersistCommittedWalletState).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(1);
+    if (scenario === 'pending ordinary save') {
+      expect(mockPersistCommittedWalletState).toHaveBeenCalledWith(
+        true,
+        true,
+        undefined
+      );
+      return;
+    }
+    const guard = mockPersistCommittedWalletState.mock.calls[0][2];
+    expect(guard()).toBe(true);
+    if (scenario === 'session changed while queued') {
+      mockController.walletSessionGeneration += 1;
+      expect(guard()).toBe(false);
+    }
+    if (settlePriorWrite) {
+      await mockController.saveWalletState('later-save');
+      settlePriorWrite();
+      await jest.advanceTimersByTimeAsync(100);
+      expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(2);
+      expect(mockPersistCommittedWalletState).toHaveBeenLastCalledWith(
+        true,
+        true,
+        undefined
+      );
+    }
+  }
+);
+
+it('saves the first accepted changed rows when a real Refresh overtakes the post-switch read', async () => {
+  const { row, arm, read, hashes } = setupPostSwitchHistory();
+  arm();
+  let releaseInitial!: (rows: unknown[]) => void;
+  let releaseRefresh!: (rows: unknown[]) => void;
+  mockEvmPolling
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseInitial = resolve;
+      })
+    )
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseRefresh = resolve;
+      })
+    );
+  const initial = read();
+  expect(mockEvmPolling).toHaveBeenCalledTimes(1);
+
+  const saved: string[][] = [];
+  const captureSave = async (
+    _include: boolean,
+    _skip: boolean,
+    guard?: () => boolean
+  ) => {
+    expect(guard?.() ?? true).toBe(true);
+    saved.push(hashes());
+  };
+  mockPersistCommittedWalletState
+    .mockImplementationOnce(captureSave)
+    .mockImplementationOnce(captureSave);
+  await mockController.saveWalletState('network-switch-after-updates');
+  await jest.advanceTimersByTimeAsync(100);
+  expect(saved).toEqual([[]]);
+
+  // The production parent clears these read owners after the changed balance.
+  mockController.transactionsManager.utils.clearCache();
+  mockMaster.refresh();
+  const refresh =
+    mockController.cancellablePromises.transactionPromise.transactionPromise;
+  expect(mockEvmPolling).toHaveBeenCalledTimes(2);
+  releaseRefresh([row]);
+  await refresh;
+  expect(hashes()).toEqual([row.hash]);
+
+  const olderRow = { ...row, hash: `0x${'cd'.repeat(32)}` };
+  releaseInitial([olderRow]);
+  await initial;
+  expect(hashes()).toEqual([row.hash]);
+
+  await jest.advanceTimersByTimeAsync(100);
+  expect(saved).toEqual([[], [row.hash]]);
+  mockController.transactionsManager.utils.clearCache();
+  mockEvmPolling.mockResolvedValueOnce([olderRow]);
+  await read();
+  expect(hashes()).toEqual([olderRow.hash]);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(2);
+});
+
+it('a same-activation read admitted before the save barrier can satisfy its obligation', async () => {
+  const { row, arm, read, hashes } = setupPostSwitchHistory();
+  let releaseOlder!: (rows: unknown[]) => void;
+  mockEvmPolling.mockReturnValueOnce(
+    new Promise((resolve) => {
+      releaseOlder = resolve;
+    })
+  );
+  const alreadyAdmitted = read();
+  arm();
+  expect(mockEvmPolling).toHaveBeenCalledTimes(1);
+
+  releaseOlder([row]);
+  await alreadyAdmitted;
+  expect(hashes()).toEqual([row.hash]);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(1);
+});
+
+it('cannot carry the armed switch obligation across an account A-B-A selection', async () => {
+  const { row, arm, read, hashes } = setupPostSwitchHistory();
+  arm();
+  let releaseInitial!: (rows: unknown[]) => void;
+  mockEvmPolling
+    .mockReturnValueOnce(
+      new Promise((resolve) => {
+        releaseInitial = resolve;
+      })
+    )
+    .mockResolvedValueOnce([row]);
+  const initial = read();
+  mockStore.dispatch(setActiveAccount({ type: 'HDAccount' as any, id: 1 }));
+  mockStore.dispatch(setActiveAccount({ type: 'HDAccount' as any, id: 0 }));
+  mockController.transactionsManager.utils.clearCache();
+  await read();
+  releaseInitial([]);
+  await initial;
+  expect(hashes()).toEqual([row.hash]);
+  await jest.advanceTimersByTimeAsync(100);
+  expect(mockPersistCommittedWalletState).not.toHaveBeenCalled();
+});
