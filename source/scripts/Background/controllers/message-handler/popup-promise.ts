@@ -2,9 +2,10 @@ import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
 import {
-  utxoDappApprovalExpired,
+  transactionApprovalExpired,
   watchApprovalSubmission,
   type DappUtxoReview,
+  type TransactionApprovalDocument,
 } from '../../handlers/approvalSubmission';
 import {
   bindPersonalSignApproval,
@@ -172,6 +173,11 @@ const openApprovalPopup = async (
           psbt: { psbt, assets, sentryFeeAuthorization },
         }
       : undefined;
+  const evmContext =
+    route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
+      ? (data as { approvedContext?: IEvmTransactionContext }).approvedContext
+      : undefined;
+  const tracksTransactionDocument = Boolean(evmContext || utxoReview);
 
   let popup = null;
   let approvalClientId: string | null = null;
@@ -180,10 +186,10 @@ const openApprovalPopup = async (
   let submissionStarted = false;
   let stopWatchingSubmission: (() => void) | undefined;
   let unbindApprovalDocument: (() => void) | undefined;
-  let utxoHardwareLifetime = utxoReview ? new AbortController() : undefined;
-  let utxoApprovalRetired = false;
-  let utxoDocumentCheck = 0;
-  let utxoNavigationPending = false;
+  let transactionDocumentLifetime = new AbortController();
+  let transactionDocumentRetired = false;
+  let documentCheck = 0;
+  let navigationPending = false;
   let onAbort: (() => void) | null = null;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
@@ -197,7 +203,7 @@ const openApprovalPopup = async (
   ) => {
     if (
       registrationSender.tab?.windowId !== popup?.id ||
-      ((personalSignApproval || utxoReview) &&
+      ((personalSignApproval || tracksTransactionDocument) &&
         registrationSender.tab?.id === undefined) ||
       (approvalDocumentId &&
         registrationSender.documentId !== approvalDocumentId)
@@ -254,7 +260,8 @@ const openApprovalPopup = async (
         return;
       const available =
         (!approvalClientId || approvalClientId === source.id) &&
-        (!utxoReview || (!utxoApprovalRetired && !signal?.aborted)) &&
+        (!tracksTransactionDocument ||
+          (!transactionDocumentRetired && !signal?.aborted)) &&
         (!personalSignApproval || personalSignApproval.isCurrent());
       if (available) {
         approvalClientId = source.id;
@@ -262,7 +269,7 @@ const openApprovalPopup = async (
         const approverIsLive = () =>
           isApprovalClientLive(clientId, approvalId, route);
         if (
-          (personalSignApproval || utxoReview) &&
+          (personalSignApproval || tracksTransactionDocument) &&
           approvalDocumentId &&
           !unbindApprovalDocument
         ) {
@@ -274,12 +281,23 @@ const openApprovalPopup = async (
               approverIsLive
             );
           const retire = () => {
-            if (utxoReview) {
-              utxoApprovalRetired = true;
-              utxoHardwareLifetime?.abort();
+            if (tracksTransactionDocument) {
+              transactionDocumentRetired = true;
+              transactionDocumentLifetime.abort();
               onAbort?.();
             }
             personalSignApproval?.retire();
+          };
+          const checkNavigation = (complete: boolean) => {
+            const check = ++documentCheck;
+            void approverIsLive().then((live) => {
+              if (check !== documentCheck || transactionDocumentRetired) return;
+              if (!live) retire();
+              else if (complete && !signal?.aborted) {
+                transactionDocumentLifetime = new AbortController();
+                navigationPending = false;
+              }
+            });
           };
           const onNavigation = (
             tabId: number,
@@ -293,27 +311,19 @@ const openApprovalPopup = async (
                 return;
               }
             }
-            if (change.status === 'loading' && (!change.url || utxoReview)) {
+            if (
+              change.status === 'loading' &&
+              (!change.url || tracksTransactionDocument)
+            ) {
               // Chrome can report loading during a same-document transition.
               // Resolve the originally enrolled client before treating it as a reload.
-              const check = ++utxoDocumentCheck;
-              utxoNavigationPending = Boolean(utxoReview);
-              // Stop device work while checking the approval document. If the
-              // same document survived, only a new signing attempt can proceed.
-              utxoHardwareLifetime?.abort();
-              void approverIsLive().then((live) => {
-                if (!live) retire();
-                if (check === utxoDocumentCheck) {
-                  utxoNavigationPending = false;
-                  if (
-                    utxoReview &&
-                    live &&
-                    !utxoApprovalRetired &&
-                    !signal?.aborted
-                  )
-                    utxoHardwareLifetime = new AbortController();
-                }
-              });
+              navigationPending = tracksTransactionDocument;
+              // Retire the current attempt immediately. If the same document
+              // survives, only a fresh attempt after loading can proceed.
+              transactionDocumentLifetime.abort();
+              checkNavigation(false);
+            } else if (change.status === 'complete' && navigationPending) {
+              checkNavigation(true);
             }
           };
           unbindApprovalDocument = () => {
@@ -331,38 +341,35 @@ const openApprovalPopup = async (
             utxoReview) &&
           approvalDocumentId &&
           !stopWatchingSubmission
-        )
+        ) {
+          const document: TransactionApprovalDocument = {
+            getSignal: () => transactionDocumentLifetime.signal,
+            assertCurrent: () => {
+              if (
+                signal?.aborted ||
+                transactionDocumentRetired ||
+                navigationPending
+              )
+                throw transactionApprovalExpired();
+            },
+            async checkDocument() {
+              const [requestIsLive, approvalIsLive] = await Promise.all([
+                isRequestDocumentLive(sender),
+                approverIsLive(),
+              ]);
+              if (!requestIsLive || !approvalIsLive)
+                throw transactionApprovalExpired();
+            },
+          };
           stopWatchingSubmission = watchApprovalSubmission(
             approvalDocumentId,
             (possible) => {
               submissionStarted = possible;
             },
-            route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
-              ? (data as { approvedContext?: IEvmTransactionContext })
-                  .approvedContext
-              : undefined,
-            utxoReview
-              ? {
-                  ...utxoReview,
-                  getSignal: () => utxoHardwareLifetime!.signal,
-                  assertCurrent: () => {
-                    if (
-                      signal?.aborted ||
-                      utxoApprovalRetired ||
-                      utxoNavigationPending
-                    )
-                      throw utxoDappApprovalExpired();
-                  },
-                  async checkDocument() {
-                    if (
-                      !(await isRequestDocumentLive(sender)) ||
-                      !(await approverIsLive())
-                    )
-                      throw utxoDappApprovalExpired();
-                  },
-                }
-              : undefined
+            evmContext ? { ...document, context: evmContext } : undefined,
+            utxoReview ? { ...document, ...utxoReview } : undefined
           );
+        }
         onClientBound?.();
       }
       port.postMessage({
@@ -414,7 +421,8 @@ const openApprovalPopup = async (
 
     // Clean up function to remove listeners
     const cleanup = () => {
-      utxoHardwareLifetime?.abort();
+      transactionDocumentRetired = true;
+      transactionDocumentLifetime.abort();
       unbindApprovalDocument?.();
       stopWatchingSubmission?.();
       stopWatchingSubmission = undefined;

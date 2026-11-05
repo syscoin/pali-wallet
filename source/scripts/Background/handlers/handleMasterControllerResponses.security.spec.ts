@@ -1,3 +1,5 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 
 import { watchApprovalSubmission } from './approvalSubmission';
@@ -76,9 +78,26 @@ describe('native approval controller submission lifecycle', () => {
       const add = chrome.runtime.onMessage.addListener as jest.Mock;
       const listener = add.mock.calls[add.mock.calls.length - 1][0];
       const possible = jest.fn();
+      const lifetime = new AbortController();
       const stop = watchApprovalSubmission(
         'native-approval-document',
-        possible
+        possible,
+        {
+          context: {
+            account: {
+              address: `0x${'1'.repeat(40)}`,
+              id: 0,
+              type: KeyringAccountType.HDAccount,
+            },
+            chainId: 1,
+            rpcUrl: 'https://rpc.invalid',
+            sessionGeneration: 0,
+            slip44: 60,
+          },
+          assertCurrent: jest.fn(),
+          checkDocument: jest.fn().mockResolvedValue(undefined),
+          getSignal: () => lifetime.signal,
+        }
       );
       const logging = jest.spyOn(console, 'error').mockImplementation();
       try {

@@ -11,22 +11,29 @@ import type {
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
 
-export type DappUtxoReview = Readonly<{
+export type TransactionApprovalDocument = Readonly<{
   assertCurrent: () => void;
   checkDocument: () => Promise<void>;
-  context: IUtxoSigningContext;
   getSignal: () => AbortSignal;
-  method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
-  psbt: Readonly<{
-    assets: string;
-    psbt: string;
-    sentryFeeAuthorization?: string;
-  }>;
 }>;
+
+type DappEvmReview = TransactionApprovalDocument &
+  Readonly<{ context: IEvmTransactionContext }>;
+
+export type DappUtxoReview = TransactionApprovalDocument &
+  Readonly<{
+    context: IUtxoSigningContext;
+    method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
+    psbt: Readonly<{
+      assets: string;
+      psbt: string;
+      sentryFeeAuthorization?: string;
+    }>;
+  }>;
 
 type Watch = {
   attempts: Set<object>;
-  evmSend?: IEvmTransactionContext;
+  evmSend?: DappEvmReview;
   notify: (possible: boolean) => void;
   utxo?: DappUtxoReview;
 };
@@ -36,7 +43,7 @@ const watches = new Map<string, Set<Watch>>();
 export const watchApprovalSubmission = (
   documentId: string,
   notify: Watch['notify'],
-  evmSend?: IEvmTransactionContext,
+  evmSend?: DappEvmReview,
   utxo?: DappUtxoReview
 ): (() => void) => {
   const watch: Watch = {
@@ -45,7 +52,10 @@ export const watchApprovalSubmission = (
       evmSend &&
       Object.freeze({
         ...evmSend,
-        account: Object.freeze({ ...evmSend.account }),
+        context: Object.freeze({
+          ...evmSend.context,
+          account: Object.freeze({ ...evmSend.context.account }),
+        }),
       }),
     notify,
     utxo:
@@ -68,10 +78,33 @@ export const watchApprovalSubmission = (
   };
 };
 
-export const utxoDappApprovalExpired = () =>
+export const transactionApprovalExpired = () =>
   Object.assign(new Error('This transaction approval is no longer current.'), {
     transactionNotBroadcast: true,
   });
+
+const captureApprovalDocument = (
+  documentId: string,
+  watch: Watch,
+  review: TransactionApprovalDocument
+) => {
+  const signal = review.getSignal();
+  const assertCurrent = () => {
+    if (signal.aborted || !watches.get(documentId)?.has(watch))
+      throw transactionApprovalExpired();
+    review.assertCurrent();
+  };
+  assertCurrent();
+  return {
+    assertCurrent,
+    signal,
+    async checkDocument() {
+      assertCurrent();
+      await review.checkDocument();
+      assertCurrent();
+    },
+  };
+};
 
 /** Bind an exact reviewed PSBT to its enrolled browser document and method. */
 export const captureDappUtxoSubmission = (
@@ -86,31 +119,25 @@ export const captureDappUtxoSubmission = (
   );
   if (!watch?.utxo) return;
   const review = watch.utxo;
-  const signal = review.getSignal();
-  const assertCurrent = () => {
-    if (signal.aborted || !watches.get(documentId)?.has(watch))
-      throw utxoDappApprovalExpired();
-    review.assertCurrent();
-  };
-  assertCurrent();
+  const { assertCurrent, checkDocument, signal } = captureApprovalDocument(
+    documentId,
+    watch,
+    review
+  );
   if (
     method !== review.method ||
     input?.psbt?.psbt !== review.psbt.psbt ||
     input.psbt.assets !== review.psbt.assets ||
     input.psbt.sentryFeeAuthorization !== review.psbt.sentryFeeAuthorization
   )
-    throw utxoDappApprovalExpired();
+    throw transactionApprovalExpired();
   const authority: UtxoDappSigningAuthority = Object.freeze({
     assertCurrent,
     signal,
   });
   return {
     authority,
-    async checkDocument() {
-      assertCurrent();
-      await review.checkDocument();
-      assertCurrent();
-    },
+    checkDocument,
     input: { psbt: review.psbt, expectedContext: review.context },
   };
 };
@@ -125,12 +152,15 @@ export const captureDappEvmSubmission = (
     (candidate) => candidate.evmSend
   );
   if (!watch?.evmSend) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.evmSend
+  );
   return {
-    context: watch.evmSend,
-    assertCurrent: () => {
-      if (!watches.get(documentId)?.has(watch))
-        throw new Error('This transaction approval is no longer current.');
-    },
+    context: watch.evmSend.context,
+    assertCurrent,
+    checkDocument,
   };
 };
 

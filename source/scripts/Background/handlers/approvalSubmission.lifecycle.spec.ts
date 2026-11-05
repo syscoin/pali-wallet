@@ -3,6 +3,13 @@ jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: mockCreatePopup }),
 }));
 
+import {
+  captureEvmSubmission,
+  submitSignedEvmTransaction,
+} from '@sidhujag/sysweb3-keyring';
+import { Transaction } from 'ethers/transaction';
+import { Wallet } from 'ethers/wallet';
+
 import { getMethodConfig } from '../controllers/message-handler/method-registry';
 import { popupPromise } from '../controllers/message-handler/popup-promise';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
@@ -19,8 +26,9 @@ describe('transaction approval submission lifetime', () => {
     host: 'https://synthetic.invalid',
     approvalId: 'approval-lifecycle',
   };
+  const payer = new Wallet(`0x${'a'.repeat(64)}`);
   const approvedContext = {
-    account: { id: 0, type: 'HDAccount', address: `0x${'a'.repeat(40)}` },
+    account: { id: 0, type: 'HDAccount', address: payer.address },
     chainId: 743211,
     rpcUrl: 'https://rpc.invalid',
     slip44: 60,
@@ -314,7 +322,7 @@ describe('transaction approval submission lifetime', () => {
     expect(authority.signal.aborted).toBe(true);
   });
 
-  it('retires the old hardware operation before checking if the approval document survived navigation', async () => {
+  it('retires the old hardware operation until the same approval document completes loading', async () => {
     const { pending } = await begin(undefined, 'sys_sign');
     const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
     await submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }]);
@@ -335,6 +343,12 @@ describe('transaction approval submission lifetime', () => {
     finishCheck(source());
     await new Promise(setImmediate);
 
+    await expect(
+      submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }])
+    ).resolves.toMatchObject({ error: { transactionNotBroadcast: true } });
+    expect(send).toHaveBeenCalledTimes(1);
+    onNavigation(19, { status: 'complete', url: source().url });
+    await new Promise(setImmediate);
     await submit('signSyscoinPsbt', sender(), [{ psbt: utxoPsbt }]);
     const second = send.mock.calls[1][1];
     expect(second.signal).not.toBe(first.signal);
@@ -400,6 +414,117 @@ describe('transaction approval submission lifetime', () => {
     expect(admitted.authorizeDapp).toThrow('no longer current');
   });
 
+  it.each([
+    ['eth_sendTransaction', 'reload', false],
+    ['wallet_sendCalls', 'navigation', false],
+    ['eth_sendTransaction', 'reload', true],
+  ] as const)(
+    'handles %s approval %s with the raw POST already dispatched=%s',
+    async (request, change, alreadyDispatched) => {
+      const { pending } = await begin(undefined, request);
+      const rejected = pending.catch((error) => error);
+      const unsigned = Transaction.from({
+        chainId: approvedContext.chainId,
+        gasLimit: 21000,
+        gasPrice: 3,
+        nonce: 4,
+        to: `0x${'b'.repeat(40)}`,
+        type: 0,
+        value: 2,
+      });
+      const raw = await payer.signTransaction(unsigned);
+      const acknowledgement = { hash: Transaction.from(raw).hash };
+      let enter!: () => void;
+      let release!: () => void;
+      const entered = new Promise<void>((resolve) => (enter = resolve));
+      const held = new Promise<void>((resolve) => (release = resolve));
+      const persistSigned = jest.fn(async () => {
+        if (!alreadyDispatched) {
+          enter();
+          await held;
+        }
+      });
+      const post = jest.fn(async () => {
+        if (alreadyDispatched) {
+          enter();
+          await held;
+        }
+        return acknowledgement;
+      });
+      send.mockImplementation(
+        (_params, _legacy, _payer, _metadata, approval) => {
+          const { assertCurrent, expectedContext } = {
+            assertCurrent: approval.authorizeDapp,
+            expectedContext: approval.expectedContext,
+          };
+          const boundary = captureEvmSubmission(
+            {
+              account: expectedContext.account,
+              network: {
+                chainId: expectedContext.chainId,
+                kind: 'ethereum',
+                slip44: expectedContext.slip44,
+                url: expectedContext.rpcUrl,
+              },
+              operation: 'send',
+            },
+            assertCurrent,
+            () => ({ assertCurrent, persistSigned })
+          );
+          return submitSignedEvmTransaction(
+            raw,
+            post,
+            boundary,
+            assertCurrent,
+            unsigned.unsignedSerialized
+          );
+        }
+      );
+      const submitted = submit('sendAndSaveEthTransaction');
+      try {
+        await entered;
+        const onNavigation = (
+          chrome.tabs.onUpdated.addListener as jest.Mock
+        ).mock.calls.at(-1)?.[0];
+        if (change === 'reload') {
+          (self as any).clients.get.mockResolvedValueOnce(undefined);
+          onNavigation?.(19, { status: 'loading', url: source().url });
+        } else {
+          onNavigation?.(19, { url: chrome.runtime.getURL('app.html') });
+        }
+        await new Promise(setImmediate);
+        release();
+        const result = await submitted;
+        expect(persistSigned).toHaveBeenCalledWith(
+          expect.objectContaining({
+            rawTransaction: raw,
+            hash: acknowledgement.hash,
+          })
+        );
+        if (alreadyDispatched) {
+          expect(post).toHaveBeenCalledTimes(1);
+          expect(post).toHaveBeenCalledWith(raw);
+          expect(result).toEqual(acknowledgement);
+        } else {
+          expect(post).not.toHaveBeenCalled();
+          expect(result).toMatchObject({
+            success: false,
+            error: { transactionNotBroadcast: true },
+          });
+        }
+        expect(chrome.windows.remove).toHaveBeenCalledWith(
+          9,
+          expect.any(Function)
+        );
+        await expect(rejected).resolves.toMatchObject({ code: -32603 });
+      } finally {
+        release();
+        closeWindow(9);
+        await rejected;
+      }
+    }
+  );
+
   it('refuses a website sender while a batch approval is live', async () => {
     const log = jest.spyOn(console, 'error').mockImplementation();
     try {
@@ -436,16 +561,19 @@ describe('transaction approval submission lifetime', () => {
     }
   );
 
-  it('does not attribute another approval document submission to the current batch', async () => {
+  it('rejects a replacement batch document even with wallet-send options', async () => {
     const { pending } = await begin(undefined, 'wallet_sendCalls');
-    await submit('sendAndSaveEthTransaction', {
-      ...sender(),
-      documentId: 'another-document',
-    });
     const rejected = expect(pending).rejects.toMatchObject({ code: 4001 });
+    await expect(
+      submit(
+        'sendAndSaveEthTransaction',
+        { ...sender(), documentId: 'replacement-document' },
+        [{}, false, undefined, undefined, { nativeReview: {} }]
+      )
+    ).resolves.toMatchObject({ error: { transactionNotBroadcast: true } });
+    expect(send).not.toHaveBeenCalled();
     closeWindow(9);
     await rejected;
-    expect(send).toHaveBeenCalledTimes(1);
   });
 
   it.each(
@@ -462,7 +590,7 @@ describe('transaction approval submission lifetime', () => {
         () => new Promise((resolve) => (finish = resolve))
       );
       const submitted = submit(submission);
-      await Promise.resolve();
+      await new Promise(setImmediate);
       expect(send).toHaveBeenCalledTimes(1);
       const rejected = expect(pending).rejects.toMatchObject({
         code: -32603,

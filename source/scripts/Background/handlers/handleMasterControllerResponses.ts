@@ -7,7 +7,7 @@ import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
   captureDappUtxoSubmission,
-  utxoDappApprovalExpired,
+  transactionApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
@@ -250,6 +250,9 @@ export const handleMasterControllerResponses = (
             const dappApproval = sendsEvm
               ? captureDappEvmSubmission(sender)
               : undefined;
+            if (dappApproval) await dappApproval.checkDocument();
+            else if (sendsEvm && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
             const utxoMethod =
               walletMethod === 'signSyscoinPsbt' ||
               walletMethod === 'signSendAndSaveTransaction'
@@ -265,7 +268,7 @@ export const handleMasterControllerResponses = (
                 isExternalWalletUrl(sender.url) ||
                 params?.[0]?.ordinaryWalletSend !== true)
             )
-              throw utxoDappApprovalExpired();
+              throw transactionApprovalExpired();
 
             let argumentsForCall = params;
             if (sendsEvm) {
@@ -291,6 +294,7 @@ export const handleMasterControllerResponses = (
               argumentsForCall = [params[0]];
             }
             // Always execute the method; never attempt to send functions over messaging
+            dappApproval?.assertCurrent();
             utxoApproval?.authority.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
