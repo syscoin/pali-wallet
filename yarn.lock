@@ -2703,15 +2703,15 @@
     "@sentry/types" "6.19.7"
     tslib "^1.9.3"
 
-"@sidhujag/sysweb3-core@^1.0.29", "@sidhujag/sysweb3-core@^1.0.30":
+"@sidhujag/sysweb3-core@1.0.30":
   version "1.0.30"
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz#b13e85229a1aeb727a9616719ea4ba8bed14e691"
   integrity sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==
 
-"@sidhujag/sysweb3-keyring@2.1.3":
-  version "2.1.3"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.3.tgz#246f62dd97797ab729e88a2883d381e36db47017"
-  integrity sha512-RZFNgZbuL7rBwjLahUuNrzJDdYkl/wZJRnaTq7zQIQbVRgKdEg4W7AdurEZYAVGdHqwYxbS9nwN4g9HvXu3tPw==
+"@sidhujag/sysweb3-keyring@2.1.4":
+  version "2.1.4"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.4.tgz#f0a1ca8fff9478272e0e9c4e0da0dc2199972a1d"
+  integrity sha512-NJ1QMeDfWu8XQ/NzBAV9ZfzXczdHrUmMorVTeHA2A7HDWXGXjGifcp2inP4wlLhw8Lvu/yQTtX7l0U+C9oZK6w==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -2719,9 +2719,9 @@
     "@ledgerhq/device-signer-kit-ethereum" "1.18.2"
     "@ledgerhq/device-transport-kit-web-hid" "1.2.4"
     "@metamask/eth-sig-util" "^8.2.0"
-    "@sidhujag/sysweb3-core" "^1.0.29"
-    "@sidhujag/sysweb3-network" "^1.0.111"
-    "@sidhujag/sysweb3-utils" "^1.1.280"
+    "@sidhujag/sysweb3-core" "1.0.30"
+    "@sidhujag/sysweb3-network" "2.0.0"
+    "@sidhujag/sysweb3-utils" "1.1.281"
     "@trezor/connect-webextension" "10.0.1"
     bip32 "^5.0.1"
     bip32-path "^0.4.2"
@@ -2734,10 +2734,10 @@
     rxjs "7.8.2"
     varuint-bitcoin "^2.0.0"
 
-"@sidhujag/sysweb3-network@1.0.112", "@sidhujag/sysweb3-network@^1.0.109", "@sidhujag/sysweb3-network@^1.0.111":
-  version "1.0.112"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-1.0.112.tgz#aa0a4b1f9b13d3c75e6b17c116a37cc6970632e4"
-  integrity sha512-XMY0IsqARCaq3QI7UV2AmPRtcqM5HdA7sdRxwZkTbOXcylfjs3RSLSh60RB2h9AoYs/1mjr9cz5PFvHyJNMvMg==
+"@sidhujag/sysweb3-network@2.0.0":
+  version "2.0.0"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-network/-/sysweb3-network-2.0.0.tgz#4cc1c658f9e9691b1fbb344eddc8f19db5e5d7bc"
+  integrity sha512-9WN1ymL3AydYsj2pk6/xUuTABxLVhxqUS7Av/baS3vTUqhjFKvKWnGiJhzAkw6MYTR8p6NRR2H9op3ef/kbIAQ==
   dependencies:
     eth-chains "^1.0.0"
     ethers "^6.17.0"
@@ -2752,12 +2752,12 @@
     "@noble/post-quantum" "0.7.1"
     "@scure/base" "2.4.0"
 
-"@sidhujag/sysweb3-utils@^1.1.280":
-  version "1.1.280"
-  resolved "https://registry.yarnpkg.com/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.280.tgz#1a29c758e7dd40fbe18a9ad9f8cd5afc319c5656"
-  integrity sha512-q/bEBhIW9HLoX0WoDQ1LId6zqEBlLioqkir8B0JafCGBFUX9PkzUVrck+7tMLJNlL/rj/q3MY86ZjKphdsWARg==
+"@sidhujag/sysweb3-utils@1.1.281":
+  version "1.1.281"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.281.tgz#1cca75264f512844bb37622b9f3bff190ecc75f8"
+  integrity sha512-Tm12mm3guA0DEY5UXzF7X063A9F5HnJpbBjNwqldX7W2xWzBPwwvhez4oDujNdDuh9vZqQjiptmfE7nVwbOICA==
   dependencies:
-    "@sidhujag/sysweb3-network" "^1.0.109"
+    "@sidhujag/sysweb3-network" "2.0.0"
     bech32 "^2.0.0"
     crypto-js "^4.1.1"
     ethers "^6.17.0"
