@@ -68,6 +68,44 @@ test('a cancelled, redirected, oversized or invalid quote cannot be used or cach
   assert.equal(calls, 5);
 });
 
+for (const [name, responseInit] of [
+  ['a non-OK', { status: 503 }],
+  ['an oversized', { headers: { 'content-length': '16385' } }],
+] as const) {
+  test(`${name} response aborts its native transport without waiting for the caller`, async () => {
+    const owner = new AbortController();
+    let requestSignal: AbortSignal | null | undefined;
+    let aborts = 0;
+    let bodyCancels = 0;
+    const read = createNativeCoinQuoteReader(async (_url, init) => {
+      requestSignal = init.signal;
+      requestSignal?.addEventListener('abort', () => { aborts++; });
+      return new Response(new ReadableStream({ cancel() { bodyCancels++; } }), responseInit);
+    });
+    assert.equal(await read(nativeCoinQuoteSource('ethereum')!, 'usd', owner.signal), null);
+    assert.equal(bodyCancels, 1);
+    assert.equal(requestSignal?.aborted, true);
+    assert.equal(aborts, 1);
+    assert.equal(owner.signal.aborted, false);
+  });
+}
+
+test('a completed valid quote and its warm cache hit do not abort or start another request', async () => {
+  const owner = new AbortController();
+  const requests: (AbortSignal | null | undefined)[] = [];
+  const read = createNativeCoinQuoteReader(async (_url, init) => {
+    requests.push(init.signal);
+    return Response.json({ ethereum: { usd: 100 } });
+  });
+  const source = nativeCoinQuoteSource('ethereum')!;
+  const quote = await read(source, 'usd', owner.signal);
+  assert.equal(quote?.price, 100);
+  assert.equal(await read(source, 'usd', signal()), quote);
+  owner.abort();
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0]?.aborted, false);
+});
+
 test('a malformed preference needs explicit reset and an uncertain save is only reread', async () => {
   const { createFiatPreferences } = await import('../src/core/fiatPreference.ts');
   let raw = 'unsupported';
