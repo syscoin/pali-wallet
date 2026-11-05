@@ -64,7 +64,9 @@ export function useNativeNoteBackup(getOwner: () => Owner | null, enter: (mode: 
     };
   };
   const finish = (owned: Route) => { owned.busy = false; if (current(owned)) setBusy(false); };
-  const resume = (owned: Route | null = route.current) => {
+  const resume = (expected?: Route) => {
+    const owned = route.current;
+    if (expected && owned !== expected) return false;
     if (!owned?.handoff || !foreground(owned)) return false;
     // Unlock can finish while the native provider is still reading. Keep
     // the pending operation on its own screen so Back can retire it.
