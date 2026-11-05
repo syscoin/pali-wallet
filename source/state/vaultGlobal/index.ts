@@ -39,7 +39,10 @@ const vaultGlobalSlice = createSlice({
     rehydrate(state: IGlobalState, action: PayloadAction<IGlobalState>) {
       // Preserve custom networks while ensuring defaults exist
       const restoredNetworks = action.payload.networks;
-      let mergedNetworks = { ethereum: {}, syscoin: {} };
+      let mergedNetworks: IGlobalState['networks'] = {
+        ethereum: {},
+        syscoin: {},
+      };
 
       // First, add all networks from restored state (preserving any modifications)
       if (restoredNetworks) {
@@ -64,11 +67,22 @@ const vaultGlobalSlice = createSlice({
 
       Object.entries(PALI_NETWORKS_STATE.syscoin).forEach(
         ([chainId, network]) => {
-          if (
-            network.default === true &&
-            !mergedNetworks.syscoin[Number(chainId)]
+          const id = Number(chainId);
+          const restored = mergedNetworks.syscoin[id];
+          if (!restored && network.default === true) {
+            mergedNetworks.syscoin[id] = network;
+          } else if (
+            restored &&
+            restored.utxoBackendChain === undefined &&
+            restored.kind === network.kind &&
+            restored.chainId === network.chainId &&
+            restored.slip44 === network.slip44 &&
+            restored.url === network.url
           ) {
-            mergedNetworks.syscoin[Number(chainId)] = network;
+            mergedNetworks.syscoin[id] = {
+              ...restored,
+              utxoBackendChain: network.utxoBackendChain,
+            };
           }
         }
       );

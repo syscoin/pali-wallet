@@ -24,7 +24,7 @@ export type UtxoNetwork = Readonly<{
   addressNetwork: AddressNetwork;
   publicKeyVersion: string;
   blockbookCoin: string;
-  backendChain: 'main' | 'test';
+  backendChain: ReturnType<typeof getDefaultUTXONetworks>[number]['utxoBackendChain'];
   genesisHash: string;
   endpoint: string;
   explorer: string;
@@ -53,7 +53,7 @@ export const UTXO_NETWORKS: readonly UtxoNetwork[] = Object.freeze(
         addressNetwork: Object.freeze({ ...addressNetwork, bip32: Object.freeze({ ...addressNetwork.bip32 }) }),
         publicKeyVersion,
         blockbookCoin: testnet ? coin.coinLabel : coin.coinName,
-        backendChain: testnet ? 'test' : 'main',
+        backendChain: network.utxoBackendChain,
         genesisHash: coin.hashGenesisBlock,
         endpoint: network.url.replace(/\/$/, ''),
         explorer: network.explorer,

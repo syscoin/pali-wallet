@@ -4,7 +4,13 @@ import type { INetwork, INetworkType } from '../types/network.ts';
 
 const utxoKind = 'syscoin' as INetworkType.Syscoin;
 
-export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
+type DefaultUtxoNetwork = INetwork & {
+  kind: INetworkType.Syscoin;
+  utxoBackendChain: 'main' | 'test';
+};
+
+export const getSyscoinUTXOMainnetNetwork = (): DefaultUtxoNetwork => ({
+  utxoBackendChain: 'main',
   chainId: 57,
   slip44: 57,
   label: 'Syscoin Mainnet',
@@ -15,7 +21,8 @@ export const getSyscoinUTXOMainnetNetwork = (): INetwork => ({
   kind: utxoKind,
 });
 
-export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
+export const getSyscoinUTXOTestnetNetwork = (): DefaultUtxoNetwork => ({
+  utxoBackendChain: 'test',
   chainId: 5700,
   slip44: 1,
   label: 'Syscoin Testnet',
@@ -26,7 +33,8 @@ export const getSyscoinUTXOTestnetNetwork = (): INetwork => ({
   kind: utxoKind,
 });
 
-export const getBitcoinMainnetNetwork = (): INetwork => ({
+export const getBitcoinMainnetNetwork = (): DefaultUtxoNetwork => ({
+  utxoBackendChain: 'main',
   chainId: 0,
   slip44: 0,
   label: 'Bitcoin',
@@ -38,7 +46,10 @@ export const getBitcoinMainnetNetwork = (): INetwork => ({
 });
 
 // Return object mapping chainId to network (matches sysweb3-keyring structure)
-export const getDefaultUTXONetworks = (): { [chainId: number]: INetwork } => ({
+export const getDefaultUTXONetworks = (): Record<
+  number,
+  DefaultUtxoNetwork
+> => ({
   57: getSyscoinUTXOMainnetNetwork(),
   5700: getSyscoinUTXOTestnetNetwork(),
   0: getBitcoinMainnetNetwork(),

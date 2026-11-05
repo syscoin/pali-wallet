@@ -23,6 +23,7 @@ export interface INetwork {
   label: string;
   slip44: number;
   url: string;
+  utxoBackendChain?: string;
 }
 
 /* eslint-disable no-shadow */

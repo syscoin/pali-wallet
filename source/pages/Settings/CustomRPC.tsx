@@ -23,7 +23,7 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
-import { ICustomRpcParams } from 'types/transactions';
+import { ICustomRpcParams, UtxoRpcDraft } from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { translateRpcValidationError } from 'utils/rpcValidationError';
@@ -488,9 +488,28 @@ const CustomRPCView = () => {
         isSyscoinRpc,
       };
 
+      const selectedUtxo = editingNetworkRef.current;
+      if (isSyscoinRpc && state?.isEditing && !selectedUtxo)
+        throw new Error(t('settings.networkNotFoundForEditing'));
+      const utxoDraft: UtxoRpcDraft = {
+        url: rpcParams.url,
+        label: rpcParams.label,
+        explorer: rpcParams.explorer,
+        ...(selectedUtxo
+          ? {
+              purpose:
+                selectedUtxo.utxoBackendChain === undefined
+                  ? ('pin-existing' as const)
+                  : ('edit' as const),
+              chainId: selectedUtxo.chainId,
+              expectedRegistration:
+                networkRegistrationFingerprint(selectedUtxo)!,
+            }
+          : { purpose: 'first-use' as const }),
+      };
       const network = (await controllerEmitter(
-        ['wallet', 'getRpc'],
-        [rpcParams]
+        ['wallet', isSyscoinRpc ? 'previewUtxoRpc' : 'getRpc'],
+        [isSyscoinRpc ? utxoDraft : rpcParams]
       )) as INetwork;
       if (!canApply()) return null;
 

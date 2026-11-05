@@ -19,5 +19,8 @@ export const networkRegistrationFingerprint = (
         network.coingeckoId ?? null,
         network.coingeckoPlatformId ?? null,
         ...(network.explorerExplicitlyAbsent ? [true] : []),
+        ...(network.utxoBackendChain === undefined
+          ? []
+          : ['utxoBackendChain', network.utxoBackendChain]),
       ])
     : undefined;

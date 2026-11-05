@@ -103,13 +103,25 @@ beforeEach(() => {
     if (method === 'getChainData') return [chains[args[0]]];
     if (method === 'testRpcConnection')
       return { success: true, chainId: args[2] };
+    if (method === 'previewUtxoRpc') {
+      return {
+        url: args[0].url,
+        explorer: args[0].explorer,
+        label: args[0].label,
+        kind: INetworkType.Syscoin,
+        chainId: chains.syscoin.chainId,
+        slip44: 2,
+        currency: 'ltc',
+        utxoBackendChain: 'main',
+      };
+    }
     if (method === 'getRpc') {
       const data = args[0];
       return {
         ...data,
-        kind: data.isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
+        kind: INetworkType.Ethereum,
         currency: data.symbol.toLowerCase(),
-        slip44: data.isSyscoinRpc ? 2 : 60,
+        slip44: 60,
       };
     }
     return undefined;

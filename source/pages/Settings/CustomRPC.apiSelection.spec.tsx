@@ -3,7 +3,10 @@
  * @jest-environment-options {"customExportConditions":["node","node-addons"]}
  */
 import '@testing-library/jest-dom';
-import { clearRpcCaches } from '@sidhujag/sysweb3-network';
+import {
+  clearRpcCaches,
+  findUtxoCoinByRegistration,
+} from '@sidhujag/sysweb3-network';
 import {
   act,
   cleanup,
@@ -16,13 +19,16 @@ import React from 'react';
 import { Provider } from 'react-redux';
 
 import MainController from 'scripts/Background/controllers/MainController';
+import { withUtxoRpcVerification } from 'scripts/Background/controllers/providers/utxoRpcVerification';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
-import { setActiveSlip44, setNetworks } from 'state/vaultGlobal';
+import { rehydrate, setActiveSlip44, setNetworks } from 'state/vaultGlobal';
 import { INetwork, INetworkType } from 'types/network';
+import { getDefaultUTXONetworks } from 'utils/defaultNetworks';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import CustomRPC from './CustomRPC';
 import { clearCustomRpcDrafts } from './customRpcDraft';
@@ -174,17 +180,46 @@ beforeEach(async () => {
           rule.condition.urlFilter === `|${new URL(String(url)).origin}/`
       )
     ).toBe(true);
-    if (url === `${BLOCKBOOK}/api/v2`) {
-      expect(options?.method).toBeUndefined();
-      reads.push({ method: 'blockbook-info', url });
+    if (
+      url === `${BLOCKBOOK}/api/v2/` ||
+      url === `${BLOCKBOOK}/api/v2/block-index/0`
+    ) {
+      expect(options).toMatchObject({
+        method: 'GET',
+        credentials: 'omit',
+        redirect: 'error',
+      });
+      const status = url.endsWith('/api/v2/');
+      reads.push({
+        method: status ? 'blockbook-info' : 'blockbook-genesis',
+        url,
+      });
+      const body = status
+        ? {
+            blockbook: { network: 'tSYS', coin: 'Syscoin Testnet' },
+            backend: { chain: 'test' },
+          }
+        : {
+            blockHash: findUtxoCoinByRegistration({ chainId: 5700, slip44: 1 })!
+              .hashGenesisBlock,
+          };
+      const bytes = new TextEncoder().encode(JSON.stringify(body));
+      let consumed = false;
       return {
         ok: true,
-        status: 200,
-        json: async () => ({
-          blockbook: { network: 'Syscoin Testnet', coin: 'Syscoin Testnet' },
-          backend: { chain: 'test' },
-        }),
-      } as Response;
+        url,
+        headers: { get: () => null },
+        body: {
+          getReader: () => ({
+            async read() {
+              if (consumed) return { done: true };
+              consumed = true;
+              return { done: false, value: bytes };
+            },
+            async cancel() {},
+          }),
+        },
+      } as unknown as Response;
     }
     const chain = chains.find((item) => item.rpc[0].url === url);
     if (chain) {
@@ -288,6 +323,7 @@ beforeEach(async () => {
   wallet.walletSessionGeneration = 0;
   wallet.isRemovingNetwork = false;
   wallet.keyrings = new Map();
+  wallet.isUnlocked = () => true;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
@@ -300,6 +336,7 @@ beforeEach(async () => {
     if (
       [
         'getRpc',
+        'previewUtxoRpc',
         'addCustomRpc',
         'editCustomRpc',
         'testRpcConnection',
@@ -398,7 +435,9 @@ const discoverUtxoAndReturn = async (
   ).toHaveValue('5700');
   const index = mockEmitter.mock.calls.findIndex(
     ([[, method], args]) =>
-      method === 'getRpc' && args[0].isSyscoinRpc && args[0].url === BLOCKBOOK
+      method === 'previewUtxoRpc' &&
+      args[0].purpose === 'first-use' &&
+      args[0].url === BLOCKBOOK
   );
   expect(index).toBeGreaterThanOrEqual(0);
   await expect(mockEmitter.mock.results[index].value).resolves.toMatchObject({
@@ -408,7 +447,11 @@ const discoverUtxoAndReturn = async (
   });
   expect(reads).toContainEqual({
     method: 'blockbook-info',
-    url: `${BLOCKBOOK}/api/v2`,
+    url: `${BLOCKBOOK}/api/v2/`,
+  });
+  expect(reads).toContainEqual({
+    method: 'blockbook-genesis',
+    url: `${BLOCKBOOK}/api/v2/block-index/0`,
   });
   await user.click(
     screen.getByRole('switch', { name: 'settings.networkFamilyLabel' })
@@ -556,4 +599,169 @@ it('does not let a held Alpha endpoint response overwrite a later Beta selection
       message.includes('Selection Alpha')
     )
   ).toHaveLength(0);
+});
+
+it('refuses the old generic UTXO registration call before transport', async () => {
+  await expect(
+    wallet.getRpc({
+      url: BLOCKBOOK,
+      chainId: 5700,
+      label: 'Test',
+      isSyscoinRpc: true,
+    })
+  ).rejects.toThrow('Use explicit UTXO registration');
+  expect(reads).toEqual([]);
+});
+
+it('observes a new endpoint, then verifies the approved identity at save', async () => {
+  const preview = await wallet.previewUtxoRpc({
+    purpose: 'first-use',
+    url: BLOCKBOOK,
+    label: 'Synthetic Blockbook',
+  });
+  expect(preview).toMatchObject({
+    chainId: 5700,
+    slip44: 1,
+    currency: 'tsys',
+    utxoBackendChain: 'test',
+  });
+  expect(store.getState().vaultGlobal.networks.syscoin[5700]).toBeUndefined();
+  await expect(wallet.addCustomRpc(preview)).resolves.toEqual(preview);
+  expect((await loadState()).vaultGlobal.networks.syscoin[5700]).toEqual(
+    preview
+  );
+  expect(reads.map(({ method }) => method)).toEqual([
+    'blockbook-info',
+    'blockbook-genesis',
+    'blockbook-info',
+    'blockbook-genesis',
+  ]);
+});
+
+it('refuses missing or changed backend identity before saving UTXO settings', async () => {
+  const preview = await wallet.previewUtxoRpc({
+    purpose: 'first-use',
+    url: BLOCKBOOK,
+    label: 'Synthetic Blockbook',
+  });
+  reads = [];
+  await expect(
+    wallet.addCustomRpc({
+      ...preview,
+      utxoBackendChain: undefined,
+    })
+  ).rejects.toThrow('Verify the UTXO network before saving');
+  expect(reads).toEqual([]);
+  await expect(
+    wallet.addCustomRpc({
+      ...preview,
+      utxoBackendChain: 'main',
+    })
+  ).rejects.toThrow('UTXO registration does not match');
+  expect(reads.map(({ method }) => method)).toEqual(['blockbook-info']);
+  expect(
+    (await loadState()).vaultGlobal.networks.syscoin[5700]
+  ).toBeUndefined();
+});
+
+it('takes built-in backend identities from the catalogue without assigning them to custom URLs', () => {
+  const { 0: bitcoin, 57: syscoin, 5700: testnet } = getDefaultUTXONetworks();
+  store.dispatch(
+    rehydrate({
+      ...store.getState().vaultGlobal,
+      networks: {
+        ...store.getState().vaultGlobal.networks,
+        syscoin: {
+          0: { ...bitcoin, utxoBackendChain: undefined },
+          57: { ...syscoin, utxoBackendChain: undefined },
+          5700: { ...testnet, url: BLOCKBOOK, utxoBackendChain: undefined },
+        },
+      },
+    })
+  );
+
+  expect(bitcoin.utxoBackendChain).toBe('main');
+  expect(syscoin.utxoBackendChain).toBe('main');
+  expect(testnet.utxoBackendChain).toBe('test');
+  const saved = store.getState().vaultGlobal.networks.syscoin;
+  expect(saved[0].utxoBackendChain).toBe(bitcoin.utxoBackendChain);
+  expect(saved[57].utxoBackendChain).toBe(syscoin.utxoBackendChain);
+  expect(saved[5700].utxoBackendChain).toBeUndefined();
+});
+
+it('uses the shared built-in pin in an edit and denies first-use observation for a pinned row', async () => {
+  const builtIn = getDefaultUTXONetworks()[5700];
+  store.dispatch(
+    setNetworks({
+      ...store.getState().vaultGlobal.networks,
+      syscoin: { 5700: builtIn },
+    })
+  );
+  const draft = {
+    url: BLOCKBOOK,
+    chainId: builtIn.chainId,
+    label: builtIn.label,
+    expectedRegistration: networkRegistrationFingerprint(builtIn),
+  };
+  await expect(
+    wallet.previewUtxoRpc({ ...draft, purpose: 'pin-existing' })
+  ).rejects.toThrow('Network changed');
+  expect(reads).toEqual([]);
+  await expect(
+    wallet.previewUtxoRpc({ ...draft, purpose: 'edit' })
+  ).resolves.toMatchObject({ utxoBackendChain: builtIn.utxoBackendChain });
+  expect(reads.map(({ method }) => method)).toEqual([
+    'blockbook-info',
+    'blockbook-genesis',
+  ]);
+});
+
+it('uses an explicit observation when pinning a previously registered custom endpoint', async () => {
+  const custom = {
+    ...getDefaultUTXONetworks()[5700],
+    url: BLOCKBOOK,
+    utxoBackendChain: undefined,
+  };
+  store.dispatch(
+    setNetworks({
+      ...store.getState().vaultGlobal.networks,
+      syscoin: { 5700: custom },
+    })
+  );
+  const draft = {
+    url: custom.url,
+    chainId: custom.chainId,
+    label: custom.label,
+    expectedRegistration: networkRegistrationFingerprint(custom),
+  };
+  await expect(
+    wallet.previewUtxoRpc({ ...draft, purpose: 'edit' })
+  ).rejects.toThrow('Network changed');
+  expect(reads).toEqual([]);
+  await expect(
+    wallet.previewUtxoRpc({ ...draft, purpose: 'pin-existing' })
+  ).resolves.toMatchObject({ utxoBackendChain: 'test' });
+  expect(reads.map(({ method }) => method)).toEqual([
+    'blockbook-info',
+    'blockbook-genesis',
+  ]);
+});
+
+it('withholds an endpoint result if the wallet retires while the transport returns', async () => {
+  let current = true;
+  await expect(
+    withUtxoRpcVerification(
+      BLOCKBOOK,
+      () => {
+        if (!current) throw new Error('Wallet retired');
+      },
+      async () => {
+        void Promise.resolve().then(() => {
+          current = false;
+        });
+        return 'verified';
+      }
+    )
+  ).rejects.toThrow('Wallet retired');
+  expect(reads).toEqual([]);
 });

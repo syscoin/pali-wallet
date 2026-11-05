@@ -9,6 +9,7 @@ import {
 } from '@sidhujag/sysweb3-keyring';
 import {
   getSysRpc,
+  observeSysRpc,
   getEthRpc,
   INetwork,
   clearRpcCaches,
@@ -145,7 +146,7 @@ import {
   INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
-import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
+import { EvmRpcDraft, IDecodedTx, UtxoRpcDraft } from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
   AsyncMutex,
@@ -323,6 +324,7 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import { withUtxoRpcVerification } from './providers/utxoRpcVerification';
 import { withWalletBackend } from './providers/walletHttpIdentity';
 import type { SentryWalletScope } from './sentry';
 import type { SentryController } from './sentry';
@@ -5203,27 +5205,68 @@ class MainController {
     store.dispatch(setStoreError(null));
   }
 
-  public async getRpc(
-    data: ICustomRpcParams,
-    retryCount = 0
-  ): Promise<INetwork> {
+  public async previewUtxoRpc(data: UtxoRpcDraft): Promise<INetwork> {
+    this.assertWalletReadyForSigning();
+    const generation = this.walletSessionGeneration;
+    const { url, explorer, label } = data;
+    const { purpose } = data;
+    if (
+      purpose !== 'first-use' &&
+      purpose !== 'edit' &&
+      purpose !== 'pin-existing'
+    )
+      throw new Error('Invalid UTXO registration request');
+    const chainId = data.purpose === 'first-use' ? undefined : data.chainId;
+    const readCurrent = () =>
+      chainId === undefined
+        ? undefined
+        : store.getState().vaultGlobal.networks.syscoin[chainId];
+    const selected = readCurrent();
+    if (
+      data.purpose !== 'first-use' &&
+      (!selected ||
+        typeof data.expectedRegistration !== 'string' ||
+        networkRegistrationFingerprint(selected) !==
+          data.expectedRegistration ||
+        (selected.utxoBackendChain === undefined) !==
+          (purpose === 'pin-existing'))
+    )
+      throw new Error('Network changed. Please try again.');
+    const registration = selected && {
+      chainId: selected.chainId,
+      slip44: selected.slip44,
+    };
+    const backendChain = selected?.utxoBackendChain;
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      if (
+        !this.isUnlocked() ||
+        this.walletSessionGeneration !== generation ||
+        readCurrent() !== selected
+      )
+        throw new Error('Network changed. Please try again.');
+    };
+    return withUtxoRpcVerification(url, assertCurrent, async (owner) => {
+      const draft = { url, explorer, label };
+      const result =
+        registration && backendChain !== undefined
+          ? await getSysRpc(draft, { ...owner, registration, backendChain })
+          : await observeSysRpc(draft, { ...owner, registration });
+      assertCurrent();
+      return result.rpc.formattedNetwork;
+    });
+  }
+
+  public async getRpc(data: EvmRpcDraft, retryCount = 0): Promise<INetwork> {
+    if (data.isSyscoinRpc) throw new Error('Use explicit UTXO registration');
     const MAX_RETRIES = 3;
     const INITIAL_RETRY_DELAY = 1000; // 1 second
 
     try {
-      let result;
-      if (data.isSyscoinRpc) {
-        const sysRpcResult = await withWalletBackend(data.url, () =>
-          getSysRpc(data)
-        );
-        result = sysRpcResult?.rpc?.formattedNetwork;
-      } else {
-        const ethRpcResult = await withWalletBackend(data.url, () =>
-          getEthRpc(data, false)
-        );
-        result = ethRpcResult?.formattedNetwork;
-      }
-
+      const ethRpcResult = await withWalletBackend(data.url, () =>
+        getEthRpc(data, false)
+      );
+      const result = ethRpcResult?.formattedNetwork;
       if (!result) {
         throw new Error('Failed to get network configuration from RPC');
       }
@@ -5479,7 +5522,9 @@ class MainController {
     isEdit: boolean,
     generation = this.walletStateGeneration
   ) {
+    network = { ...network };
     const family = network.kind;
+    const session = this.walletSessionGeneration;
     const previous =
       store.getState().vaultGlobal.networks[family]?.[network.chainId];
     const assertCurrent = () => {
@@ -5493,6 +5538,11 @@ class MainController {
         throw new Error('Missing required network configuration fields');
       if (generation !== this.walletStateGeneration)
         throw new Error('Wallet state changed before saving network');
+      if (family === INetworkType.Syscoin) {
+        this.assertWalletReadyForSigning();
+        if (!this.isUnlocked() || this.walletSessionGeneration !== session)
+          throw new Error('Wallet session changed before saving network');
+      }
       if (this.isRemovingNetwork)
         throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
       const current =
@@ -5506,12 +5556,45 @@ class MainController {
       this.assertUniqueUtxoNetworkVault(network);
     };
     assertCurrent();
+    if (family === INetworkType.Syscoin) {
+      const { chainId, slip44, utxoBackendChain, url, explorer, label } =
+        network;
+      if (
+        typeof utxoBackendChain !== 'string' ||
+        (previous &&
+          (previous.slip44 !== slip44 ||
+            (previous.utxoBackendChain !== undefined &&
+              previous.utxoBackendChain !== utxoBackendChain)))
+      )
+        throw new Error('Verify the UTXO network before saving.');
+      const verified = await withUtxoRpcVerification(
+        url,
+        assertCurrent,
+        (owner) =>
+          getSysRpc(
+            { url, explorer, label },
+            {
+              ...owner,
+              registration: { chainId, slip44 },
+              backendChain: utxoBackendChain,
+            }
+          )
+      );
+      assertCurrent();
+      network = {
+        ...network,
+        currency: verified.rpc.formattedNetwork.currency,
+      };
+    }
     this.resetAutoLockTimer();
     await persistNetworkRegistry(
       network,
       isEdit,
       assertCurrent,
-      () => generation === this.walletStateGeneration
+      () =>
+        generation === this.walletStateGeneration &&
+        (family !== INetworkType.Syscoin ||
+          this.walletSessionGeneration === session)
     );
     return network;
   }

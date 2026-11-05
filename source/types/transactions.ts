@@ -42,6 +42,23 @@ export interface ICustomRpcParams {
   url: string;
 }
 
+export type EvmRpcDraft = Omit<ICustomRpcParams, 'isSyscoinRpc'> & {
+  isSyscoinRpc?: false;
+};
+
+export type UtxoRpcDraft = Pick<
+  ICustomRpcParams,
+  'url' | 'explorer' | 'label'
+> &
+  (
+    | { purpose: 'first-use' }
+    | {
+        purpose: 'edit' | 'pin-existing';
+        chainId: number;
+        expectedRegistration: string;
+      }
+  );
+
 export interface ITxState {
   chainId: number;
   data: string;
