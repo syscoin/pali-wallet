@@ -366,7 +366,7 @@ export class NativeActivity {
         // ahead of token-event placeholders. All indexed facts remain transient.
         for (const row of rows) if (row.tokenEvent && !this.tokenEvents.has(row.hash)) this.tokenEvents.set(row.hash, row.tokenEvent);
         const merged = mergeEvmExplorerTransactions(
-          [...this.indexed.values()].map(indexed => ({ ...indexed, candidateSummary: this.candidates.get(indexed.hash)! })),
+          [...this.indexed.values()].map(indexed => ({ ...indexed, candidateSummary: this.candidates.get(indexed.hash.toLowerCase())! })),
           [...this.tokenEvents.values()],
           Number(this.scope.network.chainId),
           true,
@@ -522,6 +522,7 @@ export class NativeActivity {
       observedRows.map((row) => ({
         row,
         hash: row.hash,
+        historySource: row.indexed?.historySource,
         from:
           row.indexed?.from ??
           row.observation?.from ??

@@ -281,3 +281,19 @@ for (const mode of ['missing','invalid','malformed']) test(`custody ${mode} toke
   await expect(page.getByText(amount,{exact:true}).last()).toBeVisible();
   await expect(page.getByText(mode==='malformed'?'Raw token units: Unavailable':'Raw token units: 1000000',{exact:true})).toBeVisible();
 });
+
+
+for (const mode of ['token-placeholder', 'mixed-case']) test(`custody Activity preserves both transaction hashes for ${mode} history`, async ({ page }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await page.goto(`/?history-identity=${mode}`);
+  for (const index of [0xabc, 0xdef]) {
+    const id = `0x${index.toString(16).padStart(64, '0')}`;
+    const row = page.getByText(`${id.slice(0, 12)}…${id.slice(-8)}`, { exact: true }).locator('xpath=ancestor::*[@role="button"][1]');
+    await expect(row).toBeVisible(); await expect(row).toContainText('Confirmed');
+  }
+  expect(await page.evaluate(() => window.__activityFixture.feedReads())).toBe(mode === 'mixed-case' ? 3 : 2);
+  expect(await page.evaluate(() => window.__activityFixture.receiptReads())).toBe(0);
+  await expect(page.getByText(/One activity feed is unavailable|Activity could not be fully loaded/)).toHaveCount(0);
+  await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`custody-${mode}.png`), fullPage: true });
+  expect(errors).toEqual([]);
+});

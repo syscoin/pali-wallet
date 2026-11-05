@@ -15,6 +15,7 @@ const amount = '9007199254740993';
 type Call = { url: string; method: string; params: unknown[]; signal: AbortSignal };
 function fixture(accountCount = 2) {
   let raw = JSON.stringify({ version: 1, records: Array.from({ length: accountCount }, (_, index) => index === 0 ? OWNER : index === 1 ? OTHER : '0x' + (index + 1).toString(16).padStart(40, '0')).map((address, index) => ({ kind: 'address', ...createEvmWatchAccount('watch' + index, 'Watch ' + index, address) })) });
+  let historyRows: ((feed: string, page: string | null) => readonly Record<string, unknown>[]) | undefined;
   let repositoryReads = 0, afterFetch: ((call: Call) => Promise<void>) | undefined, wrongChain = false, fail = false, empty = false;
   const calls: Call[] = [], writes: string[] = [];
   const repository = createPublicAccountStorage({ async get() { repositoryReads++; return raw; }, async set(_key, value) { writes.push(value); raw = value; } }).records;
@@ -28,7 +29,7 @@ function fixture(accountCount = 2) {
     if (!body) {
       const owner = target.searchParams.get('address')!, hash = owner.toLowerCase() === OWNER.toLowerCase() ? HASH : OTHER_HASH;
       assert.ok(method === 'txlist' || method === 'tokentx');
-      return json({ status: '1', message: 'OK', result: empty ? [] : [{ hash, from: owner, to: owner === OWNER ? OTHER : OWNER, blockNumber: '10', timeStamp: '1700000000', value: amount,
+      return json({ status: '1', message: 'OK', result: historyRows ? historyRows(method, target.searchParams.get('page')) : empty ? [] : [{ hash, from: owner, to: owner === OWNER ? OTHER : OWNER, blockNumber: '10', timeStamp: '1700000000', value: amount,
         ...(method === 'tokentx' ? { contractAddress: '0x3333333333333333333333333333333333333333', tokenDecimal: '18', tokenSymbol: 'FIX' } : {}) }] });
     }
     const network = NATIVE_NETWORKS.find(row => row.rpcUrl === url); assert.ok(network);
@@ -47,7 +48,7 @@ function fixture(accountCount = 2) {
     const authority = await WatchOnlyAuthority.openRecords({ repository, reader: { async readBalance(networkId) { return { chainId: Number(getNativeNetwork(networkId).chainId), units: '0' }; } }, evmActivityReaders: readers, signal: new AbortController().signal, idle });
     authority.unlock(); authority.selectNetwork('syscoin-nevm'); return authority;
   };
-  return { open, calls, writes, readers, get raw() { return raw; }, set raw(value: string) { raw = value; }, get reads() { return repositoryReads; }, set afterFetch(value: ((call: Call) => Promise<void>) | undefined) { afterFetch = value; }, set wrongChain(value: boolean) { wrongChain = value; }, set fail(value: boolean) { fail = value; }, set empty(value: boolean) { empty = value; } };
+  return { open, calls, writes, readers, set historyRows(value: typeof historyRows) { historyRows = value; }, get raw() { return raw; }, set raw(value: string) { raw = value; }, get reads() { return repositoryReads; }, set afterFetch(value: ((call: Call) => Promise<void>) | undefined) { afterFetch = value; }, set wrongChain(value: boolean) { wrongChain = value; }, set fail(value: boolean) { fail = value; }, set empty(value: boolean) { empty = value; } };
 }
 async function until(check: () => boolean) { for (let n = 0; n < 250; n++) { if (check()) return; await new Promise(resolve => setTimeout(resolve, 0)); } assert.fail('Activity state did not settle'); }
 const signal = () => new AbortController().signal;
@@ -146,4 +147,32 @@ test('empty cache groups obey the same bounded session cache as populated groups
     assert.equal(activity.getSnapshot().truncated, true);
     assert.deepEqual(f.writes, []);
   } finally { authority.lock(); }
+});
+
+
+for (const mixed of [false, true]) test(`public authority actual indexed ${mixed ? 'mixed-case feed overlap' : 'token placeholders with repeated sender nonce'} keeps two transactions and a healthy session cache`, async () => {
+  const f = fixture(), first = HASH, second = OTHER_HASH;
+  const wireHash = (value: string) => mixed ? `0x${value.slice(2).toUpperCase()}` : value;
+  const raw = (id: string, token: boolean) => ({ hash: wireHash(id), from: OTHER, to: OWNER, nonce: mixed && id === second ? '8' : '7',
+    blockNumber: id === first ? '10' : '9', timeStamp: '1700000000', confirmations: '1', value: '1', input: '0x', isError: '0',
+    ...(token ? { contractAddress: '0x3333333333333333333333333333333333333333', tokenDecimal: '0', tokenSymbol: 'TOK' } : {}) });
+  f.historyRows = (feed, page) => feed === 'txlist' ? mixed ? [raw(first, false)] : []
+    : mixed && page === '1' ? Array.from({ length: 20 }, (_, index) => raw(index % 2 ? second : first, true)) : [raw(first, true), raw(second, true)];
+  const authority = await f.open(), activity = createWatchEvmActivity(authority);
+  let stop = activity.connect();
+  try {
+    await until(() => activity.getSnapshot().status === 'ready' && !activity.getSnapshot().loadingMore);
+    const snapshot = activity.getSnapshot();
+    assert.equal(snapshot.error, null);
+    assert.deepEqual(snapshot.rows.map(row => row.hash).sort(), [first, second]);
+    assert(snapshot.rows.every(row => row.indexed && row.display));
+    assert.deepEqual(f.calls.map(call => call.method).sort(), mixed ? ['tokentx', 'tokentx', 'txlist'] : ['tokentx', 'txlist']);
+    assert.deepEqual(f.writes, [], 'public history must not mutate saved account records');
+    stop(); f.fail = true; stop = activity.connect();
+    await until(() => activity.getSnapshot().status === 'ready' && !activity.getSnapshot().loadingMore);
+    assert.deepEqual(activity.getSnapshot().rows.map(row => row.hash).sort(), [first, second]);
+    assert.match(activity.getSnapshot().error ?? '', /unavailable|could not be fully loaded/);
+    assert(f.calls.every(call => call.method === 'txlist' || call.method === 'tokentx'));
+    assert.deepEqual(f.writes, []);
+  } finally { stop(); authority.lock(); }
 });

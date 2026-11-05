@@ -61,6 +61,7 @@ let fail = false,
 const waiting: (() => void)[] = [];
 let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
+const identityRegression = new URLSearchParams(window.location.search).get('history-identity');
 const tokenMetadata = new URLSearchParams(window.location.search).get('token-metadata');
 let tokenPrecision: number | null = tokenMetadata ? 18 : null;
 let invalidFee = false;
@@ -79,6 +80,20 @@ class Explorer extends ActivityExplorerReader {
   ): Promise<readonly DiscoveredActivityCandidate[]> {
     feedReads++;
     if (fail) throw new Error('fixture unavailable');
+    if (identityRegression) {
+      const mixed = identityRegression === 'mixed-case';
+      const raw = (index: number, token: boolean) => ({
+        hash: mixed ? `0x${hash(index).slice(2).toUpperCase()}` : hash(index),
+        from: recipient, to: owner, nonce: mixed && index === 0xdef ? '8' : '7',
+        value: token ? '1' : '1000000000000000000', blockNumber: index === 0xabc ? '100' : '99',
+        timeStamp: '1700000000', confirmations: '1', input: '0x', isError: '0',
+        ...(token ? { contractAddress: recipient, tokenDecimal: '0', tokenSymbol: 'IDENTITY' } : {}),
+      });
+      const result = feed === 'txlist' ? mixed && page === 1 ? [raw(0xabc, false)] : []
+        : page === 1 && mixed ? Array.from({ length: 20 }, (_, index) => raw(index % 2 ? 0xdef : 0xabc, true))
+        : page <= 2 ? [raw(0xabc, true), raw(0xdef, true)] : [];
+      return decodeActivityPage({ status: '1', message: 'OK', result }, feed, owner, 1);
+    }
     const indices =
       page > 2
         ? []

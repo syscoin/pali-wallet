@@ -7,12 +7,14 @@ export type EvmActivityMode =
   | 'empty'
   | 'error'
   | 'wrong-chain'
-  | 'slow';
+  | 'slow'
+  | 'token-placeholder'
+  | 'mixed-case';
 const search = new URLSearchParams(window.location.search);
 const enabled = search.has('evm-activity');
 const tokenMetadata = search.get('token-metadata');
 let mode: EvmActivityMode =
-  (['value', 'empty', 'error', 'wrong-chain', 'slow'] as const).find(
+  (['value', 'empty', 'error', 'wrong-chain', 'slow', 'token-placeholder', 'mixed-case'] as const).find(
     (value) => value === search.get('evm-activity-mode')
   ) ?? 'value';
 const OTHER = '0x2222222222222222222222222222222222222222';
@@ -226,6 +228,20 @@ export async function evmActivityFetch(
   const capturedMode = mode;
   await gate(init?.signal);
   const page = Number(requestUrl.searchParams.get('page'));
+  if (capturedMode === 'token-placeholder' || capturedMode === 'mixed-case') {
+    const mixed = capturedMode === 'mixed-case';
+    const raw = (index: number, token: boolean) => ({
+      hash: mixed ? `0x${txHash(owner, index).slice(2).toUpperCase()}` : txHash(owner, index),
+      from: OTHER, to: owner, nonce: mixed && index === 7 ? '8' : '7',
+      value: token ? '1' : '1000000000000000000', blockNumber: index === 3 ? '100' : '99',
+      timeStamp: '1700000000', confirmations: '1', input: '0x', isError: '0',
+      ...(token ? { contractAddress: TOKEN, tokenDecimal: '0', tokenSymbol: 'IDENTITY' } : {}),
+    });
+    const result = action === 'txlist' ? mixed && page === 1 ? [raw(3, false)] : []
+      : page === 1 && mixed ? Array.from({ length: 20 }, (_, index) => raw(index % 2 ? 7 : 3, true))
+      : page <= 2 ? [raw(3, true), raw(7, true)] : [];
+    return json({ status: '1', message: 'OK', result });
+  }
   const indices =
     capturedMode === 'empty' || page > 1
       ? []

@@ -519,3 +519,34 @@ test('only unresolved retained local records are observed, with at most two in f
   assert.deepEqual(f.localReads.map(row=>row.hash).sort(),records.map(row=>row.hash).sort());
   assert.equal(maximum,2); assert.equal(f.receipts.calls.length,0);
 });
+
+
+for (const mixed of [false, true]) test(`actual explorer ${mixed ? 'mixed-case body/token overlap' : 'token-only same event sender and outer nonce'} preserves both hashes through rendering and cache`, async () => {
+  const calls: string[] = [];
+  const first = hash(0xabc), second = hash(0xdef);
+  const wireHash = (value: string) => mixed ? `0x${value.slice(2).toUpperCase()}` : value;
+  const raw = (id: string, token: boolean) => ({ hash: wireHash(id), from: OTHER, to: OWNER, nonce: mixed && id === second ? '8' : '7',
+    blockNumber: id === first ? '100' : '99', confirmations: '2', timeStamp: '1700000000', value: '1', input: '0x', isError: '0',
+    ...(token ? { contractAddress: TOKEN, tokenDecimal: '0', tokenSymbol: 'TOK' } : {}) });
+  const explorer = new ActivityExplorerReader(async (url, init) => {
+    assert.equal(init.body, undefined, 'ordinary history must not issue RPC');
+    const target = new URL(url), action = target.searchParams.get('action')!; calls.push(action);
+    return new Response(JSON.stringify({ status: '1', message: 'OK', result: action === 'txlist'
+      ? mixed ? [raw(first, false)] : [] : mixed && target.searchParams.get('page') === '1'
+        ? Array.from({ length: 20 }, (_, index) => raw(index % 2 ? second : first, true)) : [raw(first, true), raw(second, true)] }));
+  });
+  const f = fixture(), controller = new NativeActivity(f.source, () => f.runtime, explorer, f.receipts);
+  await controller.refresh();
+  const snapshot = controller.getSnapshot();
+  assert.equal(snapshot.status, 'ready'); assert.equal(snapshot.error, null); assert.equal(snapshot.loadingMore, false);
+  assert.deepEqual(snapshot.rows.map(row => row.hash).sort(), [first, second]);
+  assert(snapshot.rows.every(row => row.indexed && row.display));
+  assert.equal(snapshot.rows.find(row => row.hash === first)?.indexed?.historySource, mixed ? 'explorer-txlist' : 'explorer-tokentx');
+  assert.equal(snapshot.rows.find(row => row.hash === second)?.display?.displayValue, '1');
+  assert.deepEqual(calls.sort(), mixed ? ['tokentx', 'tokentx', 'txlist'] : ['tokentx', 'txlist']); assert.equal(f.receipts.calls.length, 0);
+  assert.deepEqual(f.cacheWrites.at(-1)?.rows.map(row => row.hash).sort(), [first, second]);
+  assert(f.cacheWrites.every(write => write.rows.every(row => Object.keys(row).sort().join(',') === 'blockNumber,hash,timestamp,tokenHint')));
+  await controller.loadMore();
+  assert.deepEqual(controller.getSnapshot().rows.map(row => row.hash).sort(), [first, second]);
+  assert.equal(controller.getSnapshot().error, null);
+});

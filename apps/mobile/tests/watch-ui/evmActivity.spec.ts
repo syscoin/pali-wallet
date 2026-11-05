@@ -437,3 +437,19 @@ for (const mode of ['missing','invalid','malformed']) test(`watch ${mode} token 
   await expect(page.getByText(amount,{exact:true}).last()).toBeVisible();
   await expect(page.getByText(mode==='malformed'?'Raw token units: Unavailable':'Raw token units: '+LARGE,{exact:true}).first()).toBeVisible();
 });
+
+
+for (const mode of ['token-placeholder', 'mixed-case']) test(`public watch Activity preserves both transaction hashes for ${mode} history`, async ({ page }, testInfo) => {
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+  await open(page, mode);
+  for (const index of [3, 7]) {
+    await expect(row(page, OWNER, index)).toBeVisible();
+    await expect(row(page, OWNER, index)).toContainText('Confirmed');
+  }
+  expect((await page.evaluate(() => window.__watchFixture.evmActivity.calls())).map(call => call.method).sort()).toEqual(
+    mode === 'mixed-case' ? ['tokentx', 'tokentx', 'txlist'] : ['tokentx', 'txlist']);
+  await expect(page.getByText(/One activity feed is unavailable|Activity could not be fully loaded/)).toHaveCount(0);
+  await noSigning(page);
+  await page.screenshot({ animations: 'disabled', path: testInfo.outputPath(`watch-${mode}.png`), fullPage: true });
+  expect(errors).toEqual([]);
+});
