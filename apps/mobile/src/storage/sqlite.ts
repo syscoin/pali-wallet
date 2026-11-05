@@ -1102,7 +1102,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           ['auth', raw]
         );
         return { raw, record };
-      });
+      }).catch((error) => this.requireReopenIfPoisoned(error));
       // Every acknowledged outcome is fresh, even if a saturated counter and
       // repeated wall timestamp serialize identically to the previous record.
       this.authenticationWindow = null;
