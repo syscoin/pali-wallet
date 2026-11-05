@@ -444,7 +444,16 @@ const waitForHydration = async () => {
   await act(async () => {
     await pendingSwitch;
   });
-  await waitFor(() => expect(hydrationSpy).toHaveBeenCalledWith(false, true));
+  await waitFor(() =>
+    expect(hydrationSpy).toHaveBeenCalledWith(
+      false,
+      true,
+      false,
+      false,
+      false,
+      { savePostSwitchHistory: true }
+    )
+  );
   await waitFor(() => expect(releaseHydration).toBeDefined());
   expect(store.getState().vaultGlobal.networkStatus).toBe('idle');
   expect(store.getState().vaultGlobal.networkTarget).toBeUndefined();

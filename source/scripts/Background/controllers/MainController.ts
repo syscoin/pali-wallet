@@ -469,6 +469,7 @@ class MainController {
 
   // Centralized wallet state saving
   private saveTimeout: NodeJS.Timeout | null = null;
+  private saveTimeoutIsScoped = false;
 
   // Track active rapid polls to avoid duplicates
   private activeRapidPolls = new Map<string, NodeJS.Timeout>();
@@ -1482,13 +1483,15 @@ class MainController {
     });
   }
 
+  private clearWalletSaveTimeout(): void {
+    if (this.saveTimeout) clearTimeout(this.saveTimeout);
+    this.saveTimeout = null;
+    this.saveTimeoutIsScoped = false;
+  }
+
   // Clear all pending timers to prevent memory leaks
   private clearAllTimers(): void {
-    // Clear save timeout
-    if (this.saveTimeout) {
-      clearTimeout(this.saveTimeout);
-      this.saveTimeout = null;
-    }
+    this.clearWalletSaveTimeout();
 
     // Clear all rapid polling timeouts
     this.activeRapidPolls.forEach((timeoutId) => {
@@ -3607,13 +3610,16 @@ class MainController {
   }
 
   // Internal method to perform the actual save
-  private async performSave(operation: string): Promise<void> {
+  private async performSave(
+    operation: string,
+    isCurrent?: () => boolean
+  ): Promise<void> {
     const activeSlip44 = store.getState().vaultGlobal.activeSlip44;
 
     if (activeSlip44 !== null) {
       // Serialize with network-switch and emergency commits. The storage helper
       // batches vault + changed main state into one Chrome storage operation.
-      await persistCommittedWalletState(true, true);
+      await persistCommittedWalletState(true, true, isCurrent);
 
       console.log(
         `[MainController] Wallet state saved successfully for operation: ${operation}`
@@ -3629,9 +3635,11 @@ class MainController {
   private async saveWalletState(
     operation: string,
     isUserActivity = false,
-    sync = false
+    sync = false,
+    isCurrent?: () => boolean
   ): Promise<void> {
     try {
+      if (isCurrent && !isCurrent()) return;
       // Only reset auto-lock timer for explicit user activities, not automatic saves
       if (isUserActivity) {
         this.resetAutoLockTimer();
@@ -3640,13 +3648,10 @@ class MainController {
       // If sync is true, save immediately
       if (sync) {
         // Clear any pending debounced save to prevent duplicate saves
-        if (this.saveTimeout) {
-          clearTimeout(this.saveTimeout);
-          this.saveTimeout = null;
-        }
+        this.clearWalletSaveTimeout();
 
         try {
-          await this.performSave(operation);
+          await this.performSave(operation, isCurrent);
         } catch (error) {
           console.error(
             `[MainController] Failed to save wallet state for operation ${operation}:`,
@@ -3657,25 +3662,29 @@ class MainController {
         return;
       }
 
-      // Clear any existing save timeout to debounce rapid calls
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-      }
+      // A pending unscoped save already includes the latest vault snapshot.
+      // A scoped follow-up must never replace it with a cancellable save.
+      if (isCurrent && this.saveTimeout && !this.saveTimeoutIsScoped) return;
+      this.clearWalletSaveTimeout();
 
-      // Debounce the actual save to prevent rapid consecutive storage writes.
-      this.saveTimeout = setTimeout(async () => {
+      const timeout = setTimeout(async () => {
+        if (this.saveTimeout !== timeout) return;
+        // Release this timer before I/O so another save can be queued while
+        // the current one owns (or waits for) the persistence mutex.
+        this.saveTimeout = null;
+        this.saveTimeoutIsScoped = false;
+        if (isCurrent && !isCurrent()) return;
         try {
-          await this.performSave(operation);
+          await this.performSave(operation, isCurrent);
         } catch (error) {
           console.error(
             `[MainController] Failed to save wallet state for operation ${operation}:`,
             error
           );
-          // Don't throw - the operation already succeeded, saving is just persistence
-        } finally {
-          this.saveTimeout = null;
         }
       }, 100);
+      this.saveTimeout = timeout;
+      this.saveTimeoutIsScoped = Boolean(isCurrent);
     } catch (error) {
       console.error(
         `[MainController] Error in saveWalletState for operation ${operation}:`,
@@ -6855,6 +6864,7 @@ class MainController {
     isRapidPolling = false,
     forceRefresh = false,
     bypassCompletedCache = false,
+    savePostSwitchHistory = false,
   }: {
     activeNetwork: INetwork;
     bypassCompletedCache?: boolean;
@@ -6862,6 +6872,7 @@ class MainController {
     isBitcoinBased: boolean;
     isPolling?: boolean;
     isRapidPolling?: boolean;
+    savePostSwitchHistory?: boolean;
   }) {
     // For polling, we don't need keyring access - we're just fetching public transaction data
     // Only check if unlocked for non-polling operations
@@ -7074,6 +7085,28 @@ class MainController {
               );
               this.transactionUpdateCommitId = requestId;
               setHistoryStatus('ready');
+
+              if (savePostSwitchHistory && !isBitcoinBased) {
+                const committed =
+                  store.getState().vault.accountTransactions[
+                    activeAccount.type
+                  ]?.[activeAccount.id]?.ethereum?.[activeNetwork.chainId] ||
+                  [];
+                if (!isEqual(previousTxs, committed))
+                  void this.saveWalletState(
+                    NETWORK_SWITCH_AFTER_UPDATES,
+                    false,
+                    false,
+                    () => {
+                      const latest = store.getState().vault.activeAccount;
+                      return (
+                        isCurrentRead() &&
+                        latest.id === activeAccount.id &&
+                        latest.type === activeAccount.type
+                      );
+                    }
+                  );
+              }
 
               // Update pending transaction badge
               notificationManager.updatePendingTransactionBadge(updatedTxs);
@@ -8876,7 +8909,8 @@ class MainController {
     forceUpdate = false, // Force update even if just unlocked
     isRapidPolling = false, // Skip expensive operations for rapid polling
     skipHeavyUpdates = false,
-    bypassHistoryCache = false
+    bypassHistoryCache = false,
+    { savePostSwitchHistory = false } = {}
   ): Promise<boolean> {
     const session = this.walletSessionGeneration;
     const networkRequest = this.networkRequestGeneration;
@@ -9019,6 +9053,7 @@ class MainController {
           isPolling: true, // background
           isRapidPolling,
           bypassCompletedCache: bypassHistoryCache,
+          savePostSwitchHistory,
         }).catch((error) =>
           console.error(
             '[MainController] Background transaction refresh failed:',
@@ -9987,10 +10022,7 @@ class MainController {
     // activeSlip44 or dapp connections changed, using one storage operation.
     if (!syncUpdates) {
       const hadPendingWalletSave = Boolean(this.saveTimeout);
-      if (this.saveTimeout) {
-        clearTimeout(this.saveTimeout);
-        this.saveTimeout = null;
-      }
+      this.clearWalletSaveTimeout();
       this.isNetworkSwitchMainStateDirty =
         this.isNetworkSwitchMainStateDirty ||
         previousSlip44 !== activeSlip44 ||
@@ -10021,7 +10053,14 @@ class MainController {
       try {
         await this.setFiat();
         assertCurrent();
-        await this.getLatestUpdateForCurrentAccount(false);
+        await this.getLatestUpdateForCurrentAccount(
+          false,
+          false,
+          false,
+          false,
+          false,
+          { savePostSwitchHistory: true }
+        );
         assertCurrent();
       } finally {
         if (isCurrent())
@@ -10035,7 +10074,16 @@ class MainController {
         try {
           await this.setFiat();
           if (!isCurrent()) return;
-          await this.getLatestUpdateForCurrentAccount(false, true);
+          // The balance marks the UI ready without waiting for the explorer.
+          // A later changed history commit must still reach the wallet save.
+          await this.getLatestUpdateForCurrentAccount(
+            false,
+            true,
+            false,
+            false,
+            false,
+            { savePostSwitchHistory: true }
+          );
         } catch (error) {
           console.error(
             '[MainController] Failed to update after network change:',

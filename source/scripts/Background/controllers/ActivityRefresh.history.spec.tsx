@@ -11,7 +11,7 @@ import vaultReducer, {
   setActiveNetwork,
   setIsBitcoinBased,
 } from 'state/vault';
-import vaultGlobalReducer from 'state/vaultGlobal';
+import vaultGlobalReducer, { setActiveSlip44 } from 'state/vaultGlobal';
 
 import MasterController from './index';
 import { CancellablePromises } from './promises/cancellablesPromises';
@@ -23,12 +23,15 @@ let mockController: any;
 let mockMaster: any;
 const mockTransport = jest.fn();
 const mockEvmPolling = jest.fn();
+const mockPersistCommittedWalletState = jest.fn().mockResolvedValue(undefined);
 jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
+  persistCommittedWalletState: (...args: any[]) =>
+    mockPersistCommittedWalletState(...args),
 }));
 jest.mock('./MainController', () => ({
   __esModule: true,
@@ -199,6 +202,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   clearFetchBackendAccountCache();
+  jest.useRealTimers();
   jest.restoreAllMocks();
   global.chrome = originalChrome;
 });
@@ -457,5 +461,116 @@ it.each(['account', 'network'] as const)(
       ).toEqual([]);
     }
     expect(mockTransport).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each([
+  'post-switch',
+  'ordinary poll',
+  'pending ordinary save',
+  'account changed before timer',
+  'session changed while queued',
+  'older save settles while newer timer is pending',
+] as const)(
+  'saves only owned changed EVM post-switch history: %s',
+  async (scenario) => {
+    jest.useFakeTimers();
+    const address = `0x${'11'.repeat(20)}`;
+    const evmNetwork = {
+      chainId: 1,
+      kind: 'ethereum',
+      currency: 'eth',
+      url: 'https://rpc.synthetic.invalid',
+      apiUrl: 'https://explorer.synthetic.invalid/api',
+    };
+    mockStore.dispatch(
+      setAccounts({
+        ...mockStore.getState().vault.accounts,
+        HDAccount: {
+          0: { id: 0, address, balances: { ethereum: '1', syscoin: '0' } },
+          1: {
+            id: 1,
+            address: `0x${'22'.repeat(20)}`,
+            balances: { ethereum: '0', syscoin: '0' },
+          },
+        },
+      })
+    );
+    mockStore.dispatch(setActiveNetwork(evmNetwork as any));
+    mockStore.dispatch(setIsBitcoinBased(false));
+    Object.defineProperty(mockController, 'ethereumTransaction', {
+      value: { web3Provider: {} },
+    });
+    mockStore.dispatch(setActiveSlip44(60));
+    mockEvmPolling.mockResolvedValueOnce([
+      {
+        hash: `0x${'ab'.repeat(32)}`,
+        from: address,
+        to: `0x${'44'.repeat(20)}`,
+        chainId: 1,
+        value: '1',
+        nonce: 1,
+        input: '0x',
+        blockNumber: 100,
+        confirmations: 1,
+        timestamp: 1700000000,
+      },
+    ]);
+    let settlePriorWrite: (() => void) | undefined;
+    if (scenario === 'older save settles while newer timer is pending')
+      mockPersistCommittedWalletState.mockReturnValueOnce(
+        new Promise<void>((resolve) => {
+          settlePriorWrite = resolve;
+        })
+      );
+    if (scenario === 'pending ordinary save')
+      await mockController.saveWalletState('network-switch-after-updates');
+    await mockController.updateUserTransactionsState({
+      isBitcoinBased: false,
+      activeNetwork: evmNetwork,
+      isPolling: true,
+      savePostSwitchHistory: scenario !== 'ordinary poll',
+    });
+    const rows =
+      mockStore.getState().vault.accountTransactions.HDAccount[0].ethereum[1];
+    expect(rows).toHaveLength(1);
+    expect(mockPersistCommittedWalletState).not.toHaveBeenCalled();
+    if (scenario === 'account changed before timer')
+      mockStore.dispatch(setActiveAccount({ type: 'HDAccount' as any, id: 1 }));
+    await jest.advanceTimersByTimeAsync(100);
+    if (
+      scenario === 'ordinary poll' ||
+      scenario === 'account changed before timer'
+    ) {
+      expect(mockPersistCommittedWalletState).not.toHaveBeenCalled();
+      return;
+    }
+
+    expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(1);
+    if (scenario === 'pending ordinary save') {
+      expect(mockPersistCommittedWalletState).toHaveBeenCalledWith(
+        true,
+        true,
+        undefined
+      );
+      return;
+    }
+    const guard = mockPersistCommittedWalletState.mock.calls[0][2];
+    expect(guard()).toBe(true);
+    if (scenario === 'session changed while queued') {
+      mockController.walletSessionGeneration += 1;
+      expect(guard()).toBe(false);
+    }
+    if (settlePriorWrite) {
+      await mockController.saveWalletState('later-save');
+      settlePriorWrite();
+      await jest.advanceTimersByTimeAsync(100);
+      expect(mockPersistCommittedWalletState).toHaveBeenCalledTimes(2);
+      expect(mockPersistCommittedWalletState).toHaveBeenLastCalledWith(
+        true,
+        true,
+        undefined
+      );
+    }
   }
 );
