@@ -105,7 +105,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
-  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; token: number; imports: NativeImportView } | null>(null);
+  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
@@ -162,7 +162,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
   const utxo = findUtxoNetwork(snapshot.account?.network);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
-  const canSendUtxo = !!openUtxoSend && !!utxo && catalogue?.active.accountId.startsWith('hd:') === true;
+  const canSendUtxo = !!openUtxoSend && !!catalogue && utxo?.decimals === 8;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
@@ -404,6 +404,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     importRequest.current.active = false; setImportActiveToken(null);
     local.keyExport.cancel(); local.backup.cancel(); setError('');
     const scoped: NativeImportView = Object.freeze({
+      previewUtxo: (...args: Parameters<NativeImportView['previewUtxo']>) => local.imports.previewUtxo(...args),
       submit: (...args: Parameters<NativeImportView['submit']>) => local.imports.submit(...args),
       cancel: () => {
         const now = local.authority.getSnapshot();
@@ -411,8 +412,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
-    setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision,
-      networkLabel: getNativeSendContext(context.account!.network, current.networks).name, token, imports: scoped });
+    const network = findUtxoNetwork(context.account.network);
+    setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision, utxo: !!network,
+      networkLabel: network?.name ?? getNativeSendContext(context.account.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
   };
   const locked = snapshot.phase === 'locked';
@@ -445,11 +447,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} onImport={canSign ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
-      networkLabel={importScope.networkLabel}
+      networkLabel={importScope.networkLabel} utxo={importScope.utxo}
       onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
       onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}

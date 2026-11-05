@@ -213,7 +213,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     assertCompleteHDAccountData(group.accounts.HDAccount);
     for (const [type, accounts] of Object.entries(group.accounts)) {
       if (!accounts || typeof accounts !== 'object' || Array.isArray(accounts) ||
-          (utxo && type !== 'HDAccount' && Object.keys(accounts).length))
+          (utxo && type !== 'HDAccount' && type !== 'Imported' && Object.keys(accounts).length))
         return invalid();
       for (const [id, account] of Object.entries(accounts)) {
         if (
@@ -243,10 +243,16 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
           account.xprv
         )
           publicIdentity({ address: account.address, publicKey: account.xpub });
-        if (utxo &&
-            (normalizeUtxoAddress(account.address, utxo.id) !== account.address ||
-             !/^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub)))
-          return invalid();
+        if (utxo) {
+          if (normalizeUtxoAddress(account.address, utxo.id) !== account.address)
+            return invalid();
+          if (type === 'HDAccount' && !/^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub))
+            return invalid();
+          if (type === 'Imported' &&
+              (account.xpub !== account.address || !account.xprv || account.isImported !== true ||
+               account.isLedgerWallet || account.isTrezorWallet || account.isSmartAccount))
+            return invalid();
+        }
       }
     }
     if (!group.accounts[group.activeAccount.type]?.[group.activeAccount.id])
@@ -308,8 +314,8 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     return invalid();
   if (utxo) {
     const identity = parseUtxoPublicIdentifier(account.xpub, utxo.id);
-    if (identity.kind !== 'account' || identity.identifier !== account.xpub ||
-        identity.address !== account.address)
+    if (identity.kind !== (selected.type === 'Imported' ? 'address' : 'account') ||
+        identity.identifier !== account.xpub || identity.address !== account.address)
       return invalid();
   }
   return Object.freeze({
@@ -484,8 +490,6 @@ export class NativeWalletCatalogue {
           mutation.kind === 'create'
             ? KeyringAccountType.HDAccount
             : KeyringAccountType.Imported;
-        if (mutation.kind === 'import' && group.activeNetwork.slip44 !== 60)
-          return invalid();
         assertAccountCreationAvailable(
           group.accounts,
           type,
