@@ -256,7 +256,7 @@ function packed(input: Document, protect?: string): Document {
     next.archived.shift();
     next.truncated = true;
   }
-  while (next.cached.reduce((sum, c) => sum + c.candidates.length, 0) > 24) {
+  while (next.cached.length > 24 || next.cached.reduce((sum, c) => sum + c.candidates.length, 0) > 24) {
     next.cached.pop();
     next.truncated = true;
   }

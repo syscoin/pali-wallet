@@ -104,7 +104,7 @@ function launchIos(run, device, link, record, now = () => performance.now()) {
     let logQueryFailure;
     const queryStarted = now();
     try { logs = run('xcrun', ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', `${lookbackMinutes}m`,
-      '--predicate', 'process == "SpringBoard" OR process == "runningboardd" OR process == "launchd"'], false, PROBE_TIMEOUT_MS); }
+      '--predicate', `(process == "SpringBoard" OR process == "runningboardd" OR process == "launchd") AND eventMessage CONTAINS "${PACKAGE}"`], false, PROBE_TIMEOUT_MS); }
     catch (queryError) { logQueryFailure = iosLogQueryFailure(queryError, now() - queryStarted); }
     try { record(Object.freeze({ version: 3, stage: 'launch', elapsedMs, lookbackMinutes,
       ...(logQueryFailure ? { logQueryFailure } : {}),

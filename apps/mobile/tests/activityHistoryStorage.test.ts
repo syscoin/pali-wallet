@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Wallet } from 'ethers/wallet';
-import { NativeActivityHistory, ACTIVITY_STORAGE_KEY } from '../src/activity/historyStore.ts';
+import { NativeActivityHistory, ACTIVITY_STORAGE_KEY, inspectRecoveryHistory } from '../src/activity/historyStore.ts';
 import { createActivityScope, type TerminalActivityRecord } from '../src/activity/types.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -234,5 +234,31 @@ test('revising an observed outcome preserves immutable archived transaction iden
     assert.equal((await history.load(f.scope(), guard)).archived[0]!.phase, 'reverted');
     await assert.rejects(history.archiveTerminal({ ...original, phase: 'reverted', amountUnits: '999' }, guard), { code: 'INVALID' });
     assert.equal((await history.load(f.scope(), guard)).archived[0]!.amountUnits, original.amountUnits);
+  } finally { await f.cleanup(); }
+});
+
+test('empty cache groups stay within the existing limit without changing archived records or keys', async () => {
+  const f = await fixture();
+  try {
+    const history = f.history(), record = f.record(1);
+    await history.archiveTerminal(record, guard);
+    const archived = encodeStorageValue((await history.load(f.scope(), guard)).archived);
+    const pairBefore = [await f.port.get('vault'), await f.port.get('vault-keys')].map(encodeStorageValue);
+    for (let index = 0; index < 25; index++) await history.saveCache(f.scope(index), [], guard);
+    const stored = await f.port.get(ACTIVITY_STORAGE_KEY) as { cached: { sourceId: string; candidates: unknown[] }[]; archived: unknown[]; truncated: boolean };
+    assert.equal(stored.cached.length, 24);
+    assert.equal(stored.cached.reduce((count, group) => count + group.candidates.length, 0), 0);
+    assert.equal(stored.cached[0]?.sourceId, f.scope(24).sourceId);
+    assert.equal(stored.cached.some(group => group.sourceId === f.scope(0).sourceId), false);
+    assert.equal(stored.truncated, true);
+    assert.equal(inspectRecoveryHistory(stored, f.fingerprint).summaries, 1);
+    assert.equal(encodeStorageValue(stored.archived), archived);
+    assert.deepEqual([await f.port.get('vault'), await f.port.get('vault-keys')].map(encodeStorageValue), pairBefore);
+    await f.reopen();
+    const reopened = await f.history().load(f.scope(24), guard);
+    assert.deepEqual(reopened.candidates, []);
+    assert.equal(reopened.truncated, true);
+    assert.equal(encodeStorageValue((await f.history().load(f.scope(), guard)).archived), archived);
+    assert.deepEqual([await f.port.get('vault'), await f.port.get('vault-keys')].map(encodeStorageValue), pairBefore);
   } finally { await f.cleanup(); }
 });
