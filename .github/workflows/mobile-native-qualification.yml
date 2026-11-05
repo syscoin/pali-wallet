@@ -17,6 +17,7 @@ on:
       - 'source/shared/**'
       - 'source/wallet/**'
       - 'source/utils/nativeBalance.ts'
+      - 'source/utils/requestPayloadBudget.ts'
       - '.nvmrc'
       - '.github/workflows/mobile-native-qualification.yml'
 

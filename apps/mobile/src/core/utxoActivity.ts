@@ -1,4 +1,6 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
+import { getSendingAddresses, getReceivingAddresses, mergeAccountSummaryWithFullTransaction, type UtxoDetailTransaction } from '../../../../source/shared/utxoTransactionDetails.ts';
 import { createBlockbookAccountHistory, readHistoryCount } from '../../../../source/shared/blockbookAccountHistory.ts';
 import { mergeFreshBlockbookHistory } from '../../../../source/shared/blockbookHistoryMerge.ts';
 import { selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
@@ -6,7 +8,7 @@ import { getTransactionBlockInfo } from '../../../../source/shared/transactionBl
 import { getSyscoinAccountChange, getSyscoinNativeTransferAmount, isSyscoinTokenOperation } from '../../../../source/shared/utxoNativeAmounts.ts';
 import { parseErc20Text } from '../../../../source/shared/erc20.ts';
 import { getSyscoinActivityOperationAmount } from '../../../../source/shared/utxoTokenAmounts.ts';
-import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
+import { assertJsonWorkBudget, measureJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { assertBaseUnits } from './amounts.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
@@ -28,8 +30,14 @@ export type UtxoActivityPage = Readonly<{
 }>;
 /** Only the authority passes this private canonical source to its trusted reader. */
 export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean }>;
+export type UtxoActivityDetail = Readonly<{ txid: string; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }>;
+export type UtxoActivityDetailCache = ReturnType<typeof createUtxoTransactionDetailsCache>;
 export interface UtxoActivityReader {
   readPage(source: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal): Promise<UtxoActivityPage>;
+  readDetail(source: UtxoActivitySource, request: Readonly<{ row: UtxoActivityRow; txid: string }>, signal: AbortSignal,
+    cache: UtxoActivityDetailCache, guard: () => void): Promise<UtxoActivityDetail>;
+  summaryBytes(row: UtxoActivityRow): number | null;
+  forgetDetails(rows: readonly UtxoActivityRow[]): void;
 }
 export class UtxoActivityError extends Error {
   readonly code: 'INVALID' | 'UNAVAILABLE' | 'CHANGED' | 'CANCELLED';
@@ -110,7 +118,9 @@ function projectTransaction(value: unknown): UtxoActivityRow {
 /** Actual SJS account routing with the existing bounded, genesis-verified transport. */
 export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; timeoutMs?: number }>): UtxoActivityReader {
   const checked = utxoFetchOptions(options, UTXO_ACTIVITY_LIMITS.timeoutMs);
+  const sjsAccount = syscoinUtils.fetchBackendAccount, sjsRaw = syscoinUtils.fetchBackendRawTx;
   const history = createBlockbookAccountHistory(async () => fail('INVALID'));
+  const summaries = new WeakMap<UtxoActivityRow, { source: UtxoActivitySource; raw: UtxoDetailTransaction; charge: number }>();
   return Object.freeze({ async readPage(input: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal) {
     const owner = context(input.context), page = request.page, identifier = input.identifier, isAccount = input.isAccount;
     if (!Number.isSafeInteger(page) || page < 1 || typeof isAccount !== 'boolean') return fail();
@@ -125,7 +135,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       const fetchAccount = async (url: string, queriedIdentifier: string, query: string, _parseData: boolean) => {
         check();
         if (url !== prefix || queriedIdentifier !== identifier) return fail('CHANGED');
-        const raw = await syscoinUtils.fetchBackendAccount(prefix, identifier, query, isAccount, undefined, { signal,
+        const raw = await sjsAccount(prefix, identifier, query, isAccount, undefined, { signal,
           fetch: async (target: string, init: RequestInit) => {
             check();
             if (init.method !== 'GET' || init.signal !== signal || !target.startsWith(prefix + '/api/v2/')) return fail();
@@ -151,19 +161,75 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       const totalPages = raw.totalPages === undefined || raw.totalPages === -1 ? null : readHistoryCount(raw.totalPages);
       if (raw.totalPages !== undefined && raw.totalPages !== -1 && totalPages === null) return fail();
       const rows = Object.freeze(raw.transactions.map(projectTransaction));
-      return Object.freeze({ context: owner, page, rows,
+      const result = Object.freeze({ context: owner, page, rows,
         hasMore: totalPages === null ? raw.transactions.length === UTXO_ACTIVITY_LIMITS.pageSize : page < totalPages,
         emptyAccount: rows.length === 0 && readHistoryCount(raw.txs) === 0 && readHistoryCount(raw.unconfirmedTxs) === 0 });
+      const captured = Object.freeze({ context: owner, identifier, isAccount });
+      for (let index = 0; index < rows.length; index++) {
+        const summary = raw.transactions[index] as UtxoDetailTransaction;
+        try {
+          const charge = measureJsonWorkBudget(summary, UTXO_DETAIL_CACHE_BYTES, 16, UTXO_ACTIVITY_LIMITS.nodes);
+          summaries.set(rows[index]!, { source: captured, raw: summary, charge });
+        } catch { /* Optional detail metadata; the compact row remains valid. */ }
+      }
+      return result;
     } catch (cause) { throw cause instanceof UtxoActivityError ? cause : new UtxoActivityError(signal.aborted ? 'CANCELLED' : 'UNAVAILABLE'); }
     finally { session?.close(); }
-  } });
+  }, async readDetail(input: UtxoActivitySource, request: Readonly<{ row: UtxoActivityRow; txid: string }>, signal: AbortSignal,
+    cache: UtxoActivityDetailCache, guard: () => void) {
+    const owner = context(input.context), identifier = input.identifier, isAccount = input.isAccount;
+    const txid = hash(request.txid), accepted = summaries.get(request.row);
+    const summary = accepted?.raw;
+    if (!accepted || !summary || hash(summary.txid) !== txid || request.row.txid !== txid || !same(accepted.source.context, owner) || accepted.source.identifier !== identifier || accepted.source.isAccount !== isAccount) return fail('CHANGED');
+    const check = () => { guard(); if (signal.aborted) fail('CANCELLED'); };
+    check();
+    const cached = cache.getCachedUtxoTransactionDetails(txid);
+    const read = async (physicalSignal: AbortSignal) => {
+      let session: UtxoReadSession | undefined;
+      try {
+        session = await openUtxoReadSession(owner.networkId, checked, physicalSignal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes);
+        const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
+        const result = await sjsRaw(prefix, txid, { signal: physicalSignal, fetch: async (target: string, init: RequestInit) => {
+          if (init.method !== 'GET' || init.signal !== physicalSignal || target !== prefix + '/api/v2/tx/' + txid) return fail();
+          const value = await active.read('/api/v2/tx/' + txid);
+          assertJsonWorkBudget(value, UTXO_ACTIVITY_LIMITS.bytes, 16, UTXO_ACTIVITY_LIMITS.nodes);
+          assertNativeHistoryWork({ transactions: [value] });
+          return { ok: true, json: async () => value };
+        } });
+        if (physicalSignal.aborted) return fail('CANCELLED');
+        const value = utxoObject(result);
+        if (hash(value.txid) !== txid) return fail('INVALID');
+        return value;
+      } finally { session?.close(); }
+    };
+    let stop: (() => void) | undefined;
+    let abort: (() => void) | undefined;
+    try {
+      const full = await new Promise<UtxoDetailTransaction>((resolve, reject) => {
+        abort = () => { stop?.(); reject(new UtxoActivityError('CANCELLED')); };
+        signal.addEventListener('abort', abort, { once: true });
+        stop = cache.watchUtxoTransactionDetails(txid, txid, read, () => { try { check(); return true; } catch { return false; } }, resolve, reject);
+        if (signal.aborted) abort();
+      });
+      check();
+      const merged = mergeAccountSummaryWithFullTransaction(summary, full, full === cached);
+      const row = projectTransaction(merged), from = getSendingAddresses(merged), to = getReceivingAddresses(merged);
+      assertJsonWorkBudget({ from, to }, 32768, 4, 2048);
+      if (isAccount && [...from, ...to].some(value => value === identifier)) return fail('INVALID');
+      check();
+      return Object.freeze({ txid, row, from: Object.freeze(from), to: Object.freeze(to) });
+    } finally { if (abort) signal.removeEventListener('abort', abort); stop?.(); }
+  }, summaryBytes(row: UtxoActivityRow) { return summaries.get(row)?.charge ?? null; },
+  forgetDetails(rows: readonly UtxoActivityRow[]) { for (const row of rows) summaries.delete(row); } });
 }
 
 type PublicAuthority = { getSnapshot(): PublicSnapshot; subscribe(listener: (snapshot: PublicSnapshot) => void): () => void;
-  readUtxoActivityPage(request: Readonly<{ page: number }>, signal: AbortSignal): Promise<UtxoActivityPage> };
+  readUtxoActivityPage(request: Readonly<{ page: number }>, signal: AbortSignal): Promise<UtxoActivityPage>;
+  readUtxoActivityDetail(request: Readonly<{ txid: string }>, signal: AbortSignal): Promise<UtxoActivityDetail>;
+  retainUtxoActivityRows(rows: readonly UtxoActivityRow[]): void; releaseUtxoActivity(): void };
 export type UtxoActivityState = Readonly<{
   status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'stale'; context: UtxoActivityContext | null;
-  rows: readonly UtxoActivityRow[]; firstPage: number; page: number; hasMore: boolean; hasNewer: boolean; windowed: boolean;
+  rows: readonly UtxoActivityRow[]; detail: Readonly<{ txid: string; status: 'loading' | 'ready' | 'unavailable'; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }> | null; firstPage: number; page: number; hasMore: boolean; hasNewer: boolean; windowed: boolean;
 }>;
 const same = (a: UtxoActivityContext | null, b: UtxoActivityContext | null) => a !== null && b !== null &&
   a.accountId === b.accountId && a.networkId === b.networkId && a.address === b.address && a.generation === b.generation;
@@ -176,6 +242,7 @@ export class UtxoWatchActivity {
   private stop: (() => void) | null = null;
   private epoch = 0;
   private pending: AbortController | null = null;
+  private detailRequest: AbortController | null = null;
   private active = false;
   private focused = true;
   private pages = new Map<number, { rows: readonly UtxoActivityRow[]; hasMore: boolean }>();
@@ -187,7 +254,7 @@ export class UtxoWatchActivity {
     if (value.status !== 'ready' || !account || value.selectedNetworkId !== 'bitcoin' && value.selectedNetworkId !== 'syscoin') return null;
     try { return context({ accountId: account.id, networkId: value.selectedNetworkId, address: account.addresses[value.selectedNetworkId]!, generation: value.generation }); } catch { return null; }
   }
-  private empty(): UtxoActivityState { return Object.freeze({ status: 'idle', context: this.capture(), rows: Object.freeze([]), firstPage: 0, page: 0, hasMore: false, hasNewer: false, windowed: false }); }
+  private empty(): UtxoActivityState { return Object.freeze({ status: 'idle', context: this.capture(), rows: Object.freeze([]), detail: null, firstPage: 0, page: 0, hasMore: false, hasNewer: false, windowed: false }); }
   private publish(value: UtxoActivityState) { this.state = Object.freeze(value); for (const listener of [...this.listeners]) { if (this.state !== value) break; if (this.listeners.has(listener)) { try { listener(); } catch { /* Observers cannot block revocation. */ } } } }
   getSnapshot = (): UtxoActivityState => this.state;
   subscribe = (listener: () => void): (() => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
@@ -196,10 +263,30 @@ export class UtxoWatchActivity {
     this.stop = this.authority.subscribe(() => { if (!same(this.state.context, this.capture())) { this.revoke(); void this.load(); } });
     this.revoke(); void this.load();
   }
-  revoke(): void { this.epoch++; this.pending?.abort(); this.pending = null; this.pages.clear(); this.publish(this.empty()); }
+  revoke(): void { this.detailRequest?.abort(); this.detailRequest = null; this.authority.releaseUtxoActivity(); this.epoch++; this.pending?.abort(); this.pending = null; this.pages.clear(); this.publish(this.empty()); }
   dispose(): void { this.active = false; this.stop?.(); this.stop = null; this.revoke(); }
   setFocused(value: boolean): void { this.focused = value; if (!value) this.revoke(); else void this.load(); }
   isCurrent(expected = this.state.context): boolean { return this.active && this.focused && this.foreground() && same(expected, this.capture()); }
+  clearDetail(): void {
+    if (!this.state.detail && !this.detailRequest) return;
+    this.detailRequest?.abort(); this.detailRequest = null;
+    this.publish({ ...this.state, detail: null });
+  }
+  selectDetail = async (value: string): Promise<void> => {
+    const txid = hash(value), owner = this.state.context, row = this.state.rows.find(item => item.txid === txid);
+    if (!row || !owner || !this.isCurrent(owner)) return;
+    this.detailRequest?.abort(); const request = new AbortController(); this.detailRequest = request;
+    const current = () => this.detailRequest === request && !request.signal.aborted && this.isCurrent(owner) && this.state.detail?.txid === txid;
+    this.publish({ ...this.state, detail: Object.freeze({ txid, status: 'loading', row, from: Object.freeze([]), to: Object.freeze([]) }) });
+    try {
+      const result = await this.authority.readUtxoActivityDetail({ txid }, request.signal);
+      if (!current()) return;
+      this.publish({ ...this.state, detail: Object.freeze({ ...result, status: 'ready' }) });
+    } catch {
+      if (current()) this.publish({ ...this.state, detail: Object.freeze({ txid, status: 'unavailable', row, from: Object.freeze([]), to: Object.freeze([]) }) });
+    } finally { if (this.detailRequest === request) this.detailRequest = null; request.abort(); }
+  };
+  retryDetail = (): Promise<void> => this.state.detail ? this.selectDetail(this.state.detail.txid) : Promise.resolve();
   load = (): Promise<void> => this.run('refresh');
   refresh = (): Promise<void> => this.run('refresh');
   loadMore = (): Promise<void> => this.state.status !== 'ready' || !this.state.hasMore ? Promise.resolve() : this.run('older');
@@ -208,7 +295,8 @@ export class UtxoWatchActivity {
     if (this.pending || !this.isCurrent()) return;
     const before = this.state, owner = before.context!, epoch = ++this.epoch, pending = new AbortController();
     const page = mode === 'older' ? before.page + 1 : mode === 'newer' ? before.firstPage - 1 : 1;
-    this.pending = pending; this.publish({ ...before, status: 'loading' });
+    this.clearDetail();
+    this.pending = pending; this.publish({ ...this.state, status: 'loading' });
     const current = () => this.pending === pending && epoch === this.epoch && !pending.signal.aborted && this.isCurrent(owner);
     try {
       if (!current()) return;
@@ -230,9 +318,10 @@ export class UtxoWatchActivity {
       const rows = Object.freeze(selectEvmHistoryRepresentatives(flattened.map(wrap), UTXO_ACTIVITY_LIMITS.displayRows).map((entry) => entry.row));
       const retainedRows = new Set(rows);
       for (const [number, saved] of this.pages) this.pages.set(number, { ...saved, rows: saved.rows.filter((row) => retainedRows.has(row)) });
-      this.publish({ status: 'ready', context: owner, rows, firstPage, page: lastPage,
+      this.authority.retainUtxoActivityRows(rows);
+      this.publish({ status: 'ready', context: owner, rows, detail: null, firstPage, page: lastPage,
         hasMore: this.pages.get(lastPage)!.hasMore, hasNewer: firstPage > 1, windowed: firstPage > 1 || flattened.length > UTXO_ACTIVITY_LIMITS.displayRows });
-    } catch { if (current()) this.publish({ ...before, status: before.rows.length ? 'stale' : 'unavailable', hasMore: false }); }
+    } catch { if (current()) this.publish({ ...before, detail: null, status: before.rows.length ? 'stale' : 'unavailable', hasMore: false }); }
     finally { pending.abort(); if (this.pending === pending) this.pending = null; }
   }
 }
