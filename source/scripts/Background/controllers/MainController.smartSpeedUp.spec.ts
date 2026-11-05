@@ -232,6 +232,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     provider = {
       getTransaction: jest.fn().mockResolvedValue(rawOriginal()),
       getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
@@ -811,12 +812,18 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     });
     keyring.ledgerSigner.evm = { signEVMTransaction: sign };
     const sending = run(false, hardwareAddress);
-    await started.promise;
+    await Promise.race([
+      started.promise,
+      sending.then(() => {
+        throw new Error('Replacement did not reach the Ledger device');
+      }),
+    ]);
     transactions()[0].isReplaced = true;
     transactions()[0].status = 'replaced';
     pending.resolve();
     await sending;
     expect(sign).toHaveBeenCalledTimes(1);
+    expect(provider.verifyConfiguredChainId).toHaveBeenCalledTimes(1);
     expect(provider.sendTransaction).not.toHaveBeenCalled();
     expect(mockPersist).not.toHaveBeenCalled();
     expect(alert.success).not.toHaveBeenCalled();
