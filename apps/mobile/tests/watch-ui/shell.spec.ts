@@ -94,6 +94,45 @@ test('rapid Activity departures honor the latest requested tab and still return 
   expect(await page.evaluate(() => window.__watchFixture.oldPhases())).toEqual(['ready']);
 });
 
+test('Tools checks exact site origins locally and clears its result on Back', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await openWatch(page);
+  await chooseTab(page, 'Tools');
+  await page.getByRole('button', { name: /Check a site/ }).click();
+  await expect(page.getByRole('heading', { name: 'Check a site' })).toBeVisible();
+  await expect(page.getByRole('tab')).toHaveCount(0);
+  const input = page.getByRole('textbox', { name: 'Site address' });
+  const check = page.getByRole('button', { name: 'Check site', exact: true });
+  await expect(check).toBeDisabled();
+  await input.fill('BRIDGE.Syscoin.org/a?session=public-fixture');
+  await input.press('Enter');
+  await expect(page.getByText('Listed by Pali', { exact: true })).toBeVisible();
+  await expect(page.getByText('https://bridge.syscoin.org', { exact: true })).toBeVisible();
+  await expect(page.getByText('A list match does not verify a connection.')).toBeVisible();
+  await input.fill('https://bridge.syscoin.org.attacker.invalid');
+  await expect(page.getByText('Listed by Pali', { exact: true })).toHaveCount(0);
+  await check.click();
+  const unlisted = page.getByText('Unlisted site', { exact: true });
+  await expect(unlisted).toBeVisible();
+  await expect(page.getByText('https://bridge.syscoin.org.attacker.invalid', { exact: true })).toBeVisible();
+  expect((await unlisted.boundingBox())!.x - (await check.boundingBox())!.x).toBeGreaterThanOrEqual(15);
+  await page.screenshot({ path: testInfo.outputPath('unlisted-site-320.png'), fullPage: true });
+  await input.fill('file:///tmp/index.html');
+  await check.click();
+  await expect(page.getByText('Enter a valid site address', { exact: true })).toBeVisible();
+  const prefix = 'https://bridge.syscoin.org'.padEnd(200);
+  await input.fill(`${prefix}😈@attacker.invalid`);
+  await expect(input).toHaveValue(`${prefix}…`);
+  await check.click();
+  await expect(page.getByText('Site address is too long', { exact: true })).toBeVisible();
+  await expect(page.getByText('Listed by Pali', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await tabs(page, 'Tools');
+  await page.getByRole('button', { name: /Check a site/ }).click();
+  await expect(input).toHaveValue('');
+  await expect(check).toBeDisabled();
+});
+
 test('native unlock and all security presentation stages exclude the tab shell', async ({ page }) => {
   await openNative(page);
   await page.evaluate(() => window.__watchFixture.delayUnlock(true));
