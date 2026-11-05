@@ -286,6 +286,95 @@ describe('Ledger authority host broker', () => {
     await rejected;
   });
 
+  it.each(['focus', 'device reply'])(
+    'keeps a request waiting for %s when a sibling PSBT is cancelled',
+    async (phase) => {
+      const f = fixture();
+      const connected = f.broker.host.connect();
+      const port = f.port();
+      await flush();
+      port.onMessage.emit({ type: 'ready' });
+      await connected;
+
+      let finishFocus: (() => void) | undefined;
+      if (phase === 'focus')
+        f.api.windows.update.mockImplementationOnce(
+          () =>
+            new Promise<undefined>((resolve) => {
+              finishFocus = () => resolve(undefined);
+            })
+        );
+      const first = f.broker.host.evm.getAddress({ accountIndex: 0 });
+      const firstResult = first.catch((error) => ({ code: error.code }));
+      await flush();
+      const posted = () =>
+        port.postMessage.mock.calls.filter(
+          ([value]) => value.type === 'request'
+        );
+      expect(posted()).toHaveLength(phase === 'focus' ? 0 : 1);
+
+      const cancellation = new AbortController();
+      const second = f.broker.host.utxo.signPsbt({} as never, {
+        signal: cancellation.signal,
+        assertCurrent: () => undefined,
+      });
+      const secondResult = second.catch((error) => ({ code: error.code }));
+      cancellation.abort();
+      finishFocus?.();
+      await flush();
+      const message = posted()[0]?.[0];
+      if (message)
+        port.onMessage.emit({
+          id: message.id,
+          ok: true,
+          value: { address: 'public' },
+        });
+
+      try {
+        await expect(firstResult).resolves.toEqual({ address: 'public' });
+        await expect(secondResult).resolves.toEqual({
+          code: 'HARDWARE_SIGNER_BUSY',
+        });
+        expect(posted()).toHaveLength(1);
+        expect(f.api.windows.update).toHaveBeenCalledTimes(1);
+        expect(f.api.windows.create).toHaveBeenCalledTimes(1);
+        expect(port.disconnect).not.toHaveBeenCalled();
+      } finally {
+        await f.broker.disconnect();
+      }
+    }
+  );
+
+  it('cancels a joining caller without closing the initial Ledger connection', async () => {
+    const f = fixture();
+    const first = f.broker.host.connect();
+    const firstResult = first.then(
+      () => 'ready',
+      (error) => error.code
+    );
+    const port = f.port();
+    await flush();
+    const cancellation = new AbortController();
+    const second = f.broker.host.connect(undefined, {
+      signal: cancellation.signal,
+    });
+    const cancelled = expect(second).rejects.toMatchObject({
+      code: 'HARDWARE_REQUEST_CANCELLED',
+    });
+    cancellation.abort();
+    await cancelled;
+    port.onMessage.emit({ type: 'ready' });
+
+    try {
+      await expect(firstResult).resolves.toBe('ready');
+      expect(f.api.windows.create).toHaveBeenCalledTimes(1);
+      expect(f.api.windows.update).not.toHaveBeenCalled();
+      expect(port.disconnect).not.toHaveBeenCalled();
+    } finally {
+      await f.broker.disconnect();
+    }
+  });
+
   it('rejects the current connection if its window creation fails', async () => {
     const f = fixture();
     f.api.windows.create.mockRejectedValueOnce(new Error('Cannot open window'));

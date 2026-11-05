@@ -13,6 +13,8 @@ import type {
 
 const CANCELLED = () =>
   ledgerError('HARDWARE_REQUEST_CANCELLED', 'Ledger window was closed');
+const BUSY = () =>
+  ledgerError('HARDWARE_SIGNER_BUSY', 'A Ledger operation is already pending');
 
 /** Owned by the wallet authority. A dapp cannot create or acquire this port. */
 export class LedgerHostBroker {
@@ -22,6 +24,7 @@ export class LedgerHostBroker {
   private generation = 0;
   private sequence = 0;
   private connecting?: Promise<void>;
+  private operationOwner?: { kind: 'connect' | 'request' };
   private deviceReady = false;
   private ready?: () => void;
   private failReady?: (error: Error) => void;
@@ -53,12 +56,17 @@ export class LedgerHostBroker {
           return Promise.reject(CANCELLED());
         return this.abortable(
           (assertCurrent) => this.request(method, params, assertCurrent),
-          owner
+          owner,
+          'request'
         );
       };
     this.host = {
-      connect: (_request, options) =>
-        this.abortable(() => this.connect(), options),
+      connect: (_request, options) => {
+        const connecting = this.connecting;
+        if (connecting && this.operationOwner?.kind === 'connect')
+          return this.abortable(() => connecting, options, 'join');
+        return this.abortable(() => this.connect(), options, 'connect');
+      },
       disconnect: () => this.disconnect(),
       getStatus: () => ({ connected: Boolean(this.port && this.deviceReady) }),
       evm: {
@@ -85,9 +93,17 @@ export class LedgerHostBroker {
 
   private async abortable<T>(
     operation: (assertCurrent: () => void) => Promise<T>,
-    options?: LedgerOperationOptions
+    options: LedgerOperationOptions | undefined,
+    kind: 'connect' | 'request' | 'join'
   ): Promise<T> {
     if (options?.signal?.aborted) throw CANCELLED();
+    // Only the operation that opened or focused the device may close it.
+    // A caller joining initial readiness can only cancel its own wait.
+    const owner = kind === 'join' ? undefined : { kind };
+    if (owner) {
+      if (this.operationOwner) throw BUSY();
+      this.operationOwner = owner;
+    }
     const generation = this.generation;
     const assertCurrent = () => {
       const result: unknown = options?.assertCurrent?.();
@@ -105,14 +121,30 @@ export class LedgerHostBroker {
         /* Observer only. */
       }
     };
+    let cancelJoin: (() => void) | undefined;
     const abort = () => {
-      if (generation === this.generation) void this.disconnect();
+      if (
+        owner &&
+        this.operationOwner === owner &&
+        generation === this.generation
+      )
+        void this.disconnect();
+      cancelJoin?.();
     };
-    options?.signal?.addEventListener('abort', abort, { once: true });
-    progress('pending');
     try {
+      options?.signal?.addEventListener('abort', abort, { once: true });
+      progress('pending');
       assertCurrent();
-      const result = await operation(assertCurrent);
+      const pending = operation(assertCurrent);
+      const result =
+        kind === 'join' && options?.signal
+          ? await Promise.race([
+              pending,
+              new Promise<never>((_, reject) => {
+                cancelJoin = () => reject(CANCELLED());
+              }),
+            ])
+          : await pending;
       assertCurrent();
       progress('completed');
       assertCurrent();
@@ -121,6 +153,8 @@ export class LedgerHostBroker {
       progress('error');
       throw error;
     } finally {
+      if (owner && this.operationOwner === owner)
+        this.operationOwner = undefined;
       options?.signal?.removeEventListener('abort', abort);
     }
   }
@@ -300,6 +334,7 @@ export class LedgerHostBroker {
 
   async disconnect(): Promise<void> {
     this.generation++;
+    this.operationOwner = undefined;
     const port = this.port;
     const windowId = this.windowId;
     this.port = undefined;
