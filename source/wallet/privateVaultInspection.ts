@@ -29,6 +29,7 @@ import {
   PRIVATE_VAULT_SHARD_DOMAIN,
   PROFILE,
   UUID,
+  parsePrivateVaultBundle,
   snapshotPrivateVaultBundle,
 } from './privateVaultEnvelope.ts';
 import type { PrivateVaultCapacity } from '../utils/privacy/privateVaultTypes.ts';
@@ -76,6 +77,17 @@ export interface IPrivateVaultSession {
   >;
 }
 
+export const assertPrivateVaultSession = (
+  session: IPrivateVaultSession,
+  requireSynchronous: boolean
+) => {
+  const result: unknown = session.assertCurrent();
+  if (!requireSynchronous || result === undefined) return;
+  if (result && (typeof result === 'object' || typeof result === 'function'))
+    void Promise.resolve(result).catch(() => undefined);
+  throw new Error('privacy_vault_session_changed');
+};
+
 export interface IPrivateVaultDepositJournal {
   attemptHash: string;
   createdAt: number;
@@ -118,6 +130,7 @@ interface IReadContext {
   restore: IPrivateNoteRestoreMetadata;
   session: IPrivateVaultSession;
   storedBytes: number;
+  strictSession?: boolean;
 }
 
 export const envelopeHash = (value: IEncryptedPrivateRecord): string =>
@@ -421,7 +434,7 @@ const checked = async <T>(
 ): Promise<T> => {
   const result = await value;
   try {
-    context.session.assertCurrent();
+    assertPrivateVaultSession(context.session, context.strictSession === true);
   } catch (error) {
     if (result instanceof Uint8Array) result.fill(0);
     throw error;
@@ -487,7 +500,8 @@ const decrypt = async (
 export async function readPrivateVaultBundle(
   value: unknown,
   session: IPrivateVaultSession,
-  identify: typeof identifyClassicNote = identifyClassicNote
+  identify: typeof identifyClassicNote = identifyClassicNote,
+  encoding: 'object' | 'serialized' = 'object'
 ): Promise<
   Readonly<{
     capacity: PrivateVaultCapacity;
@@ -504,6 +518,8 @@ export async function readPrivateVaultBundle(
         ? null
         : value === undefined
         ? undefined
+        : encoding === 'serialized'
+        ? parsePrivateVaultBundle(value)
         : snapshotPrivateVaultBundle(value);
   } catch (error) {
     if (
@@ -513,9 +529,10 @@ export async function readPrivateVaultBundle(
       throw error;
     throw new Error('privacy_vault_corrupt');
   }
-  session.assertCurrent();
+  const strictSession = encoding === 'serialized';
+  assertPrivateVaultSession(session, strictSession);
   const profileId = await session.keyring.getPrivateRecordProfileId();
-  session.assertCurrent();
+  assertPrivateVaultSession(session, strictSession);
   if (typeof profileId !== 'string' || !PROFILE.test(profileId))
     throw new Error('privacy_vault_unavailable');
   if (
@@ -530,6 +547,7 @@ export async function readPrivateVaultBundle(
     capacity: DEFAULT_CAPACITY,
     storedBytes: 0,
     restore: { version: 1 },
+    strictSession,
   };
   context.capacity = DEFAULT_CAPACITY;
   context.storedBytes = 0;

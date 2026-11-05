@@ -2,21 +2,17 @@ export {
   PRIVATE_VAULT_STORAGE_PREFIX,
   PRIVATE_VAULT_DOMAIN,
   PRIVATE_VAULT_FORMAT,
-} from './privateVaultInspection';
+} from './privateVaultInspection.ts';
 export type {
   IPrivateVaultSession,
   IPrivateVaultDepositJournal,
-} from './privateVaultInspection';
+} from './privateVaultInspection.ts';
 
-import {
-  AbiCoder,
-  Interface,
-  keccak256,
-  parseEther,
-  toUtf8Bytes,
-} from 'ethers';
+import { AbiCoder, Interface } from 'ethers/abi';
+import { keccak256 } from 'ethers/crypto';
+import { parseEther, toUtf8Bytes } from 'ethers/utils';
 
-import { getPrivacyPool } from '../utils/privacy/registry';
+import { getPrivacyPool } from '../utils/privacy/registry.ts';
 
 import {
   planPrivateNoteRestore,
@@ -27,12 +23,12 @@ import {
   readPrivateNoteRestoreMetadata,
   restoredNoteBlocksWithdrawal,
   snapshotPrivateNoteRestoreEntries,
-} from './privateNoteRestore';
+} from './privateNoteRestore.ts';
 import type {
   IPrivateNoteRestoreEntry,
   IPrivateNoteRestoreMetadata,
   IPrivateNoteRestoreReceipt,
-} from './privateNoteRestore';
+} from './privateNoteRestore.ts';
 import {
   PRIVATE_VAULT_STORAGE_PREFIX,
   PRIVATE_VAULT_DOMAIN,
@@ -47,6 +43,7 @@ import {
   PRIVATE_VAULT_SHARD_DOMAIN,
   PROFILE,
   UUID,
+  assertPrivateVaultSession,
   envelopeHash,
   recoveryReceipt,
   withdrawalJournal,
@@ -55,7 +52,7 @@ import {
   JOB_ID,
   publicError,
   withdrawalRecovery,
-} from './privateVaultInspection';
+} from './privateVaultInspection.ts';
 import type {
   IPrivateVaultSession,
   IPrivateVaultDepositJournal,
@@ -63,7 +60,7 @@ import type {
   IManifest,
   IShardReference,
   IVaultBundle,
-} from './privateVaultInspection';
+} from './privateVaultInspection.ts';
 import type {
   generateClassicNote,
   identifyClassicNote,
@@ -246,6 +243,11 @@ interface IContext {
   storedBytes: number;
 }
 
+interface IWriteBasis {
+  rawBundle: string | undefined;
+  recordId?: string;
+}
+
 /** Exact fixed-format size planning; no encryption, storage, or random IDs. */
 function planVaultLayout(
   notes: IStoredNote[],
@@ -328,11 +330,19 @@ function planVaultLayout(
 
 /** Raw records remain untrusted until the engine validates their schema. */
 export interface IPrivateVaultStorage {
+  // This capability selects serialized bundle reads and exact guarded writes.
+  // A refused or uncertain write must never fall back to setItem or retry.
+  compareAndSet?: (
+    key: string,
+    expected: string | undefined,
+    next: string,
+    assertCurrent: () => void
+  ) => Promise<boolean>;
   // Only null/undefined mean absence. Preserve malformed present values for
   // validation, and reject on storage errors rather than returning absence.
   getItem: (key: string) => Promise<unknown>;
   // Resolve only after the host acknowledges the complete record write.
-  setItem: (key: string, value: unknown) => Promise<void>;
+  setItem?: (key: string, value: unknown) => Promise<void>;
 }
 
 /** Hosts sharing a vault must also share its serialization boundary. */
@@ -485,7 +495,7 @@ function clearUnbroadcastJournal(note: IStoredNote): IStoredNote {
   const cleared = { ...note };
   if (retired?.length) {
     cleared.withdrawal = withdrawalJournal({
-      ...retired[retired.length - 1],
+      ...retired[retired.length - 1]!,
       ...(retired.length > 1 ? { retired: retired.slice(0, -1) } : {}),
     });
   } else delete cleared.withdrawal;
@@ -742,7 +752,9 @@ export function createPrivateVaultController(
   if (
     !dependencies ||
     typeof dependencies.storage?.getItem !== 'function' ||
-    typeof dependencies.storage?.setItem !== 'function' ||
+    (dependencies.storage.compareAndSet === undefined
+      ? typeof dependencies.storage.setItem !== 'function'
+      : typeof dependencies.storage.compareAndSet !== 'function') ||
     typeof dependencies.mutex?.runExclusive !== 'function' ||
     typeof dependencies.identify !== 'function' ||
     typeof dependencies.generate !== 'function' ||
@@ -754,6 +766,9 @@ export function createPrivateVaultController(
   }
   const { storage, mutex, identify, generate, now, deadlineNow, randomId } =
     dependencies;
+  const compareAndSet = storage.compareAndSet?.bind(storage);
+  const assertSession = (session: IPrivateVaultSession) =>
+    assertPrivateVaultSession(session, compareAndSet !== undefined);
   let epochs = restoreEpochs.get(mutex);
   if (!epochs) {
     epochs = new Map();
@@ -774,7 +789,7 @@ export function createPrivateVaultController(
   ): Promise<T> => {
     const result = await value;
     try {
-      context.session.assertCurrent();
+      assertSession(context.session);
     } catch (error) {
       if (result instanceof Uint8Array) result.fill(0);
       throw error;
@@ -786,9 +801,9 @@ export function createPrivateVaultController(
     provided?: IPrivateVaultSession
   ): Promise<IContext> => {
     const session = provided || host.captureSession();
-    session.assertCurrent();
+    assertSession(session);
     const profileId = await session.keyring.getPrivateRecordProfileId();
-    session.assertCurrent();
+    assertSession(session);
     if (
       typeof profileId !== 'string' ||
       profileId.length !== 66 ||
@@ -805,7 +820,7 @@ export function createPrivateVaultController(
   };
 
   const assertProfile = async (context: IContext) => {
-    context.session.assertCurrent();
+    assertSession(context.session);
     const current = await checked(
       context,
       context.session.keyring.getPrivateRecordProfileId()
@@ -823,7 +838,8 @@ export function createPrivateVaultController(
 
   const load = async (
     context: IContext
-  ): Promise<{ manifest: IManifest; recordId?: string }> => {
+  ): Promise<{ basis: IWriteBasis; manifest: IManifest }> => {
+    if (compareAndSet) assertSession(context.session);
     const stored = await checked(
       context,
       storage.getItem(PRIVATE_VAULT_STORAGE_PREFIX + context.profileId)
@@ -831,13 +847,21 @@ export function createPrivateVaultController(
     const result = await readPrivateVaultBundle(
       stored,
       context.session,
-      identify
+      identify,
+      compareAndSet ? 'serialized' : 'object'
     );
-    context.session.assertCurrent();
+    assertSession(context.session);
     context.capacity = result.capacity;
     context.restore = result.restore;
     context.storedBytes = result.storedBytes;
-    return { manifest: result.manifest, recordId: result.recordId };
+    return {
+      manifest: result.manifest,
+      basis: {
+        recordId: result.recordId,
+        rawBundle:
+          compareAndSet && typeof stored === 'string' ? stored : undefined,
+      },
+    };
   };
 
   const readStatus = async (
@@ -946,8 +970,9 @@ export function createPrivateVaultController(
   const persist = async (
     context: IContext,
     notes: IStoredNote[],
-    recordId?: string,
-    beforeWrite?: () => Promise<void>
+    basis: IWriteBasis,
+    beforeWrite?: () => Promise<void>,
+    assertWriteCurrent?: () => void
   ) => {
     if (notes.length > context.capacity) throw new Error('privacy_note_limit');
     for (const note of notes) privateNoteExportHistory(note);
@@ -960,7 +985,7 @@ export function createPrivateVaultController(
     );
     const shards: IEncryptedPrivateRecord[] = [];
     const references: IShardReference[] = [];
-    const rootId = recordId || nextId();
+    const rootId = basis.recordId || nextId();
     const ids = new Set([rootId]);
     for (const group of groups) {
       const shardId = nextId();
@@ -1000,18 +1025,30 @@ export function createPrivateVaultController(
       root,
       shards,
     };
-    const serialized = new TextEncoder().encode(JSON.stringify(stored));
+    const raw = JSON.stringify(stored);
+    const serialized = new TextEncoder().encode(raw);
     context.storedBytes = serialized.length;
     serialized.fill(0);
     if (context.storedBytes > capacityBudget(context.capacity))
       throw new Error('privacy_note_limit');
     await assertProfile(context);
     if (beforeWrite) await beforeWrite();
-    context.session.assertCurrent();
-    await checked(
-      context,
-      storage.setItem(PRIVATE_VAULT_STORAGE_PREFIX + context.profileId, stored)
-    );
+    assertSession(context.session);
+    const key = PRIVATE_VAULT_STORAGE_PREFIX + context.profileId;
+    if (compareAndSet) {
+      const guard = () => {
+        assertSession(context.session);
+        assertWriteCurrent?.();
+      };
+      guard();
+      const committed = await checked(
+        context,
+        compareAndSet(key, basis.rawBundle, raw, guard)
+      );
+      if (committed !== true) throw new Error('privacy_vault_session_changed');
+    } else {
+      await checked(context, storage.setItem!(key, stored));
+    }
     await assertProfile(context);
   };
 
@@ -1021,7 +1058,7 @@ export function createPrivateVaultController(
   ) => {
     context.session.assertCurrent();
     getPrivacyPool(poolId);
-    const { manifest, recordId } = await load(context);
+    const { manifest, basis } = await load(context);
     if (manifest.notes.length >= context.capacity)
       throw new Error('privacy_note_limit');
     const raw = generate(poolId);
@@ -1050,7 +1087,7 @@ export function createPrivateVaultController(
       manifest.notes.some((entry) => entry.id === note.id)
     )
       throw new Error('privacy_vault_unavailable');
-    await persist(context, [...manifest.notes, note], recordId);
+    await persist(context, [...manifest.notes, note], basis);
     return { note, identity };
   };
   const internal = async <T>(
@@ -1058,13 +1095,13 @@ export function createPrivateVaultController(
     action: (context: IContext) => Promise<T>
   ): Promise<T> => {
     try {
-      session.assertCurrent();
+      assertSession(session);
       const context = await capture(session);
-      session.assertCurrent();
+      assertSession(session);
       return await mutex.runExclusive(async () => {
-        session.assertCurrent();
+        assertSession(session);
         const result = await action(context);
-        session.assertCurrent();
+        assertSession(session);
         return result;
       });
     } catch (error) {
@@ -1162,7 +1199,7 @@ export function createPrivateVaultController(
   const pruneRestorePlans = () => {
     for (const [token, plan] of restorePlans) {
       try {
-        plan.context.session.assertCurrent();
+        assertSession(plan.context.session);
       } catch {
         restorePlans.delete(token);
         continue;
@@ -1234,8 +1271,8 @@ export function createPrivateVaultController(
         const admitted = snapshotPrivateNoteRestoreEntries(entries);
         if (privateNoteRestoreDigest(admitted) !== plan.receipt.sourceHash)
           throw new Error('privacy_restore_stale');
-        plan.context.session.assertCurrent();
-        session.assertCurrent();
+        assertSession(plan.context.session);
+        assertSession(session);
         if (
           session.generation !== plan.context.session.generation ||
           session.keyring !== plan.context.session.keyring
@@ -1244,10 +1281,11 @@ export function createPrivateVaultController(
         const context = await capture(session);
         if (context.profileId !== plan.context.profileId)
           throw new Error('privacy_restore_stale');
+        if (compareAndSet) assertSession(session);
         await host.authenticate(password, session, () =>
           mutex.runExclusive(async () => {
-            session.assertCurrent();
-            const { manifest, recordId } = await load(context);
+            assertSession(session);
+            const { manifest, basis } = await load(context);
             if (
               deadlineNow() >= plan.expiresAt ||
               restoreBaseline(context, manifest.notes) !== plan.baseline
@@ -1272,10 +1310,17 @@ export function createPrivateVaultController(
             // Even a lost/failed acknowledgment cannot revive earlier signing.
             epochs.set(context.profileId, {});
             context.restore = { version: 1, receipt: plan.receipt };
-            await persist(context, merged.notes, recordId, async () => {
+            const assertRestoreLive = () => {
               if (deadlineNow() >= plan.expiresAt)
                 throw new Error('privacy_restore_stale');
-            });
+            };
+            await persist(
+              context,
+              merged.notes,
+              basis,
+              async () => assertRestoreLive(),
+              assertRestoreLive
+            );
             return '';
           })
         );
@@ -1289,6 +1334,7 @@ export function createPrivateVaultController(
       let serialized = '';
       try {
         const context = await capture(session);
+        if (compareAndSet) assertSession(session);
         serialized = await host.authenticate(password, session, () =>
           mutex.runExclusive(async () => {
             const { manifest } = await load(context);
@@ -1383,7 +1429,7 @@ export function createPrivateVaultController(
       session
     ) =>
       internal(session, async (context) => {
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, noteId),
           previous = note.withdrawal;
         if (
@@ -1423,7 +1469,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? { ...entry, withdrawal } : entry
           ),
-          recordId
+          basis
         );
       }),
     reserveWithdrawalAttempt: (attempt, session, onIdentity) =>
@@ -1433,7 +1479,7 @@ export function createPrivateVaultController(
           attempt.expiresAt <= now()
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const identity = await assertWithdrawable(context, note);
         const created = createWithdrawalJournal(attempt, note, identity);
@@ -1465,7 +1511,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? { ...entry, withdrawal } : entry
           ),
-          recordId,
+          basis,
           async () => {
             await assertWithdrawable(context, note);
           }
@@ -1482,7 +1528,7 @@ export function createPrivateVaultController(
           )
         )
           throw new Error('privacy_withdrawal_attempt_invalid');
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const previous = matchingWithdrawal(note, attempt);
         const { transactionHash, jobId } = acknowledgement;
@@ -1515,7 +1561,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? { ...entry, withdrawal } : entry
           ),
-          recordId
+          basis
         );
       }),
     clearKnownUnbroadcastWithdrawal: (
@@ -1529,7 +1575,7 @@ export function createPrivateVaultController(
       internal(session, async (context) => {
         if (context.profileId !== profileId)
           throw new Error('privacy_vault_session_changed');
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, noteId);
         const previous = note.withdrawal;
         if (!previous) return;
@@ -1545,13 +1591,13 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? cleared : entry
           ),
-          recordId,
+          basis,
           async () => assertCurrent()
         );
       }),
     clearUnbroadcastWithdrawalAttempt: (attempt, session) =>
       internal(session, async (context) => {
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const previous = matchingWithdrawal(note, attempt);
         if (previous.phase !== 'unknown')
@@ -1562,7 +1608,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? cleared : entry
           ),
-          recordId
+          basis
         );
       }),
     prepareDepositNote: (poolId, noteId, session) =>
@@ -1628,7 +1674,7 @@ export function createPrivateVaultController(
           attempt.expiresAt <= now()
         )
           throw new Error('privacy_deposit_attempt_invalid');
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const identity = await assertEligible(context, note);
         const deposit = depositJournal(attempt, note, identity);
@@ -1640,7 +1686,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? { ...entry, deposit } : entry
           ),
-          recordId,
+          basis,
           async () => {
             await assertEligible(context, note);
           }
@@ -1654,7 +1700,7 @@ export function createPrivateVaultController(
         )
           throw new Error('privacy_deposit_attempt_invalid');
         const hash = transactionHash.toLowerCase();
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const previous = matchingAttempt(note, attempt);
         if (previous.phase === 'submitted') {
@@ -1672,12 +1718,12 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? { ...entry, deposit } : entry
           ),
-          recordId
+          basis
         );
       }),
     clearUnbroadcastDepositAttempt: (attempt, session) =>
       internal(session, async (context) => {
-        const { manifest, recordId } = await load(context);
+        const { manifest, basis } = await load(context);
         const note = findNote(manifest, attempt?.noteId);
         const previous = matchingAttempt(note, attempt);
         if (previous.phase !== 'unknown')
@@ -1689,7 +1735,7 @@ export function createPrivateVaultController(
           manifest.notes.map((entry) =>
             entry.id === note.id ? cleared : entry
           ),
-          recordId
+          basis
         );
       }),
     reviewRestoredNote: async (id, password) => {
@@ -1700,7 +1746,7 @@ export function createPrivateVaultController(
         await host.authenticate(password, context.session, () =>
           mutex.runExclusive(async () => {
             context.session.assertCurrent();
-            const { manifest, recordId } = await load(context);
+            const { manifest, basis } = await load(context);
             const note = findNote(manifest, id);
             if (
               !note.restoreGuard ||
@@ -1731,7 +1777,7 @@ export function createPrivateVaultController(
               manifest.notes.map((entry) =>
                 entry.id === id ? { ...entry, restoreGuard } : entry
               ),
-              recordId,
+              basis,
               requireVerified
             );
             return '';
@@ -1798,7 +1844,7 @@ export function createPrivateVaultController(
             throw new Error('privacy_withdrawal_recovery_unavailable');
           }
           await mutex.runExclusive(async () => {
-            const { manifest, recordId } = await load(context);
+            const { manifest, basis } = await load(context);
             const note = findNote(manifest, id);
             if (fingerprint(note) !== candidate.metadata)
               throw new Error('privacy_withdrawal_recovery_unavailable');
@@ -1819,7 +1865,7 @@ export function createPrivateVaultController(
               manifest.notes.map((entry) =>
                 entry.id === id ? { ...entry, withdrawal } : entry
               ),
-              recordId,
+              basis,
               async () => {
                 if (deadlineNow() >= deadline)
                   throw new Error('privacy_withdrawal_recovery_unavailable');
@@ -1907,7 +1953,7 @@ export function createPrivateVaultController(
           }
           const cleared = await mutex.runExclusive(async () => {
             context.session.assertCurrent();
-            const { manifest, recordId } = await load(context);
+            const { manifest, basis } = await load(context);
             const note = manifest.notes.find((entry) => entry.id === id);
             if (
               !note ||
@@ -1934,7 +1980,7 @@ export function createPrivateVaultController(
               await persist(
                 context,
                 manifest.notes.filter((entry) => entry.id !== id),
-                recordId,
+                basis,
                 async () => {
                   try {
                     if (deadlineNow() >= deadline) throw new Error('deadline');
@@ -2018,12 +2064,12 @@ export function createPrivateVaultController(
         const context = await capture();
         return await mutex.runExclusive(async () => {
           context.session.assertCurrent();
-          const { manifest, recordId } = await load(context);
+          const { manifest, basis } = await load(context);
           if (manifest.notes.length > capacity)
             throw new Error('privacy_note_limit');
           if (context.capacity !== capacity) {
             context.capacity = capacity;
-            await persist(context, manifest.notes, recordId);
+            await persist(context, manifest.notes, basis);
           }
           await assertProfile(context);
           return {
@@ -2044,7 +2090,7 @@ export function createPrivateVaultController(
         const context = await capture();
         return await mutex.runExclusive(async () => {
           context.session.assertCurrent();
-          const { manifest, recordId } = await load(context);
+          const { manifest, basis } = await load(context);
           const status = await readStatus(context, identity);
           if (status.phase === 'waiting')
             throw new Error('privacy_verification_pending');
@@ -2075,20 +2121,15 @@ export function createPrivateVaultController(
             manifest.notes.some((item) => item.id === note.id)
           )
             throw new Error('privacy_vault_unavailable');
-          await persist(
-            context,
-            [...manifest.notes, note],
-            recordId,
-            async () => {
-              // Encryption can yield while the user clears or replaces the public
-              // snapshot. Admit only against the currently verified local view.
-              const admission = await readStatus(context, identity);
-              if (admission.phase === 'waiting')
-                throw new Error('privacy_verification_pending');
-              if (admission.phase === 'not-found')
-                throw new Error('privacy_note_not_found');
-            }
-          );
+          await persist(context, [...manifest.notes, note], basis, async () => {
+            // Encryption can yield while the user clears or replaces the public
+            // snapshot. Admit only against the currently verified local view.
+            const admission = await readStatus(context, identity);
+            if (admission.phase === 'waiting')
+              throw new Error('privacy_verification_pending');
+            if (admission.phase === 'not-found')
+              throw new Error('privacy_note_not_found');
+          });
           // A successful write owns the note even if its public view changed
           // during storage. Report that current view without discarding it.
           return view(note, identity, await readStatus(context, identity));

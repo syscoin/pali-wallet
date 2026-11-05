@@ -1,8 +1,8 @@
-# Read-only native note domain
+# Native encrypted note domain
 
-This prerequisite does not expose note import, creation, backup files or a private
-note UI. There is deliberately no production note writer. A future writer must be
-admitted by the existing authenticated runtime and reviewed separately.
+This prerequisite adds a private exact replace operation to the existing encrypted
+note domain. Connecting backup or restore still requires an authenticated native
+runtime adapter and a separate file and UI flow.
 
 The initial canonical SQLCipher schema creates `keyring_records`,
 `wallet_metadata` and `private_note_records` in one transaction on a new, empty
@@ -29,6 +29,16 @@ normalized. The original pair retirement, one-use proof, before-COMMIT guard,
 close/reopen reconciliation and lost-acknowledgement quarantine remain required.
 A matching phrase can decrypt retained note envelopes; it cannot regenerate
 random bearer notes if those envelopes have been lost.
+
+The shared controller's optional serialized storage port supplies the exact raw
+bundle it authenticated as the replace expectation. The native writer checks the
+authenticated SDK profile and stable wallet binding against current metadata,
+validates the bounded next bundle, and checks the caller's synchronous guard
+before the transaction and at COMMIT dispatch. It requires exact readback before
+acknowledging the write. An uncertain COMMIT or unverifiable readback quarantines
+the connection. The restore token is consumed on its first attempt, so cold
+reopen reads the encrypted receipt without replaying the write. The extension's
+existing object storage uses its original save path.
 
 `source/wallet/privateVaultInspection.ts` is the shared authenticated reader.
 `privateVaultEnvelope.ts` bounds and snapshots encrypted layout without keys;

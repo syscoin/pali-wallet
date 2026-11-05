@@ -190,10 +190,12 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     });
     this.notes = Object.freeze({
       read: () => this.queued(() => this.readNotes()),
+      compareAndSet: (profileId: string, walletBindingId: string, expected: string | undefined, next: string, assertCurrent: () => void) =>
+        this.compareAndSetNotes(profileId, walletBindingId, expected, next, assertCurrent),
     });
     this.signedRecords = Object.freeze({
       read: (profileId: string) => this.queued(async () => {
-        const identity = await this.signedIdentity(profileId);
+        const identity = await this.identityForProfile(profileId);
         const rows = await this.readSignedRows();
         this.inspectSignedRows(rows, identity);
         return rows[0]?.value;
@@ -592,7 +594,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         if (pair.identity !== expectedRaw) await this.db.runAsync(
           'INSERT INTO wallet_metadata (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', ['identity', expectedRaw]);
         check();
-      }, check).catch((error) => this.signedFailure(error));
+      }, check).catch((error) => this.requireReopenIfPoisoned(error));
       check();
       try {
         const after = await this.pair();
@@ -603,18 +605,18 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           throw failure();
       } catch (error) {
         this.poisoned = true;
-        this.signedFailure(error);
+        this.requireReopenIfPoisoned(error);
       }
       check();
     });
   }
 
-  private signedFailure(error: unknown): never {
+  private requireReopenIfPoisoned(error: unknown): never {
     if (this.poisoned) throw new WalletStorageError('STORAGE_REOPEN_REQUIRED');
     throw error;
   }
 
-  private async signedIdentity(profileId: string): Promise<WalletIdentityRead> {
+  private async identityForProfile(profileId: string): Promise<WalletIdentityRead> {
     const pair = await this.pair();
     if (validatePair(pair) !== 'existing') throw new WalletStorageError('STORAGE_CHANGED');
     const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
@@ -652,7 +654,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       let binding: string | undefined;
       const committed = await this.transaction(async () => {
         check();
-        const identity = await this.signedIdentity(profileId); check();
+        const identity = await this.identityForProfile(profileId); check();
         binding = identity.walletBindingId;
         const before = await this.readSignedRows(); check();
         this.inspectSignedRows(before, identity);
@@ -660,34 +662,81 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         await this.db.runAsync('INSERT INTO evm_signed_records (profile_id, wallet_binding, value) VALUES (?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET wallet_binding = excluded.wallet_binding, value = excluded.value', [profileId, binding, next]);
         check();
         return true;
-      }, check).catch((error) => this.signedFailure(error));
+      }, check).catch((error) => this.requireReopenIfPoisoned(error));
       if (!committed) return false;
       check();
       try {
-        const identity = await this.signedIdentity(profileId);
+        const identity = await this.identityForProfile(profileId);
         const after = await this.readSignedRows();
         this.inspectSignedRows(after, identity);
         if (identity.walletBindingId !== binding || after[0]?.value !== next) throw failure();
-      } catch (error) { this.poisoned = true; this.signedFailure(error); }
+      } catch (error) { this.poisoned = true; this.requireReopenIfPoisoned(error); }
       check();
       return true;
     });
   }
 
-  private async readNotes(): Promise<readonly NoteDomainRow[]> {
+  private async readNoteRows(): Promise<readonly NoteDomainRow[]> {
     const rows = await this.db.getAllAsync<PairRow>(NOTE_ROWS, [NOTE_DOMAIN_MAX_BYTES]);
     if (rows.length > 1) throw failure();
-    const notes = rows.map((row) => {
+    return Object.freeze(rows.map((row) => {
       if (typeof row.key !== 'string' || typeof row.wallet_binding !== 'string') throw failure();
       return Object.freeze({ profileId: row.key, walletBindingId: row.wallet_binding, value: admittedRow(row, NOTE_DOMAIN_MAX_BYTES) });
-    });
+    }));
+  }
+
+  private async readNotes(): Promise<readonly NoteDomainRow[]> {
+    const notes = await this.readNoteRows();
     if (notes.length) {
       const pair = await this.pair();
       if (validatePair(pair) !== 'existing') throw failure();
       const identity = readWalletIdentity(await this.fingerprint(pair), pair.identity);
       inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
     }
-    return Object.freeze(notes);
+    return notes;
+  }
+
+  private async compareAndSetNotes(
+    profileId: string,
+    walletBindingId: string,
+    expected: string | undefined,
+    next: string,
+    assertCurrent: () => void
+  ): Promise<boolean> {
+    if (typeof assertCurrent !== 'function' || typeof profileId !== 'string' || typeof walletBindingId !== 'string')
+      throw new WalletStorageError('STORAGE_CHANGED');
+    const check = storageGuard(assertCurrent);
+    check();
+    if (expected !== undefined && (typeof expected !== 'string' || expected.length > NOTE_DOMAIN_MAX_BYTES)) throw failure();
+    inspectNoteDomain([{ profileId, walletBindingId, value: next }], walletBindingId, profileId);
+    return this.queued(async () => {
+      check();
+      const committed = await this.transaction(async () => {
+        check();
+        const identity = await this.identityForProfile(profileId);
+        check();
+        if (identity.walletBindingId !== walletBindingId) throw new WalletStorageError('STORAGE_CHANGED');
+        const rows = await this.readNoteRows();
+        check();
+        inspectNoteDomain(rows, walletBindingId, profileId);
+        if (rows[0]?.value !== expected) return false;
+        await this.db.runAsync(
+          'INSERT INTO private_note_records (profile_id, wallet_binding, value) VALUES (?, ?, ?) ON CONFLICT(profile_id) DO UPDATE SET value = excluded.value',
+          [profileId, walletBindingId, next]
+        );
+        return true;
+      }, check).catch((error) => this.requireReopenIfPoisoned(error));
+      if (committed) {
+        try {
+          const identity = await this.identityForProfile(profileId);
+          const row = (await this.readNoteRows())[0];
+          if (identity.walletBindingId !== walletBindingId || row?.profileId !== profileId ||
+              row.walletBindingId !== walletBindingId || row.value !== next) throw failure();
+        } catch (error) { this.poisoned = true; this.requireReopenIfPoisoned(error); }
+      }
+      check();
+      return committed;
+    });
   }
 
   /** One bounded SELECT gives a coherent SQLite snapshot without a write transaction. */

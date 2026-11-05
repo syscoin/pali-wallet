@@ -285,6 +285,179 @@ test.each([
   }
 );
 
+test('default extension storage still refuses even a valid bundle stored as a string', async () => {
+  const f = defaultStorageFixture();
+  const key =
+    core.PRIVATE_VAULT_STORAGE_PREFIX +
+    (await f.keyring.getPrivateRecordProfileId());
+  await f.vault.importNote(NOTE);
+  const raw = JSON.stringify(f.records[key]);
+  f.records[key] = raw;
+  f.set.mockClear();
+
+  await expect(f.vault.getNotes()).rejects.toThrow('privacy_vault_corrupt');
+  expect(f.set).not.toHaveBeenCalled();
+  expect(f.records[key]).toBe(raw);
+});
+
+test('guarded serialized storage preserves exact expectations without falling back to an object write', async () => {
+  const f = fixture();
+  await createExtensionVault(f.host, f.dependencies).importNote(NOTE);
+  const [key] = Object.keys(f.records);
+  const stored = f.records[key] as Record<string, unknown>;
+  const raw = JSON.stringify({ version: stored.version, ...stored });
+  expect(raw).not.toBe(JSON.stringify(stored));
+  f.storage.setItem.mockClear();
+  const compareAndSet = jest.fn(async () => false);
+  const vault = core.createPrivateVaultController(f.host, {
+    ...f.dependencies,
+    storage: { ...f.storage, getItem: async () => raw, compareAndSet },
+  });
+
+  await expect(vault.setCapacity(256)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(compareAndSet).toHaveBeenCalledTimes(1);
+  expect(compareAndSet).toHaveBeenCalledWith(
+    key,
+    raw,
+    expect.any(String),
+    expect.any(Function)
+  );
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(f.records[key]).toEqual(stored);
+});
+
+test('guarded storage rejects an asynchronous session guard before storage I/O', async () => {
+  const f = fixture();
+  const session = f.host.captureSession();
+  const compareAndSet = jest.fn(async () => true);
+  const vault = core.createPrivateVaultController(
+    {
+      ...f.host,
+      captureSession: () => ({
+        ...session,
+        assertCurrent: async () => {
+          throw new Error('Detached guard failure');
+        },
+      }),
+    },
+    { ...f.dependencies, storage: { ...f.storage, compareAndSet } }
+  );
+
+  await expect(vault.setCapacity(256)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(f.storage.getItem).not.toHaveBeenCalled();
+  expect(f.storage.setItem).not.toHaveBeenCalled();
+  expect(compareAndSet).not.toHaveBeenCalled();
+});
+
+function rejectingGuard() {
+  const sinks: jest.SpyInstance[] = [];
+  const guard = jest.fn(() => {
+    const pending = Promise.reject(new Error('Detached guard failure'));
+    // Keep the negative control from terminating Jest before asserting that
+    // production consumed the rejection it received.
+    void pending.then(undefined, () => undefined);
+    sinks.push(jest.spyOn(pending, 'catch'));
+    return pending;
+  });
+  return { guard, sinks };
+}
+
+test.each(['prepare', 'receipt', 'commit plan', 'commit session'] as const)(
+  'guarded %s rejects and consumes an asynchronous session guard before effects',
+  async (operation) => {
+    const f = fixture();
+    const compareAndSet = jest.fn(async () => true);
+    const vault = core.createPrivateVaultController(f.host, {
+      ...f.dependencies,
+      storage: { ...f.storage, compareAndSet },
+    });
+    const { guard, sinks } = rejectingGuard();
+    const entries = [{ note: NOTE, createdAt: 10 }];
+    const admitted = f.host.captureSession();
+    const session = f.host.captureSession();
+    let run: Promise<unknown>;
+    if (operation === 'prepare' || operation === 'receipt') {
+      session.assertCurrent = guard;
+      run =
+        operation === 'prepare'
+          ? vault.prepareRestore(entries, session)
+          : vault.getRestoreReceipt(session);
+    } else {
+      const plan = await vault.prepareRestore(entries, admitted);
+      f.storage.getItem.mockClear();
+      (operation === 'commit plan' ? admitted : session).assertCurrent = guard;
+      run = vault.commitRestore(plan, entries, 'synthetic-password', session);
+    }
+
+    await expect(run).rejects.toThrow('privacy_vault_session_changed');
+    expect(sinks).toHaveLength(1);
+    expect(sinks[0]).toHaveBeenCalledTimes(1);
+    expect(f.storage.getItem).not.toHaveBeenCalled();
+    expect(f.host.authenticate).not.toHaveBeenCalled();
+    expect(f.storage.setItem).not.toHaveBeenCalled();
+    expect(compareAndSet).not.toHaveBeenCalled();
+  }
+);
+
+test('guarded pruning consumes a rejected guard and retires its restore plan', async () => {
+  const f = fixture();
+  const compareAndSet = jest.fn(async () => true);
+  const vault = core.createPrivateVaultController(f.host, {
+    ...f.dependencies,
+    storage: { ...f.storage, compareAndSet },
+  });
+  const entries = [{ note: NOTE, createdAt: 10 }];
+  const stale = f.host.captureSession();
+  const oldPlan = await vault.prepareRestore(entries, stale);
+  const { guard, sinks } = rejectingGuard();
+  stale.assertCurrent = guard;
+  const current = f.host.captureSession();
+  await expect(vault.prepareRestore(entries, current)).resolves.toBeDefined();
+  expect(sinks).toHaveLength(1);
+  expect(sinks[0]).toHaveBeenCalledTimes(1);
+  await expect(
+    vault.commitRestore(oldPlan, entries, 'synthetic-password', current)
+  ).rejects.toThrow('privacy_restore_stale');
+  expect(f.host.authenticate).not.toHaveBeenCalled();
+  expect(compareAndSet).not.toHaveBeenCalled();
+});
+
+test('guarded bundle inspection clears plaintext when its guard stops being synchronous', async () => {
+  const f = fixture();
+  await createExtensionVault(f.host, f.dependencies).importNote(NOTE);
+  const raw = JSON.stringify(Object.values(f.records)[0]);
+  const compareAndSet = jest.fn(async () => true);
+  const vault = core.createPrivateVaultController(f.host, {
+    ...f.dependencies,
+    storage: { getItem: async () => raw, compareAndSet },
+  });
+  const session = f.host.captureSession();
+  const { guard, sinks } = rejectingGuard();
+  let plaintext!: Uint8Array;
+  const decrypt = f.keyring.decryptPrivateRecord.bind(f.keyring);
+  const observe = jest
+    .spyOn(f.keyring, 'decryptPrivateRecord')
+    .mockImplementationOnce(async (input) => {
+      plaintext = await decrypt(input);
+      session.assertCurrent = guard;
+      return plaintext;
+    });
+
+  await expect(vault.getRestoreReceipt(session)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(plaintext.length).toBeGreaterThan(0);
+  expect(plaintext.every((byte) => byte === 0)).toBe(true);
+  expect(observe).toHaveBeenCalledTimes(1);
+  expect(sinks).toHaveLength(1);
+  expect(sinks[0]).toHaveBeenCalledTimes(1);
+  expect(compareAndSet).not.toHaveBeenCalled();
+});
+
 test('default extension storage read errors cannot become an empty writable vault', async () => {
   const f = defaultStorageFixture();
   const descriptor = Object.getOwnPropertyDescriptor(
