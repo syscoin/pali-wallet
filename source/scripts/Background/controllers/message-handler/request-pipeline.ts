@@ -43,6 +43,25 @@ export type RequestExecutor = (
   >
 ) => Promise<any>;
 
+// A failed observation must not prevent the user from approving another
+// network. Only existing network-control methods can recover from error;
+// connecting/switching and all ordinary requests still require idle.
+const NETWORK_RECOVERY_METHODS = new Set([
+  'wallet_addEthereumChain',
+  'wallet_switchEthereumChain',
+  'sys_switchChain',
+  'eth_changeUTXOEVM',
+  'sys_changeUTXOEVM',
+]);
+const isNetworkReadyForRequest = (context: IEnhancedRequestContext) => {
+  const { networkStatus } = store.getState().vaultGlobal;
+  return (
+    networkStatus === 'idle' ||
+    (networkStatus === 'error' &&
+      NETWORK_RECOVERY_METHODS.has(context.originalRequest.method))
+  );
+};
+
 // Global request coordination to prevent multiple popups
 class RequestCoordinator {
   private static instance: RequestCoordinator;
@@ -191,18 +210,18 @@ class RequestCoordinator {
   }
 
   private processQueue(): void {
-    if (this.requestQueue.length === 0) return;
+    const nextRequest = this.requestQueue[0];
+    if (!nextRequest) return;
 
-    // Check if network is idle before processing queued requests
-    const { networkStatus } = store.getState().vaultGlobal;
-    if (networkStatus !== 'idle') {
+    // Preserve queue order and the same network admission as fresh requests.
+    if (!isNetworkReadyForRequest(nextRequest.context)) {
       // Network is not ready, check again later
       setTimeout(() => this.processQueue(), 100);
       return;
     }
 
     // Process the next request in the queue
-    const nextRequest = this.requestQueue.shift();
+    this.requestQueue.shift();
     if (nextRequest) {
       if (!this.requestExecutor) {
         nextRequest.reject(
@@ -422,7 +441,7 @@ export class RequestPipeline {
 
 export const networkStatusMiddleware: Middleware = async (context, next) => {
   assertRequestActive(context.originalRequest.signal);
-  if (store.getState().vaultGlobal.networkStatus !== 'idle') {
+  if (!isNetworkReadyForRequest(context)) {
     await new Promise<void>((resolve, reject) => {
       const signal = context.originalRequest.signal;
       const cleanup = () => {
@@ -435,7 +454,7 @@ export const networkStatusMiddleware: Middleware = async (context, next) => {
         reject(requestCancelledError());
       };
       const interval = setInterval(() => {
-        if (store.getState().vaultGlobal.networkStatus === 'idle') {
+        if (isNetworkReadyForRequest(context)) {
           cleanup();
           resolve();
         }
