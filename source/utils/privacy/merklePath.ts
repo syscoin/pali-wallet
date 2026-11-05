@@ -4,8 +4,8 @@ import {
   hashPair,
   TREE_CAPACITY,
   TREE_DEPTH,
-} from './merkle';
-import type { MerkleWork } from './merkle';
+} from './merkle.ts';
+import type { MerkleWork } from './merkle.ts';
 
 export const MERKLE_PATH_CACHE_LEVEL = 8;
 const BLOCK_LEAVES = 2 ** MERKLE_PATH_CACHE_LEVEL;

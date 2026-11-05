@@ -1,5 +1,5 @@
 /** Quote contracts shared by the wallet hosts; no transport or wallet identifiers. */
-export const FIAT_QUOTE_CURRENCIES = Object.freeze([
+export const FIAT_QUOTE_CURRENCIES = /*#__PURE__*/ Object.freeze([
   'aed',
   'ars',
   'aud',

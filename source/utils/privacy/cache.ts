@@ -1,37 +1,14 @@
-import type { MerkleWork } from './merkle';
+import type { PrivacyPoolId, PrivacySnapshot } from './types';
 import type {
-  PrivacyPoolId,
-  PrivacySnapshot,
-  PrivacySyncStatus,
-} from './types';
+  PrivacyRecord,
+  PrivacySyncCache,
+} from '../../wallet/privacyPoolSync.ts';
 
-export interface PrivacyRecord {
-  generation: number;
-  poolId: PrivacyPoolId;
-  rpcUrl?: string;
-  running: boolean;
-  subscribed?: boolean;
-  status: PrivacySyncStatus;
-  work?: MerkleWork;
-}
+export type { PrivacyRecord };
 
-export interface PrivacyCache {
-  clear: (poolId: PrivacyPoolId) => Promise<PrivacyRecord>;
-  commit: (
-    poolId: PrivacyPoolId,
-    generation: number,
-    status: PrivacySyncStatus
-  ) => Promise<boolean>;
-  get: (poolId: PrivacyPoolId) => Promise<PrivacyRecord | undefined>;
-  getCandidate: (poolId: PrivacyPoolId) => Promise<PrivacySnapshot | undefined>;
+export type PrivacyCache = PrivacySyncCache & {
   getVerified: (poolId: PrivacyPoolId) => Promise<PrivacySnapshot | undefined>;
-  save: (record: PrivacyRecord, expectedGeneration: number) => Promise<boolean>;
-  saveCandidate: (
-    poolId: PrivacyPoolId,
-    generation: number,
-    snapshot: PrivacySnapshot
-  ) => Promise<boolean>;
-}
+};
 
 const DB_NAME = 'pali-public-privacy-pools';
 const META = 'state';

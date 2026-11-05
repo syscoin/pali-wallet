@@ -2,12 +2,14 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
+const { createCommandRunner, describeQualificationFailure } = require('./command-runner.cjs');
 const { prepareIosSimulator, createIosStageRecorder, inspectIosServices, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { launchIos, summarizeIosLaunch } = require('./native-readiness.cjs');
 
 const DEVICE = '11111111-2222-3333-4444-555555555555';
 const RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
 const SPRINGBOARD = 'PID\tStatus\tLabel\n12\t0\tcom.apple.SpringBoard\n';
+const SERVICE_ARGS = ['simctl', 'spawn', DEVICE, 'launchctl', 'list'];
 const inventory = (changes = {}) => JSON.stringify({ devices: { [RUNTIME]: [
   { udid: DEVICE, isAvailable: true, state: 'Booted', ...changes },
 ] } });
@@ -26,6 +28,91 @@ function fixture({ inventories = [inventory()], services = SPRINGBOARD, probeCos
   return { calls, records, sleeps, options, time: () => time,
     invoke: (record = (value) => records.push(value)) => prepareIosSimulator(run, DEVICE, RUNTIME, record, options) };
 }
+
+function commandFixture(spawn) {
+  let time = 0;
+  const calls = [], records = [];
+  const run = createCommandRunner((command, args, { timeout }) => {
+    calls.push({ command, args, timeout });
+    const { elapsed = 0, ...result } = spawn(args, timeout, calls.length);
+    time += elapsed;
+    return result;
+  });
+  return { calls, records, invoke: (record = (value) => records.push(value)) => prepareIosSimulator(run, DEVICE, RUNTIME, record, {
+    now: () => time, sleep: async (ms) => { time += ms; },
+  }) };
+}
+
+const commandTimeout = (elapsed, message = 'public probe timeout') => ({ elapsed, status: null, signal: 'SIGTERM',
+  error: Object.assign(Error(message), { code: 'ETIMEDOUT' }), stdout: SPRINGBOARD });
+
+test('a typed SpringBoard probe timeout can recover only after fresh owned readiness evidence', async () => {
+  const f = commandFixture((args, timeout, count) => args.includes('devices')
+    ? { elapsed: 2210, status: 0, stdout: inventory() }
+    : count === 2 ? commandTimeout(timeout) : { elapsed: 300, status: 0, stdout: SPRINGBOARD });
+  await f.invoke();
+  assert.deepEqual(f.calls.map((call) => call.args), [
+    ['simctl', 'list', 'devices', '-j'], SERVICE_ARGS, ['simctl', 'list', 'devices', '-j'], SERVICE_ARGS,
+  ]);
+  assert(f.calls.every((call) => call.command === 'xcrun' && call.timeout === 10000));
+  assert.deepEqual(f.records, [{ version: 1, status: 'ready', stage: 'ready', device: DEVICE, runtime: RUNTIME,
+    deviceState: 'Booted', springboardPidPresent: true, probes: 2, elapsedMs: 15220, deadlineMs: 30000,
+    deadlineExceeded: false, elapsedTruncated: false }]);
+});
+
+test('repeated SpringBoard timeouts exhaust the original budget and preserve the first typed failure', async () => {
+  const f = commandFixture((args, timeout, count) => args.includes('devices')
+    ? { elapsed: 500, status: 0, stdout: inventory() } : commandTimeout(timeout, `public timeout ${count}`));
+  await assert.rejects(f.invoke((record) => { f.records.push(record); throw Error('evidence write failed'); }), (error) => {
+    const failure = describeQualificationFailure(error);
+    assert.deepEqual(failure.args, SERVICE_ARGS);
+    assert.equal(failure.errorCode, 'ETIMEDOUT');
+    assert.equal(failure.errorMessage, 'public timeout 2');
+    assert.equal(failure.timeoutMs, 10000);
+    return true;
+  });
+  assert.deepEqual(f.calls.map((call) => call.timeout), [10000, 10000, 10000, 10000, 8000, 7500]);
+  assert.deepEqual(f.records, [{ version: 1, status: 'failed', stage: 'springboard', device: DEVICE, runtime: RUNTIME,
+    deviceState: 'Booted', springboardPidPresent: false, probes: 3, elapsedMs: 30000, deadlineMs: 30000,
+    deadlineExceeded: true, elapsedTruncated: false }]);
+});
+
+test('SpringBoard timeout recovery still rejects an unavailable owned simulator', async () => {
+  const f = commandFixture((args, timeout, count) => args.includes('devices')
+    ? { status: 0, stdout: inventory({ isAvailable: count === 1 }) } : commandTimeout(timeout));
+  await assert.rejects(f.invoke(), /unavailable or has a different runtime/);
+  assert.deepEqual(f.calls.map((call) => call.args[1]), ['list', 'spawn', 'list']);
+  assert.equal(f.records[0].status, 'failed');
+});
+
+test('inventory timeouts and other service failures remain immediate typed failures', async () => {
+  const inventoryFailure = commandFixture((_args, timeout) => commandTimeout(timeout));
+  await assert.rejects(inventoryFailure.invoke(), (error) => describeQualificationFailure(error).errorCode === 'ETIMEDOUT');
+  assert.equal(inventoryFailure.calls.length, 1);
+  for (const failure of [
+    { status: 7, error: Object.assign(Error('nonzero timeout'), { code: 'ETIMEDOUT' }) },
+    { status: null, error: Object.assign(Error('broken pipe'), { code: 'EPIPE' }) },
+  ]) {
+    const f = commandFixture((args) => args.includes('devices') ? { status: 0, stdout: inventory() } : failure);
+    await assert.rejects(f.invoke(), (error) => describeQualificationFailure(error).errorCode === failure.error.code);
+    assert.equal(f.calls.length, 2);
+    assert.equal(f.records[0].status, 'failed');
+  }
+});
+
+test('a timeout must come from the exact owned service command', async () => {
+  const foreign = createCommandRunner(() => commandTimeout(10000));
+  let wrongTarget;
+  assert.throws(() => foreign('xcrun', ['simctl', 'spawn', 'another-device', 'launchctl', 'list']), (error) => {
+    wrongTarget = error; return true;
+  });
+  for (const failure of [wrongTarget, Object.assign(Error('untyped timeout'), { code: 'ETIMEDOUT' })]) {
+    let calls = 0;
+    const run = () => { if (++calls === 1) return inventory(); throw failure; };
+    await assert.rejects(prepareIosSimulator(run, DEVICE, RUNTIME, () => {}), (error) => error === failure);
+    assert.equal(calls, 2);
+  }
+});
 
 test('owned Booted simulator and live SpringBoard are required before readiness is recorded', async () => {
   const f = fixture(); await f.invoke();

@@ -1,27 +1,16 @@
 import { Interface, parseEther, toQuantity } from 'ethers';
 
-import {
-  getPrivacyPool,
-  PRIVACY_CHAIN_ID,
-  PRIVACY_MAX_LEAVES,
-  PRIVACY_TREE_LEVELS,
-  PRIVACY_POOLS,
-} from './registry';
+import { getPrivacyPool, PRIVACY_TREE_LEVELS, PRIVACY_POOLS } from './registry';
+import { validatePrivacyRpcUrl, validateSnapshot } from './snapshotValidation';
 import { PrivacyIndexProgress, PrivacyPoolId, PrivacySnapshot } from './types';
+
+export { validatePrivacyRpcUrl, validateSnapshot } from './snapshotValidation';
 
 export const PRIVACY_SERVICE_URL = 'https://sysnode.info/api/privacy/v1';
 const MAX_SNAPSHOT_BYTES = 160 * 1024 * 1024;
 const MAX_SCALAR_RPC_BYTES = 64 * 1024;
 // Block replies include every transaction hash even when full objects are off.
 const MAX_BLOCK_RPC_BYTES = 4 * 1024 * 1024;
-const WORD = /^0x[0-9a-f]{64}$/;
-const FIELD = BigInt(
-  '21888242871839275222246405745257275088548364400416034343698204186575808495617'
-);
-const isWord = (value: unknown): value is string =>
-  typeof value === 'string' && value.length === 66 && WORD.test(value);
-const isFieldWord = (value: unknown): value is string =>
-  isWord(value) && BigInt(value) < FIELD;
 const ABI = new Interface([
   'function nextIndex() view returns (uint32)',
   'function getLastRoot() view returns (bytes32)',
@@ -55,48 +44,6 @@ async function readJson(response: Response, limit: number): Promise<unknown> {
   }
 }
 
-export function validateSnapshot(
-  poolId: PrivacyPoolId,
-  value: unknown
-): PrivacySnapshot {
-  const pool = getPrivacyPool(poolId);
-  const data = value as PrivacySnapshot;
-  if (
-    !data ||
-    data.version !== 1 ||
-    data.chainId !== PRIVACY_CHAIN_ID ||
-    data.poolAddress !== pool.address ||
-    !Number.isSafeInteger(data.asOfBlockNumber) ||
-    data.asOfBlockNumber < pool.deploymentBlock ||
-    !isWord(data.asOfBlockHash) ||
-    !isFieldWord(data.root) ||
-    !Number.isSafeInteger(data.leafCount) ||
-    data.leafCount < 0 ||
-    data.leafCount > PRIVACY_MAX_LEAVES ||
-    !Array.isArray(data.leaves) ||
-    data.leaves.length !== data.leafCount ||
-    data.leaves.some((leaf) => !isFieldWord(leaf)) ||
-    !Array.isArray(data.withdrawnNullifiers) ||
-    data.withdrawnNullifiers.length > data.leafCount ||
-    data.withdrawnNullifiers.some((hash) => !isFieldWord(hash)) ||
-    new Set(data.withdrawnNullifiers).size !== data.withdrawnNullifiers.length
-  )
-    throw new Error('privacy_data_invalid');
-  // Project only the protocol fields. In particular, a server-supplied `phase`
-  // must not reclassify a validated snapshot as a progress response.
-  return {
-    version: 1,
-    chainId: data.chainId,
-    poolAddress: data.poolAddress,
-    asOfBlockNumber: data.asOfBlockNumber,
-    asOfBlockHash: data.asOfBlockHash,
-    leafCount: data.leafCount,
-    root: data.root,
-    leaves: data.leaves,
-    withdrawnNullifiers: data.withdrawnNullifiers,
-  };
-}
-
 export async function fetchPrivacySnapshot(
   poolId: PrivacyPoolId,
   signal: AbortSignal,
@@ -125,22 +72,6 @@ export async function fetchPrivacySnapshot(
   )
     throw new Error('privacy_data_invalid');
   return data;
-}
-
-export function validatePrivacyRpcUrl(url: string): string {
-  const parsed = new URL(url);
-  if (
-    parsed.username ||
-    parsed.password ||
-    parsed.hash ||
-    (parsed.protocol !== 'https:' &&
-      !(
-        parsed.protocol === 'http:' &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname)
-      ))
-  )
-    throw new Error('privacy_rpc_unavailable');
-  return parsed.href;
 }
 
 let requestId = 0;

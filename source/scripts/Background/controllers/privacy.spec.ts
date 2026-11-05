@@ -12,6 +12,7 @@ import { PrivacyPoolId, PrivacySnapshot } from 'utils/privacy/types';
 
 import {
   createPrivacyController,
+  PRIVACY_ALARM_PREFIX,
   PRIVACY_NOTE_MAX_BLOCK_AGE_MS,
 } from './privacy';
 
@@ -180,6 +181,39 @@ test('opening the page reads local state without network or background schedulin
   expect(run.fetchSnapshot).not.toHaveBeenCalled();
   expect(run.verifyAnchor).not.toHaveBeenCalled();
   expect(run.schedule).not.toHaveBeenCalled();
+});
+
+test('the extension uses the fast timer, durable alarm floor and shared refresh boundary', async () => {
+  const originalAlarms = Object.getOwnPropertyDescriptor(chrome, 'alarms');
+  const alarms = { create: jest.fn(), clear: jest.fn(async () => true) };
+  Object.defineProperty(chrome, 'alarms', {
+    configurable: true,
+    value: alarms,
+  });
+  jest.useFakeTimers();
+  try {
+    jest.setSystemTime(901000);
+    const run = setup({ schedule: undefined, stop: undefined });
+    const alarm = PRIVACY_ALARM_PREFIX + id;
+    await run.controller.start(id);
+    expect(alarms.create).toHaveBeenLastCalledWith(alarm, { when: 931000 });
+    expect(run.fetchSnapshot).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(0);
+    expect(run.fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(run.storage.record?.status.phase).toBe('ready');
+    expect(alarms.clear).toHaveBeenCalledWith(alarm);
+    expect(alarms.create).toHaveBeenLastCalledWith(alarm, { when: 1800000 });
+
+    await run.controller.pause(id);
+    expect(alarms.clear).toHaveBeenLastCalledWith(alarm);
+    await jest.advanceTimersByTimeAsync(15 * 60 * 1000);
+    expect(run.fetchSnapshot).toHaveBeenCalledTimes(1);
+  } finally {
+    jest.useRealTimers();
+    if (originalAlarms) Object.defineProperty(chrome, 'alarms', originalAlarms);
+    else Reflect.deleteProperty(chrome, 'alarms');
+  }
 });
 
 test('explicit start durably records intent before scheduling and verifies before publishing', async () => {
