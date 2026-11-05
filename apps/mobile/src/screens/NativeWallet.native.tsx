@@ -14,6 +14,7 @@ import { NativeRecovery } from './NativeRecovery';
 import { NativeNoteRestore, NoteRestoreUnconfirmedNotice } from './NativeNoteRestore';
 import { NativeNoteCapacity } from './NativeNoteCapacity';
 import { NativeNoteExport, NativeNoteFilesMenu } from './NativeNoteExport';
+import { NativeNoteInventory } from './NativeNoteInventory';
 import { useNativeNoteBackup } from './useNativeNoteBackup';
 import { ensurePrivacyShield } from '../platform/privacyShield.native';
 import type { CustodySnapshot } from '../custody/types';
@@ -45,7 +46,7 @@ const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWall
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; context: string; identity: string; epoch: number }>;
-type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-capacity' | 'restore-notes' | 'backup-notes';
+type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
 
 function message(error: unknown): string {
@@ -94,6 +95,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [keyExportView, setKeyExportView] = useState<Controllers['keyExport'] | null>(null);
   const [saveIdle, setSaveIdle] = useState<IdlePreferenceSave | null>(null);
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
+  const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
   const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
@@ -169,7 +171,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     latestBack.current = () => {
       // Full-screen leaf flows own their Back behavior regardless of listener order.
       if (stage === 'private-notes' && snapshot.phase === 'ready') { closeStage(); return true; }
-      if (stage === 'recovery' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity') && snapshot.phase === 'ready' ||
+      if (stage === 'recovery' || stage === 'auto-lock' || (stage === 'restore-notes' || stage === 'backup-notes' || stage === 'note-capacity' || stage === 'note-inventory') && snapshot.phase === 'ready' ||
           stage === 'accounts' && accounts && snapshot.phase !== 'authenticating' ||
           stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase) ||
           stage === 'networks' && networkView && ['ready', 'authenticating'].includes(snapshot.phase) ||
@@ -187,7 +189,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllers.current = null;
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
@@ -205,11 +207,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
-      if (['locked', 'unavailable', 'disposed'].includes(state.phase)) rootOrigin.current = null;
+      if (['locked', 'unavailable', 'disposed'].includes(state.phase)) {
+        rootOrigin.current = null;
+        setStage((current) => current === 'note-inventory' ? 'choose' : current);
+      }
       if (!['ready', 'backup-required', 'authenticating'].includes(state.phase)) clearSecrets();
     };
     setSaveIdle(() => (expected: Parameters<IdlePreferenceSave>[0], minutes: number, password: string, check: () => void) => local.authority.saveIdlePreference(expected, minutes, password, check));
     setOpenNoteCapacity(() => local.openNoteCapacity ?? null);
+    setReadNoteInventory(() => local.readNoteInventory ?? null);
     const unsubscribe = local.authority.subscribe(update);
     update(local.authority.getSnapshot());
     const clear = local.backup.onClear(() => { setPresentation(null); setAnswers(['', '', '']); });
@@ -380,9 +386,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'private-notes' && snapshot.phase === 'ready') return <NativeNoteFilesMenu onBack={closeStage}
     onExport={() => { if (noteRestore.begin('export')) setStage('backup-notes'); }}
     onRestore={() => { if (noteRestore.begin('restore')) setStage('restore-notes'); }}
+    onInventory={readNoteInventory ? () => {
+      if (AppState.currentState === 'active' && readyContext()) setStage('note-inventory');
+    } : undefined}
     onCapacity={openNoteCapacity ? () => {
       if (AppState.currentState === 'active' && readyContext()) setStage('note-capacity');
     } : undefined} />;
+  if (stage === 'note-inventory' && snapshot.phase === 'ready' && readNoteInventory) return <NativeNoteInventory
+    key={snapshot.revision} readInventory={readNoteInventory} onBack={() => setStage('private-notes')} onLock={revoke} />;
   if (stage === 'note-capacity' && snapshot.phase === 'ready' && openNoteCapacity) return <NativeNoteCapacity
     key={snapshot.revision} openCapacity={openNoteCapacity} onBack={() => setStage('private-notes')} />;
   if (stage === 'restore-notes' && snapshot.phase === 'ready') return <NativeNoteRestore

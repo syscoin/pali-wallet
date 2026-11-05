@@ -8,7 +8,7 @@ import { evmActivityFetch, evmActivityFixture } from './evmActivityFixture';
 import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
-import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue } from './nativeFactory';
+import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture } from './nativeFactory';
 import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 
@@ -39,6 +39,7 @@ declare global {
     __watchFixture: {
       activity: typeof activityFixture;
       evmActivity: typeof evmActivityFixture;
+      notes: typeof noteInventoryFixture;
       idle: typeof idleFixture;
       audit(): typeof audit;
       events(): string[];
@@ -74,7 +75,7 @@ declare global {
   }
 }
 window.__watchFixture = {
-  activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture,
+  activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },

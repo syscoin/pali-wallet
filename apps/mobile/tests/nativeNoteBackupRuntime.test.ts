@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import * as sdk from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import { createNoteBackupCodec } from '../../../source/wallet/noteBackup.ts';
+import { createNoteBackupCodec, type INoteBackupEntry } from '../../../source/wallet/noteBackup.ts';
 import { NOTE_BACKUP_PREVIEW_TTL_MS } from '../../../source/wallet/noteBackupService.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -18,7 +18,7 @@ const WRONG_PASSWORD = 'PUBLIC wrong password 3!';
 const current = () => undefined;
 
 const codec = () => createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: current });
-const encrypted = (notes = [NOTE]) => codec().encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes }, BACKUP_PASSWORD);
+const encrypted = (notes: readonly INoteBackupEntry[] = [NOTE]) => codec().encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes }, BACKUP_PASSWORD);
 let networkCalls = 0;
 const originalFetch = globalThis.fetch;
 test.before(() => {
@@ -197,6 +197,70 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
     assert.equal(f.unlockCalls, unlocks + 3);
     assert.equal(f.noteWrites, 1);
   } finally { await f.dispose(); }
+});
+
+test('saved inventory projects only local metadata from a restored encrypted SQLite vault', async () => {
+  const f = await fixture();
+  try {
+    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+    const withdrawalNote: INoteBackupEntry = {
+      note: `tornado-eth-0.1-1-0x${'02'.repeat(62)}`,
+      createdAt: 15,
+      history: { withdrawals: [{ mode: 'relayed', outcome: 'submitted', jobId: 'public-inventory-fixture-job' }] },
+    };
+    const file = await encrypted([NOTE, withdrawalNote]);
+    const backup = await f.runtime.openNoteBackup!(current);
+    const id = backup.begin();
+    await backup.prepareImport(id, file, BACKUP_PASSWORD);
+    const receipt = await backup.commitImport(id, PASSWORD);
+    assert.equal(receipt.added, 2);
+    await f.reopen();
+
+    const stored = await f.storage.notes.read();
+    const unlocks = f.unlockCalls;
+    const commits = f.noteCommits;
+    const notes = await f.runtime.readNoteInventory!(current);
+    assert.deepEqual(notes, [
+      { amount: '0.1', createdAt: 15, reconciliation: 'withdrawal-history' },
+      { amount: '1', createdAt: 10, reconciliation: 'restored-note' },
+    ]);
+    assert.ok(Object.isFrozen(notes) && notes.every(Object.isFrozen));
+    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(f.noteCommits, commits);
+    assert.deepEqual(await f.storage.notes.read(), stored);
+  } finally { await f.dispose(); }
+});
+
+test('saved inventory discards held reads after a route owner changes or the wallet locks', async () => {
+  const f = await fixture();
+  let release: (() => void) | undefined;
+  try {
+    let route = 1;
+    const read = f.holdNoteRead();
+    release = read.release;
+    const beforeLeaving = assert.rejects(f.runtime.readNoteInventory!(() => {
+      if (route !== 1) throw new Error('CANCELLED');
+    }));
+    await read.entered;
+    route = 2; // The same screen opens again with a new owner.
+    release();
+    release = undefined;
+    await beforeLeaving;
+    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+
+    const locking = f.holdNoteRead();
+    release = locking.release;
+    const beforeLocking = assert.rejects(f.runtime.readNoteInventory!(current));
+    await locking.entered;
+    await f.runtime.session.lock();
+    release();
+    release = undefined;
+    await beforeLocking;
+    await assert.rejects(f.runtime.readNoteInventory!(current));
+    assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
+    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+    assert.equal(f.noteWrites, 0);
+  } finally { release?.(); await f.dispose(); }
 });
 
 test('revocation accounts a definitive wallet credential failure and retires a late SDK re-unlock', async () => {
