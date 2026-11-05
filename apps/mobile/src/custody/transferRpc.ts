@@ -273,10 +273,13 @@ export class NativeTransferRpc {
     expectedHash: string,
     signal: AbortSignal,
     intent?: Erc20TransferIntent,
-    options?: Readonly<{ replay: Readonly<{ admit: EvmReplayDispatchAdmission; context: EvmReplayDispatchContext }> }>
+    options?: Readonly<
+      | { beforeBroadcast: () => undefined; replay?: never }
+      | { replay: Readonly<{ admit: EvmReplayDispatchAdmission; context: EvmReplayDispatchContext }>; beforeBroadcast?: never }
+    >
   ): Promise<string> {
     const hash = checkedHash(expectedHash);
-    const replay = options?.replay;
+    const { beforeBroadcast, replay } = options ?? {};
     const cancellation = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
       ? replay.context : undefined;
     if (
@@ -316,6 +319,7 @@ export class NativeTransferRpc {
       if (!cancellation) await this.checkChain(local);
       const send = () => {
         if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
+        beforeBroadcast?.();
         // No automatic retry: the remote side may accept before a response is lost.
         return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
           if (checkedHash(value) !== hash) return invalid();

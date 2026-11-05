@@ -633,7 +633,7 @@ export class NativeTransfers {
       const guard = () => {
         assertCurrent();
         if (!startedSubmission && this.now() >= approved.expires)
-          throw new NativeTransferError('EXPIRED');
+          throw new NativeTransferRpcError('REVIEW_REQUIRED');
       };
       const journal = await runtime.journal(guard);
       guard();
@@ -685,13 +685,20 @@ export class NativeTransfers {
         message: null,
       });
       try {
-        await runtime.submit(rawTransaction, transactionHash, guard,
-          (approvedBytes) => {
-            guard();
-            startedSubmission = true;
-            return rpc.broadcast(approvedBytes, transactionHash, signal, approved.public.intent);
-          },
-          approved.public.intent, approved.transaction!);
+        await runtime.submit(
+          rawTransaction,
+          transactionHash,
+          guard,
+          (approvedBytes) =>
+            rpc.broadcast(approvedBytes, transactionHash, signal, approved.public.intent, {
+              beforeBroadcast: () => {
+                guard();
+                startedSubmission = true;
+              },
+            }),
+          approved.public.intent,
+          approved.transaction!
+        );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
         // storage adapter simultaneously revoked the session.

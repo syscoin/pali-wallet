@@ -43,6 +43,7 @@ function fixture() {
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
   let beforeCommit: (() => Promise<void>) | undefined;
+  let beforeBroadcastChainResponse: (() => Promise<void>) | undefined;
   let failWrite = false;
   const broadcasts: string[] = [];
   const rpcMethods: string[] = [];
@@ -127,7 +128,11 @@ function fixture() {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
       let result: unknown;
-      if (body.method === 'eth_chainId') result = '0x1';
+      if (body.method === 'eth_chainId') {
+        if (Object.keys(records).length > 0 && beforeBroadcastChainResponse)
+          await beforeBroadcastChainResponse();
+        result = '0x1';
+      }
       else if (body.method === 'eth_getCode') result = '0x6000';
       else if (body.method === 'eth_call')
         result =
@@ -223,6 +228,9 @@ function fixture() {
     },
     holdWrite(wait: () => Promise<void>) {
       beforeCommit = wait;
+    },
+    holdBroadcastChainResponse(wait: () => Promise<void>) {
+      beforeBroadcastChainResponse = wait;
     },
     failStorage() {
       failWrite = true;
@@ -675,6 +683,43 @@ test('expiry after a durable signed record preserves its recovery identity witho
   const f = fixture(); const original = f.runtime.journal;
   f.runtime.journal = async (guard) => { const journal = await original(guard); const save = journal.saveSigned.bind(journal); journal.saveSigned = async (raw) => { const entry = await save(raw); f.expire(); return entry; }; return journal; };
   try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
+});
+
+test('a final chain probe that outlives the review retains the exact signed record without a raw POST', async () => {
+  const f = fixture();
+  const { promise: entered, resolve: enter } = Promise.withResolvers<void>();
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
+  f.holdBroadcastChainResponse(async () => {
+    enter();
+    await held;
+  });
+  try {
+    const approved = await review(f);
+    const pending = f.transfers.confirm(approved.id);
+    const expired = assert.rejects(pending, { code: 'EXPIRED' });
+    await Promise.race([entered, pending]);
+    const journal = await f.runtime.journal(() => undefined);
+    const saved = await journal.load();
+    assert(saved);
+    assert.equal(saved.phase, 'signed');
+    assert.equal(saved.hash, keccak256(saved.rawTransaction));
+    assert.equal(f.rpcMethods.at(-1), 'eth_chainId');
+    assert.deepEqual(f.broadcasts, []);
+
+    f.expire();
+    release();
+    await expired;
+    assert.deepEqual(f.broadcasts, []);
+    assert.deepEqual(await journal.load(), saved);
+    assert.equal(f.signatures(), 1);
+    const outcome = f.transfers.getSnapshot();
+    assert.equal(outcome.phase, 'unknown');
+    assert.equal(outcome.hash, saved.hash);
+    assert.match(outcome.message ?? '', /saved before the review expired/i);
+  } finally {
+    release();
+    f.close();
+  }
 });
 
 test('expiry before the signed record commits exposes no saved hash or retry', async () => {
