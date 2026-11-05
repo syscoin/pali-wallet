@@ -2,8 +2,10 @@ import {
   createRoutescanFetch,
   isRoutescanApiUrl,
 } from '../shared/evmExplorer.ts';
-export { isRoutescanApiUrl } from '../shared/evmExplorer.ts';
+
 import { normalizeNftTokenId } from './nftTokenId.ts';
+
+export { isRoutescanApiUrl } from '../shared/evmExplorer.ts';
 
 const ROUTESCAN_ORIGIN = 'https://api.routescan.io';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -14,10 +16,10 @@ const MAX_CACHE_ENTRIES = 64;
 type TokenRow = Record<string, unknown>;
 /** The native owner supplies bounded I/O and never joins the extension cache. */
 type OwnedTokenDiscoveryIo = Readonly<{
+  collectiblesOnly?: true;
   fetch(url: string, init: RequestInit, routescan: boolean): Promise<Response>;
   readJson(response: Response): Promise<unknown>;
   signal: AbortSignal;
-  collectiblesOnly?: true;
 }>;
 type TokenResponse = {
   items?: unknown;
