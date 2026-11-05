@@ -18,7 +18,7 @@ const WRONG_PASSWORD = 'PUBLIC wrong password 3!';
 const current = () => undefined;
 
 const codec = () => createNoteBackupCodec({ crypto: globalThis.crypto, assertCurrent: current });
-const encrypted = () => codec().encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes: [NOTE] }, BACKUP_PASSWORD);
+const encrypted = (notes = [NOTE]) => codec().encrypt({ format: 'pali-private-notes', version: 1, createdAt: 20, notes }, BACKUP_PASSWORD);
 let networkCalls = 0;
 const originalFetch = globalThis.fetch;
 test.before(() => {
@@ -45,6 +45,9 @@ async function fixture() {
   let lostAck = false, noteWrite = false, noteWrites = 0, unlockCalls = 0;
   let loseAuthCommit = false, authWrite = false, lostAuthAcks = 0;
   let beforeUnlock: ReturnType<typeof pause> | undefined, afterUnlock: ReturnType<typeof pause> | undefined;
+  let beforeNoteInsert: ReturnType<typeof pause> | undefined;
+  let afterNoteRead: ReturnType<typeof pause> | undefined;
+  let noteCommits = 0;
   const owners: sdk.SoftwareKeyring[] = [];
   class ObservedKeyring extends sdk.SoftwareKeyring {
     constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) { super(host); owners.push(this); }
@@ -62,13 +65,25 @@ async function fixture() {
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedKeyring }),
     async openStorage() {
-      const { connection } = nodeConnection(file, { after(kind, sql) {
+      const { connection } = nodeConnection(file, { before(kind, sql) {
+        if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records') && beforeNoteInsert) {
+          const gate = beforeNoteInsert;
+          beforeNoteInsert = undefined;
+          return gate.wait();
+        }
+      }, after(kind, sql) {
+        if (kind === 'all' && sql.startsWith("SELECT 'note' AS source") && afterNoteRead) {
+          const gate = afterNoteRead;
+          afterNoteRead = undefined;
+          return gate.wait();
+        }
         if (kind === 'run' && sql.startsWith('INSERT INTO private_note_records')) {
           noteWrite = true;
           noteWrites++;
         }
         if (kind === 'exec' && noteWrite && sql === 'COMMIT') {
           noteWrite = false;
+          noteCommits++;
           if (lostAck) { lostAck = false; throw new Error('Fixture lost note commit acknowledgement'); }
         }
         if (kind === 'exec' && authWrite && sql === 'COMMIT') {
@@ -110,6 +125,9 @@ async function fixture() {
       else afterUnlock = gate;
       return gate;
     },
+    get noteCommits() { return noteCommits; },
+    holdNoteInsert() { return beforeNoteInsert = pause(); },
+    holdNoteRead() { return afterNoteRead = pause(); },
     loseAck() { lostAck = true; },
     loseAuthAck() { loseAuthCommit = true; },
     async reopen(unlock = true) {
@@ -345,3 +363,133 @@ for (const valid of [true, false]) {
     } finally { await f.dispose(); }
   });
 }
+
+test('native note capacity is numeric, preserves the shared default, and survives cold reopen', async () => {
+  const f = await fixture();
+  try {
+    const capacity = await f.runtime.openNoteCapacity!(current);
+    const unlocks = f.unlockCalls;
+    const initial = await capacity.getCapacity();
+    assert.deepEqual(initial, {
+      capacity: 128,
+      noteCount: 0,
+      storedBytes: 0,
+      bundleLimitBytes: 4 * 1024 * 1024,
+    });
+    assert(Object.isFrozen(capacity) && Object.isFrozen(initial));
+    assert.deepEqual(Object.keys(capacity).sort(), ['getCapacity', 'setCapacity']);
+    assert.deepEqual(await capacity.setCapacity(128), initial);
+    assert.equal(f.noteWrites, 0);
+    assert.deepEqual(await f.storage.notes.read(), []);
+    await assert.rejects(capacity.setCapacity(1024 as 128), /privacy_vault_unavailable/);
+    assert.equal(f.noteWrites, 0);
+
+    const changed = await capacity.setCapacity(512);
+    const [row] = await f.storage.notes.read();
+    assert.deepEqual(changed, {
+      capacity: 512,
+      noteCount: 0,
+      storedBytes: new TextEncoder().encode(row!.value).byteLength,
+      bundleLimitBytes: 16 * 1024 * 1024,
+    });
+    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(f.noteCommits, 1);
+
+    await f.reopen();
+    await assert.rejects(capacity.getCapacity(), /CANCELLED/);
+    const reopened = await f.runtime.openNoteCapacity!(current);
+    assert.deepEqual(await reopened.getCapacity(), changed);
+    assert.equal((await reopened.setCapacity(256)).bundleLimitBytes, 8 * 1024 * 1024);
+    assert.equal(f.noteCommits, 2);
+  } finally { await f.dispose(); }
+});
+
+test('native note capacity cannot lower the limit below 129 encrypted notes', async () => {
+  const f = await fixture();
+  try {
+    const capacity = await f.runtime.openNoteCapacity!(current);
+    await capacity.setCapacity(512);
+    const view = await f.runtime.openNoteBackup!(current);
+    const id = view.begin();
+    const notes = Array.from({ length: 129 }, (_, index) => ({
+      note: `tornado-eth-1-1-0x${(index + 1).toString(16).padStart(124, '0')}`,
+      createdAt: index + 1,
+    }));
+    const file = await encrypted(notes);
+    try {
+      assert.equal((await view.prepareImport(id, file, BACKUP_PASSWORD)).added, 129);
+      assert.equal((await view.commitImport(id, PASSWORD)).confirmed, true);
+    } finally { file.fill(0); }
+
+    const unlocks = f.unlockCalls;
+    const fits = await capacity.setCapacity(256);
+    assert.equal(fits.capacity, 256);
+    assert.equal(fits.noteCount, 129);
+    const before = await f.storage.notes.read();
+    const commits = f.noteCommits;
+    await assert.rejects(capacity.setCapacity(128), /privacy_note_limit/);
+    assert.deepEqual(await capacity.getCapacity(), fits);
+    assert.deepEqual(await f.storage.notes.read(), before);
+    assert.equal(f.noteCommits, commits);
+    assert.equal(f.unlockCalls, unlocks);
+  } finally { await f.dispose(); }
+});
+
+test('native note capacity discards a held read on lock and rolls back a held save after leaving', async () => {
+  const f = await fixture();
+  let release: (() => void) | undefined;
+  try {
+    const first = await f.runtime.openNoteCapacity!(current);
+    const read = f.holdNoteRead();
+    release = read.release;
+    const staleRead = assert.rejects(first.getCapacity());
+    await read.entered;
+    await f.runtime.session.lock();
+    read.release();
+    release = undefined;
+    await staleRead;
+
+    await assert.rejects(f.runtime.openNoteCapacity!(current));
+    assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
+    await assert.rejects(first.getCapacity(), /CANCELLED/);
+    let routeCurrent = true;
+    const route = await f.runtime.openNoteCapacity!(() => {
+      if (!routeCurrent) throw new Error('CANCELLED');
+    });
+    const insert = f.holdNoteInsert();
+    release = insert.release;
+    const staleSave = assert.rejects(route.setCapacity(256));
+    await insert.entered;
+    routeCurrent = false;
+    insert.release();
+    release = undefined;
+    await staleSave;
+
+    assert.equal(f.noteWrites, 1); // INSERT ran inside the rolled-back transaction.
+    assert.equal(f.noteCommits, 0);
+    assert.deepEqual(await f.storage.notes.read(), []);
+    const reopened = await f.runtime.openNoteCapacity!(current);
+    assert.equal((await reopened.getCapacity()).capacity, 128);
+    assert.equal(f.unlocked, true);
+  } finally { release?.(); await f.dispose(); }
+});
+
+test('native note capacity quarantines a lost save acknowledgement and only reopen reads its result', async () => {
+  const f = await fixture();
+  try {
+    const capacity = await f.runtime.openNoteCapacity!(current);
+    f.loseAck();
+    await assert.rejects(capacity.setCapacity(256));
+    assert.equal(f.unlocked, false);
+    assert.equal(f.noteCommits, 1);
+    await assert.rejects(f.storage.notes.read(), { code: 'STORAGE_REOPEN_REQUIRED' });
+    await assert.rejects(f.runtime.openNoteCapacity!(current), { code: 'CLEANUP_FAILED' });
+    await f.reopen();
+    await assert.rejects(capacity.setCapacity(512), /CANCELLED/);
+    const reopened = await f.runtime.openNoteCapacity!(current);
+    const data = await reopened.getCapacity();
+    assert.equal(data.capacity, 256);
+    assert.equal(data.noteCount, 0);
+    assert.equal(f.noteWrites, 1);
+  } finally { await f.dispose(); }
+});
