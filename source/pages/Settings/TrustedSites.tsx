@@ -7,7 +7,12 @@ import { useLocation } from 'react-router-dom';
 import { Icon } from 'components/index';
 import trustedAppsArr from 'constants/trustedApps.json';
 import { useUtils } from 'hooks/index';
-import { isTrustedDappOrigin } from 'utils/dappOrigin';
+import {
+  boundDappSiteLookupText,
+  getDappSiteLookupUrl,
+  isTrustedDappOrigin,
+  MAX_DAPP_SITE_LOOKUP_LENGTH,
+} from 'utils/dappOrigin';
 import { truncate } from 'utils/index';
 
 const trustedApps = uniq(trustedAppsArr);
@@ -36,36 +41,41 @@ const TrustedSitesView = () => {
   const { navigate } = useUtils();
   const [search, setSearch] = useState<string>(
     typeof location.state?.trustedSitesSearch === 'string'
-      ? location.state.trustedSitesSearch.slice(0, 200)
+      ? boundDappSiteLookupText(location.state.trustedSitesSearch)
       : ''
   );
   const normalizedSearch = search.trim();
-  const candidateUrl = normalizedSearch.includes('://')
-    ? normalizedSearch
-    : `https://${normalizedSearch}`;
+  const candidateUrl = getDappSiteLookupUrl(search);
+  const tooLong = search.length > MAX_DAPP_SITE_LOOKUP_LENGTH;
   const searchHost = useMemo(() => {
     try {
-      return new URL(candidateUrl).hostname.toLowerCase();
+      return candidateUrl
+        ? new URL(candidateUrl).hostname.toLowerCase()
+        : normalizedSearch.toLowerCase();
     } catch {
       return normalizedSearch.toLowerCase();
     }
   }, [candidateUrl, normalizedSearch]);
   const filteredSearch = useMemo(
-    () => trustedApps.filter((url) => url.toLowerCase().startsWith(searchHost)),
-    [searchHost]
+    () =>
+      tooLong
+        ? []
+        : trustedApps.filter((url) => url.toLowerCase().startsWith(searchHost)),
+    [searchHost, tooLong]
   );
   const status = !normalizedSearch
     ? EMPTY_STATE
-    : isTrustedDappOrigin(candidateUrl, trustedApps)
+    : candidateUrl && isTrustedDappOrigin(candidateUrl, trustedApps)
     ? TRUSTED_STYLE
     : NOT_TRUSTED_WALLET_STYLE;
 
   const handleSearch = (typed: string) => {
-    setSearch(typed);
+    const bounded = boundDappSiteLookupText(typed);
+    setSearch(bounded);
     // Keep this public list filter in the current history entry for menu detours.
     navigate(`${location.pathname}${location.search}${location.hash}`, {
       replace: true,
-      state: { ...location.state, trustedSitesSearch: typed },
+      state: { ...location.state, trustedSitesSearch: bounded },
     });
   };
 
@@ -76,7 +86,6 @@ const TrustedSitesView = () => {
       </p>
       <Input
         value={search}
-        maxLength={200}
         onChange={(event) => handleSearch(event.target.value)}
         type="text"
         className="w-full"

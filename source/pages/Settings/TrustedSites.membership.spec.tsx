@@ -2,6 +2,8 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
+import { MAX_DAPP_SITE_LOOKUP_LENGTH } from 'utils/dappOrigin';
+
 import TrustedSites from './TrustedSites';
 
 jest.mock('react-i18next', () => ({
@@ -35,6 +37,7 @@ it.each([
   'http://bridge.syscoin.org',
   'https://bridge.syscoin.org:8443',
   'https://attacker.test/bridge.syscoin.org',
+  'mailto:user@bridge.syscoin.org',
 ])(
   'does not label a prefix, lookalike or nontrusted origin as trusted: %s',
   (query) => {
@@ -73,4 +76,20 @@ it('keeps partial search results without granting a trusted badge', () => {
   );
   expect(screen.getByText('bridge.syscoin.org')).toBeTruthy();
   expect(screen.queryByText('metamask.io')).toBeNull();
+});
+
+it('reads a full Unicode paste before capping the displayed text', () => {
+  render(<TrustedSites />);
+  const input = screen.getByRole<HTMLInputElement>('textbox', {
+    name: 'settings.searchTrustedSites',
+  });
+  expect(input.hasAttribute('maxlength')).toBe(false);
+  const prefix = 'https://bridge.syscoin.org'.padEnd(
+    MAX_DAPP_SITE_LOOKUP_LENGTH
+  );
+  fireEvent.change(input, { target: { value: `${prefix}😈@attacker.test` } });
+  expect(input.value).toBe(`${prefix}…`);
+  expect(screen.queryByText('settings.trustedSiteMatch')).toBeNull();
+  expect(screen.queryByText('bridge.syscoin.org')).toBeNull();
+  expect(screen.getByText('settings.unlistedSite')).toBeTruthy();
 });
