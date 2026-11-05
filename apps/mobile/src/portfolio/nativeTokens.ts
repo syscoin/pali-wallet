@@ -124,7 +124,7 @@ export class NativeTokens {
     preview: (contract: string) => this.preview(contract),
     confirmPreview: () => this.confirmPreview(),
     cancelPreview: () => this.cancelPreview(),
-    discover: () => this.discover(),
+    discover: (kind?: 'collectibles') => this.discover(kind),
     closeDiscovery: () => this.closeDiscovery(),
     refresh: (contract?: string) => this.refresh(contract),
     remove: (contract: string) => this.remove(contract),
@@ -415,7 +415,7 @@ export class NativeTokens {
       if (this.loadWork === work) this.loadWork = null;
     }
   }
-  discover = async (): Promise<void> => {
+  discover = async (kind?: 'collectibles'): Promise<void> => {
     this.synchronize(true);
     const { account, network, discovery } = this.state;
     const apiUrl = this.discoveryApi;
@@ -444,7 +444,8 @@ export class NativeTokens {
       guard();
       const result = await bounded(
         this.readHoldings(
-          { address: account.address, chainId: Number(network.chainId), apiUrl },
+          { address: account.address, chainId: Number(network.chainId), apiUrl,
+            ...(kind === 'collectibles' ? { collectiblesOnly: true } : {}) },
           saved,
           request.signal,
           guard

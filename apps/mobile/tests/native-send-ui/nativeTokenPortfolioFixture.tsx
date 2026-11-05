@@ -96,6 +96,15 @@ const readHoldings = query.has('holdings')
         failHoldings = false;
         return new Response(null, { status: 503 });
       }
+      const path = new URL(url).pathname;
+      if (path.endsWith('/erc721-holdings')) return Response.json({ items: [{
+        chainId: 1, tokenAddress: '0x2222222222222222222222222222222222222222',
+        collectionName: 'Paper foxes', tokenId: '7', image: 'https://untrusted.invalid/pixel',
+      }] });
+      if (path.endsWith('/erc1155-holdings')) return Response.json({ items: [{
+        chainId: 1, tokenAddress: '0x3333333333333333333333333333333333333333',
+        tokenId: '0', balance: '900719925474099312345', image: 'https://untrusted.invalid/pixel',
+      }] });
       return Response.json({
         items: [
           {

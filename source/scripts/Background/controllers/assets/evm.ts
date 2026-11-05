@@ -19,6 +19,10 @@ import {
   coinGeckoNativeQuoteUrl,
   readCoinGeckoNativeQuote,
 } from '../../../../shared/nativeCoinQuotes';
+import {
+  hasInvisibleOwnedTokenName,
+  projectOwnedNftRow,
+} from '../../../../shared/ownedNftRow';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
@@ -137,49 +141,21 @@ const EvmAssetsController = (): IEvmAssetsController => {
         true
       );
 
-      // Helper function to detect tokens with invisible/funny characters in name
-      const hasInvisibleChars = (name: string): boolean => {
-        if (!name) return false;
-
-        // Check for zero-width spaces and other invisible Unicode characters
-        return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(
-          name
-        );
-      };
-
-      // Convert to ITokenSearchResult format and filter out tokens with funny characters
       const results: ITokenSearchResult[] = tokens
-        .filter(
-          (token: any) =>
-            typeof token?.contractAddress === 'string' &&
-            isAddress(token.contractAddress) &&
-            !hasInvisibleChars(String(token.name || ''))
-        ) // Filter malformed entries and names with invisible chars
         .map((token: any): ITokenSearchResult | null => {
           try {
-            // Check if it's an NFT based on type
-            const tokenType = token.type || 'ERC-20';
-            const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
-            // Preserve exact owned quantities for import/MAX, without claiming
-            // precision that an unsafe numeric API response already lost.
-            const rawBalance =
-              tokenType === 'ERC-1155' &&
-              ((typeof token.balance === 'string' &&
-                /^\d+$/.test(token.balance)) ||
-                (Number.isSafeInteger(token.balance) && token.balance >= 0))
-                ? String(token.balance)
-                : undefined;
-
-            // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
-            const tokenId =
-              tokenType === 'ERC-1155' && token.id ? token.id : undefined;
-            const uniqueId = tokenId
-              ? `${token.contractAddress.toLowerCase()}-${
-                  activeNetwork.chainId
-                }-${tokenId}`
-              : `${token.contractAddress.toLowerCase()}-${
-                  activeNetwork.chainId
-                }`;
+            const tokenType = token?.type || 'ERC-20';
+            if (tokenType === 'ERC-721' || tokenType === 'ERC-1155') {
+              const nft = projectOwnedNftRow(token, activeNetwork.chainId);
+              if (nft) nft.symbol = cleanTokenSymbol(nft.symbol);
+              return nft;
+            }
+            if (
+              typeof token?.contractAddress !== 'string' ||
+              !isAddress(token.contractAddress) ||
+              hasInvisibleOwnedTokenName(String(token.name || ''))
+            )
+              return null;
 
             // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
             const parsed = Number(token.decimals);
@@ -196,21 +172,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
             }
 
             return {
-              id: uniqueId,
-              symbol: cleanTokenSymbol(
-                String(token.symbol || (isNft ? 'NFT' : 'Unknown'))
-              ),
-              name: String(
-                token.name || (isNft ? 'NFT Collection' : 'Unknown Token')
-              ),
+              id: `${token.contractAddress.toLowerCase()}-${
+                activeNetwork.chainId
+              }`,
+              symbol: cleanTokenSymbol(String(token.symbol || 'Unknown')),
+              name: String(token.name || 'Unknown Token'),
               contractAddress: token.contractAddress,
-              balance: isNft
-                ? Number(token.balance || 0)
-                : parseFloat(formatUnits(token.balance || '0', safeDecimals)),
-              decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
+              balance: parseFloat(
+                formatUnits(token.balance || '0', safeDecimals)
+              ),
+              decimals: safeDecimals,
               tokenStandard: tokenType,
-              ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
-              ...(rawBalance !== undefined && { rawBalance }),
             };
           } catch {
             // SYSCOIN: One malformed/malicious token must not hide the valid list.

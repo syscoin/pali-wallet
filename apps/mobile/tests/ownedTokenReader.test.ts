@@ -69,6 +69,106 @@ test('registered Routescan request keeps provider cursors on the captured chain 
   assert.equal(requests[1]?.searchParams.get('next'), 'a/b?test=1');
 });
 
+test('collectibles reuse the registered holdings reader without ERC20 or media requests', async () => {
+  const requests: string[] = [];
+  const reader = createOwnedTokenReader(async (url, init) => {
+    assert.equal(init.credentials, 'omit');
+    assert.equal(init.redirect, 'error');
+    assert.equal(init.referrerPolicy, 'no-referrer');
+    const endpoint = new URL(url);
+    assert.equal(endpoint.origin, 'https://api.routescan.io');
+    const type = endpoint.pathname.split('/').at(-1);
+    requests.push(type!);
+    const item = {
+      chainId: 1,
+      tokenAddress: contract(1),
+      collectionName: 'Paper foxes',
+      image: 'https://untrusted.invalid/pixel',
+    };
+    if (type === 'erc721-holdings')
+      return Response.json({
+        items: [
+          { ...item, tokenId: '7' },
+          { ...item, tokenId: '0007' },
+          { ...item, tokenId: (1n << 256n).toString() },
+          { ...item, chainId: 2, tokenId: '9' },
+        ],
+      });
+    assert.equal(type, 'erc1155-holdings');
+    return Response.json({
+      items: [
+        {
+          ...item,
+          tokenAddress: contract(2),
+          tokenId: '0',
+          balance: '900719925474099312345',
+        },
+        { ...item, tokenAddress: contract(2), tokenId: '9', balance: '0' },
+      ],
+    });
+  });
+  const result = await reader(
+    { ...scope, collectiblesOnly: true },
+    new Set(),
+    new AbortController().signal,
+    current
+  );
+  assert.deepEqual(requests, ['erc721-holdings', 'erc1155-holdings']);
+  assert.deepEqual(result.tokens, []);
+  assert.deepEqual(result.collectibles, [
+    {
+      contractAddress: contract(2),
+      name: 'NFT Collection',
+      tokenStandard: 'ERC-1155',
+      tokenId: '0',
+      units: '900719925474099312345',
+    },
+    {
+      contractAddress: contract(1),
+      name: 'Paper foxes',
+      tokenStandard: 'ERC-721',
+      tokenId: undefined,
+      units: '1',
+    },
+  ]);
+  assert.equal(result.limited, false);
+});
+
+test('untyped explorer quantities cannot be coerced into collectible counts', async () => {
+  const apiUrl = 'https://explorer.invalid/api';
+  const reader = createOwnedTokenReader(async (url) => {
+    assert.equal(new URL(url).origin, new URL(apiUrl).origin);
+    return Response.json({
+      status: '1',
+      result: [
+        true,
+        [1],
+        '1e2',
+        '1.00000000000000001',
+        Number.MAX_SAFE_INTEGER + 1,
+        '3',
+      ].map((balance, index) => ({
+        contractAddress: contract(index + 1),
+        type: 'ERC-721',
+        balance,
+      })),
+    });
+  });
+  const result = await reader(
+    { ...scope, apiUrl, collectiblesOnly: true },
+    new Set(),
+    new AbortController().signal,
+    current
+  );
+  assert.deepEqual(
+    result.collectibles?.map(({ contractAddress, units }) => [
+      contractAddress,
+      units,
+    ]),
+    [[contract(6), '3']]
+  );
+});
+
 for (const cursor of [false, 0]) {
   test(`an owned Routescan lookup rejects a ${cursor} cursor instead of returning partial results`, async () => {
     let requests = 0;
