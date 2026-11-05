@@ -301,6 +301,7 @@ export function Button({
           lineHeight: 22,
           textAlign: 'center',
           flexShrink: 1,
+          minWidth: 0,
         }}
       >
         {title}

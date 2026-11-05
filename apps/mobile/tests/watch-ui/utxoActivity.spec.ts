@@ -254,3 +254,103 @@ test('a pasted public account key loads account-wide history without exposing th
   const audit = await page.evaluate(() => window.__watchFixture.audit());
   expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
 });
+
+
+test('SPT account quantity stays exact and separate from native funding without detail requests', async ({ page }, testInfo) => {
+  await open(page, 'syscoin', false, 'asset-exact'); await load(page);
+  const title = '9007199254740993 BIG';
+  await expect(page.getByRole('button', { name: title, exact: true }).first()).toBeVisible();
+  await page.getByRole('button', { name: title, exact: true }).first().click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText(title, { exact: true })).toBeVisible();
+  await expect(detail.getByText('Account asset amount', { exact: true })).toBeVisible();
+  await expect(detail.getByText('987654321', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Whole transaction fee: 1.0 SYS', { exact: true })).toBeVisible();
+  expect((await page.evaluate(() => window.__watchFixture.activity.calls())).filter(url => /\/tx\//.test(url))).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('spt-account-exact.png'), fullPage: true });
+});
+
+test('SPT one-atom direction and compact bridge scope come from shared interpretation', async ({ page }) => {
+  await open(page, 'syscoin', false, 'asset-owned'); await load(page);
+  await page.getByRole('button', { name: '+0.00000001 ATOM', exact: true }).first().click();
+  await expect(page.getByTestId('watch-activity-detail').getByText('+0.00000001 ATOM', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.evaluate(() => window.__watchFixture.activity.mode('asset-bridge'));
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click(); await load(page);
+  await page.getByRole('button', { name: '9007199254740993 BIG', exact: true }).first().click();
+  await expect(page.getByTestId('watch-activity-detail').getByText('Account asset amount', { exact: true })).toBeVisible();
+  await expect(page.getByText('Asset operation amount', { exact: true })).toHaveCount(0);
+});
+
+test('SPT unavailable quantity and unsafe optional metadata never substitute or echo funding', async ({ page }) => {
+  await open(page, 'syscoin', false, 'asset-invalid'); await load(page);
+  await page.getByRole('button', { name: 'Asset activity', exact: true }).first().click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText('Asset amount unavailable', { exact: true })).toBeVisible();
+  await expect(detail.getByText('Native account change: −10.0 SYS', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.evaluate(() => window.__watchFixture.activity.mode('asset-hostile'));
+  await page.getByRole('button', { name: 'Refresh activity', exact: true }).click(); await load(page);
+  await page.getByRole('button', { name: '9007199254740993 SPT', exact: true }).first().click();
+  expect(await page.locator('body').innerText()).not.toMatch(/SPOOF|provider-metadata|\u202e/);
+  await expect(detail.getByText('ASSET ID', { exact: true })).toHaveCount(0);
+});
+
+test('exact SPT quantity remains readable at 320px with scaled text', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await open(page, 'syscoin', false, 'asset-exact'); await load(page);
+  // Match native Dynamic Type body scaling and the existing 1.25x caption cap.
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; } [data-testid^="main-tab-caption-"] { font-size: 15px !important; line-height: 21.25px !important; }' });
+  for (const tab of await page.getByRole('tab').all()) {
+    const box = await tab.boundingBox(); expect(box?.width).toBeGreaterThanOrEqual(44); expect(box?.height).toBeGreaterThanOrEqual(44);
+    const caption = tab.locator('[data-testid^="main-tab-caption-"]');
+    const width = await caption.evaluate(element => {
+      const range = document.createRange(); range.selectNodeContents(element);
+      return { full: range.getBoundingClientRect().width, box: element.getBoundingClientRect().width };
+    });
+    expect(width.full).toBeLessThanOrEqual(width.box + 1);
+  }
+  await page.screenshot({ path: testInfo.outputPath('spt-account-list-320-large.png'), fullPage: true });
+  await page.getByRole('button', { name: '9007199254740993 BIG', exact: true }).first().click();
+  const detail = page.getByTestId('watch-activity-detail');
+  await expect(detail.getByText('9007199254740993 BIG', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('spt-account-320-large.png'), fullPage: true });
+  await detail.getByText('Whole transaction fee: 1.0 SYS', { exact: true }).scrollIntoViewIfNeeded();
+  await page.getByRole('button', { name: 'Copy transaction ID', exact: true }).scrollIntoViewIfNeeded();
+  await expect(page.getByRole('button', { name: 'Copy transaction ID', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(page.getByRole('button', { name: '9007199254740993 BIG', exact: true }).first()).toBeVisible();
+});
+
+
+test('the full 78-digit SPT quantity stays within list and detail bounds at large text', async ({ page }, testInfo) => {
+  const quantity = '9'.repeat(78) + ' BIG';
+  await page.setViewportSize({ width: 320, height: 740 });
+  await open(page, 'syscoin', false, 'asset-max'); await load(page);
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 24px !important; line-height: 1.4 !important; } [data-testid^="main-tab-caption-"] { font-size: 15px !important; line-height: 21.25px !important; }' });
+  const row = page.getByRole('button', { name: quantity, exact: true }).first();
+  const measure = async (element: ReturnType<Page['locator']>) => element.evaluate(node => {
+    const range = document.createRange(); range.selectNodeContents(node);
+    const outer = node.closest('[role="button"]') ?? node;
+    const box = outer.getBoundingClientRect();
+    return { text: node.textContent, left: box.left, right: box.right,
+      rects: Array.from(range.getClientRects()).map(rect => ({ left: rect.left, right: rect.right })) };
+  });
+  const assertInside = (value: Awaited<ReturnType<typeof measure>>) => {
+    expect(value.text).toBe(quantity);
+    expect(value.left).toBeGreaterThanOrEqual(0); expect(value.right).toBeLessThanOrEqual(320);
+    for (const rect of value.rects) { expect(rect.left).toBeGreaterThanOrEqual(value.left - 1); expect(rect.right).toBeLessThanOrEqual(value.right + 1); }
+  };
+  await page.screenshot({ path: testInfo.outputPath('spt-78-list.png'), fullPage: true });
+  assertInside(await measure(row.locator('[dir="auto"]')));
+  await row.click();
+  const detail = page.getByTestId('watch-activity-detail');
+  assertInside(await measure(detail.getByText(quantity, { exact: true })));
+  await page.screenshot({ path: testInfo.outputPath('spt-78-detail.png'), fullPage: true });
+  const copy = page.getByRole('button', { name: 'Copy transaction ID', exact: true });
+  await copy.scrollIntoViewIfNeeded(); await expect(copy).toBeInViewport();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(row).toBeVisible();
+});

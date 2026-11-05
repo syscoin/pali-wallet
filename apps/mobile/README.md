@@ -35,7 +35,7 @@ Opening Activity for the active Bitcoin or Syscoin watch account loads indexed h
 
 Pages contain at most20 rows. The list keeps a window of at most100 rows, with older/newer navigation that can request pages beyond five. Fresh same-transaction observations replace retained status, including a return to pending; other retained rows are not proof of complete indexing. Network or storage failure preserves the previous list as stale. Backgrounding, focus loss, lock, account/network changes and leaving Activity abort its requests. Entering an active current Activity view loads again without an extra consent step.
 
-Native account change, whole-transaction fee and transfer intent use the existing shared exact-amount helpers. Unknown ownership or missing data stays unavailable. SPT quantity is explicitly unavailable and is never inferred from rounded token metadata; native funding remains separately labelled. Source/browser tests do not qualify deployed services, native HTTP, physical privacy or complete feature equivalence. See [the implementation contract](docs/utxo-watch-activity.md).
+Native account change, whole-transaction fee and transfer intent use the existing shared exact-amount helpers. Unknown ownership or missing data stays unavailable. SPT quantities present in account-history rows use the shared exact-decimal helper and formatter, with explicit account scope and only shared direction. Unavailable quantities never substitute native funding, which remains separately labelled. Full bridge/detail hydration remains unimplemented. Source/browser tests do not qualify deployed services, native HTTP, physical privacy or complete feature equivalence. See [the implementation contract](docs/utxo-watch-activity.md).
 
 ## Run
 

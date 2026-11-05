@@ -4,6 +4,7 @@ import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityContext, 
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
+import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
@@ -87,7 +88,7 @@ test('native exact quantities, fee, receipt, self and ambiguous collaborative in
 });
 test('asset quantities and script metadata never leak or become native amounts', async () => {
   const f = fixture({ count: 1, replace(path, body) { if (path.includes('/address/')) Object.assign(body.transactions[0], { tokenType: 'SPTAssetAllocationSend', memo: '<img>', tokenTransfers: [{ value: '999999999999999999' }] }); return body; } });
-  const page = await read(f); assert.equal(page.rows[0]?.hasUnsupportedAssetData, true); assert.equal(page.rows[0]?.nativeTransfer, null); assert.equal(page.rows[0]?.netUnits, '-1000000000');
+  const page = await read(f); assert.equal(page.rows[0]?.hasAssetData, true); assert.equal(page.rows[0]?.nativeTransfer, null); assert.equal(page.rows[0]?.netUnits, '-1000000000');
   assert.ok(!JSON.stringify(page).includes('999999999') && !JSON.stringify(page).includes('<img>'));
 });
 test('unknown account totals remain null rather than zero or transaction-wide aliases', async () => {
@@ -237,4 +238,92 @@ test('work-budget rejection does not poison the shared backend capability for a 
   let oversized=true;const f=fixture({count:1,replace(path,body){if(oversized&&path.includes('/address/'))body.transactions[0].fees='1'.repeat(79);return body;}}),reader=createUtxoActivityReader(f);
   await assert.rejects(reader.readPage(source,{page:1},signal()));oversized=false;const before=f.calls.length;const page=await reader.readPage(source,{page:1},signal());
   assert.equal(page.rows.length,1);assert.ok(f.calls.slice(before).at(-1)?.includes('details=txsummary'));assert.equal(f.calls.some(path=>path.includes('txslight')),false);
+});
+
+// Mirrors Blockbook worker.go accountAssetTransfersFromSummary: the amount is
+// absolute, contract/assetGuid are the same decimal ID, and no asset direction
+// is emitted. Native direction must not leak into the token quantity.
+function compactAsset(value: unknown, decimals = 0, symbol: unknown = 'BIG') {
+  const transfer = { type: 'SPT', standard: 'SPT', contract: '987654321', assetGuid: '987654321', symbol, decimals, value };
+  return { ...tx(), vin: [], vout: [], direction: 'sent', tokenType: 'SPTAssetAllocationSend',
+    accountAssetTransfers: [transfer], tokenTransfers: [transfer] };
+}
+async function readAsset(asset: unknown) {
+  const f = fixture({ count: 1, network: 'syscoin', replace(path, body) { if (path.includes('/address/')) body.transactions = [asset]; return body; } });
+  const input = { ...source, context: { ...owner, networkId: 'syscoin' as const, address: SYS }, identifier: SYS };
+  const page = await read(f, 1, input);
+  assert.deepEqual(f.calls, ['/api/', '/api/v2/block-index/0', `/api/v2/address/${SYS}?details=txsummary&page=1&pageSize=20`]);
+  return page.rows[0]!;
+}
+test('real compact account SPT fields retain exact quantity, unknown direction and independent native funding', async () => {
+  const row = await readAsset(compactAsset('9007199254740993'));
+  assert.deepEqual(row.assetAmount, { amount: '9007199254740993', assetGuid: '987654321', decimals: 0, symbol: 'BIG', scope: 'account' });
+  assert.ok(Object.isFrozen(row.assetAmount));
+  assert.equal(row.hasAssetData, true); assert.equal(row.nativeTransfer, null);
+  assert.equal(row.netUnits, '-1000000000'); assert.equal(row.transactionFeeUnits, '100000000');
+});
+for (const decimals of Array.from({ length: 9 }, (_, i) => i)) test(`shared SPT decimal precision ${decimals} reaches the public account page`, async () => {
+  const raw = decimals === 0 ? '123456789' : '1' + '0'.repeat(decimals - 1) + '1';
+  const expected = decimals === 0 ? raw : '1.' + '0'.repeat(decimals - 1) + '1';
+  const row = await readAsset(compactAsset(raw, decimals));
+  assert.equal(row.assetAmount?.amount, expected); assert.equal(row.assetAmount?.decimals, decimals);
+});
+for (const [input, output, direction] of [['9007199254740992', '9007199254740993', 'received'], ['9007199254740993', '9007199254740992', 'sent']]) test(`owned SPT arrays retain one-atom ${direction} direction from the shared helper`, async () => {
+  const asset = compactAsset('1'); delete (asset as any).accountAssetTransfers;
+  Object.assign(asset, { vin: [{ isOwn: true, assetInfo: { assetGuid: '987654321', value: input } }],
+    vout: [{ isOwn: true, assetInfo: { assetGuid: '987654321', value: output } }] });
+  const row = await readAsset(asset);
+  assert.equal(row.assetAmount?.amount, '1'); assert.equal(row.assetAmount?.direction, direction); assert.equal(row.assetAmount?.scope, 'account');
+});
+for (const change of [{ value: Number.MAX_SAFE_INTEGER + 1 }, { value: '9'.repeat(79) }, { value: '1e8' }, { decimals: 9 }, { decimals: -1 }]) test(`invalid SPT quantity stays unavailable without native substitution ${JSON.stringify(change)}`, async () => {
+  const asset = compactAsset('1'); Object.assign(asset.accountAssetTransfers[0]!, change);
+  const row = await readAsset(asset); assert.equal(row.assetAmount, null); assert.equal(row.hasAssetData, true);
+  assert.equal(row.netUnits, '-1000000000'); assert.equal(row.nativeTransfer, null);
+});
+test('compact bridge page quantity stays explicitly account-scoped', async () => {
+  const asset = compactAsset('9007199254740993'); asset.tokenType = 'SPTAssetAllocationBurnToNEVM';
+  const row = await readAsset(asset); assert.equal(row.assetAmount?.scope, 'account'); assert.equal(row.assetAmount?.direction, undefined);
+});
+test('public asset metadata never exposes nested/provider/script fields or unsafe display text', async () => {
+  const asset = compactAsset('9007199254740993', 0, 'BIG\u202eSPOOF');
+  Object.assign(asset.accountAssetTransfers[0]!, { logo: 'https://untrusted.invalid/icon.svg', memo: 'private-memo', source: 'xpub-private-source' });
+  const row = await readAsset(asset);
+  assert.equal(row.assetAmount?.symbol, undefined); assert.equal(row.assetAmount?.amount, '9007199254740993');
+  const encoded = JSON.stringify(row); assert.ok(!/SPOOF|untrusted|private-memo|xpub-private-source/.test(encoded));
+});
+
+test('all 78 exact SPT digits survive independently of the native uint256 parser', async () => {
+  const value = '9'.repeat(78), row = await readAsset(compactAsset(value));
+  assert.equal(row.assetAmount?.amount, value);
+});
+test('full uint64 asset identifiers survive while malformed metadata stays neutral', async () => {
+  for (const guid of ['18446744073709551615', '18446744073709551616', 'asset-with-script']) {
+    const asset = compactAsset('1', 0, 'S'.repeat(65));
+    asset.accountAssetTransfers[0]!.assetGuid = guid;
+    const row = await readAsset(asset);
+    assert.equal(row.assetAmount?.amount, '1'); assert.equal(row.assetAmount?.symbol, undefined);
+    assert.equal(row.assetAmount?.assetGuid, guid === '18446744073709551615' ? guid : undefined);
+  }
+});
+test('ambiguous compact bridge assets remain unavailable without inventing a native quantity', async () => {
+  const asset = compactAsset('1'); asset.tokenType = 'SPTAssetAllocationBurnToNEVM';
+  asset.accountAssetTransfers.push({ ...asset.accountAssetTransfers[0]!, assetGuid: '123456', value: '2' });
+  const row = await readAsset(asset); assert.equal(row.assetAmount, null); assert.equal(row.hasAssetData, true);
+  assert.equal(row.netUnits, '-1000000000');
+});
+for (const valueStr of ['9007199254740993.12 BIG', '1.123 BIG', '9'.repeat(300), '1e3 BIG']) test(`preferred SPT value string uses shared exact parser ${valueStr.length}`, async () => {
+  const asset = compactAsset('0', 2); delete (asset as any).accountAssetTransfers;
+  Object.assign(asset, { vin: [{ isOwn: true, assetInfo: { assetGuid: '987654321', value: '0' } }],
+    vout: [{ isOwn: true, assetInfo: { assetGuid: '987654321', value: '999', valueStr } }] });
+  const row = await readAsset(asset);
+  assert.equal(row.assetAmount?.amount ?? null, valueStr === '9007199254740993.12 BIG' ? '9007199254740993.12' : null);
+  assert.equal(row.nativeTransfer, null);
+});
+test('oversized SPT text never reaches arbitrary-precision conversion', async () => {
+  const original = BigNumber.from; const lengths: number[] = [];
+  BigNumber.from = ((value: Parameters<typeof original>[0]) => { if (typeof value === 'string') lengths.push(value.length); return original(value); }) as typeof original;
+  try {
+    const row = await readAsset(compactAsset('9'.repeat(100000)));
+    assert.equal(row.assetAmount, null); assert.ok(lengths.every(length => length <= 78));
+  } finally { BigNumber.from = original; }
 });
