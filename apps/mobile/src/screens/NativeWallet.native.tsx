@@ -392,7 +392,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     onCapacity={openNoteCapacity ? () => {
       if (AppState.currentState === 'active' && readyContext()) setStage('note-capacity');
     } : undefined} />;
-  if (stage === 'note-inventory' && snapshot.phase === 'ready' && readNoteInventory) return <NativeNoteInventory
+  if (stage === 'note-inventory' && snapshot.phase === 'ready' && protectedScreen && readNoteInventory) return <NativeNoteInventory
     key={snapshot.revision} readInventory={readNoteInventory} onBack={() => setStage('private-notes')} onLock={revoke} />;
   if (stage === 'note-capacity' && snapshot.phase === 'ready' && openNoteCapacity) return <NativeNoteCapacity
     key={snapshot.revision} openCapacity={openNoteCapacity} onBack={() => setStage('private-notes')} />;

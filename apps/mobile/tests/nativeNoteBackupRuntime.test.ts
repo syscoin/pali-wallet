@@ -202,7 +202,7 @@ test('actual native owner imports and verifies an exact encrypted backup, with e
 test('saved inventory projects only local metadata from a restored encrypted SQLite vault', async () => {
   const f = await fixture();
   try {
-    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+    assert.deepEqual((await f.runtime.readNoteInventory!(current)).notes, []);
     const withdrawalNote: INoteBackupEntry = {
       note: `tornado-eth-0.1-1-0x${'02'.repeat(62)}`,
       createdAt: 15,
@@ -219,7 +219,7 @@ test('saved inventory projects only local metadata from a restored encrypted SQL
     const stored = await f.storage.notes.read();
     const unlocks = f.unlockCalls;
     const commits = f.noteCommits;
-    const notes = await f.runtime.readNoteInventory!(current);
+    const { notes } = await f.runtime.readNoteInventory!(current);
     assert.deepEqual(notes, [
       { amount: '0.1', createdAt: 15, reconciliation: 'withdrawal-history' },
       { amount: '1', createdAt: 10, reconciliation: 'restored-note' },
@@ -246,7 +246,7 @@ test('saved inventory discards held reads after a route owner changes or the wal
     release();
     release = undefined;
     await beforeLeaving;
-    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+    assert.deepEqual((await f.runtime.readNoteInventory!(current)).notes, []);
 
     const locking = f.holdNoteRead();
     release = locking.release;
@@ -258,8 +258,99 @@ test('saved inventory discards held reads after a route owner changes or the wal
     await beforeLocking;
     await assert.rejects(f.runtime.readNoteInventory!(current));
     assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
-    assert.deepEqual(await f.runtime.readNoteInventory!(current), []);
+    assert.deepEqual((await f.runtime.readNoteInventory!(current)).notes, []);
     assert.equal(f.noteWrites, 0);
+  } finally { release?.(); await f.dispose(); }
+});
+
+test('individual reveal requires fresh credentials and resolves only the exact saved row', async () => {
+  const f = await fixture();
+  try {
+    const twin = { ...NOTE, note: `tornado-eth-1-1-0x${'02'.repeat(62)}` };
+    const file = await encrypted([NOTE, twin]);
+    const backup = await f.runtime.openNoteBackup!(current);
+    const id = backup.begin();
+    await backup.prepareImport(id, file, BACKUP_PASSWORD);
+    await backup.commitImport(id, PASSWORD);
+    await f.reopen();
+
+    const stored = await f.storage.notes.read();
+    const inventory = await f.runtime.readNoteInventory!(current);
+    const [first, second] = inventory.notes;
+    assert.ok(first && second && first !== second);
+    assert.deepEqual(first, { amount: '1', createdAt: 10, reconciliation: 'restored-note' });
+    assert.deepEqual(first, second);
+    const other = await f.runtime.readNoteInventory!(current);
+    const unlocks = f.unlockCalls;
+    await assert.rejects(inventory.revealNote({ ...first }, PASSWORD, current), /privacy_note_missing/);
+    await assert.rejects(inventory.revealNote(other.notes[0]!, PASSWORD, current), /privacy_note_missing/);
+    await assert.rejects(inventory.revealNote(first, PASSWORD, async () => undefined));
+    assert.equal(f.unlockCalls, unlocks);
+    assert.equal(await inventory.revealNote(first, PASSWORD, current), NOTE.note);
+    assert.equal(await inventory.revealNote(second, PASSWORD, current), twin.note);
+    assert.equal(f.unlockCalls, unlocks + 2);
+    await assert.rejects(inventory.revealNote(second, WRONG_PASSWORD, current));
+    assert.equal(f.unlockCalls, unlocks + 3);
+    assert.equal(await f.failures(), 1);
+    assert.equal(f.noteWrites, 1);
+    assert.deepEqual(await f.storage.notes.read(), stored);
+  } finally { await f.dispose(); }
+});
+
+test('individual reveal drops held authentication and vault reads after attempt, route or wallet revocation', async () => {
+  const f = await fixture();
+  let release: (() => void) | undefined;
+  try {
+    const file = await encrypted();
+    const backup = await f.runtime.openNoteBackup!(current);
+    const id = backup.begin();
+    await backup.prepareImport(id, file, BACKUP_PASSWORD);
+    await backup.commitImport(id, PASSWORD);
+
+    let route = 1, attempt = 1;
+    const inventory = await f.runtime.readNoteInventory!(() => {
+      if (route !== 1) throw new Error('CANCELLED');
+    });
+    const note = inventory.notes[0]!;
+    const first = f.holdUnlock('after');
+    release = first.release;
+    const staleAttempt = assert.rejects(inventory.revealNote(note, PASSWORD, () => {
+      if (attempt !== 1) throw new Error('CANCELLED');
+    }));
+    await first.entered;
+    const unlocks = f.unlockCalls;
+    await assert.rejects(inventory.revealNote(note, PASSWORD, current), { code: 'BUSY' });
+    assert.equal(f.unlockCalls, unlocks);
+    attempt++;
+    release();
+    release = undefined;
+    await staleAttempt;
+
+    const second = f.holdNoteRead();
+    release = second.release;
+    const staleRoute = assert.rejects(inventory.revealNote(note, PASSWORD, current));
+    await second.entered;
+    route++;
+    release();
+    release = undefined;
+    await staleRoute;
+    await assert.rejects(inventory.revealNote(note, PASSWORD, current));
+
+    const replacement = await f.runtime.readNoteInventory!(current);
+    const locking = f.holdUnlock('before');
+    release = locking.release;
+    const staleWallet = assert.rejects(replacement.revealNote(replacement.notes[0]!, PASSWORD, current));
+    await locking.entered;
+    await f.runtime.session.lock();
+    release();
+    release = undefined;
+    await staleWallet;
+    assert.equal(f.unlocked, false);
+    assert.deepEqual(await f.runtime.session.unlock(PASSWORD), { authenticated: true });
+    await assert.rejects(replacement.revealNote(replacement.notes[0]!, PASSWORD, current));
+    const reopened = await f.runtime.readNoteInventory!(current);
+    assert.equal(await reopened.revealNote(reopened.notes[0]!, PASSWORD, current), NOTE.note);
+    assert.equal(f.noteWrites, 1);
   } finally { release?.(); await f.dispose(); }
 });
 

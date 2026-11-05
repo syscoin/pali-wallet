@@ -3,6 +3,7 @@ import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeNoteInventory as NoteInventory } from '../custody/noteBackupRuntime';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
+import { NativeNoteReveal } from './NativeNoteReveal';
 
 type Props = {
   readInventory(assertCurrent: () => void): Promise<NoteInventory>;
@@ -11,7 +12,7 @@ type Props = {
 };
 type State = { phase: 'loading' } | ({ source: Props['readInventory'] } & (
   { phase: 'error' | 'retired' } |
-  { phase: 'ready'; notes: NoteInventory; page: number; selected: number | null }
+  { phase: 'ready'; inventory: NoteInventory; page: number; selected: number | null; revealing: boolean }
 ));
 type Owner = { live: boolean; request?: object };
 const LOADING = { phase: 'loading' } as const;
@@ -27,14 +28,14 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     if (!owner.live || owner.request || AppState.currentState !== 'active') return;
     const request = {};
     owner.request = request;
-    const isCurrent = () => owner.live && owner.request === request && AppState.currentState === 'active';
+    const routeCurrent = () => owner.live && AppState.currentState === 'active';
+    const isCurrent = () => routeCurrent() && owner.request === request;
     const assertCurrent = () => {
-      if (!isCurrent()) throw new Error('CANCELLED');
+      if (!routeCurrent()) throw new Error('CANCELLED');
     };
     try {
-      const notes = await readInventory(assertCurrent);
-      assertCurrent();
-      setState({ phase: 'ready', source: readInventory, notes, page: 0, selected: null });
+      const inventory = await readInventory(assertCurrent);
+      if (isCurrent()) setState({ phase: 'ready', source: readInventory, inventory, page: 0, selected: null, revealing: false });
     } catch {
       if (isCurrent()) setState({ phase: 'error', source: readInventory });
     } finally {
@@ -59,7 +60,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   }, [load, readInventory]);
 
   const view: State = 'source' in state && state.source === readInventory ? state : LOADING;
-  const updateReady = useCallback((changes: { page: number } | { selected: number | null }) => {
+  const updateReady = useCallback((changes: { page: number } | { selected: number | null } | { revealing: boolean }) => {
     if (!life.current.live) return;
     setState((current) => current === view && current.phase === 'ready' ? { ...current, ...changes } : current);
   }, [view]);
@@ -68,12 +69,14 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     life.current.live = false;
     onBack();
   }, [onBack, updateReady, view]);
+  const revealing = view.phase === 'ready' && view.revealing;
   useLayoutEffect(() => {
+    if (revealing) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => { back(); return true; });
     return () => subscription.remove();
-  }, [back]);
+  }, [back, revealing]);
 
-  const notes = view.phase === 'ready' ? view.notes : [];
+  const notes = view.phase === 'ready' ? view.inventory.notes : [];
   const note = view.phase === 'ready' && view.selected !== null ? notes[view.selected] : undefined;
   const page = view.phase === 'ready' ? view.page : 0;
   const start = page * PAGE_SIZE;
@@ -84,6 +87,9 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     setState({ phase: 'retired', source: readInventory });
     onLock();
   };
+
+  if (view.phase === 'ready' && revealing && note) return <NativeNoteReveal key={view.selected} inventory={view.inventory} note={note}
+    onBack={() => updateReady({ revealing: false })} onLock={lock} />;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}>
     <Screen key={note ? 'detail' : 'list'} footer={<Button title="Lock wallet" variant="secondary" onPress={lock} />}>
@@ -97,6 +103,7 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
           body="This note came from a backup and still needs to be checked against the pool." tone="amber" />}
         {note.reconciliation === 'withdrawal-history' && <Notice title="Saved withdrawal history"
           body="This note has a saved withdrawal record that needs review. Its outcome hasn’t been checked here." tone="amber" />}
+        <Button title="Back up this note" variant="secondary" onPress={() => updateReady({ revealing: true })} />
       </> : <>
         {view.phase === 'loading' && <Text accessibilityLiveRegion="polite" style={styles.muted}>Loading saved notes…</Text>}
         {view.phase === 'error' && <>
