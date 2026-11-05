@@ -60,7 +60,7 @@ export type WalletIdentityRead = Readonly<{
   root: Readonly<{ address: string; publicKey: string; profileId: string }> | null;
   verification: 'requires-unlock';
 }>;
-/** Read-only encrypted note row. No production creation/replacement port exists yet. */
+/** Opaque encrypted note row. Never expose the stored value to UI. */
 export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
 export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
@@ -81,8 +81,18 @@ export type RecoveryRoot = NonNullable<WalletIdentityRead['root']>;
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
-  /** Read-only domain, sharing this owner’s SQL queue and lease. */
-  readonly notes?: Readonly<{ read(): Promise<readonly NoteDomainRow[]> }>;
+  /** Private note domain, sharing this owner’s SQL queue and lease. */
+  readonly notes?: Readonly<{
+    read(): Promise<readonly NoteDomainRow[]>;
+    /** Caller binds the SDK-authenticated profile and current wallet identity. */
+    compareAndSet(
+      profileId: string,
+      walletBindingId: string,
+      expected: string | undefined,
+      next: string,
+      assertCurrent: () => void
+    ): Promise<boolean>;
+  }>;
   readonly authGuard: Readonly<{
     checkAllowed(): Promise<void>;
     recordFailure(): Promise<void>;
