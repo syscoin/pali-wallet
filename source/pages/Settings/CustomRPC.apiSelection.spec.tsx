@@ -141,6 +141,7 @@ let unexpectedReads: number;
 let heldAlpha: { promise: Promise<void>; resolve: () => void } | null;
 
 let httpRules: chrome.declarativeNetRequest.Rule[];
+let holdBlockbookRule: (() => Promise<void>) | null;
 
 beforeEach(async () => {
   httpRules = [];
@@ -172,6 +173,7 @@ beforeEach(async () => {
   reads = [];
   unexpectedReads = 0;
   heldAlpha = null;
+  holdBlockbookRule = null;
   globalThis.fetch = jest.fn(async (input, options) => {
     const url = String(input);
     expect(
@@ -282,6 +284,17 @@ beforeEach(async () => {
       MAX_NUMBER_OF_DYNAMIC_RULES: 30000,
       getDynamicRules: async () => httpRules,
       updateDynamicRules: async ({ removeRuleIds, addRules }: any) => {
+        if (
+          holdBlockbookRule &&
+          addRules.some(
+            (rule: chrome.declarativeNetRequest.Rule) =>
+              rule.condition.urlFilter === `|${BLOCKBOOK}/`
+          )
+        ) {
+          const hold = holdBlockbookRule;
+          holdBlockbookRule = null;
+          await hold();
+        }
         httpRules = httpRules.filter(
           (rule) => !removeRuleIds.includes(rule.id)
         );
@@ -745,6 +758,37 @@ it('uses an explicit observation when pinning a previously registered custom end
     'blockbook-info',
     'blockbook-genesis',
   ]);
+});
+
+it('does not send a Blockbook GET when the real rule installation outlives preview expiry', async () => {
+  let enter!: () => void;
+  let release!: () => void;
+  const installed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  holdBlockbookRule = async () => {
+    enter();
+    await installed;
+  };
+  const request = wallet.previewUtxoRpc({
+    purpose: 'first-use',
+    url: BLOCKBOOK,
+    label: 'Synthetic Blockbook',
+  });
+  const refused = expect(request).rejects.toThrow(/cancelled or timed out/);
+  try {
+    await entered;
+    await jest.advanceTimersByTimeAsync(10_000);
+    await refused;
+  } finally {
+    release();
+    await jest.advanceTimersByTimeAsync(0);
+  }
+  expect(reads).toEqual([]);
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it('withholds an endpoint result if the wallet retires while the transport returns', async () => {
