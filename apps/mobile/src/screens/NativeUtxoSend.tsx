@@ -166,7 +166,20 @@ export function NativeUtxoSendScreen({
     });
   const footer = outcome ? (
     <Button title="Done" onPress={close} />
-  ) : review ? (
+  ) : review ? undefined : (
+    <Button
+      title="Review transfer"
+      disabled={!send || busy || !address.trim() || !(amount || max)}
+      onPress={() => {
+        run(async (current) => {
+          const next = await send!.prepare({ recipient: address, amount, max });
+          if (current()) setReview(next);
+        });
+      }}
+      testID="native-utxo-review"
+    />
+  );
+  const confirm = review && (
     <Button
       title={review.retryTxid ? 'Resend saved transfer' : 'Confirm and send'}
       disabled={busy}
@@ -178,18 +191,6 @@ export function NativeUtxoSendScreen({
         });
       }}
       testID="native-utxo-confirm"
-    />
-  ) : (
-    <Button
-      title="Review transfer"
-      disabled={!send || busy || !address.trim() || !(amount || max)}
-      onPress={() => {
-        run(async (current) => {
-          const next = await send!.prepare({ recipient: address, amount, max });
-          if (current()) setReview(next);
-        });
-      }}
-      testID="native-utxo-review"
     />
   );
   return (
@@ -264,8 +265,14 @@ export function NativeUtxoSendScreen({
                 </Text>
               </View>
               <Card style={s.card}>
-                <Text style={styles.muted}>Recipient</Text>
-                <Text selectable style={s.address}>
+                <Text style={styles.muted}>
+                  {review.retryTxid ? 'Output 1' : 'Recipient'}
+                </Text>
+                <Text
+                  selectable
+                  style={s.address}
+                  testID="native-utxo-recipient"
+                >
                   {review.outputs[0]!.address}
                 </Text>
                 <Text style={styles.muted}>Network fee</Text>
@@ -275,7 +282,8 @@ export function NativeUtxoSendScreen({
                 {review.outputs.slice(1).map((output, index) => (
                   <View key={index} style={s.card}>
                     <Text style={styles.muted}>
-                      Change · {units(output.amountSatoshis)}
+                      {review.retryTxid ? `Output ${index + 2}` : 'Change'} ·{' '}
+                      {units(output.amountSatoshis)}
                     </Text>
                     <Text selectable style={s.address}>
                       {output.address}
@@ -283,6 +291,7 @@ export function NativeUtxoSendScreen({
                   </View>
                 ))}
               </Card>
+              {confirm}
             </>
           ) : (
             <>
