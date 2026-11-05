@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { AbiCoder } from 'ethers/abi';
 import { JsonRpcProvider } from 'ethers/providers';
 import React from 'react';
 
@@ -72,9 +73,7 @@ const nft = {
   balance: 1,
 };
 const invalidId = () =>
-  Object.assign(new Error('ERC721: invalid token ID'), {
-    code: 'CALL_EXCEPTION',
-  });
+  AbiCoder.getBuiltinCallException('call', { to: CONTRACT }, '0x');
 const provider = {
   call: async (transaction: { data: string }) => {
     const decoded = abi.parseTransaction(transaction)!;
