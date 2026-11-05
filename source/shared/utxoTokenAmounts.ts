@@ -10,7 +10,7 @@ import type {
   ITransactionInfoUtxo,
   ITransactionVin,
   ITransactionVout,
-} from '../types/useTransactionsInfo.ts';
+} from '../types/utxoTransaction.ts';
 
 /** SPT/UTXO asset precision is 0..8, as in the existing PSBT review boundary. */
 const MAX_DECIMALS = 8;
