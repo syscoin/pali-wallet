@@ -306,7 +306,8 @@ describe.each(['Ledger', 'Trezor'] as const)(
         response.resolve(signedDeviceReply);
         await expect(signing).rejects.toMatchObject({
           name: 'AbortError',
-          message: 'Wallet signing context changed',
+          code: 'HARDWARE_REQUEST_CANCELLED',
+          transactionNotBroadcast: true,
         });
         expect(device).toHaveBeenCalledTimes(1);
         expect(manager.delay).not.toHaveBeenCalled();
