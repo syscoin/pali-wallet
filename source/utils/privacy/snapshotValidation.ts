@@ -6,13 +6,13 @@ import {
 import type { PrivacyPoolId, PrivacySnapshot } from './types.ts';
 
 const WORD = /^0x[0-9a-f]{64}$/;
-const FIELD = BigInt(
-  '21888242871839275222246405745257275088548364400416034343698204186575808495617'
-);
+const FIELD =
+  '0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001';
 const isWord = (value: unknown): value is string =>
   typeof value === 'string' && value.length === 66 && WORD.test(value);
 const isFieldWord = (value: unknown): value is string =>
-  isWord(value) && BigInt(value) < FIELD;
+  // Canonical, equal-width lowercase hex has the same string and integer order.
+  isWord(value) && value < FIELD;
 
 export function validateSnapshot(
   poolId: PrivacyPoolId,
