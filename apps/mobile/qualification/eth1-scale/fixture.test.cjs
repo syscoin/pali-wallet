@@ -69,7 +69,7 @@ test('the independent bottom-up reference agrees with the existing small smoke r
 test('the source-pinned projection keeps the scale budget and clock inside the detached loopback adapter', () => {
   const root = resolve(__dirname, '../../../..');
   const projected = buildOverlay(root, { blockTimestampMs: exampleTime });
-  assert.equal(projected.size, 9);
+  assert.equal(projected.size, 11);
   for (const [name, source] of projected) {
     if (name.endsWith('.cjs')) assert.doesNotThrow(() => new Script(source, { filename: name }));
   }
@@ -89,6 +89,11 @@ test('the source-pinned projection keeps the scale budget and clock inside the d
     assert.ok(source.includes(APP));
     assert.doesNotMatch(source, /com\.paliwallet\.qualification'/);
   }
+  const swiftCrypto = projected.get('modules/pali-wallet-crypto/ios/PaliWalletCryptoModule.swift');
+  assert.ok(swiftCrypto.includes(`slhQualificationBundles: Set<String> = [\n    "${APP}",\n  ]`));
+  assert.match(swiftCrypto, /Self\.slhQualificationBundles\.contains\(bundle\)/);
+  const androidCrypto = projected.get('modules/pali-wallet-crypto/android/src/main/java/expo/modules/paliwalletcrypto/PaliWalletCryptoModule.kt');
+  assert.ok(androidCrypto.includes(`check(appContext.reactContext?.packageName == "${APP}")`));
   const runner = projected.get('qualification/run-public-pool-fixture.cjs');
   assert.match(runner, /transcript\.sha256 !== scale\.transcriptSha256/);
   assert.match(runner, /build\.sourceRevision !== revision/);

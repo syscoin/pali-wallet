@@ -53,6 +53,16 @@ function buildOverlay(root, transcript) {
       '    anchor.endpoint.takeIf { it.isHttps && it.host == "127.0.0.1" } ?: fail(PaliPublicSnapshotError.INVALID),\n' +
       '    TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS),'],
   ]);
+  patch('modules/pali-wallet-crypto/ios/PaliWalletCryptoModule.swift', '50e87975589ba425a2e0df0511f9071bc0551b98aec285867de29fcf5d47cb8e', [
+    ['    "com.paliwallet.qualification",\n' +
+      '    "com.paliwallet.qualification.physical.import",\n' +
+      '    "com.paliwallet.qualification.physical.generate",',
+      `    "${APP}",`],
+  ]);
+  patch('modules/pali-wallet-crypto/android/src/main/java/expo/modules/paliwalletcrypto/PaliWalletCryptoModule.kt', '2b5ffdd44c1d6327560e543029fa6f1a8f2a2bc514f92145510572872d5c66f4', [
+    ['appContext.reactContext?.packageName == "com.paliwallet.qualification"',
+      `appContext.reactContext?.packageName == "${APP}"`],
+  ]);
   patch('qualification/public-pool-contract.ts', '1a057167ceb1891bff2cc9adf7d03f393844da383d56e2a2b9a18710b2c4186e', [
     ['PUBLIC_POOL_BLOCK = 20_000_000;', `PUBLIC_POOL_BLOCK = ${ETH1_SCALE.block};`],
     ["PUBLIC_POOL_BLOCK_HASH = '0x' + '37'.repeat(32);", `PUBLIC_POOL_BLOCK_HASH = '${ETH1_SCALE.blockHash}';`],
