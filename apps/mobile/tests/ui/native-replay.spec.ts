@@ -53,6 +53,16 @@ test('older same-nonce alternatives remain reachable through local pagination',a
  expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
 });
 
+test('a nonce gap stays visible when no previous transaction was saved', async ({ page }) => {
+  await page.goto('/?erc20-send');
+  await page.waitForFunction(() => !!window.__erc20SendFixture);
+  const { second } = await page.evaluate(() => window.__erc20SendFixture.seedPredecessor(0));
+  await expect(page.getByText('PREVIOUS TRANSACTION · NONCE 0')).toBeVisible();
+  await expect(page.getByText('The earlier transaction is not saved on this device.')).toBeVisible();
+  await expect(page.getByText(second, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
+});
+
 test('checking an earlier collectible keeps the displayed hash', async ({ page }) => {
   await page.goto('/?erc20-send');
   await page.waitForFunction(() => !!window.__erc20SendFixture);

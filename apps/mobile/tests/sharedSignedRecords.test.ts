@@ -43,6 +43,31 @@ test('same-nonce alternatives and nonce-used observations never replace predeces
  const all=await f.store.listSender(f.session(),'7654321',signer.address);assert.equal(all.length,3);
  for(const input of [first,alternative,next])assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);
 });
+test('pending pages use an append-order cursor even after the cursor becomes terminal', async () => {
+  const f = fixture(), session = f.session();
+  const [first, confirmed, cursor, latest, reverted, later] = await Promise.all([
+    signed(0), signed(1), signed(2), signed(3), signed(4), signed(5),
+  ] as const);
+  const write = (entry: typeof first, phase: EvmSignedPhase) =>
+    f.store.updatePhase(session, entry.chainId, signer.address, entry.hash, phase);
+  for (const input of [first, confirmed, cursor, latest, reverted]) await f.store.append(session, input);
+  await write(confirmed, 'confirmed');
+  await write(cursor, 'attempted');
+  await write(latest, 'submitted');
+  await write(reverted, 'reverted');
+  const options = { maximum: 2, pendingOnly: true } as const;
+  const read = (beforeHash?: string) => f.store.readPage(session, first.chainId, signer.address, { ...options, beforeHash });
+  const page = await read();
+  assert.deepEqual(page.entries.map(({ hash, phase }) => [hash, phase]), [[latest.hash, 'submitted'], [cursor.hash, 'attempted']]);
+  assert.equal(page.nextCursor, cursor.hash);
+  assert.equal(page.total, 3);
+  await write(cursor, 'confirmed');
+  await f.store.append(session, later);
+  const previous = await read(page.nextCursor!);
+  assert.deepEqual(previous.entries.map(({ hash, phase }) => [hash, phase]), [[first.hash, 'signed']]);
+  assert.equal(previous.nextCursor, null);
+  assert.deepEqual((await read()).entries.map(({ hash }) => hash), [later.hash, latest.hash]);
+});
 test('retries an exact CAS miss, while exhausting conflicts never acknowledges append',async()=>{
  const f=fixture(),input=await signed();const original=f.port.compareAndSet;let misses=1;
  f.port.compareAndSet=async(...args)=>misses-->0?false:original(...args);

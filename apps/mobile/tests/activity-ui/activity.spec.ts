@@ -1,4 +1,18 @@
 import { test, expect } from '@playwright/test';
+test('Saved pending pages exact hashes and opens the selected retry at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?saved-pending');
+  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
+  await expect(page.getByText('Submitted · waiting for confirmation', { exact: true })).toBeVisible();
+  const older = page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ });
+  await expect(older).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load more saved transfers' }).click();
+  await older.click();
+  await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open Activity' })).toBeVisible();
+});
+
 test('retained collectible details show signed fields without a resend action at 320px', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?retained-collectible');

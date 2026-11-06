@@ -64,7 +64,8 @@ function deferred<T>() {
   return { promise, resolve };
 }
 function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; archived?: TerminalActivityRecord[];
-  locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState; observeLocal?: (local: LocalActivityRecord) => Promise<EvmTransactionObservation> } = {}) {
+  locals?: readonly LocalActivityRecord[]; local?: LocalActivityRecord | null; cached?: ActivityCandidate[]; view?: ActivityViewState; observeLocal?: (local: LocalActivityRecord) => Promise<EvmTransactionObservation>;
+  loadSavedPending?: NativeActivityRuntime['loadSavedPending'] } = {}) {
   const state = source();
   let cached = (options.cached ?? []).map(cachedCandidate);
   const localReads: LocalActivityRecord[] = [];
@@ -72,6 +73,7 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
   const cacheWrites: { scope: ActivityScope; rows: readonly ActivityCandidate[] }[] = [];
   const viewWrites: { scope: ActivityScope; view: ActivityViewState }[] = [];
   const runtime: NativeActivityRuntime = {
+    loadSavedPending: options.loadSavedPending,
     async load(check) {
       check(); const address = state.getSnapshot().account?.address ?? OWNER;
       const scope = createActivityScope(FP, address === OWNER ? 'hd:60:0' : 'hd:60:1', address, 'ethereum');
@@ -89,6 +91,42 @@ function fixture(options: { explorer?: FakeExplorer; receipts?: FakeReceipts; ar
     hash: hash(index), phase, nonce: index, createdAt: 1600000000000 + index, recipient: OTHER, amountUnits: '1', maximumFeeUnits: '21000' });
   return { controller, source: state, runtime, explorer, receipts, cacheWrites, viewWrites, localReads, local };
 }
+
+test('saved pending pages reach older hashes without polling them, and Back retires an in-flight page', async () => {
+  const base = fixture();
+  const recent = base.local(3, 'submitted'), older = base.local(1, 'attempted');
+  const held = deferred<{ records: readonly LocalActivityRecord[]; nextCursor: null }>();
+  const cursors: (string | undefined)[] = [];
+  const f = fixture({ receipts: new FakeReceipts(() => null), async loadSavedPending(scope, beforeHash, guard) {
+    guard(); assert.equal(scope.address, OWNER);
+    cursors.push(beforeHash);
+    if (cursors.length > 2) return held.promise;
+    return beforeHash === undefined ? { records: [recent], nextCursor: recent.hash } : { records: [older], nextCursor: null };
+  } });
+  await f.controller.refresh();
+  const explorerReads = f.explorer.pages.length;
+  await f.controller.loadSavedPending();
+  await f.controller.loadSavedPending();
+  assert.deepEqual(cursors, [undefined, recent.hash]);
+  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows.map((row) => row.hash), [recent.hash, older.hash]);
+  assert.equal(f.controller.getSnapshot().savedPending?.hasMore, false);
+  assert.equal(f.explorer.pages.length, explorerReads);
+  assert.equal(f.receipts.calls.length, 0);
+  assert.equal(f.localReads.length, 0);
+
+  f.controller.inspect(older.hash);
+  await until(() => !!f.controller.getSnapshot().savedPending?.rows.find((row) => row.hash === older.hash)?.retainedObservation);
+  assert.deepEqual(f.receipts.calls.map((call) => call.hash), [older.hash]);
+  assert.deepEqual(f.localReads.map((row) => row.hash), [older.hash]);
+
+  f.controller.closeSavedPending();
+  const late = f.controller.loadSavedPending();
+  assert.equal(f.controller.getSnapshot().savedPending?.status, 'loading');
+  f.controller.closeSavedPending();
+  held.resolve({ records: [older], nextCursor: null });
+  await late;
+  assert.equal(f.controller.getSnapshot().savedPending, undefined);
+});
 
 test('local journal/archive, cached candidates and duplicate ERC20 discovery merge by transaction hash', async () => {
   const base = fixture();

@@ -45,6 +45,14 @@ export interface NativeActivityRuntime {
     locals: readonly LocalActivityRecord[];
     assets?: readonly EvmDisplayTokenMetadata[];
   }>;
+  loadSavedPending?(
+    scope: EvmActivityReadScope,
+    beforeHash: string | undefined,
+    guard: () => void
+  ): Promise<{
+    records: readonly LocalActivityRecord[];
+    nextCursor: string | null;
+  }>;
   observeLocal?(
     record: LocalActivityRecord,
     guard: () => void,
@@ -89,6 +97,12 @@ export type NativeActivitySnapshot = Readonly<{
   error: string | null;
   coverage: string;
   truncated: boolean;
+  canViewSavedPending?: boolean;
+  savedPending?: Readonly<{
+    rows: readonly ActivityRow[];
+    status: 'loading' | 'ready' | 'unavailable';
+    hasMore: boolean;
+  }>;
 }>;
 export type ActivityLifecycleSnapshot = Readonly<{
   phase: string;
@@ -147,6 +161,11 @@ export class NativeActivity {
   private candidates = new Map<string, ActivityCandidate>();
   private freshCandidates = new Set<string>();
   private locals = new Map<string, LocalActivityRecord>();
+  private savedPending?: {
+    records: Map<string, LocalActivityRecord>;
+    cursor: string | null | undefined;
+    status: NonNullable<NativeActivitySnapshot['savedPending']>['status'];
+  };
   private observations = new Map<string, ActivityTransactionObservation>();
   private unavailable = new Set<string>();
   private checking = new Set<string>();
@@ -213,6 +232,7 @@ export class NativeActivity {
     this.request?.abort();
     this.request = null;
     this.scope = null;
+    this.savedPending = undefined;
     this.hydration = [];
     this.checking.clear();
   }
@@ -270,6 +290,7 @@ export class NativeActivity {
         nativeSymbol: scope.network.symbol,
         explorerUrl: scope.explorerUrl,
         truncated: saved.truncated,
+        canViewSavedPending: !!runtime.loadSavedPending,
       });
       this.renderRows(true);
       this.observeRetained();
@@ -475,6 +496,37 @@ export class NativeActivity {
         });
     }
   }
+  /** Pages only the authenticated local journal. No explorer or receipt reads. */
+  async loadSavedPending(): Promise<void> {
+    const runtime = this.runtime(), scope = this.scope;
+    const request = this.request;
+    if (!scope || !request || !runtime?.loadSavedPending || request.signal.aborted) return;
+    if (this.savedPending?.status === 'loading' || this.savedPending?.cursor === null) return;
+    const page = this.savedPending ??= { records: new Map(), cursor: undefined, status: 'ready' };
+    const generation = this.generation, revision = this.source.getSnapshot().revision;
+    const guard = () => {
+      this.guard(generation, revision);
+      if (this.savedPending !== page || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+    };
+    page.status = 'loading';
+    this.renderRows();
+    try {
+      guard();
+      const result = await runtime.loadSavedPending(scope, page.cursor ?? undefined, guard);
+      guard();
+      for (const row of result.records) page.records.set(row.hash, row);
+      page.cursor = result.nextCursor;
+      page.status = 'ready';
+    } catch {
+      try { guard(); } catch { return; }
+      page.status = 'unavailable';
+    }
+    this.renderRows();
+  }
+  closeSavedPending(): void {
+    this.savedPending = undefined;
+    this.publish({ savedPending: undefined });
+  }
   private renderRows(includeCached = this.cachedFallback) {
     const records = new Map<string, ActivityRow>();
     const candidates = this.orderedCandidates(includeCached);
@@ -497,7 +549,7 @@ export class NativeActivity {
       [...this.indexed.values()],
       Number(this.scope?.network.chainId)
     );
-    const observedRows = [...records.values()].map((row) => ({
+    const observeRow = (row: ActivityRow): ActivityRow => ({
       ...row,
       observation: this.observations.get(row.hash),
       indexed: this.indexed.get(row.hash),
@@ -517,7 +569,8 @@ export class NativeActivity {
       retainedObservation: this.retainedObservations.get(row.hash),
       checking: this.checking.has(row.hash),
       unavailable: this.unavailable.has(row.hash),
-    }));
+    });
+    const observedRows = [...records.values()].map(observeRow);
     const representatives = selectEvmHistoryRepresentatives(
       observedRows.map((row) => ({
         row,
@@ -559,8 +612,16 @@ export class NativeActivity {
     );
     const moreToLoad = Object.values(this.feeds).some((f) => !f.done);
     const atDisplayLimit = this.visible >= 200 && candidates.length >= 200;
+    const pending = this.savedPending;
     this.publish({
       rows,
+      savedPending: pending ? Object.freeze({
+        rows: Object.freeze([...pending.records.values()].map((local) => observeRow({
+          ...records.get(local.hash), hash: local.hash, local, checking: false, unavailable: false,
+        }))),
+        status: pending.status,
+        hasMore: pending.cursor !== null,
+      }) : undefined,
       hasMore:
         !atDisplayLimit && (candidates.length > this.visible || moreToLoad),
       truncated:
@@ -597,7 +658,7 @@ export class NativeActivity {
       this.checking.add(hash);
       void this.receipts
         .read(hash, scope.address, signal, guard, scope.network)
-        .then((observation) => {
+        .then(async (observation) => {
           guard();
           if (observation)
             this.observations.set(hash, {
@@ -608,6 +669,20 @@ export class NativeActivity {
               })),
             });
           else this.unavailable.add(hash);
+          const pending = this.savedPending;
+          const local = pending?.records.get(hash);
+          const runtime = this.runtime();
+          if (observation?.status !== 'pending' && local && !this.locals.has(hash) && runtime?.observeLocal) {
+            try {
+              const current = () => {
+                guard();
+                if (this.savedPending !== pending || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
+              };
+              const retained = await runtime.observeLocal(local, current, signal);
+              current();
+              this.retainedObservations.set(hash, retained);
+            } catch { /* Keep a successful Activity detail if the journal check fails. */ }
+          }
         })
         .catch(() => {
           if (generation === this.generation) this.unavailable.add(hash);
@@ -622,10 +697,13 @@ export class NativeActivity {
     }
   }
   inspect(hash: string) {
-    if (this.snapshot.rows.some((row) => row.hash === hash)) {
+    const pending = this.savedPending?.records.has(hash);
+    if (pending || this.snapshot.rows.some((row) => row.hash === hash)) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
+      if (pending && !this.locals.has(hash)) this.retainedObservations.delete(hash);
       this.hydrate([hash]);
+      if (pending) this.renderRows();
     }
   }
   private observeRetained() {

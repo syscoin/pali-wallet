@@ -66,6 +66,13 @@ let saveDelay = 0;
 const identityRegression = new URLSearchParams(window.location.search).get('history-identity');
 const tokenMetadata = new URLSearchParams(window.location.search).get('token-metadata');
 const retainedCollectible = new URLSearchParams(window.location.search).get('retained-collectible');
+const savedPending = new URLSearchParams(window.location.search).has('saved-pending');
+const pendingLocals: readonly LocalActivityRecord[] = [91, 90].map((nonce) => ({
+  walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
+  address: owner, networkId: scope.network.id, registrationHash: scope.network.registrationHash,
+  chainId: scope.network.chainId, hash: hash(nonce), phase: nonce === 91 ? 'submitted' : 'attempted', nonce,
+  createdAt: 1700000000000 + nonce, recipient, amountUnits: '1', maximumFeeUnits: '150000',
+}));
 const indexedCollectible = retainedCollectible === 'indexed';
 const collectibleContract = `0x${'33'.repeat(20)}`;
 const collectibleLocals: readonly LocalActivityRecord[] = retainedCollectible !== null ? [{
@@ -223,6 +230,12 @@ const runtime: NativeActivityRuntime = {
       },
     };
   },
+  loadSavedPending: savedPending ? async (_scope, beforeHash, guard) => {
+    guard();
+    if (beforeHash === undefined) return { records: pendingLocals.slice(0, 1), nextCursor: pendingLocals[0]!.hash };
+    if (beforeHash !== pendingLocals[0]!.hash) throw new Error('Unexpected cursor');
+    return { records: pendingLocals.slice(1), nextCursor: null };
+  } : undefined,
   observeLocal: freshStatus?.observeLocal,
   async saveCache() {},
   async saveView(_scope, view, guard) {
@@ -365,7 +378,10 @@ function Fixture() {
           controller={controller}
           accountLabel="Public test account"
           onBack={() => setOpen(false)}
-          onReplay={retainedCollectible !== null ? () => { throw new Error('Read-only collectible cannot replay'); }
+          onReplay={savedPending ? (selected) => {
+            if (selected !== pendingLocals[1]!.hash) throw new Error('Expected the selected saved hash');
+            setOpen(false);
+          } : retainedCollectible !== null ? () => { throw new Error('Read-only collectible cannot replay'); }
             : freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
           onCancelPending={freshStatus ? () => setOpen(false) : undefined}
           onCancelSaved={freshStatus ? (hash) => {

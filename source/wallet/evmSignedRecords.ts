@@ -1160,6 +1160,7 @@ export class EvmSignedRecords {
       beforeHash?: string;
       maximum: number;
       nonce?: number;
+      pendingOnly?: boolean;
       replayCandidatesOnly?: boolean;
     }>
   ): Promise<
@@ -1170,12 +1171,14 @@ export class EvmSignedRecords {
     }>
   > {
     const from = getAddress(address).toLowerCase();
-    const { maximum, beforeHash, nonce, replayCandidatesOnly } = options;
+    const { maximum, beforeHash, nonce, replayCandidatesOnly, pendingOnly } =
+      options;
     if (
       !Number.isSafeInteger(maximum) ||
       maximum < 1 ||
       maximum > 30 ||
       (replayCandidatesOnly && nonce === undefined) ||
+      (pendingOnly && replayCandidatesOnly) ||
       (beforeHash !== undefined && !HASH.test(beforeHash)) ||
       (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
     )
@@ -1197,15 +1200,23 @@ export class EvmSignedRecords {
           ? matching.length
           : matching.findIndex((entry) => entry.hash === beforeHash);
       if (end < 0) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
-      const start = Math.max(0, end - maximum),
+      // Locate the anchor in append order before filtering. Its phase may
+      // have changed while the preceding page was visible.
+      const visible = pendingOnly
+        ? matching.slice(0, end).filter((entry) => isPendingPhase(entry.phase))
+        : matching;
+      const pageEnd = pendingOnly ? visible.length : end;
+      const start = Math.max(0, pageEnd - maximum),
         entries: EvmRetainedSignedRecord[] = [];
-      for (const entry of matching.slice(start, end).reverse())
+      for (const entry of visible.slice(start, pageEnd).reverse())
         entries.push(await this.materialize(session, entry));
       guard(session);
       return Object.freeze({
         entries: Object.freeze(entries),
-        total: matching.length,
-        nextCursor: start > 0 ? matching[start]!.hash : null,
+        total: pendingOnly
+          ? matching.filter((entry) => isPendingPhase(entry.phase)).length
+          : matching.length,
+        nextCursor: start > 0 ? visible[start]!.hash : null,
       });
     });
   }
