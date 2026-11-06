@@ -727,6 +727,74 @@ for (const view of ['details', 'account-mismatch'] as const) {
                 );
                 await expect(nonce).toBeEnabled();
                 await expect(nonce).toHaveValue('0');
+                // Reach the nonce through native keyboard navigation, without
+                // manually scrolling it or changing its visibility first.
+                const feeEdit = panel.getByRole('button', {
+                  name: locale.text.send.editFee,
+                  exact: true,
+                });
+                await tabTo(popup, feeEdit);
+                await popup.keyboard.press('Tab');
+                await expect(nonce).toBeFocused();
+                const geometry = await nonce.evaluate((element) => {
+                  const rect = element.getBoundingClientRect();
+                  let top = 0,
+                    bottom = innerHeight;
+                  for (
+                    let node = element.parentElement;
+                    node;
+                    node = node.parentElement
+                  ) {
+                    if (
+                      /auto|hidden|scroll|clip/.test(
+                        getComputedStyle(node).overflowY
+                      )
+                    ) {
+                      const box = node.getBoundingClientRect();
+                      top = Math.max(top, box.top + node.clientTop);
+                      bottom = Math.min(
+                        bottom,
+                        box.top + node.clientTop + node.clientHeight
+                      );
+                    }
+                  }
+                  const exposed = [
+                    [0.5, 0.5],
+                    [0.1, 0.1],
+                    [0.9, 0.1],
+                    [0.1, 0.9],
+                    [0.9, 0.9],
+                  ].every(([x, y]) => {
+                    const hit = document.elementFromPoint(
+                      rect.left + rect.width * x,
+                      rect.top + rect.height * y
+                    );
+                    return (
+                      hit === element || Boolean(hit && element.contains(hit))
+                    );
+                  });
+                  return {
+                    top: rect.top,
+                    bottom: rect.bottom,
+                    clipTop: top,
+                    clipBottom: bottom,
+                    exposed,
+                  };
+                });
+                await info.attach(
+                  'details-' + locale.code + '-nonce-keyboard-geometry',
+                  {
+                    contentType: 'application/json',
+                    body: JSON.stringify(geometry),
+                  }
+                );
+                expect(geometry.top).toBeGreaterThanOrEqual(
+                  geometry.clipTop - 0.5
+                );
+                expect(geometry.bottom).toBeLessThanOrEqual(
+                  geometry.clipBottom + 0.5
+                );
+                expect(geometry.exposed).toBe(true);
                 clipboard = await copyBoth(popup, buttons, [from, to]);
                 routeBefore = await popup.evaluate(() => {
                   const request = JSON.parse(
