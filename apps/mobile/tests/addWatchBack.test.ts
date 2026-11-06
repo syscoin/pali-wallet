@@ -9,7 +9,7 @@ import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
-import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
+import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork, isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
 import type { ShellLeafNavigation, RealTab } from '../src/screens/RealAppShell';
@@ -212,7 +212,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
   const onboarding = evaluate(source('src/screens/Onboarding.tsx'), {
     './IdleActivityBoundary': idle.components,
     react: render.api, 'react-native': native, '../ui': ui,
-    '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS }, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
+    '../core/watchOnlyAuthority': core, '../core/utxoNetworks': { UTXO_NETWORKS, getUtxoNetwork, isCustomUtxoNetworkId }, './WatchNetworks': {}, '../core/utxoIdentifier': { parseUtxoPublicIdentifier },
   });
   const AddWatch = onboarding.AddWatchAccount as Component;
   const accounts = evaluate(source('src/screens/WalletAccounts.tsx'), {
@@ -228,7 +228,7 @@ async function fixture(path: 'app' | 'accounts', order: 'parent-first' | 'child-
     './src/screens/Onboarding': onboarding, './src/screens/NativeWallet': {}, './src/screens/WalletAccounts': accounts,
     './src/screens/WatchSession': {}, './src/core/watchAccounts': { WatchAccounts }, './src/core/accountDirectory': {},
     './src/design/Studio': {}, './src/screens/Settings': {}, './src/core/index': core,
-    './src/platform': { publicAccountRecords: { load: async () => ({ version: 1, records: [], accounts: [] }), compareAndSet: async () => ({ version: 1, records: [], accounts: [] }) },
+    './src/platform': { publicAccountRecords: { assertNetworkCurrent() {}, load: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }), compareAndSet: async () => ({ version: 1, records: [], accounts: [], utxoNetworks: UTXO_NETWORKS }) },
       loadAccountSelection: async () => null, saveAccountSelection: async () => {}, balanceReader: {}, isNativePersistence: false },
   });
   let exited = 0;

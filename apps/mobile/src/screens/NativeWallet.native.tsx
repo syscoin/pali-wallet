@@ -1,4 +1,5 @@
 import { findUtxoNetwork } from '../core/utxoNetworks';
+import { findWifAddressType, UTXO_IMPORT_LABELS } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
@@ -105,11 +106,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
-  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; token: number; imports: NativeImportView } | null>(null);
+  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
-  const [savedTransferHash, setSavedTransferHash] = useState<string | undefined>();
+  const [savedTransfer, setSavedTransfer] = useState<Readonly<{ hash: string; action: 'replay' | 'cancel' }>>();
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -162,7 +163,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
   const utxo = findUtxoNetwork(snapshot.account?.network);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
-  const canSendUtxo = !!openUtxoSend && !!utxo && catalogue?.active.accountId.startsWith('hd:') === true;
+  const canSendUtxo = !!openUtxoSend && !!catalogue && utxo?.decimals === 8;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
@@ -404,6 +405,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     importRequest.current.active = false; setImportActiveToken(null);
     local.keyExport.cancel(); local.backup.cancel(); setError('');
     const scoped: NativeImportView = Object.freeze({
+      previewUtxo: (...args: Parameters<NativeImportView['previewUtxo']>) => local.imports.previewUtxo(...args),
       submit: (...args: Parameters<NativeImportView['submit']>) => local.imports.submit(...args),
       cancel: () => {
         const now = local.authority.getSnapshot();
@@ -411,8 +413,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
-    setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision,
-      networkLabel: getNativeSendContext(context.account!.network, current.networks).name, token, imports: scoped });
+    const network = findUtxoNetwork(context.account.network);
+    setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision, utxo: !!network,
+      networkLabel: network?.name ?? getNativeSendContext(context.account.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
   };
   const locked = snapshot.phase === 'locked';
@@ -445,11 +448,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       }} onManageHd={snapshot.phase === 'ready' && accountView ? () => setStage('manage-hd') : undefined}
       onAdd={async (input) => { revoke(); setStage('accounts'); await accounts.onAdd(input); }} />;
   if (stage === 'manage-hd' && accountView && ['ready', 'authenticating'].includes(snapshot.phase))
-    return <NativeAccounts controller={accountView} onImport={canSign ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
+    return <NativeAccounts controller={accountView} networkLabel={utxo?.name} onImport={canSign || canSendUtxo ? openImport : undefined} onBack={() => setStage(accounts ? 'accounts' : 'choose')} />;
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
-      networkLabel={importScope.networkLabel}
+      networkLabel={importScope.networkLabel} utxo={importScope.utxo}
       onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
       onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}
@@ -484,9 +487,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     step={noteRestore.exportStep} busy={noteRestore.busy} error={noteRestore.error}
     onChoose={noteRestore.choose} onSave={noteRestore.saveExport} onShowVerify={noteRestore.showVerify} onVerify={noteRestore.verifyExport}
     onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
-  if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView)
+  if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
+    const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
+    const script = utxo && selected.type === 'Imported' ? findWifAddressType(selected.address, utxo.id) : undefined;
+    const keyFormat = canSign ? 'evm' : utxo && script
+      ? { networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
-      keyExport={keyExportView} canRevealKey={canSign} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
+      keyExport={keyExportView} keyFormat={keyFormat} accountId={selected.id} accountType={selected.type} accountLabel={accountLabel} address={snapshot.account.address}
       onBack={closeStage} onLock={revoke} onViewRecovery={() => setStage('backup-auth')}
       onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       captureFailureHandler={() => {
@@ -506,6 +513,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             setError(message(cause));
         };
       }} />;
+  }
   const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
   if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
@@ -577,7 +585,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransferHash} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransferHash(undefined); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransfer?.action === 'replay' ? savedTransfer.hash : undefined} cancellationHash={savedTransfer?.action === 'cancel' ? savedTransfer.hash : undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransfer(undefined); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && stage === 'send' && utxo && canSendUtxo && openUtxoSend) return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
@@ -586,15 +594,18 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={canSign || canSendUtxo ? () => { setSendToken(null); setSavedTransferHash(undefined); openStage('send'); } : undefined}
-    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransferHash(undefined); openStage('send'); } : undefined}
+    onSend={canSign || canSendUtxo ? () => { setSendToken(null); setSavedTransfer(undefined); openStage('send'); } : undefined}
+    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransfer(undefined); openStage('send'); } : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
     onActivity={utxo ? undefined : () => shell.select('activity')}
     navigation={shell.navigation}
   />;
     else if (shell.tab === 'activity') content = activityView && !utxo
-      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onReplay={(hash) => { setSendToken(null); setSavedTransferHash(hash); openStage('send'); }} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
+          onReplay={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'replay' }); openStage('send'); } : undefined}
+          onCancelPending={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'cancel' }); openStage('send'); } : undefined}
+          onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}

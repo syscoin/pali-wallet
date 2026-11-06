@@ -36,6 +36,36 @@ function fixture(overrides: Record<string, unknown> = {}) {
   });
   return { rpc, calls };
 }
+test('new cancellation preserves a saved legacy nonce and rejects unsupported original types before RPC', async () => {
+  const legacy = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 21000, gasPrice: 150,
+  });
+  const hash = keccak256(legacy);
+  const f = fixture({
+    eth_getTransactionByHash: { hash, from: sender.address, to: recipient, value: '0x1', nonce: '0x1',
+      blockHash: null, blockNumber: null, transactionIndex: null },
+    eth_getTransactionReceipt: null,
+    eth_getTransactionCount: ({ params }: { params: string[] }) => {
+      assert.equal(params[1], 'latest');
+      return '0x1';
+    },
+    eth_getCode: '0x',
+  });
+  const quote = await f.rpc.prepareCancellation(hash, legacy, sender.address, signal(), () => undefined);
+  assert.equal(quote.transaction.type, 0);
+  assert.equal(quote.transaction.nonce, '1');
+  assert.equal(quote.maximumFeeUnits, '7560000');
+  assert(!f.calls.some(({ method }) => method === 'eth_estimateGas' || method === 'eth_sendRawTransaction'));
+
+  const unsupported = await sender.signTransaction({
+    type: 1, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 21000, gasPrice: 150,
+  });
+  f.calls.length = 0;
+  await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined), { code: 'REVIEW_REQUIRED' });
+  assert.equal(f.calls.length, 0);
+});
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
   const quote = await f.rpc.prepare(sender.address, recipient, '123', signal());

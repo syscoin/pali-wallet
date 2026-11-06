@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
@@ -10,7 +10,7 @@ import type { StoredWatchAccount } from '../src/core/watchAccountCodec.ts';
 function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   let raw = JSON.stringify({ version: 1, records }), fail = false, hold: Promise<void> | undefined;
   const calls: string[] = [], signals: AbortSignal[] = [], writes: string[] = [], entered = deferred<void>();
-  const repository = createPublicAccountStorage({ async get() { if (fail) throw Error('storage'); return raw; }, async set(_key, value) { writes.push(value); raw=value; } }).records;
+  const repository = createPublicAccountStorage({ async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; if (fail) throw Error('storage'); return raw; }, async set(_key, value) { writes.push(value); raw=value; } }).records;
   const historyReader = createUtxoActivityReader({ async fetch(url, init) {
     calls.push(url); signals.push(init.signal!); const endpoint=getUtxoNetwork('bitcoin').endpoint, path=url.slice(endpoint.length);
     if(path==='/api/v2/')return json(metadata('bitcoin'));

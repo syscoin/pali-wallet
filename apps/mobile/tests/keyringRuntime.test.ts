@@ -1514,7 +1514,7 @@ test('HD key flow is unavailable before backup, while locked, and on the web hos
 const IMPORTED_TEST_KEY = '0x' + '1'.padStart(64, '0');
 const importedAddress = (key = IMPORTED_TEST_KEY) => new Wallet(key).address;
 async function importTestKey(f: Awaited<ReturnType<typeof readyAccounts>>, key = IMPORTED_TEST_KEY, label = 'Imported test') {
-  await f.authority.importEvmAccount({ privateKey: key, expectedAddress: importedAddress(key), label }, PASSWORD,
+  await f.authority.importAccount({ privateKey: key, expectedAddress: importedAddress(key), label }, PASSWORD,
     f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
 }
 
@@ -1608,7 +1608,7 @@ test('imported admission rejects duplicates and malformed private form inputs wi
     Object.defineProperty(getter, 'privateKey', { enumerable: true, get() { reads++; return IMPORTED_TEST_KEY; } });
     for (const request of [getter, { ...getter, privateKey: PHRASE }, { ...getter, privateKey: '0x' + '0'.repeat(64) },
       { ...getter, expectedAddress: ADDRESS }, { ...getter, accountType: 'HDAccount' }]) {
-      await assert.rejects(f.authority.importEvmAccount(request, PASSWORD, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
+      await assert.rejects(f.authority.importAccount(request, PASSWORD, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision), /INVALID_INPUT/);
     }
     assert.equal(reads, 4, 'only test spreads read the accessor; the runtime snapshot never does');
     assert.equal(f.authority.getSnapshot().phase, 'ready');
@@ -1623,7 +1623,7 @@ for (const phase of ['password', 'import-after', 'encrypt-after']) {
       const before = JSON.stringify([...f.disk.records]);
       const pending = importTestKey(f); void pending.catch(() => undefined); await hold.entered;
       const otherKey = '0x' + '2'.padStart(64, '0');
-      await assert.rejects(f.authority.importEvmAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' },
+      await assert.rejects(f.authority.importAccount({ privateKey: otherKey, expectedAddress: importedAddress(otherKey), label: 'Other' },
         PASSWORD, f.authority.getSnapshot().revision, 0), /BUSY/);
       await assert.rejects(f.runtime.backup.readPhrase(PASSWORD), /BUSY/);
       assert.throws(() => f.runtime.transfers!.assertUnlocked(() => undefined), /BUSY/);
@@ -1638,7 +1638,7 @@ for (const phase of ['password', 'import-after', 'encrypt-after']) {
 test('imported credential rejection shares persistent throttle after lifecycle cancellation', async () => {
   const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk), hold = sdk.hold('password');
   try {
-    const pending = f.authority.importEvmAccount({ privateKey: IMPORTED_TEST_KEY, label: 'Import', expectedAddress: importedAddress() },
+    const pending = f.authority.importAccount({ privateKey: IMPORTED_TEST_KEY, label: 'Import', expectedAddress: importedAddress() },
       'wrong', f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision); void pending.catch(() => undefined);
     await hold.entered; f.authority.lock(); hold.release(); await assert.rejects(pending, /CANCELLED/);
     assert.equal(f.disk.failureWrites, 1); assert.equal(sdk.imports, 0);

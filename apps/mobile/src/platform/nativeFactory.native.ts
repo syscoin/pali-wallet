@@ -41,16 +41,20 @@ function custodyGuard() {
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
 function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard()) {
+  const scopedUtxoReader = (guard: () => void) => createUtxoBalanceReader({ fetch: (url, init) => {
+    guard();
+    return walletFetch(url, init);
+  } });
   return createKeyringRuntimeFactory({
     assertActive,
     observeActivity(network, expected, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
     },
     readUtxoAccount(id, xpub, signal, guard) {
-      return createUtxoBalanceReader({ fetch: (url, init) => {
-        guard();
-        return walletFetch(url, init);
-      } }).readAccount(id, xpub, signal);
+      return scopedUtxoReader(guard).readAccount(id, xpub, signal);
+    },
+    readUtxoBalance(id, address, signal, guard) {
+      return scopedUtxoReader(guard).readBalance(id, address, signal);
     },
     utxoFetch(input, init) {
       if (typeof input !== 'string' || !init) throw new Error('Invalid native Blockbook request');
@@ -123,7 +127,8 @@ export function createNativeWalletControllers() {
     cancel: () => authority.cancelAccountOperation(),
   });
   const imports: NativeImportView = Object.freeze({
-    submit: (...args: Parameters<NativeImportView['submit']>) => authority.importEvmAccount(...args),
+    previewUtxo: (...args: Parameters<NativeImportView['previewUtxo']>) => authority.previewUtxoImport(...args),
+    submit: (...args: Parameters<NativeImportView['submit']>) => authority.importAccount(...args),
     cancel: () => authority.cancelAccountOperation(),
   });
   // Public counts from this owner's existing lease only; never retire or reopen it.

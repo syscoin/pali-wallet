@@ -6,7 +6,7 @@ import { createEvmWatchAccount, WatchOnlyAuthority } from '../src/core/watchOnly
 import type { PublicAccount } from '../src/core/types.ts';
 import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalogue.ts';
 import { NATIVE_NETWORKS } from '../src/custody/networkContext.ts';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { createWatchAccountCodec, type StoredWatchAccount } from '../src/core/watchAccountCodec.ts';
 import { XPUB, KEY } from './publicWatchFixtures.ts';
 
@@ -25,7 +25,7 @@ function storage(initial: readonly PublicAccount[] = [account], beforeWrite?: ()
   let readFailure = false;
   let writeFailure = false;
   const repository = createPublicAccountStorage({
-    async get() { if (readFailure) throw Error('storage read failure'); return raw; },
+    async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; if (readFailure) throw Error('storage read failure'); return raw; },
     async set(_key, next) {
       await beforeWrite?.();
       if (writeFailure) throw Error('storage write failure');

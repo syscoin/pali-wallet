@@ -2,11 +2,11 @@ import { assertBaseUnits } from './amounts.ts';
 import type { PublicBalance } from './types.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import type { UtxoBalance } from './utxoBalanceReader.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
-export function utxoObservation(value: UtxoBalance, networkId: UtxoNetworkId, updatedAt: number): Extract<PublicBalance, { kind: 'utxo' }> {
+export function utxoObservation(value: UtxoBalance, scope: UtxoNetworkId | UtxoNetwork, updatedAt: number): Extract<PublicBalance, { kind: 'utxo' }> {
   assertJsonWorkBudget(value, 2048, 3, 30);
-  const network = getUtxoNetwork(networkId);
+  const network = resolveUtxoNetwork(scope);
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
       Reflect.ownKeys(value).length !== 8 || Object.keys(value).length !== 8 || Object.keys(value).some((key) => ![
         'networkId', 'kind', 'chainId', 'genesisHash', 'confirmedUnits', 'pendingDeltaUnits', 'unconfirmedTransactions', 'observedHeight',

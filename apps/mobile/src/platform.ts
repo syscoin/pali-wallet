@@ -40,7 +40,8 @@ const publicStorage = createPublicAccountStorage({
     await requireNativeStorage();
     await SecureStore.setItemAsync(key, value, STORAGE_OPTIONS);
   },
-});
+}, walletFetch);
+export const watchUtxoNetworkSettings = publicStorage.utxoNetworkSettings;
 export const loadPublicAccounts = publicStorage.loadAccounts;
 export const publicAccountRecords = publicStorage.records;
 export const loadAccountSelection = publicStorage.loadSelection;

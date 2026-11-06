@@ -3,6 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { accountIdentity, projectAccounts, type AccountSelection } from '../core/accountDirectory';
+import type { WatchUtxoNetworksView } from '../core/publicAccountStorage';
 import type { WatchAccountState } from '../core/watchAccounts';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
@@ -17,6 +18,8 @@ export type WalletAccountsProps = {
   onSelect(selection: AccountSelection): void | Promise<void>;
   onAdd(input: { name: string; address: string; network?: WatchAccountNetwork }): Promise<void>;
   availableWatchNetworks?: readonly WatchAccountNetwork[];
+  networkSettings?: WatchUtxoNetworksView;
+  onNetworksChanged?(): Promise<void>;
   onRename(id: string, name: string): Promise<void>;
   onRemove(id: string): Promise<void>;
   onRetry(): Promise<void>;
@@ -24,7 +27,7 @@ export type WalletAccountsProps = {
   onManageHd?(): void;
   onOpenWallet?(): void;
 };
-export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry' | 'availableWatchNetworks'> & {
+export type WatchWalletBridge = Pick<WalletAccountsProps, 'watch' | 'onAdd' | 'onRename' | 'onRemove' | 'onRetry' | 'availableWatchNetworks' | 'networkSettings' | 'onNetworksChanged'> & {
   onSelectWatch(selection: AccountSelection): void;
   onNativeCatalogue(catalogue: NativeWalletCatalogueSnapshot | null): void;
 };
@@ -53,7 +56,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
   const selected = props.active ? accountIdentity(props.active) : null;
   const canManageWatch = props.watch.status === 'ready' && !props.watch.busy && !busy;
   return <SafeAreaView edges={['top', 'bottom']} style={s.safe}><KeyboardAvoidingView style={s.safe} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    {form === 'add' ? <AddWatchAccount availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
+    {form === 'add' ? <AddWatchAccount utxoNetworks={props.watch.utxoNetworks} networkSettings={props.networkSettings} onNetworksChanged={props.onNetworksChanged} availableNetworks={props.availableWatchNetworks} onAdd={props.onAdd} onCancel={() => setForm(null)} /> : <Screen footer={form ? <Button title={form.kind === 'rename' ? 'Save name' : 'Remove watch account'} disabled={!canManageWatch || form.kind === 'rename' && !name.trim()} onPress={() => void run(() => form.kind === 'rename' ? props.onRename(form.id, name) : props.onRemove(form.id))} /> : undefined}>
       <Header title={form ? form.kind === 'rename' ? 'Rename watch account' : 'Remove watch account' : 'Accounts'} subtitle="Wallet and watch accounts" onBack={() => back.current()} />
       {props.watch.status === 'opening' && <View style={s.loading}><ActivityIndicator color={colors.pink} /><Text style={styles.muted}>Opening saved watch accounts…</Text></View>}
       {props.watch.status === 'unavailable' && <><Notice title="Watch accounts unavailable" body="Your saved watch data has been preserved. Reopen it before making changes." tone="amber" /><Button title="Reopen watch accounts" disabled={busy || props.watch.busy} variant="secondary" onPress={() => void run(props.onRetry)} /></>}
@@ -68,7 +71,7 @@ export function WalletAccounts(props: WalletAccountsProps) {
             <View style={s.row}><Text style={s.name}>{entry.name}</Text>{entry.identity === selected && <Text style={s.selected}>Selected</Text>}</View>
             <Text style={s.kind}>{entry.selection.kind === 'hd' ? 'Recovery phrase account' : entry.selection.kind === 'imported' ? 'Imported key · Separate backup' : (() => {
               const watched = props.watch.accounts.find((account) => account.id === entry.selection.id)!;
-              const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0]);
+              const network = getNetwork(Object.keys(watched.addresses)[0] as Parameters<typeof getNetwork>[0], props.watch.utxoNetworks);
               return network.kind === 'utxo' ? `Watch-only · ${network.name}` : 'Watch-only · Public EVM address';
             })()}</Text>
             <Text selectable style={s.address}>{entry.address}</Text>
