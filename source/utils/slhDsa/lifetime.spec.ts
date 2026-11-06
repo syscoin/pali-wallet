@@ -39,6 +39,7 @@ import {
   clearRuntimeSLHDSAStates,
   configureSLHDSASessionStateCrypto,
   getSLHDSASessionGeneration,
+  provisionRuntimeSLHDSAState,
   provisionRuntimeSLHDSAStateFromSetupSecret,
   putRuntimeSLHDSAState,
   registerRuntimeSLHDSAState,
@@ -84,11 +85,14 @@ const signParams = {
   pkSeed: keypair.pkSeed,
 };
 const provision = () =>
-  provisionRuntimeSLHDSAStateFromSetupSecret({
-    accountIndex: 0,
-    derivationLabel: 'account/0',
-    setupSecretHex: `0x${'44'.repeat(32)}`,
-  });
+  provisionRuntimeSLHDSAStateFromSetupSecret(
+    {
+      accountIndex: 0,
+      derivationLabel: 'account/0',
+      setupSecretHex: `0x${'44'.repeat(32)}`,
+    },
+    getSLHDSASessionGeneration()
+  );
 const readState = () =>
   loadEncryptedSLHDSAState({ crypto, keyId, assertOwner: () => undefined });
 const validSignature = `0x${'55'.repeat(3856)}`;
@@ -115,6 +119,38 @@ describe('SLH-DSA local lifetime accounting', () => {
     clearRuntimeSLHDSAStates();
   });
 
+  it('requires a captured generation before any exported signer operation', async () => {
+    const state = makeState(7);
+    const setup = {
+      ...state,
+      setupSecretHex: `0x${'44'.repeat(32)}`,
+    };
+    // @ts-expect-error Every caller must supply its captured signing session.
+    expect(() => putRuntimeSLHDSAState(state)).toThrow(
+      'wallet session changed'
+    );
+    // @ts-expect-error Every caller must supply its captured signing session.
+    await expect(registerRuntimeSLHDSAState(state)).rejects.toThrow(
+      'wallet session changed'
+    );
+    // @ts-expect-error Every caller must supply its captured signing session.
+    await expect(provisionRuntimeSLHDSAState(setup)).rejects.toThrow(
+      'wallet session changed'
+    );
+    await expect(
+      // @ts-expect-error Every caller must supply its captured signing session.
+      provisionRuntimeSLHDSAStateFromSetupSecret(setup)
+    ).rejects.toThrow('wallet session changed');
+    // @ts-expect-error Every caller must supply its captured signing session.
+    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
+      'wallet session changed'
+    );
+    expect(chromeStorage.getItems).not.toHaveBeenCalled();
+    expect(chromeStorage.setItem).not.toHaveBeenCalled();
+    expect(prepareSLHDSAKeypairInOffscreen).not.toHaveBeenCalled();
+    expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
+  });
+
   it.each([7, SLH_DSA_SIGNATURE_LIMIT, SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT])(
     'preserves persisted count %i when rebuilding the same key after restart',
     async (signatureCount) => {
@@ -129,16 +165,19 @@ describe('SLH-DSA local lifetime accounting', () => {
       expect(regenerated.signatureCount).toBe(signatureCount);
       expect((await readState()).signatureCount).toBe(signatureCount);
       if (signatureCount >= SLH_DSA_SIGNATURE_LIMIT) {
-        await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-          'signature limit reached'
-        );
+        await expect(
+          signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+        ).rejects.toThrow('signature limit reached');
         expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
       }
     }
   );
 
   it('persists same-session usage when UI consent retires after signing dispatch', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     let consentCurrent = true;
     const approval = {
       assertCurrent: () => {
@@ -160,14 +199,17 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('retains the runtime high-water count after an earlier signing persistence failure', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     jest
       .mocked(chromeStorage.setItem)
       .mockRejectedValueOnce(new Error('disk full'));
 
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-      'disk full'
-    );
+    await expect(
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow('disk full');
     expect((await readState()).signatureCount).toBe(7);
 
     expect((await provision()).signatureCount).toBe(8);
@@ -175,7 +217,10 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('serializes same-key reprovisioning behind an in-flight signature', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     let release: (signature: string) => void;
     let started: () => void;
     const didStart = new Promise<void>((resolve) => {
@@ -187,7 +232,10 @@ describe('SLH-DSA local lifetime accounting', () => {
         release = resolve;
       });
     });
-    const signing = signSLHDSAActionHashLocal(signParams);
+    const signing = signSLHDSAActionHashLocal(
+      signParams,
+      getSLHDSASessionGeneration()
+    );
     await didStart;
     const regenerating = provision();
     release(validSignature);
@@ -198,33 +246,42 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('does not roll back a used count when delayed hydration inserts older cached state', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     const cached = await readState();
-    await signSLHDSAActionHashLocal(signParams);
-    putRuntimeSLHDSAState(cached);
+    await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
+    putRuntimeSLHDSAState(cached, getSLHDSASessionGeneration());
 
-    await signSLHDSAActionHashLocal(signParams);
+    await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
 
     expect((await readState()).signatureCount).toBe(9);
   });
 
   it('does not let callers mutate the runtime counter through returned state', async () => {
-    const state = await registerRuntimeSLHDSAState(makeState(7));
+    const state = await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     state.signatureCount = 0;
 
-    await signSLHDSAActionHashLocal(signParams);
+    await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
 
     expect((await readState()).signatureCount).toBe(8);
   });
 
   it('preserves an updated runtime high-water count while a signature is in flight', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     jest.mocked(signSLHDSAInOffscreen).mockImplementationOnce(async () => {
-      putRuntimeSLHDSAState(makeState(9));
+      putRuntimeSLHDSAState(makeState(9), getSLHDSASessionGeneration());
       return validSignature;
     });
 
-    await signSLHDSAActionHashLocal(signParams);
+    await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
 
     expect((await readState()).signatureCount).toBe(10);
   });
@@ -251,9 +308,9 @@ describe('SLH-DSA local lifetime accounting', () => {
 
       expect(chromeStorage.setItem).not.toHaveBeenCalled();
       expect(mockStorage.get(storageKey)).toBe(corrupt);
-      await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-        'not available in this unlocked session'
-      );
+      await expect(
+        signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+      ).rejects.toThrow('not available in this unlocked session');
     }
   );
 
@@ -299,10 +356,13 @@ describe('SLH-DSA local lifetime accounting', () => {
     jest.mocked(chromeStorage.setItem).mockClear();
 
     await expect(
-      registerRuntimeSLHDSAState({
-        ...makeState(),
-        secretKeyHex: `0x${'99'.repeat(64)}`,
-      })
+      registerRuntimeSLHDSAState(
+        {
+          ...makeState(),
+          secretKeyHex: `0x${'99'.repeat(64)}`,
+        },
+        getSLHDSASessionGeneration()
+      )
     ).rejects.toThrow('conflicts with existing key material');
 
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
@@ -315,9 +375,9 @@ describe('SLH-DSA local lifetime accounting', () => {
       .mockRejectedValueOnce(new Error('disk full'));
 
     await expect(provision()).rejects.toThrow('disk full');
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-      'not available in this unlocked session'
-    );
+    await expect(
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow('not available in this unlocked session');
   });
 
   it('rejects an old envelope readback instead of accepting the same key/version', async () => {
@@ -342,7 +402,10 @@ describe('SLH-DSA local lifetime accounting', () => {
         readStarted.resolve();
         return readback.promise as Promise<Record<string, unknown>>;
       });
-    const registering = registerRuntimeSLHDSAState(makeState(7));
+    const registering = registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     const rejected = expect(registering).rejects.toThrow(
       'wallet session changed'
     );
@@ -352,9 +415,9 @@ describe('SLH-DSA local lifetime accounting', () => {
     readback.resolve({ [storageKey]: mockStorage.get(storageKey) });
 
     await rejected;
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-      'not available in this unlocked session'
-    );
+    await expect(
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow('not available in this unlocked session');
     expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
   });
 
@@ -368,14 +431,20 @@ describe('SLH-DSA local lifetime accounting', () => {
         await releaseWrite.promise;
         mockStorage.set(key, value);
       });
-    const oldRegistration = registerRuntimeSLHDSAState(makeState(7));
+    const oldRegistration = registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     const rejected = expect(oldRegistration).rejects.toThrow(
       'wallet session changed'
     );
     await writeStarted.promise;
     clearRuntimeSLHDSAStates();
     configureSLHDSASessionStateCrypto(crypto);
-    const newRegistration = registerRuntimeSLHDSAState(makeState(9));
+    const newRegistration = registerRuntimeSLHDSAState(
+      makeState(9),
+      getSLHDSASessionGeneration()
+    );
     await Promise.resolve();
     expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
     releaseWrite.resolve();
@@ -406,25 +475,37 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('discards in-flight and queued old-session signatures after a new unlock', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     const workerStarted = deferred<void>();
     const response = deferred<string>();
     jest.mocked(signSLHDSAInOffscreen).mockImplementationOnce(() => {
       workerStarted.resolve();
       return response.promise;
     });
-    const first = signSLHDSAActionHashLocal(signParams);
+    const first = signSLHDSAActionHashLocal(
+      signParams,
+      getSLHDSASessionGeneration()
+    );
     const firstRejected = expect(first).rejects.toThrow(
       'wallet session changed'
     );
     await workerStarted.promise;
-    const queued = signSLHDSAActionHashLocal(signParams);
+    const queued = signSLHDSAActionHashLocal(
+      signParams,
+      getSLHDSASessionGeneration()
+    );
     const queuedRejected = expect(queued).rejects.toThrow(
       'wallet session changed'
     );
     clearRuntimeSLHDSAStates();
     configureSLHDSASessionStateCrypto(crypto);
-    const newRegistration = registerRuntimeSLHDSAState(makeState(7));
+    const newRegistration = registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     response.resolve(validSignature);
 
     await Promise.all([firstRejected, queuedRejected, newRegistration]);
@@ -448,7 +529,10 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('does not persist signing state or release a signature if locked during encryption', async () => {
-    await registerRuntimeSLHDSAState(makeState(7));
+    await registerRuntimeSLHDSAState(
+      makeState(7),
+      getSLHDSASessionGeneration()
+    );
     const encryptStarted = deferred<void>();
     const encrypted = deferred<string>();
     configureSLHDSASessionStateCrypto({
@@ -459,7 +543,10 @@ describe('SLH-DSA local lifetime accounting', () => {
       },
     });
     jest.mocked(chromeStorage.setItem).mockClear();
-    const signing = signSLHDSAActionHashLocal(signParams);
+    const signing = signSLHDSAActionHashLocal(
+      signParams,
+      getSLHDSASessionGeneration()
+    );
     const rejected = expect(signing).rejects.toThrow('wallet session changed');
     await encryptStarted.promise;
     clearRuntimeSLHDSAStates();

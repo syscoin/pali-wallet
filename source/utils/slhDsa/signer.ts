@@ -28,30 +28,9 @@ export const configureSLHDSASessionStateCrypto =
   signer.configureSLHDSASessionStateCrypto;
 export const clearRuntimeSLHDSAStates = signer.clearRuntimeSLHDSAStates;
 
-export const putRuntimeSLHDSAState = (
-  state: Parameters<typeof signer.putRuntimeSLHDSAState>[0],
-  generation = signer.getSLHDSASessionGeneration()
-) => signer.putRuntimeSLHDSAState(state, generation);
-
-export const registerRuntimeSLHDSAState = (
-  state: Parameters<typeof signer.registerRuntimeSLHDSAState>[0],
-  generation = signer.getSLHDSASessionGeneration()
-) => signer.registerRuntimeSLHDSAState(state, generation);
-
-export const provisionRuntimeSLHDSAState = (
-  request: Parameters<typeof signer.provisionRuntimeSLHDSAState>[0],
-  generation = signer.getSLHDSASessionGeneration()
-) => signer.provisionRuntimeSLHDSAState(request, generation);
-
-export const provisionRuntimeSLHDSAStateFromSetupSecret = (
-  request: Parameters<
-    typeof signer.provisionRuntimeSLHDSAStateFromSetupSecret
-  >[0],
-  generation = signer.getSLHDSASessionGeneration()
-) => signer.provisionRuntimeSLHDSAStateFromSetupSecret(request, generation);
-
-export const signSLHDSAActionHashLocal = (
-  request: Parameters<typeof signer.signSLHDSAActionHashLocal>[0],
-  generation = signer.getSLHDSASessionGeneration(),
-  approval?: Parameters<typeof signer.signSLHDSAActionHashLocal>[2]
-) => signer.signSLHDSAActionHashLocal(request, generation, approval);
+export const putRuntimeSLHDSAState = signer.putRuntimeSLHDSAState;
+export const registerRuntimeSLHDSAState = signer.registerRuntimeSLHDSAState;
+export const provisionRuntimeSLHDSAState = signer.provisionRuntimeSLHDSAState;
+export const provisionRuntimeSLHDSAStateFromSetupSecret =
+  signer.provisionRuntimeSLHDSAStateFromSetupSecret;
+export const signSLHDSAActionHashLocal = signer.signSLHDSAActionHashLocal;
