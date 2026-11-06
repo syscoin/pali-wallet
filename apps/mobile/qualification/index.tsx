@@ -15,7 +15,7 @@ import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
-import { publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
+import { makePublicPoolFailure, PUBLIC_POOL_FAILURE_FILE, publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -110,6 +110,7 @@ function QualificationApp() {
     const run = async () => {
       if (started) return;
       started = true;
+      const publicPoolConfiguration = Constants.expoConfig?.extra?.paliPublicPoolQualification;
       const checks: Check[] = [];
       let stage = 'parameters';
       let parameters: Awaited<ReturnType<typeof launchParameters>> | undefined;
@@ -289,8 +290,8 @@ function QualificationApp() {
           const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
           await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
         });
-        const publicPoolConfiguration = Constants.expoConfig?.extra?.paliPublicPoolQualification;
         if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
+          stage = 'public pool configuration';
           if (parameters.physical || parameters.http || !parameters.publicPool || !['ios', 'android'].includes(Platform.OS) ||
               !FileSystem.documentDirectory) throw Error('PUBLIC_POOL_QUALIFICATION_BUILD_INVALID');
           const launch = parameters.publicPool;
@@ -307,6 +308,7 @@ function QualificationApp() {
               const result = await qualifyNativePublicPool({ launch, transport: createNativePublicSnapshotTransport(),
                 executeMerkleBatch: createNativePublicMerkleExecutor(), lifetime: owner.signal });
               expect(!owner.signal.aborted && AppState.currentState === 'active' && networkCalls === 0);
+              stage = 'public pool report';
               const destination = `${FileSystem.documentDirectory}pali-native-public-pool-${launch.token}.json`;
               await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify({ ...build, caSha256,
                 kind: 'native-public-pool', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
@@ -612,12 +614,21 @@ function QualificationApp() {
         };
         await writeReport(parameters.phase, report);
         setStatus('QUALIFICATION PASSED');
-      } catch {
+      } catch (error) {
         observingGeneration = false;
         mnemonicEntropy.forEach((bytes) => bytes.fill(0));
         mnemonicEntropy.length = 0;
         backup?.dispose();
         await authority?.dispose().catch(() => undefined);
+        if (publicPoolConfiguration !== undefined && FileSystem.documentDirectory) {
+          try {
+            const destination = `${FileSystem.documentDirectory}${PUBLIC_POOL_FAILURE_FILE}`;
+            await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(makePublicPoolFailure(stage, error)));
+            await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            setStatus('QUALIFICATION FAILED');
+            return;
+          } catch { /* Preserve the existing failure marker if the dedicated receipt could not be written. */ }
+        }
         const report = {
           ...(parameters?.physical ? physicalReportFields(parameters) : {}),
           version: 1,

@@ -11,6 +11,7 @@ const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 const { reverseMappings } = require('./http-companion.cjs');
 const { parseQualificationLaunch } = require('./launch-parameters.ts');
 const { readPublicPoolCa } = require('./public-pool-ca.cjs');
+const { PUBLIC_POOL_FAILURE_FILE, parsePublicPoolFailure } = require('./public-pool-contract.ts');
 const { readFixtureBuild } = require('./run-public-pool-fixture.cjs');
 
 const PUBLIC_POOL_REPORT_TIMEOUT = 300_000;
@@ -111,7 +112,17 @@ async function runHostedPublicPool({ platform, config, output, execute, start = 
     if (!launch || launch.snapshotPort !== snapshotPort || launch.anchorPort !== anchorPort ||
         caSha256 !== config.caSha256 || report !== `pali-native-public-pool-${launch.token}.json`)
       throw Error('PUBLIC_POOL_HOST_LAUNCH_INVALID');
-    const appReport = await execute({ uri, report, ports: [snapshotPort, anchorPort] });
+    const captureFailure = (read) => {
+      let raw;
+      try { raw = read(PUBLIC_POOL_FAILURE_FILE); }
+      catch { throw Error('PUBLIC_POOL_FAILURE_REPORT_INVALID'); }
+      if (raw === undefined) return false;
+      const failure = parsePublicPoolFailure(raw);
+      try { fs.writeFileSync(path.join(output, `${platform}-public-pool-app-failure.json`), `${JSON.stringify(failure)}\n`, { flag: 'wx' }); }
+      catch { throw Error('PUBLIC_POOL_FAILURE_REPORT_WRITE_FAILED'); }
+      return true;
+    };
+    const appReport = await execute({ uri, report, captureFailure, ports: [snapshotPort, anchorPort] });
     if (typeof appReport !== 'string' || !appReport || appReport.length > 8192) throw Error('PUBLIC_POOL_APP_REPORT_INVALID');
     fs.writeFileSync(reportFile + '.tmp', appReport, { flag: 'wx' });
     fs.renameSync(reportFile + '.tmp', reportFile);

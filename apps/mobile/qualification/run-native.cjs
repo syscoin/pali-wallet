@@ -246,13 +246,14 @@ async function ios() {
       if (publicPoolBuild) {
         const publicPool = await stage('report-create', () => poolCi.runHostedPublicPool({
           platform, config: publicPoolBuild, output,
-          execute: async ({ uri, report }) => {
+          execute: async ({ uri, report, captureFailure }) => {
             launchIos(run, device, uri, (evidence) => fs.writeFileSync(path.join(output, 'ios-public-pool-launch.json'),
               `${JSON.stringify(evidence, null, 2)}\n`));
             const documents = path.join(container, 'Documents');
+            const readPoolFile = (name) => fs.existsSync(path.join(documents, name)) ? readHttpSidecar(documents, name) : undefined;
             return poolCi.waitPublicPoolReport(
-              () => fs.existsSync(path.join(documents, report)) ? readHttpSidecar(documents, report) : undefined,
-              () => ['create', 'startup'].some((phase) => fs.existsSync(path.join(documents, `pali-native-qualification-${phase}.json`))));
+              () => readPoolFile(report),
+              () => captureFailure(readPoolFile) || ['create', 'startup'].some((phase) => fs.existsSync(path.join(documents, `pali-native-qualification-${phase}.json`))));
           },
         }));
         return { platform, runtime: runtime.identifier, publicPool,
@@ -454,12 +455,12 @@ async function android() {
       deviceRun('adb', ['install', artifact]);
       const publicPool = await poolCi.runHostedPublicPool({
         platform, config: publicPoolBuild, output,
-        execute: ({ uri, report, ports }) => poolCi.withPublicPoolAndroidRoutes(run, publicPoolSerial, ports, async () => {
+        execute: ({ uri, report, ports, captureFailure }) => poolCi.withPublicPoolAndroidRoutes(run, publicPoolSerial, ports, async () => {
           deviceRun('adb', ['shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${uri}'`,
             '-n', `${PACKAGE}/.MainActivity`]);
-          return poolCi.waitPublicPoolReport(
-            () => exists(report) ? readAndroidHttpSidecar(deviceRun, report) : undefined,
-            () => ['create', 'startup'].some((phase) => exists(`pali-native-qualification-${phase}.json`)));
+          const readPoolFile = (name) => exists(name) ? readAndroidHttpSidecar(deviceRun, name) : undefined;
+          return poolCi.waitPublicPoolReport(() => readPoolFile(report),
+            () => captureFailure(readPoolFile) || ['create', 'startup'].some((phase) => exists(`pali-native-qualification-${phase}.json`)));
         }),
       });
       return { platform, apkSha256: hash(fs.readFileSync(artifact)), nativeLibraries, publicPool,

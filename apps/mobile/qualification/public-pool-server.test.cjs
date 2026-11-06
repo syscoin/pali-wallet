@@ -1,7 +1,7 @@
 const assert = require('node:assert/strict');
 const { Buffer } = require('node:buffer');
 const { execFileSync } = require('node:child_process');
-const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
 const { tmpdir } = require('node:os');
@@ -10,10 +10,12 @@ const process = require('node:process');
 const { after, before, test } = require('node:test');
 const { createPublicPoolFixture } = require('./public-pool-server.cjs');
 const { readPublicPoolCa } = require('./public-pool-ca.cjs');
-const { readPublicPoolCiBuild, runHostedPublicPool } = require('./public-pool-ci.cjs');
+const { readPublicPoolCiBuild, runHostedPublicPool, waitPublicPoolReport } = require('./public-pool-ci.cjs');
+const { readAndroidHttpSidecar, readHttpSidecar } = require('./post-sidecar.cjs');
 const { parseQualificationLaunch } = require('./launch-parameters.ts');
 const { qualifyNativePublicPool } = require('./public-pool-native.ts');
-const { PUBLIC_POOL_ID, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, publicPoolAnchorPath } = require('./public-pool-contract.ts');
+const { PUBLIC_POOL_ID, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, PUBLIC_POOL_FAILURE_FILE,
+  makePublicPoolFailure, parsePublicPoolFailure, publicPoolAnchorPath } = require('./public-pool-contract.ts');
 const { createPublicSnapshotTransport } = require('../src/privacy/publicSnapshotTransport.ts');
 const { PRIVACY_POOL_ABI } = require('../../../source/utils/privacy/publicSyncProtocol.ts');
 const { evaluateMerkleBatch } = require('../tests/publicMerkleBatchFixture.ts');
@@ -111,7 +113,7 @@ test('public pool launch accepts only separate loopback fixture ports with an ex
   ]) assert.throws(() => parseQualificationLaunch(launch));
 });
 
-test('hosted runner accepts a matching report after shared verification and both strict HTTPS passes', { timeout: 15_000 }, async () => {
+function hostedConfig() {
   const build = { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: 'b'.repeat(64) };
   const caSha256 = readPublicPoolCa(certPath).sha256;
   const receiptPath = join(dir, 'build.json');
@@ -121,6 +123,11 @@ test('hosted runner accepts a matching report after shared verification and both
     PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0',
     PALI_PUBLIC_POOL_FIXTURE_CA: certPath, PALI_PUBLIC_POOL_FIXTURE_CERT: certPath,
     PALI_PUBLIC_POOL_FIXTURE_KEY: keyPath, GITHUB_SHA: build.sourceRevision }, receiptPath);
+  return { config, build, caSha256 };
+}
+
+test('hosted runner accepts a matching report after shared verification and both strict HTTPS passes', { timeout: 15_000 }, async () => {
+  const { config, build, caSha256 } = hostedConfig();
   let result;
   const verified = await runHostedPublicPool({
     platform: 'android', output: dir, config,
@@ -136,6 +143,33 @@ test('hosted runner accepts a matching report after shared verification and both
     },
   });
   assert.deepEqual(verified, { passed: true, ...build, platform: 'android', caSha256, result });
+});
+
+test('both hosted adapters retain only a bounded native failure receipt before stopping the fixture', { timeout: 15_000 }, async () => {
+  const { config } = hostedConfig();
+  const receipt = makePublicPoolFailure('public pool snapshot, Merkle and anchors',
+    Error('PUBLIC_POOL_QUALIFICATION_FAILED:error:privacy_anchor_changed'));
+  const text = JSON.stringify(receipt);
+  assert.deepEqual(receipt, { version: 1, stage: 'snapshot-anchors', code: 'privacy_anchor_changed' });
+  assert.deepEqual(makePublicPoolFailure('untrusted message', Error('untrusted path or header')),
+    { version: 1, stage: 'unknown', code: 'unknown' });
+  for (const bad of [JSON.stringify({ ...receipt, headers: ['secret'] }), text + ' '.repeat(256), text.replace('snapshot-anchors', 'unexpected')])
+    assert.throws(() => parsePublicPoolFailure(bad), /PUBLIC_POOL_FAILURE_REPORT_INVALID/);
+  for (const platform of ['ios', 'android']) {
+    const device = mkdtempSync(join(dir, 'device-'));
+    const output = mkdtempSync(join(dir, 'host-'));
+    writeFileSync(join(device, PUBLIC_POOL_FAILURE_FILE), text);
+    const read = platform === 'ios' ? (name) => readHttpSidecar(device, name) : (name) => readAndroidHttpSidecar((command, args) => {
+      assert.equal(command, 'adb');
+      assert.equal(args[0], 'shell');
+      assert.match(args[1], /-le 256.*head -c 257/);
+      return text;
+    }, name);
+    await assert.rejects(runHostedPublicPool({ platform, config, output, execute: ({ captureFailure }) =>
+      waitPublicPoolReport(() => assert.fail('failure must precede the success read'), () => captureFailure(read)) }), /PUBLIC_POOL_APP_FAILED/);
+    assert.deepEqual(JSON.parse(readFileSync(join(output, `${platform}-public-pool-app-failure.json`))), receipt);
+    assert.equal(existsSync(join(output, `${platform}-public-pool-app.json`)), false);
+  }
 });
 
 test('fixture refuses a forged anchor call and records it even if it later receives correct calls', async () => {
