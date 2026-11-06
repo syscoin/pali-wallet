@@ -168,7 +168,7 @@ test('the existing SDK reuses a deleted HD ID and the canonical map preserves a 
     ).privateKey;
     await f.execute({ kind: 'select', id: 'hd:60:0' });
     await f.execute({ kind: 'remove', id: second.id, password: PASSWORD });
-    await f.authority.importEvmAccount(
+    await f.authority.importAccount(
       {
         privateKey: secret,
         label: 'Imported alias',

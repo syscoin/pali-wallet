@@ -2,7 +2,7 @@
 export type NativeAccountType = 'HDAccount' | 'Imported';
 export function nativeAccountId(type: NativeAccountType, index: number, slip44 = 60): string {
   if (!['HDAccount', 'Imported'].includes(type) || !Number.isSafeInteger(index) || index < 0 ||
-      !Number.isSafeInteger(slip44) || slip44 < 0 || (type === 'Imported' && slip44 !== 60))
+      !Number.isSafeInteger(slip44) || slip44 < 0)
     throw new Error('INVALID_ACCOUNT_ID');
   return `${type === 'HDAccount' ? 'hd' : 'imported'}:${slip44}:${index}`;
 }
