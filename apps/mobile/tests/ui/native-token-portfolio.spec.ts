@@ -231,6 +231,63 @@ test('checks selected collectible ownership and cancels stale reads', async ({ p
   expect(await rpc()).toHaveLength(37);
 });
 
+test('manual collectible check works without an explorer and cancels an edited standard', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&collectible-check&ownership-fail');
+  const requests = () => page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Find collectibles', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check by contract', exact: true }).click();
+  const address = page.getByRole('textbox', { name: 'Collectible contract address', exact: true });
+  const id = page.getByRole('textbox', { name: 'Token ID', exact: true });
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const result = page.getByTestId('native-collectible-quantity');
+  await address.fill('example.eth');
+  await id.fill('0');
+  await expect(check).toBeDisabled();
+  const erc721 = page.getByRole('button', { name: 'ERC-721', exact: true });
+  await erc721.focus();
+  await erc721.press('Space');
+  await expect(erc721).toHaveAttribute('aria-pressed', 'true');
+  await check.click();
+  await expect(page.getByText('Enter a valid contract address.', { exact: true })).toBeVisible();
+  await address.fill(zero);
+  await id.fill('1e2');
+  await check.click();
+  await expect(page.getByText('Enter a valid token ID.', { exact: true })).toBeVisible();
+  await id.fill('0');
+  expect(await requests()).toEqual([]);
+  await check.click();
+  await expect(page.getByText('Ownership unavailable', { exact: true })).toBeVisible();
+  await check.click();
+  await expect(result).toHaveText('This account owns this item.');
+  expect(await requests()).toHaveLength(11);
+
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await requests()).length).toBe(15);
+  await page.getByRole('button', { name: 'ERC-1155', exact: true }).click();
+  await expect(erc721).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.nftAborts())).toBe(1);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await address.fill(long);
+  await check.click();
+  await expect(result).toHaveText('Quantity on network: 900719925474099312345');
+  expect((await requests()).slice(15)).toEqual([
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`,
+    `nft:balanceOfBatch:${long}`, 'nft:block:0x100', 'nft:chain',
+  ]);
+  await expect(page.getByTestId('native-token-add')).toHaveCount(0);
+  await result.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('manual-collectible-320.png') });
+  await enlargeText(page);
+  await result.scrollIntoViewIfNeeded();
+  await expect(result).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('manual-collectible-large.png') });
+});
+
 test('failed holdings stays separate from manual review and requires explicit retry', async ({
   page,
 }) => {

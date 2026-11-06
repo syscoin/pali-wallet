@@ -41,6 +41,10 @@ export type NativeTokenItem = Readonly<{
 }>;
 type TokenDiscovery = OwnedTokenSuggestions &
   Readonly<{ status: 'idle' | 'loading' | 'ready' | 'error' }>;
+export type CollectibleQuery = Pick<
+  OwnedCollectibleSuggestion,
+  'contractAddress' | 'tokenStandard'
+> & Readonly<{ tokenId: string }>;
 const idleDiscovery: TokenDiscovery = Object.freeze({
   status: 'idle',
   tokens: Object.freeze([]),
@@ -70,6 +74,7 @@ export type NativeTokenView = Readonly<
     | 'discover'
     | 'closeDiscovery'
     | 'checkCollectible'
+    | 'checkManualCollectible'
     | 'refresh'
     | 'remove'
   >
@@ -132,6 +137,8 @@ export class NativeTokens {
     closeDiscovery: () => this.closeDiscovery(),
     checkCollectible: (item: OwnedCollectibleSuggestion, id: string, signal: AbortSignal) =>
       this.checkCollectible(item, id, signal),
+    checkManualCollectible: (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>
+      this.checkManualCollectible(account, query, signal),
     refresh: (contract?: string) => this.refresh(contract),
     remove: (contract: string) => this.remove(contract),
   });
@@ -203,6 +210,7 @@ export class NativeTokens {
           revision: state.revision,
         }),
         network: getNativeSendContext(registration),
+        canCheckCollectible: !!this.readNft && (!this.source.getCatalogue || !!catalogue),
         apiUrl: this.readHoldings && (!this.source.getCatalogue || catalogue)
           ? findRegisteredEvmNetwork(registration)?.network.apiUrl ?? ''
           : '',
@@ -247,10 +255,12 @@ export class NativeTokens {
     const account = scope?.account ?? null;
     const registrationHash = scope?.network.registrationHash ?? null;
     const apiUrl = scope?.apiUrl ?? '';
+    const canCheckCollectible = scope?.canCheckCollectible ? true : undefined;
     if (
       !same(account, this.state.account) ||
       registrationHash !== this.registrationHash ||
-      apiUrl !== this.discoveryApi
+      apiUrl !== this.discoveryApi ||
+      canCheckCollectible !== this.state.canCheckCollectible
     ) {
       this.cancel();
       this.inventoryRevision = null;
@@ -260,7 +270,7 @@ export class NativeTokens {
         ...initial(account),
         network: scope?.network ?? null,
         discovery: this.discoveryApi ? idleDiscovery : null,
-        ...(this.readNft && this.discoveryApi ? { canCheckCollectible: true as const } : {}),
+        ...(canCheckCollectible ? { canCheckCollectible } : {}),
       });
       this.unpublished = true;
       this.stopDiscovery();
@@ -484,14 +494,31 @@ export class NativeTokens {
     if (this.state.discovery && this.state.discovery !== idleDiscovery)
       this.publish({ discovery: idleDiscovery });
   };
-  checkCollectible = async (item: OwnedCollectibleSuggestion, tokenId: string, signal: AbortSignal) => {
+  checkCollectible = (item: OwnedCollectibleSuggestion, tokenId: string, signal: AbortSignal) =>
+    this.readCollectible({ item, tokenId }, signal);
+  checkManualCollectible = (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>
+    this.readCollectible({ account, query }, signal);
+  private async readCollectible(
+    selection: { item: OwnedCollectibleSuggestion; tokenId: string } |
+      { account: NativePortfolioAccount; query: CollectibleQuery },
+    signal: AbortSignal
+  ) {
     this.synchronize(false);
-    const { account, discovery } = this.state;
+    const { account, discovery, canCheckCollectible } = this.state;
     const connection = this.connection, registration = this.registrationHash;
     const read = this.readNft;
-    if (!read || !account || !connection || !registration || signal.aborted ||
-      this.collectibleRequest || !discovery?.collectibles?.includes(item) ||
-      (item.tokenId !== undefined && tokenId !== item.tokenId)) throw new Error('CANCELLED');
+    if (!read || !canCheckCollectible || !account || !connection || !registration ||
+      signal.aborted || this.collectibleRequest) throw new Error('CANCELLED');
+    let query: CollectibleQuery;
+    if ('item' in selection) {
+      const { item, tokenId } = selection;
+      if (!discovery?.collectibles?.includes(item) ||
+        (item.tokenId !== undefined && tokenId !== item.tokenId)) throw new Error('CANCELLED');
+      query = { contractAddress: item.contractAddress, tokenStandard: item.tokenStandard, tokenId };
+    } else {
+      if (selection.account !== account) throw new Error('CANCELLED');
+      query = selection.query;
+    }
     const request = new AbortController();
     this.collectibleRequest = request;
     const stop = () => {
@@ -503,12 +530,14 @@ export class NativeTokens {
       this.synchronize(false);
       if (signal.aborted || request.signal.aborted || this.collectibleRequest !== request ||
         this.connection !== connection || this.state.account !== account ||
-        this.registrationHash !== registration || this.state.discovery !== discovery) throw new Error('CANCELLED');
+        this.registrationHash !== registration || ('item' in selection && this.state.discovery !== discovery))
+        throw new Error('CANCELLED');
     };
     try {
       current();
+      const { contractAddress, tokenStandard, tokenId } = query;
       const result = await bounded(read({ networkId: account.network, owner: account.address,
-        contractAddress: item.contractAddress, tokenStandard: item.tokenStandard, tokenId }, request.signal, current), request.signal);
+        contractAddress, tokenStandard, tokenId }, request.signal, current), request.signal);
       current();
       return result;
     } finally {
@@ -516,7 +545,7 @@ export class NativeTokens {
       if (this.collectibleRequest === request) this.collectibleRequest = null;
       request.abort();
     }
-  };
+  }
   refresh = async (contract?: string): Promise<void> => {
     if (this.state.busy) return;
     let target: string | undefined;
