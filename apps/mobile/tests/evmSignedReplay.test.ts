@@ -18,6 +18,7 @@ async function fixture() {
     revoked = false,
     nonce = 0,
     lost = false;
+  let canonicalTransactions: string[] | undefined;
   const receipts = new Map<string, any>(),
     dispatched: string[] = [],
     calls: string[] = [];
@@ -68,7 +69,12 @@ async function fixture() {
       return receipts.get(params[0] as string) ?? null;
     }
     if (method === 'eth_getBlockByNumber')
-      return { number: '0xa', hash: blockHash, gasLimit: '0x1c9c380' };
+      return {
+        number: '0xa',
+        hash: blockHash,
+        gasLimit: '0x1c9c380',
+        ...(canonicalTransactions && { transactions: canonicalTransactions }),
+      };
     throw Error(method);
   };
   const create = () =>
@@ -179,6 +185,9 @@ async function fixture() {
     read,
     context,
     bytes: () => raw,
+    canonicalTransactions(hashes: string[]) {
+      canonicalTransactions = hashes;
+    },
     beforeObservation(callback: () => Promise<void>) {
       beforeObservation = callback;
     },
@@ -879,6 +888,141 @@ for (const conflict of ['changed target phase', 'new same-nonce sibling'] as con
       conflict === 'changed target phase' ? 'attempted' : 'signed'
     );
   });
+
+async function minedCancellationFixture() {
+  const f = await fixture();
+  const original = await f.append(0);
+  const cancellation = await f.append(0, 2, recipient, '0x', {
+    operation: 'cancel',
+    originalHash: original.hash!,
+    fee: 7,
+  });
+  const otherHash = '0x' + 'dd'.repeat(32);
+  const receipt = {
+    transactionHash: cancellation.hash,
+    from: wallet.address,
+    to: wallet.address,
+    status: '0x1',
+    blockNumber: '0xa',
+    blockHash,
+    transactionIndex: '0x1',
+  };
+  f.receipts.set(cancellation.hash!, receipt);
+  f.canonicalTransactions([otherHash, cancellation.hash!]);
+  return { f, original, cancellation, otherHash, receipt };
+}
+
+for (const readNumber of [1, 2]) {
+  for (const fault of ['missing hash', 'wrong index'] as const) {
+    test(`cancellation observation ${readNumber} refuses ${fault} in a canonical block`, async () => {
+      const { f, cancellation, otherHash, receipt } = await minedCancellationFixture();
+      const before = f.bytes();
+      let reads = 0;
+      f.beforeObservation(async () => {
+        if (++reads !== readNumber) return;
+        if (fault === 'missing hash') {
+          f.canonicalTransactions([otherHash, otherHash]);
+        } else {
+          f.receipts.set(cancellation.hash!, {
+            ...receipt,
+            transactionIndex: '0x0',
+          });
+        }
+      });
+
+      await assert.rejects(f.create().prepare(cancellation.hash!), {
+        code: 'CONTEXT_CHANGED',
+      });
+      assert.equal(reads, readNumber);
+      assert.equal(f.bytes(), before);
+      assert.deepEqual(f.dispatched, []);
+    });
+  }
+}
+
+test('cancellation reorg before commit keeps the exact saved siblings and a fresh observation can reconcile them', async () => {
+  const { f, original, cancellation, receipt } = await minedCancellationFixture();
+  const before = f.bytes(), recheck = hold();
+  let reads = 0;
+  f.beforeObservation(async () => {
+    if (++reads === 2) await recheck.run();
+  });
+
+  const denied = assert.rejects(f.create().prepare(cancellation.hash!), {
+    code: 'CONTEXT_CHANGED',
+  });
+  await recheck.started;
+  f.receipts.delete(cancellation.hash!);
+  recheck.release();
+  await denied;
+  assert.equal(f.bytes(), before);
+  assert.deepEqual(f.dispatched, []);
+
+  f.receipts.set(cancellation.hash!, receipt);
+  const confirmed = await f.create().prepare(cancellation.hash!);
+  assert.equal(confirmed.status, 'confirmed');
+  const read = (hash: string) =>
+    f.records.readExact(f.session, '7654321', wallet.address, hash);
+  const savedOriginal = await read(original.hash!);
+  const savedCancellation = await read(cancellation.hash!);
+  assert.equal(savedOriginal?.phase, 'nonce-consumed');
+  assert.equal(savedOriginal?.rawTransaction, original.serialized);
+  assert.equal(savedCancellation?.phase, 'confirmed');
+  assert.equal(savedCancellation?.rawTransaction, cancellation.serialized);
+  assert.deepEqual(f.dispatched, []);
+});
+
+test('a hung cancellation observation releases the journal at its deadline and discards a late canonical response', async (t) => {
+  const { f, cancellation } = await minedCancellationFixture();
+  const before = f.bytes(), recheck = hold();
+  const lateResponse = Promise.withResolvers<void>();
+  let observations = 0;
+  f.beforeObservation(async () => {
+    if (observations === 2) await recheck.run();
+  });
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+
+  const attempt = observeRetainedEvmTransaction(
+    f.records,
+    f.session,
+    '7654321',
+    wallet.address,
+    cancellation.hash!,
+    async (expected) => {
+      const rechecking = ++observations === 2;
+      const observed = await observeEvmTransaction(
+        expected, f.read, f.session.assertCurrent
+      );
+      if (rechecking) {
+        assert.equal(observed.status, 'mined');
+        lateResponse.resolve();
+      }
+      return observed;
+    },
+    f.session.assertCurrent
+  );
+  const denied = assert.rejects(attempt, { code: 'CONTEXT_CHANGED' });
+  await recheck.started;
+  let released = false;
+  const queued = f.records.validate(f.session).then(() => { released = true; });
+  try {
+    t.mock.timers.tick(11_999);
+    await Promise.resolve();
+    assert.equal(released, false);
+    t.mock.timers.tick(1);
+    await denied;
+    await queued;
+    assert.equal(released, true);
+  } finally {
+    recheck.release();
+  }
+
+  // A genuine late response may finish reading, but it no longer owns the write.
+  await lateResponse.promise;
+  await f.records.validate(f.session);
+  assert.equal(f.bytes(), before);
+  assert.deepEqual(f.dispatched, []);
+});
 
 test('shared observation captures original stored tuple and refuses revocation before phase commit', async () => {
   const f = await fixture(),
