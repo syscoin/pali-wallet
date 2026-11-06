@@ -38,7 +38,7 @@ import { createActivityScope, type ActivityScope, type EvmActivityReadScope } fr
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress, Transaction } from 'ethers/transaction';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
+import { isUtxoAccountPrivateKey, keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import { importedKeyIdentity, isUtxoWifText, normalizeImportedKey, normalizeUtxoImport } from './importedAccounts.ts';
 import { importAccountWithRecovery } from '../../../../source/wallet/importedAccountRecovery.ts';
@@ -934,8 +934,8 @@ export function createKeyringRuntimeFactory(
                 const ring = keyring;
                 const utxo = findUtxoNetwork(scope.networkId);
                 const sdkNetwork = utxo && getUtxoSdkNetwork(utxo.id);
-                const script = utxo && findWifAddressType(scope.address, utxo.id);
                 const type = parseNativeAccountId(scope.accountId).type;
+                const script = utxo && type === 'Imported' && findWifAddressType(scope.address, utxo.id);
                 const check = () => {
                   current(captured); checkGuard(assertCurrent);
                   current(captured);
@@ -949,13 +949,16 @@ export function createKeyringRuntimeFactory(
                       state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
                   if (utxo && sdkNetwork) {
-                    const actual = state.activeNetwork, account = state.accounts.Imported[selected.index];
-                    if (!script || selected.type !== 'Imported' || !account || account.id !== selected.index || account.address !== selected.address ||
+                    const actual = state.activeNetwork, account = state.accounts[type][selected.index];
+                    if (!account || account.id !== selected.index || account.address !== selected.address ||
                         actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
                         actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
                         actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
                       throw new KeyringRuntimeError('CANCELLED');
-                    checkedWifAccount(account, utxo.id);
+                    if (type === 'Imported') {
+                      if (!script) throw new KeyringRuntimeError('CANCELLED');
+                      checkedWifAccount(account, utxo.id);
+                    } else checkedAccount(account, selected.index, utxo.id);
                   }
                 };
                 check();
@@ -967,7 +970,15 @@ export function createKeyringRuntimeFactory(
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
                 const privateKey = await ring.getPrivateKeyByAccountId(scope.index, type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
                 check();
-                if (utxo) {
+                if (utxo && sdkNetwork) {
+                  if (type === 'HDAccount') {
+                    if (!isUtxoAccountPrivateKey(privateKey, utxo.testnet)) throw new KeyringRuntimeError('OPERATION_FAILED');
+                    const result = ring.validateZprv(privateKey, sdkNetwork);
+                    if (!result.isValid || !result.node || result.node.neutered().toBase58() !== state.accounts.HDAccount[scope.index]?.xpub)
+                      throw new KeyringRuntimeError('OPERATION_FAILED');
+                    check();
+                    return privateKey;
+                  }
                   if (!script || !isUtxoWifText(privateKey)) throw new KeyringRuntimeError('OPERATION_FAILED');
                   const { ECPair, payments } = syscoinUtils.bitcoinjs;
                   const network = utxo.addressNetwork;
