@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { SENTRY_COLLATERAL_TXID, SENTRY_TXID } from '../sentryNodeFixtures';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
 declare global {
   interface Window {
@@ -530,4 +531,27 @@ for (const initiallyPending of [false, true]) test(`reopening keeps the detail o
   await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
   await expect(detail.getByText(initiallyPending ? 'Pending' : '11 confirmations · Block 190', { exact: true })).toBeVisible();
   expect(await rawCalls()).toBe(1);
+});
+
+test('narrow Syscoin detail only looks up Sentry information after an explicit tap', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await open(page, 'syscoin', false, 'sentry');
+  await load(page);
+  const calls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => url.includes('/api/sentry/')));
+  await page.getByTestId(`watch-activity-row-${SENTRY_TXID}`).getByRole('button').click();
+  const lookup = page.getByRole('button', { name: 'Look up Sentry node', exact: true });
+  await expect(lookup).toBeVisible();
+  expect(await calls()).toEqual([]);
+  await lookup.click();
+  await expect(page.getByRole('heading', { name: 'Sentry node information', exact: true })).toBeVisible();
+  await expect(page.getByText('Reported by https://sysnode.info', { exact: true })).toBeVisible();
+  const outpoint = page.getByText(`${SENTRY_COLLATERAL_TXID}:1`, { exact: true });
+  await outpoint.scrollIntoViewIfNeeded();
+  await expect(outpoint).toBeInViewport();
+  expect(await calls()).toEqual([`https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`]);
+  await expect(page.getByRole('button', { name: /link|reserve|sign/i })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('sentry-node-information-320.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(lookup).toHaveCount(0);
 });

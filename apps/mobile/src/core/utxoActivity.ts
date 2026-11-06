@@ -6,6 +6,8 @@ import { createBlockbookAccountHistory, readHistoryCount } from '../../../../sou
 import { mergeFreshBlockbookHistory } from '../../../../source/shared/blockbookHistoryMerge.ts';
 import { selectEvmHistoryRepresentatives } from '../../../../source/shared/evmHistory.ts';
 import { getTransactionBlockInfo } from '../../../../source/shared/transactionBlockStatus.ts';
+import { readSentryNode, SENTRY_REGISTRATION_TX_VERSION, type SentryNodeObservation } from '../../../../source/shared/sentryNodeLookup.ts';
+import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { getSyscoinAccountChange, getSyscoinNativeTransferAmount, isSyscoinTokenOperation } from '../../../../source/shared/utxoNativeAmounts.ts';
 import { parseErc20Text } from '../../../../source/shared/erc20.ts';
 import { getSyscoinActivityOperationAmount } from '../../../../source/shared/utxoTokenAmounts.ts';
@@ -31,7 +33,10 @@ export type UtxoActivityPage = Readonly<{
 }>;
 /** Only the authority passes this private canonical source to its trusted reader. */
 export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean; registration?: UtxoNetwork; assertCurrent?: () => void }>;
-export type UtxoActivityDetail = Readonly<{ txid: string; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }>;
+export type UtxoActivityDetail = Readonly<{
+  txid: string; row: UtxoActivityRow; from: readonly string[]; to: readonly string[];
+  readSentryNode?: (signal: AbortSignal, assertCurrent: () => void) => Promise<SentryNodeObservation>;
+}>;
 export type UtxoActivityDetailCache = ReturnType<typeof createUtxoTransactionDetailsCache>;
 export interface UtxoActivityReader {
   readPage(source: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal): Promise<UtxoActivityPage>;
@@ -99,6 +104,26 @@ function projectAssetAmount(tx: Record<string, any>): UtxoActivityAssetAmount | 
     ...(amount.decimals === undefined ? {} : { decimals: amount.decimals }),
     ...(amount.direction === undefined ? {} : { direction: amount.direction }),
     ...(symbol === undefined ? {} : { symbol }) });
+}
+function publicSentryRegistration(
+  network: UtxoNetwork,
+  row: UtxoActivityRow,
+  full: UtxoDetailTransaction
+): string | undefined {
+  const mainnet = SENTRY_NETWORKS.mainnet;
+  // The actual Blockbook detail, not an account-page type hint, supplies bytes.
+  if (full.version !== SENTRY_REGISTRATION_TX_VERSION || network !== resolveUtxoNetwork('syscoin') ||
+      network.chainId !== mainnet.chainId || network.genesisHash !== mainnet.genesisHash ||
+      !row.block?.hash || row.block.height !== full.blockHeight || row.observedConfirmations < 1 ||
+      typeof full.blockHash !== 'string' || full.blockHash.toLowerCase() !== row.block.hash ||
+      !(readHistoryCount(full.confirmations) ?? 0) || typeof full.hex !== 'string' ||
+      full.hex.length > 200_000 || !/^(?:[0-9a-f]{2})+$/i.test(full.hex)) return;
+  try {
+    const tx = syscoinUtils.bitcoinjs.Transaction.fromHex(full.hex);
+    if (tx.version === SENTRY_REGISTRATION_TX_VERSION &&
+        tx.getId() === row.txid && tx.toHex() === full.hex.toLowerCase())
+      return row.txid;
+  } catch { /* An unrecognized body does not grant a public lookup. */ }
 }
 function projectTransaction(value: unknown): UtxoActivityRow {
   const tx = utxoObject(value), txid = hash(tx.txid);
@@ -241,7 +266,15 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       assertJsonWorkBudget({ from, to }, 32768, 4, 2048);
       if (isAccount && [...from, ...to].some(value => value === identifier)) return fail('INVALID');
       check();
-      return Object.freeze({ txid, row, from: Object.freeze(from), to: Object.freeze(to) });
+      const proTxHash = publicSentryRegistration(network, row, full);
+      const readPublicNode: UtxoActivityDetail['readSentryNode'] = proTxHash === undefined ? undefined
+        : (signal, assertCurrent) => readSentryNode({
+            network: 'mainnet', origin: SENTRY_NETWORKS.mainnet.defaultServiceUrl, proTxHash,
+          }, { fetch: checked.fetch, signal, assertCurrent });
+      return Object.freeze({
+        txid, row, from: Object.freeze(from), to: Object.freeze(to),
+        ...(readPublicNode ? { readSentryNode: readPublicNode } : {}),
+      });
     } finally { if (abort) signal.removeEventListener('abort', abort); stop?.(); }
   }, summaryBytes(row: UtxoActivityRow) { return summaries.get(row)?.charge ?? null; },
   forgetDetails(rows: readonly UtxoActivityRow[]) { for (const row of rows) summaries.delete(row); } });
@@ -253,7 +286,7 @@ type PublicAuthority = { getSnapshot(): PublicSnapshot; getNetwork(id: NetworkId
   retainUtxoActivityRows(rows: readonly UtxoActivityRow[]): void; releaseUtxoActivity(): void };
 export type UtxoActivityState = Readonly<{
   status: 'idle' | 'loading' | 'ready' | 'unavailable' | 'stale'; context: UtxoActivityContext | null;
-  rows: readonly UtxoActivityRow[]; detail: Readonly<{ txid: string; status: 'loading' | 'ready' | 'unavailable'; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }> | null; firstPage: number; page: number; hasMore: boolean; hasNewer: boolean; windowed: boolean;
+  rows: readonly UtxoActivityRow[]; detail: Readonly<UtxoActivityDetail & { status: 'loading' | 'ready' | 'unavailable' }> | null; firstPage: number; page: number; hasMore: boolean; hasNewer: boolean; windowed: boolean;
 }>;
 /** A generic indication that can be consumed once while its refresh still owns the view. */
 export type WatchActivityConfirmation = Readonly<{ consume(): boolean }>;

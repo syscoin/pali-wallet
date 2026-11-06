@@ -6,6 +6,7 @@ import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
+import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from './sentryNodeFixtures.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
 const owner: UtxoActivityContext = { accountId: 'watch', networkId: 'bitcoin', address: BTC, generation: 1 };
@@ -457,4 +458,50 @@ test('oversized SPT text never reaches arbitrary-precision conversion', async ()
     const row = await readAsset(compactAsset('9'.repeat(100000)));
     assert.equal(row.assetAmount, null); assert.ok(lengths.every(length => length <= 78));
   } finally { BigNumber.from = original; }
+});
+
+test('only an exact confirmed v80 Syscoin detail can explicitly request public node information', async () => {
+  for (const mode of ['healthy', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin'] as const) {
+    const network = getUtxoNetwork(mode === 'bitcoin' ? 'bitcoin' : 'syscoin');
+    const address = mode === 'bitcoin' ? BTC : SYS;
+    const f = fixture({ network: mode === 'bitcoin' ? 'bitcoin' : 'syscoin', count: 1, replace(path, body) {
+      if (path.includes('/address/')) body.transactions[0] = { ...tx(SENTRY_TXID), version: 80 };
+      return body;
+    } });
+    const serviceCalls: string[] = [];
+    const reader = createUtxoActivityReader({ async fetch(url, init) {
+      if (url === `${network.endpoint}/api/v2/tx/${SENTRY_TXID}`) return json({
+        ...tx(SENTRY_TXID), version: mode === 'summary-only' ? undefined : 80,
+        hex: mode === 'wrong-bytes' ? SENTRY_TX_HEX.slice(0, -2) + '01' : SENTRY_TX_HEX,
+        ...(mode === 'pending' ? { blockHeight: -1, blockHash: undefined, confirmations: 0 } : {}),
+      });
+      if (url.startsWith('https://sysnode.info/')) {
+        serviceCalls.push(url);
+        assert.equal(init.method, 'GET');
+        return json(sentryNodeResponse(network.genesisHash));
+      }
+      return f.fetch(url, init);
+    } });
+    const a = new WatchOnlyAuthority([{ id: 'watch', name: 'Watch', addresses: { [network.id]: address } }],
+      { async readBalance() { throw Error(); } }, undefined, undefined, reader);
+    a.unlock();
+    const c = new UtxoWatchActivity(a, () => true);
+    try {
+      c.activate();
+      await settle(c);
+      assert.equal(c.getSnapshot().rows[0]?.txid, SENTRY_TXID);
+      await c.selectDetail(SENTRY_TXID);
+      assert.equal(c.getSnapshot().detail?.status, 'ready');
+      assert.deepEqual(serviceCalls, []);
+      const lookup = c.getSnapshot().detail?.readSentryNode;
+      if (mode !== 'healthy') { assert.equal(lookup, undefined, mode); continue; }
+      assert.ok(lookup);
+      const result = await lookup(signal(), () => undefined);
+      assert.equal(result.node.proTxHash, SENTRY_TXID);
+      assert.deepEqual(serviceCalls, [`https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`]);
+      a.lock();
+      await assert.rejects(lookup(signal(), () => undefined));
+      assert.equal(serviceCalls.length, 1);
+    } finally { c.dispose(); }
+  }
 });

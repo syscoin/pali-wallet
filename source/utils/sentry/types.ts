@@ -1,4 +1,6 @@
 import type { SentryCollateralReservation } from './collateral';
+import type { SentryNetwork } from '../../shared/sentryNetworks';
+import type { SentryLinkedNode } from '../../shared/sentryNodeLookup';
 import type {
   SentryOperationRequest,
   SentryOperationReview,
@@ -10,7 +12,8 @@ import type {
   SentryGovernanceVoteRequest,
 } from '@sidhujag/sysweb3-sentry';
 
-export type SentryNetwork = 'mainnet' | 'testnet';
+export type { SentryLinkedNode } from '../../shared/sentryNodeLookup';
+export type { SentryNetwork } from '../../shared/sentryNetworks';
 
 export interface SentryKeySummary {
   id: string;
@@ -30,12 +33,6 @@ export interface SentrySettings {
   serviceUrl: string;
 }
 
-export interface SentryLinkedNode {
-  collateralOutpoint: { txid: string; vout: number };
-  nevmAddress: string;
-  proTxHash: string;
-  service: string;
-}
 export interface SentryLinkApproval {
   id: string;
   network: SentryNetwork;
