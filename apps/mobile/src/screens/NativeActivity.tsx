@@ -75,6 +75,19 @@ const status = (row: ActivityRow) => {
     ? 'Checking transaction…'
     : 'Indexed · not verified';
 };
+function savedPendingStatus(row: ActivityRow) {
+  const retained = row.retainedObservation;
+  if (currentObservation(row) || !row.local) return status(row);
+  if (retained?.status === 'mined')
+    return retained.outcome === 'confirmed' ? 'Confirmed' : 'Reverted';
+  if (retained?.status === 'missing' && BigInt(retained.latestNonce) > BigInt(row.local.nonce))
+    return 'Nonce consumed · outcome unavailable';
+  if (row.checking) return 'Checking transaction…';
+  if (row.unavailable) return 'Current status unavailable';
+  if (row.local.phase === 'signed') return 'Signed · submission not confirmed';
+  if (row.local.phase === 'submitted') return 'Submitted · waiting for confirmation';
+  return 'Submission unconfirmed';
+}
 function direction(
   row: ActivityRow,
   owner: string
@@ -238,20 +251,24 @@ function NativeActivityContent({
     };
   }, []);
   const owner = snapshot.accountAddress ?? '';
-  const rows = snapshot.rows.filter(
+  const savedPending = snapshot.savedPending;
+  const rows = savedPending?.rows ?? snapshot.rows.filter(
     (row) =>
       (snapshot.view.showZero || !zeroOnly(row)) &&
       (snapshot.view.filter === 'all' ||
         direction(row, owner) === 'unknown' ||
         direction(row, owner) === snapshot.view.filter)
   );
-  const chosen = snapshot.rows.find((row) => row.hash === selected);
+  const findRow = (predicate: (row: ActivityRow) => boolean) =>
+    savedPending?.rows.find(predicate) ?? snapshot.rows.find(predicate);
+  const displayStatus = savedPending ? savedPendingStatus : status;
+  const chosen = findRow((row) => row.hash === selected);
   const collectible = chosen?.local?.collectibleTransfer;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
-  const replacement = snapshot.rows.find((row) => row.local?.originalHash === chosen?.hash &&
+  const replacement = findRow((row) => row.local?.originalHash === chosen?.hash &&
     (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
-  const original = chosen?.local?.originalHash && snapshot.rows.find((row) => row.hash === chosen.local!.originalHash);
-  const replacementBlocksReview = chosen?.local && snapshot.rows.some(({ local }) =>
+  const original = chosen?.local?.originalHash && findRow((row) => row.hash === chosen.local!.originalHash);
+  const replacementBlocksReview = chosen?.local && !!findRow(({ local }) =>
     local?.nonce === chosen.local!.nonce &&
     (local.operation === 'cancel' || (local.originalHash === chosen.hash &&
       local.operation === 'speed-up' && local.phase !== 'signed' && local.phase !== 'attempted'))
@@ -266,11 +283,15 @@ function NativeActivityContent({
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
     chosen.retainedObservation?.status === 'missing' &&
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
+  const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
+    : savedPending && retained
+    ? retained.status === 'mined' ? retained.block.number : undefined
     : chosen?.indexed?.blockNumber || chosen?.observation?.block?.number;
   const hiddenCount = snapshot.rows.filter((row) => zeroOnly(row)).length;
   const savePosition = async (): Promise<void> => {
+    if (savedPending) return;
     const first =
       rows.find((row) => row.hash === firstVisible.current) ?? rows[0];
     if (!first) {
@@ -331,6 +352,12 @@ function NativeActivityContent({
   const close = () => {
     setCopyAddress(null);
     if (selected) setSelected(null);
+    else if (savedPending) {
+      restored.current = false;
+      restoreAttempts.current = 0;
+      list.current?.scrollToOffset({ offset: 0, animated: false });
+      controller.closeSavedPending();
+    }
     else {
       void afterPositionSaved(onBack);
     }
@@ -358,7 +385,7 @@ function NativeActivityContent({
     return () => listener.remove();
   });
   const restorePosition = () => {
-    if (!snapshot.view.anchor || !rows.length || restoreAttempts.current >= 3)
+    if (savedPending || !snapshot.view.anchor || !rows.length || restoreAttempts.current >= 3)
       return;
     const index = rows.findIndex((row) => row.hash === snapshot.view.anchor);
     if (index < 0) {
@@ -405,7 +432,7 @@ function NativeActivityContent({
     >
       <View style={s.header}>
         <Header
-          title={chosen ? 'Transaction details' : 'Activity'}
+          title={chosen ? 'Transaction details' : savedPending ? 'Saved pending' : 'Activity'}
           subtitle={`${accountLabel}${
             snapshot.networkName ? ` · ${snapshot.networkName}` : ''
           }`}
@@ -421,7 +448,7 @@ function NativeActivityContent({
           onViewableItemsChanged={visibleItemsChanged}
           onMomentumScrollEnd={savePosition}
           onContentSizeChange={() => {
-            if (!restored.current && rows.length) {
+            if (!savedPending && !restored.current && rows.length) {
               restored.current = true;
               restorePosition();
             }
@@ -434,7 +461,11 @@ function NativeActivityContent({
             restoreTimer.current = setTimeout(restorePosition, 100);
           }}
           ListHeaderComponent={
-            <View style={s.section}>
+            savedPending ? <View style={s.section}>
+              <Text style={styles.muted}>Unresolved transfers saved on this device.</Text>
+              {savedPending.status === 'loading' && <ActivityIndicator accessibilityLabel="Loading saved transfers" color={colors.pink} />}
+              {savedPending.status === 'unavailable' && <Notice title="Could not load saved transfers" body="Your saved transfers are unchanged. Try again." tone="amber" />}
+            </View> : <View style={s.section}>
               <Text style={styles.muted}>{snapshot.coverage}</Text>
               <View style={s.filters}>
                 {(['all', 'sent', 'received'] as const).map((filter) => (
@@ -457,6 +488,12 @@ function NativeActivityContent({
                   />
                 ))}
               </View>
+              {snapshot.canViewSavedPending && <Button title="Saved pending" variant="quiet"
+                onPress={() => void afterPositionSaved(() => {
+                  setFeedback('');
+                  list.current?.scrollToOffset({ offset: 0, animated: false });
+                  void controller.loadSavedPending();
+                })} />}
               {snapshot.truncated && (
                 <Notice
                   title="Activity history is limited"
@@ -514,7 +551,7 @@ function NativeActivityContent({
               accessibilityLabel={`${amount(
                 item,
                 snapshot.nativeSymbol ?? 'ETH'
-              )}, ${status(item)}. View transaction details`}
+              )}, ${displayStatus(item)}. View transaction details`}
               onPress={() =>
                 afterPositionSaved(() => {
                   setFeedback('');
@@ -534,7 +571,7 @@ function NativeActivityContent({
                     : direction(item, owner)}
                 </Text>
               </View>
-              <Text style={styles.muted}>{status(item)}</Text>
+              <Text style={styles.muted}>{displayStatus(item)}</Text>
               <Text style={s.hash}>
                 {item.hash.slice(0, 12)}…{item.hash.slice(-8)}
               </Text>
@@ -544,7 +581,7 @@ function NativeActivityContent({
             </IdlePressable>
           )}
           ListEmptyComponent={
-            snapshot.status !== 'loading' ? (
+            savedPending ? savedPending.status === 'ready' ? <Notice title="No saved pending transfers" /> : undefined : snapshot.status !== 'loading' ? (
               <Notice
                 title={
                   snapshot.status === 'unavailable'
@@ -559,7 +596,10 @@ function NativeActivityContent({
           }
           ListFooterComponent={
             <View style={s.section}>
-              {snapshot.hasMore && (
+              {savedPending ? savedPending.hasMore && savedPending.status !== 'loading' && (
+                <Button title={savedPending.status === 'unavailable' ? 'Try again' : 'Load more saved transfers'}
+                  variant="secondary" onPress={() => void controller.loadSavedPending()} />
+              ) : snapshot.hasMore && (
                 <Button
                   title={
                     snapshot.loadingMore
@@ -581,7 +621,7 @@ function NativeActivityContent({
           <Text style={s.detailAmount}>
             {amount(chosen, snapshot.nativeSymbol ?? 'ETH')}
           </Text>
-          <Text style={styles.muted}>{status(chosen)}</Text>
+          <Text style={styles.muted}>{displayStatus(chosen)}</Text>
           {chosen.local?.token && !chosen.indexed && (
             <Notice
               title="Amount approved in Pali"

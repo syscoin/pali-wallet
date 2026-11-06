@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { formatSyscoinTokenAmount } from '../../../../source/shared/utxoTokenAmounts';
 import { formatBaseUnits } from '../core/amounts';
+import type { SentryNodeObservation } from '../../../../source/shared/sentryNodeLookup';
 import { UtxoWatchActivity, type UtxoActivityContext, type UtxoActivityRow } from '../core/utxoActivity';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import type { ShellLeafNavigation } from './RealAppShell';
@@ -25,16 +26,19 @@ function assetQuantity(row: UtxoActivityRow): string | null {
 export function WatchActivity({ authority, navigation, onBack }: {
   authority: WatchOnlyAuthority; navigation: ShellLeafNavigation; onBack(): void;
 }) {
-  const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null });
+  const lifetime = useRef({ alive: true, busy: false, action: 0, selected: null as string | null, pending: null as object | null, nodeRequest: null as AbortController | null });
   const controller = useMemo(() => new UtxoWatchActivity(authority, () => AppState.currentState === 'active'), [authority]);
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [selected, setSelected] = useState<string | null>(null);
   const [feedback, setFeedback] = useState('');
   const [confirmationOwner, setConfirmationOwner] = useState<UtxoActivityContext | null>(null);
   const [busy, setBusy] = useState(false);
+  const [nodeInfo, setNodeInfo] = useState<SentryNodeObservation | 'unavailable' | null>(null);
   const selectTransaction = useCallback((txid: string | null) => {
     lifetime.current.selected = txid;
     lifetime.current.action++;
+    lifetime.current.nodeRequest?.abort();
+    setNodeInfo(null);
     setSelected(txid); setFeedback(''); setConfirmationOwner(null);
     if (txid) controller.selectDetail(txid); else controller.clearDetail();
   }, [controller]);
@@ -62,29 +66,44 @@ export function WatchActivity({ authority, navigation, onBack }: {
     const change = AppState.addEventListener('change', (value) => { if (value !== 'active') revoke(); else controller.setFocused(true); });
     const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => { controller.setFocused(false); revoke(); }) : null;
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', () => { controller.setFocused(true); }) : null;
-    return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; clear(); controller.dispose(); change.remove(); blur?.remove(); focus?.remove(); };
+    return () => { life.alive = false; life.action++; life.selected = null; life.pending = null; life.nodeRequest?.abort(); clear(); controller.dispose(); change.remove(); blur?.remove(); focus?.remove(); };
   }, [controller, selectTransaction]);
   useLayoutEffect(() => navigation.registerBack(() => { if (chosen) selectTransaction(null); else onBack(); return true; }), [navigation, chosen, onBack, selectTransaction]);
   useLayoutEffect(() => navigation.registerLeave((navigate) => { controller.revoke(); navigate(); }), [navigation, controller]);
   useLayoutEffect(() => { navigation.setImmersive(!!chosen); return () => navigation.setImmersive(false); }, [navigation, chosen]);
   const back = () => { if (chosen) selectTransaction(null); else onBack(); };
-  const act = async (kind: 'copy' | 'explorer') => {
+  const act = async (kind: 'copy' | 'explorer' | 'node') => {
     const life = lifetime.current;
     if (!chosen || !network || !life.alive || life.busy || !controller.isCurrent()) return;
+    const readNode = kind === 'node' && detail?.status === 'ready' && state.status === 'ready' ? detail.readSentryNode : undefined;
+    if (kind === 'node' && !readNode) return;
     const context = state.context, row = chosen, summary = summaryChosen, action = ++life.action, pending = {};
     life.pending = pending; life.busy = true; setBusy(true); setFeedback('');
     const current = () => life.alive && life.pending === pending && action === life.action && life.selected === row.txid &&
-      controller.isCurrent(context) && !!summary && controller.getSnapshot().rows.includes(summary);
+      controller.isCurrent(context) && !!summary && controller.getSnapshot().rows.includes(summary) &&
+      (kind !== 'node' || controller.getSnapshot().detail === detail);
+    const nodeRequest = readNode ? new AbortController() : null;
+    if (nodeRequest) { life.nodeRequest = nodeRequest; setNodeInfo(null); }
     try {
       if (!current()) return;
+      if (readNode && nodeRequest) {
+        const observation = await readNode(nodeRequest.signal, () => { if (!current()) throw Error('Activity changed'); });
+        if (current()) setNodeInfo(observation);
+        return;
+      }
       if (kind === 'copy') { if (await Clipboard.setStringAsync(row.txid) === false) throw Error(); }
       else if (context) {
         const explorer = authority.getUtxoExplorer(context.networkId).replace(/\/$/, '') + '/';
         await Linking.openURL(new URL(`tx/${row.txid}`, explorer).href);
       }
       if (current()) setFeedback(kind === 'copy' ? 'Transaction ID copied.' : 'Explorer opened.');
-    } catch { if (current()) setFeedback(kind === 'copy' ? 'Could not copy the transaction ID.' : 'Could not open the explorer.'); }
-    finally {
+    } catch {
+      if (current()) {
+        if (kind === 'node') setNodeInfo('unavailable');
+        else setFeedback(kind === 'copy' ? 'Could not copy the transaction ID.' : 'Could not open the explorer.');
+      }
+    } finally {
+      if (nodeRequest && life.nodeRequest === nodeRequest) life.nodeRequest = null;
       // A dispatched action still drains after Back/Refresh. Only its owner may
       // release admission; feedback additionally requires the same selected row.
       if (life.pending === pending) { life.pending = null; life.busy = false; if (life.alive) setBusy(false); }
@@ -163,6 +182,17 @@ export function WatchActivity({ authority, navigation, onBack }: {
           <Text>{status(chosen)}</Text>
           {chosen.block?.timestamp != null && <Text>Block time: {new Date(chosen.block.timestamp * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</Text>}
         </Card>
+        {detail?.status === 'ready' && detail.readSentryNode && state.status === 'ready' && <>
+          <Button title="Look up Sentry node" variant="secondary" disabled={busy} onPress={() => void act('node')} />
+          {nodeInfo === 'unavailable' ? <Notice title="Node information unavailable" body="Try the lookup again." tone="amber" /> : nodeInfo && <Card style={s.detail}>
+            <Text role="heading">Sentry node information</Text>
+            <Text style={styles.muted}>Reported by {nodeInfo.origin}</Text>
+            {nodeInfo.node.service && <><Text style={s.label}>NODE SERVICE</Text><Text style={s.hash}>{nodeInfo.node.service}</Text></>}
+            <Text style={s.label}>COLLATERAL OUTPOINT</Text>
+            <Text selectable style={s.hash}>{nodeInfo.node.collateralOutpoint.txid}:{nodeInfo.node.collateralOutpoint.vout}</Text>
+            {nodeInfo.node.nevmAddress && <><Text style={s.label}>REGISTERED NEVM ADDRESS</Text><Text selectable style={s.hash}>{nodeInfo.node.nevmAddress}</Text></>}
+          </Card>}
+        </>}
         {busy && <ActivityIndicator accessibilityLabel="Completing transaction action" color={colors.pink} />}
         <Button title="Copy transaction ID" variant="secondary" disabled={busy} onPress={() => void act('copy')} />
         <Button title="Open transaction in explorer" variant="quiet" disabled={busy} onPress={() => void act('explorer')} />

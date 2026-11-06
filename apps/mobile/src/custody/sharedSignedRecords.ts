@@ -32,6 +32,21 @@ export function createNativeSignedRecordView(
     ...(collectible ? { collectible } : {}),
     ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
   }); };
+  const activity = (entry: EvmRetainedSignedRecord): LocalActivityRecord => {
+    const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
+    const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
+      (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(Transaction.from(entry.rawTransaction)));
+    const speedUpEligible = (saved.operation === 'send' || saved.operation === 'erc20' || saved.operation === 'speed-up') &&
+      saved.to !== null && (saved.type === 0 || saved.type === 2) &&
+      (saved.dataBytes === 0 ? saved.value !== '0' : !!token) &&
+      !Transaction.from(entry.rawTransaction).accessList?.length;
+    return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
+      recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
+      operation: saved.operation, transactionType: saved.type, ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
+      ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
+      ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
+      ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
+  };
   return Object.freeze({
     assertSpendingNonce(nonce: number) {
       return checked(() => records.assertSpendingNonce(session, network.chainId, account.address, nonce));
@@ -60,22 +75,15 @@ export function createNativeSignedRecordView(
     async activities():Promise<Readonly<{records: readonly LocalActivityRecord[]; truncated: boolean}>> {
       return checked(async () => {
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
-        const projected=recent.entries.map(entry => {
-          const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
-          const inspectionOnly = (entry.operation === 'erc721' || entry.operation === 'erc1155') &&
-            (!saved.collectibleTransfer || !isRetainedNftReplayEnvelope(Transaction.from(entry.rawTransaction)));
-          const speedUpEligible = (saved.operation === 'send' || saved.operation === 'erc20' || saved.operation === 'speed-up') &&
-            saved.to !== null && (saved.type === 0 || saved.type === 2) &&
-            (saved.dataBytes === 0 ? saved.value !== '0' : !!token) &&
-            !Transaction.from(entry.rawTransaction).accessList?.length;
-          return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
-            recipient:saved.collectibleTransfer?.recipient??saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
-            operation: saved.operation, transactionType: saved.type, ...(saved.originalHash ? { originalHash: saved.originalHash } : {}),
-            ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
-            ...(speedUpEligible ? { speedUpEligible: true as const } : {}),
-            ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
-        });
+        const projected=recent.entries.map(activity);
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
+      });
+    },
+    pendingActivities(beforeHash?: string) {
+      return checked(async () => {
+        const page = await records.readPage(session, network.chainId, account.address,
+          { beforeHash, maximum: 20, pendingOnly: true });
+        return Object.freeze({ records: Object.freeze(page.entries.map(activity)), nextCursor: page.nextCursor });
       });
     },
   });
