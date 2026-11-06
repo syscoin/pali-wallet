@@ -175,8 +175,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
       ].includes(path.at(-1))
     )
@@ -199,7 +200,13 @@ function prepare(quoteCount = 1) {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[nextQuote++].promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: params[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'getFreshNativeEvmGasLimit') {
       expect(params).toEqual([
         {

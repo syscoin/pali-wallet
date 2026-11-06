@@ -13,6 +13,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
 import { parseErc20Units } from '../../shared/erc20';
+import { EVM_FEE_APPROVAL_LIFETIME_MS } from '../../shared/evmFeeApproval';
 import { getEvmTransferCost } from '../../shared/evmTransferCost';
 import {
   ICustomFeeParams,
@@ -281,7 +282,6 @@ export const SendConfirm = () => {
     null
   );
   const [retryTrigger, setRetryTrigger] = useState(0);
-  const freshNativeEstimate = useRef(false);
 
   // Handle both normal navigation and restoration
   const basicTxValues = state?.tx;
@@ -407,11 +407,6 @@ export const SendConfirm = () => {
 
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
-    freshNativeEstimate.current =
-      !isBitcoinBased &&
-      !isSmartAccountSend &&
-      !basicTxValues?.token &&
-      basicTxValues?.transactionType === TransactionType.NATIVE_ETH;
     setQuotedEvmFeeMode(undefined);
     setFeeCalculationError(null);
     setIsCalculatingFees(false);
@@ -446,7 +441,7 @@ export const SendConfirm = () => {
   const validateCustomGasLimit = Boolean(
     customFee.isCustom && customFee.gasLimit && customFee.gasLimit > 0
   );
-  const isFixedNativeSoftwareSend =
+  const isNativeSoftwareSend =
     !isBitcoinBased &&
     !isSmartAccountSend &&
     !activeAccount?.isLedgerWallet &&
@@ -458,10 +453,11 @@ export const SendConfirm = () => {
     Boolean(
       basicTxValues &&
         !basicTxValues.token &&
-        !basicTxValues.isMax &&
         (!basicTxValues.transactionType ||
           basicTxValues.transactionType === TransactionType.NATIVE_ETH)
     );
+  const isFixedNativeSoftwareSend =
+    isNativeSoftwareSend && !basicTxValues.isMax;
   const isOrdinaryTokenSend =
     !isBitcoinBased &&
     !isSmartAccountSend &&
@@ -582,7 +578,7 @@ export const SendConfirm = () => {
       !smartAccountQuoteError &&
       !smartAccountQuoteNeedsRefresh
   );
-  const confirmationFeeReady =
+  const feeEstimateReady =
     isBitcoinBased ||
     (!isCalculatingFees &&
       !feeCalculationError &&
@@ -592,8 +588,6 @@ export const SendConfirm = () => {
       (isSmartAccountSend
         ? smartAccountQuoteReady
         : quotedEvmFeeMode === isEIP1559Compatible));
-  const confirmationFeeReadyRef = useRef(confirmationFeeReady);
-  confirmationFeeReadyRef.current = confirmationFeeReady;
 
   const displayedAmount = useMemo(() => {
     if (isSmartAccountSend && !basicTxValues?.token && basicTxValues?.isMax)
@@ -604,7 +598,7 @@ export const SendConfirm = () => {
       return basicTxValues?.amount;
     try {
       if (!isBitcoinBased) {
-        if (!confirmationFeeReady) return t('send.calculating');
+        if (!feeEstimateReady) return t('send.calculating');
         const gasLimit = BigNumber.from(
           validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
         );
@@ -653,7 +647,7 @@ export const SendConfirm = () => {
     isSmartAccountSend,
     smartAccountQuote,
     t,
-    confirmationFeeReady,
+    feeEstimateReady,
     validateCustomGasLimit,
     customFee,
     fee,
@@ -661,6 +655,148 @@ export const SendConfirm = () => {
     gasPrice,
     activeAccount.balances.ethereum,
   ]);
+
+  const nativeReviewRequest = (() => {
+    if (!isNativeSoftwareSend || !feeEstimateReady) return null;
+    try {
+      const legacy = isEIP1559Compatible === false;
+      const value =
+        fixedNativeReview?.value ??
+        parseUnits(String(displayedAmount), 'ether').toBigInt();
+      const gasLimit =
+        fixedNativeReview?.gasLimit ??
+        BigInt(validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit);
+      const fixedRate =
+        fixedNativeReview?.fees.gasPrice ??
+        fixedNativeReview?.fees.maxFeePerGas;
+      const rate =
+        fixedRate !== undefined
+          ? BigInt(fixedRate)
+          : legacy
+          ? BigInt(gasPrice)
+          : parseUnits(
+              safeToFixed(
+                customFee.isCustom && customFee.maxFeePerGas > 0
+                  ? customFee.maxFeePerGas
+                  : fee.maxFeePerGas
+              ),
+              9
+            ).toBigInt();
+      const fees =
+        fixedNativeReview?.fees ??
+        (legacy
+          ? { gasPrice: rate.toString() }
+          : {
+              maxFeePerGas: rate.toString(),
+              maxPriorityFeePerGas: parseUnits(
+                safeToFixed(
+                  customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
+                    ? customFee.maxPriorityFeePerGas
+                    : fee.maxPriorityFeePerGas
+                ),
+                9
+              ).toString(),
+            });
+      const params = {
+        from: basicTxValues.sender,
+        to: resolvedToAddress || basicTxValues.receivingAddress,
+        data: '0x',
+        chainId: activeNetwork.chainId,
+        value: value.toString(),
+        gasLimit: gasLimit.toString(),
+        ...fees,
+      };
+      const maximumFee = getEvmTransferCost(
+        value,
+        gasLimit,
+        rate
+      ).maximumFee.toString();
+      return {
+        params,
+        legacy,
+        maximumFee,
+        scope: state.walletScope,
+        key: JSON.stringify([params, state.walletScope, renderedFeeSelection]),
+      };
+    } catch {
+      return null;
+    }
+  })();
+  const nativeReviewKey = nativeReviewRequest?.key;
+  const [nativeFeeApproval, setNativeFeeApproval] = useState<{
+    id: string;
+    key: string;
+  } | null>(null);
+  const nativeFeeExpiry = useRef<ReturnType<typeof setTimeout>>();
+  const retireNativeFeeApproval = () => {
+    if (nativeFeeExpiry.current) clearTimeout(nativeFeeExpiry.current);
+    nativeFeeExpiry.current = undefined;
+    setNativeFeeApproval(null);
+  };
+  useEffect(() => {
+    setNativeFeeApproval(null);
+    if (!nativeReviewRequest) return;
+    const request = nativeReviewRequest;
+    let cancelled = false;
+    let id: string | undefined;
+    let expiry: ReturnType<typeof setTimeout> | undefined;
+    const started = performance.now();
+    const discard = () => {
+      if (id)
+        void controllerEmitter(
+          ['wallet', 'discardNativeEvmFeeReview'],
+          [id]
+        ).catch(() => undefined);
+    };
+    void controllerEmitter(
+      ['wallet', 'reviewNativeEvmFee'],
+      [request.params, request.legacy, request.maximumFee, request.scope]
+    )
+      .then((result: any) => {
+        if (
+          typeof result?.id !== 'string' ||
+          !result.id ||
+          result.maximumFee !== request.maximumFee ||
+          !Number.isSafeInteger(result.validForMs) ||
+          result.validForMs <= 0 ||
+          result.validForMs > EVM_FEE_APPROVAL_LIFETIME_MS
+        )
+          throw new Error('Native fee approval unavailable');
+        id = result.id;
+        if (cancelled) {
+          discard();
+          return;
+        }
+        const remaining = started + result.validForMs - performance.now();
+        if (remaining <= 0) throw new Error('Native fee approval expired');
+        setNativeFeeApproval({ id: result.id, key: request.key });
+        expiry = setTimeout(() => {
+          discard();
+          retireNativeFeeApproval();
+          setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+        }, remaining);
+        nativeFeeExpiry.current = expiry;
+      })
+      .catch(() => {
+        if (!cancelled) {
+          discard();
+          setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+        }
+      });
+    return () => {
+      cancelled = true;
+      if (expiry) clearTimeout(expiry);
+      if (nativeFeeExpiry.current === expiry)
+        nativeFeeExpiry.current = undefined;
+      discard();
+    };
+  }, [nativeReviewKey]);
+  const confirmationFeeReady =
+    feeEstimateReady &&
+    (!isNativeSoftwareSend ||
+      Boolean(nativeReviewKey && nativeFeeApproval?.key === nativeReviewKey));
+  const confirmationFeeReadyRef = useRef(confirmationFeeReady);
+  confirmationFeeReadyRef.current = confirmationFeeReady;
 
   useEffect(() => {
     if (
@@ -816,7 +952,7 @@ export const SendConfirm = () => {
       const rawTo = String(basicTxValues.receivingAddress || '');
       const to = resolvedToAddress || rawTo;
       if (!to || to.toLowerCase().endsWith('.eth')) {
-        return fallbackGasLimit;
+        throw new Error('Native transfer recipient is not resolved');
       }
 
       let value = BigNumber.from(0);
@@ -824,7 +960,7 @@ export const SendConfirm = () => {
         value = parseUnits(String(basicTxValues.amount || '0'), 'ether');
       } catch (error) {
         logError('error parsing native EVM amount', 'Transaction', error);
-        return fallbackGasLimit;
+        throw error;
       }
 
       const getSpendableMaxValue = (gasLimit: BigNumber) => {
@@ -846,8 +982,6 @@ export const SendConfirm = () => {
           BigNumber.from(1);
       }
 
-      const fresh = freshNativeEstimate.current;
-      freshNativeEstimate.current = false;
       const estimateGas = async (estimateWithValue: BigNumber) => {
         const transaction = {
           data: '0x',
@@ -855,15 +989,10 @@ export const SendConfirm = () => {
           to,
           value: estimateWithValue.toHexString(),
         };
-        const estimatedGasLimit = (await (fresh
-          ? controllerEmitter(
-              ['wallet', 'getFreshNativeEvmGasLimit'],
-              [transaction, state?.walletScope]
-            )
-          : controllerEmitter(
-              ['wallet', 'ethereumTransaction', 'getTxGasLimit'],
-              [transaction]
-            ))) as any;
+        const estimatedGasLimit = (await controllerEmitter(
+          ['wallet', 'getFreshNativeEvmGasLimit'],
+          [transaction, state?.walletScope]
+        )) as any;
 
         return BigNumber.from(estimatedGasLimit);
       };
@@ -1017,6 +1146,11 @@ export const SendConfirm = () => {
         feeSelectionRef.current !== approvedFeeSelection)
     )
       return;
+    const approvedNativeFeeId =
+      nativeFeeApproval && nativeFeeApproval.key === nativeReviewKey
+        ? nativeFeeApproval.id
+        : undefined;
+    if (isNativeSoftwareSend && !approvedNativeFeeId) return;
     if (tokenReviewInvalid) return;
     if (isSmartAccountSend && !smartAccountQuoteReady) return;
     if (sptReviewError) {
@@ -1321,6 +1455,7 @@ export const SendConfirm = () => {
                 setLoading(false);
                 return;
               }
+              retireNativeFeeApproval();
               await submitEmitter(
                 ['wallet', 'sendAndSaveEthTransaction'],
                 [
@@ -1339,7 +1474,7 @@ export const SendConfirm = () => {
                   undefined,
                   {
                     nativeReview: {
-                      maximumFee: fixedNativeReview.maximumFee.toString(),
+                      id: approvedNativeFeeId!,
                       scope: state.walletScope,
                     },
                   },
@@ -1428,6 +1563,7 @@ export const SendConfirm = () => {
             const hardware =
               activeAccountMeta.type === KeyringAccountType.Ledger ||
               activeAccountMeta.type === KeyringAccountType.Trezor;
+            if (isNativeSoftwareSend) retireNativeFeeApproval();
             await submitEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
               [
@@ -1448,7 +1584,7 @@ export const SendConfirm = () => {
                   ? { hardwareScope: state.walletScope }
                   : {
                       nativeReview: {
-                        maximumFee: gasLimit.mul(rate).toString(),
+                        id: approvedNativeFeeId!,
                         scope: state.walletScope,
                       },
                     },
@@ -1461,6 +1597,11 @@ export const SendConfirm = () => {
 
             return;
           } catch (error: any) {
+            if (isNativeSoftwareSend) {
+              retireNativeFeeApproval();
+              if (error?.transactionNotBroadcast === true)
+                setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+            }
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
               error,

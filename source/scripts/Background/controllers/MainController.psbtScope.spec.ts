@@ -1182,6 +1182,34 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
   });
 
+  it('rejects altered final bytes even when the signed PSBT retains the attested hash and fee', async () => {
+    const psbt = syntheticPsbt(BigInt(1000));
+    const signed = syntheticPsbt(BigInt(1000));
+    const altered = signed.extractTransaction().clone();
+    altered.outs[0]!.value -= BigInt(1);
+    jest.spyOn(signed, 'extractTransaction').mockReturnValue(altered);
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt,
+      summary: { feeSatoshis: '1000' },
+    });
+    (PsbtUtils.fromPali as jest.Mock).mockImplementation((value) =>
+      value === 'signed' ? signed : psbt
+    );
+    await expect(
+      wallet.signSendAndSaveTransaction({
+        psbt: 'fixture',
+        ordinaryWalletSend: true,
+        utxoFeeReview: await reviewedFee(psbt, '1000'),
+      })
+    ).rejects.toMatchObject({
+      code: 'UTXO_QUOTE_FEE_CHANGED',
+      transactionNotBroadcast: true,
+    });
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
+    expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
   it('does not apply the ordinary Send fence to externally approved RBF PSBTs', async () => {
     retainAcknowledgedInput();
     const replacement = syntheticPsbt(BigInt(2000), true, true);

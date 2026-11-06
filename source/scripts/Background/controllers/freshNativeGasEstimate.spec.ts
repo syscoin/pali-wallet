@@ -1,4 +1,5 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { getAddress } from 'ethers/address';
 
 import { BigNumber } from 'utils/ethersV6Compat';
 
@@ -25,7 +26,15 @@ const maximum = (
 ).toString();
 const hex = (value: string | number) => `0x${BigInt(value).toString(16)}`;
 const capture = (input = approved) =>
-  captureReviewedNativeEvmTransfer(input, false, maximum, sender, chainId, {});
+  captureReviewedNativeEvmTransfer(
+    input,
+    false,
+    maximum,
+    sender,
+    chainId,
+    {},
+    'fixture'
+  );
 
 function fixture() {
   const abort = new AbortController();
@@ -74,6 +83,8 @@ it.each([0, undefined])(
       );
       expect(transaction).toEqual({
         ...approved,
+        from: getAddress(sender),
+        to: getAddress(recipient),
         type: 2,
         chainId: String(chainId),
         nonce: nonce === 0 ? '0' : '9',
@@ -87,8 +98,8 @@ it.each([0, undefined])(
       ]);
       expect(calls.at(-1)?.params).toEqual([
         {
-          from: sender,
-          to: recipient,
+          from: getAddress(sender),
+          to: getAddress(recipient),
           value: hex(approved.value),
           data: '0x',
           type: '0x2',
@@ -115,7 +126,8 @@ it('rejects a configured SDK gas floor before it can raise the reviewed cost', (
       chainId,
       {
         minGasLimit: BigNumber.from(30_000) as any,
-      }
+      },
+      'fixture'
     )
   ).toThrow('gas limit is no longer sufficient');
 });

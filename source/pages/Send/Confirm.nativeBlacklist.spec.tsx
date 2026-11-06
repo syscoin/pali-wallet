@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { randomUUID } from 'crypto';
 import React from 'react';
 
 import { SendConfirm } from 'pages/Send/Confirm';
@@ -69,6 +70,10 @@ jest.mock('./walletTokenReviewPort', () => ({
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockNativeReplies: any[] = [];
+const originalRandomUuid = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
 
 const mockMessages: any[] = [];
 let mockEIP1559 = true;
@@ -160,8 +165,8 @@ jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
   Icon: ({ name }: any) => <span>{name}</span>,
   Tooltip: ({ children }: any) => <>{children}</>,
-  IconButton: ({ children, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  IconButton: ({ children, onClick, 'aria-label': label }: any) => (
+    <button type="button" onClick={onClick} aria-label={label}>
       {children}
     </button>
   ),
@@ -208,6 +213,10 @@ jest.mock('utils/validations', () => ({
 }));
 
 beforeAll(() => {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: randomUUID,
+  });
   globalThis.ResizeObserver = class {
     observe() {
       // JSDOM has no layout.
@@ -234,6 +243,11 @@ beforeAll(() => {
     dispatchEvent: jest.fn(),
   }));
 });
+afterAll(() => {
+  if (originalRandomUuid)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUuid);
+  else delete (globalThis.crypto as any).randomUUID;
+});
 beforeEach(() => {
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/');
@@ -248,10 +262,12 @@ beforeEach(() => {
   ) => {
     mockMessages.push(message);
     const method = message.data.methods.at(-1);
-    if (method === 'getTxGasLimit') return callback(21000);
+    if (method === 'getFreshNativeEvmGasLimit') return callback(21000);
     if (method === 'getRecommendedGasPrice') return callback('3000000000');
     if (method === 'refreshActiveAccountBalances')
       return callback({ nativeBalance: mockRefreshedBalance });
+    if (['reviewNativeEvmFee', 'discardNativeEvmFeeReview'].includes(method))
+      return mockListener(message, { id: 'synthetic-extension' }, callback);
     if (method === 'sendAndSaveEthTransaction')
       return mockListener(
         message,
@@ -291,6 +307,11 @@ beforeEach(() => {
   mockWallet.sendAndSaveTransaction = jest.fn(async () => undefined);
   mockWallet.sendAndSaveEthTransaction =
     mockWallet.sendAndSaveEthTransaction.bind(mockWallet);
+  mockWallet.reviewNativeEvmFee = jest.fn(
+    mockWallet.reviewNativeEvmFee.bind(mockWallet)
+  );
+  mockWallet.discardNativeEvmFeeReview =
+    mockWallet.discardNativeEvmFeeReview.bind(mockWallet);
   (getController as jest.Mock).mockReturnValue({ wallet: mockWallet });
   mockSdkSend
     .mockReset()
@@ -335,7 +356,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
         'sendAndSaveTokenTransaction',
@@ -393,6 +416,9 @@ async function readyNative(blacklisted: boolean) {
 
 it('shows the real native pre-send blacklist refusal without unknown status', async () => {
   await readyNative(true);
+  const issued = mockWallet.reviewNativeEvmFee.mock.results.length;
+  const firstReviewId =
+    mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
@@ -428,14 +454,27 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
       transactionNotBroadcast: true,
     },
   });
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  expect(mockNativeReplies).toHaveLength(1);
+  expect(mockSdkSend).not.toHaveBeenCalled();
+  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
+  expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeEnabled()
   );
+  expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued + 1);
+  expect(mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id).not.toBe(
+    firstReviewId
+  );
+  expect(mockNativeReplies).toHaveLength(1);
   expect(mockSdkSend).not.toHaveBeenCalled();
-  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
-  expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
 });
 it('accepts an unlisted native recipient through the same controller path', async () => {
   await readyNative(false);

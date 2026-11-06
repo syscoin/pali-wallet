@@ -3,7 +3,10 @@ import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import { assertPsbtWorkBudget } from '../utils/psbtWorkBudget.ts';
-import { getVerifiedSyscoinPsbtValueSummary } from '../utils/syscoinPsbtValues.ts';
+import {
+  createUtxoFeeReview,
+  getVerifiedSyscoinPsbtValueSummary,
+} from '../utils/syscoinPsbtValues.ts';
 import { utxoInputOutpoints } from '../utils/utxoAcknowledgedInputs.ts';
 
 import type { Psbt, Transaction } from 'bitcoinjs-lib';
@@ -80,6 +83,82 @@ function withoutSignatures(transaction: Transaction): string {
   return unsigned.toHex();
 }
 
+function assertBindingCurrent(assertCurrent: () => void): void {
+  const result: unknown = assertCurrent();
+  if (result === undefined) return;
+  void Promise.resolve(result).catch(() => undefined);
+  throw new Error('UTXO binding requires a synchronous owner');
+}
+
+/** Preserve finalization and bitcoinjs' maximum-fee-rate check for every lane. */
+export function extractUtxoSignedTransaction(finalized: Psbt): Transaction {
+  try {
+    return finalized.extractTransaction();
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message.startsWith('Warning: You are paying around ') &&
+      error.message.includes('setMaximumFeeRate')
+    )
+      throw Object.assign(
+        new Error(
+          'Transaction fee exceeds the wallet safety limit. Lower the fee and try again.'
+        ),
+        { code: 'UTXO_FEE_RATE_EXCEEDED' }
+      );
+    throw error;
+  }
+}
+
+/** Bind an authenticated quote to the final bytes in either wallet host. */
+export function createUtxoTransactionBinding(
+  quote: Psbt,
+  feeSatoshis: string,
+  assertCurrent: () => void
+) {
+  const check = () => assertBindingCurrent(assertCurrent);
+  check();
+  if (
+    typeof feeSatoshis !== 'string' ||
+    !/^(0|[1-9][0-9]{0,19})$/.test(feeSatoshis)
+  )
+    throw new Error('Invalid authenticated UTXO fee');
+  const unsigned = unsignedTransactionHex(quote);
+  const review = createUtxoFeeReview(quote, feeSatoshis);
+  const outpoints = Object.freeze(utxoInputOutpoints(quote.txInputs));
+  const changed = (message: string) =>
+    Object.assign(new Error(message), {
+      code: 'UTXO_QUOTE_FEE_CHANGED',
+      transactionNotBroadcast: true,
+    });
+  return Object.freeze({
+    review,
+    outpoints,
+    bindSigned(finalized: Psbt) {
+      check();
+      if (unsignedTransactionHex(finalized) !== unsigned)
+        throw changed('Signed PSBT differs from the reviewed transaction');
+      const transaction = extractUtxoSignedTransaction(finalized);
+      if (
+        withoutSignatures(transaction) !== unsigned ||
+        finalized.getFee().toString() !== review.feeSatoshis
+      )
+        throw changed(
+          'Signed transaction differs from the reviewed inputs or fee'
+        );
+      const result = Object.freeze({
+        rawTransaction: transaction.toHex(),
+        txid: transaction.getId(),
+        virtualSize: transaction.virtualSize(),
+        feeSatoshis: review.feeSatoshis,
+        outpoints,
+      });
+      check();
+      return result;
+    },
+  });
+}
+
 /** Retain the verified quote for trusted custody. The host owns consent and durable commit. */
 export async function prepareUtxoSignedBinding(
   { profileId, account, network }: UtxoSignedScope,
@@ -91,12 +170,7 @@ export async function prepareUtxoSignedBinding(
   }>
 ) {
   const { assertCurrent, fetchPreviousTransaction } = ports;
-  const check = () => {
-    const result: unknown = assertCurrent();
-    if (result === undefined) return;
-    void Promise.resolve(result).catch(() => undefined);
-    throw new Error('UTXO binding requires a synchronous owner');
-  };
+  const check = () => assertBindingCurrent(assertCurrent);
   check();
   const scope = Object.freeze({
     profileId,
@@ -136,8 +210,6 @@ export async function prepareUtxoSignedBinding(
   const url = utxoSubmissionUrl(scope.network.url);
   const psbt = snapshotPsbt(quote);
   const parsed: Psbt = PsbtUtils.fromPali(psbt, scope.network);
-  const unsigned = unsignedTransactionHex(parsed);
-  const outpoints = Object.freeze(utxoInputOutpoints(parsed.txInputs));
   const { networks } = getNetworkConfig(
     scope.network.slip44,
     scope.network.currency
@@ -172,6 +244,11 @@ export async function prepareUtxoSignedBinding(
   check();
   if (summary.inputAssets.length || summary.assetAllocations.length)
     throw new Error('Asset-assisted UTXO send requires a separate review');
+  const transactionBinding = createUtxoTransactionBinding(
+    parsed,
+    summary.feeSatoshis,
+    check
+  );
 
   const review: UtxoReview = Object.freeze({
     recipient: Object.freeze({ address, amountSatoshis }),
@@ -183,7 +260,7 @@ export async function prepareUtxoSignedBinding(
         })
       )
     ),
-    outpoints,
+    outpoints: transactionBinding.outpoints,
     feeSatoshis: summary.feeSatoshis,
   });
 
@@ -197,22 +274,13 @@ export async function prepareUtxoSignedBinding(
         snapshotPsbt(signed),
         scope.network
       );
-      if (unsignedTransactionHex(finalized) !== unsigned)
-        throw new Error('Signed PSBT differs from the reviewed transaction');
-      const transaction = finalized.extractTransaction();
-      if (
-        withoutSignatures(transaction) !== unsigned ||
-        finalized.getFee().toString() !== review.feeSatoshis
-      )
-        throw new Error(
-          'Signed transaction differs from the reviewed inputs or fee'
-        );
+      const transaction = transactionBinding.bindSigned(finalized);
       const record: UtxoSignedBindingRecord = Object.freeze({
         scope,
         review,
-        rawTransaction: transaction.toHex(),
-        txid: transaction.getId(),
-        virtualSize: transaction.virtualSize(),
+        rawTransaction: transaction.rawTransaction,
+        txid: transaction.txid,
+        virtualSize: transaction.virtualSize,
         url,
       });
       check();

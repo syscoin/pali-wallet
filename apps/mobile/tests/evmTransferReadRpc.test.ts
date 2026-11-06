@@ -26,6 +26,7 @@ function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>un
    else if(call.method==='eth_getBlockByNumber')result={number:call.params[0]==='latest'?'0x64':call.params[0],hash:blockHash,baseFeePerGas:'0x4',gasLimit:'0x1c9c380'};
    else if(call.method==='eth_estimateGas')result='0x5208';
    else if(call.method==='eth_getTransactionCount')result='0x1';
+   else if(call.method==='eth_getBalance')result='0xffffffffffff';
    else if(call.method==='eth_getTransactionReceipt')result={transactionHash:hash,from,to,status:'0x1',blockNumber:'0x50',blockHash};
    else throw Error('Unexpected read method '+call.method);
   }
