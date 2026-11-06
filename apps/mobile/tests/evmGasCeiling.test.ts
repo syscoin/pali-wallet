@@ -88,7 +88,7 @@ for (const type of [0, 2] as const) test(`type ${type} raw broadcasting validate
     } });
     if (accepted) {
       assert.equal(await rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
-      assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionCount', 'eth_sendRawTransaction']);
+      assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId', 'eth_sendRawTransaction']);
     } else {
       await assert.rejects(rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), { code: 'INVALID_RESPONSE' });
       assert.deepEqual(methods, []);

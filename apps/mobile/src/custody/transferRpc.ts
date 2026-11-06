@@ -600,6 +600,8 @@ export class NativeTransferRpc {
           assertActive();
           if (parseRpcQuantity(nonce) !== BigInt(newSend.nonce))
             throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          // Prove the chain again after the address-bearing read, at the wire.
+          await this.checkChain(local);
           protectedPreflightComplete = true;
           return;
         }
