@@ -687,10 +687,10 @@ test('unexpected recovery journal failure does not claim an existing submitted t
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     f.finalize();
-    const transition = f.signedRecords.updatePhase.bind(f.signedRecords);
-    f.signedRecords.updatePhase = async (...args) => {
-      if (args[4] === 'confirmed') throw Error('Unexpected storage failure during recovery');
-      return transition(...args);
+    const updateObservedPhase = f.signedRecords.updateObservedPhase.bind(f.signedRecords);
+    f.signedRecords.updateObservedPhase = async (session, entry, revision, phase) => {
+      if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
+      return updateObservedPhase(session, entry, revision, phase);
     };
     await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
     assert.equal(f.source.getSnapshot().phase, 'locked');
