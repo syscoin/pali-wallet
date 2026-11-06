@@ -11,6 +11,7 @@ import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
+import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
 import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
@@ -25,6 +26,7 @@ import { NativeWalletRemoval } from '../custody/walletRemoval.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
+import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 
 async function openStorage(expectedInstallationId?: string) {
   const crypto = await ensureNativeCryptoReady();
@@ -49,6 +51,10 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
         guard();
         return walletFetch(url, init);
       } }).readAccount(id, xpub, signal);
+    },
+    utxoFetch(input, init) {
+      if (typeof input !== 'string' || !init) throw new Error('Invalid native Blockbook request');
+      return walletFetch(input, init);
     },
     ensureCryptoReady: async () => { await ensureNativeCryptoReady(); },
     openStorage: async () => {
@@ -90,7 +96,8 @@ export function createNativeWalletControllers() {
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
-  const evmBalances = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
+  const readRpc = { fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks };
+  const evmBalances = createBalanceReader(readRpc);
   const balanceReader: BalanceReader = {
     readBalance: evmBalances.readBalance,
     readUtxoBalance(id, address, signal) {
@@ -102,7 +109,10 @@ export function createNativeWalletControllers() {
     },
   };
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
-  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock(), createOwnedTokenReader(walletFetch));
+  const tokens = new NativeTokens(
+    authority, () => runtime?.tokens, createErc20Reader(readRpc), Date.now,
+    () => authority.lock(), createOwnedTokenReader(walletFetch), createNftOwnershipReader(readRpc)
+  );
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const accounts: NativeAccountView = Object.freeze({
@@ -164,6 +174,13 @@ export function createNativeWalletControllers() {
       verifyExport: (...args) => observeFailure(() => notes.verifyExport(...args)),
     });
   };
+  const openUtxoSend = async (assertOwner: () => void): Promise<NativeUtxoSend> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const open = selected.openUtxoSend;
+    if (!open) throw new CustodyOperationError('NOT_READY');
+    const send = await observeFailure(() => open(assertCurrent));
+    return Object.freeze<NativeUtxoSend>({ ...send, confirm: (view) => observeFailure(() => send.confirm(view)) });
+  };
   const openNoteCapacity = async (assertOwner: () => void): Promise<NativeNoteCapacityRuntime> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     const open = selected.openNoteCapacity;
@@ -211,6 +228,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

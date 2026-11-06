@@ -21,6 +21,19 @@ import {
 
 import { SendConfirm } from './Confirm';
 
+const mockOpenWalletTokenReview = jest.fn((request: any) => ({
+  ready: Promise.resolve(),
+  submit: () =>
+    mockControllerEmitter(
+      ['wallet', 'sendAndSaveTokenTransaction'],
+      [request.type, request.transaction]
+    ),
+  close: jest.fn(),
+}));
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: (request: any) => mockOpenWalletTokenReview(request),
+}));
+
 const mockControllerEmitter = jest.fn();
 const mockClearNavigationState = jest.fn();
 const mockSaveNavigationState = jest.fn();
@@ -374,6 +387,8 @@ it.each(
       '0x2222222222222222222222222222222222222222'
     );
     mockLocation.state.tx.transactionType = type;
+    if (type === TransactionType.ERC20)
+      mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     mockLocation.state.tx.token = {
       contractAddress: '0x5555555555555555555555555555555555555555',
       tokenId: '1',
@@ -543,11 +558,11 @@ it.each(
     expect(submitted[1][1].tokenId).toBe(tokenId);
     expect(submitted[1][1]).toMatchObject({
       isLegacy: true,
-      gasPrice: '0x3b9aca00',
+      gasPrice: '1000000000',
     });
     expect(submitted[1][1].gasLimit.toString()).toBe('21000');
-    expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
-    expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
+    expect(submitted[1][1]).not.toHaveProperty('maxFeePerGas');
+    expect(submitted[1][1]).not.toHaveProperty('maxPriorityFeePerGas');
   }
 );
 
@@ -653,51 +668,105 @@ it.each([TransactionType.ERC721, TransactionType.ERC1155])(
   }
 );
 
-it('forwards a sub-wei ERC20 amount unchanged to SDK token-unit serialization', async () => {
-  prepareEvmRecipientConfirmation('0x2222222222222222222222222222222222222222');
-  mockLocation.state.tx.transactionType = TransactionType.ERC20;
-  mockLocation.state.tx.amount = '0.000000000000000000000001';
-  mockLocation.state.tx.token = {
-    contractAddress: '0x5555555555555555555555555555555555555555',
-    decimals: 24,
-    name: 'Synthetic token',
-    symbol: 'TOKEN',
-    isNft: false,
-  };
-  const prior = mockControllerEmitter.getMockImplementation()!;
-  mockControllerEmitter.mockImplementation(
-    async (path: string[], args: any[]) => {
-      if (path.at(-1) === 'checkAddressBlacklist')
-        return { isBlacklisted: false };
-      if (path.at(-1) === 'sendAndSaveTokenTransaction')
-        return { hash: 'synthetic-hash' };
-      return prior(path, args);
-    }
-  );
-  render(<SendConfirm />);
-  const confirm = () => screen.getByRole('button', { name: 'buttons.confirm' });
-  await waitFor(() => expect(confirm()).toBeEnabled());
-  fireEvent.click(confirm());
-  await waitFor(() =>
+it.each([24, 255])(
+  'forwards exact ERC20 base units at %s decimals to the SDK',
+  async (decimals) => {
+    prepareEvmRecipientConfirmation(
+      '0x2222222222222222222222222222222222222222'
+    );
+    mockLocation.state.tx.transactionType = TransactionType.ERC20;
+    mockLocation.state.tx.amount = `0.${'0'.repeat(decimals - 1)}1`;
+    mockLocation.state.tx.tokenAmountUnits = '1';
+    mockLocation.state.tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      decimals,
+      name: 'Synthetic token',
+      symbol: 'TOKEN',
+      isNft: false,
+    };
+    const prior = mockControllerEmitter.getMockImplementation()!;
+    mockControllerEmitter.mockImplementation(
+      async (path: string[], args: any[]) => {
+        if (path.at(-1) === 'checkAddressBlacklist')
+          return { isBlacklisted: false };
+        if (path.at(-1) === 'sendAndSaveTokenTransaction')
+          return { hash: 'synthetic-hash' };
+        return prior(path, args);
+      }
+    );
+    render(<SendConfirm />);
+    const confirm = () =>
+      screen.getByRole('button', { name: 'buttons.confirm' });
+    await waitFor(() => expect(confirm()).toBeEnabled());
+    fireEvent.click(confirm());
+    await waitFor(() =>
+      expect(
+        mockControllerEmitter.mock.calls.some(
+          ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+        )
+      ).toBe(true)
+    );
+    const submitted = mockControllerEmitter.mock.calls.find(
+      ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+    )!;
+    expect(submitted[1][0]).toBe('ERC20');
+    const reviewed = mockOpenWalletTokenReview.mock.calls[0][0].transaction;
+    expect(reviewed).toMatchObject({
+      tokenAmountUnits: '1',
+      isLegacy: true,
+      gasPrice: '1000000000',
+      gasLimit: '21000',
+    });
+    expect(reviewed).not.toHaveProperty('tokenAmount');
+    expect(reviewed).not.toHaveProperty('maxFeePerGas');
+    expect(reviewed).not.toHaveProperty('maxPriorityFeePerGas');
+  }
+);
+
+it.each([
+  ['missing exact units', TransactionType.ERC20, 18, undefined],
+  [
+    'missing verified decimals',
+    TransactionType.ERC20,
+    undefined,
+    '1000000000000000000',
+  ],
+  ['mismatched exact units', TransactionType.ERC20, 18, '2'],
+  ['missing token transaction type', undefined, 18, '1000000000000000000'],
+  [
+    'native transaction type with a token',
+    TransactionType.NATIVE_ETH,
+    18,
+    '1000000000000000000',
+  ],
+] as const)(
+  'blocks a restored token review with %s before signing',
+  async (_, type, decimals, units) => {
+    prepareEvmRecipientConfirmation(
+      '0x2222222222222222222222222222222222222222'
+    );
+    const { tx } = mockLocation.state;
+    tx.transactionType = type;
+    tx.tokenAmountUnits = units;
+    tx.token = {
+      contractAddress: '0x5555555555555555555555555555555555555555',
+      decimals,
+      symbol: 'TOKEN',
+    };
+    render(<SendConfirm />);
+    await screen.findByText('send.tokenVerificationFailed');
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
     expect(
-      mockControllerEmitter.mock.calls.some(
-        ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
+      mockControllerEmitter.mock.calls.some(([path]) =>
+        ['sendAndSaveTokenTransaction', 'sendAndSaveEthTransaction'].includes(
+          path.at(-1)
+        )
       )
-    ).toBe(true)
-  );
-  const submitted = mockControllerEmitter.mock.calls.find(
-    ([path]) => path.at(-1) === 'sendAndSaveTokenTransaction'
-  )!;
-  expect(submitted[1][1]).toMatchObject({
-    tokenAmount: '0.000000000000000000000001',
-    decimals: 24,
-    isLegacy: true,
-    gasPrice: '0x3b9aca00',
-  });
-  expect(submitted[1][1].gasLimit.toString()).toBe('21000');
-  expect(submitted[1][1].maxFeePerGas.toString()).toBe('0');
-  expect(submitted[1][1].maxPriorityFeePerGas.toString()).toBe('0');
-});
+    ).toBe(false);
+  }
+);
 
 it.each([
   TransactionType.NATIVE_ETH,
@@ -709,6 +778,8 @@ it.each([
   async (transactionType) => {
     prepareSmartAccountConfirmation();
     mockLocation.state.tx.transactionType = transactionType;
+    if (transactionType === TransactionType.ERC20)
+      mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     if (transactionType !== TransactionType.NATIVE_ETH)
       mockLocation.state.tx.token = {
         contractAddress: '0x5555555555555555555555555555555555555555',
@@ -981,6 +1052,8 @@ it.each([
     prepareSmartAccountConfirmation();
     mockAllowLegacyFeeEditing = true;
     mockLocation.state.tx.transactionType = transactionType;
+    if (transactionType === TransactionType.ERC20)
+      mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     mockLocation.state.tx.token = {
       contractAddress: '0x5555555555555555555555555555555555555555',
       tokenId: '1',
@@ -1264,6 +1337,15 @@ it.each([false, true])(
             maxFeePerGas: expect.anything(),
             maxPriorityFeePerGas: expect.anything(),
           }),
+          false,
+          undefined,
+          undefined,
+          {
+            nativeReview: {
+              maximumFee: '42000000000000',
+              scope: mockLocation.state.walletScope,
+            },
+          },
         ],
         expect.any(Number)
       )
@@ -1299,6 +1381,8 @@ it.each([
     fees.maxPriorityFeePerGas = BigNumber.from('1000000000');
     mockAllowFeeEditing = true;
     mockLocation.state.tx.transactionType = transactionType;
+    if (transactionType === TransactionType.ERC20)
+      mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     if (transactionType !== TransactionType.NATIVE_ETH) {
       mockLocation.state.tx.token = {
         contractAddress: '0x5555555555555555555555555555555555555555',
@@ -1330,14 +1414,18 @@ it.each([
       ([path]) => path.at(-1) === method
     )!;
     const sent =
-      transactionType === TransactionType.NATIVE_ETH ? args[0] : args[1];
+      transactionType === TransactionType.NATIVE_ETH
+        ? args[0]
+        : transactionType === TransactionType.ERC20
+        ? mockOpenWalletTokenReview.mock.calls[0][0].transaction
+        : args[1];
     expect(BigNumber.from(sent.maxFeePerGas).toString()).toBe('2000000000');
     expect(BigNumber.from(sent.maxPriorityFeePerGas).isZero()).toBe(true);
     if (transactionType === TransactionType.NATIVE_ETH)
       expect(args[1]).not.toBe(true);
     else {
       expect(sent.isLegacy).toBe(false);
-      expect(sent.gasPrice).toBe('0x00');
+      expect(sent).not.toHaveProperty('gasPrice');
       expect(sent.gasLimit.toString()).toBe('21000');
     }
   }
@@ -1417,7 +1505,18 @@ it.each(['undeployed smart account', 'EOA'])(
     await waitFor(() =>
       expect(mockControllerEmitter).toHaveBeenCalledWith(
         ['wallet', 'sendAndSaveEthTransaction'],
-        [expect.objectContaining({ to: receiver }), true],
+        [
+          expect.objectContaining({ to: receiver }),
+          true,
+          undefined,
+          undefined,
+          {
+            nativeReview: {
+              maximumFee: '21000000000000',
+              scope: mockLocation.state.walletScope,
+            },
+          },
+        ],
         expect.any(Number)
       )
     );
@@ -1636,6 +1735,8 @@ it.each([
   async ({ pathname, external, ordinaryWalletSend }) => {
     mockLocation.pathname = pathname;
     mockLocation.state.external = external;
+    const utxoFeeReview = { feeSatoshis: '452', unsignedHash: 'a'.repeat(64) };
+    if (ordinaryWalletSend) mockLocation.state.tx.utxoFeeReview = utxoFeeReview;
     let finishDiscard!: () => void;
     mockClearNavigationState.mockImplementation(
       () =>
@@ -1644,6 +1745,8 @@ it.each([
         })
     );
     render(<SendConfirm />);
+    if (ordinaryWalletSend)
+      expect(screen.getByText('0.00000452 SYS')).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     expect(mockClearNavigationState).toHaveBeenCalledTimes(1);
     expect(mockClearNavigationState).toHaveBeenCalledWith({
@@ -1662,6 +1765,7 @@ it.each([
             isTrezor: undefined,
             isLedger: undefined,
             ordinaryWalletSend,
+            ...(ordinaryWalletSend && { utxoFeeReview }),
           },
         ],
         30000
@@ -1963,7 +2067,7 @@ it.each([
 );
 
 it.each([false, true])(
-  'native total formatting leaves the %s token/EVM total path unchanged',
+  'does not treat an input fee as the measured total for an EVM draft (UTXO token: %s)',
   async (token) => {
     mockState.vault.isBitcoinBased = token;
     mockLocation.state.tx = {
@@ -1978,7 +2082,7 @@ it.each([false, true])(
     });
     expect(
       screen.getByText('send.total (send.amountAndFee)').textContent
-    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.00100113 SYS');
+    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.001 SYS');
   }
 );
 

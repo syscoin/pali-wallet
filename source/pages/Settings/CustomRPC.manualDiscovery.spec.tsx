@@ -111,12 +111,13 @@ const manualUtxo = async (chainId: number, label?: string) => {
       : { label: 'Syscoin fixture', symbol: 'sys', slip44: 57 };
   mockEmitter.mockImplementation(async ([, method], args) => {
     if (method === 'getChainData') return [];
-    if (method === 'getRpc')
+    if (method === 'previewUtxoRpc')
       return {
         url: args[0].url,
         explorer: args[0].explorer || args[0].url,
         label: args[0].label || coin.label,
-        currency: args[0].symbol?.toLowerCase() || coin.symbol,
+        currency: coin.symbol,
+        utxoBackendChain: 'main',
         chainId,
         slip44: coin.slip44,
         kind: 'syscoin',

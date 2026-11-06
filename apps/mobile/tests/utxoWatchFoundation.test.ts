@@ -49,6 +49,7 @@ test('UTXO watch registrations share all extension defaults, SDK metadata and va
     assert.equal(Object.isFrozen(network), true);
     assert.equal(network.endpoint + '/', defaults[network.chainId]!.url);
     assert.equal(network.explorer, defaults[network.chainId]!.explorer);
+    assert.equal(network.backendChain, defaults[network.chainId]!.utxoBackendChain);
     assert.equal(network.name, defaults[network.chainId]!.label);
     assert.equal(getNetwork(network.id).canWatch, true);
   }

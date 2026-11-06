@@ -1,7 +1,12 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  getPersonalSignGrantReplacement,
+  watchConnectedPersonalSignGrant,
+} from '../../handlers/personalSignApproval';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
+import type { IDAppAccountSelectionContext } from 'types/controllers';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
 import { assertDappRequestWorkBudget } from 'utils/dappRequestWorkBudget';
@@ -75,11 +80,7 @@ class RequestCoordinator {
     () => Promise<void>
   >();
   private requestExecutor: RequestExecutor | null = null;
-  private requestQueue: Array<{
-    context: IEnhancedRequestContext;
-    reject: (error: any) => void;
-    resolve: (value: any) => void;
-  }> = [];
+  private requestQueue: IQueuedRequest[] = [];
 
   static getInstance(): RequestCoordinator {
     if (!RequestCoordinator.instance) {
@@ -132,28 +133,38 @@ class RequestCoordinator {
       }
       // Different route, queue this one
       return new Promise((resolve, reject) => {
-        this.requestQueue.push({
-          context,
-          resolve,
-          reject,
-        });
-
-        // Set a timeout to prevent infinite waiting
-        setTimeout(() => {
-          const index = this.requestQueue.findIndex(
-            (req) => req.context === context
-          );
-          if (index !== -1) {
-            this.requestQueue.splice(index, 1);
-            reject(
+        const signal = context.originalRequest.signal;
+        const scoped = getPersonalSignGrantReplacement(signal);
+        const removeAndReject = (error: unknown) => {
+          const index = this.requestQueue.indexOf(entry);
+          if (index === -1) return;
+          this.requestQueue.splice(index, 1);
+          entry.dispose();
+          reject(error);
+        };
+        const onAbort = () => removeAndReject(requestCancelledError());
+        const timer = setTimeout(
+          () =>
+            removeAndReject(
               cleanErrorStack(
                 ethErrors.provider.userRejectedRequest(
                   'Request timed out - another popup is active'
                 )
               )
-            );
-          }
-        }, 30000); // 30 second timeout
+            ),
+          REQUEST_QUEUE_TIMEOUT_MS
+        );
+        const entry = {
+          context,
+          resolve,
+          reject,
+          dispose: () => {
+            clearTimeout(timer);
+            if (scoped) signal?.removeEventListener('abort', onAbort);
+          },
+        };
+        this.requestQueue.push(entry);
+        if (scoped) signal?.addEventListener('abort', onAbort, { once: true });
       });
     }
 
@@ -225,6 +236,7 @@ class RequestCoordinator {
     // Process the next request in the queue
     this.requestQueue.shift();
     if (nextRequest) {
+      nextRequest.dispose();
       if (!this.requestExecutor) {
         nextRequest.reject(
           cleanErrorStack(
@@ -240,6 +252,13 @@ class RequestCoordinator {
 
       // Add delay to ensure previous popup is fully closed
       setTimeout(() => {
+        if (
+          originalRequest.signal?.aborted &&
+          getPersonalSignGrantReplacement(originalRequest.signal)
+        ) {
+          nextRequest.reject(requestCancelledError());
+          return;
+        }
         this.requestExecutor(
           originalRequest.host,
           {
@@ -265,6 +284,7 @@ class RequestCoordinator {
     while (this.requestQueue.length > 0) {
       const request = this.requestQueue.shift();
       if (request) {
+        request.dispose();
         request.reject(
           cleanErrorStack(
             ethErrors.provider.userRejectedRequest(
@@ -334,11 +354,14 @@ export class RequestPipeline {
       method: context.originalRequest.method,
       params: context.originalRequest.params,
     });
+    const grant = watchConnectedPersonalSignGrant(context.originalRequest);
+    if (grant) context.originalRequest.signal = grant.signal;
     this.pendingByOrigin.set(origin, originCount + 1);
     this.pendingCount += 1;
     try {
       return await this.executeAdmitted(context);
     } finally {
+      grant?.dispose();
       const remaining = (this.pendingByOrigin.get(origin) || 1) - 1;
       if (remaining) this.pendingByOrigin.set(origin, remaining);
       else this.pendingByOrigin.delete(origin);
@@ -808,7 +831,15 @@ export const connectionMiddleware: Middleware = async (context, next) => {
     }
   }
 
-  return next();
+  // A request which began disconnected can bind its newly approved grant.
+  const grant = watchConnectedPersonalSignGrant(originalRequest);
+  if (!grant) return next();
+  originalRequest.signal = grant.signal;
+  try {
+    return await next();
+  } finally {
+    grant.dispose();
+  }
 };
 
 // Helper functions for account switching middleware
@@ -934,7 +965,9 @@ const promptAccountSwitch = async (
 const syncDappAccountAfterSelection = async (
   host: string,
   targetAccount: any,
-  targetAccountType: KeyringAccountType
+  targetAccountType: KeyringAccountType,
+  expectedContext: IDAppAccountSelectionContext,
+  signal?: AbortSignal
 ): Promise<void> => {
   const { dapp } = getController();
   const connection = dapp.get(host);
@@ -945,7 +978,13 @@ const syncDappAccountAfterSelection = async (
     return;
   }
 
-  await dapp.changeAccount(host, targetAccount.id, targetAccountType);
+  await dapp.changeAccount(
+    host,
+    targetAccount.id,
+    targetAccountType,
+    expectedContext,
+    getPersonalSignGrantReplacement(signal)
+  );
 };
 
 // Middleware: Account Switching for Blocking Methods
@@ -996,6 +1035,14 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
       );
     }
 
+    // The popup approves this identity. The same slot can be reused before
+    // its response reaches the durable permission update.
+    const expectedContext = Object.freeze({
+      address: accountInfo.account.address,
+      network: Object.freeze({ ...vault.activeNetwork }),
+      xpub: accountInfo.account.xpub,
+    });
+
     // A connected site may request another wallet-owned account. Changing the
     // site's provider-visible account always requires explicit selection
     // consent, even when that account is already globally active.
@@ -1033,7 +1080,9 @@ export const accountSwitchingMiddleware: Middleware = async (context, next) => {
     await syncDappAccountAfterSelection(
       originalRequest.host,
       accountInfo.account,
-      accountInfo.accountType
+      accountInfo.accountType,
+      expectedContext,
+      originalRequest.signal
     );
     return next();
   }

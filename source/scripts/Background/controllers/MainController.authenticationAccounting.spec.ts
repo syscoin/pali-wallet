@@ -5,12 +5,16 @@ import { AsyncMutex } from 'utils/asyncMutex';
 import { clearNavigationState } from 'utils/navigationState';
 import { chromeStorage } from 'utils/storageAPI';
 
+import { createBrowserKeyringHost } from './browserKeyringHost';
 import MainController from './MainController';
 
 jest.unmock('syscoinjs-lib');
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/utils/derivation-paths'),
   ...jest.requireActual('@sidhujag/sysweb3-keyring/cjs/signers'),
+  createKeyringHost: jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/software.js'
+  ).createKeyringHost,
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
   PsbtUtils: {},
@@ -38,6 +42,10 @@ const PASSWORD = 'Public authentication fixture password';
 const RATE_KEY = 'pali_rate_limit_state';
 const NOW = 1800000000000;
 const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+const originalNavigator = Object.getOwnPropertyDescriptor(
+  globalThis,
+  'navigator'
+);
 const oldIterations = process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 const deferred = <T>() => {
   let resolve!: (value: T) => void;
@@ -51,6 +59,15 @@ beforeEach(() => {
   Object.defineProperty(globalThis, 'crypto', {
     configurable: true,
     value: webcrypto,
+  });
+  Object.defineProperty(globalThis, 'navigator', {
+    configurable: true,
+    value: {
+      locks: {
+        request: (_name: string, _options: unknown, work: () => unknown) =>
+          work(),
+      },
+    },
   });
   // Exercise the released SDK's actual production work factor even in Jest.
   process.env.SYSWEB3_PBKDF2_ENC_ITERS = '900000';
@@ -66,6 +83,9 @@ afterEach(() => {
   if (originalCrypto)
     Object.defineProperty(globalThis, 'crypto', originalCrypto);
   else Reflect.deleteProperty(globalThis, 'crypto');
+  if (originalNavigator)
+    Object.defineProperty(globalThis, 'navigator', originalNavigator);
+  else Reflect.deleteProperty(globalThis, 'navigator');
   if (oldIterations === undefined) delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
   else process.env.SYSWEB3_PBKDF2_ENC_ITERS = oldIterations;
 });
@@ -73,24 +93,22 @@ afterEach(() => {
 async function fixture() {
   const sdk = jest.requireActual('@sidhujag/sysweb3-keyring/cjs/software');
   const records: Record<string, any> = {};
-  const storage = {
-    async get(key: string) {
-      return records[`sysweb3-${key}`];
-    },
-    async set(key: string, value: unknown) {
-      records[`sysweb3-${key}`] = structuredClone(value);
-    },
-    async deleteItem(key: string) {
-      delete records[`sysweb3-${key}`];
-    },
-    async createManyIfAbsent(items: Record<string, unknown>) {
-      if (Object.keys(items).some((key) => `sysweb3-${key}` in records))
-        return false;
-      for (const [key, value] of Object.entries(items))
-        records[`sysweb3-${key}`] = structuredClone(value);
-      return true;
-    },
-  };
+  jest
+    .spyOn(chrome.storage.local, 'get')
+    .mockImplementation((async (keys: string[]) =>
+      Object.fromEntries(
+        keys.map((key) => [key, structuredClone(records[key])])
+      )) as any);
+  jest.spyOn(chrome.storage.local, 'set').mockImplementation((async (
+    items: Record<string, unknown>
+  ) => {
+    Object.assign(records, structuredClone(items));
+  }) as any);
+  jest.spyOn(chrome.storage.local, 'remove').mockImplementation((async (
+    key: string
+  ) => {
+    delete records[key];
+  }) as any);
   const state = {
     activeAccount: { id: 0, type: sdk.KeyringAccountType.HDAccount },
     activeNetwork: {
@@ -110,7 +128,8 @@ async function fixture() {
     },
   };
   const keyring = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost(storage)
+    createBrowserKeyringHost(chrome.storage.local),
+    { captureEvmSubmission: null }
   );
   keyring.setVaultStateGetter(() => state);
   await keyring.initializeSession(PHRASE, PASSWORD);
@@ -200,6 +219,7 @@ it('counts every cancelled real-SDK bad password once and persists the existing 
       lastFailedTime: NOW,
     });
     expect(f.failed).toHaveBeenCalledTimes(attempt);
+    expect(f.sdkLock).toHaveBeenCalledTimes(attempt);
     expect(f.reset).not.toHaveBeenCalled();
   }
   const restarted = f.makeWallet();

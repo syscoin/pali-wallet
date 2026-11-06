@@ -213,29 +213,66 @@ describe('discovery availability is not an empty wallet', () => {
     }
   );
 
-  it.each([Number('9007199254740993'), '1e3', '1.5', undefined])(
-    'does not invent an exact ERC1155 balance from %s',
-    async (balance) => {
-      network.apiUrl = `https://owned-nft-inexact.test/api?case=${balance}`;
-      (fetch as jest.Mock).mockResolvedValue(
-        response({
-          status: '1',
-          result: [
-            {
-              contractAddress: TOKEN,
-              type: 'ERC-1155',
-              id: '7',
-              decimals: '0',
-              balance,
-            },
-          ],
-        })
-      );
-      const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
-      expect(result).toHaveLength(1);
-      expect(result[0]).not.toHaveProperty('rawBalance');
-    }
-  );
+  it('uses exact NFT IDs for owned collections and items', async () => {
+    const max =
+      '115792089237316195423570985008687907853269984665640564039457584007913129639935';
+    network.apiUrl = 'https://owned-nft-identity.test/api';
+    const item = {
+      contractAddress: TOKEN,
+      type: 'ERC-1155',
+      decimals: '0',
+      balance: max,
+    };
+    (fetch as jest.Mock).mockResolvedValue(
+      response({
+        status: '1',
+        result: [
+          { ...item, id: 0 },
+          { ...item, id: `0x${'f'.repeat(64)}` },
+          { ...item, id: Number.MAX_SAFE_INTEGER + 1 },
+          { ...item, id: `${max}0` },
+          { ...item, id: undefined },
+          { ...item, type: 'ERC-721', id: '7', balance: '2' },
+        ],
+      })
+    );
+
+    await expect(
+      EvmAssetsController().getUserOwnedTokens(ACCOUNT)
+    ).resolves.toMatchObject([
+      { id: `${TOKEN}-1-0`, tokenId: '0', rawBalance: max },
+      { id: `${TOKEN}-1-${max}`, tokenId: max, rawBalance: max },
+      { id: `${TOKEN}-1`, tokenStandard: 'ERC-721', balance: 2 },
+    ]);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    Number('9007199254740993'),
+    (BigInt(1) << BigInt(256)).toString(),
+    '1e3',
+    '1.5',
+    undefined,
+  ])('does not invent an exact ERC1155 balance from %s', async (balance) => {
+    network.apiUrl = `https://owned-nft-inexact.test/api?case=${balance}`;
+    (fetch as jest.Mock).mockResolvedValue(
+      response({
+        status: '1',
+        result: [
+          {
+            contractAddress: TOKEN,
+            type: 'ERC-1155',
+            id: '7',
+            decimals: '0',
+            balance,
+          },
+        ],
+      })
+    );
+    const result = await EvmAssetsController().getUserOwnedTokens(ACCOUNT);
+    expect(result).toHaveLength(1);
+    expect(result[0]).not.toHaveProperty('rawBalance');
+  });
 
   it('converts Routescan raw holdings into the existing token search result', async () => {
     network.apiUrl =
@@ -380,7 +417,7 @@ describe('discovery availability is not an empty wallet', () => {
 
 it('uses RPC for tracked balances with a configured API and preserves a failed token', async () => {
   const second = `0x${'44'.repeat(20)}`;
-  const balances = new Map([[TOKEN, '0']]);
+  const balances = new Map([[TOKEN, { balance: 0, rawBalance: '0' }]]);
   (BatchBalanceController as jest.Mock).mockImplementation(() => ({
     getBatchTokenBalances: async () => balances,
   }));
@@ -440,7 +477,8 @@ it('deduplicates same-chain metadata but not a switched chain; old results canno
 
 it('reports a successful unchanged balance read even when the legacy result is an empty update', async () => {
   (BatchBalanceController as jest.Mock).mockImplementation(() => ({
-    getBatchTokenBalances: async () => new Map([[TOKEN, '0']]),
+    getBatchTokenBalances: async () =>
+      new Map([[TOKEN, { balance: 0, rawBalance: '0' }]]),
   }));
   const token = {
     contractAddress: TOKEN,
@@ -475,7 +513,8 @@ it.each([
   'reports exact raw ERC20 balance for %s without a Number round trip',
   async (balance, decimals, rawBalance) => {
     (BatchBalanceController as jest.Mock).mockImplementation(() => ({
-      getBatchTokenBalances: async () => new Map([[TOKEN, balance]]),
+      getBatchTokenBalances: async () =>
+        new Map([[TOKEN, { balance: Number(balance), rawBalance }]]),
     }));
     const read = jest.fn();
     const result = await EvmAssetsController().updateAllEvmTokens(

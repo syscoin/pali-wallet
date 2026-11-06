@@ -124,6 +124,14 @@ const nextAccountIndex = (type: 'HDAccount' | 'Imported') => {
 };
 const importedKeys = new Map<string, string>();
 export function createNativeWalletControllers() {
+  const hdUtxoFixture = new URLSearchParams(window.location.search).has('hd-utxo-send');
+  if (hdUtxoFixture)
+    catalogue = Object.freeze({
+      ...catalogue,
+      active: { accountId: 'hd:0:0', networkId: 'bitcoin' },
+      accounts: [{ id: 'hd:0:0', type: 'HDAccount' as const, index: 0, slip44: 0, label: 'Account 1',
+        address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' }],
+    });
   const runtime: CustodyRuntime = {
     security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
     networks: {
@@ -289,6 +297,11 @@ export function createNativeWalletControllers() {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
         counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
     },
+    ...(hdUtxoFixture ? { async openUtxoSend(check: () => void) {
+      check();
+      const unused = async () => { throw Error('Synthetic route fixture does not sign'); };
+      return { cancel() {}, async list() { return []; }, prepare: unused, prepareRetry: unused, confirm: unused, check: unused };
+    } } : {}),
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
 /** This adapter tests real UI ownership, not the already tested storage protocol. */

@@ -26,6 +26,10 @@ import { NATIVE_TOKEN_REGISTRY_KEY } from '../src/portfolio/tokenRegistry.ts';
 import { readPrivateVaultBundle, envelopeHash } from '../../../source/wallet/privateVaultInspection.ts';
 import { digest, INSTALLATION, nodeConnection, validPair, type SqlHook } from './storageHelpers.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
+import { UTXO_SIGNED_RECORD_KEY, UtxoSignedRecords } from '../../../source/wallet/utxoSignedRecords.ts';
+import { ROOT_DOMAIN as UTXO_ROOT_DOMAIN } from '../../../source/wallet/utxoSignedBundle.ts';
+import { utxoInputOutpoints } from '../../../source/utils/utxoAcknowledgedInputs.ts';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const WRONG = 'legal winner thank year wave sausage worth useful legal winner thank yellow';
@@ -60,7 +64,8 @@ async function fixture(
   loadRuntimeSdk?: () => Promise<typeof sdk>,
   confirmed = true,
   clocks?: { wall: () => number; monotonic: () => number },
-  readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount']
+  readUtxoAccount?: Parameters<typeof createKeyringRuntimeFactory>[0]['readUtxoAccount'],
+  utxoFetch?: typeof globalThis.fetch
 ) {
   const directory = await mkdtemp(
     path.join(tmpdir(), 'pali-preserving-recovery-')
@@ -93,7 +98,7 @@ async function fixture(
       await local.recovery.recordFailureForPair!(fingerprint);
     } };
     let closed = false;
-    return { keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, authGuard: local.authGuard, recovery,
+    return { keyringStorage: local.keyringStorage, signedRecords: local.signedRecords, utxoSignedRecords: local.utxoSignedRecords, authGuard: local.authGuard, recovery,
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
@@ -101,13 +106,14 @@ async function fixture(
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
+    utxoFetch,
     loadSdk: async () => {
       const module = await (loadRuntimeSdk?.() ?? sdk);
       class ObservedKeyring extends module.SoftwareKeyring {
         constructor(
-          host: ConstructorParameters<typeof module.SoftwareKeyring>[0]
+          ...options: ConstructorParameters<typeof module.SoftwareKeyring>
         ) {
-          super(host);
+          super(...options);
           liveKeyrings.push(this);
         }
       }
@@ -158,11 +164,20 @@ async function fixture(
     open,
     read,
     write,
+    writeUtxoBytes(value: string) { const db = new DatabaseSync(file); try { db.prepare('INSERT OR REPLACE INTO keyring_records VALUES (?, ?)').run(UTXO_SIGNED_RECORD_KEY, value); } finally { db.close(); } },
     coordinator,
     remove(key: string) { const db = new DatabaseSync(file); try { db.prepare('DELETE FROM keyring_records WHERE key = ?').run(key); } finally { db.close(); } },
     meta(key: string, value: unknown) {
       const db = new DatabaseSync(file);
       try { db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
+    },
+    metaHex(key: string, hex?: string) {
+      const db = new DatabaseSync(file);
+      try {
+        if (hex !== undefined)
+          db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, CAST(? AS TEXT))').run(key, Buffer.from(hex, 'hex'));
+        return db.prepare('SELECT hex(CAST(value AS BLOB)) AS value FROM wallet_metadata WHERE key = ?').get(key)?.value;
+      } finally { db.close(); }
     },
     get opens() {
       return opens;
@@ -221,6 +236,8 @@ function retained(
 
 test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated password changes', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
+  const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
   try {
     await f.owner.manageAccounts({ kind: 'create', label: 'Second HD', password: OLD }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported private account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
@@ -231,6 +248,14 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     f.write(NATIVE_TOKEN_REGISTRY_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, entries: [{ accountId: 'imported:60:1', address: importedWallet2.address,
       network: 'ethereum', chainId: '1', registrationHash: ethereum.registrationHash,
       metadata: { contractAddress: importedWallet.address, name: 'Public fixture token', symbol: 'FIX', decimals: 19 } }] });
+    const draft = { ...item };
+    const saving = f.runtime.tokens!.addCollectible(0, draft, () => undefined);
+    draft.tokenId = '1';
+    assert.deepEqual((await saving).collectibles, [item]);
+    await f.runtime.tokens!.addCollectible(1, collection, () => undefined);
+    await f.owner.manageAccounts({ kind: 'select', id: 'hd:60:0' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    assert.equal((await f.runtime.tokens!.load(() => undefined)).collectibles, undefined);
+    await f.owner.manageAccounts({ kind: 'select', id: 'imported:60:1' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     f.write(ACTIVITY_STORAGE_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, truncated: false, archived: [],
       cached: [{ sourceId: activityScope.sourceId, scopeKey: activityScope.key, candidates: [{ hash: `0x${'a'.repeat(64)}`, blockNumber: '1', timestamp: 1, tokenHint: false }] }],
       views: [{ sourceId: activityScope.sourceId, view: { filter: 'sent', showZero: false, anchor: null, offset: 7 } }] });
@@ -246,6 +271,8 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     }
     const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.status, 'needs-matching-phrase-verification', JSON.stringify({ inventory, keys: f.read().records.map((r) => r.key) }));
+    assert.equal(inventory.counts?.tokenEntries, 3);
+    assert.equal(JSON.stringify(inventory).includes(item.contractAddress), false);
     const before = f.read(); f.owner.lock(); recovery = f.coordinator();
     const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
     assert.deepEqual(Object.keys(proof), []); assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.equal(f.retires, 1);
@@ -261,7 +288,9 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     await f.owner.unlock(NEXT); assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(f.owner.getCatalogue()!.accounts.length, 4);
     assert.equal(f.owner.getCatalogue()!.active.accountId, 'imported:60:1');
-    assert.equal((await f.runtime.tokens!.load(() => undefined)).items.length, 1);
+    const saved = await f.runtime.tokens!.load(() => undefined);
+    assert.equal(saved.items.length, 1);
+    assert.deepEqual(saved.collectibles, [item, collection]);
     const activity = await f.runtime.activity!.load(() => undefined);
     assert.equal(activity.saved.candidates.length, 1); assert.equal(activity.saved.view.filter, 'sent');
     assert.equal(await f.runtime.keyExport!.readSelected({ authorityRevision: f.owner.getSnapshot().revision, catalogueRevision: f.owner.getCatalogue()!.revision,
@@ -274,6 +303,47 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('protected collectible operations revoke on lock and quarantine a lost SQL commit acknowledgement', async () => {
+  const f = await fixture();
+  const pause = latch();
+  const item = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: '0' };
+  const sibling = { ...item, tokenId: '1' };
+  const current = () => undefined;
+  const record = () => f.read().records.find(({ key }) => key === NATIVE_TOKEN_REGISTRY_KEY);
+  try {
+    const tokens = f.runtime.tokens!;
+    await tokens.addCollectible(0, item, current);
+    const before = record();
+    f.setHook(async (kind, sql) => {
+      if (kind !== 'get' || !sql.includes('keyring_records')) return;
+      f.setHook(); pause.enter(); await pause.gate;
+    });
+    const pending = assert.rejects(tokens.removeCollectible(1, item, current), /CANCELLED|NOT_READY/);
+    await pause.reached;
+    await assert.rejects(f.owner.selectNetwork('base', f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision), /BUSY/);
+    f.owner.lock();
+    pause.release();
+    await pending;
+    assert.deepEqual(record(), before);
+    await f.owner.unlock(OLD);
+    assert.deepEqual((await tokens.load(current)).collectibles, [item]);
+
+    f.setAfter((kind, sql) => {
+      if (kind === 'exec' && sql === 'COMMIT') {
+        f.setAfter(); throw new Error('lost acknowledgement');
+      }
+    });
+    await assert.rejects(tokens.addCollectible(1, sibling, current), { code: 'CLEANUP_FAILED' });
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    assert.equal(f.unlockedKeyrings(), 0);
+    await assert.rejects(tokens.removeCollectible(2, sibling, current), { code: 'CLEANUP_FAILED' });
+    await f.reopen(true);
+    await f.owner.unlock(OLD);
+    assert.deepEqual((await f.runtime.tokens!.load(current)).collectibles, [item, sibling]);
+    assert.deepEqual((await f.runtime.tokens!.removeCollectible(2, item, current)).collectibles, [sibling]);
+  } finally { pause.release(); await f.close(); }
 });
 
 for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`recovery refuses ${mutation} in a structurally valid signed bundle without replacing any bytes`, async () => {
@@ -301,6 +371,49 @@ for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`reco
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
     assert.deepEqual(f.read(), before);
   } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('recovery authenticates captured UTXO bytes even if an ABA swap supplies a valid live row', async () => {
+  const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  let corrupt: string | undefined;
+  try {
+    const bitcoin = syscoinUtils.bitcoinjs;
+    const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13));
+    const script = bitcoin.payments.p2wpkh({ pubkey: key.publicKey }).output;
+    const parent = new bitcoin.Transaction();
+    parent.addInput(Buffer.alloc(32, 14), 0);
+    parent.addOutput(script, 10000n);
+    const psbt = new bitcoin.Psbt();
+    psbt.addInput({ hash: parent.getHash(), index: 0, witnessUtxo: { script, value: 10000n } });
+    psbt.addOutput({ script, value: 9000n });
+    const tx = psbt.signInput(0, key).finalizeAllInputs().extractTransaction();
+    const owner = { chainId: 0, slip44: 0, genesisHash: getUtxoNetwork('bitcoin').genesisHash, account: { id: 0, type: 'HDAccount', xpub: 'synthetic-public-owner' } };
+    const store = new UtxoSignedRecords(f.store.utxoSignedRecords, f.store.utxoSignedRecords);
+    await store.persist({ keyring: f.keyring, assertCurrent: () => undefined }, {
+      owner, operation: 'wallet', url: `${getUtxoNetwork('bitcoin').endpoint}/api/v2/sendtx/`, rawTransaction: tx.toHex(), txid: tx.getId(),
+      virtualSize: tx.virtualSize(), feeSatoshis: '1000', outpoints: utxoInputOutpoints(tx.ins),
+    });
+    const valid = (await f.store.utxoSignedRecords.read(await f.keyring.getPrivateRecordProfileId()))!;
+    const changed = JSON.parse(valid);
+    changed.root.ciphertext = (changed.root.ciphertext[0] === 'A' ? 'B' : 'A') + changed.root.ciphertext.slice(1);
+    corrupt = JSON.stringify(changed);
+    f.writeUtxoBytes(corrupt);
+    f.owner.lock();
+    class ProbeKeyring extends sdk.SoftwareKeyring {
+      async decryptPrivateRecord(input: Parameters<InstanceType<typeof sdk.SoftwareKeyring>['decryptPrivateRecord']>[0]) {
+        const output = await super.decryptPrivateRecord(input);
+        // A live-row validation would authenticate B, then observe A at commit.
+        if (input.domain === UTXO_ROOT_DOMAIN) f.writeUtxoBytes(corrupt!);
+        return output;
+      }
+    }
+    recovery = f.coordinator(async () => {
+      f.writeUtxoBytes(valid);
+      return { ...sdk, SoftwareKeyring: ProbeKeyring };
+    });
+    await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'INVALID_SAVED_DATA' });
+    assert.equal(f.read().records.find(({ key: name }) => name === UTXO_SIGNED_RECORD_KEY)?.value, valid);
+  } finally { if (corrupt) f.writeUtxoBytes(corrupt); await recovery?.dispose(); await f.close(); }
 });
 
 test('known wrong-root failure is charged once even when its request is cancelled before accounting finishes', async () => {
@@ -371,8 +484,11 @@ test('late successful staging after cancel is discarded without replacing the pa
 
 for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as const) {
   test(`recovery ${fault} has one complete old/new state and never compensates by deletion`, async () => {
-    const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+    const f = await fixture(); const recovery = f.coordinator();
     try {
+      const enrollment = f.store.deviceUnlockEnrollment;
+      assert.equal(await enrollment.compareAndSet((await enrollment.read())!, 'b2'.repeat(16), () => undefined), true);
+      f.owner.lock();
       const before = f.read(), proof = await recovery.prepare(PHRASE, NEXT, () => undefined); let injected = false;
       const fail = (_kind: unknown, sql: string) => {
         if (!injected && (fault === 'before-write' ? sql.startsWith('UPDATE keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
@@ -383,6 +499,7 @@ for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as 
       f.setHook(); f.setAfter(); assert.equal(injected, true);
       assert.deepEqual(retained(f.read()), retained(before));
       if (fault !== 'commit-applied') assert.deepEqual(f.read(), before);
+      else assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
       await f.reopen(); await f.owner.unlock(fault === 'commit-applied' ? NEXT : OLD);
       assert.equal(f.owner.getSnapshot().phase, 'ready');
     } finally { f.setHook(); f.setAfter(); await recovery.dispose(); await f.close(); }
@@ -413,6 +530,47 @@ test('changed snapshot and unknown data refuse replacement without overwriting t
     assert.deepEqual(f.read(), unknown);
   } finally {
     await recovery.dispose();
+    await f.close();
+  }
+});
+
+test('mobile dispatch rejects missing or changed approval before retaining or broadcasting signed bytes', async () => {
+  const f = await fixture();
+  try {
+    const approval = {
+      type: 2 as const, chainId: '1', nonce: '0', from: sourceWallet.address,
+      to: importedWallet.address, value: '1', gasLimit: '21000', data: '0x',
+      maxFeePerGas: '2', maxPriorityFeePerGas: '1',
+    };
+    const raw = await sourceWallet.signTransaction({
+      type: approval.type, chainId: approval.chainId, nonce: Number(approval.nonce),
+      to: approval.to, value: approval.value, gasLimit: approval.gasLimit,
+      maxFeePerGas: approval.maxFeePerGas, maxPriorityFeePerGas: approval.maxPriorityFeePerGas,
+    });
+    const hash = Transaction.from(raw).hash!;
+    const transfers = f.runtime.transfers!;
+    const before = f.read().signedRecords;
+    let broadcasts = 0;
+    const broadcast = async (approvedBytes: string) => {
+      broadcasts++;
+      assert.equal(approvedBytes, raw);
+      assert.equal(f.read().signedRecords.length, before.length + 1);
+      const record = await new EvmSignedRecords(f.store.signedRecords).readExact(
+        { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash
+      );
+      assert.equal(record?.rawTransaction, raw);
+    };
+    const guard = () => undefined;
+    await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, undefined as never));
+    await assert.rejects(
+      transfers.submit(raw, hash, guard, broadcast, undefined, { ...approval, nonce: '1' }),
+      { transactionNotBroadcast: true }
+    );
+    assert.deepEqual(f.read().signedRecords, before);
+    assert.equal(broadcasts, 0);
+    await transfers.submit(raw, hash, guard, broadcast, undefined, approval);
+    assert.equal(broadcasts, 1);
+  } finally {
     await f.close();
   }
 });
@@ -448,7 +606,11 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     const restored = await new EvmSignedRecords(f.store.signedRecords).readExact({ keyring: f.keyring, assertCurrent() {} }, '1', importedWallet.address, transaction.hash!);
     assert.equal(restored?.rawTransaction, raw);
     let broadcasts = 0;
-    await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined, async () => { broadcasts++; }));
+    await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
+      async () => { broadcasts++; }, undefined, {
+        type: 2, chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
+        value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1',
+      }));
     assert.equal(broadcasts, 0, 'historical attribution does not select or authorize a missing account');
   } finally {
     await recovery?.dispose();
@@ -904,10 +1066,10 @@ test('recovery view model drives the real SDK and SQLite coordinator then requir
 /** Synthetic bearer notes only; real released SDK encryption, no private SDK fields. */
 async function noteBundle(count = 17) {
   const values = new Map<string, unknown>();
-  const keyring = new sdk.SoftwareKeyring(sdk.createSoftwareKeyringHost({
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost({
     async get(key) { return values.get(key); }, async set(key, value) { values.set(key, value); }, async deleteItem(key) { values.delete(key); },
     async createManyIfAbsent(items) { if (Object.keys(items).some((key) => values.has(key))) return false; Object.entries(items).forEach(([k, v]) => values.set(k, v)); return true; },
-  }));
+  }), { captureEvmSubmission: null });
   await keyring.initializeSession(PHRASE, OLD);
   const profile = await keyring.getPrivateRecordProfileId(); let seq = 0;
   const id = () => `00000000-0000-4000-8000-${(++seq).toString().padStart(12, '0')}`;
@@ -922,21 +1084,65 @@ async function noteBundle(count = 17) {
   return { keyring, profile, bundle: { format: 'pali-private-note-vault', version: 1, root, shards } };
 }
 
-test('realSDK multi-shard note domain survives password recovery byte-for-byte alongside existing records', async () => {
+test('real SDK recovery retires the exact enrollment and preserves multi-shard notes and retained records', async () => {
   const f = await fixture(), data = await noteBundle(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
+    const enrollment = f.store.deviceUnlockEnrollment;
+    const old = (await enrollment.read())!;
+    const id = 'a1'.repeat(16);
+    assert.equal(await enrollment.compareAndSet(old, id, () => undefined), true);
+    const active = (await enrollment.read())!;
+    assert.equal(active.enrollmentId, id);
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint());
     const original = f.read(); const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.privateNotes, 'requires-matching-phrase-verification');
     assert.equal(JSON.stringify(inventory).includes(data.profile), false);
+    assert.equal(JSON.stringify(inventory).includes(id), false);
     f.owner.lock(); recovery = f.coordinator(); const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(f.read().notes, original.notes); assert.deepEqual(retained(f.read()), retained(original));
+    assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
     await f.reopen(); await f.owner.unlock(NEXT);
+    const newEnrollment = f.store.deviceUnlockEnrollment;
+    const fresh = (await newEnrollment.read())!;
+    assert.equal(fresh.enrollmentId, null);
+    assert.equal(fresh.walletBindingId, old.walletBindingId);
+    assert.notEqual(fresh.pairFingerprint, old.pairFingerprint);
+    await assert.rejects(newEnrollment.compareAndSet(active, id, () => undefined), { code: 'STORAGE_CHANGED' });
     const result = await readPrivateVaultBundle(data.bundle, { keyring: data.keyring, generation: 1, assertCurrent() {} });
     assert.equal(result.manifest.notes.length, 17);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
+
+for (const [shape, bytes] of [
+  ['oversized text', '78'.repeat(300)],
+  ['embedded NUL', '610062'],
+  ['invalid UTF-8', '8061'],
+] as const) {
+  test(`enrollment with ${shape} cannot block password unlock or matching-phrase recovery`, async () => {
+    const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+    const metadataKey = 'device-unlock-enrollment';
+    try {
+      f.metaHex(metadataKey, bytes);
+      await f.reopen(); await f.owner.unlock(OLD);
+      assert.equal(f.owner.getSnapshot().phase, 'ready');
+      const enrollment = f.store.deviceUnlockEnrollment;
+      const inactive = (await enrollment.read())!;
+      assert.equal(inactive.enrollmentId, null);
+      if (shape === 'oversized text')
+        await assert.rejects(enrollment.compareAndSet(inactive, 'a1'.repeat(16), () => undefined), { code: 'STORAGE_CHANGED' });
+      assert.equal(f.metaHex(metadataKey), bytes.toUpperCase());
+      const original = f.read(); f.owner.lock(); recovery = f.coordinator();
+      const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+      assert.equal(await recovery.commit(proof), 'committed-locked');
+      assert.deepEqual(retained(f.read()), retained(original));
+      assert.equal(f.metaHex(metadataKey), undefined);
+      await f.reopen(); await f.owner.unlock(NEXT);
+      assert.equal(f.owner.getSnapshot().phase, 'ready');
+      assert.equal((await f.store.deviceUnlockEnrollment.read())?.enrollmentId, null);
+    } finally { await recovery?.dispose(); await f.close(); }
+  });
+}
 
 test('matching phrase plus damaged retained note AEAD refuses recovery without any rewrite', async () => {
   const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
@@ -1025,6 +1231,77 @@ const selectNetwork = (f: RecoveryFixture, id: string) => f.owner.selectNetwork(
 );
 const accountRecord = async (f: RecoveryFixture) =>
   await f.store.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+
+test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable until confirmed', async () => {
+  const bitcoin = syscoinUtils.bitcoinjs, network = getUtxoNetwork('bitcoin');
+  const previous = new bitcoin.Transaction();
+  previous.addInput(Buffer.alloc(32, 7), 0);
+  let account!: NativeAccountRecord['groups'][number]['accounts']['HDAccount'][number];
+  let posted: { raw: string; txid: string } | undefined;
+  let confirmed = false;
+  const fetcher: typeof globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    assert(url.startsWith(network.endpoint));
+    const path = url.slice(network.endpoint.length);
+    const reply = (value: unknown) => {
+      const response = Response.json(value);
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    };
+    if (path === '/api/v2/estimatefee/1') return reply({ result: '0.00001024' });
+    if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`) return reply({ tokens: [] });
+    if (path === `/api/v2/utxo/${account.xpub}`) return reply([{
+      txid: previous.getId(), vout: 0, value: '100000', address: account.address,
+      confirmations: 10, path: "m/84'/0'/1'/0/0",
+    }]);
+    if (path === `/api/v2/tx/${previous.getId()}`) return reply({ hex: previous.toHex() });
+    if (path === '/api/v2/sendtx/' && init?.method === 'POST') {
+      assert.equal(typeof init.body, 'string');
+      const raw = init.body as string;
+      posted = { raw, txid: bitcoin.Transaction.fromHex(raw).getId() };
+      return reply({ result: posted.txid });
+    }
+    if (posted && path === `/api/v2/tx/${posted.txid}`)
+      return reply({ txid: posted.txid, hex: posted.raw, confirmations: confirmed ? 1 : 0,
+        ...(confirmed && { blockHash: 'a'.repeat(64) }) });
+    throw Error(`Unexpected fixture route ${path}`);
+  };
+  const f = await fixture(undefined, true, undefined, undefined, fetcher);
+  const manage = (request: Parameters<NativeCustodyAuthority['manageAccounts']>[0]) =>
+    f.owner.manageAccounts(request, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+  const current = () => undefined;
+  const primary = 'hd:0:0', sending = 'hd:0:1';
+  const remove = { kind: 'remove', id: sending, password: OLD } as const;
+  try {
+    await selectNetwork(f, network.id);
+    await manage({ kind: 'create', label: 'Bitcoin spending', password: OLD });
+    assert.equal(f.owner.getCatalogue()!.active.accountId, sending);
+    account = (await accountRecord(f)).groups.find((group) => group.key === '0')!.accounts.HDAccount[1]!;
+    previous.addOutput(bitcoin.address.toOutputScript(account.address, network.addressNetwork), 100000n);
+    const recipient = bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, 9), network: network.addressNetwork }).address!;
+    let send = await f.runtime.openUtxoSend!(current);
+    const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }));
+    assert.equal(txid, posted?.txid);
+    assert.equal(await send.check(txid), 'seen');
+
+    await manage({ kind: 'select', id: primary });
+    await assert.rejects(manage(remove), { code: 'PENDING_TRANSFER' });
+    await f.owner.unlock(OLD);
+    assert.equal(f.owner.getCatalogue()!.active.accountId, primary);
+    assert(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending));
+
+    await manage({ kind: 'select', id: sending });
+    send = await f.runtime.openUtxoSend!(current);
+    assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
+    confirmed = true;
+    assert.equal(await send.check(txid), 'confirmed');
+    await manage({ kind: 'select', id: primary });
+    await manage(remove);
+    assert.equal(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending), false);
+  } finally {
+    await f.close();
+  }
+});
 
 test('UTXO custody uses SDK groups, preserves EVM selection and survives real password recovery', async () => {
   const f = await fixture();
@@ -1168,8 +1445,8 @@ test('UTXO custody balance sends the selected account key only after verified Bl
 test('UTXO custody lock revokes the sole staged owner before a held derivation returns', async () => {
   const hold = latch();
   class HeldKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const createFirstAccount = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         const account = await createFirstAccount(...args);
@@ -1255,8 +1532,8 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
   const requests: string[] = [];
   const recoveryEndpoints = new Map<number, string>();
   class ObservedRecoverySigner extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const encrypt = this.getEncryptedXprv;
       this.getEncryptedXprv = (signer) => {
         recoveryEndpoints.set(signer.Signer.SLIP44, signer.blockbookURL);

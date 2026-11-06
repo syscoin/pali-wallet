@@ -63,9 +63,9 @@ for(const network of [...NATIVE_NETWORKS,custom])test(`${network.id} quotes and 
  assert.equal(quote.transaction.chainId,network.chainId);assert(f.calls.every(c=>c.url===network.rpcUrl));
  const signer=Wallet.fromPhrase('test test test test test test test test test test test junk');
  const raw=await signer.signTransaction({...quote.transaction,from:signer.address,nonce:0});
- assert.equal(await f.rpc.broadcast(raw,Transaction.from(raw).hash!,signal()),Transaction.from(raw).hash);
+ assert.equal(await f.rpc.broadcast(raw,Transaction.from(raw).hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),Transaction.from(raw).hash);
  const bad=await signer.signTransaction({...quote.transaction,from:signer.address,chainId:BigInt(network.chainId)+1n,nonce:0});const count=f.calls.length;
- await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal()),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,count);
+ await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,count);
  const mismatch=fixture(network,{update:(c,r)=>c.method==='eth_chainId'?'0x0':r});
  await assert.rejects(mismatch.rpc.prepare(owner,recipient,'1',signal()),{code:'INVALID_RESPONSE'});assert.deepEqual(mismatch.calls.map(c=>c.method),['eth_chainId']);
 });

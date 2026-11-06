@@ -27,7 +27,14 @@ export function createNativeSignedRecordView(
     ...(intent ? { intent } : {}),
   }); };
   return Object.freeze({
-    async load() { return checked(async () => { const entry=await records.readCurrent(session,network.chainId,account.address); return entry ? map(entry) : null; }); },
+    async load(hash?: string) {
+      return checked(async () => {
+        const entry = hash === undefined
+          ? await records.readCurrent(session, network.chainId, account.address)
+          : await records.readExact(session, network.chainId, account.address, hash);
+        return entry ? map(entry) : null;
+      });
+    },
     saveSigned(rawTransaction: string, intent?: Erc20TransferIntent) { return checked(async () => {
       const tx=Transaction.from(rawTransaction);
       if (tx.to === null) throw new TransferJournalError('CORRUPT');
@@ -46,8 +53,11 @@ export function createNativeSignedRecordView(
         const recent=await records.readRecent(session,network.chainId,account.address,LOCAL_ACTIVITY_LIMIT);
         const projected=recent.entries.map(entry => {
           const saved=projectSavedEvmTransaction(entry), token=saved.tokenTransfer?.token;
+          const inspectionOnly = entry.operation === 'erc721' || entry.operation === 'erc1155';
           return Object.freeze({walletFingerprint:walletBindingId,accountId:nativeAccountId(account.type,account.index),address:account.address,networkId:network.id,registrationHash:network.registrationHash,chainId:network.chainId,hash:entry.hash,phase:entry.phase,nonce:entry.nonce,createdAt:entry.createdAt,
-            recipient:saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{})});
+            recipient:saved.tokenTransfer?.recipient??saved.to,amountUnits:token?saved.tokenTransfer!.amountUnits:saved.value,maximumFeeUnits:saved.maximumFee,...(token?{token}:{}),
+            ...(inspectionOnly ? { inspectionOnly: true as const } : {}),
+            ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
         });
         return Object.freeze({records:Object.freeze(projected),truncated:recent.total>projected.length});
       });

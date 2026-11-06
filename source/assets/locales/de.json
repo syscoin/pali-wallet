@@ -312,6 +312,14 @@
     "generationFailed": "Eine neue Wiederherstellungsphrase konnte nicht erstellt werden. Wähle „Generieren“, um es erneut zu versuchen."
   },
   "send": {
+    "savedUtxo": {
+      "title": "Gespeicherte Überweisungen",
+      "review": "Gespeicherte Überweisung prüfen",
+      "empty": "Keine gespeicherten Überweisungen",
+      "seen": "Überweisung im Netzwerk gefunden",
+      "check": "Überweisung prüfen"
+    },
+    "openWalletTab": "Im Wallet-Tab öffnen",
     "transactionFailureDetails": "Transaktion fehlgeschlagen: {{message}}",
     "transactionCreationFailureDetails": "Transaktion konnte nicht erstellt werden ({{code}}): {{message}}",
     "atomicMode": "atomar",

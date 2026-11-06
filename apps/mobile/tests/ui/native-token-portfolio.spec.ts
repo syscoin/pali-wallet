@@ -44,7 +44,9 @@ test('wallet holdings on the native Import route require verified review and exp
   expect(await requests()).toEqual([]);
   await contractInput.fill('0x1');
   expect(await requests()).toEqual([]);
-  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Find holdings', exact: true })
+    .click();
   const suggestion = page.getByRole('button', {
     name: `Review HINT token contract ${token}`,
   });
@@ -86,12 +88,277 @@ test('wallet holdings on the native Import route require verified review and exp
   expect(await saved()).not.toContain('Explorer fixture');
 });
 
+test('collectible suggestions require an explicit lookup and remain read-only', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  const external: string[] = [];
+  const quote =
+    'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true';
+  await page.route(quote, async (route) => {
+    expect(route.request().method()).toBe('GET');
+    await route.fulfill({
+      json: { ethereum: { usd: 100, usd_24h_change: 0 } },
+    });
+  });
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).origin !== new URL(fixtureUrl).origin &&
+      request.url() !== quote
+    )
+      external.push(request.url());
+  });
+  await page.goto('/?token-portfolio&holdings&holdings-fail');
+  const requests = () =>
+    page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  const panel = page.getByTestId('native-collectibles');
+  await expect(panel).toBeVisible();
+  expect(await requests()).toEqual([]);
+  await page.getByRole('button', { name: 'Find collectibles' }).click();
+  await expect(panel.getByText('Collectibles unavailable')).toBeVisible();
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(panel.getByText('Paper foxes', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Token ID 0', { exact: true })).toBeVisible();
+  const quantity = panel.getByText('Quantity reported: 900719925474099312345', {
+    exact: true,
+  });
+  await expect(quantity).toBeVisible();
+  expect(
+    (await requests()).map((request) => request.match(/erc\d+-holdings/)?.[0])
+  ).toEqual(['erc721-holdings', 'erc721-holdings', 'erc1155-holdings']);
+  expect(external).toEqual([]);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('pali-native-token-ui:native-token-registry-v1')
+    )
+  ).toBeNull();
+  await page.screenshot({ path: testInfo.outputPath('collectibles-320.png') });
+  await enlargeText(page);
+  await quantity.scrollIntoViewIfNeeded();
+  await expect(quantity).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('collectibles-320-large-text.png'),
+  });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await expect(panel.getByText('Paper foxes', { exact: true })).toHaveCount(0);
+  expect(await requests()).toHaveLength(3);
+});
+
+test('checks selected collectible ownership and cancels stale reads', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.route('https://api.coingecko.com/**', (route) =>
+    route.fulfill({ json: { ethereum: { usd: 100, usd_24h_change: 0 } } })
+  );
+  await page.goto('/?token-portfolio&holdings&collectible-check&ownership-fail');
+  const rpc = () => page.evaluate(() => window.__nativeTokenPortfolio.requests().filter((entry) => entry.startsWith('nft:')));
+  const aborts = () => page.evaluate(() => window.__nativeTokenPortfolio.nftAborts());
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'Find collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'View NFT Collection token 0', exact: true }).click();
+  await expect(check).toBeVisible();
+  await expect(page.getByText('Explorer-reported name', { exact: true })).toBeVisible();
+  expect(await rpc()).toEqual([]);
+  await check.click();
+  await expect(page.getByText('Ownership unavailable', { exact: true })).toBeVisible();
+  await check.click();
+  const result = page.getByTestId('native-collectible-quantity');
+  await expect(result).toHaveText('Quantity on network: 900719925474099312345');
+  expect(await rpc()).toEqual([
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`,
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`, `nft:balanceOfBatch:${long}`,
+    'nft:block:0x100', 'nft:chain',
+  ]);
+  await result.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('collectible-ownership-320.png') });
+  await enlargeText(page);
+  await result.scrollIntoViewIfNeeded();
+  await expect(result).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('collectible-ownership-large.png') });
+  await back.click();
+
+  const collection = page.getByRole('button', { name: 'View Paper foxes collection', exact: true });
+  await collection.click();
+  const id = page.getByRole('textbox', { name: 'Token ID', exact: true });
+  await id.fill('1e2');
+  await check.click();
+  await expect(page.getByText('Enter a valid token ID.', { exact: true })).toBeVisible();
+  expect(await rpc()).toHaveLength(11);
+  await id.fill('0');
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).at(-1)).toBe(`nft:ownerOf:${zero}`);
+  await expect(page.getByRole('button', { name: 'Checking ownership…' })).toBeDisabled();
+  await back.click();
+  expect(await aborts()).toBe(1);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await collection.click();
+  await expect(id).toHaveValue('');
+  await id.fill('0');
+  await check.click();
+  await expect(result).toHaveText('This account owns this item.');
+  expect(await rpc()).toHaveLength(22); // Held probe stopped; fresh check completed all seven reads.
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).length).toBe(26);
+  await id.fill('1');
+  expect(await aborts()).toBe(2);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await check.click();
+  await expect(result).toHaveText('This account doesn’t own this item.');
+  expect(await rpc()).toHaveLength(33);
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).length).toBe(37);
+  await page.evaluate(() => {
+    window.__nativeTokenPortfolio.lock();
+    window.__nativeTokenPortfolio.releaseNft();
+  });
+  expect(await aborts()).toBe(3);
+  await expect(result).toHaveCount(0);
+  expect(await rpc()).toHaveLength(37);
+});
+
+test('manual collectible check works without an explorer and cancels an edited standard', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&collectible-check&ownership-fail');
+  const requests = () => page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Find collectibles', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Check by contract', exact: true }).click();
+  const address = page.getByRole('textbox', { name: 'Collectible contract address', exact: true });
+  const id = page.getByRole('textbox', { name: 'Token ID', exact: true });
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const result = page.getByTestId('native-collectible-quantity');
+  await address.fill('example.eth');
+  await id.fill('0');
+  await expect(check).toBeDisabled();
+  const erc721 = page.getByRole('button', { name: 'ERC-721', exact: true });
+  await erc721.focus();
+  await erc721.press('Space');
+  await expect(erc721).toHaveAttribute('aria-pressed', 'true');
+  await check.click();
+  await expect(page.getByText('Enter a valid contract address.', { exact: true })).toBeVisible();
+  await address.fill(zero);
+  await id.fill('1e2');
+  await check.click();
+  await expect(page.getByText('Enter a valid token ID.', { exact: true })).toBeVisible();
+  await id.fill('0');
+  expect(await requests()).toEqual([]);
+  await check.click();
+  await expect(page.getByText('Ownership unavailable', { exact: true })).toBeVisible();
+  await check.click();
+  await expect(result).toHaveText('This account owns this item.');
+  expect(await requests()).toHaveLength(11);
+
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await requests()).length).toBe(15);
+  await page.getByRole('button', { name: 'ERC-1155', exact: true }).click();
+  await expect(erc721).toHaveAttribute('aria-pressed', 'false');
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.nftAborts())).toBe(1);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await address.fill(long);
+  await check.click();
+  await expect(result).toHaveText('Quantity on network: 900719925474099312345');
+  expect((await requests()).slice(15)).toEqual([
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`,
+    `nft:balanceOfBatch:${long}`, 'nft:block:0x100', 'nft:chain',
+  ]);
+  await expect(page.getByTestId('native-token-add')).toHaveCount(0);
+  await result.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('manual-collectible-320.png') });
+  await enlargeText(page);
+  await result.scrollIntoViewIfNeeded();
+  await expect(result).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('manual-collectible-large.png') });
+});
+
+test('saves only the checked collectible and removes just one saved item', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&collectible-check');
+  const requestCount = () => page.evaluate(() => window.__nativeTokenPortfolio.requests().length);
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const save = page.getByRole('button', { name: 'Save collectible', exact: true });
+  const manual = page.getByRole('button', { name: 'Check by contract', exact: true });
+  const storage = () => page.evaluate(() => localStorage.getItem('pali-native-token-ui:native-token-registry-v1'));
+  const fill = async (id: string) => {
+    await manual.click();
+    await page.getByRole('textbox', { name: 'Collectible contract address', exact: true }).fill(long);
+    await page.getByRole('button', { name: 'ERC-1155', exact: true }).click();
+    await page.getByRole('textbox', { name: 'Token ID', exact: true }).fill(id);
+    await expect(save).toHaveCount(0);
+  };
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await fill('0');
+  await check.click();
+  await expect(save).toBeVisible();
+  expect(await storage()).toBeNull();
+  await page.getByRole('textbox', { name: 'Token ID', exact: true }).fill('1');
+  await expect(save).toHaveCount(0);
+  expect(await requestCount()).toBe(7);
+  await check.click();
+  await save.click();
+  const one = page.getByRole('button', { name: `View saved token 1, ${long}`, exact: true });
+  const zeroItem = page.getByRole('button', { name: `View saved token 0, ${long}`, exact: true });
+  await expect(one).toBeVisible();
+  await expect(zeroItem).toHaveCount(0);
+  expect(await requestCount()).toBe(14);
+  await fill('0');
+  await check.click();
+  await save.click();
+  await expect(zeroItem).toBeVisible();
+  expect(await requestCount()).toBe(21);
+  expect(JSON.parse((await storage())!).entries.map(({ collectible }: { collectible: { tokenId: string } }) => collectible.tokenId)).toEqual(['1', '0']);
+  await page.screenshot({ path: testInfo.outputPath('saved-collectibles-320.png') });
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await zeroItem.click();
+  await expect(page.getByText('Token ID 0', { exact: true })).toBeVisible();
+  expect(await requestCount()).toBe(0);
+  await page.getByRole('button', { name: 'Remove collectible', exact: true }).click();
+  await expect(page.getByText('Remove this collectible?', { exact: true })).toBeVisible();
+  await expect(page.getByText('Token ID 0', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Remove this collectible?', { exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Remove collectible', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove from saved list', exact: true }).click();
+  await expect(one).toBeVisible();
+  await expect(zeroItem).toHaveCount(0);
+  expect(await requestCount()).toBe(0);
+  expect(JSON.parse((await storage())!).entries.map(({ collectible }: { collectible: { tokenId: string } }) => collectible.tokenId)).toEqual(['1']);
+  const saved = await storage();
+  await fill('1');
+  await check.click();
+  await expect(page.getByText('Already in your saved list.', { exact: true })).toBeVisible();
+  await expect(save).toHaveCount(0);
+  expect(await requestCount()).toBe(7);
+  expect(await storage()).toBe(saved);
+});
+
 test('failed holdings stays separate from manual review and requires explicit retry', async ({
   page,
 }) => {
   await page.goto('/?token-portfolio&holdings&holdings-fail');
   await page.getByTestId('native-token-import').click();
-  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Find holdings', exact: true })
+    .click();
   await expect(
     page.getByText('Holdings unavailable', { exact: true })
   ).toBeVisible();

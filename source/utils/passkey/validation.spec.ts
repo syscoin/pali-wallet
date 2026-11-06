@@ -22,4 +22,19 @@ describe('P-256 WebAuthn validation utilities', () => {
     expect(result.originOffset).toBeGreaterThan(0);
     expect(result.typeOffset).toBeGreaterThan(0);
   });
+  it('preserves smart-account byte offsets after a multibyte field', () => {
+    const origin = 'https://pali.wallet';
+    const challenge = 'abc';
+    const type = 'webauthn.get';
+    const bytes = Buffer.from(
+      JSON.stringify({ display: '🧪', challenge, origin, type })
+    );
+
+    expect(validatePasskeyClientDataJSON(bytes, challenge)).toEqual({
+      clientDataText: bytes.toString(),
+      challengeOffset: bytes.indexOf(challenge),
+      originOffset: bytes.indexOf(origin),
+      typeOffset: bytes.indexOf(type),
+    });
+  });
 });

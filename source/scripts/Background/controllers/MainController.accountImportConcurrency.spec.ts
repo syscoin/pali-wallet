@@ -12,18 +12,19 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
 import { getController } from '..';
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import {
   importedRecoveryStorageKey,
   readImportedRecoverySecret,
 } from '../../../wallet/importedAccountRecovery';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
+import { bindPersonalSignApproval } from '../handlers/personalSignApproval';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, {
   persistAccountLabel,
@@ -126,7 +127,7 @@ beforeEach(() => {
     .mockImplementation(async (key) => structuredClone(disk[key] ?? null));
   // Only authentication/session setup is synthetic. SDK import validation,
   // public-key derivation, account-ID allocation and encryption remain real.
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   attachImportedRecoveryCryptoFixture(manager);
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
@@ -306,7 +307,7 @@ it('the real controller commits a real SDK recovery envelope after Chrome serial
   const sdk = jest.requireActual('@sidhujag/sysweb3-keyring/cjs/software.js');
   const values = new Map<string, unknown>();
   const software = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost({
+    sdk.createKeyringHost({
       async get(key: string) {
         return values.get(key);
       },
@@ -321,7 +322,8 @@ it('the real controller commits a real SDK recovery envelope after Chrome serial
         Object.entries(items).forEach(([key, value]) => values.set(key, value));
         return true;
       },
-    })
+    }),
+    { captureEvmSubmission: null }
   );
   software.setVaultStateGetter(() => store.getState().vault);
   try {
@@ -573,20 +575,47 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
   handleMasterControllerResponses({ wallet } as any);
   const calls = jest.mocked(chrome.runtime.onMessage.addListener).mock.calls;
   const listener = calls[calls.length - 1][0];
+  const documentId = 'test-personal-sign-approval';
+  // This fixture exercises the wallet setup gate after an admitted signature.
+  // The actual dapp/popup enrollment is covered in the connection suite.
+  const unbind =
+    method === 'signPersonalMessage'
+      ? bindPersonalSignApproval(
+          documentId,
+          {
+            signal: new AbortController().signal,
+            isCurrent: () => true,
+            assertCurrent: () => undefined,
+            checkDocument: async () => undefined,
+            matches: () => true,
+            bindSmartAccountSigner: () => undefined,
+            retire: () => undefined,
+            dispose: () => undefined,
+          },
+          async () => true
+        )
+      : undefined;
   expect(
     listener(
       {
         type: 'CONTROLLER_ACTION',
         data: {
-          methods: ['wallet', 'ethereumTransaction', method],
+          methods:
+            method === 'sendAndSaveEthTransaction'
+              ? ['wallet', method]
+              : ['wallet', 'ethereumTransaction', method],
           params: [],
         },
       },
       {
+        documentId,
         id: 'pali-extension',
         url: 'chrome-extension://pali-extension/app.html',
       },
-      sendResponse
+      (value) => {
+        unbind?.();
+        sendResponse(value);
+      }
     )
   ).toBe(true);
 };
@@ -624,10 +653,10 @@ it('keeps healthy message signing and an already acknowledged transaction result
   const completed = deferred<void>();
   Object.assign(manager.ethereumTransaction, {
     signPersonalMessage: jest.fn().mockResolvedValue('synthetic signature'),
-    sendFormattedTransaction: jest.fn(() => {
-      started.resolve();
-      return result.promise;
-    }),
+  });
+  wallet.sendAndSaveEthTransaction = jest.fn(() => {
+    started.resolve();
+    return result.promise;
   });
   const healthy = deferred<void>();
   const healthyResponse = jest.fn(() => healthy.resolve());
@@ -636,7 +665,7 @@ it('keeps healthy message signing and an already acknowledged transaction result
   expect(healthyResponse).toHaveBeenCalledWith('synthetic signature');
 
   const sendResponse = jest.fn(() => completed.resolve());
-  invokeSdk('sendFormattedTransaction', sendResponse);
+  invokeSdk('sendAndSaveEthTransaction', sendResponse);
   await started.promise;
   const retained = await failImportRepair();
   const acknowledged = { hash: `0x${'a'.repeat(64)}` };

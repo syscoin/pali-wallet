@@ -7,7 +7,7 @@ import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalog
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
-function fixture() {
+function fixture(utxoSendAvailable = false) {
   let state: CustodySnapshot = { phase: 'ready', revision: 12, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
   let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
   const listeners = new Set<(value: CustodySnapshot) => void>();
@@ -20,7 +20,7 @@ function fixture() {
     async selectNetwork(...args: [string, number, number]) { requests.push(args); },
     cancelAccountOperation() { cancels++; },
   };
-  const view = createNativeNetworkView(authority);
+  const view = createNativeNetworkView(authority, { utxoSendAvailable });
   return { view, requests, listeners, cancels: () => cancels,
     set(next: CustodySnapshot, nextCatalogue: NativeWalletCatalogueSnapshot | null) {
       state = next; catalogue = nextCatalogue;
@@ -45,6 +45,9 @@ test('network projection is stable, frozen, public-only and projects all saved E
       : ['canSign', 'id', 'name', 'symbol', 'testnet']);
   }
   assert.equal(f.requests.length, 0);
+  const capable = fixture(true).view.getSnapshot()!;
+  assert.deepEqual(capable.networks.filter(network => !network.registration && network.canSign).map(network => network.id),
+    UTXO_NETWORKS.filter(network => network.decimals === 8).map(network => network.id));
 });
 
 test('network selection forwards both captured revisions and teardown removes observation', async () => {
@@ -71,7 +74,7 @@ test('network verification and persistence share one detached registration snaps
   const saved: unknown[] = [];
   const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
     selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
-    manageNetwork: async (request) => { saved.push(request); } }, { fetch: async (url, init) => {
+    manageNetwork: async (request) => { saved.push(request); } }, { utxoSendAvailable: false, fetch: async (url, init) => {
       assert.equal(url, original.rpcUrl); const request = JSON.parse(String(init.body)); started(); await held;
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result: '0x115c' }), { headers: { 'content-type': 'application/json' } });
     } });
@@ -93,7 +96,7 @@ test('long padded network text reaches the verified endpoint unchanged and stale
       getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
       subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
       manageNetwork: async (request) => { saved.push(request); },
-    }, { fetch: async (url, init) => {
+    }, { utxoSendAvailable: false, fetch: async (url, init) => {
       urls.push(url); const request = JSON.parse(String(init.body));
       assert.equal(request.method, 'eth_chainId');
       if (mode === 'stale-context') revision++;
@@ -124,7 +127,7 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
     getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
     subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); },
-  }, { fetch: async (url, init) => {
+  }, { utxoSendAvailable: false, fetch: async (url, init) => {
     requests.push(url);
     assert.equal(init.redirect, 'error');
     if (url === EVM_CHAIN_CATALOGUE_URL) {

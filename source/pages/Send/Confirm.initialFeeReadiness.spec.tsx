@@ -3,7 +3,22 @@ import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import React from 'react';
 
+import { clearTransactionNavigationState } from 'utils/navigationState';
+
 import { SendConfirm } from './Confirm';
+
+const mockOpenWalletTokenReview = jest.fn((request: any) => ({
+  ready: Promise.resolve(),
+  submit: () =>
+    mockEmitter(
+      ['wallet', 'sendAndSaveTokenTransaction'],
+      [request.type, request.transaction]
+    ),
+  close: jest.fn(),
+}));
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: (request: any) => mockOpenWalletTokenReview(request),
+}));
 
 const mockEmitter = jest.fn();
 let mockFiatAvailable = true;
@@ -219,6 +234,7 @@ function mount(kind: 'native' | 'token') {
   const quote = deferred();
   if (kind === 'token') {
     mockLocation.state.tx.transactionType = 'ERC20';
+    mockLocation.state.tx.tokenAmountUnits = '1000000000000000000';
     mockLocation.state.tx.defaultGasLimit = 65000;
     mockLocation.state.tx.token = {
       contractAddress: '0x3333333333333333333333333333333333333333',
@@ -324,7 +340,10 @@ it.each(['native', 'token'] as const)(
     });
     expect(sendRequests()).toHaveLength(1);
     const args = sendRequests()[0][1];
-    const payload = kind === 'native' ? args[0] : args[1];
+    const payload =
+      kind === 'native'
+        ? args[0]
+        : mockOpenWalletTokenReview.mock.calls[0][0].transaction;
     expect(payload.maxFeePerGas.toString()).toBe('3000000000');
     expect(payload.maxPriorityFeePerGas.toString()).toBe('0');
     expect(feeRequests()).toHaveLength(1);
@@ -360,12 +379,52 @@ it.each(['native', 'token'] as const)(
     });
     expect(sendRequests()).toHaveLength(1);
     const args = sendRequests()[0][1];
-    const payload = kind === 'native' ? args[0] : args[1];
+    const payload =
+      kind === 'native'
+        ? args[0]
+        : mockOpenWalletTokenReview.mock.calls[0][0].transaction;
     expect(payload.maxFeePerGas.toString()).toBe('4000000000');
     expect(payload.maxPriorityFeePerGas.toString()).toBe('0');
     expect(feeRequests()).toHaveLength(1);
   }
 );
+
+it('reviews and submits the same exact fixed native maximum above Number precision', async () => {
+  const quote = mount('native');
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  const cap = '9007199254740999';
+  await act(async () => {
+    quote.resolve({ maxFeePerGas: cap, maxPriorityFeePerGas: '0' });
+  });
+  expect(document.body.textContent).toContain('189.151184349560979 TSYS');
+  expect(document.body.textContent).toContain('190.151184349560979 TSYS');
+  await act(async () => {
+    fireEvent.click(confirm());
+  });
+  expect(sendRequests()).toHaveLength(1);
+  const [request, legacy, , , options] = sendRequests()[0][1];
+  expect(request).toMatchObject({
+    data: '0x',
+    gasLimit: '21000',
+    value: '1000000000000000000',
+    maxFeePerGas: cap,
+    maxPriorityFeePerGas: '0',
+  });
+  expect(legacy).toBe(false);
+  expect(options).toEqual({
+    nativeReview: {
+      maximumFee: '189151184349560979000',
+      scope: mockScope,
+    },
+  });
+  expect(
+    mockEmitter.mock.calls.some(
+      ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+    )
+  ).toBe(false);
+});
 
 it('changes only approximate fiat when quote availability changes on a ready native review', async () => {
   mockFiatAvailable = false;
@@ -402,4 +461,59 @@ it('changes only approximate fiat when quote availability changes on a ready nat
   expect(confirm()).toBeEnabled();
   expect(sendRequests()).toHaveLength(0);
   expect(feeRequests()).toHaveLength(1);
+});
+it('does not submit the older fee if an edit lands while confirmation clears its saved draft', async () => {
+  const quote = mount('token');
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  await resolveQuote(quote);
+  const discard = deferred();
+  jest
+    .mocked(clearTransactionNavigationState)
+    .mockImplementationOnce(async () => {
+      await discard.promise;
+    });
+  const editFee = screen.getByRole('button', { name: 'send.editFee' });
+  fireEvent.click(editFee);
+  const dialog = within(screen.getByRole('dialog'));
+  fireEvent.change(dialog.getByPlaceholderText('send.maxFee (GWEI)'), {
+    target: { value: '4' },
+  });
+  const click = mockConfirmCallbacks.at(-1)!;
+  await act(async () => {
+    void click();
+  });
+  await act(async () => {
+    fireEvent.click(dialog.getByRole('button', { name: 'buttons.save' }));
+  });
+  await act(async () => {
+    discard.resolve(undefined);
+  });
+  expect(mockOpenWalletTokenReview).not.toHaveBeenCalled();
+  expect(sendRequests()).toHaveLength(0);
+});
+it('retains atomic fee values beyond Number precision through token review', async () => {
+  const quote = mount('token');
+  await act(async () => {
+    jest.advanceTimersByTime(500);
+  });
+  await act(async () => {
+    quote.resolve({
+      maxFeePerGas: '9007199254740993',
+      maxPriorityFeePerGas: '1',
+    });
+  });
+  expect(confirm()).toBeEnabled();
+  await act(async () => {
+    fireEvent.click(confirm());
+  });
+  expect(mockOpenWalletTokenReview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      transaction: expect.objectContaining({
+        maxFeePerGas: '9007199254740993',
+        maxPriorityFeePerGas: '1',
+      }),
+    })
+  );
 });

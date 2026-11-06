@@ -38,6 +38,7 @@ describe('approval popup boundary', () => {
     );
     (chrome as any).tabs = {
       query: jest.fn((_query, callback) => callback([])),
+      onUpdated: { addListener: jest.fn(), removeListener: jest.fn() },
     };
     (chrome.storage.local.get as jest.Mock).mockImplementation(
       (_keys, callback) => callback({})

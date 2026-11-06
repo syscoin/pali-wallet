@@ -47,6 +47,7 @@ import http from 'http';
 import https from 'https';
 
 import { getController } from 'scripts/Background';
+import { createBrowserKeyringHost } from 'scripts/Background/controllers/browserKeyringHost';
 import MainController from 'scripts/Background/controllers/MainController';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, {
@@ -267,8 +268,15 @@ describe.each(['Trezor', 'Ledger'] as const)(
           },
         },
       } as any;
-      manager = new KeyringManager(undefined, ledgerHost as any);
-      manager.setStorage(chrome.storage.local);
+      manager = new KeyringManager(
+        createBrowserKeyringHost(chrome.storage.local),
+        {
+          captureEvmSubmission: () => {
+            throw new Error('EVM submission is outside this fixture');
+          },
+          ledgerHost: ledgerHost as any,
+        }
+      );
       manager.setVaultStateGetter(() => store.getState().vault);
       const initialAccount = await manager.initializeWalletSecurely(
         PHRASE,

@@ -6,6 +6,7 @@ import { SysProvider } from 'scripts/Provider/SysProvider';
 import store from 'state/store';
 import { INetworkType } from 'types/network';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { isHexString } from 'utils/ethersV6Compat';
 import { networkChain } from 'utils/network';
 import { IUtxoSigningContext } from 'utils/utxoSigningContext';
@@ -13,6 +14,7 @@ import { IUtxoSigningContext } from 'utils/utxoSigningContext';
 import { getUnrestrictedMethods } from './method-registry';
 import { popupPromise } from './popup-promise';
 import { executeMethodWithCache } from './provider-cache';
+import { requestCancelledError } from './request-lifetime';
 import { requestCoordinator } from './request-pipeline';
 import {
   generateWalletBundleId,
@@ -820,6 +822,7 @@ export class EthMethodHandler implements IMethodHandler {
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
             data: params,
+            ...(method === 'personal_sign' && { connectedPersonalSign: true }),
           }),
         methodConfig.popupRoute! // Explicit route parameter
       );
@@ -918,51 +921,64 @@ export class SysMethodHandler implements IMethodHandler {
         // The site never controls the popup's request, origin, key list or review.
         popupData = { sentryApprovalId };
       }
-      if (methodName === 'sign' || methodName === 'signAndSend') {
-        const { dapp, wallet } = getController();
-        const connection = dapp.get(host);
-        const account = dapp.getAccount(host);
-        const { vault, vaultGlobal } = store.getState();
-        if (
-          !connection ||
-          !account ||
-          !vault.isBitcoinBased ||
-          vault.activeNetwork.kind !== INetworkType.Syscoin ||
-          vault.activeAccount.id !== connection.accountId ||
-          vault.activeAccount.type !== connection.accountType
-        ) {
-          throw cleanErrorStack(
-            ethErrors.provider.unauthorized(
-              'The connected account is no longer selected'
-            )
-          );
-        }
-        const approvedContext: IUtxoSigningContext = {
-          account: {
-            id: connection.accountId,
-            type: connection.accountType,
-            address: account.address,
-            xpub: account.xpub,
-          },
-          chainId: vault.activeNetwork.chainId,
-          kind: vault.activeNetwork.kind,
-          rpcUrl: vault.activeNetwork.url,
-          slip44: vaultGlobal.activeSlip44,
-        };
-        // Never accept a site's same-named authorization object.
-        const sentryFeeAuthorization = await wallet.prepareSentryFeePsbt(
-          popupData,
-          host,
-          methodName === 'sign'
-        );
-        popupData = { ...popupData, approvedContext, sentryFeeAuthorization };
-      }
+      let utxoLifetime:
+        | ReturnType<typeof createDappApprovalLifetime>
+        | undefined;
+      let unsubscribeUtxo: (() => void) | undefined;
       try {
+        if (methodName === 'sign' || methodName === 'signAndSend') {
+          const { dapp, wallet } = getController();
+          const connection = dapp.get(host);
+          const account = dapp.getAccount(host);
+          const { vault, vaultGlobal } = store.getState();
+          if (
+            !connection ||
+            !account ||
+            !vault.isBitcoinBased ||
+            vault.activeNetwork.kind !== INetworkType.Syscoin ||
+            vault.activeAccount.id !== connection.accountId ||
+            vault.activeAccount.type !== connection.accountType
+          ) {
+            throw cleanErrorStack(
+              ethErrors.provider.unauthorized(
+                'The connected account is no longer selected'
+              )
+            );
+          }
+          const approvedContext: IUtxoSigningContext = {
+            account: {
+              id: connection.accountId,
+              type: connection.accountType,
+              address: account.address,
+              xpub: account.xpub,
+            },
+            chainId: vault.activeNetwork.chainId,
+            kind: vault.activeNetwork.kind,
+            rpcUrl: vault.activeNetwork.url,
+            slip44: vaultGlobal.activeSlip44,
+          };
+          const lifetime = createDappApprovalLifetime(
+            () => dapp.get(host) === connection,
+            context.originalRequest.signal
+          );
+          utxoLifetime = lifetime;
+          // Retire on removal even if a failed durable revoke restores the grant.
+          unsubscribeUtxo = store.subscribe(lifetime.isCurrent);
+          if (!lifetime.isCurrent()) throw requestCancelledError();
+          // Never accept a site's same-named authorization object.
+          const sentryFeeAuthorization = await wallet.prepareSentryFeePsbt(
+            popupData,
+            host,
+            methodName === 'sign'
+          );
+          if (!lifetime.isCurrent()) throw requestCancelledError();
+          popupData = { ...popupData, approvedContext, sentryFeeAuthorization };
+        }
         return await requestCoordinator.coordinatePopupRequest(
           context,
           () =>
             popupPromise({
-              signal: context.originalRequest.signal,
+              signal: utxoLifetime?.signal ?? context.originalRequest.signal,
               sender: context.originalRequest.sender,
               host,
               route: methodConfig.popupRoute!,
@@ -972,6 +988,8 @@ export class SysMethodHandler implements IMethodHandler {
           methodConfig.popupRoute!
         );
       } finally {
+        unsubscribeUtxo?.();
+        utxoLifetime?.dispose();
         if (sentryApprovalId) {
           const wallet = getController().wallet;
           await (methodName === 'linkSentryNode'

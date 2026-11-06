@@ -4,19 +4,22 @@ import {
   parseErc20Units,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20.ts';
-import { parseErc20Metadata } from './erc20Metadata.ts';
-import { createErc20Reader, type Erc20Reader } from './erc20ReadRpc.ts';
-import type { NativeTokenInventory } from './tokenRegistry.ts';
-import { NativeTokenRegistryError } from './tokenRegistry.ts';
+import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId.ts';
+import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
+import { createErc20Reader, Erc20ReadError, type Erc20Reader } from './erc20ReadRpc.ts';
+import type { NativeTokenInventory, SavedCollectible } from './tokenRegistry.ts';
+import { NativeTokenRegistryError, snapshotSavedCollectible } from './tokenRegistry.ts';
 import type {
   NativePortfolioAccount,
   PublicCustodySource,
 } from './nativePortfolio.ts';
 import { getNativeNetwork, getNativeSendContext, type NativeSendContext } from '../custody/networkContext.ts';
 import type {
+  OwnedCollectibleSuggestion,
   OwnedTokenReader,
   OwnedTokenSuggestions,
 } from './ownedTokenReader.ts';
+import type { createNftOwnershipReader } from './nftOwnershipReadRpc.ts';
 
 export interface NativeTokenRuntime {
   load(assertCurrent: () => void): Promise<NativeTokenInventory>;
@@ -30,6 +33,16 @@ export interface NativeTokenRuntime {
     contractAddress: string,
     assertCurrent: () => void
   ): Promise<NativeTokenInventory>;
+  addCollectible?(
+    expectedRevision: number,
+    collectible: SavedCollectible,
+    assertCurrent: () => void
+  ): Promise<NativeTokenInventory>;
+  removeCollectible?(
+    expectedRevision: number,
+    collectible: SavedCollectible,
+    assertCurrent: () => void
+  ): Promise<NativeTokenInventory>;
 }
 export type NativeTokenItem = Readonly<{
   metadata: Erc20Metadata;
@@ -39,6 +52,27 @@ export type NativeTokenItem = Readonly<{
 }>;
 type TokenDiscovery = OwnedTokenSuggestions &
   Readonly<{ status: 'idle' | 'loading' | 'ready' | 'error' }>;
+export type CollectibleQuery = Pick<
+  OwnedCollectibleSuggestion,
+  'contractAddress' | 'tokenStandard'
+> & Readonly<{ tokenId: string }>;
+declare const collectibleSaveBrand: unique symbol;
+export type CollectibleSaveTicket = Readonly<{ [collectibleSaveBrand]: true }>;
+export type CollectibleCheckResult = Readonly<{
+  tokenId: string;
+  units: string;
+  alreadySaved?: true;
+  saveTicket?: CollectibleSaveTicket;
+}>;
+type CollectibleReview = Readonly<{
+  ticket: CollectibleSaveTicket;
+  account: NativePortfolioAccount;
+  collectible: SavedCollectible;
+  runtime: NativeTokenRuntime;
+  signal: AbortSignal;
+  retire: () => void;
+  assertCurrent: () => void;
+}>;
 const idleDiscovery: TokenDiscovery = Object.freeze({
   status: 'idle',
   tokens: Object.freeze([]),
@@ -49,9 +83,11 @@ export type NativeTokenSnapshot = Readonly<{
   network?: Pick<NativeSendContext, 'name' | 'chainId' | 'symbol' | 'testnet'> | null;
   status: 'unavailable' | 'loading' | 'ready' | 'error';
   items: readonly NativeTokenItem[];
+  collectibles?: readonly SavedCollectible[];
   preview: Readonly<{ metadata: Erc20Metadata; units: string }> | null;
   previewStatus: 'idle' | 'loading' | 'ready' | 'error';
   discovery: TokenDiscovery | null;
+  canCheckCollectible?: true;
   busy: boolean;
   error: string | null;
 }>;
@@ -66,6 +102,11 @@ export type NativeTokenView = Readonly<
     | 'cancelPreview'
     | 'discover'
     | 'closeDiscovery'
+    | 'checkCollectible'
+    | 'checkManualCollectible'
+    | 'checkSavedCollectible'
+    | 'saveCollectible'
+    | 'removeCollectible'
     | 'refresh'
     | 'remove'
   >
@@ -124,8 +165,16 @@ export class NativeTokens {
     preview: (contract: string) => this.preview(contract),
     confirmPreview: () => this.confirmPreview(),
     cancelPreview: () => this.cancelPreview(),
-    discover: () => this.discover(),
+    discover: (kind?: 'collectibles') => this.discover(kind),
     closeDiscovery: () => this.closeDiscovery(),
+    checkCollectible: (item: OwnedCollectibleSuggestion, id: string, signal: AbortSignal) =>
+      this.checkCollectible(item, id, signal),
+    checkManualCollectible: (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>
+      this.checkManualCollectible(account, query, signal),
+    checkSavedCollectible: (account: NativePortfolioAccount, item: SavedCollectible, tokenId: string, signal: AbortSignal) =>
+      this.checkSavedCollectible(account, item, tokenId, signal),
+    saveCollectible: (ticket: CollectibleSaveTicket) => this.saveCollectible(ticket),
+    removeCollectible: (account: NativePortfolioAccount, item: SavedCollectible) => this.removeCollectible(account, item),
     refresh: (contract?: string) => this.refresh(contract),
     remove: (contract: string) => this.remove(contract),
   });
@@ -136,6 +185,8 @@ export class NativeTokens {
   private epoch = 0;
   private request: Request | null = null;
   private discoveryRequest: AbortController | null = null;
+  private collectibleRequest: AbortController | null = null;
+  private collectibleReview: CollectibleReview | null = null;
   private discoveryApi = '';
   private registrationHash: string | null = null;
   private inventoryRevision: number | null = null;
@@ -147,13 +198,15 @@ export class NativeTokens {
   private readonly now: () => number;
   private readonly revoke: () => void;
   private readonly readHoldings?: OwnedTokenReader;
+  private readonly readNft?: ReturnType<typeof createNftOwnershipReader>;
   constructor(
     source: PublicCustodySource,
     runtime: () => NativeTokenRuntime | undefined,
     reader: Erc20Reader = createErc20Reader(),
     now: () => number = Date.now,
     revoke: () => void = () => undefined,
-    readHoldings?: OwnedTokenReader
+    readHoldings?: OwnedTokenReader,
+    readNft?: ReturnType<typeof createNftOwnershipReader>
   ) {
     this.source = source;
     this.runtime = runtime;
@@ -161,6 +214,7 @@ export class NativeTokens {
     this.now = now;
     this.revoke = revoke;
     this.readHoldings = readHoldings;
+    this.readNft = readNft;
   }
   private runtimeFailed(error: unknown): void {
     if (
@@ -193,6 +247,7 @@ export class NativeTokens {
           revision: state.revision,
         }),
         network: getNativeSendContext(registration),
+        canCheckCollectible: !!this.readNft && (!this.source.getCatalogue || !!catalogue),
         apiUrl: this.readHoldings && (!this.source.getCatalogue || catalogue)
           ? findRegisteredEvmNetwork(registration)?.network.apiUrl ?? ''
           : '',
@@ -207,9 +262,18 @@ export class NativeTokens {
     this.request = null;
   }
   private stopDiscovery(): void {
+    this.clearCollectibleReview();
     const request = this.discoveryRequest;
     request?.abort();
     if (this.discoveryRequest === request) this.discoveryRequest = null;
+    const collectible = this.collectibleRequest;
+    this.collectibleRequest = null;
+    collectible?.abort();
+  }
+  private clearCollectibleReview(): void {
+    const review = this.collectibleReview;
+    this.collectibleReview = null;
+    if (review) review.signal.removeEventListener('abort', review.retire);
   }
   private emit(): void {
     this.unpublished = false;
@@ -234,10 +298,12 @@ export class NativeTokens {
     const account = scope?.account ?? null;
     const registrationHash = scope?.network.registrationHash ?? null;
     const apiUrl = scope?.apiUrl ?? '';
+    const canCheckCollectible = scope?.canCheckCollectible ? true : undefined;
     if (
       !same(account, this.state.account) ||
       registrationHash !== this.registrationHash ||
-      apiUrl !== this.discoveryApi
+      apiUrl !== this.discoveryApi ||
+      canCheckCollectible !== this.state.canCheckCollectible
     ) {
       this.cancel();
       this.inventoryRevision = null;
@@ -247,6 +313,7 @@ export class NativeTokens {
         ...initial(account),
         network: scope?.network ?? null,
         discovery: this.discoveryApi ? idleDiscovery : null,
+        ...(canCheckCollectible ? { canCheckCollectible } : {}),
       });
       this.unpublished = true;
       this.stopDiscovery();
@@ -370,13 +437,16 @@ export class NativeTokens {
     if (!this.current(request) || request.controller.signal.aborted)
       throw new Error('CANCELLED');
   }
-  private install(inventory: NativeTokenInventory): void {
+  private install(inventory: NativeTokenInventory, preserveItems = false): void {
     if (
       !inventory ||
       !Number.isSafeInteger(inventory.revision) ||
       inventory.revision < 0 ||
       !Array.isArray(inventory.items) ||
-      inventory.items.length > 256
+      inventory.items.length > 256 ||
+      (inventory.collectibles !== undefined &&
+        (!Array.isArray(inventory.collectibles) ||
+          inventory.items.length + inventory.collectibles.length > 256))
     )
       throw new Error('INVALID');
     const items = inventory.items.map((metadata) =>
@@ -392,8 +462,23 @@ export class NativeTokens {
       items.length
     )
       throw new Error('INVALID');
+    const observed = preserveItems ? this.state.items : undefined;
+    if (observed && (
+      observed.length !== items.length ||
+      items.some(({ metadata }, index) => {
+        const previous = observed[index]?.metadata;
+        return !previous || previous.contractAddress !== metadata.contractAddress ||
+          previous.name !== metadata.name || previous.symbol !== metadata.symbol ||
+          previous.decimals !== metadata.decimals;
+      })
+    )) throw new Error('INVALID');
+    const collectibles = inventory.collectibles?.length
+      ? Object.freeze(inventory.collectibles.map(snapshotSavedCollectible))
+      : undefined;
+    if (inventory.revision !== this.inventoryRevision)
+      this.clearCollectibleReview();
     this.inventoryRevision = inventory.revision;
-    this.publish({ items: Object.freeze(items), status: 'ready' });
+    this.publish({ items: observed ?? Object.freeze(items), collectibles, status: 'ready' });
   }
   private async loadInventory(
     request: Request,
@@ -415,7 +500,7 @@ export class NativeTokens {
       if (this.loadWork === work) this.loadWork = null;
     }
   }
-  discover = async (): Promise<void> => {
+  discover = async (kind?: 'collectibles'): Promise<void> => {
     this.synchronize(true);
     const { account, network, discovery } = this.state;
     const apiUrl = this.discoveryApi;
@@ -444,7 +529,8 @@ export class NativeTokens {
       guard();
       const result = await bounded(
         this.readHoldings(
-          { address: account.address, chainId: Number(network.chainId), apiUrl },
+          { address: account.address, chainId: Number(network.chainId), apiUrl,
+            ...(kind === 'collectibles' ? { collectiblesOnly: true } : {}) },
           saved,
           request.signal,
           guard
@@ -469,6 +555,125 @@ export class NativeTokens {
     if (this.state.discovery && this.state.discovery !== idleDiscovery)
       this.publish({ discovery: idleDiscovery });
   };
+  checkCollectible = (item: OwnedCollectibleSuggestion, tokenId: string, signal: AbortSignal) =>
+    this.readCollectible({ item, tokenId }, signal);
+  checkManualCollectible = (account: NativePortfolioAccount, query: CollectibleQuery, signal: AbortSignal) =>
+    this.readCollectible({ account, query }, signal);
+  checkSavedCollectible = (account: NativePortfolioAccount, saved: SavedCollectible, tokenId: string, signal: AbortSignal) =>
+    this.readCollectible({ account, saved, tokenId }, signal);
+  private async readCollectible(
+    selection: { item: OwnedCollectibleSuggestion; tokenId: string } |
+      { account: NativePortfolioAccount; query: CollectibleQuery } |
+      { account: NativePortfolioAccount; saved: SavedCollectible; tokenId: string },
+    signal: AbortSignal
+  ): Promise<CollectibleCheckResult> {
+    this.synchronize(false);
+    const { account, discovery, canCheckCollectible } = this.state;
+    const connection = this.connection, registration = this.registrationHash;
+    const revision = this.inventoryRevision;
+    const read = this.readNft;
+    if (!read || !canCheckCollectible || !account || !connection || !registration ||
+      signal.aborted || this.collectibleRequest) throw new Error('CANCELLED');
+    const suggested = 'item' in selection ? selection.item : undefined;
+    const saved = 'saved' in selection ? selection.saved : undefined;
+    const assertSelection = () => {
+      this.synchronize(false);
+      if (
+        signal.aborted ||
+        this.connection !== connection ||
+        this.state.account !== account ||
+        this.registrationHash !== registration ||
+        (suggested && (
+          this.state.discovery !== discovery || !discovery?.collectibles?.includes(suggested)
+        )) ||
+        (saved && (
+          this.state.status !== 'ready' ||
+          this.inventoryRevision !== revision ||
+          !this.state.collectibles?.includes(saved)
+        ))
+      ) throw new Error('CANCELLED');
+    };
+    if ('account' in selection && selection.account !== account) throw new Error('CANCELLED');
+    assertSelection();
+    this.clearCollectibleReview();
+    let query: CollectibleQuery;
+    if ('query' in selection) query = selection.query;
+    else {
+      const item = 'item' in selection ? selection.item : selection.saved;
+      query = { contractAddress: item.contractAddress, tokenStandard: item.tokenStandard, tokenId: selection.tokenId };
+    }
+    const tokenStandard = query.tokenStandard;
+    let tokenId: string, contractAddress: string;
+    try {
+      if (tokenStandard !== 'ERC-721' && tokenStandard !== 'ERC-1155')
+        throw new Error('INVALID');
+      tokenId = normalizeNftTokenId(query.tokenId);
+      contractAddress = normalizeErc20Address(query.contractAddress);
+    } catch {
+      throw new Erc20ReadError('INVALID_INPUT');
+    }
+    if (
+      (suggested?.tokenId !== undefined && tokenId !== suggested.tokenId) ||
+      (saved?.tokenStandard === 'ERC-1155' && tokenId !== saved.tokenId)
+    ) throw new Error('CANCELLED');
+    const request = new AbortController();
+    this.collectibleRequest = request;
+    const stop = () => {
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    };
+    signal.addEventListener('abort', stop, { once: true });
+    const current = () => {
+      assertSelection();
+      if (request.signal.aborted || this.collectibleRequest !== request)
+        throw new Error('CANCELLED');
+    };
+    try {
+      current();
+      const result = await bounded(read({ networkId: account.network, owner: account.address,
+        contractAddress, tokenStandard, tokenId }, request.signal, current), request.signal);
+      current();
+      const units = parseErc20Units(result.units);
+      if (
+        result.tokenId !== tokenId ||
+        (tokenStandard === 'ERC-721' && units !== '0' && units !== '1')
+      )
+        throw new Error('INVALID');
+      const observation = Object.freeze({ tokenId, units });
+      if (saved || revision === null || this.inventoryRevision !== revision ||
+        this.state.status !== 'ready' || this.state.busy) return observation;
+      if (this.state.items.some(({ metadata }) => metadata.contractAddress === contractAddress) ||
+        this.state.collectibles?.some((item) => item.contractAddress === contractAddress &&
+          (tokenStandard === 'ERC-721' || item.tokenStandard === 'ERC-721' || item.tokenId === tokenId)))
+        return Object.freeze({ ...observation, alreadySaved: true });
+      const runtime = this.runtime();
+      current();
+      if (!runtime?.addCollectible || this.inventoryRevision !== revision ||
+        this.state.status !== 'ready' || this.state.busy)
+        return observation;
+      const collectible = snapshotSavedCollectible(tokenStandard === 'ERC-1155'
+        ? { contractAddress, tokenStandard, tokenId }
+        : { contractAddress, tokenStandard });
+      const ticket = Object.freeze({}) as CollectibleSaveTicket;
+      const retire = () => {
+        if (this.collectibleReview?.ticket === ticket) this.clearCollectibleReview();
+      };
+      const assertCurrent = () => {
+        assertSelection();
+        if (this.inventoryRevision !== revision || this.state.status !== 'ready')
+          throw new Error('CANCELLED');
+      };
+      this.collectibleReview = {
+        ticket, account, collectible, runtime, signal, retire, assertCurrent,
+      };
+      signal.addEventListener('abort', retire, { once: true });
+      return Object.freeze({ ...observation, saveTicket: ticket });
+    } finally {
+      signal.removeEventListener('abort', stop);
+      if (this.collectibleRequest === request) this.collectibleRequest = null;
+      request.abort();
+    }
+  }
   refresh = async (contract?: string): Promise<void> => {
     if (this.state.busy) return;
     let target: string | undefined;
@@ -575,9 +780,11 @@ export class NativeTokens {
       if (this.current(request)) {
         this.request = null;
         this.inventoryRevision = null;
+        this.clearCollectibleReview();
         this.publish({
           status: 'error',
           items: Object.freeze([]),
+          collectibles: undefined,
           error: 'Saved tokens are unavailable. Refresh to try again.',
         });
       }
@@ -695,31 +902,74 @@ export class NativeTokens {
       runtime.remove(revision, address, guard)
     );
   };
+  saveCollectible = async (ticket: CollectibleSaveTicket): Promise<boolean> => {
+    const review = this.collectibleReview;
+    if (!review || review.ticket !== ticket) return false;
+    // Consume consent before any subscriber or asynchronous persistence work.
+    this.clearCollectibleReview();
+    try { review.assertCurrent(); } catch { return false; }
+    if (this.state.busy) return false;
+    return this.mutate(review.account, (runtime, revision, guard) => {
+      if (runtime !== review.runtime || !runtime.addCollectible) throw new Error('CANCELLED');
+      return runtime.addCollectible(revision, review.collectible, guard);
+    }, { preserveItems: true, assertCurrent: review.assertCurrent });
+  };
+  removeCollectible = async (account: NativePortfolioAccount, item: SavedCollectible): Promise<boolean> => {
+    this.synchronize(false);
+    const revision = this.inventoryRevision;
+    const assertCurrent = () => {
+      this.synchronize(false);
+      if (this.state.account !== account || this.state.status !== 'ready' ||
+        revision === null || this.inventoryRevision !== revision ||
+        !this.state.collectibles?.includes(item)) throw new Error('CANCELLED');
+    };
+    try { assertCurrent(); } catch { return false; }
+    if (this.state.busy) return false;
+    return this.mutate(account, (runtime, expected, guard) => {
+      if (!runtime.removeCollectible) throw new Error('UNAVAILABLE');
+      return runtime.removeCollectible(expected, item, guard);
+    }, { preserveItems: true, assertCurrent });
+  };
   private async mutate(
     account: NativePortfolioAccount | null,
     action: (
       runtime: NativeTokenRuntime,
       revision: number,
       guard: () => void
-    ) => Promise<NativeTokenInventory>
-  ): Promise<void> {
+    ) => Promise<NativeTokenInventory>,
+    { preserveItems = false, assertCurrent }: { preserveItems?: boolean; assertCurrent?: () => void } = {}
+  ): Promise<boolean> {
     const revision = this.inventoryRevision;
     const request = this.begin('mutation', account);
-    if (!request || revision === null) return;
-    this.publish({ busy: true, error: null });
-    try {
+    if (!request || revision === null) return false;
+    this.clearCollectibleReview();
+    const guard = () => {
       this.guard(request);
+      assertCurrent?.();
+    };
+    // begin() may retire a targeted ERC-20 balance read. Keep its last
+    // observation when the collectible mutation does not run a refresh.
+    const items = preserveItems && this.state.items.some((item) => item.status === 'loading')
+      ? Object.freeze(this.state.items.map((item): NativeTokenItem =>
+        item.status !== 'loading' ? item : Object.freeze({
+          ...item,
+          status: item.updatedAt === null ? 'unknown' : 'available',
+        })
+      ))
+      : this.state.items;
+    this.publish({ busy: true, error: null, items });
+    try {
+      guard();
       const runtime = this.runtime();
       if (!runtime) throw new Error('UNAVAILABLE');
-      const inventory = await action(runtime, revision, () =>
-        this.guard(request)
-      );
-      this.guard(request);
-      this.install(inventory);
+      const inventory = await action(runtime, revision, guard);
+      guard();
+      this.install(inventory, preserveItems);
       this.guard(request);
       this.request = null;
       this.publish({ busy: false, preview: null, previewStatus: 'idle' });
-      void this.refresh();
+      if (!preserveItems) void this.refresh();
+      return true;
     } catch (error) {
       this.runtimeFailed(error);
       if (this.current(request)) {
@@ -737,6 +987,7 @@ export class NativeTokens {
               : 'The token change could not be confirmed. Refresh to check your saved list.',
         });
       }
+      return false;
     }
   }
 }

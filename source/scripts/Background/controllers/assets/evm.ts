@@ -12,6 +12,8 @@ import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 
 import {
+  formatErc20Balance,
+  parseErc20Decimals,
   parseErc20ReadFields,
   parseErc20Units,
 } from '../../../../shared/erc20';
@@ -19,6 +21,10 @@ import {
   coinGeckoNativeQuoteUrl,
   readCoinGeckoNativeQuote,
 } from '../../../../shared/nativeCoinQuotes';
+import {
+  hasInvisibleOwnedTokenName,
+  projectOwnedNftRow,
+} from '../../../../shared/ownedNftRow';
 import { BatchBalanceController } from '../balances/BatchBalanceController';
 import { Queue } from '../transactions/queue';
 import { getController } from 'scripts/Background';
@@ -28,7 +34,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress, parseUnits } from 'utils/ethersV6Compat';
+import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
@@ -39,11 +45,6 @@ import {
 } from './nft-utils';
 import { IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
-
-const toSafeNumber = (value: any, fallback = 0): number => {
-  const numeric = Number(value?.toString ? value.toString() : value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-};
 
 // SYSCOIN: Shared across short-lived polling controllers; never hammer an
 // unavailable discovery endpoint. This does not block on-chain balance reads.
@@ -137,49 +138,29 @@ const EvmAssetsController = (): IEvmAssetsController => {
         true
       );
 
-      // Helper function to detect tokens with invisible/funny characters in name
-      const hasInvisibleChars = (name: string): boolean => {
-        if (!name) return false;
-
-        // Check for zero-width spaces and other invisible Unicode characters
-        return /[\u200B-\u200D\uFEFF\u00A0\u0000-\u001F\u007F-\u009F]/.test(
-          name
-        );
-      };
-
-      // Convert to ITokenSearchResult format and filter out tokens with funny characters
       const results: ITokenSearchResult[] = tokens
-        .filter(
-          (token: any) =>
-            typeof token?.contractAddress === 'string' &&
-            isAddress(token.contractAddress) &&
-            !hasInvisibleChars(String(token.name || ''))
-        ) // Filter malformed entries and names with invisible chars
         .map((token: any): ITokenSearchResult | null => {
           try {
-            // Check if it's an NFT based on type
-            const tokenType = token.type || 'ERC-20';
-            const isNft = ['ERC-721', 'ERC-1155'].includes(tokenType);
-            // Preserve exact owned quantities for import/MAX, without claiming
-            // precision that an unsafe numeric API response already lost.
-            const rawBalance =
-              tokenType === 'ERC-1155' &&
-              ((typeof token.balance === 'string' &&
-                /^\d+$/.test(token.balance)) ||
-                (Number.isSafeInteger(token.balance) && token.balance >= 0))
-                ? String(token.balance)
-                : undefined;
-
-            // For ERC-1155, include tokenId in the ID if available (Blockscout uses 'id' field)
-            const tokenId =
-              tokenType === 'ERC-1155' && token.id ? token.id : undefined;
-            const uniqueId = tokenId
-              ? `${token.contractAddress.toLowerCase()}-${
-                  activeNetwork.chainId
-                }-${tokenId}`
-              : `${token.contractAddress.toLowerCase()}-${
-                  activeNetwork.chainId
-                }`;
+            const tokenType = token?.type || 'ERC-20';
+            if (tokenType === 'ERC-721' || tokenType === 'ERC-1155') {
+              const nft = projectOwnedNftRow(token, activeNetwork.chainId);
+              if (nft) {
+                nft.symbol = cleanTokenSymbol(nft.symbol);
+                // Keep the extension's exact stored spelling once validated.
+                if (
+                  nft.rawBalance !== undefined &&
+                  typeof token.balance === 'string'
+                )
+                  nft.rawBalance = token.balance;
+              }
+              return nft;
+            }
+            if (
+              typeof token?.contractAddress !== 'string' ||
+              !isAddress(token.contractAddress) ||
+              hasInvisibleOwnedTokenName(String(token.name || ''))
+            )
+              return null;
 
             // Safely parse decimals: preserve 0, fallback to 18 only if missing/invalid
             const parsed = Number(token.decimals);
@@ -196,21 +177,17 @@ const EvmAssetsController = (): IEvmAssetsController => {
             }
 
             return {
-              id: uniqueId,
-              symbol: cleanTokenSymbol(
-                String(token.symbol || (isNft ? 'NFT' : 'Unknown'))
-              ),
-              name: String(
-                token.name || (isNft ? 'NFT Collection' : 'Unknown Token')
-              ),
+              id: `${token.contractAddress.toLowerCase()}-${
+                activeNetwork.chainId
+              }`,
+              symbol: cleanTokenSymbol(String(token.symbol || 'Unknown')),
+              name: String(token.name || 'Unknown Token'),
               contractAddress: token.contractAddress,
-              balance: isNft
-                ? Number(token.balance || 0)
-                : parseFloat(formatUnits(token.balance || '0', safeDecimals)),
-              decimals: isNft ? 0 : safeDecimals, // NFTs always have 0 decimals
+              balance: parseFloat(
+                formatUnits(token.balance || '0', safeDecimals)
+              ),
+              decimals: safeDecimals,
               tokenStandard: tokenType,
-              ...(tokenId && { tokenId }), // Include tokenId for ERC-1155
-              ...(rawBalance !== undefined && { rawBalance }),
             };
           } catch {
             // SYSCOIN: One malformed/malicious token must not hide the valid list.
@@ -278,13 +255,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
         contract.decimals(),
         contract.balanceOf(walletAddress),
       ]);
-      const safeDecimals = toSafeNumber(decimals, 18);
-
-      // Calculate the formatted balance using BigNumber to avoid precision loss
-      // formatUnits returns a string with full precision
-      const balanceString = formatUnits(balanceRaw, safeDecimals);
-      // Store full precision balance, UI will format for display
-      const balance = parseFloat(balanceString);
+      const precision = parseErc20Decimals(decimals);
+      const { balance, rawBalance } = formatErc20Balance(balanceRaw, precision);
 
       // Lightweight token type detection (optional, non-blocking)
       let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
@@ -318,8 +290,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
         symbol: cleanTokenSymbol(symbol).toUpperCase(),
         name: name || symbol, // Keep names intact - they can have spaces
         contractAddress,
-        decimals: safeDecimals,
-        balance, // Full precision balance
+        decimals: precision,
+        balance,
+        rawBalance,
         chainId: context.chainId,
         tokenStandard,
         isNft: false,
@@ -548,11 +521,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
         if (balance === undefined) return token;
-        const updated = {
-          ...token,
-          balance: parseFloat(balance),
-          rawBalance: parseUnits(balance, token.decimals).toString(),
-        };
+        const updated = { ...token, ...balance };
         onBalanceRead?.(updated);
         return updated;
       });
@@ -933,14 +902,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
         walletAddress,
         w3Provider
       );
-      const balance = parseFloat(
-        formatUnits(metadata.balance || '0', Number(metadata.decimals ?? 18))
+      const decimals = parseErc20Decimals(metadata.decimals ?? 18);
+      const { balance, rawBalance } = formatErc20Balance(
+        metadata.balance,
+        decimals
       );
 
       if (!contextIsCurrent(context.key)) return null;
       return {
         ...basicDetails,
-        balance: balance, // Keep full precision
+        decimals,
+        balance,
+        rawBalance,
       };
     } catch (error) {
       console.error(
@@ -984,6 +957,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
         const details = { ...cached.details };
         if (detailsWithBalance.balance === undefined) delete details.balance;
         else details.balance = detailsWithBalance.balance;
+        if (detailsWithBalance.rawBalance !== undefined) {
+          details.rawBalance = detailsWithBalance.rawBalance;
+          details.decimals = detailsWithBalance.decimals;
+        }
         return details;
       }
 
@@ -1010,15 +987,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
               ...detailsWithBalance, // Our wallet-specific data (symbol, decimals, balance, etc.)
               isVerified: true,
             };
+            // Only the wallet's on-chain read supplies atomic units.
+            if (detailsWithBalance.rawBalance === undefined)
+              delete enhancedDetails.rawBalance;
 
             console.log(
               `[EvmAssetsController] Enhanced ${detailsWithBalance.tokenStandard} token ${contractAddress} with CoinGecko market data`
             );
 
-            // Cache the enhanced data (excluding balance)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-            const { balance: _balanceToExclude, ...cacheableData } =
-              enhancedDetails;
+            // Both balance representations come from a fresh read.
+            const cacheableData = { ...enhancedDetails };
+            delete cacheableData.balance;
+            delete cacheableData.rawBalance;
             tokenDetailsCache.set(cacheKey, {
               details: cacheableData,
               timestamp: now,

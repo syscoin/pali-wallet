@@ -174,8 +174,10 @@ export async function openWalletStorage(
     let closing: Promise<void> | null = null;
     return Object.freeze({
       keyringStorage: owned.keyringStorage,
+      deviceUnlockEnrollment: owned.deviceUnlockEnrollment,
       notes: owned.notes,
       signedRecords: owned.signedRecords,
+      utxoSignedRecords: owned.utxoSignedRecords,
       authGuard: owned.authGuard,
       recovery: owned.recovery,
       removal: owned.removal,

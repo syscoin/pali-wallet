@@ -6,14 +6,21 @@ jest.mock('..', () => ({
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+// The registry tests isolate browser rule installation. The real owned RPC
+// verifier still checks Blockbook status and genesis before storage writes.
+jest.mock('./providers/walletHttpIdentity', () => ({
+  withWalletBackend: (_url: string, verify: () => Promise<unknown>) => verify(),
+}));
 jest.mock('@trezor/connect-webextension', () => ({
   __esModule: true,
   default: { on: jest.fn(), dispose: jest.fn().mockResolvedValue(undefined) },
   DEVICE_EVENT: 'device-event',
 }));
 
+import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network';
+
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
-import store, { persistCommittedWalletState, saveMainState } from 'state/store';
+import * as walletStore from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import {
@@ -27,6 +34,11 @@ import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import MainController from './MainController';
 
+const {
+  default: store,
+  persistCommittedWalletState,
+  saveMainState,
+} = walletStore;
 const originalChrome = global.chrome;
 const FAILURE = 'Synthetic network registry storage refusal';
 const source: INetwork = {
@@ -37,6 +49,25 @@ const source: INetwork = {
   currency: 'eth',
   url: 'https://source-network.synthetic.invalid',
 };
+const utxo = (slip44: number, currency: string, url: string): INetwork => ({
+  chainId: slip44,
+  kind: INetworkType.Syscoin,
+  slip44,
+  currency,
+  label: 'Added synthetic network',
+  url,
+  utxoBackendChain: 'main',
+});
+const ltc = utxo(2, 'ltc', 'https://new-network.synthetic.invalid');
+const dgb = utxo(20, 'dgb', 'https://queued-network.synthetic.invalid');
+const vtc = utxo(28, 'vtc', 'https://removed-network.synthetic.invalid');
+const fixtureEndpoints = new Map([
+  [ltc.url, ltc],
+  ['https://edited-network.synthetic.invalid', ltc],
+  ['https://refused-edit.synthetic.invalid', ltc],
+  [dgb.url, dgb],
+  [vtc.url, vtc],
+]);
 const clone = <T>(value: T): T => structuredClone(value);
 const resultOf = async (operation: Promise<unknown>) =>
   operation.then(
@@ -47,14 +78,17 @@ const resultOf = async (operation: Promise<unknown>) =>
 describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
   '%s custom-network registry persistence',
   (family) => {
-    const target: INetwork = {
-      chainId: 31337,
-      kind: family,
-      slip44: family === INetworkType.Ethereum ? 60 : 111,
-      label: 'Added synthetic network',
-      currency: 'test',
-      url: 'https://new-network.synthetic.invalid',
-    };
+    const target: INetwork =
+      family === INetworkType.Syscoin
+        ? ltc
+        : {
+            chainId: 31337,
+            kind: family,
+            slip44: 60,
+            label: 'Added synthetic network',
+            currency: 'test',
+            url: 'https://new-network.synthetic.invalid',
+          };
     let wallet: any;
     let records: Record<string, any>;
     let refuseNextCommit: boolean;
@@ -80,6 +114,18 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
           } else original(items, callback);
         });
       return { started, release: () => release() };
+    };
+    const nextRegistryAdmission = () => {
+      const original = walletStore.persistNetworkRegistry;
+      return new Promise<void>((admitted) => {
+        jest
+          .spyOn(walletStore, 'persistNetworkRegistry')
+          .mockImplementationOnce((...args) => {
+            const write = original(...args);
+            admitted();
+            return write;
+          });
+      });
     };
 
     beforeEach(async () => {
@@ -136,7 +182,27 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       wallet.walletStateGeneration = 0;
       wallet.walletSessionGeneration = 0;
       wallet.isRemovingNetwork = false;
-      wallet.keyrings = new Map();
+      wallet.keyrings = new Map([[source.slip44, { isUnlocked: () => true }]]);
+      jest
+        .spyOn(globalThis, 'fetch')
+        .mockImplementation(async (input, init) => {
+          const url = new URL(String(input));
+          const registration = fixtureEndpoints.get(url.origin);
+          const coin = registration && findUtxoCoinByRegistration(registration);
+          if (!coin || init?.method !== 'GET' || !init.signal)
+            throw new Error(`Unexpected fixture network request: ${url.href}`);
+          if (url.pathname === '/api/v2/')
+            return Response.json({
+              blockbook: {
+                network: coin.coinShortcut,
+                decimals: coin.decimals,
+              },
+              backend: { chain: 'main' },
+            });
+          if (url.pathname === '/api/v2/block-index/0')
+            return Response.json({ blockHash: coin.hashGenesisBlock });
+          throw new Error(`Unexpected fixture network request: ${url.href}`);
+        });
       wallet.resetAutoLockTimer = jest.fn();
       wallet.evmAssetsController = {
         detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
@@ -247,15 +313,22 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       await held.started;
       expect(liveTarget()).toBeUndefined();
       expect(await savedTarget()).toBeUndefined();
-      const other = { ...target, chainId: 31338, slip44: 222 };
+      const other =
+        family === INetworkType.Syscoin ? dgb : { ...target, chainId: 31338 };
+      const admitted = nextRegistryAdmission();
       const second = wallet.addCustomRpc(other);
+      await admitted;
       store.dispatch(setHasEthProperty(false));
       const ordinarySave = saveMainState();
       held.release();
       await Promise.all([first, second, ordinarySave]);
       const state = await loadState();
-      expect(state.vaultGlobal.networks[family][31337]).toEqual(liveTarget());
-      expect(state.vaultGlobal.networks[family][31338]).toMatchObject(other);
+      expect(state.vaultGlobal.networks[family][target.chainId]).toEqual(
+        liveTarget()
+      );
+      expect(state.vaultGlobal.networks[family][other.chainId]).toMatchObject(
+        other
+      );
       expect(state.vaultGlobal.hasEthProperty).toBe(false);
       expect(store.getState().vault.activeNetwork).toEqual(source);
     });
@@ -264,10 +337,12 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       const held = holdNextWrite();
       const first = wallet.addCustomRpc(target);
       await held.started;
+      const admitted = nextRegistryAdmission();
       const duplicate = wallet.addCustomRpc(target);
       const rejected = expect(duplicate).rejects.toThrow(
         'network already exists'
       );
+      await admitted;
       held.release();
       await first;
       await rejected;
@@ -284,8 +359,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       const expected = networkRegistrationFingerprint(liveTarget());
       const first = wallet.editCustomRpc(firstEdit, expected);
       await held.started;
+      const admitted = nextRegistryAdmission();
       const second = wallet.editCustomRpc(secondEdit, expected);
       const rejected = expect(second).rejects.toThrow('Network changed');
+      await admitted;
       expect(liveTarget().label).toBe(target.label);
       held.release();
       await first;
@@ -345,12 +422,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
     });
 
     it('yields to actual concurrent network removal and permits a fresh retry', async () => {
-      const removable = {
-        ...target,
-        kind: INetworkType.Syscoin,
-        chainId: 31339,
-        slip44: 223,
-      };
+      const removable = vtc;
       await wallet.addCustomRpc(removable);
       writeCount = 0;
       const held = holdNextWrite();
@@ -375,7 +447,7 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       expect(liveTarget()).toBeUndefined();
       expect(await savedTarget()).toBeUndefined();
       expect(
-        store.getState().vaultGlobal.networks.syscoin[31339]
+        store.getState().vaultGlobal.networks.syscoin[removable.chainId]
       ).toBeUndefined();
       expect(wallet.isRemovingNetwork).toBe(false);
       await expect(wallet.addCustomRpc(target)).resolves.toMatchObject(target);

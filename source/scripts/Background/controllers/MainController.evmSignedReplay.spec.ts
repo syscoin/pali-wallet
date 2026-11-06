@@ -18,6 +18,7 @@ jest.mock('state/store', () => ({
 
 import {
   captureEvmSubmission,
+  evmSubmissionFailure,
   submitSignedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { webcrypto } from 'crypto';
@@ -57,7 +58,7 @@ let mockState: any;
 let wallet: any;
 let keyring: any;
 let records: any;
-let provider: { send: jest.Mock };
+let provider: { _send: jest.Mock; send: jest.Mock };
 let raw: string;
 let entry: any;
 
@@ -116,10 +117,18 @@ beforeEach(() => {
   records = {
     readExact: jest.fn(async () => entry),
     readPage: jest.fn(async () => ({ entries: [entry], nextCursor: null })),
+    withReplayAdmission: jest.fn(
+      async (_session, _target, admit, _predecessorNonce, preflight) => {
+        preflight?.assertCurrent();
+        await preflight?.run();
+        return { result: admit([]) };
+      }
+    ),
     append: jest.fn(async () => undefined),
     updatePhase: jest.fn(async () => undefined),
   };
   provider = {
+    _send: jest.fn(async ({ id }) => [{ jsonrpc: '2.0', id, result: '0x7b' }]),
     send: jest.fn(async (method: string, params: unknown[]) => {
       if (method === 'eth_chainId') return '0x7b';
       if (method === 'eth_getTransactionReceipt') return null;
@@ -264,7 +273,8 @@ it('normal shared SDK submission rejects a network request epoch change after pe
     raw,
     dispatch,
     boundary,
-    () => undefined
+    () => undefined,
+    Transaction.from(raw).unsignedSerialized
   );
   const rejected = expect(pending).rejects.toThrow();
   await entered.promise;
@@ -274,6 +284,181 @@ it('normal shared SDK submission rejects a network request epoch change after pe
   expect(records.append).toHaveBeenCalledTimes(1);
   expect(dispatch).not.toHaveBeenCalled();
 });
+
+it.each([false, true])(
+  'checks a direct empty self fee replacement only when self=%s',
+  async (self) => {
+    const replacement = self
+      ? await signer.signTransaction({
+          type: 2,
+          chainId: 123,
+          nonce: 0,
+          to: signer.address,
+          value: 0,
+          gasLimit: 42000,
+          maxFeePerGas: 4,
+          maxPriorityFeePerGas: 2,
+        })
+      : raw;
+    const speedUp = {
+      ...context,
+      operation: 'speed-up' as const,
+      originalHash: entry.hash,
+    };
+    const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+    const boundary = captureEvmSubmission(
+      speedUp,
+      () => undefined,
+      () => lifecycle
+    );
+    provider.send.mockImplementation(async (method) => {
+      if (method === 'eth_getTransactionCount') return '0x0';
+      if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
+      throw Error('Unexpected RPC');
+    });
+    const dispatch = jest.fn(async () => entry.hash);
+    const submit = submitSignedEvmTransaction(
+      replacement,
+      dispatch,
+      boundary,
+      undefined,
+      Transaction.from(replacement).unsignedSerialized
+    );
+    if (self) {
+      await expect(submit).rejects.toThrow(
+        'Unable to verify a code-free cancellation payer'
+      );
+      expect(provider._send).toHaveBeenCalledTimes(1);
+      expect(dispatch).not.toHaveBeenCalled();
+    } else {
+      await expect(submit).resolves.toBe(entry.hash);
+      expect(provider._send).not.toHaveBeenCalled();
+      expect(provider.send).not.toHaveBeenCalled();
+      expect(dispatch).toHaveBeenCalledTimes(1);
+    }
+  }
+);
+
+it.each([1, 2])(
+  'preserves a valid access list on a ready type %s self fee replacement',
+  async (type) => {
+    const replacement = await signer.signTransaction({
+      type,
+      chainId: 123,
+      nonce: 0,
+      to: signer.address,
+      value: 0,
+      gasLimit: 42000,
+      ...(type === 1
+        ? { gasPrice: 4 }
+        : { maxFeePerGas: 4, maxPriorityFeePerGas: 2 }),
+      accessList: [
+        { address: signer.address, storageKeys: ['0x' + '01'.repeat(32)] },
+      ],
+    });
+    const speedUp = {
+      ...context,
+      operation: 'speed-up' as const,
+      originalHash: entry.hash,
+    };
+    const lifecycle = wallet.captureEvmSignedSubmission(keyring, speedUp);
+    const boundary = captureEvmSubmission(
+      speedUp,
+      () => undefined,
+      () => lifecycle
+    );
+    provider.send.mockImplementation(async (method) => {
+      if (method === 'eth_getTransactionCount') return '0x0';
+      if (method === 'eth_getCode') return '0x';
+      throw Error('Unexpected RPC');
+    });
+    const hash = Transaction.from(replacement).hash;
+    const dispatch = jest.fn(async () => hash);
+    await expect(
+      submitSignedEvmTransaction(
+        replacement,
+        dispatch,
+        boundary,
+        undefined,
+        Transaction.from(replacement).unsignedSerialized
+      )
+    ).resolves.toBe(hash);
+    expect(dispatch).toHaveBeenCalledWith(replacement);
+    expect(provider._send).toHaveBeenCalledTimes(1);
+  }
+);
+
+it.each(['latest', 'pending', 'consumed', 'ready'])(
+  'handles %s after durable cancellation persistence through the installed SDK',
+  async (blocked) => {
+    const cancelContext = {
+      ...context,
+      operation: 'cancel' as const,
+      originalHash: entry.hash,
+    };
+    const cancellation = await signer.signTransaction({
+      type: 2,
+      chainId: 123,
+      nonce: 0,
+      to: signer.address,
+      value: 0,
+      gasLimit: 42000,
+      maxFeePerGas: 4,
+      maxPriorityFeePerGas: 2,
+    });
+    const lifecycle = wallet.captureEvmSignedSubmission(keyring, cancelContext);
+    const boundary = captureEvmSubmission(
+      cancelContext,
+      () => undefined,
+      () => lifecycle
+    );
+    const entered = deferred(),
+      released = deferred();
+    records.append.mockImplementationOnce(async () => {
+      entered.resolve();
+      await released.promise;
+    });
+    provider.send.mockImplementation(async (method, [, tag]) => {
+      if (method === 'eth_getTransactionCount')
+        return blocked === 'consumed' ? '0x1' : '0x0';
+      expect(method).toBe('eth_getCode');
+      return tag === blocked ? `0xef0100${'33'.repeat(20)}` : '0x';
+    });
+    const dispatch = jest.fn(async () => entry.hash);
+    const result = submitSignedEvmTransaction(
+      cancellation,
+      dispatch,
+      boundary,
+      undefined,
+      Transaction.from(cancellation).unsignedSerialized
+    ).catch((error) => error);
+    await entered.promise;
+    expect(provider.send).not.toHaveBeenCalled();
+    released.resolve();
+    const outcome = await result;
+    if (blocked === 'ready') {
+      expect(outcome).toBe(entry.hash);
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(dispatch).toHaveBeenCalledWith(cancellation);
+    } else {
+      expect(outcome).toBeInstanceOf(Error);
+      expect(evmSubmissionFailure(outcome)).toEqual({
+        transactionNotBroadcast: true,
+        signedTransactionHash: Transaction.from(cancellation).hash,
+      });
+      expect(dispatch).not.toHaveBeenCalled();
+    }
+    expect(provider.send.mock.calls).toEqual([
+      ['eth_getTransactionCount', [signer.address, 'latest']],
+      ...(blocked === 'consumed'
+        ? []
+        : [
+            ['eth_getCode', [signer.address, 'latest']],
+            ['eth_getCode', [signer.address, 'pending']],
+          ]),
+    ]);
+  }
+);
 it('existing setActiveNetwork request epochs revoke a captured lifecycle even before a network value changes', async () => {
   const lifecycle = wallet.captureEvmSignedSubmission(keyring, context),
     navigation = getWalletNavigationScope();
@@ -309,4 +494,223 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
       ([method]) => method === 'eth_sendRawTransaction'
     )
   ).toEqual([['eth_sendRawTransaction', [raw]]]);
+  expect(
+    provider.send.mock.calls.some(([method]) => method === 'eth_getCode')
+  ).toBe(false);
+  expect(provider._send).toHaveBeenCalledTimes(1);
+});
+
+it('refuses the exact provider send when final shared replay admission fails', async () => {
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  records.withReplayAdmission.mockResolvedValueOnce(null);
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).rejects.toThrow('CONTEXT_CHANGED');
+  expect(
+    provider.send.mock.calls.some(
+      ([method]) => method === 'eth_sendRawTransaction'
+    )
+  ).toBe(false);
+});
+
+async function retainCancellation() {
+  const cancellation = await signer.signTransaction({
+    type: 2,
+    chainId: 123,
+    nonce: 1,
+    to: signer.address,
+    value: 0,
+    gasLimit: 42000,
+    maxFeePerGas: 4,
+    maxPriorityFeePerGas: 2,
+  });
+  entry = {
+    ...entry,
+    originalHash: entry.hash,
+    hash: Transaction.from(cancellation).hash,
+    nonce: 1,
+    operation: 'cancel',
+    rawTransaction: cancellation,
+  };
+  records.readExact.mockResolvedValue(entry);
+  return cancellation;
+}
+
+it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
+  'handles %s only for authenticated cancellation replay',
+  async (blocked) => {
+    const cancellation = await retainCancellation();
+    let nonceReads = 0;
+    const changedNonce = blocked === 'queued' || blocked === 'consumed';
+    provider.send.mockImplementation(async (method, params) => {
+      if (method === 'eth_chainId') return '0x7b';
+      if (method === 'eth_getTransactionReceipt') return null;
+      if (method === 'eth_getTransactionCount') {
+        if (++nonceReads < 3) return '0x1';
+        return blocked === 'queued'
+          ? '0x0'
+          : blocked === 'consumed'
+          ? '0x2'
+          : '0x1';
+      }
+      if (method === 'eth_getCode')
+        return params[1] === blocked ? '0xef0100' + '33'.repeat(20) : '0x';
+      if (method === 'eth_sendRawTransaction') {
+        expect(params).toEqual([cancellation]);
+        return entry.hash;
+      }
+      throw Error('Unexpected RPC');
+    });
+    const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+    expect(prepared.status).toBe('review');
+    expect(
+      provider.send.mock.calls.some(([method]) => method === 'eth_getCode')
+    ).toBe(false);
+    const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+    if (blocked === 'ready')
+      await expect(confirmation).resolves.toEqual({
+        status: 'submitted',
+        hash: entry.hash,
+      });
+    else
+      await expect(confirmation).rejects.toThrow(
+        changedNonce
+          ? 'Unable to verify a ready cancellation nonce'
+          : 'Unable to verify a code-free cancellation payer'
+      );
+    expect(provider._send).toHaveBeenCalledTimes(1);
+    expect(nonceReads).toBe(3);
+    expect(
+      provider.send.mock.calls.filter(([method]) => method === 'eth_getCode')
+    ).toEqual(
+      changedNonce
+        ? []
+        : [
+            ['eth_getCode', [signer.address, 'latest']],
+            ['eth_getCode', [signer.address, 'pending']],
+          ]
+    );
+    expect(
+      provider.send.mock.calls.filter(
+        ([method]) => method === 'eth_sendRawTransaction'
+      )
+    ).toHaveLength(blocked === 'ready' ? 1 : 0);
+  }
+);
+
+it.each(['send', 'cancel'] as const)(
+  'bypasses the installed provider chain cache after final journal admission for %s replay',
+  async (operation) => {
+    const { CustomJsonRpcProvider } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/providers'
+    );
+    if (operation === 'cancel') await retainCancellation();
+    const reached = deferred();
+    const release = deferred();
+    const admit = records.withReplayAdmission.getMockImplementation();
+
+    const abort = new AbortController();
+    const live = new CustomJsonRpcProvider(
+      abort.signal,
+      context.network.url,
+      context.network.chainId
+    );
+    keyring.ethereumTransaction.web3Provider = live;
+    const wire: Array<{ method: string; params: unknown[] }> = [];
+    let chain = '0x7b';
+    jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+      expect(url).toBe(context.network.url);
+      expect(init?.signal).toBe(abort.signal);
+      const { id, method, params } = JSON.parse(init!.body as string);
+      wire.push({ method, params });
+      const replies = new Map<string, unknown>([
+        ['eth_chainId', chain],
+        ['eth_getTransactionReceipt', null],
+        ['eth_getTransactionCount', `0x${entry.nonce.toString(16)}`],
+        ['eth_getCode', '0x'],
+        ['eth_sendRawTransaction', entry.hash],
+      ]);
+      expect(replies.has(method)).toBe(true);
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ jsonrpc: '2.0', id, result: replies.get(method) }),
+      } as Response;
+    });
+    try {
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+      expect(prepared.status).toBe('review');
+      records.withReplayAdmission.mockImplementationOnce(async (...args) => {
+        reached.resolve();
+        await release.promise;
+        return admit(...args);
+      });
+      const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+      await Promise.race([reached.promise, confirmation]);
+      const before = wire.length;
+      chain = '0x1';
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      expect(wire).toHaveLength(before);
+      release.resolve();
+      await expect(confirmation).rejects.toThrow('CONTEXT_CHANGED');
+      expect(wire.slice(before)).toEqual([
+        { method: 'eth_chainId', params: [] },
+      ]);
+    } finally {
+      release.resolve();
+      abort.abort();
+      live.destroy();
+    }
+  }
+);
+
+it('does not POST when an ordinary replay expires during the fresh chain check', async () => {
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  const reached = deferred(),
+    response = deferred<unknown[]>();
+  let requestId: number | undefined;
+  provider._send.mockImplementationOnce(async ({ id }) => {
+    requestId = id;
+    reached.resolve();
+    return response.promise;
+  });
+  const replay = wallet.retainedEvmReplay;
+  const now = replay.now();
+  const confirmation = wallet.confirmEvmSignedReplay(prepared.review.id);
+  expect(
+    await Promise.race([
+      reached.promise.then(() => 'preflight'),
+      confirmation.then(() => 'sent'),
+    ])
+  ).toBe('preflight');
+  jest.spyOn(replay, 'now').mockReturnValue(now + 90_001);
+  response.resolve([{ jsonrpc: '2.0', id: requestId, result: '0x7b' }]);
+  await expect(confirmation).rejects.toThrow('EXPIRED');
+  expect(
+    provider.send.mock.calls.some(
+      ([method]) => method === 'eth_sendRawTransaction'
+    )
+  ).toBe(false);
+  expect(records.updatePhase).not.toHaveBeenCalled();
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).rejects.toThrow('EXPIRED');
+});
+
+it('refuses cancellation metadata on a signed payment before any code read or send', async () => {
+  entry.operation = 'cancel';
+  const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+  expect(prepared.status).toBe('review');
+  await expect(
+    wallet.confirmEvmSignedReplay(prepared.review.id)
+  ).rejects.toThrow('INVALID_RESPONSE');
+  expect(
+    provider.send.mock.calls.some(
+      ([method]) =>
+        method === 'eth_getCode' || method === 'eth_sendRawTransaction'
+    )
+  ).toBe(false);
 });

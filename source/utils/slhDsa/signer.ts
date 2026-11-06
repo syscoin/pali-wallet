@@ -21,6 +21,7 @@ import {
 } from './state';
 import type {
   SLHDSAProvisionedState,
+  SLHDSADispatchApproval,
   SLHDSASignActionHashParams,
 } from './types';
 
@@ -229,10 +230,12 @@ const withSigningQueue = async <T>(
 
 const signSLHDSAActionHashLocalUnlocked = async (
   params: SLHDSASignActionHashParams,
-  expectedGeneration: number
+  expectedGeneration: number,
+  approval?: SLHDSADispatchApproval
 ) => {
   const assertSession = () => assertSLHDSASessionGeneration(expectedGeneration);
   assertSession();
+  approval?.assertCurrent();
   if (params.parameterSet !== SLH_DSA_PARAMETER_SET) {
     throw new Error(`Unsupported SLH-DSA parameter set ${params.parameterSet}`);
   }
@@ -291,7 +294,8 @@ const signSLHDSAActionHashLocalUnlocked = async (
       ...params,
       secretKeyHex: state.secretKeyHex,
     },
-    assertSession
+    assertSession,
+    ...(approval ? [approval] : [])
   );
   assertSession();
   validateSignature(signature);
@@ -314,10 +318,11 @@ const signSLHDSAActionHashLocalUnlocked = async (
 
 export const signSLHDSAActionHashLocal = async (
   params: SLHDSASignActionHashParams,
-  expectedGeneration = sessionGeneration
+  expectedGeneration = sessionGeneration,
+  approval?: SLHDSADispatchApproval
 ) => {
   const request = Object.freeze({ ...params });
   return withSigningQueue(request.keyId, () =>
-    signSLHDSAActionHashLocalUnlocked(request, expectedGeneration)
+    signSLHDSAActionHashLocalUnlocked(request, expectedGeneration, approval)
   );
 };

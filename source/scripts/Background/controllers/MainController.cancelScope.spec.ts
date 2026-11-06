@@ -37,7 +37,9 @@ describe('cancellation controller account and network admission', () => {
     walletScope: getWalletNavigationScope(),
   });
   const run = (context: any = expected(), signer = PAYER) =>
-    wallet.cancelEvmTransaction(HASH, true, 7, signer, context);
+    wallet.cancelEvmTransaction(HASH, true, 7, signer, context, {
+      approvedMaximumFee: '504000',
+    });
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -107,7 +109,14 @@ describe('cancellation controller account and network admission', () => {
     });
     keyring = {
       setVaultStateGetter: jest.fn((getter) => (readVault = getter)),
-      ethereumTransaction: { cancelSentTransaction: cancel, web3Provider: {} },
+      ethereumTransaction: {
+        cancelSentTransaction: cancel,
+        web3Provider: {
+          send: jest.fn(async (method) =>
+            method === 'eth_getTransactionCount' ? '0x7' : '0x'
+          ),
+        },
+      },
     };
     wallet = Object.create(MainController.prototype);
     wallet.isCreatingWallet = false;
@@ -125,7 +134,7 @@ describe('cancellation controller account and network admission', () => {
       validateOriginal: expect.any(Function),
       targetAccount: undefined,
       previewOnly: false,
-      approvedMaximumFee: undefined,
+      approvedMaximumFee: '504000',
     });
     expect(keyring.setVaultStateGetter).not.toHaveBeenCalled();
   });

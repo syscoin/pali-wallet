@@ -1,4 +1,6 @@
+import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
 
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
@@ -37,15 +39,25 @@ export interface SqlConnection {
   closeAsync(): Promise<void>;
 }
 
+/** Internal encrypted pair snapshot for the SDK device-unlock seam. */
+export type DeviceUnlockVaultPair = Readonly<{
+  vault: string;
+  keys: Readonly<{ salt: string }>;
+  pairFingerprint: string;
+}>;
+
 export interface KeyringStoragePort {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   deleteItem(key: string): Promise<void>;
-  createManyIfAbsent(items: Record<string, unknown>): Promise<boolean>;
+  createManyIfAbsent(items: Record<string, unknown>, assertCurrent?: () => void): Promise<boolean>;
+  /** Read one bounded snapshot of the current encrypted vault and salt. */
+  readDeviceUnlockVaultPair?(): Promise<DeviceUnlockVaultPair | null>;
   /** Atomically replace an exact snapshot. Optional cleanup keys must equal their
-   * snapshots (undefined requires absence); matching present rows are deleted. */
+   * snapshots (undefined requires absence); matching present rows are deleted.
+   * A supplied synchronous owner guard must still pass immediately before COMMIT. */
   compareAndSet(key: string, expected: unknown, value: unknown,
-    removeIfEqual?: Readonly<Record<string, unknown>>): Promise<boolean>;
+    removeIfEqual?: Readonly<Record<string, unknown>>, assertCurrent?: () => void): Promise<boolean>;
 }
 
 export type WalletStoredState = Readonly<
@@ -64,7 +76,7 @@ export type WalletIdentityRead = Readonly<{
 export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
 export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
-/** Private, byte-preserving host snapshot; never a screen or public account DTO. */
+/** Private, byte-preserving wallet snapshot. The device enrollment value is opaque SQL hex. */
 export type RecoveryStorageSnapshot = Readonly<{
   identity: WalletIdentityRead | null;
   state: WalletStoredState;
@@ -86,6 +98,8 @@ export type WalletRemovalResult = Readonly<{
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
+  readonly utxoSignedRecords?: UtxoRecordStorage;
+  readonly deviceUnlockEnrollment?: DeviceUnlockEnrollmentPort;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{
     read(): Promise<readonly NoteDomainRow[]>;

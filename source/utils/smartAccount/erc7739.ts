@@ -1,8 +1,11 @@
 import {
   _TypedDataEncoder,
+  arrayify,
   defaultAbiCoder,
   getAddress,
+  hashMessage,
   hexConcat,
+  isHexString,
   keccak256,
   toBeHex,
   toUtf8Bytes,
@@ -78,6 +81,10 @@ export const getPaliErc7739DomainSeparator = (params: {
     verifyingContract: getAddress(params.accountAddress),
     version: PALI_ERC7739_DOMAIN_VERSION,
   });
+
+/** Apply EIP-191 to the same decoded bytes used by the personal-sign review. */
+export const hashPersonalSignMessage = (message: string): string =>
+  hashMessage(isHexString(message) ? arrayify(message) : message);
 
 /** Hash signed by the active validator for personal_sign / eth_sign. */
 export const getPaliErc7739PersonalSignHash = (params: {

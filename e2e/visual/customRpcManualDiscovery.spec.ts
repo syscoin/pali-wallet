@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
+import { blockbookRegistrationProof } from '../harness/blockbookRegistrationFixture';
 import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
@@ -58,6 +59,7 @@ const publicNetworkState = (page: Page, chainId: number) =>
             label: network.label,
             slip44: network.slip44,
             url: network.url,
+            utxoBackendChain: network.utxoBackendChain,
           }
         : null;
     const ref = state.vault.activeAccount;
@@ -87,12 +89,17 @@ for (const scenario of scenarios) {
       .update(fs.readFileSync(info.file))
       .digest('hex');
     const rpc = `https://${scenario.coin.toLowerCase()}-manual-discovery.synthetic.invalid`;
-    const endpoint = `${rpc}/api/v2`;
+    const proof = new Map(
+      [...blockbookRegistrationProof(scenario.coin)].map(([pathname, body]) => [
+        `${rpc}${pathname}`,
+        JSON.stringify(body),
+      ])
+    );
+    const readProof = (step: string) =>
+      [...proof.keys()].every((endpoint) =>
+        reads.some((read) => read.phase === step && read.url === endpoint)
+      );
     const label = scenario.typedLabel || scenario.coin;
-    const wire = JSON.stringify({
-      blockbook: { network: scenario.coin, coin: scenario.coin },
-      backend: { chain: 'main' },
-    });
     const previous = { ...E2E_CONFIG };
     let server: Awaited<ReturnType<typeof startUtxoFixtureServer>> | undefined;
     let wallet: PaliWallet | undefined;
@@ -155,7 +162,8 @@ for (const scenario of scenarios) {
       // Pali's real controller and installed SDK parse this Blockbook response.
       await wallet.context.route(`${rpc}/**`, async (route) => {
         const request = route.request();
-        if (request.method() !== 'GET' || request.url() !== endpoint) {
+        const body = proof.get(request.url());
+        if (request.method() !== 'GET' || body === undefined) {
           unexpectedTargetRequests.push({
             method: request.method(),
             url: request.url(),
@@ -167,7 +175,7 @@ for (const scenario of scenarios) {
           status: 200,
           contentType: 'application/json',
           headers: { 'access-control-allow-origin': '*' },
-          body: wire,
+          body,
         });
       });
       await wallet.context.route(
@@ -224,6 +232,7 @@ for (const scenario of scenarios) {
               label: 'Bitcoin',
               slip44: 0,
               url: 'https://btc1.trezor.io/',
+              utxoBackendChain: 'main',
             });
             expect(onboarded.stored).toEqual(onboarded.live);
             await trigger.click();
@@ -316,9 +325,7 @@ for (const scenario of scenarios) {
           if (scenario.typedLabel) await labelInput.fill(scenario.typedLabel);
           await rpcInput.fill(rpc);
           await rpcInput.press('Tab');
-          await expect
-            .poll(() => reads.some((read) => read.phase === phase))
-            .toBe(true);
+          await expect.poll(() => readProof(phase)).toBe(true);
           // No extra input interaction or rerender is needed to display the
           // asynchronously populated label and a legitimate numeric zero ID.
           await expect(labelInput).toHaveValue(label);
@@ -352,6 +359,7 @@ for (const scenario of scenarios) {
           label,
           slip44: 0,
           url: rpc,
+          utxoBackendChain: 'main',
         };
         await wallet.step(
           'save the detected Bitcoin registration through the real controller',
@@ -364,6 +372,7 @@ for (const scenario of scenarios) {
             await expect
               .poll(() => publicNetworkState(page, scenario.chainId))
               .toEqual({ ...before, live: expected, stored: expected });
+            expect(readProof(phase)).toBe(true);
             observations.saved = await publicNetworkState(
               page,
               scenario.chainId
@@ -416,7 +425,7 @@ for (const scenario of scenarios) {
       }
       expect(reads.length).toBeGreaterThan(0);
       expect(
-        reads.every((read) => read.method === 'GET' && read.url === endpoint)
+        reads.every((read) => read.method === 'GET' && proof.has(read.url))
       ).toBe(true);
       expect(unexpectedTargetRequests).toEqual([]);
       expect(attemptedWrites).toEqual([]);
@@ -436,7 +445,7 @@ for (const scenario of scenarios) {
             runtime,
             sourceSha256,
             blockbookWireSha256: createHash('sha256')
-              .update(wire)
+              .update(JSON.stringify([...proof]))
               .digest('hex'),
             observations,
             reads,

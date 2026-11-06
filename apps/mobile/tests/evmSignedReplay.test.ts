@@ -20,8 +20,17 @@ async function fixture() {
   const receipts = new Map<string, any>(),
     dispatched: string[] = [],
     calls: string[] = [];
+  let beforeObservation: (() => Promise<void>) | undefined,
+    beforeAdmission: (() => Promise<void>) | undefined,
+    afterAdmission: ((admission: Promise<string>) => Promise<string>) | undefined,
+    beforeRecordsRead: (() => Promise<void>) | undefined,
+    beforeSend: (() => void) | undefined,
+    beforeAck: (() => Promise<void>) | undefined,
+    ordinaryPreflight: () => Promise<void> = async () => undefined,
+    cancellationCheck: (() => Promise<void>) | undefined = async () => undefined;
   const port = {
     async read() {
+      await beforeRecordsRead?.();
       return raw;
     },
     async compareAndSet(
@@ -53,8 +62,10 @@ async function fixture() {
     calls.push(method);
     if (method === 'eth_chainId') return '0x74cbb1';
     if (method === 'eth_getTransactionCount') return '0x' + nonce.toString(16);
-    if (method === 'eth_getTransactionReceipt')
+    if (method === 'eth_getTransactionReceipt') {
+      await beforeObservation?.();
       return receipts.get(params[0] as string) ?? null;
+    }
     if (method === 'eth_getBlockByNumber')
       return { number: '0xa', hash: blockHash, gasLimit: '0x1c9c380' };
     throw Error(method);
@@ -68,10 +79,20 @@ async function fixture() {
         assertCurrent: session.assertCurrent,
         observe: (expected) =>
           observeEvmTransaction(expected, read, session.assertCurrent),
-        async dispatch(bytes) {
-          dispatched.push(bytes);
-          if (lost) throw Error('lost');
-          return Transaction.from(bytes).hash!;
+        async dispatch(bytes, admit, context) {
+          assert(Object.isFrozen(context));
+          assert.equal(context.hash, Transaction.from(bytes).hash);
+          await beforeAdmission?.();
+          const admission = admit(() => {
+            beforeSend?.();
+            dispatched.push(bytes);
+            return (async () => {
+              await beforeAck?.();
+              if (lost) throw Error('lost');
+              return Transaction.from(bytes).hash!;
+            })();
+          }, context.operation === 'cancel' || context.requiresPayerCheck ? cancellationCheck! : ordinaryPreflight);
+          return afterAdmission?.(admission) ?? admission;
         },
       }),
       () => clock,
@@ -81,18 +102,26 @@ async function fixture() {
     n: number,
     type = 2,
     to: string | null = recipient,
-    data = '0x'
+    data = '0x',
+    options: {
+      operation?: 'cancel' | 'speed-up';
+      originalHash?: string;
+      fee?: number;
+      value?: number;
+      chainId?: number;
+    } = {}
   ) {
+    const { operation = 'send', originalHash, fee = 3, chainId = 7654321 } = options;
     const bytes = await wallet.signTransaction({
       type,
-      chainId: 7654321,
+      chainId,
       nonce: n,
-      to,
-      value: 1,
-      gasLimit: 100000,
+      to: operation === 'cancel' ? wallet.address : to,
+      value: options.value ?? (operation === 'cancel' ? 0 : 1),
+      gasLimit: operation === 'cancel' ? 42000 : 100000,
       ...(type === 2
-        ? { maxFeePerGas: 3, maxPriorityFeePerGas: 1 }
-        : { gasPrice: 3 }),
+        ? { maxFeePerGas: fee, maxPriorityFeePerGas: 1 }
+        : { gasPrice: fee }),
       data,
       ...(type === 1
         ? {
@@ -107,10 +136,10 @@ async function fixture() {
       rawTransaction: bytes,
       hash: tx.hash!,
       from: wallet.address,
-      chainId: '7654321',
+      chainId: String(chainId),
       nonce: n,
       type,
-      context: { ...context, operation: 'send' },
+      context: { ...context, network: { ...context.network, chainId }, operation, ...(originalHash ? { originalHash } : {}) },
     });
     return tx;
   }
@@ -125,11 +154,38 @@ async function fixture() {
     read,
     context,
     bytes: () => raw,
+    beforeObservation(callback: () => Promise<void>) {
+      beforeObservation = callback;
+    },
+    beforeAdmission(callback: () => Promise<void>) {
+      beforeAdmission = callback;
+    },
+    afterAdmission(callback: (admission: Promise<string>) => Promise<string>) {
+      afterAdmission = callback;
+    },
+    beforeRecordsRead(callback: () => Promise<void>) {
+      beforeRecordsRead = callback;
+    },
+    beforeOrdinaryReplay(callback: () => Promise<void>) {
+      ordinaryPreflight = callback;
+    },
+    beforeCancellation(callback: (() => Promise<void>) | undefined) {
+      cancellationCheck = callback;
+    },
+    beforeSend(callback: () => void) {
+      beforeSend = callback;
+    },
+    beforeAck(callback: () => Promise<void>) {
+      beforeAck = callback;
+    },
     nonce(n: number) {
       nonce = n;
     },
     expire() {
       clock += 90001;
+    },
+    advance(ms: number) {
+      clock += ms;
     },
     revoke() {
       revoked = true;
@@ -139,6 +195,277 @@ async function fixture() {
     },
   };
 }
+
+function hold() {
+  let enter!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => (enter = resolve)),
+    wait = new Promise<void>((resolve) => (release = resolve));
+  return { started, release, run: () => { enter(); return wait; } };
+}
+
+test('a saved cancellation suppresses every older payment variant for its nonce, but preserves canonical history', async () => {
+  const f = await fixture(), original = await f.append(0),
+    faster = await f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 5 });
+  const replay = f.create();
+  assert.equal((await replay.prepare(original.hash!)).status, 'review');
+  const cancel = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: faster.hash!, fee: 7 });
+  for (const tx of [original, faster]) {
+    await assert.rejects(replay.prepare(tx.hash!), { code: 'CONTEXT_CHANGED' });
+    assert.equal((await replay.get(tx.hash!))?.hash, tx.hash);
+  }
+  const later = await f.append(1), gap = await replay.prepare(later.hash!);
+  if (gap.status !== 'review') throw Error('review');
+  assert.equal(gap.review.missingNonce, '0');
+  assert.deepEqual(gap.review.predecessors.map((entry) => entry.hash), [cancel.hash]);
+  assert.deepEqual((await replay.list({ nonce: 0 })).transactions.map((entry) => entry.hash), [cancel.hash]);
+  assert.deepEqual((await replay.list()).transactions.map((entry) => entry.hash), [later.hash, cancel.hash, faster.hash, original.hash]);
+  const retry = await replay.prepare(cancel.hash!);
+  if (retry.status !== 'review') throw Error('review');
+  await replay.confirm(retry.review.id);
+  assert.deepEqual(f.dispatched, [cancel.serialized]);
+  f.receipts.set(original.hash!, { transactionHash: original.hash, from: wallet.address, to: recipient, status: '0x1', blockNumber: '0xa', blockHash });
+  assert.equal((await replay.prepare(original.hash!)).status, 'confirmed');
+});
+
+for (const stage of ['prepare', 'confirm'] as const) {
+  test(`a cancellation saved while ${stage} is observing cannot release the original`, async () => {
+    const f = await fixture(), original = await f.append(0), replay = f.create();
+    const begin = await replay.prepare(original.hash!);
+    if (begin.status !== 'review') throw Error('review');
+    const observation = hold();
+    f.beforeObservation(observation.run);
+    const pending = stage === 'prepare' ? replay.prepare(original.hash!) : replay.confirm(begin.review.id);
+    const rejected = assert.rejects(pending, { code: 'CONTEXT_CHANGED' });
+    await observation.started;
+    await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+    observation.release();
+    await rejected;
+    assert.equal(f.dispatched.length, 0);
+  });
+}
+
+for (const change of ['cancel', 'revoke'] as const) {
+  test(`late ${change} during transport preflight stops the original before request admission`, async () => {
+    const f = await fixture(), original = await f.append(0), replay = f.create();
+    const prepared = await replay.prepare(original.hash!);
+    if (prepared.status !== 'review') throw Error('review');
+    const preflight = hold();
+    f.beforeAdmission(preflight.run);
+    const pending = replay.confirm(prepared.review.id);
+    const rejected = assert.rejects(pending, change === 'cancel' ? { code: 'CONTEXT_CHANGED' } : /revoked/);
+    await preflight.started;
+    if (change === 'cancel')
+      await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+    else f.revoke();
+    preflight.release();
+    await rejected;
+    assert.equal(f.dispatched.length, 0);
+    await assert.rejects(replay.confirm(prepared.review.id), { code: 'EXPIRED' });
+  });
+}
+
+test('ordinary replay checks inside admission and releases the queue before acknowledgment', async () => {
+  const f = await fixture(), original = await f.append(0), replay = f.create();
+  const prepared = await replay.prepare(original.hash!);
+  if (prepared.status !== 'review') throw Error('review');
+  const retainedRead = hold(), preflight = hold(), ack = hold();
+  let checked = false;
+  f.beforeAdmission(async () => f.beforeRecordsRead(retainedRead.run));
+  f.beforeOrdinaryReplay(async () => {
+    checked = true;
+    await preflight.run();
+  });
+  f.beforeAck(ack.run);
+  const pending = replay.confirm(prepared.review.id);
+  await retainedRead.started;
+  assert.equal(checked, false);
+  retainedRead.release();
+  await preflight.started;
+  assert.deepEqual(f.dispatched, []);
+  preflight.release();
+  await ack.started;
+  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  ack.release();
+  assert.equal((await pending).status, 'submitted');
+  assert.deepEqual(f.dispatched, [original.serialized]);
+  await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
+});
+
+async function cancellationFixture(operation: 'cancel' | 'speed-up' = 'cancel') {
+  const f = await fixture();
+  const original = operation === 'cancel' ? await f.append(0) : await f.append(0, 2, wallet.address, '0x', { value: 0 });
+  const cancellation = await f.append(0, 2, wallet.address, '0x', { operation, originalHash: original.hash!, fee: 7, value: 0 });
+  const replay = f.create(), prepared = await replay.prepare(cancellation.hash!);
+  if (prepared.status !== 'review') throw Error('review');
+  return { f, replay, id: prepared.review.id, cancellation };
+}
+
+test('only an exact empty self fee replacement enters late payer readiness', async () => {
+  for (const self of [false, true]) {
+    const f = await fixture();
+    const original = await f.append(0, 2, self ? wallet.address : recipient, '0x', { value: self ? 0 : 1 });
+    const replacement = await f.append(0, 2, self ? wallet.address : recipient, '0x', {
+      operation: 'speed-up', originalHash: original.hash!, value: self ? 0 : 1, fee: 9,
+    });
+    let checked = 0;
+    f.beforeCancellation(async () => { checked++; throw Error('delegated payer'); });
+    const replay = f.create(), prepared = await replay.prepare(replacement.hash!);
+    if (prepared.status !== 'review') throw Error('review');
+    const confirm = replay.confirm(prepared.review.id);
+    if (self) {
+      await assert.rejects(confirm, /delegated payer/);
+      assert.deepEqual(f.dispatched, []);
+    } else {
+      assert.equal((await confirm).status, 'submitted');
+      assert.deepEqual(f.dispatched, [replacement.serialized]);
+    }
+    assert.equal(checked, self ? 1 : 0);
+  }
+});
+
+test('cancellation preflight sees delegation that became live during the authenticated records read', async () => {
+  const { f, replay, id } = await cancellationFixture();
+  const record = hold();
+  let code = '0x', checks = 0;
+  f.beforeAdmission(async () => f.beforeRecordsRead(record.run));
+  f.beforeCancellation(async () => {
+    checks++;
+    if (code !== '0x') throw Error('payer has delegated code');
+  });
+  const denied = assert.rejects(replay.confirm(id), /payer has delegated code/);
+  await record.started;
+  assert.equal(checks, 0);
+  code = '0xef0100' + '55'.repeat(20);
+  record.release();
+  await denied;
+  assert.equal(checks, 1);
+  assert.deepEqual(f.dispatched, []);
+});
+
+test('cancellation holds records through the late check but releases them before transport acknowledgment', async () => {
+  const { f, replay, id, cancellation } = await cancellationFixture();
+  const late = hold(), ack = hold();
+  f.beforeCancellation(late.run);
+  f.beforeAck(ack.run);
+  const pending = replay.confirm(id);
+  await late.started;
+  let done = false;
+  const queued = f.records.validate(f.session).then(() => { done = true; });
+  await Promise.resolve();
+  assert.equal(done, false);
+  assert.deepEqual(f.dispatched, []);
+  late.release();
+  await ack.started;
+  await queued;
+  ack.release();
+  assert.equal((await pending).status, 'submitted');
+  assert.deepEqual(f.dispatched, [cancellation.serialized]);
+});
+
+for (const [operation, reason] of [['cancel', 'review expiry'], ['cancel', 'transport timeout'], ['speed-up', 'review expiry']] as const) {
+  test(`${operation} skips journal reads when ${reason} ends admission in the queue`, async (t) => {
+    const { f, replay, id } = await cancellationFixture(operation);
+    const record = hold(), stop = hold();
+    const profile = t.mock.method(f.session.keyring, 'getPrivateRecordProfileId');
+    let reads = 0, enqueued!: () => void, blocker!: Promise<number>;
+    const queued = new Promise<void>((resolve) => { enqueued = resolve; });
+    f.beforeAdmission(async () => {
+      f.beforeRecordsRead(async () => {
+        if (++reads === 1) await record.run();
+      });
+      blocker = f.records.validate(f.session);
+      await record.started;
+    });
+    f.afterAdmission((admission) => {
+      enqueued();
+      return reason === 'review expiry' ? admission : Promise.race([
+        admission,
+        stop.run().then(() => { throw Error('transport timed out'); }),
+      ]);
+    });
+    const denied = assert.rejects(replay.confirm(id), reason === 'review expiry'
+      ? { code: 'EXPIRED' } : /transport timed out/);
+    await queued;
+    const profilesBefore = profile.mock.callCount();
+    if (reason === 'review expiry') f.expire();
+    else {
+      stop.release();
+      await denied;
+    }
+    record.release();
+    await blocker;
+    await denied;
+    // Drain the abandoned admission and count only the blocker and this read.
+    await f.records.validate(f.session);
+    assert.equal(reads, 2);
+    assert.equal(profile.mock.callCount(), profilesBefore + 1);
+    assert.deepEqual(f.dispatched, []);
+  });
+}
+
+for (const budget of [5, 12000]) {
+  test(`a hung cancellation preflight releases the records queue at ${budget}ms`, async (t) => {
+    const { f, replay, id } = await cancellationFixture();
+    if (budget === 5) f.advance(89995);
+    const late = hold();
+    f.beforeCancellation(late.run);
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const denied = assert.rejects(replay.confirm(id), { code: 'EXPIRED' });
+    await late.started;
+    let done = false;
+    const queued = f.records.validate(f.session).then(() => { done = true; });
+    t.mock.timers.tick(budget - 1);
+    await Promise.resolve();
+    assert.equal(done, false);
+    t.mock.timers.tick(1);
+    await denied;
+    await queued;
+    late.release();
+    await Promise.resolve();
+    assert.deepEqual(f.dispatched, []);
+  });
+}
+
+test('a preflight result cannot outlive the monotonic deadline if the timeout callback was delayed', async () => {
+  const { f, replay, id } = await cancellationFixture();
+  f.beforeCancellation(async () => f.advance(12000));
+  await assert.rejects(replay.confirm(id), { code: 'EXPIRED' });
+  assert.deepEqual(f.dispatched, []);
+});
+
+test('cancellation checks the same owner after late preflight and preserves pre-POST failures', async () => {
+  const stale = await cancellationFixture(), late = hold();
+  stale.f.beforeCancellation(late.run);
+  const denied = assert.rejects(stale.replay.confirm(stale.id), /revoked/);
+  await late.started;
+  stale.f.revoke();
+  late.release();
+  await denied;
+  assert.deepEqual(stale.f.dispatched, []);
+
+  const stopped = await cancellationFixture();
+  stopped.f.beforeSend(() => { throw Error('stopped before fetch'); });
+  await assert.rejects(stopped.replay.confirm(stopped.id), /stopped before fetch/);
+  assert.deepEqual(stopped.f.dispatched, []);
+});
+
+test('cancellation cannot be admitted without a late checker', async () => {
+  const { f, replay, id } = await cancellationFixture();
+  f.beforeCancellation(undefined);
+  await assert.rejects(replay.confirm(id), { code: 'CONTEXT_CHANGED' });
+  assert.deepEqual(f.dispatched, []);
+});
+
+test('only older payment variants on the same chain and nonce are suppressed', async () => {
+  const f = await fixture(), original = await f.append(0), replay = f.create();
+  await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7, chainId: 1 });
+  assert.equal((await replay.prepare(original.hash!)).status, 'review');
+  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  const later = await f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 });
+  assert.equal((await replay.prepare(later.hash!)).status, 'review');
+  await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
+});
 
 test('reorg and cold reopen select predecessor by hash and replay exact bytes without signing', async () => {
   const f = await fixture(),

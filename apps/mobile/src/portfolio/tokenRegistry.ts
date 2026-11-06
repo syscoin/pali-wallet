@@ -1,7 +1,8 @@
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
 import { getAddress } from 'ethers/address';
 import { type Erc20Metadata } from '../../../../source/shared/erc20.ts';
-import { parseErc20Metadata } from './erc20Metadata.ts';
+import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId.ts';
+import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { KeyringStoragePort } from '../storage/types.ts';
 import {
@@ -21,9 +22,16 @@ export type NativeTokenScope = Readonly<{
 export type NativeTokenInventory = Readonly<{
   revision: number;
   items: readonly Erc20Metadata[];
+  collectibles?: readonly SavedCollectible[];
 }>;
-type Entry = Omit<NativeTokenScope, 'walletFingerprint'> &
-  Readonly<{ metadata: Erc20Metadata }>;
+export type SavedCollectible = Readonly<
+  | { contractAddress: string; tokenStandard: 'ERC-721' }
+  | { contractAddress: string; tokenStandard: 'ERC-1155'; tokenId: string }
+>;
+type EntryPayload = Readonly<
+  { metadata: Erc20Metadata } | { collectible: SavedCollectible }
+>;
+type Entry = Omit<NativeTokenScope, 'walletFingerprint'> & EntryPayload;
 type RecordValue = Readonly<{
   version: 1;
   walletFingerprint: string;
@@ -48,7 +56,7 @@ const fail = (code: NativeTokenRegistryError['code']): never => {
   throw new NativeTokenRegistryError(code);
 };
 const copy = (value: unknown) => decodeStorageValue(encodeStorageValue(value));
-function object(value: unknown, fields: string[]): Record<string, unknown> {
+function object(value: unknown, fields: readonly string[]): Record<string, unknown> {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -83,6 +91,47 @@ function scope(value: unknown): NativeTokenScope {
       BigInt(v.chainId) > BigInt(Number.MAX_SAFE_INTEGER) || typeof v.registrationHash !== 'string' || !/^0x[0-9a-f]{64}$/.test(v.registrationHash)) return fail('INVALID');
   return Object.freeze(v as NativeTokenScope);
 }
+const metadataFields = ['contractAddress', 'name', 'symbol', 'decimals'];
+function storedMetadata(value: unknown): Erc20Metadata {
+  const m = object(value, metadataFields);
+  const metadata = parseErc20Metadata(m);
+  if (
+    metadata.contractAddress !== m.contractAddress ||
+    metadata.name !== m.name ||
+    metadata.symbol !== m.symbol ||
+    metadata.decimals !== m.decimals
+  )
+    return fail('INVALID');
+  return metadata;
+}
+function parseCollectible(value: unknown, stored = false): SavedCollectible {
+  const standard = value && typeof value === 'object' && 'tokenStandard' in value
+    ? value.tokenStandard : undefined;
+  if (standard !== 'ERC-721' && standard !== 'ERC-1155') return fail('INVALID');
+  const fields = ['contractAddress', 'tokenStandard'];
+  if (standard === 'ERC-1155') fields.push('tokenId');
+  const row = object(value, fields);
+  try {
+    const contractAddress = normalizeErc20Address(row.contractAddress);
+    if (stored && contractAddress !== row.contractAddress) return fail('INVALID');
+    if (standard === 'ERC-721') return Object.freeze({ contractAddress, tokenStandard: standard });
+    if (typeof row.tokenId !== 'string') return fail('INVALID');
+    const tokenId = normalizeNftTokenId(row.tokenId);
+    if (stored && tokenId !== row.tokenId) return fail('INVALID');
+    return Object.freeze({ contractAddress, tokenStandard: standard, tokenId });
+  } catch {
+    return fail('INVALID');
+  }
+}
+export function snapshotSavedCollectible(value: unknown): SavedCollectible {
+  return parseCollectible(copy(value));
+}
+const contractIdentity = (e: Entry) =>
+  `${e.accountId}:${e.address}:${e.chainId}:${('metadata' in e ? e.metadata : e.collectible).contractAddress.toLowerCase()}`;
+const collectibleId = (collectible: SavedCollectible) =>
+  collectible.tokenStandard === 'ERC-1155' ? collectible.tokenId : undefined;
+const entryId = (entry: Entry) => 'collectible' in entry ? collectibleId(entry.collectible) : undefined;
+
 function decode(value: unknown, expected: Pick<NativeTokenScope, 'walletFingerprint'>): RecordValue {
   const v = object(copy(value), [
     'version',
@@ -100,14 +149,17 @@ function decode(value: unknown, expected: Pick<NativeTokenScope, 'walletFingerpr
   )
     return fail('INVALID');
   const keys = new Set<string>();
+  const contracts = new Set<string>();
   const entries = v.entries.map((value) => {
+    const field = value && typeof value === 'object' && Object.hasOwn(value, 'collectible')
+      ? 'collectible' : 'metadata';
     const e = object(value, [
       'accountId',
       'address',
       'network',
       'chainId',
       'registrationHash',
-      'metadata',
+      field,
     ]);
     // Retired accounts are retained. Registration changes never relabel old provenance.
     if (
@@ -124,24 +176,13 @@ function decode(value: unknown, expected: Pick<NativeTokenScope, 'walletFingerpr
       !/^0x[0-9a-f]{64}$/.test(e.registrationHash)
     )
       return fail('INVALID');
-    const m = object(e.metadata, [
-      'contractAddress',
-      'name',
-      'symbol',
-      'decimals',
-    ]);
-    const metadata = parseErc20Metadata(m);
-    if (
-      metadata.contractAddress !== m.contractAddress ||
-      metadata.name !== m.name ||
-      metadata.symbol !== m.symbol ||
-      metadata.decimals !== m.decimals
-    )
-      return fail('INVALID');
-    const entry = Object.freeze({ ...e, metadata }) as Entry;
-    const key = identity(entry);
-    if (keys.has(key)) return fail('INVALID');
+    const payload = field === 'collectible' ? parseCollectible(e.collectible, true) : storedMetadata(e.metadata);
+    const entry = Object.freeze({ ...e, [field]: payload }) as Entry;
+    const contract = contractIdentity(entry), tokenId = entryId(entry);
+    const key = tokenId === undefined ? contract : `${contract}:${tokenId}`;
+    if (keys.has(key) || (tokenId === undefined ? contracts.has(contract) : keys.has(contract))) return fail('INVALID');
     keys.add(key);
+    contracts.add(contract);
     return entry;
   });
   return Object.freeze({
@@ -157,22 +198,28 @@ export function inspectRecoveryTokens(value: unknown, walletFingerprint: string)
   return Object.freeze({ tokens: record.entries.length,
     accounts: Object.freeze(record.entries.map((row) => Object.freeze({ id: row.accountId, address: row.address }))) });
 }
-const identity = (e: Entry) =>
-  `${e.accountId}:${e.address}:${e.chainId}:${e.metadata.contractAddress.toLowerCase()}`;
 const sameScope = (entry: Entry, current: NativeTokenScope) =>
   entry.accountId === current.accountId && entry.address === current.address && entry.chainId === current.chainId;
 function projected(
   record: RecordValue,
   current: NativeTokenScope
 ): NativeTokenInventory {
+  const items: Erc20Metadata[] = [], collectibles: SavedCollectible[] = [];
+  for (const entry of record.entries) {
+    if (!sameScope(entry, current)) continue;
+    if ('metadata' in entry) items.push(entry.metadata);
+    else collectibles.push(entry.collectible);
+  }
   return Object.freeze({
     revision: record.revision,
-    items: Object.freeze(
-      record.entries
-        .filter((entry) => sameScope(entry, current))
-        .map((entry) => entry.metadata)
-    ),
+    items: Object.freeze(items),
+    ...(collectibles.length ? { collectibles: Object.freeze(collectibles) } : {}),
   });
+}
+function matchesRemoval(entry: Entry, target: string | SavedCollectible): boolean {
+  if (typeof target === 'string') return 'metadata' in entry && entry.metadata.contractAddress === target;
+  return 'collectible' in entry && entry.collectible.contractAddress === target.contractAddress &&
+    entry.collectible.tokenStandard === target.tokenStandard && entryId(entry) === collectibleId(target);
 }
 function guard(callback: () => void): void {
   const value: unknown = callback();
@@ -235,7 +282,7 @@ export class NativeTokenRegistry {
     return this.mutate(
       input,
       expectedRevision,
-      { add: metadata },
+      { add: { metadata } },
       assertCurrent
     );
   }
@@ -252,10 +299,26 @@ export class NativeTokenRegistry {
       assertCurrent
     );
   }
+  async addCollectible(
+    input: NativeTokenScope,
+    expectedRevision: number,
+    collectible: SavedCollectible,
+    assertCurrent: () => void
+  ): Promise<NativeTokenInventory> {
+    return this.mutate(input, expectedRevision, { add: { collectible: snapshotSavedCollectible(collectible) } }, assertCurrent);
+  }
+  async removeCollectible(
+    input: NativeTokenScope,
+    expectedRevision: number,
+    collectible: SavedCollectible,
+    assertCurrent: () => void
+  ): Promise<NativeTokenInventory> {
+    return this.mutate(input, expectedRevision, { remove: snapshotSavedCollectible(collectible) }, assertCurrent);
+  }
   private mutate(
     input: NativeTokenScope,
     expectedRevision: number,
-    change: { add: Erc20Metadata } | { remove: string },
+    change: { add: EntryPayload } | { remove: string | SavedCollectible },
     assertCurrent: () => void
   ): Promise<NativeTokenInventory> {
     return this.operation(async (writing) => {
@@ -279,27 +342,25 @@ export class NativeTokenRegistry {
         return fail('CHANGED');
       let entries: readonly Entry[];
       if ('add' in change) {
-        const metadata = parseErc20Metadata(
-          object(copy(change.add), [
-            'contractAddress',
-            'name',
-            'symbol',
-            'decimals',
-          ])
-        );
+        const payload = 'metadata' in change.add
+          ? { metadata: parseErc20Metadata(object(copy(change.add.metadata), metadataFields)) }
+          : change.add;
         const { walletFingerprint: _fingerprint, ...bound } = current;
-        const entry = Object.freeze({ ...bound, metadata });
-        if (record.entries.some((value) => identity(value) === identity(entry)))
+        const entry = Object.freeze({ ...bound, ...payload });
+        const contract = contractIdentity(entry), tokenId = entryId(entry);
+        // Same-chain standards collide except for distinct ERC-1155 items.
+        if (record.entries.some((value) => {
+          if (contractIdentity(value) !== contract) return false;
+          const otherId = entryId(value);
+          return tokenId === undefined || otherId === undefined || tokenId === otherId;
+        }))
           return fail('DUPLICATE');
         if (record.entries.length >= MAX_NATIVE_TOKENS) return fail('CAPACITY');
         entries = [...record.entries, entry];
       } else {
+        const target = change.remove;
         entries = record.entries.filter(
-          (entry) =>
-            !(
-              sameScope(entry, current) &&
-              entry.metadata.contractAddress === change.remove
-            )
+          (entry) => !(sameScope(entry, current) && matchesRemoval(entry, target))
         );
         if (entries.length === record.entries.length) return fail('CHANGED');
       }
@@ -311,21 +372,25 @@ export class NativeTokenRegistry {
         return fail('CAPACITY');
       }
       const checked = decode(next, current);
-      guard(assertCurrent);
+      const check = () => guard(assertCurrent);
+      check();
       writing(true);
       const committed =
         raw === undefined
           ? await this.storage.createManyIfAbsent({
               [NATIVE_TOKEN_REGISTRY_KEY]: checked,
-            })
+            }, check)
           : await this.storage.compareAndSet(
               NATIVE_TOKEN_REGISTRY_KEY,
               raw,
-              checked
+              checked,
+              undefined,
+              check
             );
       if (typeof committed !== 'boolean') return fail('INVALID');
       if (!committed) {
         writing(false);
+        check();
         return fail('CHANGED');
       }
       guard(assertCurrent);

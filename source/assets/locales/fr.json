@@ -312,6 +312,14 @@
     "generationFailed": "Impossible de générer une nouvelle phrase de récupération. Sélectionnez Générer pour réessayer."
   },
   "send": {
+    "savedUtxo": {
+      "title": "Transferts enregistrés",
+      "review": "Vérifier le transfert enregistré",
+      "empty": "Aucun transfert enregistré",
+      "seen": "Transfert détecté sur le réseau",
+      "check": "Consulter le transfert"
+    },
+    "openWalletTab": "Ouvrir dans l’onglet du portefeuille",
     "transactionFailureDetails": "Échec de la transaction : {{message}}",
     "transactionCreationFailureDetails": "Échec de création de la transaction ({{code}}) : {{message}}",
     "atomicMode": "atomique",

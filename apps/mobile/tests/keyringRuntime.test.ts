@@ -87,6 +87,13 @@ function memoryDisk(loadSdk?: KeyringRuntimeDependencies['loadSdk'], assertActiv
         if (failCasAcknowledgement) { failCasAcknowledgement = false; throw Error('Lost CAS acknowledgement'); }
         return true;
       },
+      async readDeviceUnlockVaultPair() {
+        const vault = records.get('vault');
+        const keys = records.get('vault-keys');
+        if (typeof vault !== 'string' || !keys || typeof keys !== 'object' ||
+          Object.keys(keys).length !== 1 || !('salt' in keys) || typeof keys.salt !== 'string') return null;
+        return { vault, keys: { salt: keys.salt }, pairFingerprint: fingerprint() };
+      },
       async get(key) { const value = records.has(key) ? structuredClone(records.get(key)) : undefined; await recordHook?.('get', key); return value; },
       async set(key, value) { records.set(key, structuredClone(value)); },
       async deleteItem(key) { records.delete(key); },
@@ -251,8 +258,8 @@ async function controlledSdk() {
   let unlockCalls = 0;
   let hydrations = 0;
   class ControlledKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const hydrate = this.createFirstAccount;
       this.createFirstAccount = async (...args) => { hydrations++; return hydrate(...args); };
     }
@@ -552,8 +559,8 @@ async function raceSdk() {
     const current = gate; current.entered.resolve(); await current.released.promise;
   };
   class RaceKeyring extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options);
       const allocate = this.addNewAccount.bind(this);
       this.addNewAccount = async (...args) => {
         allocations++; await hold('create-before');

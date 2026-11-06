@@ -4,6 +4,8 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { KeyringAccountType } from '@sidhujag/sysweb3-keyring/cjs/types';
 import { Wallet, Transaction } from 'ethers';
 
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+
 const signer = new Wallet(`0x${'11'.repeat(32)}`); // disposable public test key
 const guard = { assertCurrentContext: jest.fn(), validateOriginal: jest.fn() };
 
@@ -85,7 +87,9 @@ describe.each([true, false])(
         key,
         () => state,
         {} as any,
-        {} as any
+        {} as any,
+        () => () => undefined,
+        createTestEvmSubmissionCapture()
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       jest
@@ -157,6 +161,7 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
         const provider: any = {
           getTransaction: jest.fn(async () => null),
           getGasPrice: jest.fn(async () => BigNumber.from(price)),
+          verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
           sendTransaction: jest.fn(),
         };
         const ledger = {
@@ -180,7 +185,9 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
           jest.fn(),
           () => state,
           ledger as any,
-          trezor as any
+          trezor as any,
+          () => () => undefined,
+          createTestEvmSubmissionCapture()
         );
         Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
         jest
@@ -206,6 +213,19 @@ describe.each([KeyringAccountType.Ledger, KeyringAccountType.Trezor])(
           ...options,
           approvedMaximumFee: preview.maximumFee,
         });
+        const device =
+          type === KeyringAccountType.Ledger
+            ? ledger.evm.signEVMTransaction
+            : trezor.signEthTransaction;
+        expect(device).toHaveBeenCalledTimes(1);
+        expect(device).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            assertCurrent: expect.any(Function),
+            signal: expect.any(AbortSignal),
+          })
+        );
+        expect(provider.verifyConfiguredChainId.mock.calls).toEqual([[]]);
         const envelope =
           type === KeyringAccountType.Ledger
             ? Transaction.from(
@@ -257,7 +277,9 @@ it.each([undefined, '', '-1', '00', '1e6', '1'.repeat(79)])(
       key,
       () => state,
       {} as any,
-      {} as any
+      {} as any,
+      () => () => undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
     await expect(
@@ -302,7 +324,9 @@ it('rejects a cancellation quote if the original-validation or session guard cha
     key,
     () => state,
     {} as any,
-    {} as any
+    {} as any,
+    () => () => undefined,
+    createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   const pending = sdk.cancelSentTransaction(`0x${'22'.repeat(32)}`, true, 7, {
@@ -352,11 +376,13 @@ it('keeps selected smart-account state untouched during overlapping held payer p
     key,
     () => state,
     {} as any,
-    {} as any
+    {} as any,
+    () => () => undefined,
+    createTestEvmSubmissionCapture()
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   const targetAccount = { type: KeyringAccountType.HDAccount, id: 0 };
-  const opts = { ...guard, targetAccount, previewOnly: true };
+  const opts = { ...guard, targetAccount, previewOnly: true as const };
   const first = sdk.cancelSentTransaction(
     `0x${'22'.repeat(32)}`,
     true,

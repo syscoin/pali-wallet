@@ -38,16 +38,34 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState, dispatch: jest.fn() },
+  default: {
+    getState: () => mockState,
+    dispatch: jest.fn(),
+    subscribe: () => () => undefined,
+  },
 }));
 jest.mock('scripts/Background/handlers/internalMessageAuthorization', () => ({
   isTrustedExtensionPageSender: () => true,
 }));
 jest.mock('scripts/Background/handlers/approvalSubmission', () => ({
   beginApprovalSubmission: () => () => undefined,
+  captureDappEvmSubmission: () => undefined,
 }));
 let mockWallet: any;
 let mockListener: any;
+const mockOpenWalletTokenReview = jest.fn((request: any) => ({
+  ready: Promise.resolve(),
+  submit: () =>
+    mockEmitter(
+      ['wallet', 'sendAndSaveTokenTransaction'],
+      [request.type, request.transaction]
+    ),
+  close: jest.fn(),
+}));
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: (request: any) => mockOpenWalletTokenReview(request),
+}));
+
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockNativeReplies: any[] = [];
@@ -247,10 +265,29 @@ beforeEach(() => {
   }) as any);
   mockWallet = Object.create(MainController.prototype);
   mockWallet.walletSessionGeneration = 7;
-  mockWallet.getActiveKeyring = jest.fn(() => ({
+  const keyring = {
     isUnlocked: () => true,
-    ethereumTransaction: { sendFormattedTransaction: mockSdkSend },
-  }));
+    ethereumTransaction: {
+      sendFormattedTransaction: mockSdkSend,
+      getGasOverrides: () => ({}),
+      web3Provider: { signal: new AbortController().signal },
+    },
+  };
+  mockWallet.getActiveKeyring = jest.fn(() => keyring);
+  mockWallet.withReceiptReadProvider = jest.fn(async (signal, _, read) =>
+    read({
+      signal,
+      verifyConfiguredChainId: async () => undefined,
+      send: async (method: string) => {
+        if (method === 'eth_getBlockByNumber')
+          return { gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
+        if (method === 'eth_getBalance') return '100000000000000000000';
+        if (method === 'eth_getTransactionCount') return '0x7';
+        if (method === 'eth_estimateGas') return '0x5208';
+        throw new Error(`Unexpected native read ${method}`);
+      },
+    })
+  );
   mockWallet.sendAndSaveTransaction = jest.fn(async () => undefined);
   mockWallet.sendAndSaveEthTransaction =
     mockWallet.sendAndSaveEthTransaction.bind(mockWallet);
@@ -397,6 +434,7 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
     ).toBeEnabled()
   );
   expect(mockSdkSend).not.toHaveBeenCalled();
+  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
 });
 it('accepts an unlisted native recipient through the same controller path', async () => {
@@ -408,7 +446,14 @@ it('accepts an unlisted native recipient through the same controller path', asyn
   expect(blacklistService.checkAddress).toHaveBeenCalledWith(
     syntheticRecipient
   );
-  expect(mockSdkSend.mock.calls[0][0].to).toBe(syntheticRecipient);
+  expect(mockSdkSend.mock.calls[0][0]).toMatchObject({
+    to: syntheticRecipient,
+    nonce: '7',
+    gasLimit: '21000',
+    maxFeePerGas: '3000000000',
+    maxPriorityFeePerGas: '0',
+  });
+  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
   await waitFor(() =>
     expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1)
   );

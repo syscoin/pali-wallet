@@ -51,12 +51,12 @@ jest.mock('components/Modal/StatusModal', () => ({ StatusModal: () => null }));
 jest.mock('utils/format', () => ({
   formatSeedPhrase: jest.fn((value: string) => value),
 }));
-jest.mock('antd/lib/form/Form', () => ({ useForm: () => [mockForm] }));
 jest.mock('antd', () => {
   const Form: any = ({ children, onFinish }: any) => {
     mockSubmit = onFinish;
     return <>{children}</>;
   };
+  Form.useForm = () => [mockForm];
   Form.Item = ({ children, rules }: any) => {
     const factory = rules?.find((rule: any) => typeof rule === 'function');
     if (factory) mockValidator = factory().validator;

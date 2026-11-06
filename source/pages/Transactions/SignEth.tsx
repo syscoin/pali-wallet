@@ -21,8 +21,7 @@ import { IBlacklistCheckResult } from 'types/security';
 import { createTemporaryAlarm } from 'utils/alarmUtils';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { handleTransactionError } from 'utils/errorHandling';
-import { hashMessage } from 'utils/ethersV6Compat';
-import { arrayify, isHexString } from 'utils/ethersV6Compat';
+import { isHexString } from 'utils/ethersV6Compat';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
 import { getNetworkChain } from 'utils/network';
 import {
@@ -34,6 +33,7 @@ import {
   encodeSmartAccountAuthenticatorSignature,
   getPaliErc7739PersonalSignHash,
   getSmartAccountLocalOwnerContexts,
+  hashPersonalSignMessage,
   signPaliErc7739TypedDataV4,
   signSmartAccountActionHash,
 } from 'utils/smartAccount';
@@ -309,6 +309,10 @@ const EthSign: React.FC<ISign> = () => {
       authenticatorContexts: getSmartAccountLocalOwnerContexts({
         accounts,
         controllerEmitter,
+        personalSignValidator:
+          data.eventName === 'personal_sign'
+            ? smartAccount.auth?.validator ?? ''
+            : undefined,
       }),
       onAuthenticatorSigningResolved: (authenticator) => {
         if (authenticator === 'slh-dsa') {
@@ -351,7 +355,7 @@ const EthSign: React.FC<ISign> = () => {
 
   const getSmartAccountPersonalHash = (payload?: string) => {
     if (data.eventName === 'personal_sign' && payload !== undefined) {
-      return hashMessage(isHexString(payload) ? arrayify(payload) : payload);
+      return hashPersonalSignMessage(payload);
     }
 
     if (data.eventName === 'eth_sign') {

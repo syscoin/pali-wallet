@@ -12,8 +12,10 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
-import { sysweb3Di } from '@sidhujag/sysweb3-core';
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
+import {
+  HardwareWalletManager,
+  KeyringManager,
+} from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
@@ -35,6 +37,7 @@ import {
 } from 'utils/slhDsa';
 import { chromeStorage } from 'utils/storageAPI';
 
+import { createBrowserKeyringHost } from './browserKeyringHost';
 import MainController from './MainController';
 
 const PHRASE = 'test test test test test test test test test test test junk';
@@ -192,7 +195,6 @@ beforeEach(async () => {
       },
     },
   } as any;
-  sysweb3Di.getStateStorageDb().setClient(chrome.storage.local as any);
   const groups = () =>
     Object.fromEntries(
       Object.values(KeyringAccountType).map((type) => [type, {}])
@@ -216,7 +218,12 @@ beforeEach(async () => {
     } as any)
   );
   store.dispatch(setActiveSlip44(60));
-  manager = new KeyringManager();
+  manager = new KeyringManager(createBrowserKeyringHost(chrome.storage.local), {
+    captureEvmSubmission: () => {
+      throw new Error('EVM submission is outside this fixture');
+    },
+    hardwareManager: new HardwareWalletManager(),
+  });
   manager.setVaultStateGetter(() => store.getState().vault as any);
   const account = await manager.initializeWalletSecurely(PHRASE, PASSWORD);
   store.dispatch(
@@ -269,7 +276,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await manager?.destroy();
   clearRuntimeSLHDSAStates();
-  sysweb3Di.getStateStorageDb().setClient();
   vaultCache.clearCache();
   walletPersistenceGate.blocked = false;
   store.dispatch(restoreVaultSnapshot(initialVault));

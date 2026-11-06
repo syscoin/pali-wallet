@@ -1,6 +1,9 @@
 import * as ecc from '@bitcoinerlab/secp256k1';
+import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import http from 'http';
 import { utils as sys } from 'syscoinjs-lib';
+
+import { getSyscoinUTXOTestnetNetwork } from '../../source/utils/defaultNetworks';
 
 import type { BrowserContext } from '@playwright/test';
 
@@ -11,6 +14,10 @@ export const UTXO_FIXTURE_PATH = "m/84'/1'/0'/0/0";
 export const UTXO_SPONSOR_PATH = "m/84'/1'/1'/0/0";
 const network = sys.syscoinNetworks.testnet;
 const bitcoin = sys.bitcoinjs;
+const genesis = findUtxoCoinByRegistration(
+  getSyscoinUTXOTestnetNetwork()
+)?.hashGenesisBlock;
+if (!genesis) throw new Error('Missing fixture testnet genesis');
 const BACKENDS = new Set([
   'https://explorer-blockbook-dev.syscoin.org',
   'https://blockbook-dev.syscoin.org',
@@ -269,6 +276,7 @@ export function fixtureRead(
       blockbook: { coin: 'Syscoin Testnet', inSync: true, bestHeight: 1 },
       backend: { chain: 'test', blocks: 1 },
     };
+  if (url.pathname === '/api/v2/block-index/0') return { blockHash: genesis };
   if (ownIdentifier('/api/v2/xpub/') || ownIdentifier('/api/v2/address/'))
     return {
       address: decodeURIComponent(url.pathname.split('/').pop()!),

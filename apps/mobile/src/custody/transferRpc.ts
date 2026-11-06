@@ -1,7 +1,9 @@
 import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { Transaction } from 'ethers/transaction';
+import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
 import { EVM_SIGNED_RECORD_LIMITS } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmReplayError, type EvmReplayDispatchAdmission, type EvmReplayDispatchContext } from '../../../../source/wallet/evmSignedReplay.ts';
 import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
@@ -29,6 +31,18 @@ export type NativeTransferQuote = import('./evmTransferReadRpc.ts').EvmPreparedQ
 export type NativeTransferReceipt = Readonly<
   | { status: 'confirmed' | 'reverted'; blockHash: string; blockNumber: string }
   | { status: 'nonce-consumed' }
+>;
+type NativeBroadcastAdmission = Readonly<
+  | {
+      mode: 'new-send';
+      intent?: Erc20TransferIntent;
+      beforeBroadcast: () => undefined;
+    }
+  | {
+      mode: 'replay';
+      admit: EvmReplayDispatchAdmission;
+      context: EvmReplayDispatchContext;
+    }
 >;
 export class NativeTransferRpcError extends Error {
   readonly code:
@@ -131,7 +145,7 @@ export class NativeTransferRpc {
     } catch (error) {
       if (controller.signal.aborted)
         throw new NativeTransferRpcError('CANCELLED');
-      if (error instanceof NativeTransferRpcError) throw error;
+      if (error instanceof NativeTransferRpcError || error instanceof EvmReplayError) throw error;
       if (error instanceof EvmTransferReadError) return this.mapReadError(error);
       throw new NativeTransferRpcError('UNAVAILABLE');
     } finally {
@@ -270,9 +284,29 @@ export class NativeTransferRpc {
     rawTransaction: string,
     expectedHash: string,
     signal: AbortSignal,
-    intent?: Erc20TransferIntent
+    admission: NativeBroadcastAdmission
   ): Promise<string> {
+    if (
+      !admission ||
+      (admission.mode !== 'new-send' && admission.mode !== 'replay') ||
+      (admission.mode === 'new-send' && (
+        typeof admission.beforeBroadcast !== 'function' ||
+        'admit' in admission || 'context' in admission
+      )) ||
+      (admission.mode === 'replay' && (
+        typeof admission.admit !== 'function' || !admission.context ||
+        'beforeBroadcast' in admission || 'intent' in admission
+      ))
+    )
+      return Promise.reject(new NativeTransferRpcError('REVIEW_REQUIRED'));
     const hash = checkedHash(expectedHash);
+    const replay = admission.mode === 'replay'
+      ? { admit: admission.admit, context: { ...admission.context } }
+      : undefined;
+    const beforeBroadcast = admission.mode === 'new-send' ? admission.beforeBroadcast : undefined;
+    const intent = admission.mode === 'new-send' ? admission.intent : undefined;
+    const cancellation = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
+      ? replay.context : undefined;
     if (
       typeof rawTransaction !== 'string' ||
       rawTransaction.length > EVM_SIGNED_RECORD_LIMITS.bytes * 2 + 2 ||
@@ -289,6 +323,9 @@ export class NativeTransferRpc {
       )
         return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
+      if (replay && (replay.context.hash !== hash || replay.context.chainId !== this.context.chainId ||
+          replay.context.nonce !== tx.nonce || tx.from?.toLowerCase() !== replay.context.from.toLowerCase())) return invalid();
+      if (cancellation && !isEvmProtectedEmptySelfCall(tx, cancellation.operation)) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
       if (intent) assertTransferIntentEnvelope(
         {
@@ -304,13 +341,38 @@ export class NativeTransferRpc {
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
     return this.operation(signal, async (local) => {
-      await this.checkChain(local);
-      // No automatic retry: the remote side may accept before a response is lost.
-      const returned = checkedHash(
-        await this.call('eth_sendRawTransaction', [rawTransaction], local)
-      );
-      if (returned !== hash) return invalid();
-      return hash;
+      const send = () => {
+        if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
+        if (beforeBroadcast) {
+          const result: unknown = beforeBroadcast();
+          if (result !== undefined) {
+            void Promise.resolve(result).catch(() => undefined);
+            throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          }
+        }
+        // No automatic retry: the remote side may accept before a response is lost.
+        return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
+          if (checkedHash(value) !== hash) return invalid();
+          return hash;
+        });
+      };
+      if (!replay) {
+        await this.checkChain(local);
+        return send();
+      }
+      return replay.admit(send, async () => {
+        await this.checkChain(local);
+        if (!cancellation) return;
+        await assertEvmCancellationPayerReady(
+          cancellation.from, cancellation.nonce,
+          (method, address, tag) => this.call(method, [address, tag], local),
+          () => { if (local.aborted) throw new NativeTransferRpcError('CANCELLED'); }
+        ).catch((error) => {
+          if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
+            throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          throw error;
+        });
+      });
     });
   }
   receipt(

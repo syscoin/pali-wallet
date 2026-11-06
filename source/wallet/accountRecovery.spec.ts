@@ -81,9 +81,9 @@ async function fixture(kind: 'ethereum' | 'syscoin' = 'ethereum') {
       SmartAccount: {},
     },
   };
-  const keyring = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost(storage.port)
-  );
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(storage.port), {
+    captureEvmSubmission: null,
+  });
   keyring.setVaultStateGetter(() => group);
   await keyring.initializeSession(phrase, oldPassword);
   const first = await keyring.createFirstAccount();
@@ -104,9 +104,9 @@ async function openRecovered(
       ['vault-keys', result.pair.keys],
     ])
   );
-  const keyring = new sdk.SoftwareKeyring(
-    sdk.createSoftwareKeyringHost(storage.port)
-  );
+  const keyring = new sdk.SoftwareKeyring(sdk.createKeyringHost(storage.port), {
+    captureEvmSubmission: null,
+  });
   keyring.setVaultStateGetter(() => result.groups[0]);
   expect(await keyring.unlock(password)).toMatchObject({ canLogin: true });
   return keyring;

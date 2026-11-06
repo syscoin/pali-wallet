@@ -4,14 +4,20 @@ import {
   KeyringManager,
   CustomJsonRpcProvider,
   PsbtUtils,
+  readPublicSyscoinFee,
+  type IReviewedEvmTokenFees,
+  type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
 import {
+  coins,
+  findUtxoCoinByRegistration,
   getSysRpc,
+  observeSysRpc,
   getEthRpc,
   INetwork,
   clearRpcCaches,
   retryableFetch,
-  validateRpcBatchUniversal,
+  validateEvmRpcBatch,
   getNetworkConfig,
 } from '@sidhujag/sysweb3-network';
 import { txUtils, ITxid } from '@sidhujag/sysweb3-utils';
@@ -27,12 +33,30 @@ import isEmpty from 'lodash/isEmpty';
 import isEqual from 'lodash/isEqual';
 import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
+import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
+import {
+  encodeErc20Transfer,
+  formatErc20Balance,
+  parseErc20Units,
+} from '../../../shared/erc20';
+import {
+  assertEvmCancellationPayerReady,
+  isEvmEmptySelfCall,
+  isEvmProtectedEmptySelfCall,
+} from '../../../shared/evmCancellationPayer.ts';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
+import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
+import {
+  walletTokenReviewError,
+  type WalletTokenReviewPayload,
+  type WalletTokenReviewRequest,
+} from '../../../shared/walletTokenReview';
 import {
   clearNavigationState,
   clearTransactionNavigationState,
@@ -50,6 +74,17 @@ import {
   type ImportedRecoveryEntry,
 } from '../../../wallet/importedAccountRecovery';
 import { createSlhDsaProfileStateCrypto } from '../../../wallet/slhDsaStateCrypto';
+import {
+  createOwnedUtxoBlockbookRead,
+  type UtxoBlockbookReadScope,
+} from '../../../wallet/utxoBlockbookReads';
+import { utxoSubmissionUrl } from '../../../wallet/utxoSignedBinding';
+import {
+  UTXO_SIGNED_RECORD_PREFIX,
+  type UtxoDurableSubmission,
+  type UtxoSignedRecords,
+} from '../../../wallet/utxoSignedRecords';
+import { submitReviewedUtxo } from '../../../wallet/utxoSubmission';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -137,7 +172,12 @@ import {
   INftTokenIdsResult,
   WatchAssetType,
 } from 'types/tokens';
-import { ICustomRpcParams, IDecodedTx } from 'types/transactions';
+import {
+  EvmRpcDraft,
+  IDecodedTx,
+  RpcConnectionResult,
+  UtxoRpcDraft,
+} from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import {
   AsyncMutex,
@@ -177,7 +217,10 @@ import {
   isSameBalanceNetwork,
 } from 'utils/nativeBalanceCache';
 import { getNetworkChain } from 'utils/network';
-import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  networkRegistrationFingerprint,
+  resolvePinnedUtxoBackendChain,
+} from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
 import type { INoteBackupController } from 'utils/privacy/noteBackupTypes';
@@ -240,6 +283,7 @@ import {
   type SLHDSAPreparedSmartAccountSigner,
   type SLHDSASignActionHashParams,
 } from 'utils/slhDsa';
+import type { SLHDSADispatchApproval } from 'utils/slhDsa/types';
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
@@ -248,7 +292,13 @@ import type {
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
 import { chromeStorage } from 'utils/storageAPI';
-import { getVerifiedSyscoinPsbtValueSummary } from 'utils/syscoinPsbtValues';
+import {
+  assertUtxoBuilderFee,
+  assertUtxoFeeReview,
+  createUtxoFeeReview,
+  getVerifiedSyscoinPsbtValueSummary,
+  type UtxoFeeReview,
+} from 'utils/syscoinPsbtValues';
 import { getKnownTokenLogo } from 'utils/tokens';
 import {
   isTransactionInBlock,
@@ -257,10 +307,15 @@ import {
 import {
   assertNoRecentAcknowledgedInputOverlap,
   createUtxoAcknowledgedInputs,
+  utxoNetworkCatchingUpError,
+  utxoInputOutpoints,
   type UtxoAcknowledgedInputs,
 } from 'utils/utxoAcknowledgedInputs';
 import {
   IUtxoSigningContext,
+  isUtxoWalletFeeReview,
+  type UtxoDappSigningAuthority,
+  type UtxoWalletFeeReview,
   UTXO_SIGNING_CONTEXT_CHANGED,
 } from 'utils/utxoSigningContext';
 import {
@@ -286,15 +341,22 @@ import {
   tokenBalanceKey,
 } from './balances/ReceiptBalanceRefresh';
 import { IBalancesManager } from './balances/types';
+import { createBrowserKeyringHost } from './browserKeyringHost';
 import ChainListService from './chainlist';
 import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
+  createChromeUtxoSignedRecords,
 } from './evmSignedRecords';
-import { createExtensionEvmReplay } from './evmSignedReplay';
 import {
+  assertLiveEvmReplacementChain,
+  createExtensionEvmReplay,
+} from './evmSignedReplay';
+import {
+  captureReviewedNativeEvmTransfer,
   freshSdkGasEstimate,
   getSdkGasOverrides,
+  recheckReviewedNativeEvmTransfer,
 } from './freshNativeGasEstimate';
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
@@ -311,6 +373,7 @@ import {
   PromiseTargets,
 } from './promises/cancellablesPromises';
 import { patchFetchWithPaliHeaders } from './providers/patchFetchWithPaliHeaders';
+import { withUtxoRpcVerification } from './providers/utxoRpcVerification';
 import { withWalletBackend } from './providers/walletHttpIdentity';
 import type { SentryWalletScope } from './sentry';
 import type { SentryController } from './sentry';
@@ -326,7 +389,11 @@ import {
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
-import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
+import type {
+  EvmReplacementFeeApproval,
+  EvmSubmissionContext,
+  KeyringHost,
+} from '@sidhujag/sysweb3-keyring';
 import type {
   SentryAuthorityRole,
   SentryAuthorityScheme,
@@ -375,9 +442,24 @@ const fiatNetworkKey = (network: INetwork) =>
     network.coingeckoId,
   ]);
 
+const UTXO_RETRY_REVIEW_MS = 90_000;
+const utxoRecordsByWallet = new WeakMap<MainController, UtxoSignedRecords>();
+const utxoReviewsByWallet = new WeakMap<
+  MainController,
+  | { id: string }
+  | {
+      deadline: number;
+      id: string;
+      record: UtxoDurableSubmission;
+      signing: ReturnType<MainController['captureUtxoSigningContext']>;
+      timer: ReturnType<typeof setTimeout>;
+    }
+>();
+
 class MainController {
   // Map of keyrings indexed by slip44
   private keyrings: Map<number, KeyringManager> = new Map();
+  private keyringHost?: KeyringHost;
 
   public account: {
     eth: IEthAccountController;
@@ -414,6 +496,9 @@ class MainController {
   private isNetworkSwitching = false;
   private isRemovingNetwork = false;
   private walletSessionGeneration = 0;
+  private utxoWalletReviewKey?: Promise<CryptoKey>;
+  private activeUtxoReads?: Set<AbortController>;
+  private utxoFeeCache?: { fee: number; observedAt: number; url: string };
   private fiatQuoteGeneration = 0;
   private fiatPreferenceGeneration = 0;
   // Session changes cancel in-flight work; only reset invalidates valid queued
@@ -691,6 +776,7 @@ class MainController {
             key.match(/^state-vault-\d+$/) ||
             key.startsWith('sysweb3-vault-') ||
             key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
+            key.startsWith(UTXO_SIGNED_RECORD_PREFIX) ||
             key.startsWith('pali-slh-dsa-state:') ||
             key.startsWith('sentry-operator-v1:') ||
             key.startsWith('sentry-settings-v1:') ||
@@ -891,12 +977,14 @@ class MainController {
       signSmartAccountActionDigestInternal: (
         params,
         targetAccount,
-        executionContextId
+        executionContextId,
+        assertApprovalCurrent
       ) =>
         this.signSmartAccountActionDigestInternal(
           params,
           targetAccount,
-          executionContextId
+          executionContextId,
+          assertApprovalCurrent
         ),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
@@ -921,7 +1009,7 @@ class MainController {
     });
     this.account = {
       eth: EthAccountController(),
-      sys: SysAccountController(() => this.getActiveKeyring()),
+      sys: SysAccountController(() => this.updateUtxoReceivingAddress()),
     };
 
     this.bindMethods();
@@ -952,6 +1040,136 @@ class MainController {
   private getRetainedEvmRecords(): EvmSignedRecords {
     this.retainedEvmRecords ??= createChromeEvmSignedRecords();
     return this.retainedEvmRecords;
+  }
+
+  private getRetainedUtxoRecords(): UtxoSignedRecords {
+    let records = utxoRecordsByWallet.get(this);
+    if (!records) {
+      // An old session's admitted Chrome write may still be settling.
+      records = createChromeUtxoSignedRecords(this, () => this.lock());
+      utxoRecordsByWallet.set(this, records);
+    }
+    return records;
+  }
+
+  public async listRetainedUtxoTransfers() {
+    const signing = this.captureUtxoSigningContext();
+    const network = store.getState().vault.activeNetwork;
+    return this.getRetainedUtxoRecords().list(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      this.utxoRecordOwner(network, signing.context.account)
+    );
+  }
+
+  public async checkRetainedUtxoTransfer(txid: string) {
+    const signing = this.captureUtxoSigningContext();
+    const network = store.getState().vault.activeNetwork;
+    const owner = this.utxoRecordOwner(network, signing.context.account);
+    return signing.withRead((read) =>
+      this.getRetainedUtxoRecords().observe(
+        { keyring: signing.keyring, assertCurrent: read.assertCurrent },
+        owner,
+        txid,
+        utxoSubmissionUrl(network.url),
+        () => syscoinjs.utils.fetchBackendRawTx(network.url, txid, read)
+      )
+    );
+  }
+
+  public async prepareRetainedUtxoRetry(txid: string) {
+    const signing = this.captureUtxoSigningContext();
+    const previous = utxoReviewsByWallet.get(this);
+    if (previous) this.cancelRetainedUtxoRetry(previous.id);
+    const preparing = { id: crypto.randomUUID() };
+    utxoReviewsByWallet.set(this, preparing);
+    const network = store.getState().vault.activeNetwork;
+    const record = await this.getRetainedUtxoRecords().readExact(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      this.utxoRecordOwner(network, signing.context.account),
+      txid
+    );
+    signing.assertCurrent();
+    if (
+      utxoReviewsByWallet.get(this) !== preparing ||
+      !record ||
+      record.url !== utxoSubmissionUrl(network.url)
+    )
+      throw new Error('Saved transfer is unavailable on this network');
+    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
+      record.rawTransaction
+    );
+    const { networks } = getNetworkConfig(network.slip44, network.currency);
+    const addressNetwork =
+      network.slip44 === 1 ? networks.testnet : networks.mainnet;
+    const outputs = transaction.outs.map((output) => {
+      let address: string;
+      try {
+        address = syscoinjs.utils.bitcoinjs.address.fromOutputScript(
+          output.script,
+          addressNetwork
+        );
+      } catch {
+        address = Buffer.from(output.script).toString('hex');
+      }
+      return { address, amountSatoshis: output.value.toString() };
+    });
+    const { id } = preparing;
+    utxoReviewsByWallet.set(this, {
+      id,
+      deadline: performance.now() + UTXO_RETRY_REVIEW_MS,
+      record,
+      signing,
+      timer: setTimeout(
+        () => this.cancelRetainedUtxoRetry(id),
+        UTXO_RETRY_REVIEW_MS
+      ),
+    });
+    return { id, txid, feeSatoshis: record.feeSatoshis, outputs };
+  }
+
+  public async confirmRetainedUtxoRetry(id: string) {
+    const selected = utxoReviewsByWallet.get(this);
+    if (!selected || selected.id !== id || !('record' in selected))
+      throw new Error('Review the saved transfer again');
+    this.cancelRetainedUtxoRetry(id);
+    const { signing, record, deadline } = selected;
+    const assertCurrent = () => {
+      signing.assertCurrent();
+      if (performance.now() >= deadline)
+        throw new Error('Review the saved transfer again');
+    };
+    assertCurrent();
+    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
+      record.rawTransaction
+    );
+    const collateral = this.getSentryCollateralScope();
+    const submit = async (markInvoked: () => void) => {
+      await this.assertNoSentryCollateralInputs({ txInputs: transaction.ins });
+      assertCurrent();
+      return withWalletBackend(signing.context.rpcUrl, () =>
+        submitReviewedUtxo({
+          record,
+          sender: signing.transactions,
+          records: this.getRetainedUtxoRecords(),
+          session: { keyring: signing.keyring, assertCurrent },
+          intent: 'replay',
+          fetch: (input, init) => {
+            markInvoked();
+            return globalThis.fetch(input, init);
+          },
+        })
+      );
+    };
+    return collateral
+      ? withSentryCollateralBroadcast(collateral, submit)
+      : submit(() => undefined);
+  }
+
+  public cancelRetainedUtxoRetry(id: string) {
+    const selected = utxoReviewsByWallet.get(this);
+    if (typeof id !== 'string' || selected?.id !== id) return;
+    if ('timer' in selected) clearTimeout(selected.timer);
+    utxoReviewsByWallet.delete(this);
   }
 
   private getRetainedEvmReplay(): EvmSignedReplay {
@@ -1040,6 +1258,10 @@ class MainController {
     const networkRequest = this.networkRequestGeneration;
     const navigation = getWalletNavigationScope();
     const selected = { ...store.getState().vault.activeAccount };
+    const replacementProvider =
+      context.operation === 'cancel' || context.operation === 'speed-up'
+        ? keyring.ethereumTransaction.web3Provider
+        : null;
     const assertCurrent = () => {
       this.assertWalletReadyForSigning();
       this.assertCurrentWalletSession(generation, keyring);
@@ -1051,6 +1273,8 @@ class MainController {
         ];
       if (
         networkRequest !== this.networkRequestGeneration ||
+        (replacementProvider !== null &&
+          keyring.ethereumTransaction.web3Provider !== replacementProvider) ||
         currentNavigation.account !== navigation.account ||
         currentNavigation.network !== navigation.network ||
         vault.activeAccount.id !== selected.id ||
@@ -1065,9 +1289,38 @@ class MainController {
       }
     };
     assertCurrent();
-    return createEvmSignedRecordLifecycle(this.getRetainedEvmRecords(), {
-      keyring,
-      assertCurrent,
+    const lifecycle = createEvmSignedRecordLifecycle(
+      this.getRetainedEvmRecords(),
+      { keyring, assertCurrent }
+    );
+    if (replacementProvider === null) return lifecycle;
+    const send = replacementProvider.send.bind(replacementProvider);
+    const payer = context.account.address;
+    return Object.freeze({
+      ...lifecycle,
+      persistSigned: async (
+        record: Parameters<typeof lifecycle.persistSigned>[0]
+      ) => {
+        await lifecycle.persistSigned(record);
+        if (context.operation === 'speed-up') {
+          const transaction = Transaction.from(record.rawTransaction);
+          if (!isEvmEmptySelfCall(transaction)) return;
+          if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        }
+        // The SDK awaits this acknowledgement before its final synchronous send guard.
+        await assertLiveEvmReplacementChain(
+          replacementProvider,
+          context.network.chainId,
+          lifecycle.assertCurrent
+        );
+        await assertEvmCancellationPayerReady(
+          payer,
+          record.nonce,
+          (method, address, tag) => send(method, [address, tag]),
+          lifecycle.assertCurrent
+        );
+      },
     });
   }
 
@@ -1076,15 +1329,7 @@ class MainController {
       console.log(
         `[MainController] Initializing keyring for slip44: ${slip44}`
       );
-      assertEvmSignedRecordSdk();
-      const keyring = new KeyringManager(undefined, getLedgerHost(), {
-        captureEvmSubmission: (context) =>
-          this.captureEvmSignedSubmission(keyring, context),
-      });
-      // Set up storage access for each keyring
-      keyring.setStorage(chrome.storage.local);
-      keyring.setVaultStateGetter(() => store.getState().vault);
-      this.keyrings.set(slip44, keyring);
+      this.keyrings.set(slip44, this.createKeyringOnDemand());
     }
     return this.keyrings.get(slip44)!;
   }
@@ -1425,17 +1670,17 @@ class MainController {
     }
   }
 
-  // Create a keyring on demand with storage access
   private createKeyringOnDemand(): KeyringManager {
-    // Create new keyring with the wallet state
     assertEvmSignedRecordSdk();
-    const keyring = new KeyringManager(undefined, getLedgerHost(), {
+    const host = (this.keyringHost ??= createBrowserKeyringHost(
+      chrome.storage.local
+    ));
+    const keyring = new KeyringManager(host, {
+      ledgerHost: getLedgerHost(),
       captureEvmSubmission: (context) =>
         this.captureEvmSignedSubmission(keyring, context),
     });
 
-    // Set up storage access - this gives it access to the global encrypted vault
-    keyring.setStorage(chrome.storage.local);
     keyring.setVaultStateGetter(() => store.getState().vault);
 
     // Note: Session transfer is handled in switchActiveKeyring method
@@ -1640,10 +1885,50 @@ class MainController {
     }
   }
 
-  // Proxy methods to active keyring - made public for UX access (used by controllerEmitter)
-  public get syscoinTransaction() {
-    this.assertWalletReadyForSigning();
-    return this.getActiveKeyring().syscoinTransaction;
+  private utxoWalletReviewMessage(scope: string, review: UtxoFeeReview) {
+    return new TextEncoder().encode(
+      JSON.stringify([scope, review.feeSatoshis, review.unsignedHash])
+    );
+  }
+
+  private async attestUtxoWalletReview(
+    scope: string,
+    review: UtxoFeeReview
+  ): Promise<UtxoWalletFeeReview> {
+    this.utxoWalletReviewKey ??= crypto.subtle.generateKey(
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign', 'verify']
+    );
+    const signature = await crypto.subtle.sign(
+      'HMAC',
+      await this.utxoWalletReviewKey,
+      this.utxoWalletReviewMessage(scope, review)
+    );
+    return Object.freeze({
+      ...review,
+      approvalTag: Buffer.from(signature).toString('hex'),
+    });
+  }
+
+  private async assertUtxoWalletReview(
+    scope: string,
+    review: UtxoWalletFeeReview | undefined
+  ): Promise<void> {
+    if (
+      !review ||
+      !this.utxoWalletReviewKey ||
+      !(await crypto.subtle.verify(
+        'HMAC',
+        await this.utxoWalletReviewKey,
+        Uint8Array.from(Buffer.from(review.approvalTag, 'hex')),
+        this.utxoWalletReviewMessage(scope, review)
+      ))
+    )
+      throw Object.assign(new Error(UTXO_SIGNING_CONTEXT_CHANGED), {
+        code: UTXO_SIGNING_CONTEXT_CHANGED,
+        transactionNotBroadcast: true,
+      });
   }
 
   // Protect linked collateral during selection as well as at the signing boundary.
@@ -1653,25 +1938,56 @@ class MainController {
     >[0]
   ) {
     const signing = this.captureUtxoSigningContext();
-    const activeNetwork = store.getState().vault.activeNetwork;
-    const excludedOutpoints = await this.getProtectedSentryOutpoints();
+    const collateral = await this.getProtectedSentryOutpoints();
     signing.assertCurrent();
-    const result = await signing.transactions.getEstimateSysTransactionFee({
-      ...params,
-      excludedOutpoints,
+    const owner = this.utxoRecordOwner(
+      store.getState().vault.activeNetwork,
+      signing.context.account
+    );
+    const journal = await this.getRetainedUtxoRecords().fundingExclusions(
+      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      owner
+    );
+    signing.assertCurrent();
+    const excludedOutpoints = [...collateral, ...journal.outpoints];
+    return signing.withRead(async (read) => {
+      const result = await signing.transactions
+        .getEstimateSysTransactionFee({ ...params, excludedOutpoints }, read)
+        .catch((error) => {
+          read.assertCurrent();
+          if (
+            params.nativeSweep === true &&
+            journal.submitted.size > 0 &&
+            error?.error === true &&
+            error.code === 'INSUFFICIENT_FUNDS' &&
+            Array.isArray(error.excludedNativeOutpoints)
+          ) {
+            if (
+              error.excludedNativeOutpoints.some((point: string) =>
+                journal.submitted.has(point)
+              )
+            )
+              throw utxoNetworkCatchingUpError();
+          }
+          throw error;
+        });
+      read.assertCurrent();
+      if (!result?.psbt) return result;
+      const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
+      read.assertCurrent();
+      await this.assertNoSentryCollateralInputs(psbt);
+      read.assertCurrent();
+      this.assertOrdinaryUtxoInputsCurrent(psbt, signing.context);
+      // The builder reports a numeric fee derived from the funding snapshot.
+      // Never display or authorize it if authenticated prevouts disagree.
+      assertUtxoBuilderFee(result.fee, summary.feeSatoshis);
+      const utxoFeeReview = await this.attestUtxoWalletReview(
+        signing.walletReviewScope,
+        createUtxoFeeReview(psbt, summary.feeSatoshis)
+      );
+      signing.assertWalletReviewCurrent();
+      return { ...result, utxoFeeReview };
     });
-    signing.assertCurrent();
-    if (result?.psbt) {
-      await this.assertNoSentryCollateralInputs(
-        PsbtUtils.fromPali(result.psbt, activeNetwork)
-      );
-      signing.assertCurrent();
-      this.assertOrdinaryUtxoInputsCurrent(
-        PsbtUtils.fromPali(result.psbt, activeNetwork),
-        signing.context
-      );
-    }
-    return result;
   }
 
   public get ethereumTransaction() {
@@ -1704,15 +2020,52 @@ class MainController {
   }
 
   public getChangeAddress(id: number) {
-    return this.getActiveKeyring().getChangeAddress(id);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getChangeAddress(id, read)
+    );
   }
 
   public getCurrentAddressPubkey(id: number, isChangeAddress: boolean) {
-    return this.getActiveKeyring().getPubkey(id, isChangeAddress);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getPubkey(id, isChangeAddress, read)
+    );
   }
 
   public getBip32Path(id: number, isChangeAddress: boolean) {
-    return this.getActiveKeyring().getBip32Path(id, isChangeAddress);
+    return this.withUtxoAddressRead(id, (keyring, read) =>
+      keyring.getBip32Path(id, isChangeAddress, read)
+    );
+  }
+
+  private withUtxoAddressRead<T>(
+    id: number,
+    operation: (
+      keyring: KeyringManager,
+      read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+    ) => Promise<T>
+  ): Promise<T> {
+    const owner = this.captureUtxoSigningContext();
+    if (id !== owner.context.account.id)
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    return owner.withRead((read) => operation(owner.keyring, read));
+  }
+
+  private async updateUtxoReceivingAddress(): Promise<string> {
+    const owner = this.captureUtxoSigningContext();
+    const { id, type } = owner.context.account;
+    const address = await owner.withRead((read) =>
+      owner.keyring.updateReceivingAddress(read)
+    );
+    owner.assertWalletReviewCurrent();
+    store.dispatch(
+      setAccountPropertyByIdAndType({
+        id,
+        type,
+        property: 'address',
+        value: address,
+      })
+    );
+    return address;
   }
 
   public async getSeed(pwd: string) {
@@ -2104,10 +2457,15 @@ class MainController {
   private advanceWalletSession(): void {
     this.walletSessionGeneration += 1;
     this.postSwitchHistorySave = undefined;
+    this.activeUtxoReads?.forEach((operation) => operation.abort());
+    this.utxoFeeCache = undefined;
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
     this.retainedEvmRecords = undefined;
+    utxoRecordsByWallet.delete(this);
+    const utxoReview = utxoReviewsByWallet.get(this);
+    if (utxoReview) this.cancelRetainedUtxoRetry(utxoReview.id);
     // Revoke decoded file staging synchronously, before a lock or account switch
     // can yield. A pending KDF can finish only into a revoked operation.
     this.noteBackupInvalidators?.forEach((invalidate) => invalidate());
@@ -3206,7 +3564,17 @@ class MainController {
     this.assertCurrentWalletSession(generation);
     const keyring = this.getActiveKeyring();
     const walletStateGeneration = this.walletStateGeneration;
-    const result = await keyring.unlock(pwd);
+    const isCurrent = () =>
+      walletStateGeneration === this.walletStateGeneration &&
+      generation === this.walletSessionGeneration &&
+      keyring === this.getActiveKeyring();
+    let result: Awaited<ReturnType<typeof keyring.unlock>>;
+    try {
+      result = await keyring.unlock(pwd);
+    } catch (error) {
+      if (!isCurrent()) throw new Error(WALLET_SESSION_CHANGED_ERROR);
+      throw error;
+    }
     if (
       !result ||
       typeof result !== 'object' ||
@@ -3226,14 +3594,10 @@ class MainController {
       walletStateGeneration === this.walletStateGeneration
     )
       await this.recordFailedAttempt();
-    if (
-      walletStateGeneration !== this.walletStateGeneration ||
-      generation !== this.walletSessionGeneration ||
-      keyring !== this.getActiveKeyring()
-    ) {
+    if (!isCurrent()) {
       // KDF/decryption cannot be aborted. Drop the session it created if a
       // lock/reset/network change happened while it was running.
-      await keyring.lockWallet();
+      if (result.canLogin) await keyring.lockWallet();
       throw new Error(WALLET_SESSION_CHANGED_ERROR);
     }
     return result;
@@ -4475,12 +4839,18 @@ class MainController {
     return this.smartAccount.prepareSmartAccount(params);
   }
 
-  public async registerSmartAccountOnChain(params: {
-    accountId: number;
-    expectedContext?: IEvmTransactionContext;
-  }) {
+  public async registerSmartAccountOnChain(
+    params: {
+      accountId: number;
+      expectedContext?: IEvmTransactionContext;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.registerSmartAccountOnChain(params);
+    return this.smartAccount.registerSmartAccountOnChain(
+      params,
+      assertApprovalCurrent
+    );
   }
 
   public async hydrateSmartAccount(
@@ -4626,32 +4996,38 @@ class MainController {
     );
   }
 
-  public async submitSmartAccountExecution(params: {
-    accountId?: number;
-    executionCalldata?: string;
-    executionContextId?: string;
-    executions?: Array<{
-      data: string;
-      nonce?: string;
-      target: string;
-      value: string;
-    }>;
-    expectedContext?: IEvmTransactionContext;
-    gasPayer?: {
-      address: string;
-      id: number;
-      type: KeyringAccountType;
-    };
-    maxFeePerGas?: string;
-    maxPriorityFeePerGas?: string;
-    mode?: string;
-    signature: string;
-    userOperation?: SmartAccountPackedUserOperation;
-    validator?: string;
-    waitForConfirmation?: boolean;
-  }) {
+  public async submitSmartAccountExecution(
+    params: {
+      accountId?: number;
+      executionCalldata?: string;
+      executionContextId?: string;
+      executions?: Array<{
+        data: string;
+        nonce?: string;
+        target: string;
+        value: string;
+      }>;
+      expectedContext?: IEvmTransactionContext;
+      gasPayer?: {
+        address: string;
+        id: number;
+        type: KeyringAccountType;
+      };
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+      mode?: string;
+      signature: string;
+      userOperation?: SmartAccountPackedUserOperation;
+      validator?: string;
+      waitForConfirmation?: boolean;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.submitSmartAccountExecution(params);
+    return this.smartAccount.submitSmartAccountExecution(
+      params,
+      assertApprovalCurrent
+    );
   }
 
   public async prepareSmartAccountGuardianRegistration(params: {
@@ -5156,27 +5532,73 @@ class MainController {
     store.dispatch(setStoreError(null));
   }
 
-  public async getRpc(
-    data: ICustomRpcParams,
-    retryCount = 0
-  ): Promise<INetwork> {
+  public async previewUtxoRpc(data: UtxoRpcDraft): Promise<INetwork> {
+    this.assertWalletReadyForSigning();
+    const generation = this.walletSessionGeneration;
+    const { url, explorer, label } = data;
+    const { purpose } = data;
+    if (
+      purpose !== 'first-use' &&
+      purpose !== 'edit' &&
+      purpose !== 'pin-existing'
+    )
+      throw new Error('Invalid UTXO registration request');
+    const chainId = data.purpose === 'first-use' ? undefined : data.chainId;
+    const readCurrent = () =>
+      chainId === undefined
+        ? undefined
+        : store.getState().vaultGlobal.networks.syscoin[chainId];
+    const selected = readCurrent();
+    if (
+      data.purpose !== 'first-use' &&
+      (!selected ||
+        typeof data.expectedRegistration !== 'string' ||
+        networkRegistrationFingerprint(selected) !==
+          data.expectedRegistration ||
+        (selected.utxoBackendChain === undefined) !==
+          (purpose === 'pin-existing'))
+    )
+      throw new Error('Network changed. Please try again.');
+    const registration = selected && {
+      chainId: selected.chainId,
+      slip44: selected.slip44,
+    };
+    const backendChain = selected?.utxoBackendChain;
+    const assertCurrent = () => {
+      this.assertWalletReadyForSigning();
+      if (
+        !this.isUnlocked() ||
+        this.walletSessionGeneration !== generation ||
+        readCurrent() !== selected
+      )
+        throw new Error('Network changed. Please try again.');
+    };
+    return withUtxoRpcVerification(url, assertCurrent, async (owner) => {
+      const draft = { url, explorer, label };
+      const result =
+        registration && backendChain !== undefined
+          ? await getSysRpc(draft, { ...owner, registration, backendChain })
+          : await observeSysRpc(draft, { ...owner, registration });
+      assertCurrent();
+      const network = result.rpc.formattedNetwork;
+      if (label) return network;
+      const coin = findUtxoCoinByRegistration(network);
+      return coin
+        ? { ...network, label: utxoRegistrationDisplayName(coin) }
+        : network;
+    });
+  }
+
+  public async getRpc(data: EvmRpcDraft, retryCount = 0): Promise<INetwork> {
+    if (data.isSyscoinRpc) throw new Error('Use explicit UTXO registration');
     const MAX_RETRIES = 3;
     const INITIAL_RETRY_DELAY = 1000; // 1 second
 
     try {
-      let result;
-      if (data.isSyscoinRpc) {
-        const sysRpcResult = await withWalletBackend(data.url, () =>
-          getSysRpc(data)
-        );
-        result = sysRpcResult?.rpc?.formattedNetwork;
-      } else {
-        const ethRpcResult = await withWalletBackend(data.url, () =>
-          getEthRpc(data, false)
-        );
-        result = ethRpcResult?.formattedNetwork;
-      }
-
+      const ethRpcResult = await withWalletBackend(data.url, () =>
+        getEthRpc(data, false)
+      );
+      const result = ethRpcResult?.formattedNetwork;
       if (!result) {
         throw new Error('Failed to get network configuration from RPC');
       }
@@ -5432,7 +5854,9 @@ class MainController {
     isEdit: boolean,
     generation = this.walletStateGeneration
   ) {
+    network = { ...network };
     const family = network.kind;
+    const session = this.walletSessionGeneration;
     const previous =
       store.getState().vaultGlobal.networks[family]?.[network.chainId];
     const assertCurrent = () => {
@@ -5446,6 +5870,11 @@ class MainController {
         throw new Error('Missing required network configuration fields');
       if (generation !== this.walletStateGeneration)
         throw new Error('Wallet state changed before saving network');
+      if (family === INetworkType.Syscoin) {
+        this.assertWalletReadyForSigning();
+        if (!this.isUnlocked() || this.walletSessionGeneration !== session)
+          throw new Error('Wallet session changed before saving network');
+      }
       if (this.isRemovingNetwork)
         throw new Error(NETWORK_REMOVAL_IN_PROGRESS_ERROR);
       const current =
@@ -5459,12 +5888,45 @@ class MainController {
       this.assertUniqueUtxoNetworkVault(network);
     };
     assertCurrent();
+    if (family === INetworkType.Syscoin) {
+      const { chainId, slip44, utxoBackendChain, url, explorer, label } =
+        network;
+      if (
+        typeof utxoBackendChain !== 'string' ||
+        (previous &&
+          (previous.slip44 !== slip44 ||
+            (previous.utxoBackendChain !== undefined &&
+              previous.utxoBackendChain !== utxoBackendChain)))
+      )
+        throw new Error('Verify the UTXO network before saving.');
+      const verified = await withUtxoRpcVerification(
+        url,
+        assertCurrent,
+        (owner) =>
+          getSysRpc(
+            { url, explorer, label },
+            {
+              ...owner,
+              registration: { chainId, slip44 },
+              backendChain: utxoBackendChain,
+            }
+          )
+      );
+      assertCurrent();
+      network = {
+        ...network,
+        currency: verified.rpc.formattedNetwork.currency,
+      };
+    }
     this.resetAutoLockTimer();
     await persistNetworkRegistry(
       network,
       isEdit,
       assertCurrent,
-      () => generation === this.walletStateGeneration
+      () =>
+        generation === this.walletStateGeneration &&
+        (family !== INetworkType.Syscoin ||
+          this.walletSessionGeneration === session)
     );
     return network;
   }
@@ -5725,6 +6187,24 @@ class MainController {
       }
     };
     assertCurrent();
+    if (sourceNetwork.kind === INetworkType.Syscoin) {
+      if (sourceSlip44 === null || !target?.xpub)
+        throw new Error(WALLET_SESSION_CHANGED_ERROR);
+      const pending =
+        await this.getRetainedUtxoRecords().hasUnresolvedForAccount(
+          { keyring: this.getActiveKeyring(), assertCurrent },
+          sourceSlip44,
+          { id: accountId, type: accountType, xpub: target.xpub }
+        );
+      assertCurrent();
+      if (pending)
+        throw Object.assign(
+          new Error(
+            'This account has an unresolved transfer. Check its transaction status before removing it.'
+          ),
+          { code: 'PENDING_TRANSFER' }
+        );
+    }
     let importedRecovery;
     if (accountType === KeyringAccountType.Imported && target?.xprv) {
       const profileId =
@@ -5868,8 +6348,34 @@ class MainController {
 
     try {
       if (isBitcoinBased) {
-        return await this.syscoinTransaction.getRecommendedFee(
-          activeNetwork.url
+        const generation = this.walletSessionGeneration;
+        const { chainId, kind, slip44, url } = activeNetwork;
+        const assertCurrent = () => {
+          const { vault } = store.getState();
+          if (
+            this.getWalletSetupStatus() ||
+            this.walletSessionGeneration !== generation ||
+            !vault.isBitcoinBased ||
+            vault.activeNetwork.kind !== kind ||
+            vault.activeNetwork.chainId !== chainId ||
+            vault.activeNetwork.slip44 !== slip44 ||
+            vault.activeNetwork.url !== url
+          )
+            throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+        };
+        assertCurrent();
+        const cached = this.utxoFeeCache;
+        if (cached?.url === url && Date.now() - cached.observedAt < 60_000)
+          return cached.fee;
+        return await this.withOwnedUtxoRead(
+          { kind: 'fee', url },
+          assertCurrent,
+          async (read) => {
+            const fee = await readPublicSyscoinFee(url, read);
+            read.assertCurrent();
+            this.utxoFeeCache = { fee, observedAt: Date.now(), url };
+            return fee;
+          }
         );
       } else {
         // Return gas price in wei as a string (BigNumber-safe, no precision loss)
@@ -5878,6 +6384,7 @@ class MainController {
         )) as string;
       }
     } catch (error) {
+      if (error?.message === UTXO_SIGNING_CONTEXT_CHANGED) throw error;
       console.error('[MainController] Error getting recommended fee:', error);
       // Return fallback values
       return isBitcoinBased ? 0.0000001 : '20000000000'; // 20 gwei
@@ -6233,8 +6740,8 @@ class MainController {
     txHash: string,
     isLegacy: boolean,
     chainId: number,
-    signerAddress?: string,
-    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
+    signerAddress: string | undefined,
+    options: EvmReplacementFeeApproval & { walletScope: IWalletNavigationScope }
   ) {
     this.assertWalletReadyForSigning();
     const { vault } = store.getState();
@@ -6242,8 +6749,30 @@ class MainController {
     const account = { ...vault.accounts[accountInfo.type]?.[accountInfo.id] };
     const network = { ...vault.activeNetwork };
     const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
     const { account: accountScope, network: networkScope } =
       getWalletNavigationScope();
+    const isSmartAccount = accountInfo.type === KeyringAccountType.SmartAccount;
+    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
+      Object.assign(new Error(message), { transactionNotBroadcast: true });
+    if (
+      typeof txHash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/i.test(txHash) ||
+      options?.walletScope?.account !== accountScope ||
+      options.walletScope.network !== networkScope
+    )
+      throw contextError();
+    const { approvedMaximumFee, previewOnly } = options;
+    if (
+      previewOnly !== true &&
+      (typeof approvedMaximumFee !== 'string' ||
+        !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee))
+    )
+      throw contextError('Replacement fee approval required');
+    const feeApproval: EvmReplacementFeeApproval =
+      previewOnly === true
+        ? { previewOnly: true }
+        : { approvedMaximumFee: approvedMaximumFee! };
     const findOriginal = (currentVault = vault) =>
       currentVault.accountTransactions[accountInfo.type]?.[
         accountInfo.id
@@ -6256,22 +6785,20 @@ class MainController {
       { ...original, smartAccountExecutionFrom: undefined },
       sender || ''
     );
-    const contextError = (message = EVM_TRANSACTION_CONTEXT_CHANGED) =>
-      Object.assign(new Error(message), {
-        transactionNotBroadcast: true,
-      });
     const isPendingOriginal = (tx: any) =>
       tx &&
       !tx.isReplaced &&
       tx.status !== 'replaced' &&
       !isTransactionInBlock(tx) &&
-      tx.smartAccountExecutionFrom?.toLowerCase() ===
-        account.address?.toLowerCase() &&
+      (isSmartAccount
+        ? tx.smartAccountExecutionFrom?.toLowerCase() ===
+          account.address?.toLowerCase()
+        : !tx.smartAccountExecutionFrom &&
+          tx.from?.toLowerCase() === account.address?.toLowerCase()) &&
       (tx.chainId === undefined || Number(tx.chainId) === chainId);
     if (
       vault.isBitcoinBased ||
       this.isResettingWallet ||
-      accountInfo.type !== KeyringAccountType.SmartAccount ||
       network.kind !== INetworkType.Ethereum ||
       network.chainId !== chainId ||
       !isAccountCompatibleWithNetwork(account, accountInfo.type, network) ||
@@ -6283,30 +6810,33 @@ class MainController {
       throw contextError();
 
     let targetAccount: { id: number; type: KeyringAccountType } | undefined;
-    for (const [type, accounts] of Object.entries(vault.accounts)) {
-      if (type === KeyringAccountType.SmartAccount) continue;
-      const found = Object.entries(accounts).find(
-        ([, value]) =>
-          value.address?.toLowerCase() === sender &&
-          isAccountCompatibleWithNetwork(
-            value,
-            type as KeyringAccountType,
-            network
-          ) &&
-          (type === KeyringAccountType.Ledger ||
-            type === KeyringAccountType.Trezor ||
-            Boolean(value.xprv))
-      );
-      if (found) {
-        targetAccount = {
-          id: Number(found[0]),
-          type: type as KeyringAccountType,
-        };
-        break;
+    if (isSmartAccount) {
+      for (const [type, accounts] of Object.entries(vault.accounts)) {
+        if (type === KeyringAccountType.SmartAccount) continue;
+        const found = Object.entries(accounts).find(
+          ([, value]) =>
+            value.address?.toLowerCase() === sender &&
+            isAccountCompatibleWithNetwork(
+              value,
+              type as KeyringAccountType,
+              network
+            ) &&
+            (type === KeyringAccountType.Ledger ||
+              type === KeyringAccountType.Trezor ||
+              Boolean(value.xprv))
+        );
+        if (found) {
+          targetAccount = {
+            id: Number(found[0]),
+            type: type as KeyringAccountType,
+          };
+          break;
+        }
       }
+      if (!targetAccount)
+        throw contextError('Original gas payer unavailable locally');
     }
-    if (!targetAccount)
-      throw contextError('Original gas payer unavailable locally');
+    const payerRef = targetAccount ?? accountInfo;
 
     const keyring = this.getActiveKeyring();
     const transactionController = keyring.ethereumTransaction;
@@ -6317,12 +6847,12 @@ class MainController {
       const currentScope = getWalletNavigationScope();
       const currentAccount =
         current.vault.accounts[accountInfo.type]?.[accountInfo.id];
-      const payer =
-        current.vault.accounts[targetAccount.type]?.[targetAccount.id];
+      const payer = current.vault.accounts[payerRef.type]?.[payerRef.id];
       const tracked = findOriginal(current.vault);
       if (
         this.isResettingWallet ||
         this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkRequest ||
         current.vault.isBitcoinBased ||
         currentScope.account !== accountScope ||
         currentScope.network !== networkScope ||
@@ -6335,7 +6865,7 @@ class MainController {
         keyring.ethereumTransaction !== transactionController ||
         transactionController.web3Provider !== provider ||
         payer?.address?.toLowerCase() !== sender ||
-        !isAccountCompatibleWithNetwork(payer, targetAccount.type, network) ||
+        !isAccountCompatibleWithNetwork(payer, payerRef.type, network) ||
         !isPendingOriginal(tracked) ||
         tracked.from?.toLowerCase() !== sender ||
         Number(tracked.nonce) !== nonce
@@ -6368,7 +6898,7 @@ class MainController {
         txHash,
         isLegacy,
         {
-          ...options,
+          ...feeApproval,
           targetAccount,
           assertCurrentContext,
           validateOriginal,
@@ -6394,7 +6924,7 @@ class MainController {
       chainId: number;
       walletScope: IWalletNavigationScope;
     },
-    options: { approvedMaximumFee?: string; previewOnly?: boolean } = {}
+    options: EvmReplacementFeeApproval
   ) {
     this.assertWalletReadyForSigning();
     const vault = store.getState().vault;
@@ -6567,6 +7097,9 @@ class MainController {
     const transactionController = keyring.ethereumTransaction;
     const provider = transactionController.web3Provider;
     const generation = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const approvedMaximumFee = options?.approvedMaximumFee;
+    const previewOnly = options?.previewOnly === true;
     let usingFallback = false;
     const assertCurrentContext = () => {
       this.assertWalletReadyForSigning();
@@ -6577,6 +7110,7 @@ class MainController {
       const payer = currentVault.accounts[payerRef.type]?.[payerRef.id];
       if (
         this.walletSessionGeneration !== generation ||
+        this.networkRequestGeneration !== networkRequest ||
         currentScope.account !== scope.account ||
         currentScope.network !== scope.network ||
         this.getActiveKeyring() !== keyring ||
@@ -6608,6 +7142,20 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrentContext();
+    if (
+      !previewOnly &&
+      (typeof approvedMaximumFee !== 'string' ||
+        !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee))
+    )
+      throw new Error('Cancellation fee approval required');
+    const send = provider.send.bind(provider);
+    await assertEvmCancellationPayerReady(
+      normalizedSignerAddress,
+      fallbackNonce,
+      (method, address, tag) => send(method, [address, tag]),
+      assertCurrentContext
+    );
+    assertCurrentContext();
     return await transactionController.cancelSentTransaction(
       txHash,
       isLegacy,
@@ -6616,8 +7164,12 @@ class MainController {
         assertCurrentContext,
         validateOriginal,
         targetAccount,
-        previewOnly: options.previewOnly === true,
-        approvedMaximumFee: options.approvedMaximumFee,
+        ...(previewOnly
+          ? { previewOnly: true as const }
+          : {
+              previewOnly: false as const,
+              approvedMaximumFee: approvedMaximumFee!,
+            }),
       }
     );
   }
@@ -7434,36 +7986,81 @@ class MainController {
    * Atomic wrapper that handles sign, send, and save in one operation
    * This ensures the transaction completes even if the popup window loses focus
    */
-  public async signSendAndSaveTransaction(params: {
-    expectedContext?: IUtxoSigningContext;
-    isLedger?: boolean; // For UTXO transactions
-    isTrezor?: boolean;
-    ordinaryWalletSend?: boolean;
-    psbt?: any;
-  }): Promise<any> {
+  public async signSendAndSaveTransaction(
+    params: {
+      isLedger?: boolean; // For UTXO transactions
+      isTrezor?: boolean;
+      psbt?: any;
+    } & (
+      | {
+          expectedContext?: never;
+          ordinaryWalletSend: true;
+          utxoFeeReview: UtxoWalletFeeReview;
+        }
+      | {
+          expectedContext?: IUtxoSigningContext;
+          ordinaryWalletSend?: false;
+          utxoFeeReview?: never;
+        }
+    ),
+    dappAuthority?: UtxoDappSigningAuthority
+  ): Promise<any> {
     let senderInvoked = false;
     try {
       this.assertWalletReadyForSigning();
       const { isBitcoinBased, activeNetwork } = store.getState().vault;
       if (isBitcoinBased && params.psbt) {
         // UTXO flow: sign -> send -> save
-        const signing = this.captureUtxoSigningContext(params.expectedContext);
-
-        if (params.ordinaryWalletSend === true) {
-          this.assertOrdinaryUtxoInputsCurrent(
-            PsbtUtils.fromPali(params.psbt, activeNetwork),
-            signing.context
+        if (params.ordinaryWalletSend !== true && !dappAuthority)
+          throw new Error('Explicit PSBT submission approval is required');
+        const signing = this.captureUtxoSigningContext(
+          params.expectedContext,
+          dappAuthority
+        );
+        const ordinary = params.ordinaryWalletSend === true;
+        const assertCurrent = ordinary
+          ? signing.assertWalletReviewCurrent
+          : signing.assertCurrent;
+        const review =
+          ordinary && isUtxoWalletFeeReview(params.utxoFeeReview)
+            ? Object.freeze({
+                feeSatoshis: params.utxoFeeReview.feeSatoshis,
+                unsignedHash: params.utxoFeeReview.unsignedHash,
+                approvalTag: params.utxoFeeReview.approvalTag,
+              })
+            : undefined;
+        if (ordinary) {
+          await this.assertUtxoWalletReview(signing.walletReviewScope, review);
+          assertCurrent();
+        }
+        const approvedPsbt = PsbtUtils.fromPali(params.psbt, activeNetwork);
+        // Reject a different unsigned envelope before resolving its inputs.
+        // The actual fee is checked separately against verified prevouts.
+        if (review)
+          assertUtxoFeeReview(approvedPsbt, review.feeSatoshis, review);
+        if (syscoinTransactionTypes.isPoDATx(approvedPsbt.version))
+          throw new Error(
+            'This wallet can sign PoDA PSBTs for external submission'
           );
+        const owner = this.utxoRecordOwner(
+          activeNetwork,
+          signing.context.account
+        );
+        if (ordinary) {
+          this.assertOrdinaryUtxoInputsCurrent(approvedPsbt, signing.context);
         }
 
         // Step 1: Sign the PSBT
-        const signedPsbt = await this.signSyscoinPsbt({
-          psbt: params.psbt,
-          isTrezor: params.isTrezor,
-          isLedger: params.isLedger,
-          expectedContext: signing.context,
-        });
-        signing.assertCurrent();
+        const signedPsbt = await this.signReviewedSyscoinPsbt(
+          {
+            psbt: params.psbt,
+            isTrezor: params.isTrezor,
+            isLedger: params.isLedger,
+            ...(review && { utxoFeeReview: review }),
+          },
+          signing
+        );
+        assertCurrent();
 
         // Reject incomplete or excessive-fee signatures before the sender can
         // publish anything. Keep the normal PSBT fee safety check enabled.
@@ -7471,8 +8068,11 @@ class MainController {
           signedPsbt,
           activeNetwork
         );
+        let transaction: ReturnType<
+          typeof verifiedSignedPsbt.extractTransaction
+        >;
         try {
-          verifiedSignedPsbt.extractTransaction();
+          transaction = verifiedSignedPsbt.extractTransaction();
         } catch (error) {
           if (
             error instanceof Error &&
@@ -7488,9 +8088,15 @@ class MainController {
           }
           throw error;
         }
-        signing.assertCurrent();
+        assertCurrent();
+        if (review)
+          assertUtxoFeeReview(
+            verifiedSignedPsbt,
+            verifiedSignedPsbt.getFee().toString(),
+            review
+          );
 
-        if (params.ordinaryWalletSend === true) {
+        if (ordinary) {
           this.assertOrdinaryUtxoInputsCurrent(
             verifiedSignedPsbt,
             signing.context
@@ -7499,12 +8105,36 @@ class MainController {
 
         // Step 2: Send the transaction
         const sentryScope = this.getSentryCollateralScope();
+        const record = Object.freeze({
+          owner,
+          operation: ordinary ? ('wallet' as const) : ('external' as const),
+          url: utxoSubmissionUrl(signing.context.rpcUrl),
+          txid: transaction.getId(),
+          rawTransaction: transaction.toHex(),
+          outpoints: Object.freeze(utxoInputOutpoints(transaction.ins)),
+          feeSatoshis: verifiedSignedPsbt.getFee().toString(),
+          virtualSize: transaction.virtualSize(),
+        });
         const submit = async (markInvoked: () => void) => {
           await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
-          signing.assertCurrent();
-          markInvoked();
-          senderInvoked = true;
-          return signing.transactions.sendTransaction(signedPsbt);
+          assertCurrent();
+          return withWalletBackend(signing.context.rpcUrl, () =>
+            submitReviewedUtxo({
+              record,
+              sender: signing.transactions,
+              session: {
+                keyring: signing.keyring,
+                assertCurrent,
+              },
+              records: this.getRetainedUtxoRecords(),
+              intent: 'initial',
+              fetch: (input, init) => {
+                markInvoked();
+                senderInvoked = true;
+                return globalThis.fetch(input, init);
+              },
+            })
+          );
         };
         const txResult = sentryScope
           ? await withSentryCollateralBroadcast(sentryScope, submit)
@@ -7512,7 +8142,7 @@ class MainController {
         // Broadcast acknowledgement is authoritative even if the user changes
         // context or local history persistence fails afterward.
         try {
-          signing.assertCurrent();
+          assertCurrent();
           await this.sendAndSaveTransaction(txResult, signing.context.account, {
             localAcknowledgedInputs: createUtxoAcknowledgedInputs(
               verifiedSignedPsbt.txInputs,
@@ -7572,8 +8202,11 @@ class MainController {
     saveOptions?: {
       assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
+      authorizeDapp?: () => void;
       clearNavigation?: boolean;
       expectedContext?: IEvmTransactionContext;
+      hardwareScope?: IWalletNavigationScope;
+      nativeReview?: { maximumFee: string; scope: IWalletNavigationScope };
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -7583,6 +8216,16 @@ class MainController {
     let txResponse: IEvmTransactionResponse | undefined;
     let submissionStarted = false;
     const expectedContext = saveOptions?.expectedContext;
+    const nativeReview = saveOptions?.nativeReview;
+    const hardwareScope = saveOptions?.hardwareScope && {
+      ...saveOptions.hardwareScope,
+    };
+    const authorizeDapp = saveOptions?.authorizeDapp;
+    const internal = typeof saveOptions?.assertCurrentContext === 'function';
+    let assertNativeReviewCurrent: (() => void) | undefined;
+    let prepareNativeReview:
+      | (() => ReturnType<typeof recheckReviewedNativeEvmTransfer>)
+      | undefined;
     const sessionGeneration = this.walletSessionGeneration;
     const assertExpectedContext = (beforeSubmission = true) => {
       if (beforeSubmission && !expectedContext) {
@@ -7619,10 +8262,90 @@ class MainController {
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
-    try {
+    const assertSynchronous = (guard?: () => void) => {
+      const result: unknown = guard?.();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('Transaction approval must be synchronous');
+      }
+    };
+    const assertAuthority = () => {
+      assertSynchronous(saveOptions?.assertCurrentContext);
       assertExpectedContext();
+      if (hardwareScope) {
+        this.assertAssetMutationContext(hardwareScope);
+        const { vault } = store.getState();
+        const selected = vault.activeAccount;
+        const account = vault.accounts[selected.type]?.[selected.id];
+        if (
+          targetAccount ||
+          vault.isBitcoinBased ||
+          !account?.address ||
+          ![KeyringAccountType.Ledger, KeyringAccountType.Trezor].includes(
+            selected.type
+          )
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      }
+      assertSynchronous(authorizeDapp);
+      assertNativeReviewCurrent?.();
+    };
+    if (
+      [
+        Boolean(nativeReview),
+        Boolean(hardwareScope),
+        typeof authorizeDapp === 'function',
+        internal,
+      ].filter(Boolean).length !== 1 ||
+      (authorizeDapp &&
+        !Number.isSafeInteger(expectedContext?.sessionGeneration))
+    )
+      throw Object.assign(
+        new Error('Explicit transaction approval is required'),
+        {
+          transactionNotBroadcast: true,
+        }
+      );
+    try {
+      assertAuthority();
       assertSupportedEvmFees(params, isLegacy);
       const controller = getController();
+
+      if (nativeReview) {
+        const read = this.captureFreshNativeEvmRead(nativeReview.scope);
+        const { accounts, activeAccount, isBitcoinBased } =
+          store.getState().vault;
+        const account = accounts[activeAccount.type]?.[activeAccount.id];
+        if (
+          targetAccount ||
+          isBitcoinBased ||
+          read.network.kind !== INetworkType.Ethereum ||
+          (activeAccount.type !== KeyringAccountType.HDAccount &&
+            activeAccount.type !== KeyringAccountType.Imported) ||
+          !account?.address ||
+          account.isSmartAccount ||
+          account.isLedgerWallet ||
+          account.isTrezorWallet
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const review = captureReviewedNativeEvmTransfer(
+          params,
+          Boolean(isLegacy),
+          nativeReview.maximumFee,
+          account.address,
+          read.network.chainId,
+          read.overrides
+        );
+        assertNativeReviewCurrent = read.assertCurrent;
+        prepareNativeReview = () =>
+          read.run((provider) =>
+            recheckReviewedNativeEvmTransfer(
+              review,
+              provider,
+              read.assertCurrent
+            )
+          );
+      }
 
       // Check the call target and obvious calldata recipients/spenders.
       for (const target of await getBlacklistTargetsForEvmCallWithContractType({
@@ -7656,8 +8379,10 @@ class MainController {
         }
       }
 
-      saveOptions?.assertCurrentContext?.();
-      assertExpectedContext();
+      const nativeTransaction = prepareNativeReview
+        ? await prepareNativeReview()
+        : undefined;
+      assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
         targetAccount &&
@@ -7687,24 +8412,30 @@ class MainController {
         }
         // No asynchronous work may intervene between this check and the
         // keyring's synchronous capture of the account and network.
-        saveOptions?.assertCurrentContext?.();
-        assertExpectedContext();
-        saveOptions?.assertBeforeSign?.();
+        const assertBeforeSign = () => {
+          assertAuthority();
+          assertSynchronous(saveOptions?.assertBeforeSign);
+        };
+        assertBeforeSign();
         submissionStarted = true;
-        txResponse =
-          (await controller.wallet.ethereumTransaction.sendFormattedTransaction(
-            expectedContext
-              ? {
-                  ...params,
-                  chainId: expectedContext.chainId,
-                  from: expectedContext.account.address,
-                }
-              : params,
-            isLegacy,
-            saveOptions?.assertBeforeSign
-              ? { assertCurrent: saveOptions.assertBeforeSign }
-              : undefined
-          )) as unknown as IEvmTransactionResponse;
+        const ethereum = controller.wallet.ethereumTransaction;
+        const sending = nativeTransaction
+          ? ethereum.sendFormattedTransaction(nativeTransaction, isLegacy, {
+              assertCurrent: assertBeforeSign,
+              mode: 'reviewed-native',
+            })
+          : ethereum.sendFormattedTransaction(
+              expectedContext
+                ? {
+                    ...params,
+                    chainId: expectedContext.chainId,
+                    from: expectedContext.account.address,
+                  }
+                : params,
+              isLegacy,
+              { assertCurrent: assertBeforeSign, mode: 'specialized' }
+            );
+        txResponse = (await sending) as unknown as IEvmTransactionResponse;
       } finally {
         if (shouldUseTargetAccount) {
           keyring.setVaultStateGetter(() => store.getState().vault);
@@ -7768,14 +8499,19 @@ class MainController {
       if (
         (transactionMetadata?.smartAccountInfrastructureDeployment ||
           transactionMetadata?.smartAccountExecution ||
-          expectedContext) &&
+          expectedContext ||
+          nativeReview ||
+          hardwareScope ||
+          authorizeDapp ||
+          internal) &&
         !submissionStarted
       ) {
         throw Object.assign(
-          new Error(
-            error?.message ||
-              'Deployment rejected before transaction submission'
-          ),
+          error instanceof Error
+            ? error
+            : new Error(
+                error?.message || 'Transaction rejected before submission'
+              ),
           { transactionNotBroadcast: true }
         );
       }
@@ -7786,7 +8522,8 @@ class MainController {
   public async signSmartAccountActionDigestInternal(
     params: string[],
     targetAccount: { id: number; type: KeyringAccountType },
-    executionContextId?: string
+    executionContextId?: string,
+    assertApprovalCurrent?: () => void
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertContext = () => {
@@ -7794,6 +8531,7 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
+      assertApprovalCurrent?.();
     };
     assertContext();
     const { accounts, activeAccount } = store.getState().vault;
@@ -8070,7 +8808,8 @@ class MainController {
   }
 
   public async signSLHDSAActionHash(
-    params: SLHDSASignActionHashParams & { executionContextId?: string }
+    params: SLHDSASignActionHashParams & { executionContextId?: string },
+    approval?: SLHDSADispatchApproval
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertContext = () => {
@@ -8081,6 +8820,7 @@ class MainController {
           params.executionContextId,
           params.actionHash
         );
+      approval?.assertCurrent();
     };
     assertContext();
     this.configureSLHDSASessionStateCrypto();
@@ -8088,7 +8828,8 @@ class MainController {
     try {
       const signature = await signSLHDSAActionHashLocal(
         params,
-        sessionGeneration
+        sessionGeneration,
+        approval
       );
       assertContext();
       return signature;
@@ -8102,7 +8843,8 @@ class MainController {
       try {
         const signature = await signSLHDSAActionHashLocal(
           params,
-          sessionGeneration
+          sessionGeneration,
+          approval
         );
         assertContext();
         return signature;
@@ -8340,15 +9082,162 @@ class MainController {
     return recordSendCallsBundle(host, id, bundle);
   }
 
+  /** Capture the reviewed ERC20 fields before accepting a submission ticket. */
+  public captureWalletTokenReview(request: unknown, persistentTab: boolean) {
+    const input = request as Partial<WalletTokenReviewRequest> | null;
+    const reviewed = input?.transaction;
+    if (
+      !input ||
+      !reviewed ||
+      !input.walletScope ||
+      !Number.isSafeInteger(input.chainId) ||
+      input.chainId! <= 0 ||
+      typeof reviewed.networkUrl !== 'string' ||
+      typeof reviewed.isLegacy !== 'boolean' ||
+      (reviewed.isLegacy
+        ? reviewed.maxFeePerGas !== undefined ||
+          reviewed.maxPriorityFeePerGas !== undefined
+        : reviewed.gasPrice !== undefined)
+    )
+      throw walletTokenReviewError();
+    const scope = { ...input.walletScope };
+    const chainId = input.chainId!;
+    const { networkUrl } = reviewed;
+    this.assertWalletReadyForSigning();
+    const session = this.walletSessionGeneration;
+    const networkRequest = this.networkRequestGeneration;
+    const keyring = this.getActiveKeyring();
+    const { activeAccount, accounts } = store.getState().vault;
+    if (
+      !persistentTab &&
+      [KeyringAccountType.Ledger, KeyringAccountType.Trezor].includes(
+        activeAccount.type
+      )
+    )
+      throw walletTokenReviewError();
+    const from = accounts[activeAccount.type]?.[activeAccount.id]?.address;
+    const receiver = getAddress(reviewed.receiver);
+    const tokenAddress = getAddress(reviewed.tokenAddress);
+    if (/^0x0{40}$/i.test(tokenAddress)) throw walletTokenReviewError();
+    const gasLimit = parseErc20Units(reviewed.gasLimit);
+    if (gasLimit === '0') throw walletTokenReviewError();
+    let fees: IReviewedEvmTokenFees;
+    if (reviewed.isLegacy) {
+      const gasPrice = parseErc20Units(reviewed.gasPrice);
+      if (gasPrice === '0') throw walletTokenReviewError();
+      fees = { gasLimit, isLegacy: true, gasPrice };
+    } else {
+      const maxFeePerGas = parseErc20Units(reviewed.maxFeePerGas);
+      const maxPriorityFeePerGas = parseErc20Units(
+        reviewed.maxPriorityFeePerGas
+      );
+      if (
+        maxFeePerGas === '0' ||
+        BigInt(maxPriorityFeePerGas) > BigInt(maxFeePerGas)
+      )
+        throw walletTokenReviewError();
+      fees = { gasLimit, isLegacy: false, maxFeePerGas, maxPriorityFeePerGas };
+    }
+    const common = { networkUrl, receiver, tokenAddress, ...fees };
+    let payload: WalletTokenReviewPayload;
+    if (input.type === 'ERC20') {
+      if (
+        'tokenAmount' in input.transaction! ||
+        'decimals' in input.transaction! ||
+        'tokenId' in input.transaction!
+      )
+        throw walletTokenReviewError();
+      const tokenAmountUnits = parseErc20Units(
+        input.transaction!.tokenAmountUnits
+      );
+      if (tokenAmountUnits === '0') throw walletTokenReviewError();
+      encodeErc20Transfer(receiver, tokenAmountUnits);
+      payload = Object.freeze({
+        type: 'ERC20',
+        transaction: Object.freeze({ ...common, tokenAmountUnits }),
+      });
+    } else if (input.type === 'ERC721' || input.type === 'ERC1155') {
+      if (
+        'tokenAmountUnits' in input.transaction! ||
+        (input.type === 'ERC721' && 'tokenAmount' in input.transaction!)
+      )
+        throw walletTokenReviewError();
+      const intent = snapshotNftTransferIntent({
+        kind: 'nft-transfer',
+        chainId: String(chainId),
+        from,
+        recipient: receiver,
+        contractAddress: tokenAddress,
+        tokenStandard: input.type === 'ERC721' ? 'ERC-721' : 'ERC-1155',
+        tokenId: input.transaction!.tokenId,
+        amountUnits:
+          input.type === 'ERC1155' ? input.transaction!.tokenAmount : '1',
+      });
+      const nft = { ...common, tokenId: intent.tokenId };
+      payload =
+        input.type === 'ERC721'
+          ? Object.freeze({ type: 'ERC721', transaction: Object.freeze(nft) })
+          : Object.freeze({
+              type: 'ERC1155',
+              transaction: Object.freeze({
+                ...nft,
+                tokenAmount: intent.amountUnits,
+              }),
+            });
+    } else {
+      throw walletTokenReviewError();
+    }
+    const assertCurrent = () => {
+      try {
+        this.assertWalletReadyForSigning();
+        this.assertCurrentWalletSession(session, keyring);
+        this.assertAssetMutationContext(scope);
+      } catch {
+        throw walletTokenReviewError();
+      }
+      const { vault } = store.getState();
+      if (
+        networkRequest !== this.networkRequestGeneration ||
+        vault.isBitcoinBased ||
+        vault.activeAccount.type === KeyringAccountType.SmartAccount ||
+        vault.activeNetwork.kind !== INetworkType.Ethereum ||
+        vault.activeNetwork.chainId !== chainId ||
+        vault.activeNetwork.url !== networkUrl
+      )
+        throw walletTokenReviewError();
+    };
+    assertCurrent();
+    return { payload, assertCurrent };
+  }
+
   /**
    * Atomic wrapper for token transactions (ERC20, ERC721, ERC1155)
    * Combines send and save operations to ensure completion
    */
   public async sendAndSaveTokenTransaction(
-    tokenType: 'ERC20' | 'ERC721' | 'ERC1155',
-    params: any
+    approval: WalletTokenReviewPayload,
+    authority: IReviewedEvmTokenApproval
   ): Promise<IEvmTransactionResponse> {
     this.assertWalletReadyForSigning();
+    if (!authority || typeof authority.assertCurrent !== 'function')
+      throw walletTokenReviewError();
+    authority.assertCurrent();
+    const { transaction: params } = approval;
+    if (approval.type === 'ERC20') {
+      try {
+        if (
+          'tokenAmount' in params ||
+          'decimals' in params ||
+          typeof approval.transaction.tokenAmountUnits !== 'string' ||
+          parseErc20Units(approval.transaction.tokenAmountUnits) === '0'
+        )
+          throw new Error('Invalid ERC20 amount');
+      } catch {
+        throw Object.assign(new Error('Invalid ERC20 amount'), {
+          transactionNotBroadcast: true,
+        });
+      }
+    }
     const sessionGeneration = this.walletSessionGeneration;
     const { vault, vaultGlobal } = store.getState();
     const targetAccount = { ...vault.activeAccount };
@@ -8413,28 +9302,29 @@ class MainController {
           transactionNotBroadcast: true,
         });
 
-      // Call the appropriate method based on token type
-      switch (tokenType) {
+      authority.assertCurrent();
+      switch (approval.type) {
         case 'ERC20':
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc20Transaction(
-              params
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC721':
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc721Transaction(
-              params
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
         case 'ERC1155':
           txResponse =
             (await controller.wallet.ethereumTransaction.sendSignedErc1155Transaction(
-              params
+              approval.transaction,
+              authority
             )) as unknown as IEvmTransactionResponse;
           break;
-        default:
-          throw new Error(`Unsupported token type: ${tokenType}`);
       }
 
       // A published hash remains authoritative after a context switch. Do not
@@ -10207,15 +11097,17 @@ class MainController {
   // Transaction utilities from sysweb3-utils (previously from ControllerUtils)
   private txUtils = txUtils();
 
-  // Expose txUtils methods individually for better type safety
-  public getRawTransaction = this.txUtils.getRawTransaction;
-
-  private verifySyscoinPsbt = async (psbtData: any) => {
+  private verifySyscoinPsbt = async (
+    psbtData: any,
+    read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+  ) => {
+    read.assertCurrent();
     const activeNetwork = store.getState().vault.activeNetwork;
     const psbt = PsbtUtils.fromPali(psbtData, activeNetwork);
     const summary = await getVerifiedSyscoinPsbtValueSummary(psbt, (txid) =>
-      this.txUtils.getRawTransaction(activeNetwork.url, txid)
+      syscoinjs.utils.fetchBackendRawTx(activeNetwork.url, txid, read)
     );
+    read.assertCurrent();
 
     return { psbt, summary };
   };
@@ -10490,11 +11382,87 @@ class MainController {
     });
   }
 
-  private captureUtxoSigningContext(expected?: IUtxoSigningContext) {
+  private async withOwnedUtxoRead<T>(
+    scope: UtxoBlockbookReadScope,
+    assertCurrent: () => void,
+    operation: (
+      read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+    ) => Promise<T>,
+    approvalSignal?: AbortSignal
+  ): Promise<T> {
+    assertCurrent();
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    approvalSignal?.addEventListener('abort', abort, { once: true });
+    if (approvalSignal?.aborted) abort();
+    (this.activeUtxoReads ??= new Set()).add(controller);
+    try {
+      return await withWalletBackend(scope.url, async () => {
+        const read = createOwnedUtxoBlockbookRead(
+          scope,
+          controller.signal,
+          assertCurrent,
+          globalThis.fetch.bind(globalThis)
+        );
+        const result = await operation(read);
+        read.assertCurrent();
+        return result;
+      });
+    } catch (error) {
+      assertCurrent();
+      throw error;
+    } finally {
+      this.activeUtxoReads.delete(controller);
+      approvalSignal?.removeEventListener('abort', abort);
+      controller.abort();
+    }
+  }
+
+  private utxoRecordOwner(
+    network: INetwork,
+    account: IUtxoSigningContext['account']
+  ) {
+    const coin = coins.find(
+      (entry) =>
+        (entry.chainId ?? entry.slip44) === network.chainId &&
+        entry.slip44 === network.slip44 &&
+        entry.coinShortcut.toLowerCase() === network.currency?.toLowerCase()
+    );
+    const registered =
+      store.getState().vaultGlobal.networks?.syscoin?.[network.chainId];
+    if (
+      !coin?.hashGenesisBlock ||
+      !resolvePinnedUtxoBackendChain(network, registered)
+    )
+      throw new Error(
+        'Verify this UTXO network before submitting a transaction'
+      );
+    return Object.freeze({
+      chainId: network.chainId,
+      slip44: network.slip44,
+      genesisHash: coin.hashGenesisBlock,
+      account: Object.freeze({
+        id: account.id,
+        type: account.type,
+        xpub: account.xpub,
+      }),
+    });
+  }
+
+  private captureUtxoSigningContext(
+    expected?: IUtxoSigningContext,
+    authority?: UtxoDappSigningAuthority
+  ) {
     this.assertWalletReadyForSigning();
     const generation = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
     const keyring = this.getActiveKeyring();
     const { vault, vaultGlobal } = store.getState();
+    const { currency } = vault.activeNetwork;
+    const pin = resolvePinnedUtxoBackendChain(
+      vault.activeNetwork,
+      vaultGlobal.networks?.syscoin?.[vault.activeNetwork.chainId]
+    );
     const selected = { ...vault.activeAccount };
     const account = vault.accounts[selected.type]?.[selected.id];
     if (!vault.isBitcoinBased || !account)
@@ -10523,7 +11491,22 @@ class MainController {
       value.slip44 === context.slip44;
     if (expected && !matches(expected))
       throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    const { assertCurrent: authorize, signal: approvalSignal } =
+      authority ?? {};
+    if (
+      authority &&
+      (typeof authorize !== 'function' ||
+        typeof approvalSignal?.aborted !== 'boolean' ||
+        typeof approvalSignal.addEventListener !== 'function' ||
+        typeof approvalSignal.removeEventListener !== 'function')
+    )
+      throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     const assertCurrent = () => {
+      const result: unknown = authorize?.();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      }
       try {
         this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(generation, keyring);
@@ -10534,6 +11517,7 @@ class MainController {
       const currentAccount =
         current.vault.accounts[selected.type]?.[selected.id];
       if (
+        approvalSignal?.aborted ||
         !current.vault.isBitcoinBased ||
         current.vault.activeAccount.id !== selected.id ||
         current.vault.activeAccount.type !== selected.type ||
@@ -10542,99 +11526,175 @@ class MainController {
         current.vault.activeNetwork.chainId !== context.chainId ||
         current.vault.activeNetwork.kind !== context.kind ||
         current.vault.activeNetwork.url !== context.rpcUrl ||
+        current.vault.activeNetwork.currency !== currency ||
+        resolvePinnedUtxoBackendChain(
+          current.vault.activeNetwork,
+          current.vaultGlobal.networks?.syscoin?.[context.chainId]
+        ) !== pin ||
         current.vaultGlobal.activeSlip44 !== context.slip44
       )
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
+    const walletReviewScope = JSON.stringify([
+      generation,
+      networkGeneration,
+      pin,
+      currency,
+      context,
+    ]);
+    const assertWalletReviewCurrent = () => {
+      assertCurrent();
+      if (networkGeneration !== this.networkRequestGeneration)
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+    };
     assertCurrent();
-    return { context, assertCurrent, transactions: keyring.syscoinTransaction };
+    return {
+      context,
+      assertCurrent,
+      walletReviewScope,
+      assertWalletReviewCurrent,
+      keyring,
+      transactions: keyring.syscoinTransaction,
+      withRead: <T>(
+        operation: (
+          read: ReturnType<typeof createOwnedUtxoBlockbookRead>
+        ) => Promise<T>
+      ) =>
+        this.withOwnedUtxoRead(
+          {
+            kind: 'wallet',
+            url: context.rpcUrl,
+            xpub: context.account.xpub,
+            address: context.account.address,
+          },
+          assertWalletReviewCurrent,
+          operation,
+          approvalSignal
+        ),
+    };
   }
 
-  public async signSyscoinPsbt(params: {
-    expectedContext?: IUtxoSigningContext;
-    isLedger?: boolean;
-    isTrezor?: boolean;
-    psbt: any;
-  }) {
-    const signing = this.captureUtxoSigningContext(params.expectedContext);
-    const verified = await this.verifySyscoinPsbt(params.psbt);
-    signing.assertCurrent();
-    const feeAuthorization = params.psbt?.sentryFeeAuthorization;
-    const sentryFee = await this.verifySentryFeePsbt(
-      verified.psbt,
-      feeAuthorization
+  public async signSyscoinPsbt(
+    params: {
+      expectedContext?: IUtxoSigningContext;
+      isLedger?: boolean;
+      isTrezor?: boolean;
+      psbt: any;
+      utxoFeeReview?: UtxoFeeReview;
+    },
+    dappAuthority?: UtxoDappSigningAuthority
+  ) {
+    const signing = this.captureUtxoSigningContext(
+      params.expectedContext,
+      dappAuthority
     );
-    signing.assertCurrent();
-    await this.assertNoSentryCollateralInputs(verified.psbt);
-    signing.assertCurrent();
-    const finishFee = sentryFee
-      ? (await this.getSentryController()).beginFeeSigning(
-          feeAuthorization,
-          Buffer.from(
-            verified.psbt.data.globalMap.unsignedTx.toBuffer()
-          ).toString('hex')
-        )
-      : undefined;
-    try {
-      const signed = await signing.transactions.signPSBT({
-        ...params,
-        psbt: PsbtUtils.toPali(verified.psbt),
-      });
-      signing.assertCurrent();
-      const sentryScope = this.getSentryCollateralScope();
-      const release = async (markDisclosed: () => void) => {
-        await this.assertNoSentryCollateralInputs(() =>
-          PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
+    return this.signReviewedSyscoinPsbt(params, signing);
+  }
+
+  private async signReviewedSyscoinPsbt(
+    params: Omit<
+      Parameters<MainController['signSyscoinPsbt']>[0],
+      'expectedContext'
+    >,
+    signing: ReturnType<MainController['captureUtxoSigningContext']>
+  ) {
+    const { utxoFeeReview, ...signingParams } = params;
+    const assertCurrent = signing.assertWalletReviewCurrent;
+    return signing.withRead(async (read) => {
+      const verified = await this.verifySyscoinPsbt(params.psbt, read);
+      assertCurrent();
+      if (utxoFeeReview)
+        assertUtxoFeeReview(
+          verified.psbt,
+          verified.summary.feeSatoshis,
+          utxoFeeReview
         );
-        if (sentryFee)
-          await this.verifySentryFeePsbt(
-            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
-            feeAuthorization
+      const feeAuthorization = params.psbt?.sentryFeeAuthorization;
+      const sentryFee = await this.verifySentryFeePsbt(
+        verified.psbt,
+        feeAuthorization
+      );
+      assertCurrent();
+      await this.assertNoSentryCollateralInputs(verified.psbt);
+      assertCurrent();
+      const finishFee = sentryFee
+        ? (await this.getSentryController()).beginFeeSigning(
+            feeAuthorization,
+            Buffer.from(
+              verified.psbt.data.globalMap.unsignedTx.toBuffer()
+            ).toString('hex')
+          )
+        : undefined;
+      try {
+        const signed = await signing.transactions.signPSBT(
+          {
+            ...signingParams,
+            psbt: PsbtUtils.toPali(verified.psbt),
+          },
+          read
+        );
+        assertCurrent();
+        const sentryScope = this.getSentryCollateralScope();
+        const release = async (markDisclosed: () => void) => {
+          await this.assertNoSentryCollateralInputs(() =>
+            PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork)
           );
-        signing.assertCurrent();
-        finishFee?.(true);
-        markDisclosed();
-        return signed;
-      };
-      return await (sentryScope
-        ? withSentryCollateralSignatureRelease(sentryScope, release)
-        : release(() => undefined));
-    } finally {
-      finishFee?.();
-    }
+          if (sentryFee)
+            await this.verifySentryFeePsbt(
+              PsbtUtils.fromPali(signed, store.getState().vault.activeNetwork),
+              feeAuthorization
+            );
+          assertCurrent();
+          finishFee?.(true);
+          markDisclosed();
+          return signed;
+        };
+        return await (sentryScope
+          ? withSentryCollateralSignatureRelease(sentryScope, release)
+          : release(() => undefined));
+      } finally {
+        finishFee?.();
+      }
+    });
   }
 
   // Add decodeRawTransaction method for PSBT/transaction details display
   public decodeRawTransaction = async (psbtOrHex: any, isRawHex = false) => {
     try {
-      const decoded = this.syscoinTransaction.decodeRawTransaction(
-        psbtOrHex,
-        isRawHex
-      );
-
-      if (!isRawHex) {
-        const { psbt, summary } = await this.verifySyscoinPsbt(psbtOrHex);
-        if (
-          !Array.isArray(decoded.vout) ||
-          decoded.vout.length !== summary.outputValuesSatoshis.length
-        ) {
-          throw new Error('Decoded outputs do not match the PSBT');
-        }
-        decoded.feeSatoshis = summary.feeSatoshis;
-        const sentry = await this.verifySentryFeePsbt(
-          psbt,
-          psbtOrHex?.sentryFeeAuthorization
+      if (isRawHex) {
+        this.assertWalletReadyForSigning();
+        return this.getActiveKeyring().syscoinTransaction.decodeRawTransaction(
+          psbtOrHex,
+          true
         );
-        if (sentry) decoded.sentry = sentry;
-        decoded.vout.forEach((output: any, index: number) => {
-          output.valueSatoshis = summary.outputValuesSatoshis[index];
-        });
-        if (decoded.syscoin) {
-          decoded.syscoin.allocations = summary.assetAllocations.length
-            ? { assets: summary.assetAllocations }
-            : null;
-          decoded.syscoin.inputAssets = summary.inputAssets;
-        }
+      }
+      const signing = this.captureUtxoSigningContext();
+      const decoded = signing.transactions.decodeRawTransaction(psbtOrHex);
+
+      const { psbt, summary } = await signing.withRead((read) =>
+        this.verifySyscoinPsbt(psbtOrHex, read)
+      );
+      if (
+        !Array.isArray(decoded.vout) ||
+        decoded.vout.length !== summary.outputValuesSatoshis.length
+      ) {
+        throw new Error('Decoded outputs do not match the PSBT');
+      }
+      decoded.feeSatoshis = summary.feeSatoshis;
+      const sentry = await this.verifySentryFeePsbt(
+        psbt,
+        psbtOrHex?.sentryFeeAuthorization
+      );
+      signing.assertCurrent();
+      if (sentry) decoded.sentry = sentry;
+      decoded.vout.forEach((output: any, index: number) => {
+        output.valueSatoshis = summary.outputValuesSatoshis[index];
+      });
+      if (decoded.syscoin) {
+        decoded.syscoin.allocations = summary.assetAllocations.length
+          ? { assets: summary.assetAllocations }
+          : null;
+        decoded.syscoin.inputAssets = summary.inputAssets;
       }
 
       return decoded;
@@ -10710,6 +11770,22 @@ class MainController {
       !/^0x[\da-f]{1,64}$/i.test(transaction.value)
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const read = this.captureFreshNativeEvmRead(expectedScope);
+    return read.run((provider) =>
+      freshSdkGasEstimate(
+        read.overrides,
+        read.network,
+        transaction,
+        provider,
+        read.assertCurrent
+      )
+    );
+  }
+
+  private captureFreshNativeEvmRead(expectedScope: IWalletNavigationScope) {
+    this.assertAssetMutationContext(expectedScope);
+    const scope = { ...expectedScope };
+    const network = { ...store.getState().vault.activeNetwork };
     const keyring = this.getActiveKeyring();
     const session = this.walletSessionGeneration;
     const generation = this.walletStateGeneration;
@@ -10719,62 +11795,58 @@ class MainController {
     const gasPolicy = JSON.stringify(overrides);
     const assertCurrent = () => {
       this.assertCurrentWalletSession(session, keyring);
-      this.assertAssetMutationContext(expectedScope);
+      this.assertAssetMutationContext(scope);
       if (
         this.isResettingWallet ||
         generation !== this.walletStateGeneration ||
         this.ethereumTransaction !== sdk ||
         sdk.web3Provider !== originalProvider ||
+        originalProvider.signal.aborted ||
         JSON.stringify(getSdkGasOverrides(sdk)) !== gasPolicy
       )
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
     };
     assertCurrent();
-    const abort = new AbortController();
-    const invalidate = () =>
-      abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
-    originalProvider.signal.addEventListener('abort', invalidate, {
-      once: true,
-    });
-    const unsubscribe = store.subscribe(() => {
-      if (abort.signal.aborted) return;
-      try {
-        assertCurrent();
-      } catch {
-        invalidate();
-      }
-    });
-    // Match the existing controllerEmitter default deadline; do not extend it.
-    const timeout = setTimeout(
-      () =>
-        abort.abort(
-          new DOMException('Network request timed out', 'AbortError')
-        ),
-      10000
-    );
-    try {
-      if (originalProvider.signal.aborted) invalidate();
-      return await this.withReceiptReadProvider(
-        abort.signal,
-        network,
-        (provider) =>
-          freshSdkGasEstimate(
-            overrides,
-            network,
-            transaction,
-            provider,
-            assertCurrent
-          )
+    const run = async <T>(
+      read: (provider: CustomJsonRpcProvider) => Promise<T>
+    ) => {
+      assertCurrent();
+      const abort = new AbortController();
+      const invalidate = () =>
+        abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+      originalProvider.signal.addEventListener('abort', invalidate, {
+        once: true,
+      });
+      const unsubscribe = store.subscribe(() => {
+        if (abort.signal.aborted) return;
+        try {
+          assertCurrent();
+        } catch {
+          invalidate();
+        }
+      });
+      // Match the existing controllerEmitter deadline.
+      const timeout = setTimeout(
+        () =>
+          abort.abort(
+            new DOMException('Network request timed out', 'AbortError')
+          ),
+        10000
       );
-    } catch (error) {
-      if (abort.signal.aborted) throw abort.signal.reason;
-      throw error;
-    } finally {
-      clearTimeout(timeout);
-      unsubscribe();
-      originalProvider.signal.removeEventListener('abort', invalidate);
-      abort.abort();
-    }
+      try {
+        if (originalProvider.signal.aborted) invalidate();
+        return await this.withReceiptReadProvider(abort.signal, network, read);
+      } catch (error) {
+        if (abort.signal.aborted) throw abort.signal.reason;
+        throw error;
+      } finally {
+        clearTimeout(timeout);
+        unsubscribe();
+        originalProvider.signal.removeEventListener('abort', invalidate);
+        abort.abort();
+      }
+    };
+    return { network, overrides, assertCurrent, run };
   }
 
   // Get current block with latest data
@@ -10916,7 +11988,7 @@ class MainController {
         contractAddress,
         isNft: false,
         tokenStandard: 'ERC-20',
-        balance: Number(formatUnits(info.balance, info.decimals)),
+        ...formatErc20Balance(info.balance, info.decimals),
         decimals: info.decimals,
         name: info.name,
         tokenSymbol: info.symbol,
@@ -11730,25 +12802,19 @@ class MainController {
     return result;
   }
 
-  /**
-   * Test RPC connection using validateRpcBatchUniversal
-   */
+  /** Probe EVM availability. UTXO endpoints go through previewUtxoRpc. */
   public async testRpcConnection(
     url: string,
-    networkType: INetworkType,
+    networkType: INetworkType.Ethereum,
     chainId: number,
     maxLatency: number = 5000,
     minLatency: number = 500
-  ): Promise<{ data?: any; error?: string; success: boolean }> {
+  ): Promise<RpcConnectionResult> {
+    if (networkType !== INetworkType.Ethereum)
+      return { success: false, error: 'Use explicit UTXO registration' };
     try {
       const result = await withWalletBackend(url, () =>
-        validateRpcBatchUniversal(
-          url,
-          networkType,
-          chainId,
-          maxLatency,
-          minLatency
-        )
+        validateEvmRpcBatch(url, chainId, maxLatency, minLatency)
       );
       return result;
     } catch (error: any) {

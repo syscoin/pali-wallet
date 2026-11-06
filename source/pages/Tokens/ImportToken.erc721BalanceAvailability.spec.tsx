@@ -36,6 +36,11 @@ import {
 } from 'types/network';
 import { Interface } from 'utils/ethersV6Compat';
 import { getNftQuantity, isErc721BalanceAvailable } from 'utils/nftQuantity';
+import {
+  clearMulticall3AddressCache,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
+  PALI_MULTICALL3_CANONICAL_ADDRESS,
+} from 'utils/smartAccount';
 
 let mockStore: any;
 const mockEmitter = jest.fn();
@@ -112,35 +117,73 @@ const ABI = new Interface([
   'function supportsInterface(bytes4) view returns (bool)',
   'function name() view returns (string)',
   'function symbol() view returns (string)',
+  'function decimals() view returns (uint8)',
   'function balanceOf(address) view returns (uint256)',
 ]);
 let unavailable: boolean;
 let owned: string;
+let fungibleDecimals: number | undefined;
+let multicallDeployed: boolean;
+const multicallAddress = PALI_MULTICALL3_CANONICAL_ADDRESS.toLowerCase();
+const multicallAbi = new Interface([
+  'function aggregate3((address target,bool allowFailure,bytes callData)[] calls) view returns ((bool success,bytes returnData)[] returnData)',
+]);
 let unexpectedFetches: number;
 let reads: Array<{ failed?: boolean; name: string }>;
 const actualResults: Array<{ method: string; result: any }> = [];
 const originalFetch = globalThis.fetch;
 let assetsController: ReturnType<typeof EvmAssetsController>;
 const runner = {
+  getNetwork: async () => ({ chainId: 31337 }),
   getCode: async (address: string) => {
-    expect(address.toLowerCase()).toBe(CONTRACT);
-    return '0x6000';
+    const target = address.toLowerCase();
+    if (target === CONTRACT) return '0x6000';
+    expect([
+      multicallAddress,
+      PALI_INFRASTRUCTURE_METADATA_BY_ID.multicall3.address.toLowerCase(),
+    ]).toContain(target);
+    reads.push({ name: 'multicallCode' });
+    return target === multicallAddress && multicallDeployed ? '0x6000' : '0x';
   },
   call: async (transaction: { data: string; to: string }) => {
+    if (transaction.to.toLowerCase() === multicallAddress) {
+      expect(multicallDeployed).toBe(true);
+      const { args } = multicallAbi.parseTransaction(transaction)!;
+      const [[target, allowFailure, data]] = args[0];
+      expect(target.toLowerCase()).toBe(CONTRACT);
+      expect(allowFailure).toBe(true);
+      expect(data).toBe(ABI.encodeFunctionData('balanceOf', [OWNER]));
+      reads.push({ name: 'aggregate3' });
+      return multicallAbi.encodeFunctionResult('aggregate3', [
+        [
+          {
+            success: !unavailable,
+            returnData: unavailable
+              ? '0x'
+              : ABI.encodeFunctionResult('balanceOf', [owned]),
+          },
+        ],
+      ]);
+    }
     expect(transaction.to.toLowerCase()).toBe(CONTRACT);
     const decoded = ABI.parseTransaction(transaction)!;
     if (decoded.name === 'supportsInterface') {
       reads.push({ name: decoded.name });
       return ABI.encodeFunctionResult(decoded.name, [
-        decoded.args[0] === '0x80ac58cd',
+        fungibleDecimals === undefined && decoded.args[0] === '0x80ac58cd',
       ]);
     }
     if (decoded.name === 'name')
       return ABI.encodeFunctionResult(decoded.name, ['Recovery Collection']);
     if (decoded.name === 'symbol')
       return ABI.encodeFunctionResult(decoded.name, [SYMBOL]);
+    if (decoded.name === 'decimals' && fungibleDecimals !== undefined)
+      return ABI.encodeFunctionResult(decoded.name, [fungibleDecimals]);
     expect(decoded.name).toBe('balanceOf');
-    expect(decoded.args[0].toLowerCase()).toBe(OWNER);
+    const holder = decoded.args[0].toLowerCase();
+    if (fungibleDecimals !== undefined && holder === CONTRACT)
+      return ABI.encodeFunctionResult('balanceOf', [0]);
+    expect(holder).toBe(OWNER);
     reads.push({ name: decoded.name, failed: unavailable });
     if (unavailable)
       throw new Error('Synthetic public RPC balance read failed');
@@ -166,6 +209,9 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
   unavailable = false;
   owned = '3';
+  fungibleDecimals = undefined;
+  multicallDeployed = false;
+  clearMulticall3AddressCache(31337);
   unexpectedFetches = 0;
   reads = [];
   actualResults.length = 0;
@@ -239,7 +285,7 @@ afterEach(() => {
   else Reflect.deleteProperty(globalThis, 'fetch');
 });
 
-const ordinaryImportAndPreview = async () => {
+const openManualImport = async () => {
   render(
     <Provider store={mockStore}>
       <MemoryRouter initialEntries={['/tokens/add?tab=custom']}>
@@ -255,6 +301,10 @@ const ordinaryImportAndPreview = async () => {
   });
   await act(async () => jest.advanceTimersByTimeAsync(500));
   expect(importButton()).toBeEnabled();
+};
+
+const ordinaryImportAndPreview = async () => {
+  await openManualImport();
   expect(actualResults[0]).toMatchObject({
     method: 'getTokenDetailsWithMarketData',
     result: {
@@ -287,6 +337,95 @@ const ordinaryImportAndPreview = async () => {
   expect(mockAlert.success).toHaveBeenCalledTimes(1);
   return { ownedText, hasUnavailable, storedBalance: holdings()[0].balance };
 };
+
+it.each([
+  { method: 'getTokenDetailsWithMarketData', decimals: 7 },
+  { method: 'validateERC20Only', decimals: 7 },
+  { method: 'getTokenDetailsWithMarketData', decimals: 255 },
+  { method: 'validateERC20Only', decimals: 255 },
+])(
+  'shows the exact fungible balance from $method at $decimals decimals while preserving the import payload',
+  async ({ method, decimals }) => {
+    fungibleDecimals = decimals;
+    owned = '90071992547409931234567';
+    const exact =
+      decimals === 7
+        ? '9007199254740993.1234567'
+        : `0.${'0'.repeat(232)}${owned}`;
+    const numericBalance = Number(exact);
+    if (method === 'validateERC20Only') {
+      const emit = mockEmitter.getMockImplementation()!;
+      mockEmitter.mockImplementation(async (path, args) =>
+        path[1] === 'getTokenDetailsWithMarketData' ? null : emit(path, args)
+      );
+    }
+
+    await openManualImport();
+
+    expect(screen.getByText(exact, { exact: true })).toBeVisible();
+    expect(actualResults).toContainEqual({
+      method,
+      result: expect.objectContaining({
+        balance: numericBalance,
+        rawBalance: owned,
+      }),
+    });
+    await act(async () => fireEvent.click(importButton()));
+    const [, [payload]] = mockEmitter.mock.calls.find(
+      ([path]) => path[1] === 'saveTokenInfo'
+    )!;
+    expect(payload).toMatchObject({
+      contractAddress: CONTRACT,
+      decimals: fungibleDecimals,
+      balance: numericBalance,
+      rawBalance: owned,
+      tokenStandard: 'ERC-20',
+    });
+  }
+);
+
+it.each(['multicall', 'individual'])(
+  'refreshes an imported 255-decimal token through %s without losing an atom',
+  async (mode) => {
+    fungibleDecimals = 255;
+    multicallDeployed = mode === 'multicall';
+    owned = '90071992547409931234567';
+    const originalUnits = owned;
+    await openManualImport();
+    await act(async () => fireEvent.click(importButton()));
+    const imported = holdings();
+    expect(imported).toHaveLength(1);
+
+    const read = jest.fn();
+    const refresh = async () => {
+      reads = [];
+      const pending = assetsController.updateAllEvmTokens(
+        mockStore.getState().vault.accounts.HDAccount[0],
+        31337,
+        runner as any,
+        imported,
+        read
+      );
+      await jest.advanceTimersByTimeAsync(100);
+      const updated = await pending;
+      expect(reads.map(({ name }) => name)).toEqual(
+        mode === 'multicall'
+          ? ['multicallCode', 'aggregate3']
+          : ['multicallCode', 'multicallCode', 'balanceOf']
+      );
+      return updated;
+    };
+    owned = '90071992547409931234568';
+    const updated = await refresh();
+    expect(updated[0]).toMatchObject({
+      balance: imported[0].balance,
+      rawBalance: owned,
+      decimals: 255,
+    });
+    expect(read).toHaveBeenCalledWith(updated[0]);
+    expect(imported[0]).toHaveProperty('rawBalance', originalUnits);
+  }
+);
 
 it.each(['0', '3'])(
   'healthy ERC721 balance %s is retained through import and preview',

@@ -1,17 +1,19 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 
 import DAppController from '../DAppController';
-import dappReducer from 'state/dapp';
+import dappReducer, { addDApp, removeDApp } from 'state/dapp';
 import spamFilterReducer from 'state/spamFilter';
 import vaultReducer from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
 import { onMessage } from './index';
+import { getMethodConfig } from './method-registry';
 import { popupPromise } from './popup-promise';
 import {
   getPipelineInstance,
   MAX_REQUESTS_PER_ORIGIN,
+  requestCoordinator,
 } from './request-pipeline';
 import { MethodRoute } from './types';
 
@@ -22,6 +24,7 @@ jest.mock('state/store', () => ({
   default: {
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
+    subscribe: (listener: () => void) => mockStore.subscribe(listener),
   },
 }));
 jest.mock('scripts/Background', () => ({
@@ -51,6 +54,7 @@ const deferred = <T>() => {
 const request = (method: string, host = READ_HOST, tabId = 1, params?: any[]) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params } }, {
     url: `${host}/page`,
+    documentId: `site-document-${tabId}`,
     tab: { id: tabId },
   } as chrome.runtime.MessageSender);
 const closeTab = (tabId: number) => {
@@ -275,3 +279,70 @@ it('still serializes two popup approvals from different connected origins', asyn
     await Promise.all([first, second]);
   }
 });
+
+it.each(['pipeline queue', 'popup delay'])(
+  'retires an original connected request after grant removal and restoration during the %s',
+  async (waiting) => {
+    const params = ['0x74657374', ACCOUNT];
+    const blocking = deferred<null>();
+    let first: Promise<unknown> | undefined;
+    if (waiting === 'pipeline queue') {
+      jest.mocked(popupPromise).mockReturnValueOnce(blocking.promise);
+      first = request('personal_sign', OTHER_HOST, 3, params);
+      await jest.advanceTimersByTimeAsync(100);
+      expect(popupPromise).toHaveBeenCalledTimes(1);
+    }
+    jest.mocked(popupPromise).mockResolvedValueOnce('stale approval');
+    const result = request('personal_sign', CONNECTED_HOST, 2, params);
+    await flush();
+    if (first) expect(getPipelineInstance()?.getQueueLength()).toBe(1);
+    else expect(requestCoordinator.isActive()).toBe(true);
+    const grant = mockStore.getState().dapp.dapps[CONNECTED_HOST];
+    mockStore.dispatch(removeDApp(CONNECTED_HOST));
+    mockStore.dispatch(addDApp(grant));
+    blocking.resolve(null);
+    await jest.advanceTimersByTimeAsync(100);
+    await first;
+    expect(await result).toMatchObject({ error: { code: 4001 } });
+    expect(popupPromise).toHaveBeenCalledTimes(first ? 1 : 0);
+  }
+);
+
+it.each(['while queued', 'after dequeue'])(
+  'preserves original grant retirement across popup coordinator restart %s',
+  async (when) => {
+    const blocking = deferred<null>();
+    const first = requestCoordinator.coordinatePopupRequest(
+      {
+        methodConfig: getMethodConfig('wallet_watchAsset')!,
+        originalRequest: {
+          host: OTHER_HOST,
+          method: 'wallet_watchAsset',
+          sender: {},
+          type: 'METHOD_REQUEST',
+        },
+      },
+      () => blocking.promise,
+      MethodRoute.WatchAsset
+    );
+    await jest.advanceTimersByTimeAsync(100);
+    const result = request('personal_sign', CONNECTED_HOST, 2, [
+      '0x74657374',
+      ACCOUNT,
+    ]);
+    await flush();
+    expect(getPipelineInstance()?.isCurrentlyProcessing()).toBe(true);
+    if (when === 'after dequeue') {
+      blocking.resolve(null);
+      await first;
+    }
+    const grant = mockStore.getState().dapp.dapps[CONNECTED_HOST];
+    mockStore.dispatch(removeDApp(CONNECTED_HOST));
+    mockStore.dispatch(addDApp(grant));
+    if (when === 'after dequeue') await jest.advanceTimersByTimeAsync(100);
+    await expect(result).resolves.toMatchObject({ error: { code: 4001 } });
+    blocking.resolve(null);
+    await first;
+    expect(popupPromise).not.toHaveBeenCalled();
+  }
+);

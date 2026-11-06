@@ -1,8 +1,3 @@
-import {
-  captureEvmSubmission,
-  submitSignedEvmTransaction,
-  evmSubmissionFailure,
-} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { getAddress } from 'ethers/address';
 import { Transaction } from 'ethers/transaction';
 
@@ -11,10 +6,14 @@ import {
   decodeErc20Transfer,
   type Erc20Metadata,
 } from '../shared/erc20.ts';
+import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import {
+  decodeRetainedNftTransfer,
+  type NftTransferIntent,
+} from '../shared/nftTransfer.ts';
 
 import {
   EvmSignedRecords,
-  createEvmSignedRecordLifecycle,
   type EvmSignedRecordSession,
   type EvmRetainedSignedRecord,
   type EvmSignedRecordSummary,
@@ -32,6 +31,7 @@ export type EvmReplayCandidate = Pick<
 export type EvmSavedTransaction = EvmReplayCandidate &
   Readonly<{
     chainId: string;
+    collectibleTransfer?: NftTransferIntent;
     createdAt: number;
     dataBytes: number;
     feePerGas: string;
@@ -81,10 +81,25 @@ export type EvmReplayPreparation = Readonly<
       transaction: EvmSavedTransaction;
     }
 >;
+export type EvmReplayDispatchAdmission = (
+  send: () => Promise<string>,
+  preflight: () => Promise<void>
+) => Promise<string>;
+export type EvmReplayDispatchContext = Pick<
+  EvmSignedRecordSummary,
+  'operation' | 'originalHash' | 'chainId' | 'from' | 'nonce' | 'hash'
+> &
+  Readonly<{ requiresPayerCheck?: true }>;
 export type EvmReplaySession = Readonly<{
   assertCurrent(): void;
   context: Pick<EvmSubmissionContext, 'account' | 'network'>;
-  dispatch(rawTransaction: string): Promise<string>;
+  /** Replay supplies its bounded host preflight to admission. `send`
+   * synchronously initiates transport and returns its acknowledgment promise. */
+  dispatch(
+    rawTransaction: string,
+    admit: EvmReplayDispatchAdmission,
+    context: EvmReplayDispatchContext
+  ): Promise<string>;
   observe(expected: EvmObservationRequest): Promise<EvmTransactionObservation>;
   recordSession: EvmSignedRecordSession;
 }>;
@@ -104,10 +119,10 @@ type Pending = {
   entry: EvmRetainedSignedRecord;
   expires: number;
   generation: number;
-  lifecycle: ReturnType<typeof createEvmSignedRecordLifecycle>;
   review: EvmReplayReview;
   session: EvmReplaySession;
 };
+const REPLAY_PREFLIGHT_MS = 12000;
 function selectedHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
     throw new EvmReplayError('NOT_FOUND');
@@ -155,6 +170,7 @@ export function projectSavedEvmTransaction(
     fee = tx.maxFeePerGas ?? tx.gasPrice;
   if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
   const token = tokenTransfer(entry, tx);
+  const collectible = decodeRetainedNftTransfer(entry, tx);
   return Object.freeze({
     hash: entry.hash,
     nonce: entry.nonce,
@@ -173,6 +189,7 @@ export function projectSavedEvmTransaction(
     dataBytes: (tx.data.length - 2) / 2,
     selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
     ...(token ? { tokenTransfer: token } : {}),
+    ...(collectible ? { collectibleTransfer: collectible } : {}),
   });
 }
 
@@ -297,7 +314,11 @@ export class EvmSignedReplay {
       session.recordSession,
       String(session.context.network.chainId),
       session.context.account.address,
-      { ...options, maximum: options.maximum ?? 30 }
+      {
+        ...options,
+        maximum: options.maximum ?? 30,
+        replayCandidatesOnly: options.nonce !== undefined,
+      }
     );
     session.assertCurrent();
     return Object.freeze({
@@ -315,6 +336,32 @@ export class EvmSignedReplay {
     pending.session.assertCurrent();
     pending.session.recordSession.assertCurrent();
     if (this.time() >= pending.expires) throw new EvmReplayError('EXPIRED');
+  }
+  private async waitReplayPreflight(
+    expires: number,
+    assertCurrent: () => void,
+    preflight: () => Promise<void>
+  ): Promise<void> {
+    assertCurrent();
+    const started = this.time();
+    const cutoff = Math.min(expires, started + REPLAY_PREFLIGHT_MS);
+    const timeoutMs = Math.ceil(cutoff - started);
+    if (timeoutMs <= 0) throw new EvmReplayError('EXPIRED');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const deadline = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new EvmReplayError('EXPIRED')),
+          timeoutMs
+        );
+      });
+      // This bounds the queue wait. The host still owns transport cancellation.
+      const result = await Promise.race([preflight(), deadline]);
+      if (this.time() >= cutoff) throw new EvmReplayError('EXPIRED');
+      if (result !== undefined) throw new EvmReplayError('CONTEXT_CHANGED');
+    } finally {
+      clearTimeout(timer);
+    }
   }
   async prepare(hash: string): Promise<EvmReplayPreparation> {
     hash = selectedHash(hash);
@@ -339,10 +386,6 @@ export class EvmSignedReplay {
       generation: this.generation,
       expires: this.time() + 90000,
     };
-    const lifecycle = createEvmSignedRecordLifecycle(
-      this.records,
-      session.recordSession
-    );
     this.check(state);
     const {
       entry,
@@ -369,16 +412,15 @@ export class EvmSignedReplay {
       BigInt(observation.latestNonce) < BigInt(entry.nonce)
         ? observation.latestNonce
         : undefined;
-    const candidates =
-      missingNonce === undefined
-        ? []
-        : (
-            await this.records.listSender(
-              session.recordSession,
-              entry.chainId,
-              entry.from
-            )
-          ).filter((candidate) => String(candidate.nonce) === missingNonce);
+    const eligible = await this.records.withReplayAdmission(
+      session.recordSession,
+      entry,
+      (candidates) => candidates,
+      missingNonce === undefined ? undefined : Number(missingNonce)
+    );
+    this.check(state);
+    if (!eligible) throw new EvmReplayError('CONTEXT_CHANGED');
+    const candidates = eligible.result;
     const predecessors = candidates
       .slice(-20)
       .reverse()
@@ -427,7 +469,7 @@ export class EvmSignedReplay {
         : {}),
     });
     this.ownerId = id;
-    this.pending = { ...state, entry, review, lifecycle };
+    this.pending = { ...state, entry, review };
     return Object.freeze({ status: 'review', review });
   }
   async confirm(
@@ -456,30 +498,80 @@ export class EvmSignedReplay {
       BigInt(observed.latestNonce) > BigInt(entry.nonce)
     )
       throw new EvmReplayError('CONTEXT_CHANGED');
-    const boundary = captureEvmSubmission(
-      {
-        ...session.context,
-        operation: entry.operation,
-        ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
-      },
-      check,
-      () => pending.lifecycle
-    );
+    const {
+      operation,
+      originalHash,
+      chainId,
+      from,
+      nonce,
+      hash: retainedHash,
+    } = entry;
+    const zeroSelfReplacement =
+      operation === 'speed-up' &&
+      isEvmEmptySelfCall(Transaction.from(entry.rawTransaction));
+    const requiresPayerCheck = operation === 'cancel' || zeroSelfReplacement;
+    const dispatchContext: EvmReplayDispatchContext = Object.freeze({
+      operation,
+      ...(zeroSelfReplacement ? { requiresPayerCheck: true as const } : {}),
+      ...(originalHash ? { originalHash } : {}),
+      chainId,
+      from,
+      nonce,
+      hash: retainedHash,
+    });
     let dispatched = false;
     try {
-      const hash = await submitSignedEvmTransaction(
-        entry.rawTransaction,
-        async (raw) => {
-          check();
-          const result = await session.dispatch(raw);
-          if (result.toLowerCase() !== entry.hash)
-            throw new EvmReplayError('INVALID_RESPONSE');
-          return result;
-        },
-        boundary,
-        check
-      );
-      dispatched = true;
+      // Replay comes only from the authenticated retained record. The network
+      // callback must pass the durable replay admission below before sending.
+      check();
+      let open = true;
+      let requested = false;
+      let hash: string;
+      try {
+        const result = await session.dispatch(
+          current.rawTransaction,
+          async (send, preflight) => {
+            if (!open || requested || typeof preflight !== 'function')
+              throw new EvmReplayError('CONTEXT_CHANGED');
+            requested = true;
+            const checkAdmission = () => {
+              if (!open) throw new EvmReplayError('CONTEXT_CHANGED');
+              check();
+            };
+            const admission = await this.records.withReplayAdmission(
+              session.recordSession,
+              entry,
+              () => {
+                checkAdmission();
+                if (!requiresPayerCheck) dispatched = true;
+                const response = send();
+                dispatched = true;
+                // The response can reject before the storage queue yields.
+                void response.catch(() => undefined);
+                return response;
+              },
+              undefined,
+              {
+                assertCurrent: checkAdmission,
+                run: () =>
+                  this.waitReplayPreflight(
+                    pending.expires,
+                    checkAdmission,
+                    preflight
+                  ),
+              }
+            );
+            if (!admission) throw new EvmReplayError('CONTEXT_CHANGED');
+            return admission.result;
+          },
+          dispatchContext
+        );
+        if (!dispatched || result.toLowerCase() !== entry.hash)
+          throw new EvmReplayError('INVALID_RESPONSE');
+        hash = result;
+      } finally {
+        open = false;
+      }
       check();
       await this.records.updatePhase(
         session.recordSession,
@@ -491,8 +583,7 @@ export class EvmSignedReplay {
       check();
       return Object.freeze({ status: 'submitted', hash });
     } catch (error) {
-      if (!dispatched && evmSubmissionFailure(error).transactionNotBroadcast)
-        throw error;
+      if (!dispatched) throw error;
       // Retained bytes survive a lost acknowledgement; never dispatch again here.
       return Object.freeze({ status: 'unknown', hash: entry.hash });
     }

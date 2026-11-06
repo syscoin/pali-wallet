@@ -1,7 +1,6 @@
 /* eslint-disable react/prop-types */
 import { Switch } from '@headlessui/react';
 import { Form, Input, type InputProps, type InputRef } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
@@ -24,7 +23,11 @@ import { useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
 import { RootState } from 'state/store';
 import { INetworkType, INetwork } from 'types/network';
-import { ICustomRpcParams } from 'types/transactions';
+import {
+  ICustomRpcParams,
+  RpcConnectionResult,
+  UtxoRpcDraft,
+} from 'types/transactions';
 import { getWalletNavigationScope, navigateBack } from 'utils/navigationState';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 import { translateRpcValidationError } from 'utils/rpcValidationError';
@@ -158,7 +161,7 @@ const CustomRPCView = () => {
   const { controllerEmitter } = useController();
   const { alert, navigate } = useUtils();
 
-  const [form] = useForm();
+  const [form] = Form.useForm();
   const draftFamilyRef = React.useRef(isSyscoinRpc);
   draftFamilyRef.current = isSyscoinRpc;
   const draftContext = JSON.stringify([draftScope, draftEditorIdentity]);
@@ -489,9 +492,28 @@ const CustomRPCView = () => {
         isSyscoinRpc,
       };
 
+      const selectedUtxo = editingNetworkRef.current;
+      if (isSyscoinRpc && state?.isEditing && !selectedUtxo)
+        throw new Error(t('settings.networkNotFoundForEditing'));
+      const utxoDraft: UtxoRpcDraft = {
+        url: rpcParams.url,
+        label: rpcParams.label,
+        explorer: rpcParams.explorer,
+        ...(selectedUtxo
+          ? {
+              purpose:
+                selectedUtxo.utxoBackendChain === undefined
+                  ? ('pin-existing' as const)
+                  : ('edit' as const),
+              chainId: selectedUtxo.chainId,
+              expectedRegistration:
+                networkRegistrationFingerprint(selectedUtxo)!,
+            }
+          : { purpose: 'first-use' as const }),
+      };
       const network = (await controllerEmitter(
-        ['wallet', 'getRpc'],
-        [rpcParams]
+        ['wallet', isSyscoinRpc ? 'previewUtxoRpc' : 'getRpc'],
+        [isSyscoinRpc ? utxoDraft : rpcParams]
       )) as INetwork;
       if (!canApply()) return null;
 
@@ -1016,24 +1038,27 @@ const CustomRPCView = () => {
           await new Promise((resolve) => setTimeout(resolve, 300));
           if (!canApply()) return;
 
-          // Use validateRpcBatchUniversal for both EVM and UTXO with different minimum latencies
-          const result = (await controllerEmitter(
-            ['wallet', 'testRpcConnection'],
-            [
-              rpc.url,
-              isSyscoinRpc ? INetworkType.Syscoin : INetworkType.Ethereum,
-              chain.chainId,
-              5000,
-              500,
-            ]
-          )) as {
-            chainId?: number;
-            data?: any;
-            error?: string;
-            latency?: number;
-            requiresAuth?: boolean;
-            success: boolean;
-          };
+          let result: RpcConnectionResult;
+          if (isSyscoinRpc) {
+            const draft: UtxoRpcDraft = {
+              purpose: 'first-use',
+              url: rpc.url,
+              label: chain.name,
+            };
+            const preview = (await controllerEmitter(
+              ['wallet', 'previewUtxoRpc'],
+              [draft]
+            )) as INetwork;
+            result =
+              preview.chainId === chain.chainId
+                ? { success: true, chainId: preview.chainId }
+                : { success: false, error: 'Chain ID mismatch' };
+          } else {
+            result = (await controllerEmitter(
+              ['wallet', 'testRpcConnection'],
+              [rpc.url, INetworkType.Ethereum, chain.chainId, 5000, 500]
+            )) as RpcConnectionResult;
+          }
           if (!canApply()) return;
 
           if (!result.success) {
@@ -1058,7 +1083,7 @@ const CustomRPCView = () => {
 
           // This RPC works!
           // Store the validated chainId to avoid re-validating
-          if (result.chainId) {
+          if (result.chainId !== undefined) {
             // Also update the form field
             form.setFieldsValue({ chainId: result.chainId.toString() });
           }

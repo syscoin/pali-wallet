@@ -1,5 +1,7 @@
 import { boundedResponseText, ResponseSizeLimitError } from '../src/platformRpc.ts';
-import { HTTP_CASES, type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport } from './http-contract.ts';
+import { createNativeCoinQuoteReader } from '../src/portfolio/nativeCoinQuote.ts';
+import { BLOCKBOOK_TICKER_PATH } from '../../../source/shared/nativeCoinQuotes.ts';
+import { HTTP_CASES, QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport } from './http-contract.ts';
 
 type FetchPort = (url: string, init: RequestInit) => Promise<Response>;
 function assert(condition: unknown): asserts condition { if (!condition) throw Error('HTTP_QUALIFICATION_FAILED'); }
@@ -29,11 +31,11 @@ export async function qualifyNativeHttp(options: Readonly<{
 }>): Promise<HttpReport> {
   const { launch, walletFetch, cookieFetch } = options;
   const url = (route: string) => `http://127.0.0.1:${launch.port}/${launch.token}/${route}?q=exact`;
-  const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>): Promise<T> => {
+  const owned = async <T>(fn: (signal: AbortSignal, abort: () => void) => Promise<T>, timeout = TIMEOUT): Promise<T> => {
     const controller = new AbortController();
     let timer!: ReturnType<typeof setTimeout>;
     const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => { controller.abort(); reject(Error('HTTP_QUALIFICATION_TIMEOUT')); }, TIMEOUT);
+      timer = setTimeout(() => { controller.abort(); reject(Error('HTTP_QUALIFICATION_TIMEOUT')); }, timeout);
     });
     try { return await Promise.race([fn(controller.signal, () => controller.abort()), deadline]); }
     finally { controller.abort(); clearTimeout(timer); }
@@ -100,6 +102,40 @@ export async function qualifyNativeHttp(options: Readonly<{
     assert(limited);
     await query('oversize-closed');
   });
+  currentCase = 'quote-early-rejection';
+  for (const { route, status, length } of QUOTE_EARLY_REJECTIONS) {
+    await owned(async (owner) => {
+      const endpoint = `http://127.0.0.1:${launch.port}/${launch.token}/${route}`;
+      let quoteSignal: AbortSignal | null | undefined;
+      const read = createNativeCoinQuoteReader(async (target, init) => {
+        assert(target === `${endpoint}/${BLOCKBOOK_TICKER_PATH}` && init.signal && !init.signal.aborted);
+        const response = await walletFetch(target, init);
+        assert(response.url === target && response.status === status && response.headers.get('content-length') === length);
+        quoteSignal = init.signal;
+        return response;
+      });
+      const started = performance.now();
+      assert(await read({ kind: 'utxo', endpoint }, 'usd', owner) === null);
+      // The quote must abort itself before the harness can abort its owner.
+      assert(quoteSignal?.aborted && !owner.aborted && performance.now() - started < 6_000);
+      await query(`${route}-closed`);
+    });
+  }
+  currentCase = 'quote-stalled-deadline';
+  await owned(async (owner) => {
+    const endpoint = `http://127.0.0.1:${launch.port}/${launch.token}/${STALLED_QUOTE_ROUTE}`;
+    let quoteSignal: AbortSignal | null | undefined;
+    const read = createNativeCoinQuoteReader((target, init) => {
+      assert(target === `${endpoint}/${BLOCKBOOK_TICKER_PATH}` && init.signal && !init.signal.aborted);
+      quoteSignal = init.signal;
+      return walletFetch(target, init);
+    });
+    const started = performance.now();
+    assert(await read({ kind: 'utxo', endpoint }, 'usd', owner) === null);
+    // A fast transport failure also aborts in cleanup, but proves no deadline.
+    assert(quoteSignal?.aborted && !owner.aborted && performance.now() - started >= 7_500);
+    await query(`${STALLED_QUOTE_ROUTE}-closed`);
+  }, 11_000);
   currentCase = 'healthy-after-cancel';
   await query('healthy');
   assert(options.networkCalls() === 0);

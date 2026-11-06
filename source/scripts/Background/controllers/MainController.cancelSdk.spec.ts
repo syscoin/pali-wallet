@@ -3,6 +3,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
 import { Transaction } from 'ethers/transaction';
 
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -49,6 +50,7 @@ const PAYER = SIGNED.from!;
 const HASH = SIGNED.hash!;
 const CHAIN = Number(SIGNED.chainId);
 const NONCE = SIGNED.nonce;
+const NONCE_HEX = `0x${NONCE.toString(16)}`;
 const SMART = `0x${'55'.repeat(20)}`;
 let mockState: any;
 
@@ -87,7 +89,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     mockState.vault.accountTransactions[mockState.vault.activeAccount.type][
       mockState.vault.activeAccount.id
     ].ethereum[CHAIN];
-  const run = () =>
+  const run = (previewOnly = false) =>
     wallet.cancelEvmTransaction(
       HASH,
       true,
@@ -97,7 +99,9 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
         chainId: CHAIN,
         walletScope: getWalletNavigationScope(),
       },
-      { approvedMaximumFee: '999999999999999999999999' }
+      previewOnly
+        ? { previewOnly: true }
+        : { approvedMaximumFee: '999999999999999999999999' }
     );
   const unsignedRequest = () =>
     jest.mocked(sendLocalEvmTransaction).mock.calls[0]?.[2];
@@ -144,7 +148,11 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     provider = {
       getTransaction: jest.fn().mockResolvedValue(original()),
       getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1)),
-      send: networkDenied,
+      send: jest.fn(async (method: string) => {
+        if (method === 'eth_getTransactionCount') return NONCE_HEX;
+        if (method === 'eth_getCode') return '0x';
+        return networkDenied();
+      }),
       sendTransaction: networkDenied,
       broadcastTransaction: networkDenied,
     };
@@ -164,7 +172,9 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
         activeNetwork: readVault().activeNetwork,
       }),
       { evm: { signEVMTransaction: hardwareDenied } } as any,
-      { signEthTransaction: hardwareDenied } as any
+      { signEthTransaction: hardwareDenied } as any,
+      () => () => undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {
       configurable: true,
@@ -181,6 +191,7 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     };
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 5;
+    wallet.networkRequestGeneration = 7;
     wallet.isCreatingWallet = false;
     wallet.isResettingWallet = false;
     wallet.recoveryJournalPending = false;
@@ -221,6 +232,90 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
     });
     expect(unsignedRequest().value.toString()).toBe('0');
   });
+
+  it.each(['latest', 'pending'])(
+    'refuses cancellation preview when %s returns delegation',
+    async (blocked) => {
+      provider.send.mockImplementation(
+        async (method: string, [, tag]: string[]) =>
+          method === 'eth_getTransactionCount'
+            ? NONCE_HEX
+            : tag === blocked
+            ? `0xef0100${'33'.repeat(20)}`
+            : '0x'
+      );
+      await expect(run(true)).rejects.toThrow(
+        'Unable to verify a code-free cancellation payer'
+      );
+      expect(provider.getTransaction).not.toHaveBeenCalled();
+      expect(syntheticCredential).not.toHaveBeenCalled();
+      expect(provider.send.mock.calls).toEqual([
+        ['eth_getTransactionCount', [PAYER.toLowerCase(), 'latest']],
+        ['eth_getCode', [PAYER.toLowerCase(), 'latest']],
+        ['eth_getCode', [PAYER.toLowerCase(), 'pending']],
+      ]);
+    }
+  );
+
+  it('does not reuse preview code observations for approved signing', async () => {
+    await expect(run(true)).resolves.toMatchObject({
+      isCanceled: false,
+      maximumFee: expect.any(String),
+    });
+    provider.send.mockImplementation(
+      async (method: string, [, tag]: string[]) =>
+        method === 'eth_getTransactionCount'
+          ? NONCE_HEX
+          : tag === 'latest'
+          ? '0x00'
+          : '0x'
+    );
+    await expect(run()).rejects.toThrow(
+      'Unable to verify a code-free cancellation payer'
+    );
+    expect(provider.send).toHaveBeenCalledTimes(6);
+    expect(syntheticCredential).not.toHaveBeenCalled();
+    expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+  });
+
+  it('discards a held code-free preview after a network request A-B-A', async () => {
+    const entered = deferred<void>(),
+      released = deferred<string>();
+    provider.send.mockImplementation(
+      async (method: string, [, tag]: string[]) => {
+        if (method === 'eth_getTransactionCount') return NONCE_HEX;
+        if (tag === 'latest') {
+          entered.resolve();
+          return released.promise;
+        }
+        return '0x';
+      }
+    );
+    const expected = getWalletNavigationScope();
+    const rejected = expect(run(true)).rejects.toThrow();
+    await entered.promise;
+    wallet.networkRequestGeneration += 2;
+    expect(getWalletNavigationScope()).toEqual(expected);
+    released.resolve('0x');
+    await rejected;
+    expect(provider.getTransaction).not.toHaveBeenCalled();
+    expect(syntheticCredential).not.toHaveBeenCalled();
+  });
+
+  it.each([NONCE - 1, NONCE + 1])(
+    'refuses preview when latest nonce %s differs before any code lookup',
+    async (latest) => {
+      provider.send.mockResolvedValue(`0x${latest.toString(16)}`);
+      await expect(run(true)).rejects.toThrow(
+        'Unable to verify a ready cancellation nonce'
+      );
+      expect(provider.send.mock.calls).toEqual([
+        ['eth_getTransactionCount', [PAYER.toLowerCase(), 'latest']],
+      ]);
+      expect(provider.getTransaction).not.toHaveBeenCalled();
+      expect(syntheticCredential).not.toHaveBeenCalled();
+    }
+  );
 
   it.each([
     ['hash', { hash: `0x${'88'.repeat(32)}` }],

@@ -592,6 +592,7 @@ describe('getSmartAccountLocalOwnerContexts', () => {
     expect(signActionHash).toHaveBeenCalledWith({
       actionHash,
       owner,
+      validator: VALIDATOR_ADDRESS,
     });
   });
 });

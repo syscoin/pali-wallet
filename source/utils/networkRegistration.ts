@@ -1,4 +1,4 @@
-import { INetwork } from 'types/network';
+import { INetwork, INetworkType } from 'types/network';
 
 /** Stable across extension-message serialization, including absent optional fields. */
 export const networkRegistrationFingerprint = (
@@ -19,5 +19,27 @@ export const networkRegistrationFingerprint = (
         network.coingeckoId ?? null,
         network.coingeckoPlatformId ?? null,
         ...(network.explorerExplicitlyAbsent ? [true] : []),
+        ...(network.utxoBackendChain === undefined
+          ? []
+          : ['utxoBackendChain', network.utxoBackendChain]),
       ])
     : undefined;
+
+/** Resolve the endpoint pin from the verified registry, including cold-start active copies. */
+export function resolvePinnedUtxoBackendChain(
+  active: INetwork,
+  registered: INetwork | undefined
+): string | undefined {
+  if (
+    active.kind !== INetworkType.Syscoin ||
+    registered?.kind !== active.kind ||
+    registered.chainId !== active.chainId ||
+    registered.slip44 !== active.slip44 ||
+    registered.url !== active.url ||
+    registered.currency.toLowerCase() !== active.currency.toLowerCase() ||
+    (active.utxoBackendChain !== undefined &&
+      active.utxoBackendChain !== registered.utxoBackendChain)
+  )
+    return undefined;
+  return registered.utxoBackendChain;
+}

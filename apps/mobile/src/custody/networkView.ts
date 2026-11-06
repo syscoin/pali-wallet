@@ -35,7 +35,8 @@ export interface NativeNetworkView<Id extends string = string> {
 
 /** Narrow projection: network selection still reserves the custody authority. */
 export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
-  'getSnapshot' | 'getCatalogue' | 'subscribe' | 'selectNetwork' | 'cancelAccountOperation'> & Partial<Pick<NativeCustodyAuthority, 'manageNetwork'>>, options: { fetch?: (url: string, init: RequestInit) => Promise<Response> } = {}): NativeNetworkView<EvmNetworkId> {
+  'getSnapshot' | 'getCatalogue' | 'subscribe' | 'selectNetwork' | 'cancelAccountOperation'> & Partial<Pick<NativeCustodyAuthority, 'manageNetwork'>>, options: { utxoSendAvailable: boolean; fetch?: (url: string, init: RequestInit) => Promise<Response> }): NativeNetworkView<EvmNetworkId> {
+  const { utxoSendAvailable } = options;
   let checking: AbortController | null = null;
   let cachedCatalogue: NativeWalletCatalogueSnapshot | null = null;
   let cached: NativeNetworkSnapshot<EvmNetworkId> | null = null;
@@ -60,7 +61,7 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
             })),
             ...UTXO_NETWORKS.map((network) => Object.freeze({
               id: network.id, name: network.name, symbol: network.symbol,
-              testnet: network.testnet, canSign: false,
+              testnet: network.testnet, canSign: utxoSendAvailable && network.decimals === 8,
             })),
           ]),
         });

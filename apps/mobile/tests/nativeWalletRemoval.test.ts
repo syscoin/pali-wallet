@@ -39,7 +39,7 @@ async function fixture() {
   const rings: sdk.SoftwareKeyring[] = [];
   const statements: string[] = [];
   class ObservedRing extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) { super(host); rings.push(this); }
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) { super(...options); rings.push(this); }
     override async unlock(password: string) {
       unlocks++;
       const gate = pauseUnlock; pauseUnlock = undefined;

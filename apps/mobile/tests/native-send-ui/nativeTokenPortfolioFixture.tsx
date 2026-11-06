@@ -1,5 +1,6 @@
 // Isolated public-data fixture: exercises the real native controller and UI.
 import React, { useEffect, useState } from 'react';
+import { Interface } from 'ethers/abi';
 import type { CustodySnapshot } from '../../src/custody/types';
 import type { KeyringStoragePort } from '../../src/storage/types';
 import { encodeStorageValue } from '../../src/storage/json';
@@ -7,8 +8,9 @@ import {
   getNativeNetwork,
   type EvmNetworkId,
 } from '../../src/custody/networkContext';
-import { NativeTokens } from '../../src/portfolio/nativeTokens';
+import { NativeTokens, type NativeTokenRuntime } from '../../src/portfolio/nativeTokens';
 import { createOwnedTokenReader } from '../../src/portfolio/ownedTokenReader';
+import { createNftOwnershipReader } from '../../src/portfolio/nftOwnershipReadRpc';
 import {
   NativeTokenRegistry,
   type NativeTokenScope,
@@ -89,6 +91,10 @@ let releasePreview: (() => void) | undefined;
 const requests: string[] = [];
 const query = new URLSearchParams(window.location.search);
 let failHoldings = query.has('holdings-fail');
+let failNft = query.has('ownership-fail');
+let holdNft = false;
+let releaseNft: (() => void) | undefined;
+let nftAborts = 0;
 const readHoldings = query.has('holdings')
   ? createOwnedTokenReader(async (url) => {
       requests.push(`holdings:${url}`);
@@ -96,6 +102,15 @@ const readHoldings = query.has('holdings')
         failHoldings = false;
         return new Response(null, { status: 503 });
       }
+      const path = new URL(url).pathname;
+      if (path.endsWith('/erc721-holdings')) return Response.json({ items: [{
+        chainId: 1, tokenAddress: '0x2222222222222222222222222222222222222222',
+        collectionName: 'Paper foxes', tokenId: '7', image: 'https://untrusted.invalid/pixel',
+      }] });
+      if (path.endsWith('/erc1155-holdings')) return Response.json({ items: [{
+        chainId: 1, tokenAddress: '0x3333333333333333333333333333333333333333',
+        tokenId: '0', balance: '900719925474099312345', image: 'https://untrusted.invalid/pixel',
+      }] });
       return Response.json({
         items: [
           {
@@ -151,19 +166,64 @@ const reader: Erc20Reader = {
     };
   },
 };
+const nftAbi = new Interface([
+  'function ownerOf(uint256) view returns (address)',
+  'function balanceOf(address,uint256) view returns (uint256)',
+  'function balanceOfBatch(address[],uint256[]) view returns (uint256[])',
+]);
+const readNft = query.has('collectible-check') ? createNftOwnershipReader({
+  registrations: () => [getNativeNetwork('ethereum')],
+  fetch: async (url, init) => {
+  if (url !== getNativeNetwork('ethereum').rpcUrl) throw new Error('Unexpected fixture network');
+  const { id, method, params } = JSON.parse(String(init.body));
+  const respond = (result: unknown) => Response.json({ jsonrpc: '2.0', id, result });
+  if (method === 'eth_chainId') { requests.push('nft:chain'); return respond('0x1'); }
+  if (method === 'eth_getBlockByNumber') {
+    requests.push(`nft:block:${params[0]}`);
+    return respond({ number: '0x100', hash: `0x${'a'.repeat(64)}` });
+  }
+  if (method === 'eth_getCode' && params[1] === '0x100') {
+    requests.push(`nft:code:${params[0]}`);
+    return respond('0x6000');
+  }
+  const call = nftAbi.parseTransaction({ data: params[0].data });
+  if (method !== 'eth_call' || !call || params[1] !== '0x100') throw new Error('Unexpected fixture call');
+  requests.push(`nft:${call.name}:${params[0].to}`);
+  if (holdNft) {
+    holdNft = false;
+    const aborted = () => { nftAborts++; };
+    init.signal?.addEventListener('abort', aborted, { once: true });
+    await new Promise<void>((resolve) => { releaseNft = resolve; });
+    init.signal?.removeEventListener('abort', aborted);
+  }
+  if (failNft) { failNft = false; return new Response(null, { status: 503 }); }
+  if (call.name === 'ownerOf') {
+    if (call.args[0] === 0n) return respond(nftAbi.encodeFunctionResult('ownerOf', [owner]));
+    if (call.args[0] === 1n) return respond(nftAbi.encodeFunctionResult('ownerOf', ['0x1111111111111111111111111111111111111111']));
+    return Response.json({ jsonrpc: '2.0', id, error: { code: 3, message: 'execution reverted', data: '0x' } });
+  }
+  if (call.name === 'balanceOf') return respond(nftAbi.encodeFunctionResult('balanceOf', [0n]));
+  return respond(nftAbi.encodeFunctionResult('balanceOfBatch', [[900719925474099312345n]]));
+} }) : undefined;
+const tokenRuntime: NativeTokenRuntime = {
+  load: (guard) => registry.load(scope(), guard),
+  add: (revision, metadata, guard) =>
+    registry.add(scope(), revision, metadata, guard),
+  remove: (revision, contractAddress, guard) =>
+    registry.remove(scope(), revision, contractAddress, guard),
+  addCollectible: (revision, item, guard) =>
+    registry.addCollectible(scope(), revision, item, guard),
+  removeCollectible: (revision, item, guard) =>
+    registry.removeCollectible(scope(), revision, item, guard),
+};
 const controller = new NativeTokens(
   source,
-  () => ({
-    load: (guard) => registry.load(scope(), guard),
-    add: (revision, metadata, guard) =>
-      registry.add(scope(), revision, metadata, guard),
-    remove: (revision, contractAddress, guard) =>
-      registry.remove(scope(), revision, contractAddress, guard),
-  }),
+  () => tokenRuntime,
   reader,
   () => 1000,
   undefined,
-  readHoldings
+  readHoldings,
+  readNft
 );
 let setVisible: (value: boolean) => void = () => undefined;
 let sends = 0;
@@ -176,6 +236,9 @@ declare global {
       releaseBalances(): void;
       holdPreview(): void;
       releasePreview(): void;
+      holdNft(): void;
+      releaseNft(): void;
+      nftAborts(): number;
       lock(): void;
       visible(value: boolean): void;
       requests(): readonly string[];
@@ -212,6 +275,9 @@ window.__nativeTokenPortfolio = {
     releasePreview?.();
     releasePreview = undefined;
   },
+  holdNft() { holdNft = true; },
+  releaseNft() { releaseNft?.(); releaseNft = undefined; },
+  nftAborts: () => nftAborts,
   lock() {
     state = Object.freeze({
       ...state,

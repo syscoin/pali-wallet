@@ -154,7 +154,7 @@ const runtime: NativeTransferRuntime = {
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
   async submit(rawTransaction, _hash, guard, broadcast, intent) {
-    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard(); await broadcast();
+    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard(); await broadcast(rawTransaction);
   },
   async token(contract, guard) {
     guard();

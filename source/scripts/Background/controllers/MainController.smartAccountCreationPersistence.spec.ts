@@ -17,6 +17,7 @@ import { AbiCoder, getCreate2Address, keccak256 } from 'ethers';
 import http from 'http';
 import https from 'https';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import {
@@ -128,7 +129,7 @@ beforeEach(async () => {
   } as any;
   await persistCommittedWalletState(true);
   commits = 0;
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault as any);
   wallet = Object.create(MainController.prototype);
   wallet.walletSessionGeneration = 0;
@@ -296,7 +297,7 @@ it.each(['account', 'chain', 'lock', 'keyring'] as const)(
     const rejected = expect(creating).rejects.toThrow('Wallet session changed');
     await write.started;
     if (change === 'keyring') {
-      const replacement = new KeyringManager();
+      const replacement = createTestKeyringManager();
       replacement.setVaultStateGetter(() => store.getState().vault as any);
       wallet.getActiveKeyring = () => replacement;
     } else {

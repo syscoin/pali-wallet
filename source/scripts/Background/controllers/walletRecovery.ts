@@ -22,6 +22,7 @@ const { dataSlice, hexlify } =
 import { jsonStorageEqual } from '../../../shared/jsonStorageEqual';
 import { isStrongWalletPassword } from '../../../shared/passwordPolicy';
 import { EVM_SIGNED_RECORD_PREFIX } from '../../../wallet/evmSignedRecords';
+import { UTXO_SIGNED_RECORD_PREFIX } from '../../../wallet/utxoSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
 import type { RootState } from 'state/store';
 import type { AsyncMutex } from 'utils/asyncMutex';
@@ -99,6 +100,7 @@ const resetOwnedKey = (key: string) =>
   key === 'sysweb3-vault-keys' ||
   key.startsWith('sysweb3-vault-') ||
   key.startsWith(EVM_SIGNED_RECORD_PREFIX) ||
+  key.startsWith(UTXO_SIGNED_RECORD_PREFIX) ||
   key.startsWith('state-') ||
   key === 'state' ||
   key.startsWith('pali-slh-dsa-state:') ||
