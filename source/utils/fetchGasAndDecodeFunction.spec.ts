@@ -751,6 +751,21 @@ describe('dapp transaction fee preparation', () => {
     });
   });
 
+  it('preserves an explicitly supplied zero nonce without automatic recommendation', async () => {
+    const execute = emitterMock.getMockImplementation()!;
+    emitterMock.mockImplementation((path, args) => {
+      if (path.join('.') === 'wallet.getRecommendedEvmNonce')
+        throw new Error(
+          'Explicit nonce must not request automatic recommendation'
+        );
+      return execute(path, args);
+    });
+    const result = await prepare({ nonce: '0x0' });
+    expect(result.nonce).toBe(0);
+    expect(result.formTx.nonce).toBe(0);
+    expect(callsFor('wallet.getRecommendedEvmNonce')).toHaveLength(0);
+  });
+
   it('uses a recommended nonce only when nonce was omitted', async () => {
     const result = await prepare();
     expect(result.nonce).toBe(9);

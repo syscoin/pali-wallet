@@ -1,7 +1,13 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
 import { getErc20Abi, getErc21Abi, getErc55Abi } from '@sidhujag/sysweb3-utils';
-import { fireEvent, render, screen, cleanup } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  cleanup,
+  waitFor,
+} from '@testing-library/react';
 import React from 'react';
 
 import { EthProvider } from 'scripts/Provider/EthProvider';
@@ -51,34 +57,36 @@ const mockWallet = {
   getErc721Abi: getErc21Abi,
   getErc1155Abi: getErc55Abi,
 };
-const mockEmitter = jest.fn(async (path: string[], args: any[] = []) => {
-  switch (path.join('.')) {
-    case 'wallet.refreshActiveAccountBalances':
-      return { nativeBalance: '100' };
-    case 'wallet.checkAddressBlacklist':
-      return { isBlacklisted: false };
-    case 'wallet.isContractAddress':
-      return true;
-    case 'wallet.getRecommendedEvmNonce':
-      return 0;
-    case 'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas':
-      return {
-        gasPrice: BigNumber.from('2000000000'),
-        maxFeePerGas: BigNumber.from('3000000000'),
-        maxPriorityFeePerGas: BigNumber.from('1000000000'),
-      };
-    case 'wallet.ethereumTransaction.web3Provider.send':
-      if (args[0] === 'eth_getBlockByNumber')
-        return { gasLimit: '30000000', baseFeePerGas: '1000000000' };
-      if (args[0] === 'eth_estimateGas') return '21000';
-      if (args[0] === 'eth_call') return '0x';
-      throw Error(`Denied RPC: ${args[0]}`);
-    default:
-      throw Error(
-        `Denied irreversible or unexpected controller call: ${path.join('.')}`
-      );
+const mockEmitter = jest.fn(
+  async (path: string[], args: any[] = []): Promise<unknown> => {
+    switch (path.join('.')) {
+      case 'wallet.refreshActiveAccountBalances':
+        return { nativeBalance: '100' };
+      case 'wallet.checkAddressBlacklist':
+        return { isBlacklisted: false };
+      case 'wallet.isContractAddress':
+        return true;
+      case 'wallet.getRecommendedEvmNonce':
+        return 0;
+      case 'wallet.ethereumTransaction.getFeeDataWithDynamicMaxPriorityFeePerGas':
+        return {
+          gasPrice: BigNumber.from('2000000000'),
+          maxFeePerGas: BigNumber.from('3000000000'),
+          maxPriorityFeePerGas: BigNumber.from('1000000000'),
+        };
+      case 'wallet.ethereumTransaction.web3Provider.send':
+        if (args[0] === 'eth_getBlockByNumber')
+          return { gasLimit: '30000000', baseFeePerGas: '1000000000' };
+        if (args[0] === 'eth_estimateGas') return '21000';
+        if (args[0] === 'eth_call') return '0x';
+        throw Error(`Denied RPC: ${args[0]}`);
+      default:
+        throw Error(
+          `Denied irreversible or unexpected controller call: ${path.join('.')}`
+        );
+    }
   }
-});
+);
 jest.mock('state/store', () => ({
   __esModule: true,
   default: { getState: () => mockState },
@@ -180,8 +188,19 @@ afterEach(() => {
   cleanup();
 });
 
-const prepare = async (value: string, data = '0x', to: string | null = TO) => {
-  const input = { from: FROM, ...(to ? { to } : {}), value, data, nonce: 0 };
+const prepare = async (
+  value: string,
+  data = '0x',
+  to: string | null = TO,
+  automatic = false
+) => {
+  const input = {
+    from: FROM,
+    ...(to ? { to } : {}),
+    value,
+    data,
+    ...(automatic ? {} : { nonce: 0 }),
+  };
   const original = JSON.stringify(input);
   await EthProvider('https://review-dapp.synthetic.invalid').sendTransaction(
     input as any
@@ -268,3 +287,151 @@ it('retains contract deployment bytes without falsely decoding initcode paramete
   expect(document.querySelector('#hexTab')!.textContent).toBe(data);
   expect(global.fetch).not.toHaveBeenCalled();
 });
+
+it('reconfirms an original explicit zero on each deliberate retry', async () => {
+  const previous = mockEmitter.getMockImplementation()!;
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+    if (path.join('.') === 'wallet.authorizeDappManualNonce') return true;
+    if (path.join('.') === 'wallet.sendAndSaveEthTransaction')
+      throw Object.assign(new Error('conflict'), {
+        code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        transactionNotBroadcast: true,
+      });
+    return previous(path, args);
+  });
+  try {
+    await prepare('1');
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+        )
+      ).toHaveLength(1)
+    );
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+        )
+      ).toHaveLength(2)
+    );
+    const grants = mockEmitter.mock.calls.filter(
+      ([path]) => path.join('.') === 'wallet.authorizeDappManualNonce'
+    );
+    expect(grants.map(([, args]) => args[0])).toEqual(['0x0', '0x0']);
+  } finally {
+    mockEmitter.mockImplementation(previous);
+  }
+});
+
+it('recommends and displays a fresh automatic nonce before retrying a definite failure', async () => {
+  const previous = mockEmitter.getMockImplementation()!;
+  let quoteCount = 0;
+  let resolveQuote!: (nonce: number) => void;
+  const heldQuote = new Promise<number>((resolve) => {
+    resolveQuote = resolve;
+  });
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+    if (path.join('.') === 'wallet.getRecommendedEvmNonce')
+      return ++quoteCount === 1 ? 0 : heldQuote;
+    if (path.join('.') === 'wallet.sendAndSaveEthTransaction') {
+      const attempts = mockEmitter.mock.calls.filter(
+        ([route]) => route.join('.') === 'wallet.sendAndSaveEthTransaction'
+      );
+      if (attempts.length === 1)
+        throw Object.assign(new Error('conflict'), {
+          code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+          transactionNotBroadcast: true,
+        });
+      return { hash: `0x${'ab'.repeat(32)}` };
+    }
+    return previous(path, args);
+  });
+  try {
+    await prepare('1', '0x', TO, true);
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(quoteCount).toBe(2));
+    expect(confirm).toBeDisabled();
+    fireEvent.click(confirm);
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+      )
+    ).toHaveLength(1);
+    resolveQuote(1);
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(1));
+    await waitFor(() => expect(confirm).not.toBeDisabled());
+    fireEvent.click(confirm);
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+        )
+      ).toHaveLength(2)
+    );
+    const sends = mockEmitter.mock.calls.filter(
+      ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+    );
+    expect(sends.map(([, args]) => args[0].nonce)).toEqual([0, 1]);
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path.join('.') === 'wallet.authorizeDappManualNonce'
+      )
+    ).toBe(false);
+  } finally {
+    resolveQuote(1);
+    mockEmitter.mockImplementation(previous);
+  }
+});
+
+it.each([
+  ['EVM_LEGACY_PENDING', 'send.legacyPendingNonce'],
+  [
+    'EVM_LEGACY_VERIFICATION_UNAVAILABLE',
+    'send.legacyNonceVerificationUnavailable',
+  ],
+])(
+  'shows %s on an initial quote failure and retries the full review',
+  async (code, messageKey) => {
+    const previous = mockEmitter.getMockImplementation()!;
+    let quotes = 0;
+    mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+      if (path.join('.') === 'wallet.getRecommendedEvmNonce' && ++quotes === 1)
+        throw Object.assign(new Error('legacy nonce guard'), {
+          code,
+          transactionNotBroadcast: true,
+        });
+      return previous(path, args);
+    });
+    try {
+      await EthProvider(
+        'https://review-dapp.synthetic.invalid'
+      ).sendTransaction({ from: FROM, to: TO, value: '1', data: '0x' } as any);
+      render(<SendTransaction />);
+      expect(await screen.findByText(messageKey)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'buttons.confirm' })
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: 'buttons.cancel' })
+      ).toBeEnabled();
+      fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+      expect(
+        await screen.findByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled();
+      expect(quotes).toBe(2);
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+        )
+      ).toBe(false);
+    } finally {
+      mockEmitter.mockImplementation(previous);
+    }
+  }
+);
