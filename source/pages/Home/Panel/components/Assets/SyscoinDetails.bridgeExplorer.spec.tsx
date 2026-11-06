@@ -247,7 +247,23 @@ it('does not label an unrelated UTXO chain as NEVM based on RPC hostname text', 
     explorer: 'https://litecoin.synthetic.invalid/',
     default: false,
   });
-  publish([await ownedAsset()]);
+  await expect(SysAssetsController().getUserOwnedTokens(XPUB)).resolves.toEqual(
+    []
+  );
+  expect(mockRead).not.toHaveBeenCalled();
+  // A previously stored display row still cannot give an unrelated chain a bridge link.
+  publish([
+    {
+      assetGuid: GUID,
+      chainId: 2,
+      contract: CONTRACT,
+      decimals: 8,
+      balance: '1.0',
+      symbol: 'BRIDGED',
+      totalReceived: '1.0',
+      totalSent: '0.0',
+    },
+  ]);
   mount();
   expect(screen.queryByRole('link', { name: MAINNET_LABEL })).toBeNull();
   expect(screen.queryByRole('link', { name: TESTNET_LABEL })).toBeNull();

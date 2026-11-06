@@ -60,7 +60,14 @@ describe('SysAssetsController imported asset refresh', () => {
   });
 
   it('retains a zero-balance imported asset missing from Blockbook', async () => {
-    fetchBackendAccountCachedMock.mockResolvedValue({ tokensAsset: [] });
+    fetchBackendAccountCachedMock.mockResolvedValue({
+      address: 'vpub-account',
+      balance: '0',
+      unconfirmedBalance: '0',
+      txs: 0,
+      unconfirmedTxs: 0,
+      tokensAsset: [],
+    });
     const importedAsset = {
       assetGuid: '456',
       balance: 9,

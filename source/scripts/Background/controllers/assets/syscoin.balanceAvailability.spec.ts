@@ -98,12 +98,34 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
+it('discovery rejects a partial inventory and preserves an exact retried balance', async () => {
+  mockInventory.mockResolvedValueOnce({
+    tokensAsset: [{ ...holding, balance: undefined }],
+  });
+  await expect(controller.getUserOwnedTokens(ACCOUNT.xpub)).rejects.toThrow(
+    'SPT token inventory is unavailable or invalid'
+  );
+  mockInventory.mockResolvedValue({
+    tokensAsset: [
+      { ...holding, balance: '9007199254740993', unconfirmedBalance: '-1' },
+      { ...holding, balance: '5', unconfirmedBalance: '0' },
+    ],
+  });
+  await expect(
+    controller.getUserOwnedTokens(ACCOUNT.xpub)
+  ).resolves.toMatchObject([
+    { assetGuid: GUID, balance: '90071992547409.97', utxoCount: 2 },
+  ]);
+});
+
 it.each([
   null,
   undefined,
   [],
   'unavailable',
   {},
+  { tokensAsset: [] },
+  { ...completeSummary, address: 'other-account', tokensAsset: [] },
   { error: 'Backend unavailable' },
   { error: 'Backend unavailable', tokensAsset: [] },
   { message: 'Backend unavailable' },
@@ -118,6 +140,7 @@ it.each([
   { tokensAsset: [{ ...holding, balance: undefined }] },
   { tokensAsset: [{ ...holding, balance: '25.00' }] },
   { tokensAsset: [{ ...holding, balance: Number.MAX_SAFE_INTEGER + 1 }] },
+  { tokensAsset: [{ ...holding, balance: '9'.repeat(79) }] },
   { tokensAsset: [{ ...holding, unconfirmedBalance: null }] },
   { tokensAsset: [{ ...holding, unconfirmedBalance: '-1.5' }] },
   { tokensAsset: [{ ...holding, totalSent: '-1' }] },
@@ -170,8 +193,38 @@ it('keeps manual metadata import available when the inventory request rejects', 
   expect(await add(token!)).not.toHaveProperty('balance');
 });
 
+it('does not clear an imported balance or cache empty discovery from a partial response', async () => {
+  const imported = await add((await validate())!);
+  expect(imported.balance).toBe('25.0');
+
+  mockInventory.mockResolvedValue({ tokensAsset: [] });
+  await expect(controller.getUserOwnedTokens(ACCOUNT.xpub)).rejects.toThrow(
+    'SPT token inventory is unavailable or invalid'
+  );
+  for (const inventory of [
+    { tokensAsset: [] },
+    { tokensAsset: [{ ...holding, assetGuid: '456' }] },
+  ]) {
+    mockInventory.mockResolvedValue(inventory);
+    await expect(
+      controller.getSysAssetsByXpub(
+        ACCOUNT.xpub,
+        NETWORK.url,
+        NETWORK.chainId,
+        [imported]
+      )
+    ).rejects.toThrow('SPT token inventory is unavailable or invalid');
+    expect(added()[0].balance).toBe('25.0');
+  }
+
+  mockInventory.mockResolvedValue({ ...completeSummary, tokensAsset: [] });
+  await expect(controller.getUserOwnedTokens(ACCOUNT.xpub)).resolves.toEqual(
+    []
+  );
+});
+
 it.each([
-  { inventory: { tokensAsset: [] }, balance: '0' },
+  { inventory: { ...completeSummary, tokensAsset: [] }, balance: '0' },
   { inventory: { tokensAsset: [{ ...holding }] }, balance: '25.0' },
 ])(
   'refreshes an imported unknown balance to known $balance without changing metadata',
@@ -208,9 +261,9 @@ it.each([
 );
 
 it.each([
-  { tokensAsset: [] },
+  { ...completeSummary, tokensAsset: [] },
   completeSummary,
-  { tokensAsset: [{ ...holding, assetGuid: '456' }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, assetGuid: '456' }] },
 ])(
   'retains an explicit known zero for a complete empty holding: %p',
   async (reply) => {

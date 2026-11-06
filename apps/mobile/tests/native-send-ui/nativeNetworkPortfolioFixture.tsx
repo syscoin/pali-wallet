@@ -52,7 +52,8 @@ const reader: BalanceReader = {
     const network = getUtxoNetwork(id);
     reads.push(id);
     return { kind: 'utxo', networkId: id, chainId: network.chainId, genesisHash: network.genesisHash,
-      confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123 };
+      confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123,
+      ...(id === 'syscoin' ? { sysx: { confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' } } : {}) };
   },
 };
 

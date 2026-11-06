@@ -1,5 +1,6 @@
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 import { utxoObservation } from '../core/utxoBalance.ts';
+import type { UtxoSysxBalance } from '../core/utxoBalanceReader.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { getNativeNetwork } from '../custody/networkContext.ts';
 import type { EvmNetworkId } from '../custody/networkContext.ts';
@@ -19,6 +20,7 @@ export type NativePortfolioSnapshot = Readonly<{
   units: string | null;
   updatedAt: number | null;
   pendingDeltaUnits?: string;
+  sysx?: UtxoSysxBalance;
 }>;
 
 /** Only the custody authority's public projection crosses this boundary. */
@@ -51,9 +53,10 @@ function snapshot(
   status: NativePortfolioSnapshot['status'],
   units: string | null = null,
   updatedAt: number | null = null,
-  pendingDeltaUnits?: string
+  pendingDeltaUnits?: string,
+  sysx?: UtxoSysxBalance
 ): NativePortfolioSnapshot {
-  return Object.freeze({ account, status, units, updatedAt, ...(pendingDeltaUnits === undefined ? {} : { pendingDeltaUnits }) });
+  return Object.freeze({ account, status, units, updatedAt, ...(pendingDeltaUnits === undefined ? {} : { pendingDeltaUnits }), ...(sysx ? { sysx } : {}) });
 }
 
 /** Public balance observations, bound to the exact ready custody revision. */
@@ -228,7 +231,7 @@ export class NativePortfolioController {
         const balance = utxoObservation(result, network.id, this.now());
         if (!this.current(request)) return;
         this.pending = null;
-        this.replace(snapshot(account, 'available', balance.units, balance.updatedAt, balance.pendingDeltaUnits), true);
+        this.replace(snapshot(account, 'available', balance.units, balance.updatedAt, balance.pendingDeltaUnits, balance.sysx), true);
         return;
       }
       const result = await this.reader.readBalance(account.network, account.address, request.controller.signal);

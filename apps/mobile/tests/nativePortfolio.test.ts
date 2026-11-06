@@ -391,9 +391,9 @@ test('network A-B-A discards old balances even with identical address and a reus
 });
 
 
-test('UTXO portfolio exposes exact confirmed and pending units only for the selected registration', async () => {
-  const network = getUtxoNetwork('bitcoin');
-  const address = UTXO_ADDRESSES.bitcoin;
+test('UTXO portfolio exposes exact native and SYSX units only for the selected registration', async () => {
+  const network = getUtxoNetwork('syscoin');
+  const address = UTXO_ADDRESSES.syscoin;
   const source = new Source({ ...ready(), account: { network: network.id, address } });
   const calls: (ReturnType<typeof deferred<UtxoBalance>> & { signal: AbortSignal })[] = [];
   const controller = new NativePortfolioController(source, {
@@ -410,7 +410,8 @@ test('UTXO portfolio exposes exact confirmed and pending units only for the sele
   try {
     const result: UtxoBalance = { networkId: network.id, kind: 'utxo', chainId: network.chainId,
       genesisHash: network.genesisHash, confirmedUnits: '9007199254740993', pendingDeltaUnits: '-123',
-      unconfirmedTransactions: 1, observedHeight: 42 };
+      unconfirmedTransactions: 1, observedHeight: 42,
+      sysx: { confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' } };
     calls[0]!.resolve({ ...result, genesisHash: '0'.repeat(64) });
     await tick();
     assert.equal(controller.getSnapshot().status, 'error');
@@ -419,6 +420,7 @@ test('UTXO portfolio exposes exact confirmed and pending units only for the sele
     await good;
     assert.equal(controller.getSnapshot().units, '9007199254740993');
     assert.equal(controller.getSnapshot().pendingDeltaUnits, '-123');
+    assert.deepEqual(controller.getSnapshot().sysx, result.sysx);
     const late = controller.refresh();
     source.set({ ...ready(address, 2), phase: 'locked', account: null });
     assert.equal(calls[2]!.signal.aborted, true);
