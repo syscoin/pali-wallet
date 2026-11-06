@@ -166,11 +166,14 @@ beforeAll(() => {
   }));
 });
 beforeEach(() => {
+  jest.useFakeTimers();
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/');
   mockLocation.key += '-next';
 });
 afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
   expect(
     mockEmitter.mock.calls.every(([path]) =>
       [
@@ -231,8 +234,12 @@ const quoteRequests = () =>
   mockEmitter.mock.calls.filter(
     ([path]) => path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas'
   );
-const waitForQuote = (count = 1) =>
-  waitFor(() => expect(quoteRequests()).toHaveLength(count));
+const waitForQuote = async (count = 1) => {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(500);
+  });
+  expect(quoteRequests()).toHaveLength(count);
+};
 const resolveQuote = (
   quote: ReturnType<typeof deferred>,
   priority = '1000000000'
