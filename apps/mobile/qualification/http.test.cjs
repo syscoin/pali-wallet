@@ -1,13 +1,13 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { EventEmitter } = require('node:events');
+const { EventEmitter, once } = require('node:events');
 const { Buffer } = require('node:buffer');
 const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { fork, spawnSync } = require('node:child_process');
 const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
@@ -371,6 +371,24 @@ test('one owned inspection distinguishes unavailable counters from confirmed zer
       assert.equal(diagnostic.serverStatus, 'unavailable');
       assert.equal(diagnostic.server, null);
       assert(!JSON.stringify(diagnostic).includes('private read failure'));
+    }
+    assert.throws(() => companion.assertComplete(1));
+  } finally { await companion.close(); }
+});
+test('diagnostics recognize a real fixture child that exited before inspection', async () => {
+  let child;
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); }, spawn: (...args) => (child = fork(...args)) });
+  try {
+    await companion.begin('create', 'import');
+    const exited = once(child, 'exit');
+    assert.equal(child.kill('SIGTERM'), true);
+    await exited;
+    const { http, post } = await companion.diagnostics();
+    for (const diagnostic of [http, post]) {
+      assert.equal(diagnostic.serverStatus, 'exited');
+      assert.equal(diagnostic.server, null);
+      assert.equal(diagnostic.diagnosticOnly, true);
     }
     assert.throws(() => companion.assertComplete(1));
   } finally { await companion.close(); }

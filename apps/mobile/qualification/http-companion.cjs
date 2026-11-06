@@ -78,8 +78,9 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     pending.set(id, { resolve, reject, timer });
     child.send({ id, kind, token }, (error) => { if (error) { clearTimeout(timer); pending.delete(id); reject(Error('HTTP_FIXTURE_COMMAND_FAILED')); } });
   });
+  const childExited = () => child.exitCode !== null || child.signalCode !== null;
   const stopChild = async () => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
+    if (childExited()) return;
     await new Promise((resolve) => {
       const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 3000);
       child.once('exit', () => { clearTimeout(timer); resolve(); });
@@ -179,15 +180,16 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       } catch { /* Missing sidecar remains unavailable. */ }
       let get = partialAudit(finalAudit, scope.token, port);
       let post = partialPostAudit(finalPostAudit, scope.token, port);
-      let unavailable = 'invalid';
-      if (!get || !post) {
+      let unavailable = childExited() ? 'exited' : 'invalid';
+      if ((!get || !post) && unavailable !== 'exited') {
         try {
           const snapshot = await rpc('inspectAll', scope.token, 1000);
           get ??= partialAudit(snapshot?.get, scope.token, port);
           post ??= partialPostAudit(snapshot?.post, scope.token, port);
         } catch (error) {
-          unavailable = error?.message === 'HTTP_FIXTURE_COMMAND_TIMEOUT' ? 'timeout' :
-            error?.message === 'HTTP_FIXTURE_EXITED' ? 'exited' : 'unavailable';
+          if (childExited() || error?.message === 'HTTP_FIXTURE_EXITED') unavailable = 'exited';
+          else if (error?.message === 'HTTP_FIXTURE_COMMAND_TIMEOUT') unavailable = 'timeout';
+          else unavailable = 'unavailable';
         }
       }
       if (active !== scope) return undefined;
