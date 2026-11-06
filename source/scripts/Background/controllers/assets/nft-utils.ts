@@ -1,15 +1,76 @@
-import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import { AbiCoder } from 'ethers/abi';
+import { Contract } from 'ethers/contract';
+import { hexlify, isCallException, isHexString } from 'ethers/utils';
 
-import { BigNumber, hexlify } from 'utils/ethersV6Compat';
-import { Contract } from 'utils/ethersV6Compat';
+type ContractRunner = NonNullable<Contract['runner']>;
+export type NftReadRunner = Required<Pick<ContractRunner, 'call'>> &
+  Pick<ContractRunner, 'resolveName'>;
+
+const MAX_REVERT_HEX_LENGTH = 2 + 4096 * 2;
+
+const isBoundedRevertData = (data: unknown): data is string =>
+  typeof data === 'string' &&
+  data.length <= MAX_REVERT_HEX_LENGTH &&
+  isHexString(data, true);
+
+/** Normalize an explicit raw eth_call execution revert for the ethers ABI. */
+export function normalizeNftExecutionRevert(
+  error: unknown,
+  tx: Parameters<NftReadRunner['call']>[0]
+): Error | undefined {
+  if (
+    error === null ||
+    typeof error !== 'object' ||
+    !('code' in error) ||
+    (error.code !== 3 && error.code !== -32000) ||
+    !('message' in error) ||
+    typeof error.message !== 'string' ||
+    !/^execution reverted(?:$|:)/i.test(error.message) ||
+    !('data' in error) ||
+    !isBoundedRevertData(error.data) ||
+    typeof tx.to !== 'string' ||
+    typeof tx.data !== 'string'
+  ) {
+    return undefined;
+  }
+  return AbiCoder.getBuiltinCallException(
+    'call',
+    { to: tx.to, data: tx.data },
+    error.data
+  );
+}
+
+const readContract = (address: string, abi: string[], runner: NftReadRunner) =>
+  new Contract(address, abi, {
+    provider: null,
+    async call(tx) {
+      try {
+        return await runner.call(tx);
+      } catch (error) {
+        if (isCallException(error)) {
+          // ethers re-reads data before ABI decoding. Its errors store data
+          // directly, so refuse inherited values and accessors.
+          const property = Object.getOwnPropertyDescriptor(error, 'data');
+          const data: unknown = property?.value;
+          if (
+            (property ? !('value' in property) : 'data' in error) ||
+            (data !== null && data !== undefined && !isBoundedRevertData(data))
+          )
+            throw new Error('Invalid NFT execution revert data');
+          throw error;
+        }
+        // CustomJsonRpcProvider preserves RPC code and data on plain Errors.
+        throw normalizeNftExecutionRevert(error, tx) ?? error;
+      }
+    },
+    resolveName: runner.resolveName?.bind(runner),
+  });
 
 // ERC-721 ABI fragments
 const ERC721_ABI = [
   'function balanceOf(address owner) view returns (uint256)',
   'function ownerOf(uint256 tokenId) view returns (address)',
   'function tokenOfOwnerByIndex(address owner, uint256 index) view returns (uint256)',
-  'function tokenByIndex(uint256 index) view returns (uint256)',
-  'function totalSupply() view returns (uint256)',
   'function supportsInterface(bytes4 interfaceId) view returns (bool)',
 ];
 
@@ -22,11 +83,26 @@ const ERC1155_ABI = [
 // Interface IDs
 const INTERFACE_ID_ERC721_ENUMERABLE = '0x780e9d63';
 
-/**
- * Detect fake NFT contracts by testing with invalid token ID
- * Fake contracts often return positive balances for any token ID
- */
-async function detectFakeNftContract(
+const isExplicitOwnerOfRevert = (error: unknown): boolean => {
+  // Ethers also labels RPC errors without revert evidence CALL_EXCEPTION.
+  if (
+    !isCallException(error) ||
+    error.action !== 'call' ||
+    error.invocation?.signature !== 'ownerOf(uint256)' ||
+    typeof error.data !== 'string'
+  ) {
+    return false;
+  }
+  if (error.data === '0x') return true;
+  if (error.data.length % 64 !== 10) return false;
+  const selector = error.data.slice(0, 10);
+  if (selector === '0x08c379a0')
+    return error.revert?.signature === 'Error(string)';
+  return selector !== '0x4e487b71'; // Panic(uint256)
+};
+
+/** Require a usable negative response from an independent token ID. */
+async function hasNegativeNftProbe(
   contract: Contract,
   tokenStandard: 'ERC-721' | 'ERC-1155',
   ownerAddress: string,
@@ -34,14 +110,12 @@ async function detectFakeNftContract(
 ): Promise<boolean> {
   let invalidTokenId: string | undefined;
   try {
-    const requested = new Set(
-      tokenIds.map((id) => BigNumber.from(id).toString())
-    );
+    const requested = new Set(tokenIds.map((id) => BigInt(id).toString()));
     // Every fixed uint256 is a legal NFT ID. Use fresh entropy, excluding the
     // requested holdings, as a negative probe; this remains a heuristic only.
     for (let attempt = 0; attempt < 16; attempt += 1) {
       const bytes = crypto.getRandomValues(new Uint8Array(32));
-      const candidate = BigNumber.from(hexlify(bytes)).toString();
+      const candidate = BigInt(hexlify(bytes)).toString();
       if (!requested.has(candidate)) {
         invalidTokenId = candidate;
         break;
@@ -49,29 +123,19 @@ async function detectFakeNftContract(
     }
   } catch {
     // Without a usable independent probe, do not claim verified ownership.
-    return true;
-  }
-  if (invalidTokenId === undefined) return true;
-  try {
-    let balance: any;
-    if (tokenStandard === 'ERC-721') {
-      // For ERC-721, try ownerOf first (should throw for non-existent tokens)
-      try {
-        await contract.ownerOf(invalidTokenId);
-        // If ownerOf doesn't throw, this token ID exists (suspicious)
-        return true;
-      } catch {
-        // Good - token doesn't exist, contract behaves normally
-        return false;
-      }
-    } else {
-      // For ERC-1155, check balance of invalid token ID
-      balance = await contract.balanceOf(ownerAddress, invalidTokenId);
-      return Number(balance) > 0; // If balance > 0 for invalid ID, it's fake
-    }
-  } catch {
-    // If validation fails, assume contract is legitimate
     return false;
+  }
+  if (invalidTokenId === undefined) return false;
+  try {
+    if (tokenStandard === 'ERC-1155') {
+      return (
+        (await contract.balanceOf!(ownerAddress, invalidTokenId)) === BigInt(0)
+      );
+    }
+    await contract.ownerOf!(invalidTokenId);
+    return false;
+  } catch (error) {
+    return tokenStandard === 'ERC-721' && isExplicitOwnerOfRevert(error);
   }
 }
 
@@ -82,14 +146,18 @@ export interface INftTokenInfo {
   verified: boolean;
 }
 
-const toDisplayNftBalance = (balance: any): number => {
-  const balanceBN = BigNumber.from(balance);
-  const maxSafeBN = BigNumber.from(Number.MAX_SAFE_INTEGER.toString());
+const unverifiedHoldings = (tokenIds: string[]): INftTokenInfo[] =>
+  tokenIds.map((tokenId) => ({ tokenId, balance: 0, verified: false }));
 
-  return balanceBN.lte(maxSafeBN)
-    ? balanceBN.toNumber()
-    : Number.MAX_SAFE_INTEGER;
-};
+const verifiedErc1155Holding = (
+  tokenId: string,
+  balance: bigint
+): INftTokenInfo => ({
+  tokenId,
+  balance: Math.min(Number(balance), Number.MAX_SAFE_INTEGER),
+  rawBalance: balance.toString(),
+  verified: true,
+});
 
 /**
  * Check if a contract supports a specific interface
@@ -99,7 +167,7 @@ async function supportsInterface(
   interfaceId: string
 ): Promise<boolean> {
   try {
-    return await contract.supportsInterface(interfaceId);
+    return await contract.supportsInterface!(interfaceId);
   } catch {
     return false;
   }
@@ -112,27 +180,15 @@ export async function verifyERC721OwnershipHelper(
   contractAddress: string,
   ownerAddress: string,
   tokenIds: string[],
-  provider: CustomJsonRpcProvider
+  runner: NftReadRunner
 ): Promise<INftTokenInfo[]> {
   try {
-    const contract = new Contract(contractAddress, ERC721_ABI, provider);
+    const contract = readContract(contractAddress, ERC721_ABI, runner);
 
-    // Check if this is a fake contract first
-    const isFake = await detectFakeNftContract(
-      contract,
-      'ERC-721',
-      ownerAddress,
-      tokenIds
-    );
-    if (isFake) {
-      console.warn(
-        `[NFT Utils] Detected fake ERC-721 contract: ${contractAddress}`
-      );
-      return tokenIds.map((tokenId) => ({
-        tokenId,
-        balance: 0,
-        verified: false,
-      }));
+    if (
+      !(await hasNegativeNftProbe(contract, 'ERC-721', ownerAddress, tokenIds))
+    ) {
+      return unverifiedHoldings(tokenIds);
     }
 
     const results: INftTokenInfo[] = [];
@@ -143,7 +199,7 @@ export async function verifyERC721OwnershipHelper(
       const batch = tokenIds.slice(i, i + batchSize);
       const promises = batch.map(async (tokenId) => {
         try {
-          const owner = await contract.ownerOf(tokenId);
+          const owner = await contract.ownerOf!(tokenId);
           return {
             tokenId,
             isOwner: owner.toLowerCase() === ownerAddress.toLowerCase(),
@@ -171,13 +227,9 @@ export async function verifyERC721OwnershipHelper(
     }
 
     return results;
-  } catch (error) {
-    console.error('[NFT Utils] Error verifying ERC-721 ownership:', error);
-    return tokenIds.map((tokenId) => ({
-      tokenId,
-      balance: 0,
-      verified: false,
-    }));
+  } catch {
+    console.error('[NFT Utils] ERC-721 ownership check failed');
+    return unverifiedHoldings(tokenIds);
   }
 }
 
@@ -188,79 +240,45 @@ export async function verifyERC1155OwnershipHelper(
   contractAddress: string,
   ownerAddress: string,
   tokenIds: string[],
-  provider: CustomJsonRpcProvider
+  runner: NftReadRunner
 ): Promise<INftTokenInfo[]> {
   try {
-    const contract = new Contract(contractAddress, ERC1155_ABI, provider);
+    const contract = readContract(contractAddress, ERC1155_ABI, runner);
 
-    // Check if this is a fake contract first
-    const isFake = await detectFakeNftContract(
-      contract,
-      'ERC-1155',
-      ownerAddress,
-      tokenIds
-    );
-    if (isFake) {
-      console.warn(
-        `[NFT Utils] Detected fake ERC-1155 contract: ${contractAddress}`
-      );
-      return tokenIds.map((tokenId) => ({
-        tokenId,
-        balance: 0,
-        verified: false,
-      }));
+    if (
+      !(await hasNegativeNftProbe(contract, 'ERC-1155', ownerAddress, tokenIds))
+    ) {
+      return unverifiedHoldings(tokenIds);
     }
 
-    // Use balanceOfBatch for efficiency
-    const accounts = new Array(tokenIds.length).fill(ownerAddress);
-    const balances = await contract.balanceOfBatch(accounts, tokenIds);
-
-    return tokenIds.map((tokenId, index) => {
-      // ERC-1155 NFTs have 0 decimals, so display balance = raw balance
-      const balance = balances[index];
-      const displayBalance = toDisplayNftBalance(balance);
-
-      return {
-        tokenId,
-        balance: displayBalance,
-        rawBalance: balance?.toString(),
-        verified: true,
-      };
-    });
-  } catch (error) {
-    console.error('[NFT Utils] Error verifying ERC-1155 ownership:', error);
-
-    // Fallback to individual calls
     try {
-      const contract = new Contract(contractAddress, ERC1155_ABI, provider);
-      const results: INftTokenInfo[] = [];
-      for (const tokenId of tokenIds) {
-        try {
-          const balance = await contract.balanceOf(ownerAddress, tokenId);
-          const displayBalance = toDisplayNftBalance(balance);
-
-          results.push({
-            tokenId,
-            balance: displayBalance,
-            rawBalance: balance?.toString(),
-            verified: true,
-          });
-        } catch {
-          results.push({
-            tokenId,
-            balance: 0,
-            verified: false,
-          });
-        }
+      const accounts = new Array(tokenIds.length).fill(ownerAddress);
+      const balances = await contract.balanceOfBatch!(accounts, tokenIds);
+      if (balances.length !== tokenIds.length) {
+        throw new Error('Invalid ERC-1155 batch balance length');
       }
-      return results;
+
+      return tokenIds.map((tokenId, index) =>
+        verifiedErc1155Holding(tokenId, balances[index])
+      );
     } catch {
-      return tokenIds.map((tokenId) => ({
-        tokenId,
-        balance: 0,
-        verified: false,
-      }));
+      console.error('[NFT Utils] ERC-1155 batch balance read failed');
     }
+
+    // Only a failed batch after the negative probe can fall back.
+    const results: INftTokenInfo[] = [];
+    for (const tokenId of tokenIds) {
+      try {
+        const balance = await contract.balanceOf!(ownerAddress, tokenId);
+        results.push(verifiedErc1155Holding(tokenId, balance));
+      } catch {
+        results.push({ tokenId, balance: 0, verified: false });
+      }
+    }
+    return results;
+  } catch {
+    console.error('[NFT Utils] ERC-1155 ownership check failed');
+    return unverifiedHoldings(tokenIds);
   }
 }
 
@@ -272,7 +290,7 @@ export async function discoverNftTokens(
   contractAddress: string,
   ownerAddress: string,
   tokenStandard: 'ERC-721' | 'ERC-1155',
-  provider: CustomJsonRpcProvider
+  runner: NftReadRunner
 ): Promise<{
   hasMore?: boolean;
   method: 'enumeration' | 'manual' | 'api';
@@ -282,7 +300,7 @@ export async function discoverNftTokens(
   // For ERC-721, try enumeration first
   if (tokenStandard === 'ERC-721') {
     try {
-      const contract = new Contract(contractAddress, ERC721_ABI, provider);
+      const contract = readContract(contractAddress, ERC721_ABI, runner);
 
       // Check if contract supports enumeration
       const isEnumerable = await supportsInterface(
@@ -291,7 +309,7 @@ export async function discoverNftTokens(
       );
       if (isEnumerable) {
         // Get balance first
-        const balance = await contract.balanceOf(ownerAddress);
+        const balance = await contract.balanceOf!(ownerAddress);
         const tokenCount = Number(balance);
 
         if (tokenCount === 0) {
@@ -309,7 +327,7 @@ export async function discoverNftTokens(
         // Fetch tokens in parallel (up to limit)
         const promises = [];
         for (let i = 0; i < limit; i++) {
-          promises.push(contract.tokenOfOwnerByIndex(ownerAddress, i));
+          promises.push(contract.tokenOfOwnerByIndex!(ownerAddress, i));
         }
 
         const tokenIds = await Promise.all(promises);
@@ -332,8 +350,8 @@ export async function discoverNftTokens(
           hasMore: tokenCount > limit,
         };
       }
-    } catch (error) {
-      console.error('[NFT Utils] ERC-721 enumeration failed:', error);
+    } catch {
+      console.error('[NFT Utils] ERC-721 enumeration failed');
     }
   }
 
@@ -352,35 +370,4 @@ export async function discoverNftTokens(
     tokens: [],
     requiresManualEntry: true,
   };
-}
-
-/**
- * Parse user input for token IDs
- * Supports formats: "1", "1,2,3", "1-5", "1,3-5,10"
- */
-export function parseTokenIdInput(input: string): string[] {
-  const tokenIds: Set<string> = new Set();
-
-  // Remove whitespace and split by comma
-  const parts = input.replace(/\s/g, '').split(',');
-
-  for (const part of parts) {
-    if (part.includes('-')) {
-      // Handle range
-      const [start, end] = part.split('-').map((n) => parseInt(n));
-      if (!isNaN(start) && !isNaN(end) && start <= end) {
-        for (let i = start; i <= end; i++) {
-          tokenIds.add(i.toString());
-        }
-      }
-    } else {
-      // Handle single number
-      const num = parseInt(part);
-      if (!isNaN(num)) {
-        tokenIds.add(num.toString());
-      }
-    }
-  }
-
-  return Array.from(tokenIds);
 }

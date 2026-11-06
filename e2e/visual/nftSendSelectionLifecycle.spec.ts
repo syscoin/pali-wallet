@@ -110,6 +110,12 @@ test('NFT Send keeps the current collection and requires ownership of manual IDs
                 ['address'],
                 [fixture.evmAddresses[tokenId === BigInt(8) ? 1 : 0]]
               );
+            else
+              return {
+                jsonrpc: '2.0',
+                id: call.id,
+                error: { code: 3, message: 'execution reverted', data: '0x' },
+              };
           }
           if (prefix === selector('supportsInterface(bytes4)')) {
             const [value] = abi.decode(['bytes4'], `0x${data.slice(10)}`);

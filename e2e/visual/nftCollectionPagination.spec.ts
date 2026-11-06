@@ -146,6 +146,12 @@ for (const viewport of [
               const [tokenId] = abi.decode(['uint256'], args);
               if (tokenId >= BigInt(7) && tokenId < BigInt(7 + item.count))
                 result = abi.encode(['address'], [fixture.evmAddresses[0]]);
+              else
+                return {
+                  jsonrpc: '2.0',
+                  id: call.id,
+                  error: { code: 3, message: 'execution reverted', data: '0x' },
+                };
             }
           }
           if (
