@@ -94,7 +94,8 @@ test('wrong chain is rejected before disclosing an account address', async () =>
 test('gas/nonce/affordability changes invalidate exact reviewed envelope', async () => {
   const f = fixture(custom('changed-chain', '12222')), signal = new AbortController().signal;
   const quote = await f.rpc.prepare(from, to, '100', signal);
-  f.setGas('0x6000'); await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'REVIEW_REQUIRED' });
+  f.setGas(`0x${(BigInt(quote.transaction.gasLimit) + 1n).toString(16)}`);
+  await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'REVIEW_REQUIRED' });
   f.setGas('0x5208'); f.setNonce('0x2'); await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'REVIEW_REQUIRED' });
   f.setNonce('0x1'); f.setBalance('0x1'); await assert.rejects(f.rpc.requote(quote.transaction, signal), { code: 'INSUFFICIENT_BALANCE' });
 });
