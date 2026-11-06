@@ -110,7 +110,7 @@ afterEach(() => jest.restoreAllMocks());
 it('allows distinct UTXO vaults and edits to the same registration', async () => {
   await wallet.addCustomRpc(network);
   await wallet.addCustomRpc({ ...other, slip44: 2 });
-  const edited = { ...network, url: 'https://edited.invalid' };
+  const edited = { ...network, label: 'Updated test network' };
   await expect(
     wallet.editCustomRpc(
       edited,

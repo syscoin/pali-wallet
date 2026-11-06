@@ -5924,16 +5924,45 @@ class MainController {
         currency: verified.rpc.formattedNetwork.currency,
       };
     }
-    this.resetAutoLockTimer();
-    await persistNetworkRegistry(
-      network,
-      isEdit,
-      assertCurrent,
-      () =>
-        generation === this.walletStateGeneration &&
-        (family !== INetworkType.Syscoin ||
-          this.walletSessionGeneration === session)
-    );
+    const commit = (assertCommitCurrent: () => void) => {
+      assertCommitCurrent();
+      this.resetAutoLockTimer();
+      return persistNetworkRegistry(
+        network,
+        isEdit,
+        assertCommitCurrent,
+        () => generation === this.walletStateGeneration
+      );
+    };
+    const retiringEndpoint =
+      family === INetworkType.Syscoin && isEdit && previous
+        ? utxoSubmissionUrl(previous.url)
+        : undefined;
+    if (
+      retiringEndpoint &&
+      retiringEndpoint !== utxoSubmissionUrl(network.url)
+    ) {
+      const coin = findUtxoCoinByRegistration(network);
+      if (!coin?.hashGenesisBlock)
+        throw new Error('Verify the UTXO network before saving.');
+      const keyring = this.getActiveKeyring();
+      const assertOwner = () => {
+        assertCurrent();
+        this.assertCurrentWalletSession(session, keyring);
+      };
+      await this.getRetainedUtxoRecords().replaceEndpoint(
+        { keyring, assertCurrent: assertOwner },
+        {
+          chainId: network.chainId,
+          slip44: network.slip44,
+          genesisHash: coin.hashGenesisBlock,
+        },
+        retiringEndpoint,
+        () => commit(assertOwner)
+      );
+    } else {
+      await commit(assertCurrent);
+    }
     return network;
   }
 
