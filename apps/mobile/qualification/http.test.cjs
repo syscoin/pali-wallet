@@ -353,11 +353,13 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-http-config-'));
   const originalApp = readFileSync(require.resolve('../app.json'));
   try {
+    const keyringVersion = '3.9.7';
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] }));
-    fs.copyFileSync(require.resolve('../scripts/configure-native-qualification.cjs'), path.join(root, 'scripts/configure-native-qualification.cjs'));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] } }));
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+      fs.copyFileSync(path.join(__dirname, '../scripts', script), path.join(root, 'scripts', script));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion } }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'app.json'), originalApp);
     fs.writeFileSync(path.join(root, 'index.ts'), 'public production entry');

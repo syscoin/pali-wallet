@@ -176,7 +176,7 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
   });
   const hash = keccak256(raw);
   const f = fixture({ eth_sendRawTransaction: hash });
-  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', beforeBroadcast: () => undefined }), hash);
+  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
   assert.deepEqual(
     f.calls.find((c) => c.method === 'eth_sendRawTransaction')?.params,
     [raw]
@@ -186,19 +186,19 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
       throw Error('Response lost');
     },
   });
-  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', beforeBroadcast: () => undefined }));
+  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }));
   assert.equal(
     lost.calls.filter((c) => c.method === 'eth_sendRawTransaction').length,
     1
   );
   const invalid = fixture();
   await assert.rejects(
-    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', beforeBroadcast: () => undefined })
+    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } })
   );
   assert.equal(invalid.calls.length, 0);
 });
 
-test('requires current synchronous broadcast admission at the actual POST boundary', async () => {
+test('requires broadcast admission after preflight and never posts if admission refuses', async () => {
   const raw = await sender.signTransaction({
     type: 2, chainId: 1, nonce: 0, to: recipient, value: 1,
     gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
@@ -210,17 +210,23 @@ test('requires current synchronous broadcast admission at the actual POST bounda
     { code: 'REVIEW_REQUIRED' }
   );
   assert.equal(f.calls.length, 0);
+  let methodsAtAdmission: string[] | undefined;
   await assert.rejects(
     f.rpc.broadcast(raw, hash, signal(), {
       mode: 'new-send',
-      beforeBroadcast: (async () => { throw new Error('late review'); }) as never,
+      admit: async (_send, preflight) => {
+        await preflight?.();
+        methodsAtAdmission = f.calls.map((call) => call.method);
+        throw new Error('late review');
+      },
     }),
-    { code: 'REVIEW_REQUIRED' }
+    /late review/
   );
+  assert.deepEqual(methodsAtAdmission, ['eth_chainId']);
   assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
   const revoked = {
     mode: 'new-send' as const,
-    beforeBroadcast: () => { throw new Error('review revoked'); },
+    admit: async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('review revoked'); },
   };
   const pending = f.rpc.broadcast(raw, hash, signal(), revoked);
   Object.assign(revoked, { mode: 'replay' });

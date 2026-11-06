@@ -2,6 +2,7 @@ import {
   BigNumber,
   serializeTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
+import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager';
 import { captureEvmSubmission } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import {
@@ -140,10 +141,11 @@ const deferred = <T>() => {
   return { promise, resolve };
 };
 
-describe('published keyring account-scoped replacement signing', () => {
+describe('pinned keyring account-scoped replacement signing', () => {
   let state: any;
   let sdk: EthereumTransactions;
   let provider: any;
+  let actualHardware: HardwareWalletManager | undefined;
   let currentProvider: any;
   let getKey: jest.Mock;
   let ledger: any;
@@ -212,9 +214,10 @@ describe('published keyring account-scoped replacement signing', () => {
       verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
       getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
       getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000)),
-      getBlock: jest
-        .fn()
-        .mockResolvedValue({ baseFeePerGas: BigNumber.from(50) }),
+      getBlock: jest.fn().mockResolvedValue({
+        baseFeePerGas: BigNumber.from(50),
+        gasLimit: BigNumber.from(30_000_000),
+      }),
       send: jest.fn().mockResolvedValue('0x2'),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
@@ -267,7 +270,14 @@ describe('published keyring account-scoped replacement signing', () => {
         return capturedProvider.sendTransaction('mocked-signed-transaction');
       });
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(async () => {
+    try {
+      await actualHardware?.destroy();
+    } finally {
+      actualHardware = undefined;
+      jest.restoreAllMocks();
+    }
+  });
 
   it.each([false, true])(
     'signs through the explicit outer payer without changing the active SmartAccount (legacy=%s)',
@@ -316,8 +326,9 @@ describe('published keyring account-scoped replacement signing', () => {
       expect(beforeBroadcast).not.toHaveBeenCalled();
       expect(provider.sendTransaction).not.toHaveBeenCalled();
     };
-    const expectNoFeeRpc = () => {
-      expect(provider.getBlock).not.toHaveBeenCalled();
+    const expectBoundedFeeWithoutRescueQuote = (samples = 1) => {
+      expect(provider.getBlock).toHaveBeenCalledTimes(samples);
+      expect(provider.getBlock).toHaveBeenLastCalledWith('latest');
       expect(provider.getGasPrice).not.toHaveBeenCalled();
     };
     const zeroFeeOriginal = (type: number) =>
@@ -357,7 +368,7 @@ describe('published keyring account-scoped replacement signing', () => {
           type === 0 ? tx.gasPrice.toString() : tx.maxFeePerGas.toString()
         ).toBe('120');
         if (type === 2) expect(tx.accessList).toEqual(ACCESS_LIST);
-        expectNoFeeRpc();
+        expectBoundedFeeWithoutRescueQuote();
         expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
       }
     );
@@ -373,13 +384,17 @@ describe('published keyring account-scoped replacement signing', () => {
       expect(tx.maxFeePerGas.toString()).toBe('120');
       expect(tx.maxPriorityFeePerGas.toString()).toBe('120');
       expect(tx.accessList).toEqual(ACCESS_LIST);
-      expectNoFeeRpc();
+      expectBoundedFeeWithoutRescueQuote();
     });
 
     it.each([0, 2])(
       'keeps signed type%s zero fees at zero under a zero cap',
       async (type) => {
         const hash = useOriginal(zeroFeeOriginal(type));
+        provider.getBlock.mockResolvedValue({
+          baseFeePerGas: BigNumber.from(0),
+          gasLimit: BigNumber.from(30_000_000),
+        });
         provider.getGasPrice.mockResolvedValue(BigNumber.from(0));
         const dynamicQuote = jest
           .spyOn(sdk, 'getFeeDataWithDynamicMaxPriorityFeePerGas')
@@ -409,8 +424,8 @@ describe('published keyring account-scoped replacement signing', () => {
           expect(dynamicQuote).not.toHaveBeenCalled();
         } else {
           expect(dynamicQuote).toHaveBeenCalledTimes(2);
-          expect(dynamicQuote).toHaveBeenCalledWith(provider);
         }
+        expect(provider.getBlock).toHaveBeenCalledTimes(2);
         expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
       }
     );
@@ -459,7 +474,6 @@ describe('published keyring account-scoped replacement signing', () => {
         expect(tx.gasLimit).toBe(BigInt(25200));
         if (type === 0) {
           expect(tx.gasPrice).toBe(BigInt(120));
-          expect(provider.getBlock).not.toHaveBeenCalled();
         } else {
           expect(tx.maxFeePerGas).toBe(BigInt(180));
           expect(tx.maxPriorityFeePerGas).toBe(BigInt(30));
@@ -470,6 +484,7 @@ describe('published keyring account-scoped replacement signing', () => {
           );
         }
         expect(provider.getGasPrice).toHaveBeenCalledTimes(2);
+        expect(provider.getBlock).toHaveBeenCalledTimes(2);
         expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
       }
     );
@@ -628,7 +643,7 @@ describe('published keyring account-scoped replacement signing', () => {
       const maximumFee = tx.gasLimit * (tx.maxFeePerGas ?? tx.gasPrice!);
       expect(maximumFee.toString()).toBe(APPROVED_MAXIMUM_FEE);
       expect(maximumFee <= BigInt(APPROVED_MAXIMUM_FEE)).toBe(true);
-      expectNoFeeRpc();
+      expectBoundedFeeWithoutRescueQuote(2);
       expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
     });
 
@@ -657,7 +672,7 @@ describe('published keyring account-scoped replacement signing', () => {
           maximumFee: APPROVED_MAXIMUM_FEE,
         });
         expectNoSigning();
-        expectNoFeeRpc();
+        expectBoundedFeeWithoutRescueQuote();
       }
     );
 
@@ -667,7 +682,7 @@ describe('published keyring account-scoped replacement signing', () => {
         sdk.sendTransactionWithEditedFee(hash, false, options())
       ).rejects.toThrow();
       expectNoSigning();
-      expectNoFeeRpc();
+      expectBoundedFeeWithoutRescueQuote();
     });
 
     it.each(['3023999', APPROVED_MAXIMUM_FEE])(
@@ -1411,7 +1426,11 @@ describe('published keyring account-scoped replacement signing', () => {
   );
 
   it('passes the exact account to the actual keyring credential getter without replacing the vault getter', async () => {
-    const manager: any = createTestKeyringManager();
+    actualHardware = new HardwareWalletManager();
+    const manager: any = createTestKeyringManager(undefined, {
+      hardwareManager: actualHardware,
+      captureEvmSubmission: createTestEvmSubmissionCapture(),
+    });
     const vault = {
       activeNetwork: state.activeNetwork,
       activeAccount: smart,

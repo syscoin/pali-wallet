@@ -1,0 +1,412 @@
+diff --git a/packages/sysweb3-keyring/src/evm-fees.ts b/packages/sysweb3-keyring/src/evm-fees.ts
+index 98e118b..adee68c 100644
+--- a/packages/sysweb3-keyring/src/evm-fees.ts
++++ b/packages/sysweb3-keyring/src/evm-fees.ts
+@@ -31,0 +32 @@ const MAX_FEE = (1n << 256n) - 1n;
++const MAX_REPLACEMENT_GAS = (1n << 64n) - 1n;
+@@ -176,0 +178,85 @@ export function planEvmCancellationFees(input: EvmCancellationFeeInput) {
++export type EvmSpeedUpFeeInput = Readonly<
++  {
++    chainId: bigint;
++    gasLimit: bigint;
++    sampledBlockGasLimit: bigint;
++    sampledBaseFeePerGas: bigint | null;
++  } & (
++    | { type: 0; gasPrice: bigint }
++    | { type: 2; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint }
++  )
++>;
++
++function speedUpRate(rate: bigint, preserveZero = true): bigint {
++  if (typeof rate !== 'bigint' || rate < 0n || rate > MAX_FEE)
++    throw new Error('Invalid replacement fee');
++  if (rate === 0n && preserveZero) return 0n;
++  const buffered = (rate * 120n) / 100n;
++  const bumped = buffered > rate ? buffered : rate + 1n;
++  if (bumped > MAX_FEE) throw new Error('Invalid replacement fee');
++  return bumped;
++}
++
++/** Fee-only Speed Up policy. Hosts authenticate the original, own any zero-fee
++ * fallback read, and supply the current sampled block limit and base fee. Type 0
++ * describes legacy fee fields, including those of an admitted type 1 envelope.
++ */
++export function planEvmSpeedUpFees(input: EvmSpeedUpFeeInput) {
++  const originalGasLimit = input.gasLimit;
++  if (
++    typeof originalGasLimit !== 'bigint' ||
++    originalGasLimit <= 0n ||
++    originalGasLimit > MAX_REPLACEMENT_GAS
++  )
++    throw new Error('Invalid replacement gas limit');
++  const gasLimit = bufferedEvmGasLimit(originalGasLimit);
++  if (gasLimit > MAX_REPLACEMENT_GAS)
++    throw new Error('Invalid replacement gas limit');
++  // Bounds are mandatory even on chains without a protocol-specific ceiling.
++  if (input.sampledBlockGasLimit === undefined)
++    throw new Error('Replacement block gas limit required');
++  assertEvmGasLimit(gasLimit, input.chainId, input.sampledBlockGasLimit);
++  const baseFee =
++    input.sampledBaseFeePerGas === null ? 0n : input.sampledBaseFeePerGas;
++  if (typeof baseFee !== 'bigint' || baseFee < 0n || baseFee > MAX_FEE)
++    throw new Error('Invalid replacement base fee');
++  const maximum = (rate: bigint) => {
++    const fee = gasLimit * rate;
++    if (fee > MAX_FEE) throw new Error('Invalid replacement maximum fee');
++    return fee;
++  };
++  if (input.type === 0) {
++    const bumped = speedUpRate(input.gasPrice);
++    const gasPrice = bumped > baseFee ? bumped : baseFee;
++    return Object.freeze({
++      type: 0 as const,
++      gasLimit,
++      gasPrice,
++      maximumFee: maximum(gasPrice),
++    });
++  }
++  if (input.type !== 2) throw new Error('Invalid replacement fee type');
++  const bumped = speedUpRate(input.maxFeePerGas);
++  if (input.maxPriorityFeePerGas > input.maxFeePerGas)
++    throw new Error('Invalid replacement fee');
++  // A paid replacement must strictly increase both rates. Keep a wholly free
++  // quote free so the host's zero-fee policy and approved ceiling still apply.
++  const maxPriorityFeePerGas = speedUpRate(
++    input.maxPriorityFeePerGas,
++    bumped === 0n && baseFee === 0n
++  );
++  // A valid cap may clip the effective tip. Preserve the reviewed replacement
++  // policy unless the cap would be below the sampled base fee.
++  const maxFeePerGas =
++    bumped < baseFee ? baseFee + maxPriorityFeePerGas : bumped;
++  if (maxPriorityFeePerGas > maxFeePerGas)
++    throw new Error('Invalid replacement fee');
++  return Object.freeze({
++    type: 2 as const,
++    gasLimit,
++    maxFeePerGas,
++    maxPriorityFeePerGas,
++    maximumFee: maximum(maxFeePerGas),
++  });
++}
++
+diff --git a/packages/sysweb3-keyring/src/transactions/ethereum.ts b/packages/sysweb3-keyring/src/transactions/ethereum.ts
+index ab381e7..1b59aaa 100644
+--- a/packages/sysweb3-keyring/src/transactions/ethereum.ts
++++ b/packages/sysweb3-keyring/src/transactions/ethereum.ts
+@@ -44,0 +45,2 @@ import {
++  planEvmSpeedUpFees,
++  type EvmFeeReader,
+@@ -80,0 +83 @@ import {
++  type EvmSignedBroadcast,
+@@ -480 +483 @@ export class EthereumTransactions<
+-    broadcast: (raw: string) => Promise<T>,
++    broadcast: EvmSignedBroadcast<T>,
+@@ -1043 +1046 @@ export class EthereumTransactions<
+-    provider = this.web3Provider
++    provider: EvmFeeReader = this.web3Provider
+@@ -1064 +1067,6 @@ export class EthereumTransactions<
+-    isLegacy: boolean
++    isLegacy: boolean,
++    bounds: Readonly<{
++      chainId: bigint;
++      sampledBlockGasLimit: bigint;
++      sampledBaseFeePerGas: bigint | null;
++    }>
+@@ -1075,0 +1084,39 @@ export class EthereumTransactions<
++    if (!isForCancel) {
++      const originalGasLimit = parseEvmFeeQuantity(
++        gasLimit,
++        'replacement gas limit'
++      );
++      const plan = isLegacy
++        ? planEvmSpeedUpFees({
++            ...bounds,
++            type: 0,
++            gasLimit: originalGasLimit,
++            gasPrice: parseEvmFeeQuantity(gasPrice, 'replacement gas price'),
++          })
++        : planEvmSpeedUpFees({
++            ...bounds,
++            type: 2,
++            gasLimit: originalGasLimit,
++            maxFeePerGas: parseEvmFeeQuantity(
++              maxFeePerGas,
++              'replacement fee cap'
++            ),
++            maxPriorityFeePerGas: parseEvmFeeQuantity(
++              maxPriorityFeePerGas,
++              'replacement priority fee'
++            ),
++          });
++      newGasValues.gasLimit = BigNumber.from(plan.gasLimit);
++      if (plan.type === 0)
++        newGasValues.gasPrice = BigNumber.from(plan.gasPrice);
++      else {
++        newGasValues.maxFeePerGas = BigNumber.from(plan.maxFeePerGas);
++        newGasValues.maxPriorityFeePerGas = BigNumber.from(
++          plan.maxPriorityFeePerGas
++        );
++      }
++      return newGasValues;
++    }
++
++    // Keep the legacy direct cancellation helper. The guarded cancellation
++    // transaction path already uses planEvmCancellationFees.
+@@ -1077 +1123,0 @@ export class EthereumTransactions<
+-      // Apply multiplier for replacement transaction (cancel or speedup)
+@@ -1090 +1135,0 @@ export class EthereumTransactions<
+-    const gasLimitToNumber = gasLimit?.toNumber();
+@@ -1111,15 +1156,6 @@ export class EthereumTransactions<
+-    if (isForCancel) {
+-      const DEFAULT_GAS_LIMIT_VALUE = '42000';
+-
+-      const convertToHex =
+-        '0x' + parseInt(DEFAULT_GAS_LIMIT_VALUE, 10).toString(16);
+-
+-      newGasValues.gasLimit = BigNumber.from(convertToHex);
+-    }
+-
+-    if (!isForCancel) {
+-      newGasValues.gasLimit = calculateAndConvertNewValue(
+-        gasLimitToNumber as number
+-      );
+-    }
+-
++    newGasValues.gasLimit = BigNumber.from(42000);
++    assertEvmGasLimit(
++      newGasValues.gasLimit.toBigInt(),
++      bounds.chainId,
++      bounds.sampledBlockGasLimit
++    );
+@@ -1468 +1504,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -1561 +1598,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -1777 +1815,2 @@ export class EthereumTransactions<
+-        (raw) => provider.sendTransaction(raw),
++        ({ rawTransaction, admit }) =>
++          admit(() => provider.sendTransaction(rawTransaction)),
+@@ -1971 +2010,2 @@ export class EthereumTransactions<
+-            (raw) => provider.sendTransaction(raw),
++            ({ rawTransaction, admit }) =>
++              admit(() => provider.sendTransaction(rawTransaction)),
+@@ -2106 +2146,2 @@ export class EthereumTransactions<
+-            (raw) => provider.sendTransaction(raw),
++            ({ rawTransaction, admit }) =>
++              admit(() => provider.sendTransaction(rawTransaction)),
+@@ -2294 +2334,0 @@ export class EthereumTransactions<
+-    // Check if this might be a max send transaction by comparing total cost to balance
+@@ -2296,0 +2337,16 @@ export class EthereumTransactions<
++    const sampledBlock = await provider.getBlock('latest');
++    assertCurrent();
++    const bounds = Object.freeze({
++      chainId: BigInt(activeNetwork.chainId),
++      sampledBlockGasLimit: parseEvmFeeQuantity(
++        sampledBlock?.gasLimit,
++        'replacement block gas limit'
++      ),
++      sampledBaseFeePerGas:
++        sampledBlock?.baseFeePerGas == null
++          ? null
++          : parseEvmFeeQuantity(
++              sampledBlock.baseFeePerGas,
++              'replacement base fee'
++            ),
++    });
+@@ -2309,9 +2364,0 @@ export class EthereumTransactions<
+-    // Check if this is a contract call (has data)
+-    const isContractCall = txData && txData !== '0x' && txData.length > 2;
+-    const originalGasCost = isLegacy
+-      ? gasLimit.mul(gasPrice || 0)
+-      : gasLimit.mul(maxFeePerGas || 0);
+-    const originalTotalCost = txValue.add(originalGasCost);
+-    // If original transaction used >95% of balance, it's likely a max send
+-    const balanceThreshold = currentBalance.mul(95).div(100);
+-    const isLikelyMaxSend = originalTotalCost.gt(balanceThreshold);
+@@ -2330,3 +2377,5 @@ export class EthereumTransactions<
+-      const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas(
+-        provider
+-      );
++      const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas({
++        getGasPrice: () => provider.getGasPrice(),
++        getBlock: async () => sampledBlock,
++        send: (method, params) => provider.send(method, params),
++      });
+@@ -2342 +2391,2 @@ export class EthereumTransactions<
+-      isLegacy
++      isLegacy,
++      bounds
+@@ -2345,0 +2396,4 @@ export class EthereumTransactions<
++    assertTransactionGasLimit({
++      gasLimit: newGasValues.gasLimit,
++      chainId: activeNetwork.chainId,
++    });
+@@ -2354,5 +2408,2 @@ export class EthereumTransactions<
+-    if (isLikelyMaxSend && txValue.add(maximumFee).gt(currentBalance)) {
+-      if (isContractCall) {
+-        console.error(
+-          '[SpeedUp] Cannot adjust value for contract call - rejecting speedup'
+-        );
++    if (txValue.add(maximumFee).gt(currentBalance)) {
++      if (txData.length > 2) {
+@@ -2364 +2415 @@ export class EthereumTransactions<
+-            'Cannot speed up a likely max-send contract call; value cannot be adjusted to fit new gas',
++            'Add funds before speeding up this contract call; the original amount will not be changed',
+@@ -2446 +2497,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -2550 +2602,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -2844,2 +2897,4 @@ export class EthereumTransactions<
+-              async (raw) => {
+-                const response = await provider.sendTransaction(raw);
++              async ({ rawTransaction, admit }) => {
++                const response = await admit(() =>
++                  provider.sendTransaction(rawTransaction)
++                );
+@@ -2968,2 +3023,4 @@ export class EthereumTransactions<
+-              async (raw) => {
+-                const response = await provider.sendTransaction(raw);
++              async ({ rawTransaction, admit }) => {
++                const response = await admit(() =>
++                  provider.sendTransaction(rawTransaction)
++                );
+@@ -3185 +3242,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -3309 +3367,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -3528 +3587,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+@@ -3648 +3708,2 @@ export class EthereumTransactions<
+-              (raw) => provider.sendTransaction(raw),
++              ({ rawTransaction, admit }) =>
++                admit(() => provider.sendTransaction(rawTransaction)),
+diff --git a/packages/sysweb3-keyring/src/transactions/evm-local-signer.ts b/packages/sysweb3-keyring/src/transactions/evm-local-signer.ts
+index d954c2c..8fddcac 100644
+--- a/packages/sysweb3-keyring/src/transactions/evm-local-signer.ts
++++ b/packages/sysweb3-keyring/src/transactions/evm-local-signer.ts
+@@ -299 +299,2 @@ export const sendLocalEvmTransaction = async (
+-    (raw) => provider.sendTransaction(raw),
++    ({ rawTransaction, admit }) =>
++      admit(() => provider.sendTransaction(rawTransaction)),
+diff --git a/packages/sysweb3-keyring/src/transactions/evm-submission.ts b/packages/sysweb3-keyring/src/transactions/evm-submission.ts
+index 8001b55..3da36a4 100644
+--- a/packages/sysweb3-keyring/src/transactions/evm-submission.ts
++++ b/packages/sysweb3-keyring/src/transactions/evm-submission.ts
+@@ -27,0 +28,12 @@ export type EvmSignedSubmission = Readonly<{
++/** The transport calls this after preflight, immediately around synchronous wire initiation. */
++export type AdmitEvmSignedDispatch<T> = (
++  initiate: () => Promise<T>,
++  preflight?: () => Promise<void>
++) => Promise<T>;
++export type EvmSignedBroadcast<T> = (
++  request: Readonly<{
++    rawTransaction: string;
++    admit: AdmitEvmSignedDispatch<T>;
++  }>
++) => Promise<T>;
++
+@@ -32,0 +45,6 @@ export type EvmSubmissionLifecycle = Readonly<{
++  /** Admit the exact retained record, releasing the owner before the remote response. */
++  dispatchSigned: <T>(
++    record: EvmSignedSubmission,
++    initiate: () => Promise<T>,
++    preflight: () => Promise<void>
++  ) => Promise<T>;
+@@ -43,0 +62 @@ export type EvmSubmissionBoundary = Readonly<{
++  dispatchSigned: EvmSubmissionLifecycle['dispatchSigned'];
+@@ -80,0 +100 @@ export function captureEvmSubmission(
++  const dispatchSigned = lifecycle?.dispatchSigned;
+@@ -85 +105,2 @@ export function captureEvmSubmission(
+-    typeof persistSigned !== 'function'
++    typeof persistSigned !== 'function' ||
++    typeof dispatchSigned !== 'function'
+@@ -102,0 +124 @@ export function captureEvmSubmission(
++    dispatchSigned,
+@@ -176 +198 @@ export function submitSignedEvmTransaction<T>(
+-  broadcast: (rawTransaction: string) => Promise<T>,
++  broadcast: EvmSignedBroadcast<T>,
+@@ -194 +216 @@ export function submitSignedHardwareEvmTransaction<T>(
+-  broadcast: (rawTransaction: string) => Promise<T>,
++  broadcast: EvmSignedBroadcast<T>,
+@@ -217 +239 @@ async function submit<T>(
+-  broadcast: (rawTransaction: string) => Promise<T>,
++  broadcast: EvmSignedBroadcast<T>,
+@@ -263,2 +285,5 @@ async function submit<T>(
+-    if (admission.mode === 'hardware') {
+-      await admission.verifyCurrentChain();
++    let open = true;
++    let requested = false;
++    const assertDispatchOpen = () => {
++      if (!open || dispatched)
++        throw new Error('Invalid EVM dispatch admission');
+@@ -265,0 +291,50 @@ async function submit<T>(
++    };
++    try {
++      const result = await broadcast(
++        Object.freeze({
++          rawTransaction,
++          admit: (
++            initiate: () => Promise<T>,
++            preflight?: () => Promise<void>
++          ) => {
++            if (
++              !open ||
++              requested ||
++              typeof initiate !== 'function' ||
++              (preflight !== undefined && typeof preflight !== 'function')
++            )
++              throw new Error('Invalid EVM dispatch admission');
++            requested = true;
++            let preflightStarted = false;
++            let preflightComplete = false;
++            return boundary.dispatchSigned(
++              record,
++              () => {
++                assertDispatchOpen();
++                if (!preflightComplete)
++                  throw new Error('EVM dispatch preflight was not completed');
++                if (beforeBroadcast) assertSynchronous(beforeBroadcast);
++                check();
++                dispatched = true;
++                return initiate();
++              },
++              async () => {
++                assertDispatchOpen();
++                if (preflightStarted)
++                  throw new Error('EVM dispatch preflight already started');
++                preflightStarted = true;
++                if (admission.mode === 'hardware')
++                  await admission.verifyCurrentChain();
++                assertDispatchOpen();
++                if (preflight) await preflight();
++                assertDispatchOpen();
++                preflightComplete = true;
++              }
++            );
++          },
++        })
++      );
++      if (!dispatched) throw new Error('EVM dispatch admission was not used');
++      return result;
++    } finally {
++      open = false;
+@@ -267,4 +341,0 @@ async function submit<T>(
+-    if (beforeBroadcast) assertSynchronous(beforeBroadcast);
+-    check();
+-    dispatched = true;
+-    return await broadcast(rawTransaction);

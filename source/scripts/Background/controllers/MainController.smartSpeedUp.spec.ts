@@ -1,12 +1,16 @@
 import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
+import { HardwareWalletManager } from '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager';
 import {
   privateKeyToAccount,
   sendLocalEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { webcrypto } from 'node:crypto';
 
 import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
+import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -87,7 +91,11 @@ const REPLACEMENT = `0x${'55'.repeat(32)}`;
 const CHAIN = 5700;
 const APPROVED_MAXIMUM_FEE = '100000000000';
 const owner = { type: KeyringAccountType.SmartAccount, id: 7 };
-const signedOriginal = (legacy = false, type = legacy ? 0 : 2) => {
+const signedOriginal = (
+  legacy = false,
+  type = legacy ? 0 : 2,
+  gasLimit = 21000
+) => {
   const unsigned = Transaction.from({
     type,
     chainId: CHAIN,
@@ -95,7 +103,7 @@ const signedOriginal = (legacy = false, type = legacy ? 0 : 2) => {
     to: TARGET,
     value: BigInt(7),
     data: '0x1234',
-    gasLimit: BigInt(21000),
+    gasLimit: BigInt(gasLimit),
     ...(type !== 2
       ? { gasPrice: BigInt(100), ...(type === 1 ? { accessList: [] } : {}) }
       : {
@@ -145,15 +153,21 @@ const deferred = <T>() => {
 describe('SmartAccount speedup utility to actual keyring handoff', () => {
   let wallet: any;
   let keyring: any;
+  let hardware: HardwareWalletManager;
   let provider: any;
   let currentProvider: any;
   let replaceGetter: jest.SpyInstance;
   let alert: { error: jest.Mock; success: jest.Mock; warning: jest.Mock };
   let response: any;
+  let useActualLifecycle: boolean;
   const transactions = () =>
     mockState.vault.accountTransactions.SmartAccount[7].ethereum[CHAIN];
-  const useSignedOriginal = (legacy = false, type?: number) => {
-    original = signedOriginal(legacy, type);
+  const useSignedOriginal = (
+    legacy = false,
+    type?: number,
+    gasLimit?: number
+  ) => {
+    original = signedOriginal(legacy, type, gasLimit);
     ORIGINAL = original.hash;
     Object.assign(transactions()[0], rawOriginal());
     provider.getTransaction.mockResolvedValue(rawOriginal());
@@ -182,6 +196,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    useActualLifecycle = false;
     jest.spyOn(console, 'error').mockImplementation(() => undefined);
     original = signedOriginal();
     ORIGINAL = original.hash;
@@ -232,11 +247,22 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     provider = {
       getTransaction: jest.fn().mockResolvedValue(rawOriginal()),
       getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
+      getBlock: jest
+        .fn()
+        .mockResolvedValue({ gasLimit: BigNumber.from(30_000_000) }),
       verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
-    keyring = createTestKeyringManager();
+    hardware = new HardwareWalletManager();
+    const testCapture = createTestEvmSubmissionCapture();
+    keyring = createTestKeyringManager(undefined, {
+      hardwareManager: hardware,
+      captureEvmSubmission: (context) =>
+        useActualLifecycle
+          ? wallet.captureEvmSignedSubmission(keyring, context)
+          : testCapture(),
+    });
     keyring.setVaultStateGetter(() => mockState.vault);
     replaceGetter = jest.spyOn(keyring, 'setVaultStateGetter');
     keyring.sessionPassword = { isCleared: () => false };
@@ -275,7 +301,253 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       );
     alert = { error: jest.fn(), warning: jest.fn(), success: jest.fn() };
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(async () => {
+    try {
+      await hardware?.destroy();
+    } finally {
+      jest.restoreAllMocks();
+    }
+  });
+
+  it.each([false, true])(
+    'blocks the spending replacement after durable Cancel with a held ACK (already persisted: %s)',
+    async (alreadyPersisted) => {
+      useSignedOriginal(true, 0, 25_000);
+      useActualLifecycle = true;
+      const payer = { id: 3, type: KeyringAccountType.HDAccount };
+      mockState.vault.activeAccount = payer;
+      mockState.vault.accountTransactions = {
+        ...mockState.vault.accountTransactions,
+        HDAccount: {
+          3: {
+            syscoin: {},
+            ethereum: {
+              [CHAIN]: [{ ...rawOriginal(), value: '7', input: '0x1234' }],
+            },
+          },
+        },
+      };
+      const profileId = `0x${'ab'.repeat(32)}`;
+      const secret = await webcrypto.subtle.importKey(
+        'raw',
+        new Uint8Array(32).fill(71),
+        'AES-GCM',
+        false,
+        ['encrypt', 'decrypt']
+      );
+      const additionalData = (domain: string, id: string) =>
+        Buffer.from(JSON.stringify([domain, id]));
+      Object.assign(keyring, {
+        getPrivateRecordProfileId: async () => profileId,
+        async encryptPrivateRecord({ domain, recordId, plaintext }) {
+          const iv = webcrypto.getRandomValues(new Uint8Array(12));
+          const ciphertext = await webcrypto.subtle.encrypt(
+            {
+              name: 'AES-GCM',
+              iv,
+              additionalData: additionalData(domain, recordId),
+            },
+            secret,
+            plaintext
+          );
+          return {
+            version: 1,
+            profileId,
+            domain,
+            recordId,
+            nonce: Buffer.from(iv).toString('base64'),
+            ciphertext: Buffer.from(ciphertext).toString('base64'),
+          };
+        },
+        async decryptPrivateRecord({ domain, recordId, envelope }) {
+          return new Uint8Array(
+            await webcrypto.subtle.decrypt(
+              {
+                name: 'AES-GCM',
+                iv: Buffer.from(envelope.nonce, 'base64'),
+                additionalData: additionalData(domain, recordId),
+              },
+              secret,
+              Buffer.from(envelope.ciphertext, 'base64')
+            )
+          );
+        },
+      });
+      let encryptedJournal: string | undefined;
+      const journal = new EvmSignedRecords({
+        async read(id) {
+          expect(id).toBe(profileId);
+          return encryptedJournal;
+        },
+        async compareAndSet(id, expected, next, guard) {
+          expect(id).toBe(profileId);
+          guard();
+          if (encryptedJournal !== expected) return false;
+          encryptedJournal = next;
+          return true;
+        },
+      });
+      wallet.getRetainedEvmRecords = () => journal;
+      const journalSession = { keyring, assertCurrent: () => undefined };
+      const actualSigner = jest.requireActual(
+        '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer'
+      );
+      jest
+        .mocked(sendLocalEvmTransaction)
+        .mockImplementation((rpc, _key, ...args) =>
+          actualSigner.sendLocalEvmTransaction(
+            rpc,
+            testWallet.privateKey,
+            ...args
+          )
+        );
+      const ActualProvider = jest.requireActual(
+        '@sidhujag/sysweb3-keyring/cjs/providers'
+      ).CustomJsonRpcProvider;
+      const rpc = new ActualProvider(
+        new AbortController().signal,
+        'https://offline.example',
+        CHAIN
+      );
+      const cancelPosted = deferred<Transaction>(),
+        acknowledge = deferred<void>();
+      const posts: Transaction[] = [];
+      jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+        expect(url).toBe('https://offline.example');
+        const { jsonrpc, method, id, params } = JSON.parse(
+          init!.body as string
+        );
+        let result: unknown;
+        if (method === 'eth_chainId') result = `0x${CHAIN.toString(16)}`;
+        else if (method === 'eth_getTransactionCount') result = '0x8';
+        else if (method === 'eth_getCode') result = '0x';
+        else if (method === 'eth_sendRawTransaction') {
+          const signed = Transaction.from(params[0]);
+          posts.push(signed);
+          if (posts.length === 1) {
+            cancelPosted.resolve(signed);
+            await acknowledge.promise;
+          }
+          result = signed.hash;
+        } else throw new Error(`unexpected ${method}`);
+        return new Response(JSON.stringify({ jsonrpc, id, result }), {
+          status: 200,
+        });
+      });
+      let baseFee = 150;
+      provider.getGasPrice = jest.fn(async () => BigNumber.from(baseFee));
+      provider.getBlock = jest.fn(async () => ({
+        gasLimit: BigNumber.from(30_000_000),
+        baseFeePerGas: BigNumber.from(baseFee),
+      }));
+      provider.getNetwork = jest.fn(async () => ({ chainId: BigInt(CHAIN) }));
+      provider._send = rpc._send.bind(rpc);
+      provider.send = rpc.send.bind(rpc);
+      provider.sendTransaction = jest.fn(async (raw: string) => {
+        const hash = await rpc.send('eth_sendRawTransaction', [raw]);
+        return { ...rawOriginal(), hash, raw };
+      });
+      const walletScope = getWalletNavigationScope();
+      const preview = await wallet.speedUpEvmTransaction(
+        ORIGINAL,
+        true,
+        CHAIN,
+        PAYER,
+        { previewOnly: true, walletScope }
+      );
+      const speedUp = () =>
+        wallet.speedUpEvmTransaction(ORIGINAL, true, CHAIN, PAYER, {
+          walletScope,
+          approvedMaximumFee: preview.maximumFee,
+        });
+      const spendPersisted = deferred<void>(),
+        resumeSpend = deferred<void>();
+      const append = journal.append.bind(journal);
+      jest.spyOn(journal, 'append').mockImplementation(async (...args) => {
+        const entry = await append(...args);
+        if (alreadyPersisted && entry.operation === 'speed-up') {
+          spendPersisted.resolve();
+          await resumeSpend.promise;
+        }
+        return entry;
+      });
+      const inFlightSpend = alreadyPersisted ? speedUp() : undefined;
+      if (inFlightSpend) {
+        await Promise.race([
+          spendPersisted.promise,
+          inFlightSpend.then(() => {
+            throw new Error('expected a saved replacement before Cancel');
+          }),
+        ]);
+      }
+      baseFee = 100;
+      const cancel = wallet.cancelEvmTransaction(
+        ORIGINAL,
+        true,
+        8,
+        PAYER,
+        { chainId: CHAIN, walletScope },
+        { approvedMaximumFee: APPROVED_MAXIMUM_FEE }
+      );
+      try {
+        const cancellation = await Promise.race([
+          cancelPosted.promise,
+          cancel.then((result) => {
+            throw new Error(`cancel had no POST: ${JSON.stringify(result)}`);
+          }),
+        ]);
+        expect(cancellation.to?.toLowerCase()).toBe(PAYER);
+        expect(cancellation.value).toBe(BigInt(0));
+        const before = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(before.map(({ operation }) => operation)).toEqual(
+          alreadyPersisted ? ['speed-up', 'cancel'] : ['cancel']
+        );
+        baseFee = 150;
+        resumeSpend.resolve();
+        const blocked = await (inFlightSpend ?? speedUp());
+        expect(blocked).toMatchObject({
+          isSpeedUp: false,
+          transactionNotBroadcast: true,
+        });
+        expect(posts).toHaveLength(1);
+        const entries = await journal.listSender(
+          journalSession,
+          String(CHAIN),
+          PAYER
+        );
+        expect(entries).toEqual(before);
+        if (alreadyPersisted) {
+          const spend = entries[0]!;
+          expect(
+            await journal.withReplayAdmission(
+              journalSession,
+              spend,
+              () => 'eligible'
+            )
+          ).toBeNull();
+          expect(
+            (
+              await journal.readExact(
+                journalSession,
+                String(CHAIN),
+                PAYER,
+                spend.hash
+              )
+            )?.rawTransaction
+          ).toBeDefined();
+        }
+      } finally {
+        resumeSpend.resolve();
+        acknowledge.resolve();
+        await cancel;
+        rpc.destroy();
+      }
+    }
+  );
 
   it.each([false, true])(
     'uses the actual recorded payer credential and preserves payload/metadata (legacy=%s)',
