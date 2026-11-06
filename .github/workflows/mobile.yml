@@ -49,6 +49,7 @@ on:
       - 'source/assets/all_assets/favicon-128.png'
       - '.github/workflows/mobile.yml'
       - '.github/scripts/configure-chromium-sandbox.sh'
+      - '.github/scripts/verify-playwright-apt-cache.sh'
       - '.github/scripts/tests/configure-chromium-sandbox.test.cjs'
       - '.nvmrc'
 
@@ -86,7 +87,37 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build:web
+      - name: Resolve Playwright browser version
+        id: playwright-version
+        run: echo "version=$(node -p "require('playwright-core/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Resolve OS package cache key
+        id: apt-cache-key
+        run: |
+          . /etc/os-release
+          echo "platform=${ID}-${VERSION_ID}-$(dpkg --print-architecture)" >> "$GITHUB_OUTPUT"
+          echo "week=$(date -u +%G-%V)" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageVersion}" >> "$GITHUB_OUTPUT"
+      - name: Prepare sandboxed apt download archive
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0711 /var/cache/pali-playwright-apt
+          sudo install -d -o _apt -g root -m 0700 /var/cache/pali-playwright-apt/partial
+      - name: Restore Playwright OS package downloads
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /var/cache/pali-playwright-apt/*.deb
+          key: playwright-apt-v1-${{ steps.apt-cache-key.outputs.platform }}-${{ steps.apt-cache-key.outputs.image }}-${{ steps.playwright-version.outputs.version }}-${{ hashFiles('yarn.lock', 'package.json', '.github/workflows/main.yml', '.github/scripts/verify-playwright-apt-cache.sh') }}-${{ steps.apt-cache-key.outputs.week }}
+      - name: Verify restored archives against fresh apt metadata
+        run: bash ../../.github/scripts/verify-playwright-apt-cache.sh
+      - name: Configure temporary apt download archive
+        run: |
+          printf 'Dir::Cache::archives "%s";\nAPT::Keep-Downloaded-Packages "true";\nBinary::apt::APT::Keep-Downloaded-Packages "true";\n' \
+            /var/cache/pali-playwright-apt | sudo tee /etc/apt/apt.conf.d/99pali-playwright-cache >/dev/null
+      # The existing extension cache stores downloads only. Installation and
+      # sandbox admission still run on every mobile job.
       - run: npx --no-install playwright install --with-deps chromium
+      - name: Remove temporary apt configuration
+        if: always()
+        run: sudo rm -f /etc/apt/apt.conf.d/99pali-playwright-cache
       - name: Validate Chromium sandbox helper admission
         run: node --test ../../.github/scripts/tests/configure-chromium-sandbox.test.cjs
       - name: Verify installed Chromium sandbox helper
