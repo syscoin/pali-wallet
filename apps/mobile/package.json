@@ -21,7 +21,7 @@
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
     "@noble/curves": "1.9.7",
-    "@sidhujag/sysweb3-keyring": "2.1.5",
+    "@sidhujag/sysweb3-keyring": "file:vendor/sysweb3-keyring-2.1.5-speedup-e3d70eb.tgz",
     "@sidhujag/sysweb3-network": "2.0.0",
     "assert": "2.1.0",
     "bech32": "2.0.0",

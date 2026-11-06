@@ -1,16 +1,20 @@
-import { EthereumTransactions } from '@sidhujag/sysweb3-keyring';
-import {
-  assertEvmGasLimit,
-  parseEvmFeeQuantity,
-} from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
 import { evmEstimateRequest } from '../../../shared/evmEstimateRequest';
 import {
-  EVM_NATIVE_INTRINSIC_GAS,
-  getEvmTransferCost,
-} from '../../../shared/evmTransferCost';
+  assertEvmFeeApprovalCurrent,
+  assertEvmFeeEstimateApproved,
+  assertSynchronousEvmFeeGuard,
+  bufferEvmFeeEstimate,
+  captureEvmFeeApproval,
+  EVM_FEE_APPROVAL_LIFETIME_MS,
+} from '../../../shared/evmFeeApproval';
+import { BigNumber } from '../../../utils/ethersV6Compat';
 
-import type { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
+import type {
+  CustomJsonRpcProvider,
+  EthereumTransactions,
+} from '@sidhujag/sysweb3-keyring';
 import type { INetwork } from '@sidhujag/sysweb3-network';
 
 type GasPolicy = ReturnType<EthereumTransactions['getGasOverrides']>;
@@ -45,36 +49,21 @@ export async function freshSdkGasEstimate(
   assertCurrent: () => void
 ) {
   const check = () => {
-    assertCurrent();
+    assertSynchronousEvmFeeGuard(assertCurrent);
     if (provider.signal.aborted)
       throw new DOMException('Gas estimate aborted', 'AbortError');
   };
   check();
-  const refuseSigning = (): never => {
-    throw new Error('Read-only gas estimate');
-  };
-  class Reader extends EthereumTransactions {
-    get web3Provider() {
-      check();
-      return provider;
-    }
-  }
-  const reader = new Reader(
-    () => network,
-    refuseSigning,
-    refuseSigning,
-    undefined as never,
-    undefined as never,
-    refuseSigning,
-    null
-  );
-  reader.setGasOverrides(policy);
-  // This SDK type also requires send-only fee fields. The actual estimator
-  // accepts the same four fields used by the ordinary native quote path;
-  // preserve that payload rather than inventing fees to satisfy its type.
-  const gas = await reader.getTxGasLimit(transaction as SdkTransaction);
+  const estimate = await provider.estimateGas(transaction);
   check();
-  return gas;
+  const gas = bufferEvmFeeEstimate(
+    parseEvmFeeQuantity(estimate),
+    BigInt(network.chainId),
+    undefined,
+    policy.minGasLimit?.toBigInt()
+  );
+  // Keep the SDK BigNumber result expected by the extension renderer.
+  return BigNumber.from(gas);
 }
 
 /** Validate the displayed maximum before any provider call or signer entry. */
@@ -84,7 +73,9 @@ export function captureReviewedNativeEvmTransfer(
   maximumReviewedFee: unknown,
   from: string,
   chainId: number,
-  policy: GasPolicy
+  policy: GasPolicy,
+  scope: string,
+  now = Math.floor(performance.now())
 ) {
   if (
     !input ||
@@ -106,13 +97,9 @@ export function captureReviewedNativeEvmTransfer(
   )
     throw new Error('Invalid reviewed native transfer network or fee type');
   const value = parseEvmFeeQuantity(input.value, 'native amount');
-  const gasLimit = assertEvmGasLimit(
-    parseEvmFeeQuantity(input.gasLimit, 'native gas limit'),
-    BigInt(chainId)
-  );
+  const gasLimit = parseEvmFeeQuantity(input.gasLimit, 'native gas limit');
   if (
     value === BigInt(0) ||
-    gasLimit < EVM_NATIVE_INTRINSIC_GAS ||
     (policy.minGasLimit && gasLimit < policy.minGasLimit.toBigInt())
   )
     throw new Error('Reviewed native gas limit is no longer sufficient');
@@ -128,26 +115,14 @@ export function captureReviewedNativeEvmTransfer(
           input.maxPriorityFeePerGas
         ).toString(),
       };
-  const maximumRate = BigInt(
-    fees.type === 0 ? fees.gasPrice : fees.maxFeePerGas
-  );
-  if (
-    fees.type === 2 &&
-    (maximumRate === BigInt(0) ||
-      BigInt(fees.maxPriorityFeePerGas) > maximumRate)
-  )
-    throw new Error('Invalid reviewed native fee');
-  const cost = getEvmTransferCost(value, gasLimit, maximumRate);
-  if (cost.maximumFee !== parseEvmFeeQuantity(maximumReviewedFee))
-    throw new Error('Reviewed native maximum fee changed');
   const nonce =
     input.nonce === undefined || input.nonce === null
       ? undefined
       : parseEvmFeeQuantity(input.nonce, 'native nonce');
   if (nonce !== undefined && nonce > BigInt(Number.MAX_SAFE_INTEGER))
     throw new Error('Invalid reviewed native nonce');
-  return Object.freeze({
-    transaction: Object.freeze({
+  const approval = captureEvmFeeApproval(
+    {
       from,
       to: input.to,
       data: '0x',
@@ -155,9 +130,21 @@ export function captureReviewedNativeEvmTransfer(
       value: value.toString(),
       gasLimit: gasLimit.toString(),
       ...fees,
-    }),
+      ...(nonce === undefined ? {} : { nonce: nonce.toString() }),
+    },
+    scope,
+    now + EVM_FEE_APPROVAL_LIFETIME_MS
+  );
+  assertEvmFeeApprovalCurrent(approval, now);
+  if (
+    BigInt(approval.maximumFeeUnits) !== parseEvmFeeQuantity(maximumReviewedFee)
+  )
+    throw new Error('Reviewed native maximum fee changed');
+  return Object.freeze({
+    approval,
+    transaction: approval.transaction,
     nonce,
-    total: cost.total,
+    total: BigInt(approval.maximumTotalUnits),
   });
 }
 
@@ -168,7 +155,8 @@ export async function recheckReviewedNativeEvmTransfer(
   assertCurrent: () => void
 ) {
   const check = () => {
-    assertCurrent();
+    assertSynchronousEvmFeeGuard(assertCurrent);
+    assertEvmFeeApprovalCurrent(review.approval, Math.floor(performance.now()));
     if (provider.signal.aborted) throw provider.signal.reason;
   };
   const read = async (method: string, params: unknown[]) => {
@@ -189,28 +177,33 @@ export async function recheckReviewedNativeEvmTransfer(
   const nonce = parseEvmFeeQuantity(rawNonce, 'native nonce');
   if (nonce > BigInt(Number.MAX_SAFE_INTEGER))
     throw new Error('Invalid reviewed native nonce');
-  if (balance < review.total)
-    throw new Error('Insufficient funds for reviewed native transfer');
-  assertEvmGasLimit(
-    BigInt(tx.gasLimit),
-    BigInt(tx.chainId),
-    parseEvmFeeQuantity(header?.gasLimit, 'block gas limit')
+  const observation = {
+    balance,
+    sampledBlockGasLimit: parseEvmFeeQuantity(
+      header?.gasLimit,
+      'block gas limit'
+    ),
+    ...(tx.type === 2
+      ? {
+          baseFeePerGas: parseEvmFeeQuantity(header?.baseFeePerGas, 'base fee'),
+        }
+      : {}),
+  };
+  assertEvmFeeEstimateApproved(
+    review.approval,
+    { ...observation, estimatedGas: BigInt(tx.gasLimit) },
+    Math.floor(performance.now())
   );
-  if (
-    tx.type === 2 &&
-    parseEvmFeeQuantity(header?.baseFeePerGas, 'base fee') >
-      BigInt(tx.maxFeePerGas)
-  )
-    throw new Error(
-      'Reviewed native maximum fee is below the current base fee'
-    );
   const request = { ...tx, nonce: nonce.toString() };
   const estimate = parseEvmFeeQuantity(
     await read('eth_estimateGas', [evmEstimateRequest(request), 'pending']),
     'native gas estimate'
   );
-  if (estimate < EVM_NATIVE_INTRINSIC_GAS || estimate > BigInt(tx.gasLimit))
-    throw new Error('Reviewed native gas limit is no longer sufficient');
+  assertEvmFeeEstimateApproved(
+    review.approval,
+    { ...observation, estimatedGas: estimate },
+    Math.floor(performance.now())
+  );
   check();
   return Object.freeze(request);
 }

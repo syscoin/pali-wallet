@@ -47,6 +47,10 @@ import {
   isEvmProtectedEmptySelfCall,
 } from '../../../shared/evmCancellationPayer.ts';
 import {
+  assertEvmFeeApprovalCurrent,
+  assertEvmFeeRefreshApproved,
+} from '../../../shared/evmFeeApproval';
+import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
@@ -78,7 +82,11 @@ import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
 } from '../../../wallet/utxoBlockbookReads';
-import { utxoSubmissionUrl } from '../../../wallet/utxoSignedBinding';
+import {
+  createUtxoTransactionBinding,
+  extractUtxoSignedTransaction,
+  utxoSubmissionUrl,
+} from '../../../wallet/utxoSignedBinding';
 import {
   UTXO_SIGNED_RECORD_PREFIX,
   type UtxoDurableSubmission,
@@ -265,6 +273,7 @@ import { isSentryTransactionVersion } from 'utils/sentry/feeAuthorization';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
+  assertSLHDSASessionGeneration,
   cancelSLHDSAWorkerInOffscreen,
   clearRuntimeSLHDSAStates,
   clearSLHDSAPublicPrecomputeCache,
@@ -295,7 +304,6 @@ import { chromeStorage } from 'utils/storageAPI';
 import {
   assertUtxoBuilderFee,
   assertUtxoFeeReview,
-  createUtxoFeeReview,
   getVerifiedSyscoinPsbtValueSummary,
   type UtxoFeeReview,
 } from 'utils/syscoinPsbtValues';
@@ -361,6 +369,11 @@ import {
 import { clearProviderCache } from './message-handler/requests';
 import { recordSendCallsBundle } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
+import {
+  consumeNativeEvmFeeReview,
+  discardNativeEvmFeeReview,
+  issueNativeEvmFeeReview,
+} from './nativeEvmFeeReviews';
 import type {
   IPrivateVaultDepositController,
   IPrivateVaultDepositJournal,
@@ -1289,36 +1302,55 @@ class MainController {
       }
     };
     assertCurrent();
-    const lifecycle = createEvmSignedRecordLifecycle(
-      this.getRetainedEvmRecords(),
-      { keyring, assertCurrent }
-    );
-    if (replacementProvider === null) return lifecycle;
-    const send = replacementProvider.send.bind(replacementProvider);
+    const records = this.getRetainedEvmRecords();
+    const session = { keyring, assertCurrent };
+    if (
+      replacementProvider === null ||
+      (context.operation !== 'cancel' && context.operation !== 'speed-up')
+    )
+      return createEvmSignedRecordLifecycle(records, session);
     const payer = context.account.address;
-    return Object.freeze({
-      ...lifecycle,
-      persistSigned: async (
-        record: Parameters<typeof lifecycle.persistSigned>[0]
-      ) => {
-        await lifecycle.persistSigned(record);
+    const originalHash = context.originalHash?.toLowerCase();
+    const original = store
+      .getState()
+      .vault.accountTransactions[selected.type]?.[selected.id]?.ethereum?.[
+        context.network.chainId
+      ]?.find((row) => row.hash?.toLowerCase() === originalHash);
+    const nonce = getEoaNonceFromHistoryTransaction(
+      { ...original, smartAccountExecutionFrom: undefined },
+      payer
+    );
+    if (!originalHash || nonce === undefined)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const replacement = records.captureVerifiedReplacement(session, {
+      chainId: String(context.network.chainId),
+      from: payer,
+      nonce,
+      originalHash,
+      operation: context.operation,
+    });
+    // The capture starts before SDK RPC/signing; persistence observes any rejection.
+    void replacement.catch(() => undefined);
+    const send = replacementProvider.send.bind(replacementProvider);
+    return createEvmSignedRecordLifecycle(records, session, {
+      replacement,
+      preflight: async (record, assertDispatchCurrent) => {
         if (context.operation === 'speed-up') {
           const transaction = Transaction.from(record.rawTransaction);
           if (!isEvmEmptySelfCall(transaction)) return;
           if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         }
-        // The SDK awaits this acknowledgement before its final synchronous send guard.
         await assertLiveEvmReplacementChain(
           replacementProvider,
           context.network.chainId,
-          lifecycle.assertCurrent
+          assertDispatchCurrent
         );
         await assertEvmCancellationPayerReady(
           payer,
           record.nonce,
           (method, address, tag) => send(method, [address, tag]),
-          lifecycle.assertCurrent
+          assertDispatchCurrent
         );
       },
     });
@@ -1983,7 +2015,11 @@ class MainController {
       assertUtxoBuilderFee(result.fee, summary.feeSatoshis);
       const utxoFeeReview = await this.attestUtxoWalletReview(
         signing.walletReviewScope,
-        createUtxoFeeReview(psbt, summary.feeSatoshis)
+        createUtxoTransactionBinding(
+          psbt,
+          summary.feeSatoshis,
+          read.assertCurrent
+        ).review
       );
       signing.assertWalletReviewCurrent();
       return { ...result, utxoFeeReview };
@@ -6894,11 +6930,29 @@ class MainController {
     let broadcastStarted = false;
     try {
       assertCurrentContext();
+      // History hints only avoid journal reads for ordinary sends. The shared
+      // journal is the authority for the signed cancellation and its lineage.
+      const retainedCancellation =
+        original.isCancel === true ||
+        (typeof original.to === 'string' &&
+          original.to.toLowerCase() === sender)
+          ? await this.getRetainedEvmRecords().readPendingCancellation(
+              { keyring, assertCurrent: assertCurrentContext },
+              {
+                chainId: String(chainId),
+                from: sender,
+                nonce,
+                originalHash: txHash.toLowerCase(),
+              }
+            )
+          : null;
+      assertCurrentContext();
       return await transactionController.sendTransactionWithEditedFee(
         txHash,
         isLegacy,
         {
           ...feeApproval,
+          ...(retainedCancellation ? { retainedCancellation } : {}),
           targetAccount,
           assertCurrentContext,
           validateOriginal,
@@ -7983,8 +8037,8 @@ class MainController {
   }
 
   /**
-   * Atomic wrapper that handles sign, send, and save in one operation
-   * This ensures the transaction completes even if the popup window loses focus
+   * Sign, retain, submit and save within the captured approval lifetime.
+   * Retained signed bytes preserve recovery if the caller closes after submission.
    */
   public async signSendAndSaveTransaction(
     params: {
@@ -8038,6 +8092,13 @@ class MainController {
         // The actual fee is checked separately against verified prevouts.
         if (review)
           assertUtxoFeeReview(approvedPsbt, review.feeSatoshis, review);
+        const transactionBinding = ordinary
+          ? createUtxoTransactionBinding(
+              approvedPsbt,
+              review!.feeSatoshis,
+              assertCurrent
+            )
+          : undefined;
         if (syscoinTransactionTypes.isPoDATx(approvedPsbt.version))
           throw new Error(
             'This wallet can sign PoDA PSBTs for external submission'
@@ -8068,33 +8129,22 @@ class MainController {
           signedPsbt,
           activeNetwork
         );
-        let transaction: ReturnType<
-          typeof verifiedSignedPsbt.extractTransaction
+        let signedTransaction: ReturnType<
+          ReturnType<typeof createUtxoTransactionBinding>['bindSigned']
         >;
-        try {
-          transaction = verifiedSignedPsbt.extractTransaction();
-        } catch (error) {
-          if (
-            error instanceof Error &&
-            error.message.startsWith('Warning: You are paying around ') &&
-            error.message.includes('setMaximumFeeRate')
-          ) {
-            throw Object.assign(
-              new Error(
-                'Transaction fee exceeds the wallet safety limit. Lower the fee and try again.'
-              ),
-              { code: 'UTXO_FEE_RATE_EXCEEDED' }
-            );
-          }
-          throw error;
+        if (transactionBinding) {
+          signedTransaction = transactionBinding.bindSigned(verifiedSignedPsbt);
+        } else {
+          const transaction = extractUtxoSignedTransaction(verifiedSignedPsbt);
+          signedTransaction = Object.freeze({
+            txid: transaction.getId(),
+            rawTransaction: transaction.toHex(),
+            outpoints: Object.freeze(utxoInputOutpoints(transaction.ins)),
+            feeSatoshis: verifiedSignedPsbt.getFee().toString(),
+            virtualSize: transaction.virtualSize(),
+          });
         }
         assertCurrent();
-        if (review)
-          assertUtxoFeeReview(
-            verifiedSignedPsbt,
-            verifiedSignedPsbt.getFee().toString(),
-            review
-          );
 
         if (ordinary) {
           this.assertOrdinaryUtxoInputsCurrent(
@@ -8109,11 +8159,7 @@ class MainController {
           owner,
           operation: ordinary ? ('wallet' as const) : ('external' as const),
           url: utxoSubmissionUrl(signing.context.rpcUrl),
-          txid: transaction.getId(),
-          rawTransaction: transaction.toHex(),
-          outpoints: Object.freeze(utxoInputOutpoints(transaction.ins)),
-          feeSatoshis: verifiedSignedPsbt.getFee().toString(),
-          virtualSize: transaction.virtualSize(),
+          ...signedTransaction,
         });
         const submit = async (markInvoked: () => void) => {
           await this.assertNoSentryCollateralInputs(verifiedSignedPsbt);
@@ -8206,7 +8252,7 @@ class MainController {
       clearNavigation?: boolean;
       expectedContext?: IEvmTransactionContext;
       hardwareScope?: IWalletNavigationScope;
-      nativeReview?: { maximumFee: string; scope: IWalletNavigationScope };
+      nativeReview?: { id: string; scope: IWalletNavigationScope };
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
@@ -8312,6 +8358,11 @@ class MainController {
       const controller = getController();
 
       if (nativeReview) {
+        const stored = consumeNativeEvmFeeReview(
+          this,
+          nativeReview.id,
+          Math.floor(performance.now())
+        );
         const read = this.captureFreshNativeEvmRead(nativeReview.scope);
         const { accounts, activeAccount, isBitcoinBased } =
           store.getState().vault;
@@ -8331,16 +8382,29 @@ class MainController {
         const review = captureReviewedNativeEvmTransfer(
           params,
           Boolean(isLegacy),
-          nativeReview.maximumFee,
+          stored.review.approval.maximumFeeUnits,
           account.address,
           read.network.chainId,
-          read.overrides
+          read.overrides,
+          JSON.stringify([nativeReview.scope, read.network.url])
         );
-        assertNativeReviewCurrent = read.assertCurrent;
+        assertEvmFeeRefreshApproved(
+          stored.review.approval,
+          review.approval,
+          Math.floor(performance.now())
+        );
+        assertNativeReviewCurrent = () => {
+          stored.assertCurrent();
+          read.assertCurrent();
+          assertEvmFeeApprovalCurrent(
+            stored.review.approval,
+            Math.floor(performance.now())
+          );
+        };
         prepareNativeReview = () =>
           read.run((provider) =>
             recheckReviewedNativeEvmTransfer(
-              review,
+              stored.review,
               provider,
               read.assertCurrent
             )
@@ -8610,10 +8674,12 @@ class MainController {
     pkSeed?: string;
   }) {
     this.configureSLHDSASessionStateCrypto();
+    const generation = getSLHDSASessionGeneration();
     try {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: () => assertSLHDSASessionGeneration(generation),
       });
       const hasState =
         Boolean(state?.secretKeyHex) &&
@@ -8784,6 +8850,7 @@ class MainController {
     const state = await loadEncryptedSLHDSAState({
       crypto: this.getSLHDSASessionStateCrypto(),
       keyId: params.keyId,
+      assertOwner: () => assertSLHDSASessionGeneration(sessionGeneration),
     });
     if (!state) {
       const setupStatus = await getSLHDSASmartAccountSetupStatus({
@@ -8894,6 +8961,7 @@ class MainController {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: assertCurrent,
       });
       assertCurrent();
       if (!state) {
@@ -11740,8 +11808,7 @@ class MainController {
     };
   }
 
-  // Explicit user Retry for a native EOA quote; ordinary estimates still use
-  // the long-lived SDK instance. No caller-selected network or signing path.
+  // Native EOA quotes use one bounded read-only estimate for initial load and Retry.
   public async getFreshNativeEvmGasLimit(
     input: { data: string; from: string; to: string; value: string },
     expectedScope: IWalletNavigationScope
@@ -11780,6 +11847,84 @@ class MainController {
         read.assertCurrent
       )
     );
+  }
+
+  private captureNativeEvmFeeReview(
+    params: Record<string, unknown>,
+    isLegacy: boolean,
+    maximumFee: string,
+    scope: IWalletNavigationScope
+  ) {
+    const read = this.captureFreshNativeEvmRead(scope);
+    const { vault } = store.getState();
+    const account =
+      vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
+    if (
+      vault.isBitcoinBased ||
+      read.network.kind !== INetworkType.Ethereum ||
+      ![KeyringAccountType.HDAccount, KeyringAccountType.Imported].includes(
+        vault.activeAccount.type
+      ) ||
+      !account?.address ||
+      account.isSmartAccount ||
+      account.isLedgerWallet ||
+      account.isTrezorWallet
+    )
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const now = Math.floor(performance.now());
+    const review = captureReviewedNativeEvmTransfer(
+      params,
+      isLegacy,
+      maximumFee,
+      account.address,
+      read.network.chainId,
+      read.overrides,
+      JSON.stringify([scope, read.network.url]),
+      now
+    );
+    return { read, review, now };
+  }
+
+  public reviewNativeEvmFee(
+    params: Record<string, unknown>,
+    isLegacy: boolean,
+    maximumFee: string,
+    scope: IWalletNavigationScope
+  ) {
+    const { read, review, now } = this.captureNativeEvmFeeReview(
+      params,
+      isLegacy,
+      maximumFee,
+      scope
+    );
+    return issueNativeEvmFeeReview(this, review, read.assertCurrent, now);
+  }
+
+  public async refreshNativeEvmFeeReview(
+    params: Record<string, unknown>,
+    isLegacy: boolean,
+    maximumFee: string,
+    scope: IWalletNavigationScope
+  ) {
+    const { read, review } = this.captureNativeEvmFeeReview(
+      params,
+      isLegacy,
+      maximumFee,
+      scope
+    );
+    await read.run((provider) =>
+      recheckReviewedNativeEvmTransfer(review, provider, read.assertCurrent)
+    );
+    return issueNativeEvmFeeReview(
+      this,
+      review,
+      read.assertCurrent,
+      Math.floor(performance.now())
+    );
+  }
+
+  public discardNativeEvmFeeReview(id: string) {
+    discardNativeEvmFeeReview(this, id);
   }
 
   private captureFreshNativeEvmRead(expectedScope: IWalletNavigationScope) {

@@ -63,6 +63,14 @@ const mockState = {
           balances: { ethereum: '100' },
         },
       },
+      Ledger: {
+        0: {
+          id: 0,
+          address: '0x1111111111111111111111111111111111111111',
+          isLedgerWallet: true,
+          balances: { ethereum: '100' },
+        },
+      },
     },
     accountTransactions: {},
   },
@@ -185,6 +193,7 @@ beforeEach(() => {
   mockRefreshDeferred = undefined;
   mockRerender = undefined;
   mockScope.network = 'synthetic-network';
+  mockState.vault.activeAccount.type = 'HDAccount';
   mockState.vault.accounts.HDAccount[0].balances.ethereum = '100';
   mockLocation.state.tx.amount = '1';
   mockLocation.state.tx.isMax = false;
@@ -195,7 +204,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
         'getRecommendedGasPrice',
@@ -216,11 +227,21 @@ function deferred() {
 function prepare(quoteCount = 1) {
   const quotes = Array.from({ length: quoteCount }, deferred);
   let nextQuote = 0;
-  mockEmitter.mockImplementation((path: string[]) => {
+  mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[nextQuote++].promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'getFreshNativeEvmGasLimit') {
+      expect(args[1]).toEqual(mockScope);
+      return Promise.resolve(21000);
+    }
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: args[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'refreshActiveAccountBalances')
       return mockRefreshFails
         ? Promise.reject(new Error('Synthetic balance read failure'))
@@ -258,11 +279,15 @@ const submissionCalls = () =>
   );
 const ready = async (
   max: boolean,
-  { balance = '100', legacy = false } = {}
+  { balance = '100', legacy = false, confirmable = true, hardware = false } = {}
 ) => {
   mockEIP1559 = !legacy;
   mockRefreshedBalance = balance;
   mockState.vault.accounts.HDAccount[0].balances.ethereum = balance;
+  if (hardware) {
+    mockState.vault.activeAccount.type = 'Ledger';
+    mockState.vault.accounts.Ledger[0].balances.ethereum = balance;
+  }
   mockLocation.state.tx.amount = max ? balance : '1';
   mockLocation.state.tx.isMax = max;
   mockLocation.state.tx.cachedGasData = {
@@ -270,11 +295,17 @@ const ready = async (
     maxPriorityFeePerGas: '0x00',
   };
   prepare();
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'buttons.confirm' })
-    ).toBeEnabled()
-  );
+  if (confirmable) {
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
+  } else {
+    await waitFor(() =>
+      expect(screen.getAllByText('0.000063 TSYS').length).toBeGreaterThan(0)
+    );
+  }
   if (!legacy) expect(edit()).toBeEnabled();
   expect(quoteRequests()).toHaveLength(0);
 };
@@ -305,9 +336,7 @@ const captureRefusedSubmission = async () => {
 };
 const expectedNet = (gas: bigint, capGwei: bigint) =>
   formatEther(
-    BigInt('100000000000000000000') -
-      gas * capGwei * BigInt(1000000000) -
-      BigInt(1000000000000)
+    BigInt('100000000000000000000') - gas * capGwei * BigInt(1000000000)
   );
 
 it('healthy ordinary fixed amount displays and forwards its exact value at refused signing boundary', async () => {
@@ -360,11 +389,11 @@ it.each([false, true])(
   'MAX total follows the reviewed amount plus displayed fee after balance update (legacy=%s)',
   async (legacy) => {
     await ready(true, { legacy });
-    expect(reviewedTotal()).toContain('99.999999 TSYS');
+    expect(reviewedTotal()).toContain('100.0 TSYS');
     mockState.vault.accounts.HDAccount[0].balances.ethereum = '99';
     await act(async () => mockRerender!());
-    expect(headline()).toBe('98.999936 TSYS');
-    expect(reviewedTotal()).toContain('98.999999 TSYS');
+    expect(headline()).toBe('98.999937 TSYS');
+    expect(reviewedTotal()).toContain('99.0 TSYS');
   }
 );
 
@@ -372,7 +401,7 @@ it.each([false, true])(
   'MAX total retains wei precision for the reviewed amount plus fee (legacy=%s)',
   async (legacy) => {
     await ready(true, { balance: '1.123456789123456789', legacy });
-    expect(reviewedTotal()).toContain('1.123455789123456789 TSYS');
+    expect(reviewedTotal()).toContain('1.123456789123456789 TSYS');
   }
 );
 
@@ -381,7 +410,7 @@ it.each([false, true])(
   async (legacy) => {
     const balance = '1.123456789123456789';
     await ready(true, { balance, legacy });
-    const net = formatEther(parseEther(balance) - BigInt(64000000000000));
+    const net = formatEther(parseEther(balance) - BigInt(63000000000000));
     expect(headline()).toBe(net + ' TSYS');
     const tx = await captureRefusedSubmission();
     expect(formatEther(tx.value)).toBe(net);
@@ -394,7 +423,7 @@ it.each([false, true])(
 it.each([false, true])(
   'preserves a one-wei positive native MAX net (legacy=%s)',
   async (legacy) => {
-    await ready(true, { balance: '0.000064000000000001', legacy });
+    await ready(true, { balance: '0.000063000000000001', legacy });
     expect(headline()).toBe('0.000000000000000001 TSYS');
     const tx = await captureRefusedSubmission();
     expect(BigInt(tx.value)).toBe(BigInt(1));
@@ -404,8 +433,16 @@ it.each([false, true])(
 it.each([false, true])(
   'does not advertise an unaffordable native MAX gross amount (legacy=%s)',
   async (legacy) => {
-    await ready(true, { balance: '0.000063', legacy });
+    await ready(true, { balance: '0.000063', legacy, confirmable: false });
     expect(headline()).toBe('send.calculating TSYS');
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeDisabled();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+      )
+    ).toHaveLength(0);
     await act(async () =>
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
     );
@@ -432,28 +469,30 @@ it('does not advertise gross MAX while its initial quote is pending or failed', 
   expect(submissionCalls()).toHaveLength(0);
 });
 
-it.each([
-  [false, '100'],
-  [false, '101'],
-  [true, '100'],
-  [true, '101'],
-] as const)(
-  'keeps the reviewed native MAX when legacy=%s and refreshed balance=%s',
-  async (legacy, refreshedBalance) => {
+it.each([false, true])(
+  'submits the reviewed software MAX without a foreground balance refresh (legacy=%s)',
+  async (legacy) => {
     await ready(true, { legacy });
     const reviewed = headline();
-    mockRefreshedBalance = refreshedBalance;
     const tx = await captureRefusedSubmission();
     expect(formatEther(tx.value) + ' TSYS').toBe(reviewed);
+    expect(submissionCalls()[0][1][4]).toEqual({
+      nativeReview: { id: 'fixture-review', scope: mockScope },
+    });
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+      )
+    ).toBe(false);
   }
 );
 
 it.each([false, true])(
-  'rejects native MAX before submission when refreshed balance cannot afford the reviewed amount (legacy=%s)',
+  'rejects hardware MAX before submission when refreshed balance cannot afford the reviewed amount (legacy=%s)',
   async (legacy) => {
-    await ready(true, { legacy });
+    await ready(true, { legacy, hardware: true });
     expect(headline()).toBe('99.999936 TSYS');
-    mockRefreshedBalance = '99';
+    mockRefreshedBalance = '99.999999999999999999';
     await act(async () =>
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
     );
@@ -471,8 +510,8 @@ it.each([false, true])(
   }
 );
 
-it('does not submit a MAX when the fee mode changes during refresh', async () => {
-  await ready(true);
+it('does not submit hardware MAX when the fee mode changes during refresh', async () => {
+  await ready(true, { hardware: true });
   mockRefreshDeferred = deferred();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() =>
@@ -491,8 +530,8 @@ it('does not submit a MAX when the fee mode changes during refresh', async () =>
   );
 });
 
-it('does not submit a MAX after the account or network scope changes during refresh', async () => {
-  await ready(true);
+it('does not submit hardware MAX after the account or network scope changes during refresh', async () => {
+  await ready(true, { hardware: true });
   mockRefreshDeferred = deferred();
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   await waitFor(() =>
@@ -511,9 +550,9 @@ it('does not submit a MAX after the account or network scope changes during refr
 });
 
 it.each([false, true])(
-  'rejects native MAX before submission when its fresh balance cannot be read (legacy=%s)',
+  'rejects hardware MAX before submission when its fresh balance cannot be read (legacy=%s)',
   async (legacy) => {
-    await ready(true, { legacy });
+    await ready(true, { legacy, hardware: true });
     mockRefreshFails = true;
     await act(async () =>
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))

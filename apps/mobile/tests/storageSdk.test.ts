@@ -30,16 +30,15 @@ test('pinned software SDK creates and reopens its real wallet through SQLite at 
   let storage: SqliteWalletStorage | undefined;
   let keyring: any;
   try {
+    const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('../scripts/qualification-sdk.cjs');
+    const root = path.dirname(require.resolve('../package.json'));
+    verifyInstalledQualificationSdk(root, readQualificationSdkPin(root));
     const {
       SoftwareKeyring,
       createKeyringHost,
       KeyringAccountType,
       INetworkType,
     } = require('@sidhujag/sysweb3-keyring/cjs/software');
-    assert.equal(
-      require('@sidhujag/sysweb3-keyring/package.json').version,
-      require('../package.json').dependencies['@sidhujag/sysweb3-keyring']
-    );
     storage = await SqliteWalletStorage.open(
       nodeConnection(file).connection,
       digest,

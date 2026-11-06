@@ -1,5 +1,6 @@
 import {
   advanceMerkleWork,
+  advanceMerkleWorkWithBatch,
   createMerkleWork,
   type MerkleWork,
 } from '../utils/privacy/merkle.ts';
@@ -83,6 +84,15 @@ type Dependencies = {
     poolId: PrivacyPoolId,
     signal: AbortSignal
   ): Promise<PrivacySnapshot | PrivacyIndexProgress>;
+  merkleWork?: Readonly<{
+    batchSize: number;
+    yieldBetweenBatches: () => Promise<void>;
+    execute(
+      program: Uint8Array,
+      signal: AbortSignal,
+      assertCurrent: () => void
+    ): Promise<Uint8Array>;
+  }>;
   now(): number;
   schedule(poolId: PrivacyPoolId, delay: number): void;
   /** Arm one request deadline and return its cancellation. */
@@ -109,10 +119,17 @@ export function createPrivacyPoolSync(
     fetchSnapshot,
     verifyAnchor,
     now,
+    merkleWork,
     schedule,
     stop,
     startRequestTimeout,
   } = dependencies;
+  const batchSize = merkleWork?.batchSize ?? 128;
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 128)
+    throw new Error('Invalid privacy Merkle batch size');
+  if (merkleWork && typeof merkleWork.execute !== 'function')
+    throw new Error('Missing privacy Merkle executor');
+  const yieldBetweenBatches = merkleWork?.yieldBetweenBatches;
   const tasks = new Map<PrivacyPoolId, Promise<void>>();
   const aborts = new Map<PrivacyPoolId, AbortController>();
   const actions = new Map<PrivacyPoolId, Promise<unknown>>();
@@ -323,13 +340,52 @@ export function createPrivacyPoolSync(
       }
       const deadline = now() + SLICE_MS;
       do {
-        record.work = advanceMerkleWork(
-          record.work!,
-          snapshot.leaves,
-          128,
-          (level, index, root) =>
-            recordMerkleSubtree(pathIndex!, level, index, root)
-        );
+        if (merkleWork) {
+          const calculation = calculations.get(poolId);
+          const startingWork = record.work!;
+          const startingRevision = revision(poolId);
+          const assertCurrent = () => {
+            if (
+              !calculation ||
+              calculations.get(poolId) !== calculation ||
+              calculation.work !== startingWork ||
+              calculation.snapshot !== snapshot ||
+              calculation.pathIndex !== pathIndex ||
+              calculation.generation !== generation ||
+              revision(poolId) !== startingRevision
+            )
+              throw new Error('privacy_cancelled');
+          };
+          const next = await timed(poolId, generation, (signal) =>
+            advanceMerkleWorkWithBatch(
+              startingWork,
+              snapshot.leaves,
+              batchSize,
+              {
+                signal,
+                assertCurrent,
+                execute: (program, ownerSignal) =>
+                  merkleWork.execute(program, ownerSignal, assertCurrent),
+              }
+            )
+          );
+          const current = await cache.get(poolId);
+          assertCurrent();
+          if (current?.generation !== generation || !current.running)
+            throw new Error('privacy_cancelled');
+          record.work = next.work;
+          calculation!.work = next.work;
+          for (const { level, index, root } of next.subtrees)
+            recordMerkleSubtree(pathIndex!, level, index, root);
+        } else {
+          record.work = advanceMerkleWork(
+            record.work!,
+            snapshot.leaves,
+            batchSize,
+            (level, index, root) =>
+              recordMerkleSubtree(pathIndex!, level, index, root)
+          );
+        }
         record.status = {
           ...record.status,
           phase: 'verifying',
@@ -337,6 +393,8 @@ export function createPrivacyPoolSync(
           total: snapshot.leafCount,
         };
         if (!(await cache.save(record, generation))) return;
+        if (!record.work.complete && yieldBetweenBatches)
+          await yieldBetweenBatches();
       } while (!record.work.complete && now() < deadline);
       if (!record.work.complete) {
         schedule(poolId, 0);
@@ -420,7 +478,7 @@ export function createPrivacyPoolSync(
     poolId: PrivacyPoolId,
     trusted: NonNullable<ReturnType<typeof verifiedTrees.get>>,
     record: PrivacyRecord | undefined
-  ) => {
+  ): record is PrivacyRecord => {
     const age = now() - trusted.blockTimestamp;
     return (
       verifiedTrees.get(poolId) === trusted &&

@@ -2,6 +2,8 @@ import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
 import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/ethereum';
 import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
 import { Transaction } from 'ethers/transaction';
+import { realpathSync } from 'node:fs';
+import { join, relative, sep } from 'node:path';
 
 import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
@@ -209,9 +211,35 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
       '@sidhujag/sysweb3-keyring/package.json'
     );
     const manifest = jest.requireActual('../../../../package.json');
-    expect(installed.version).toBe(
-      manifest.dependencies['@sidhujag/sysweb3-keyring']
-    );
+    const spec = manifest.dependencies['@sidhujag/sysweb3-keyring'];
+    if (typeof spec === 'string' && spec.startsWith('file:')) {
+      const root = join(__dirname, '../../../..');
+      const { readQualificationSdkPin, verifyInstalledQualificationSdk } =
+        jest.requireActual(
+          '../../../../apps/mobile/scripts/qualification-sdk.cjs'
+        );
+      const pin = readQualificationSdkPin(join(root, 'apps/mobile'));
+      if (!pin.archive)
+        throw new Error('Expected the locked mobile keyring archive');
+      expect(spec).toBe(
+        `file:${relative(root, pin.archive).split(sep).join('/')}`
+      );
+      verifyInstalledQualificationSdk(root, pin);
+      expect(
+        realpathSync(
+          require.resolve('@sidhujag/sysweb3-keyring/cjs/transactions/ethereum')
+        )
+      ).toBe(
+        realpathSync(
+          join(
+            root,
+            'node_modules/@sidhujag/sysweb3-keyring/cjs/transactions/ethereum.js'
+          )
+        )
+      );
+    } else {
+      expect(installed.version).toBe(spec);
+    }
     expect(jest.isMockFunction(sdk.cancelSentTransaction)).toBe(false);
   });
 

@@ -1,7 +1,8 @@
 const http = require('node:http');
 const { Buffer } = require('node:buffer');
 const { timingSafeEqual } = require('node:crypto');
-const { QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE } = require('./http-contract.ts');
+const { QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, PUBLIC_SNAPSHOT_FIXTURE_PATH,
+  PUBLIC_SNAPSHOT_FIXTURE_BODY } = require('./http-contract.ts');
 const { POST_ROUTES } = require('./post-fixtures.ts');
 const { createPostState, postSnapshot, handlePostRoute } = require('./post-server.cjs');
 
@@ -9,7 +10,7 @@ const QUOTE_ROUTES = [...QUOTE_EARLY_REJECTIONS.map(({ route }) => route), STALL
 const HELD_ROUTES = Object.freeze(['before', 'body', 'oversize', ...QUOTE_ROUTES]);
 const ROUTES = Object.freeze(['exact', 'identify', 'redirect', 'target', 'seed', 'cookie-present', 'cookie-omitted', 'clear-cookie',
   'before', 'before-ready', 'before-closed', 'body', 'body-closed', 'oversize', 'oversize-closed',
-  ...QUOTE_ROUTES.flatMap((route) => [route, `${route}-closed`]), 'healthy']);
+  ...QUOTE_ROUTES.flatMap((route) => [route, `${route}-closed`]), 'public-snapshot', 'healthy']);
 const equal = (a, b) => typeof a === 'string' && a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 /** No upstream client or proxy exists. Every socket binds only 127.0.0.1. */
@@ -22,6 +23,21 @@ async function createHttpFixture() {
         typeof request.url !== 'string' || request.url.length > 256) {
       if (active) active.invalid++;
       response.writeHead(400); response.end(); return;
+    }
+    // The production downloader appends a fixed path, so this public fixture
+    // is tied to the active launch's dedicated port instead of a URL token.
+    if (request.url === PUBLIC_SNAPSHOT_FIXTURE_PATH) {
+      if (request.method !== 'GET' || request.headers['user-agent'] !== 'PaliWallet' ||
+          request.headers['accept-encoding'] !== 'identity' ||
+          ['cookie', 'authorization', 'referer', 'proxy-authorization', 'content-length', 'transfer-encoding']
+            .some((key) => request.headers[key] !== undefined)) {
+        active.invalid++; response.writeHead(400); response.end(); return;
+      }
+      active.counts['public-snapshot']++;
+      response.writeHead(200, { 'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(PUBLIC_SNAPSHOT_FIXTURE_BODY), 'Cache-Control': 'no-store' });
+      response.end(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+      return;
     }
     const quote = /^\/([0-9a-f]{32})\/(quote-(?:non-ok|oversize|stalled))\/api\/v2\/tickers\/currency$/.exec(request.url);
     const match = quote ?? /^\/([0-9a-f]{32})\/([a-z-]+)\?q=exact$/.exec(request.url);
@@ -161,4 +177,27 @@ if (require.main === module) {
     });
   }).catch(() => process.exit(1));
 }
-module.exports = { createHttpFixture, ROUTES, HELD_ROUTES };
+/** Node control for the fixture tests only. The app uses the Expo bridge. */
+const snapshotFixtureControl = {
+  prepareSnapshot(pool, origin, signal) {
+    if (pool !== 'eth-1') throw Error('HTTP_FIXTURE_POOL_INVALID');
+    let bytes, offset = 0;
+    return {
+      async start(check) {
+        check();
+        const response = await fetch(origin + PUBLIC_SNAPSHOT_FIXTURE_PATH, { signal, redirect: 'error',
+          headers: { 'User-Agent': 'PaliWallet', 'Accept-Encoding': 'identity' } });
+        bytes = new Uint8Array(await response.arrayBuffer());
+        return { status: response.status, byteCount: bytes.byteLength };
+      },
+      async pull(check) {
+        check();
+        if (offset === bytes.length) return null;
+        const chunk = bytes.slice(offset, offset + 64 * 1024); offset += chunk.length;
+        return chunk;
+      },
+      async release() { bytes = undefined; },
+    };
+  },
+};
+module.exports = { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl };

@@ -633,7 +633,14 @@ describe('SmartAccountController smart account execution fees', () => {
         {} as any,
         {} as any,
         () => () => undefined,
-        () => ({ assertCurrent: () => undefined, persistSigned })
+        () => ({
+          assertCurrent: () => undefined,
+          persistSigned,
+          dispatchSigned: async (_record, initiate, preflight) => {
+            await preflight();
+            return initiate();
+          },
+        })
       );
       Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
       sendAndSaveEthTransaction.mockImplementation(

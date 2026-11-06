@@ -3,13 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { URL } from 'node:url';
 import { createRequire } from 'node:module';
-import { createCipheriv, hkdf, pbkdf2, randomBytes, createHash, webcrypto } from 'node:crypto';
+import { createCipheriv, hkdf, pbkdf2, randomBytes, createHash, createHmac, webcrypto } from 'node:crypto';
 import { promisify } from 'node:util';
 import { createWalletCrypto, disposeWalletCrypto } from '../src/crypto/provider.ts';
 import type { NativeCryptoContext, NativeCryptoModule, NativeKey } from '../src/crypto/provider.ts';
 import { qualifyWalletCrypto } from '../src/crypto/qualification.ts';
 import { CRYPTO_FULL_CASES, isCryptoDiagnostic } from '../src/crypto/diagnostics.ts';
 import { qualifyWalletCryptoFull } from '../src/crypto/qualificationFull.ts';
+import { qualifyWalletHmac } from '../src/crypto/qualificationHmac.ts';
 
 const fixtures = JSON.parse(readFileSync(new URL('./crypto-vectors.json', import.meta.url), 'utf8'));
 const unhex = (hex: string): Uint8Array<ArrayBuffer> => new Uint8Array(Buffer.from(hex, 'hex'));
@@ -71,6 +72,7 @@ function bridge() {
     },
     randomBytes(length) { return new Uint8Array(randomBytes(length)); },
     async digestSha256(data) { return new Uint8Array(createHash('sha256').update(data).digest()); },
+    async signHmacSha512(key, data) { return new Uint8Array(createHmac('sha512', keyBytes(key)).update(data).digest()); },
     close() { closes++; closed = true; for (const bytes of owned) bytes.fill(0); },
   };
   const module: NativeCryptoModule = { info: () => ({ apiVersion: 1, implementation: 'android-jca-bc' }), createContext: () => context };
@@ -293,4 +295,73 @@ test('published SDK uses this facade for production-cost vault and private-recor
       const old = previousEnv[index]; if (old === undefined) delete process.env[key]; else process.env[key] = old;
     }
   }
+});
+
+test('HMAC-SHA512 matches RFC4231 with opaque sign-only keys and exact metadata', async () => {
+  const { provider } = bridge();
+  for (const vector of fixtures.hmacSha512) {
+    const raw = unhex(vector.keyHex);
+    const padded = new Uint8Array(raw.length + 8).fill(0x77);
+    padded.set(raw, 4);
+    const key = await provider.subtle.importKey('raw', new DataView(padded.buffer, 4, raw.length),
+      { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
+    padded.fill(0);
+    assert.deepEqual(key.algorithm, { name: 'HMAC', hash: { name: 'SHA-512' }, length: raw.length * 8 });
+    assert(Object.isFrozen(key.algorithm));
+    assert(Object.isFrozen((key.algorithm as HmacKeyAlgorithm).hash));
+    assert.equal(hex(await provider.subtle.sign('HMAC', key, unhex(vector.dataHex))), vector.expectedHex);
+    await assert.rejects(provider.subtle.exportKey('raw', key), { name: 'NotSupportedError' });
+    await assert.rejects(provider.subtle.verify('HMAC', key, new Uint8Array(64), unhex(vector.dataHex)), { name: 'NotSupportedError' });
+  }
+  const report = await qualifyWalletHmac(provider);
+  assert.equal(report.passed, true);
+  assert.equal(report.cases.length, fixtures.hmacSha512.length);
+});
+
+test('HMAC rejects unsupported algorithms, usages and key lengths before native dispatch', async () => {
+  const { provider, context } = bridge();
+  let calls = 0;
+  const original = context.importKey;
+  context.importKey = (...args) => { calls++; return original(...args); };
+  const raw = new Uint8Array(16);
+  await assert.rejects(provider.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']), { name: 'NotSupportedError' });
+  await assert.rejects(provider.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-512', length: 127 }, false, ['sign']), { name: 'NotSupportedError' });
+  await assert.rejects(provider.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-512' }, true, ['sign']), { name: 'NotSupportedError' });
+  await assert.rejects(provider.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-512' }, false, ['verify']), { name: 'SyntaxError' });
+  await assert.rejects(provider.subtle.importKey('raw', raw, { name: 'HMAC', hash: 'SHA-512' }, false, ['deriveBits']), { name: 'SyntaxError' });
+  await assert.rejects(provider.subtle.importKey('raw', new Uint8Array(), { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']), { name: 'DataError' });
+  await assert.rejects(provider.subtle.importKey('raw', new Uint8Array(4097), { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']), RangeError);
+  assert.equal(calls, 0);
+});
+
+test('HMAC uses the existing key owner, bounded queue, immutable input and disposal policy', async () => {
+  const f = bridge();
+  const vector = fixtures.hmacSha512[0];
+  const key = await f.provider.subtle.importKey('raw', unhex(vector.keyHex), { name: 'HMAC', hash: 'SHA-512' }, false, ['sign']);
+  await assert.rejects(bridge().provider.subtle.sign('HMAC', key, new Uint8Array()), { name: 'InvalidAccessError' });
+  const aes = await f.provider.subtle.importKey('raw', new Uint8Array(32), 'AES-GCM', false, ['encrypt']);
+  await assert.rejects(f.provider.subtle.sign('HMAC', aes, new Uint8Array()), { name: 'InvalidAccessError' });
+  await assert.rejects(f.provider.subtle.sign('HMAC', key, new Uint8Array(1048577)), RangeError);
+  const gate = deferred();
+  const sign = f.context.signHmacSha512;
+  f.context.signHmacSha512 = async (native, bytes) => {
+    const result = await sign(native, bytes);
+    await gate.promise;
+    return result;
+  };
+  const input = unhex(vector.dataHex);
+  const signed = f.provider.subtle.sign('HMAC', key, input);
+  input.fill(0);
+  gate.resolve();
+  assert.equal(hex(await signed), vector.expectedHex);
+
+  const held = deferred();
+  const output = unhex(vector.expectedHex);
+  f.context.signHmacSha512 = async () => { await held.promise; return output; };
+  const pending = Array.from({ length: 8 }, () => f.provider.subtle.sign('HMAC', key, new Uint8Array()));
+  await assert.rejects(f.provider.subtle.sign('HMAC', key, new Uint8Array()), { name: 'QuotaExceededError' });
+  disposeWalletCrypto(f.provider);
+  held.resolve();
+  for (const result of pending) await assert.rejects(result, { name: 'InvalidStateError' });
+  assert(output.every((byte) => byte === 0));
 });

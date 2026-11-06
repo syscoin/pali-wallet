@@ -325,16 +325,25 @@ const prepareEvmRecipientConfirmation = (receiver: string) => {
     defaultGasLimit: 21000,
   };
   mockLocation.state.returnContext.returnRoute = '/send/eth';
-  mockControllerEmitter.mockImplementation(async (path: string[]) => {
-    const method = path.at(-1);
-    if (method === 'refreshActiveAccountBalances')
-      return { nativeBalance: '100' };
-    if (method === 'getRecommendedGasPrice') return '1000000000';
-    if (method === 'getTxGasLimit') return '21000';
-    if (method === 'sendAndSaveEthTransaction')
-      return { hash: 'synthetic-evm-hash' };
-    return undefined;
-  });
+  mockControllerEmitter.mockImplementation(
+    async (path: string[], args: any[] = []) => {
+      const method = path.at(-1);
+      if (method === 'refreshActiveAccountBalances')
+        return { nativeBalance: '100' };
+      if (method === 'getRecommendedGasPrice') return '1000000000';
+      if (method === 'getFreshNativeEvmGasLimit') return '21000';
+      if (method === 'reviewNativeEvmFee')
+        return {
+          id: 'fixture-review',
+          maximumFee: args[2],
+          validForMs: 90000,
+        };
+      if (method === 'discardNativeEvmFeeReview') return undefined;
+      if (method === 'sendAndSaveEthTransaction')
+        return { hash: 'synthetic-evm-hash' };
+      return undefined;
+    }
+  );
 };
 
 const prepareZeroTipNativeConfirmation = (cached = false) => {
@@ -350,11 +359,13 @@ const prepareZeroTipNativeConfirmation = (cached = false) => {
       maxPriorityFeePerGas: '0x0',
     };
   const prior = mockControllerEmitter.getMockImplementation()!;
-  mockControllerEmitter.mockImplementation((path: string[]) => {
-    if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
-      return fees;
-    return prior(path);
-  });
+  mockControllerEmitter.mockImplementation(
+    (path: string[], args: any[] = []) => {
+      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+        return fees;
+      return prior(path, args);
+    }
+  );
   return fees;
 };
 
@@ -814,8 +825,8 @@ it.each([
     expect(sent.executions).toEqual(quoted.executions);
     expect(sent.expectedContext).toEqual(quoted.expectedContext);
     expect(
-      mockControllerEmitter.mock.calls.some(
-        ([path]) => path.at(-1) === 'getTxGasLimit'
+      mockControllerEmitter.mock.calls.some(([path]) =>
+        ['getTxGasLimit', 'getFreshNativeEvmGasLimit'].includes(path.at(-1)!)
       )
     ).toBe(false);
   }
@@ -1313,7 +1324,7 @@ it.each([false, true])(
     await waitFor(() =>
       expect(
         mockControllerEmitter.mock.calls.some(
-          ([path]) => path.at(-1) === 'getTxGasLimit'
+          ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
         )
       ).toBe(true)
     );
@@ -1342,13 +1353,22 @@ it.each([false, true])(
           undefined,
           {
             nativeReview: {
-              maximumFee: '42000000000000',
+              id: 'fixture-review',
               scope: mockLocation.state.walletScope,
             },
           },
         ],
         expect.any(Number)
       )
+    );
+    expect(mockControllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'reviewNativeEvmFee'],
+      [
+        expect.objectContaining({ maxPriorityFeePerGas: '0' }),
+        false,
+        '42000000000000',
+        mockLocation.state.walletScope,
+      ]
     );
     const [, [sent, legacy]] = mockControllerEmitter.mock.calls.find(
       ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
@@ -1398,6 +1418,11 @@ it.each([
       expect(screen.getAllByText(/0\.000042/).length).toBeGreaterThan(0)
     );
     fireEvent.click(screen.getByRole('button', { name: 'choose-zero-tip' }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
     const method =
       transactionType === TransactionType.NATIVE_ETH
@@ -1442,11 +1467,13 @@ it.each([
   async (fees) => {
     prepareZeroTipNativeConfirmation();
     const prior = mockControllerEmitter.getMockImplementation()!;
-    mockControllerEmitter.mockImplementation((path: string[]) => {
-      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
-        return fees;
-      return prior(path);
-    });
+    mockControllerEmitter.mockImplementation(
+      (path: string[], args: any[] = []) => {
+        if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+          return fees;
+        return prior(path, args);
+      }
+    );
     render(<SendConfirm />);
     await waitFor(() =>
       expect(
@@ -1512,13 +1539,22 @@ it.each(['undeployed smart account', 'EOA'])(
           undefined,
           {
             nativeReview: {
-              maximumFee: '21000000000000',
+              id: 'fixture-review',
               scope: mockLocation.state.walletScope,
             },
           },
         ],
         expect.any(Number)
       )
+    );
+    expect(mockControllerEmitter).toHaveBeenCalledWith(
+      ['wallet', 'reviewNativeEvmFee'],
+      [
+        expect.objectContaining({ gasPrice: '1000000000' }),
+        true,
+        '21000000000000',
+        mockLocation.state.walletScope,
+      ]
     );
     expect(
       mockControllerEmitter.mock.calls.some(
@@ -2082,7 +2118,7 @@ it.each([false, true])(
     });
     expect(
       screen.getByText('send.total (send.amountAndFee)').textContent
-    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.001 SYS');
+    ).toContain(token ? '0.001 SPTsend.plusGasFee' : '0.00100000 SYS');
   }
 );
 

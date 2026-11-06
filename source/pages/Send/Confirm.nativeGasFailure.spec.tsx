@@ -9,7 +9,9 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
+import { randomUUID } from 'crypto';
 import React from 'react';
 
 import MainController from 'scripts/Background/controllers/MainController';
@@ -24,6 +26,11 @@ const { RpcResponseIntegrityError } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/providers'
 );
 const mockEmitter = jest.fn();
+const originalRandomUUID = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
+let reviewFailures: string[] = [];
 let mockEnsNameToAddress: Record<string, string> = {};
 const mockScope = { account: 'gas-read-account', network: 'gas-read-network' };
 const mockAuth = {
@@ -187,6 +194,10 @@ const advance = () =>
   });
 
 beforeAll(() => {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: randomUUID,
+  });
   globalThis.ResizeObserver = class {
     observe() {
       return undefined;
@@ -214,11 +225,17 @@ beforeAll(() => {
   })) as any;
 });
 afterAll(() => {
+  if (originalRandomUUID)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUUID);
+  else delete (globalThis.crypto as Partial<Crypto>).randomUUID;
+});
+afterAll(() => {
   globalThis.ResizeObserver = previousGlobals.ResizeObserver;
   globalThis.MessageChannel = previousGlobals.MessageChannel;
   window.matchMedia = previousGlobals.matchMedia;
 });
 beforeEach(() => {
+  reviewFailures = [];
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
@@ -287,6 +304,9 @@ beforeEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'refreshNativeEvmFeeReview',
+        'discardNativeEvmFeeReview',
       ];
       const method = methods.at(-1)!;
       if (!allowed.includes(method))
@@ -302,6 +322,7 @@ beforeEach(() => {
           gasOutcomes.push({ state: 'resolved', value: value.toString() });
         return value;
       } catch (error) {
+        if (method === 'reviewNativeEvmFee') reviewFailures.push(String(error));
         if (
           method === 'getTxGasLimit' ||
           method === 'getFreshNativeEvmGasLimit'
@@ -326,6 +347,9 @@ afterEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'refreshNativeEvmFeeReview',
+        'discardNativeEvmFeeReview',
       ].includes(path.at(-1))
     )
   ).toBe(true);
@@ -365,26 +389,33 @@ function assertHealthyQuote(mode: Mode, gas: number) {
 describe.each(modes)('ordinary native gas read in %s mode', (mode) => {
   it('healthy installed SDK estimate21000 uses its actual25200 buffered quote', async () => {
     await mount(mode);
+    expect(reviewFailures).toEqual([]);
     expect(provider.estimateGas).toHaveBeenCalledTimes(1);
     assertHealthyQuote(mode, 25200);
   });
 
-  it('healthy SDK successful simple-estimate fallback is not replaced by the UI default', async () => {
+  it('does not replace a failed initial estimate with a simplified fallback', async () => {
     provider.estimateGas
       .mockRejectedValueOnce(new Error('Synthetic ordinary estimate rejection'))
       .mockResolvedValueOnce(BigNumber.from(30000));
     await mount(mode);
-    expect(provider.estimateGas).toHaveBeenCalledTimes(2);
-    assertHealthyQuote(mode, 45000);
+    expect(provider.estimateGas).toHaveBeenCalledTimes(1);
+    expect(confirm()).toBeDisabled();
+    expect(gasOutcomes).toEqual([
+      { state: 'rejected', code: undefined, name: 'Error' },
+    ]);
   });
 
-  it('retains the SDK legitimate resolved generic-error fallback100000', async () => {
+  it('does not convert generic estimate failures into a 100000-gas quote', async () => {
     provider.estimateGas.mockRejectedValue(
       new Error('Synthetic ordinary estimates unavailable')
     );
     await mount(mode);
-    expect(provider.estimateGas).toHaveBeenCalledTimes(2);
-    assertHealthyQuote(mode, 100000);
+    expect(provider.estimateGas).toHaveBeenCalledTimes(1);
+    expect(confirm()).toBeDisabled();
+    expect(gasOutcomes).toEqual([
+      { state: 'rejected', code: undefined, name: 'Error' },
+    ]);
   });
 
   it.each(['integrity', 'abort'])(
@@ -479,7 +510,7 @@ it.each(modes)(
   }
 );
 
-it('consumes fresh-read mode once, so later resolved-recipient changes use the ordinary SDK path', async () => {
+it('keeps initial, retry and changed-recipient estimates on the same strict read path', async () => {
   mockLocation.state.tx.receivingAddress = 'recipient.eth';
   mockEnsNameToAddress = {
     'recipient.eth': '0x2222222222222222222222222222222222222222',
@@ -498,9 +529,11 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
     mockEmitter.mock.calls.filter(
       ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
     )
-  ).toHaveLength(1);
-  expect(mockFreshProviders).toHaveLength(1);
-  expect(mockFreshProviders[0].destroy).toHaveBeenCalledTimes(1);
+  ).toHaveLength(2);
+  expect(mockFreshProviders).toHaveLength(2);
+  expect(
+    mockFreshProviders.every((item) => item.destroy.mock.calls.length === 1)
+  ).toBe(true);
   // The confirmation deliberately retains its original route payload. A new
   // verified ENS cache result is a real recomputation trigger and changes the
   // fee cache key without replacing that protected transaction entry.
@@ -516,10 +549,10 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
     mockEmitter.mock.calls.filter(
       ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
     )
-  ).toHaveLength(1);
+  ).toHaveLength(3);
   expect(
     mockEmitter.mock.calls.filter(([path]) => path.at(-1) === 'getTxGasLimit')
-  ).toHaveLength(2);
+  ).toHaveLength(0);
   expect(mockLocation.state.tx.receivingAddress).toBe('recipient.eth');
   expect(provider.estimateGas).toHaveBeenLastCalledWith(
     expect.objectContaining({
@@ -535,6 +568,9 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
     new RpcResponseIntegrityError('Synthetic stale estimate', false)
   );
   await mount('prefetched');
+  const initialReads = mockEmitter.mock.calls.filter(
+    ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+  ).length;
   provider.estimateGas
     .mockResolvedValueOnce(BigNumber.from(21000))
     .mockResolvedValueOnce(BigNumber.from(30000))
@@ -544,19 +580,165 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
   });
   await advance();
   expect(confirm()).toBeEnabled();
-  const retries = mockEmitter.mock.calls.filter(
-    ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
-  );
+  const retries = mockEmitter.mock.calls
+    .filter(([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit')
+    .slice(initialReads);
   const total = BigNumber.from(10).pow(18).mul(100),
-    rate = BigNumber.from(3000000000),
-    buffer = BigNumber.from(1000000000000);
+    rate = BigNumber.from(3000000000);
   expect(retries.map(([, args]) => args[0].value)).toEqual(
-    [500000, 25200, 36000].map((gas) =>
-      total.sub(rate.mul(gas)).sub(buffer).toHexString()
-    )
+    [500000, 25200, 36000].map((gas) => total.sub(rate.mul(gas)).toHexString())
   );
   for (const [, args] of retries) expect(args[1]).toEqual(mockScope);
-  expect(mockFreshProviders).toHaveLength(3);
+  expect(mockFreshProviders).toHaveLength(initialReads + 3);
   for (const reader of mockFreshProviders)
     expect(reader.destroy).toHaveBeenCalledTimes(1);
 });
+
+it('expires the displayed native fee review and requires explicit Retry before confirming', async () => {
+  await mount('fresh');
+  expect(confirm()).toBeEnabled();
+  const estimates = provider.estimateGas.mock.calls.length;
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(90000);
+  });
+  expect(confirm()).toBeDisabled();
+  expect(provider.estimateGas).toHaveBeenCalledTimes(estimates);
+  const reviews = mockEmitter.mock.calls.filter(
+    ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+  );
+  expect(reviews).toHaveLength(1);
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  });
+  await advance();
+  expect(confirm()).toBeEnabled();
+  expect(provider.estimateGas).toHaveBeenCalledTimes(estimates + 1);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+    )
+  ).toHaveLength(2);
+});
+
+it.each([false, true])(
+  'refreshes an expired custom approval with the same envelope (MAX: %s)',
+  async (isMax) => {
+    if (isMax) {
+      mockLocation.state.tx.isMax = true;
+      mockLocation.state.tx.amount = '100';
+    }
+    await mount('fresh');
+    expect(confirm()).toBeEnabled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'send.editFee' }))
+    );
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByPlaceholderText('send.maxFee (GWEI)'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(dialog.getByPlaceholderText('send.gasLimit'), {
+      target: { value: '27000' },
+    });
+    await act(async () =>
+      fireEvent.click(dialog.getByRole('button', { name: 'buttons.save' }))
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(confirm()).toBeEnabled();
+    const [, approved] = mockEmitter.mock.calls
+      .filter(([path]) => path.at(-1) === 'reviewNativeEvmFee')
+      .at(-1)!;
+    expect(approved[0]).toMatchObject({
+      gasLimit: '27000',
+      maxFeePerGas: '4000000000',
+    });
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(90000);
+    });
+    expect(confirm()).toBeDisabled();
+    const retry = () =>
+      act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }))
+      );
+    let settleEstimate!: (gas: string) => void;
+    const heldEstimate = new Promise<string>((resolve) => {
+      settleEstimate = resolve;
+    });
+    let estimate: string | Promise<string> = heldEstimate;
+    provider.verifyConfiguredChainId = jest.fn().mockResolvedValue(undefined);
+    provider.send.mockImplementation(async (method: string) => {
+      if (method === 'eth_getBlockByNumber') return block();
+      if (method === 'eth_getBalance') return '0x56bc75e2d63100000';
+      if (method === 'eth_getTransactionCount') return '0x2';
+      if (method === 'eth_estimateGas') return estimate;
+      throw new Error(`Unexpected RPC ${method}`);
+    });
+    await retry();
+    expect(confirm()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'send.editFee' })).toBeDisabled();
+    expect(
+      provider.send.mock.calls.filter(([m]) => m === 'eth_estimateGas')
+    ).toHaveLength(1);
+    await act(async () => settleEstimate('0x6979')); // 27001
+    expect(confirm()).toBeDisabled();
+    estimate = '0x6979';
+    if (isMax) {
+      // After an insufficient custom limit, the editor remains available.
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'send.editFee' }))
+      );
+      const editor = within(screen.getByRole('dialog'));
+      expect(editor.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(4);
+      expect(editor.getByPlaceholderText('send.gasLimit')).toHaveValue(27000);
+      fireEvent.change(editor.getByPlaceholderText('send.gasLimit'), {
+        target: { value: '28000' },
+      });
+      // A valid custom fee field can still exceed the MAX spendable balance.
+      fireEvent.change(editor.getByPlaceholderText('send.maxFee (GWEI)'), {
+        target: { value: '4000000' },
+      });
+      await act(async () =>
+        fireEvent.click(editor.getByRole('button', { name: 'buttons.save' }))
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(confirm()).toBeDisabled();
+      const edit = screen.getByRole('button', { name: 'send.editFee' });
+      expect(edit).toBeEnabled();
+      await act(async () => fireEvent.click(edit));
+      const reopened = within(screen.getByRole('dialog'));
+      fireEvent.change(reopened.getByPlaceholderText('send.maxFee (GWEI)'), {
+        target: { value: '4' },
+      });
+      await act(async () =>
+        fireEvent.click(reopened.getByRole('button', { name: 'buttons.save' }))
+      );
+    } else {
+      estimate = '0x6978'; // 27000
+      await retry();
+    }
+    expect(confirm()).toBeEnabled();
+    const refreshes = mockEmitter.mock.calls
+      .filter(([path]) => path.at(-1) === 'refreshNativeEvmFeeReview')
+      .map(([, args]) => args);
+    expect(refreshes[0]).toEqual(approved);
+    expect(refreshes[1]).toEqual(
+      isMax
+        ? [
+            {
+              ...approved[0],
+              gasLimit: '28000',
+              value: (
+                BigInt(approved[0].value) - BigInt('4000000000000')
+              ).toString(),
+            },
+            false,
+            '112000000000000',
+            mockScope,
+          ]
+        : approved
+    );
+    expect(
+      provider.send.mock.calls.filter(([m]) => m === 'eth_estimateGas')
+    ).toHaveLength(2);
+  }
+);

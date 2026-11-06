@@ -44,8 +44,12 @@ test('requote preserves approved cap and zero tip rather than silently adopting 
  const next=fixture({update:(c,r)=>c.method==='eth_maxPriorityFeePerGas'?'0x32':c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x6e'}:r});
  const quote=await next.rpc.requote(approved,signal());assert.deepEqual(quote.transaction,approved);
  const estimate=next.calls.find(c=>c.method==='eth_estimateGas')!;assert.equal(estimate.params[0].maxFeePerGas,'0xfa');assert.equal(estimate.params[0].maxPriorityFeePerGas,'0x0');
- const increasedGas=fixture({update:(c,r)=>c.method==='eth_estimateGas'?'0x11170':r});
- await assert.rejects(increasedGas.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});
+ const estimateAtLimit=`0x${BigInt(approved.gasLimit).toString(16)}`;
+ const atLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAtLimit:r});
+ assert.deepEqual((await atLimit.rpc.requote(approved,signal())).transaction,approved);
+ const estimateAboveLimit=`0x${(BigInt(approved.gasLimit)+1n).toString(16)}`;
+ const aboveLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAboveLimit:r});
+ await assert.rejects(aboveLimit.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});
  const baseExceedsCap=fixture({update:(c,r)=>c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x100'}:r});
  await assert.rejects(baseExceedsCap.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});assert.equal(baseExceedsCap.calls.some(c=>c.method==='eth_estimateGas'),false);
 });
@@ -72,7 +76,7 @@ test('fee and estimation calls respect owner revocation without emitting a quote
 for(const legacy of [false,true])test(`${legacy?'legacy':'type2'} broadcast preserves signed bytes and rejects another chain or unsafe gas`,async()=>{
  const signer=Wallet.fromPhrase('test test test test test test test test test test test junk'),f=fixture({legacy});
  const tx={type:legacy?0:2,chainId:BigInt(network.chainId),to,nonce:0,value:1,gasLimit:72000,...(legacy?{gasPrice:101}:{maxFeePerGas:250,maxPriorityFeePerGas:0})};
- const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),signed.hash);
+ const raw=await signer.signTransaction(tx),signed=Transaction.from(raw);assert.equal(await f.rpc.broadcast(raw,signed.hash!,signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),signed.hash);
  assert.deepEqual(f.calls.find(c=>c.method==='eth_sendRawTransaction')?.params,[raw]);
- for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { mode: 'new-send', beforeBroadcast: () => undefined }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
+ for(const change of [{chainId:1n},{gasLimit:9007199254740992n}]){const bad=await signer.signTransaction({...tx,...change});const before=f.calls.length;await assert.rejects(f.rpc.broadcast(bad,Transaction.from(bad).hash!,signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }),{code:'INVALID_RESPONSE'});assert.equal(f.calls.length,before);}
 });
