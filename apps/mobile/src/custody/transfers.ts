@@ -44,6 +44,7 @@ export type NativeTransferReview = Readonly<{
   maximumFeePerGas: string;
   priorityFeePerGas: string | null;
   nonce: string;
+  nonceOverride?: number;
   retry: boolean;
   intent?: Erc20TransferIntent;
   collectible?: NftTransferIntent;
@@ -125,6 +126,9 @@ export class NativeTransferError extends Error {
     | 'BUSY'
     | 'NOT_READY'
     | 'INVALID_INPUT'
+    | 'INVALID_NONCE'
+    | 'NONCE_UNAVAILABLE'
+    | 'NONCE_RETAINED'
     | 'EXPIRED'
     | 'PENDING_TRANSFER'
     | 'FAILED'
@@ -176,6 +180,15 @@ type PrivateReview = {
 };
 const isCollectibleRecord = (operation: string) =>
   operation === 'erc721' || operation === 'erc1155';
+function parseNonceOverride(input: string | undefined): number | undefined {
+  if (input === undefined) return undefined;
+  if (typeof input !== 'string' || !/^(?:0|[1-9][0-9]{0,15})$/.test(input))
+    throw new NativeTransferError('INVALID_NONCE');
+  const nonce = Number(input);
+  if (!Number.isSafeInteger(nonce)) throw new NativeTransferError('INVALID_NONCE');
+  return nonce;
+}
+
 const initial = (): NativeTransferSnapshot =>
   Object.freeze({
     phase: 'idle',
@@ -192,15 +205,15 @@ export class NativeTransfers {
     subscribe: (listener: (snapshot: NativeTransferSnapshot) => void) =>
       this.subscribe(listener),
     cancel: () => this.cancel(),
-    prepare: (recipient: string, amount: string) =>
-      this.prepare(recipient, amount),
+    prepare: (recipient: string, amount: string, nonce?: string) =>
+      this.prepare(recipient, amount, nonce),
     prepareCancellation: (hash: string) => this.prepareCancellation(hash),
     prepareSavedCancellation: (hash: string) => this.prepareSavedCancellation(hash),
     prepareSpeedUp: (hash: string) => this.prepareSpeedUp(hash),
-    prepareToken: (contract: string, recipient: string, amount: string) =>
-      this.prepareToken(contract, recipient, amount),
-    prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string) =>
-      this.prepareCollectible(saved, recipient, tokenId, amountUnits),
+    prepareToken: (contract: string, recipient: string, amount: string, nonce?: string) =>
+      this.prepareToken(contract, recipient, amount, nonce),
+    prepareCollectible: (saved: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string) =>
+      this.prepareCollectible(saved, recipient, tokenId, amountUnits, nonce),
     confirm: (id: string) => this.confirm(id),
     recover: (offerRetry?: boolean, hash?: string) => this.recover(offerRetry, hash),
     loadMorePredecessors: () => this.loadMorePredecessors(),
@@ -413,6 +426,10 @@ export class NativeTransfers {
         } catch {
           throw new NativeTransferError('CANCELLED');
         }
+        if (error instanceof NativeTransferError && error.code === 'NONCE_RETAINED') {
+          this.publish({ phase: 'idle', review: null });
+          throw error;
+        }
         if (error instanceof EvmSignedRecordNonceConflict) {
           this.publish({
             phase: 'unknown', hash: error.recoveryHash, review: null,
@@ -486,6 +503,16 @@ export class NativeTransfers {
                 : 'The collectible contract did not accept this transfer.' });
           throw new NativeTransferError(error.code);
         }
+        if (error instanceof NativeTransferRpcError && error.code === 'NONCE_UNAVAILABLE') {
+          this.publish({
+            phase: this.snapshot.hash ? 'unknown' : 'idle',
+            review: null,
+            message: this.snapshot.hash
+              ? 'Your signed transaction is saved. This nonce is no longer available.'
+              : null,
+          });
+          throw new NativeTransferError(error.code);
+        }
         if ((error instanceof NativeTransferError && error.code === 'EXPIRED') ||
             (error instanceof NativeTransferRpcError && error.code === 'REVIEW_REQUIRED')) {
           this.publish({
@@ -527,9 +554,14 @@ export class NativeTransfers {
     transaction: PreparedEvmTransaction,
     inputIntent?: Erc20TransferIntent,
     context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks),
-    replacement?: NativeReplacementApproval,
-    collectible?: CollectibleReview
+    { replacement, collectible, nonceOverride }: {
+      replacement?: NativeReplacementApproval;
+      collectible?: CollectibleReview;
+      nonceOverride?: number;
+    } = {}
   ) {
+    if (nonceOverride !== undefined && transaction.nonce !== String(nonceOverride))
+      throw new NativeTransferError('EXPIRED');
     const intent = inputIntent;
     const asset = collectible?.quote.intent;
     assertTransferIntentEnvelope(transaction, asset ?? intent);
@@ -560,6 +592,7 @@ export class NativeTransfers {
       priorityFeePerGas:
         transaction.type === 2 ? transaction.maxPriorityFeePerGas : null,
       nonce: transaction.nonce,
+      ...(nonceOverride === undefined ? {} : { nonceOverride }),
       retry: false,
       ...(intent ? { intent } : {}),
       ...(asset ? { collectible: asset } : {}),
@@ -614,22 +647,33 @@ export class NativeTransfers {
         const quote = await rpc[prepare](hash, original.rawTransaction, address, signal, assertCurrent, original.rates);
         assertCurrent();
         this.showReview(quote.transaction, undefined, context,
-          Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }));
+          { replacement: Object.freeze({ mode, source, original: quote.original, feePlan: quote.feePlan, binding: original.binding }) });
       } else {
         const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, address, signal, assertCurrent, original.rates, original.intent);
         assertCurrent();
-        this.showReview(quote.transaction, original.intent, context, Object.freeze({ mode, original: quote.original, binding: original.binding }));
+        this.showReview(quote.transaction, original.intent, context, { replacement: Object.freeze({ mode, original: quote.original, binding: original.binding }) });
       }
     });
   }
-  prepare(recipient: string, amount: string): Promise<void> {
+  private async checkDraftNonce(journal: NativeTransferJournalHandle, nonce: string, manual: boolean) {
+    try {
+      await journal.assertSpendingNonce(Number(nonce));
+    } catch (error) {
+      if (manual && error instanceof EvmSignedRecordNonceConflict)
+        throw new NativeTransferError('NONCE_RETAINED');
+      throw error;
+    }
+  }
+  prepare(recipient: string, amount: string, nonce?: string): Promise<void> {
     let units: string;
     let to: string;
+    let nonceOverride: number | undefined;
     try {
+      nonceOverride = parseNonceOverride(nonce);
       units = parseDecimalAmount(amount, 18).toString();
       to = normalizePublicAddress(recipient, 'ethereum');
-    } catch {
-      return Promise.reject(new NativeTransferError('INVALID_INPUT'));
+    } catch (error) {
+      return Promise.reject(error instanceof NativeTransferError ? error : new NativeTransferError('INVALID_INPUT'));
     }
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
       this.review = null;
@@ -645,24 +689,27 @@ export class NativeTransfers {
       });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
-      const quote = await rpc.prepare(address, to, units, signal);
+      const quote = await rpc.prepare(address, to, units, signal, nonceOverride);
       assertCurrent();
-      await journal.assertSpendingNonce(Number(quote.transaction.nonce));
+      await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
-      this.showReview(quote.transaction, undefined, context);
+      this.showReview(quote.transaction, undefined, context, { nonceOverride });
     });
   }
   prepareToken(
     contractAddress: string,
     recipient: string,
-    amount: string
+    amount: string,
+    nonce?: string
   ): Promise<void> {
     let contract: string, to: string;
+    let nonceOverride: number | undefined;
     try {
+      nonceOverride = parseNonceOverride(nonce);
       contract = normalizeErc20Address(contractAddress);
       to = normalizeErc20Address(recipient);
-    } catch {
-      return Promise.reject(new NativeTransferError('INVALID_INPUT'));
+    } catch (error) {
+      return Promise.reject(error instanceof NativeTransferError ? error : new NativeTransferError('INVALID_INPUT'));
     }
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
       if (!erc20SigningEnabled(context.networkId, this.source.getCatalogue?.()?.networks)) throw new NativeTransferError('NOT_READY');
@@ -699,17 +746,22 @@ export class NativeTransfers {
       if (intent.token.contractAddress !== contract)
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
-      const quote = await rpc.prepareToken(address, intent, signal);
+      const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride);
       assertCurrent();
-      await journal.assertSpendingNonce(Number(quote.transaction.nonce));
+      await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
-      this.showReview(quote.transaction, intent, context);
+      this.showReview(quote.transaction, intent, context, { nonceOverride });
     });
   }
-  prepareCollectible(candidate: SavedCollectible, recipient: string, tokenId: string, amountUnits: string): Promise<void> {
+  prepareCollectible(candidate: SavedCollectible, recipient: string, tokenId: string, amountUnits: string, nonce?: string): Promise<void> {
     let saved: SavedCollectible;
-    try { saved = snapshotSavedCollectible(candidate); }
-    catch { return Promise.reject(new NativeTransferError('INVALID_INPUT')); }
+    let nonceOverride: number | undefined;
+    try {
+      nonceOverride = parseNonceOverride(nonce);
+      saved = snapshotSavedCollectible(candidate);
+    } catch (error) {
+      return Promise.reject(error instanceof NativeTransferError ? error : new NativeTransferError('INVALID_INPUT'));
+    }
     const request = Object.freeze({ recipient, tokenId, amountUnits });
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
       const network = getNativeNetwork(context.networkId, this.source.getCatalogue?.()?.networks);
@@ -739,11 +791,13 @@ export class NativeTransfers {
       const journal = await runtime.journal(guard);
       guard();
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
-      const quote = await withNftInventorySignal(signal, inventory.signal, (owned) => rpc.prepareNft(selection, request, owned, guard)).catch((error: unknown) => { guard(); throw error; });
+      const quote = await withNftInventorySignal(signal, inventory.signal, (owned) => rpc.prepareNft(selection, request, owned, guard, nonceOverride)).catch((error: unknown) => { guard(); throw error; });
       guard();
-      await journal.assertSpendingNonce(Number(quote.envelope.nonce));
+      await this.checkDraftNonce(journal, quote.envelope.nonce, nonceOverride !== undefined);
       guard();
-      this.showReview(quote.envelope, undefined, context, undefined, Object.freeze({ selection, quote, assertInventoryCurrent, inventorySignal: inventory.signal }));
+      this.showReview(quote.envelope, undefined, context, {
+        nonceOverride, collectible: Object.freeze({ selection, quote, assertInventoryCurrent, inventorySignal: inventory.signal }),
+      });
     });
   }
   confirm(reviewId: string): Promise<void> {
@@ -821,7 +875,7 @@ export class NativeTransfers {
             .catch((error: unknown) => { guard(); throw error; });
           latest = { transaction: freshCollectible.envelope, balanceUnits: freshCollectible.balanceUnits,
             totalUnits: freshCollectible.totalUnits, maximumFeeUnits: freshCollectible.maximumFeeUnits };
-        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent);
+        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride);
         guard();
         if (replacement?.mode !== 'cancel') {
           const refreshed = captureEvmFeeApproval(latest.transaction, context.registrationHash,
@@ -897,6 +951,7 @@ export class NativeTransfers {
               admit: atDispatch,
             } : {
               mode: 'new-send',
+              nonceOverride: approved.public.nonceOverride,
               intent: approved.public.intent,
               admit: atDispatch,
             });

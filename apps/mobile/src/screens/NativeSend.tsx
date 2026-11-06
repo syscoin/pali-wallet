@@ -50,6 +50,11 @@ const failure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'INVALID_NONCE') return 'Enter a valid whole number for the nonce.';
+  if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
+  if (code === 'NONCE_UNAVAILABLE')
+    return hasSavedTransaction ? 'Check the saved transaction in Activity.'
+      : 'The network reports that this nonce is already in use. Choose another or leave it blank.';
   if (code === 'INVALID_INPUT')
     return asset === 'collectible'
       ? `Enter a valid ${context.name} recipient address.`
@@ -114,6 +119,8 @@ export function NativeSend({
   const [recipient, setRecipient] = useState('');
   const [amount, setAmount] = useState(initialAmount);
   const [tokenId, setTokenId] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [nonce, setNonce] = useState('');
   const [error, setError] = useState('');
   const lifetime = useRef({ alive: true, epoch: 0 });
   const latestBack = useRef(onBack);
@@ -250,10 +257,11 @@ export function NativeSend({
     void run(() => controller.confirm(review.id));
   };
   const prepare = () => {
+    const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
     if (!draftCollectible) {
       void run(() => token
-        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount)
-        : controller.prepare(recipient.trim(), amount));
+        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount, nonceOverride)
+        : controller.prepare(recipient.trim(), amount, nonceOverride));
       return;
     }
     let id: string;
@@ -276,13 +284,13 @@ export function NativeSend({
       return;
     }
     Keyboard.dismiss();
-    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity));
+    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity, nonceOverride));
   };
   const input = (
     label: string,
     value: string,
     change: (value: string) => void,
-    options: { keyboardType?: TextInputProps['keyboardType']; max?: number } = {}
+    options: { keyboardType?: TextInputProps['keyboardType']; max?: number; placeholder?: string } = {}
   ) => (
     <View style={s.field}>
       <Text style={s.label}>{label}</Text>
@@ -291,7 +299,7 @@ export function NativeSend({
         value={value}
         onChangeText={(next) => {
           change(next);
-          if (draftCollectible && error) setError('');
+          if (error) setError('');
         }}
         editable={!busy}
         autoCapitalize="none"
@@ -302,6 +310,7 @@ export function NativeSend({
         textContentType="none"
         keyboardType={options.keyboardType ?? 'default'}
         maxLength={options.max ?? 1024}
+        placeholder={options.placeholder}
         placeholderTextColor={colors.muted}
         selectionColor={colors.pink}
         style={s.input}
@@ -402,6 +411,12 @@ export function NativeSend({
                 >
                   {reviewedCollectible?.recipient ?? review.recipient}
                 </Text>
+                {review.nonceOverride !== undefined && <>
+                  <View style={s.separator} />
+                  <Text style={s.label}>MANUAL NONCE</Text>
+                  <Text testID="native-send-reviewed-nonce">{review.nonce}</Text>
+                  <Text style={s.hint}>A transaction queued elsewhere with the same nonce may be replaced.</Text>
+                </>}
                 <View style={s.separator} />
                 <Text style={s.label}>EXECUTION FEE LIMIT</Text>
                 <Text testID="native-send-fee">
@@ -543,6 +558,8 @@ export function NativeSend({
                     setRecipient('');
                     setAmount(initialAmount);
                     setTokenId('');
+                    setAdvanced(false);
+                    setNonce('');
                     setError('');
                     controller.cancel();
                   }}
@@ -574,7 +591,18 @@ export function NativeSend({
                     { keyboardType: 'decimal-pad', max: token ? 334 : 100 })}
                 </>
               )}
-
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+                disabled={busy} expanded={advanced} onPress={() => {
+                  if (advanced) {
+                    setNonce('');
+                    setError('');
+                  }
+                  setAdvanced(!advanced);
+                }} />
+              {advanced && <>
+                {input('Transaction nonce', nonce, setNonce, { keyboardType: 'number-pad', max: 64, placeholder: 'Automatic' })}
+                <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
+              </>}
             </>
           )}
           {busy && (

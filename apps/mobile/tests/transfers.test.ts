@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
@@ -322,6 +323,65 @@ test('invalid ERC20 input makes no RPC or writes with a saved native transfer', 
   } finally {
     f.close();
   }
+});
+
+test('ordinary coin and token sends retain an explicit unused nonce when the pending nonce changes', async () => {
+  for (const asset of ['coin', 'token'] as const) {
+    const f = fixture();
+    try {
+      await (asset === 'coin'
+        ? f.transfers.view.prepare(to, '0.001', '3')
+        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '3'));
+      const approved = f.transfers.getSnapshot().review!;
+      assert.equal(approved.nonce, '3');
+      assert.equal(approved.nonceOverride, 3);
+      assert.equal(f.signatures(), 0);
+      f.nextNonce();
+      await f.transfers.confirm(approved.id);
+      assert.equal(f.broadcasts.length, 1);
+      assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 3);
+      assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 3);
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '3'), { code: 'NONCE_RETAINED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      await f.transfers.view.prepare(to, '0.001', '4');
+      assert.equal(f.transfers.getSnapshot().review?.nonce, '4');
+      assert.equal(f.broadcasts.length, 1);
+    } finally { f.close(); }
+  }
+});
+
+test('manual nonce rejects malformed inputs and accepts zero only while it is available', async () => {
+  const f = fixture();
+  try {
+    for (const input of ['-1', '1.5', '0x0', '1e2', '9007199254740992']) {
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', input), { code: 'INVALID_NONCE' });
+    }
+    assert.equal(f.rpcMethods.length, 0);
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    assert.equal(approved.nonceOverride, 0);
+    f.nextNonce();
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 0);
+    await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.deepEqual(f.records, {});
+  } finally { f.close(); }
+});
+
+test('a manual nonce claimed during durable append retains its exact signed bytes without posting', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    f.holdWrite(async () => f.nextNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved?.nonce, 0);
+    assert.equal(saved?.hash, f.transfers.getSnapshot().hash);
+  } finally { f.close(); }
 });
 
 test('a pending nonce change during durable append preserves the approved bytes without posting', async () => {

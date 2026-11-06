@@ -77,6 +77,7 @@ async function withController(
     reopen(): Promise<NativeTransfers>;
     confirmOnChain(raw: string): void;
     setPendingNonce(nonce: string): void;
+    setExpectedEstimateNonce(nonce: string): void;
     invalidateCancellationObservation(mode: ObservationFault, readNumber: 1 | 2): void;
     holdOriginalObservation(hash: string): Readonly<{
       started: Promise<void>;
@@ -139,6 +140,7 @@ async function withController(
   let hasHolding = true;
   let confirmed: Transaction | undefined;
   let pendingNonce: string | undefined;
+    let expectedEstimateNonce: string | undefined;
   let invalidObservation: Readonly<{ mode: ObservationFault; readNumber: 1 | 2 }> | undefined;
   let omitTransaction = false;
   let confirmationsRead = 0;
@@ -251,7 +253,7 @@ async function withController(
           } else {
             assert.deepEqual(call.params, [{
               from: owner, to: contractAddress, value: '0x0', data: asset.data, type: '0x2',
-              chainId: '0x1', nonce: pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
+              chainId: '0x1', nonce: expectedEstimateNonce ?? pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
             }, 'pending']);
             result = '0x7530';
           }
@@ -347,6 +349,7 @@ async function withController(
         return transfers;
       },
       setPendingNonce(nonce) { pendingNonce = nonce; },
+      setExpectedEstimateNonce(nonce) { expectedEstimateNonce = nonce; },
       confirmOnChain(raw) { confirmed = Transaction.from(raw); confirmationsRead = 0; },
       invalidateCancellationObservation(mode, readNumber) { invalidObservation = { mode, readNumber }; },
       holdOriginalObservation(hash) {
@@ -410,6 +413,21 @@ async function reviewCollectible(transfers: NativeTransfers, asset: Case) {
   assert.equal(Object.hasOwn(review, 'transaction'), false);
   return review.id;
 }
+
+test('collectible review and wire admission preserve an explicit unused nonce', async () => {
+  const asset = collectibleFixture('ERC-721');
+  await withController(asset, 'success', async ({ transfers, posted, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
+    acknowledgeCommit();
+    setExpectedEstimateNonce('0x3');
+    await transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '3');
+    const approved = transfers.getSnapshot().review!;
+    assert.equal(approved.nonce, '3');
+    assert.equal(approved.nonceOverride, 3);
+    setPendingNonce('0x1');
+    await transfers.confirm(approved.id);
+    assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [3]);
+  });
+});
 
 test('a collectible can use a different pending nonce without repeating its wire nonce check', async () => {
   const asset = collectibleFixture('ERC-721');

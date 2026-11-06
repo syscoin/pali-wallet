@@ -7,10 +7,15 @@ import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshAppro
 import { encodeNftTransferData, snapshotNftTransferIntent, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 export class EvmTransferReadError extends Error {
   readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' |
-    'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED';
+    'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE';
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
 export const rejectRead = (code: EvmTransferReadError['code']): never => { throw new EvmTransferReadError(code); };
+// The pending count covers the contiguous executable prefix, including mined transactions.
+export function matchesPendingSendNonce(pending: bigint, nonce: bigint, manual: boolean): boolean {
+  return manual ? nonce >= pending : nonce === pending;
+}
+
 type EvmTransferFields = Readonly<{ from: string; to: string; chainId: string; nonce: string; value: string; gasLimit: string; data: string }>;
 export type EvmUnsignedTransfer = EvmTransferFields & Readonly<{ type: 0; gasPrice: string } | { type: 2; maxFeePerGas: string; maxPriorityFeePerGas: string }>;
 export type EvmSampledBlock = Readonly<{ number: string; hash: string }>;
