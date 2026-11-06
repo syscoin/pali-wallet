@@ -298,15 +298,25 @@ it('the registered signer preserves and advances its count through same-phrase p
   const replacement = await fixture(PHRASE, `${password} new`);
   configureSLHDSASessionStateCrypto(replacement.crypto);
   expect(
-    (await loadEncryptedSLHDSAState({ crypto: replacement.crypto, keyId }))
-      ?.signatureCount
+    (
+      await loadEncryptedSLHDSAState({
+        crypto: replacement.crypto,
+        keyId,
+        assertOwner: () => undefined,
+      })
+    )?.signatureCount
   ).toBe(8);
   expect(mockStorage.get(storageKey)).toEqual(retained);
   expect((await registerRuntimeSLHDSAState(state(0))).signatureCount).toBe(8);
   await signSLHDSAActionHashLocal(signParams);
   expect(
-    (await loadEncryptedSLHDSAState({ crypto: replacement.crypto, keyId }))
-      ?.signatureCount
+    (
+      await loadEncryptedSLHDSAState({
+        crypto: replacement.crypto,
+        keyId,
+        assertOwner: () => undefined,
+      })
+    )?.signatureCount
   ).toBe(9);
 });
 
@@ -376,8 +386,13 @@ it('merges a higher authenticated persisted count before signing and applying th
   await saveEncryptedSLHDSAState(state(11), f.crypto, f.guard);
   await signSLHDSAActionHashLocal(signParams);
   expect(
-    (await loadEncryptedSLHDSAState({ crypto: f.crypto, keyId }))
-      ?.signatureCount
+    (
+      await loadEncryptedSLHDSAState({
+        crypto: f.crypto,
+        keyId,
+        assertOwner: () => undefined,
+      })
+    )?.signatureCount
   ).toBe(12);
   await saveEncryptedSLHDSAState(
     state(SLH_DSA_SIGNATURE_LIMIT),

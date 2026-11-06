@@ -89,7 +89,8 @@ const provision = () =>
     derivationLabel: 'account/0',
     setupSecretHex: `0x${'44'.repeat(32)}`,
   });
-const readState = () => loadEncryptedSLHDSAState({ crypto, keyId });
+const readState = () =>
+  loadEncryptedSLHDSAState({ crypto, keyId, assertOwner: () => undefined });
 const validSignature = `0x${'55'.repeat(3856)}`;
 
 const deferred = <T>() => {
@@ -117,7 +118,11 @@ describe('SLH-DSA local lifetime accounting', () => {
   it.each([7, SLH_DSA_SIGNATURE_LIMIT, SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT])(
     'preserves persisted count %i when rebuilding the same key after restart',
     async (signatureCount) => {
-      await saveEncryptedSLHDSAState(makeState(signatureCount), crypto);
+      await saveEncryptedSLHDSAState(
+        makeState(signatureCount),
+        crypto,
+        () => undefined
+      );
 
       const regenerated = await provision();
 
@@ -131,6 +136,28 @@ describe('SLH-DSA local lifetime accounting', () => {
       }
     }
   );
+
+  it('persists same-session usage when UI consent retires after signing dispatch', async () => {
+    await registerRuntimeSLHDSAState(makeState(7));
+    let consentCurrent = true;
+    const approval = {
+      assertCurrent: () => {
+        if (!consentCurrent) throw new Error('UI consent retired');
+      },
+      checkDocument: async () => undefined,
+    };
+    jest.mocked(signSLHDSAInOffscreen).mockImplementationOnce(async () => {
+      consentCurrent = false;
+      return validSignature;
+    });
+    await signSLHDSAActionHashLocal(
+      signParams,
+      getSLHDSASessionGeneration(),
+      approval
+    );
+    expect(() => approval.assertCurrent()).toThrow('UI consent retired');
+    expect((await readState())?.signatureCount).toBe(8);
+  });
 
   it('retains the runtime high-water count after an earlier signing persistence failure', async () => {
     await registerRuntimeSLHDSAState(makeState(7));
@@ -211,7 +238,7 @@ describe('SLH-DSA local lifetime accounting', () => {
   ])(
     'refuses to overwrite existing state with %s',
     async (_label, signatureCount) => {
-      await saveEncryptedSLHDSAState(makeState(7), crypto);
+      await saveEncryptedSLHDSAState(makeState(7), crypto, () => undefined);
       const envelope = mockStorage.get(storageKey) as Record<string, unknown>;
       const corrupt = {
         ...envelope,
@@ -231,7 +258,7 @@ describe('SLH-DSA local lifetime accounting', () => {
   );
 
   it('fails closed on unreadable encrypted state without replacing it', async () => {
-    await saveEncryptedSLHDSAState(makeState(7), crypto);
+    await saveEncryptedSLHDSAState(makeState(7), crypto, () => undefined);
     const original = mockStorage.get(storageKey);
     configureSLHDSASessionStateCrypto({
       ...crypto,
@@ -252,7 +279,7 @@ describe('SLH-DSA local lifetime accounting', () => {
     { version: 99 },
     { keyId: 'a-different-key' },
   ])('refuses corrupted persisted policy or identity %j', async (overrides) => {
-    await saveEncryptedSLHDSAState(makeState(7), crypto);
+    await saveEncryptedSLHDSAState(makeState(7), crypto, () => undefined);
     const envelope = mockStorage.get(storageKey) as Record<string, unknown>;
     const corrupt = {
       ...envelope,
@@ -268,7 +295,7 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('rejects mismatched key material instead of replacing its usage history', async () => {
-    await saveEncryptedSLHDSAState(makeState(7), crypto);
+    await saveEncryptedSLHDSAState(makeState(7), crypto, () => undefined);
     jest.mocked(chromeStorage.setItem).mockClear();
 
     await expect(
@@ -294,14 +321,14 @@ describe('SLH-DSA local lifetime accounting', () => {
   });
 
   it('rejects an old envelope readback instead of accepting the same key/version', async () => {
-    await saveEncryptedSLHDSAState(makeState(7), crypto);
+    await saveEncryptedSLHDSAState(makeState(7), crypto, () => undefined);
     const oldEnvelope = mockStorage.get(storageKey);
     jest
       .mocked(chromeStorage.getItems)
       .mockResolvedValueOnce({ [storageKey]: oldEnvelope });
 
     await expect(
-      saveEncryptedSLHDSAState(makeState(8), crypto)
+      saveEncryptedSLHDSAState(makeState(8), crypto, () => undefined)
     ).rejects.toThrow('Failed to persist');
   });
 

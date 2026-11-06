@@ -104,6 +104,7 @@ export const registerRuntimeSLHDSAState = (
     const persisted = await loadEncryptedSLHDSAState({
       crypto,
       keyId: state.keyId,
+      assertOwner: assertSession,
     });
     assertSession();
     const merged = mergeSLHDSAUsageHistory(
@@ -253,6 +254,7 @@ const signSLHDSAActionHashLocalUnlocked = async (
   const persisted = await loadEncryptedSLHDSAState({
     crypto,
     keyId: params.keyId,
+    assertOwner: assertSession,
   });
   assertSession();
   if (!persisted) {
