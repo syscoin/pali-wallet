@@ -124,7 +124,7 @@ jobs:
         run: bash ../../.github/scripts/configure-chromium-sandbox.sh
       - run: npm run test:ui
       - run: npm run test:activity-ui
-      - run: npm run test:watch-ui
+      - run: npm run test:watch-ui -- --workers=2
       - run: npm run test:faucet-ui
       - name: Validate native recovery UI
         run: npm run test:recovery-ui
