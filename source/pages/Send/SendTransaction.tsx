@@ -2096,15 +2096,17 @@ export const SendTransaction = () => {
               </div>
             )}
             {nonceRefreshRequired && !nonceRefreshing && (
-              <Button
-                variant="secondary"
-                type="button"
-                onClick={() =>
-                  void refreshAutomaticNonce(closeGenerationRef.current)
-                }
-              >
-                {t('receive.retry')}
-              </Button>
+              <div className="mb-3 flex justify-center">
+                <Button
+                  variant="secondary"
+                  type="button"
+                  onClick={() =>
+                    void refreshAutomaticNonce(closeGenerationRef.current)
+                  }
+                >
+                  {t('receive.retry')}
+                </Button>
+              </div>
             )}
             <div className="flex gap-3 justify-center">
               <Button
