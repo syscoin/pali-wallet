@@ -66,7 +66,9 @@ let saveDelay = 0;
 const identityRegression = new URLSearchParams(window.location.search).get('history-identity');
 const tokenMetadata = new URLSearchParams(window.location.search).get('token-metadata');
 const retainedCollectible = new URLSearchParams(window.location.search).get('retained-collectible');
-const savedPending = new URLSearchParams(window.location.search).has('saved-pending');
+const savedPendingParam = new URLSearchParams(window.location.search).get('saved-pending');
+const savedPending = savedPendingParam !== null;
+const indexedSavedPending = savedPendingParam === 'indexed';
 const pendingLocals: readonly LocalActivityRecord[] = [91, 90].map((nonce) => ({
   walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
   address: owner, networkId: scope.network.id, registrationHash: scope.network.registrationHash,
@@ -110,6 +112,13 @@ class Explorer extends ActivityExplorerReader {
       return decodeActivityPage({ status: '1', message: 'OK', result: [{
         hash: hash(1), from: owner, to: collectibleContract, value: '0', nonce: '0',
         blockNumber: '100', timeStamp: '1700000000', confirmations: '1', input: '0x', isError: '0',
+      }] }, feed, owner, 1);
+    }
+    if (indexedSavedPending) {
+      if (feed !== 'txlist' || page !== 1) return [];
+      return decodeActivityPage({ status: '1', message: 'OK', result: [{
+        hash: hash(90), from: owner, to: recipient, value: '1', nonce: '90',
+        blockNumber: '99', timeStamp: '1700000000', confirmations: '1', input: '0x', isError: '0',
       }] }, feed, owner, 1);
     }
     if (identityRegression) {
@@ -236,7 +245,10 @@ const runtime: NativeActivityRuntime = {
     if (beforeHash !== pendingLocals[0]!.hash) throw new Error('Unexpected cursor');
     return { records: pendingLocals.slice(1), nextCursor: null };
   } : undefined,
-  observeLocal: freshStatus?.observeLocal,
+  observeLocal: freshStatus?.observeLocal ?? (savedPending ? async (local, guard) => {
+    guard();
+    return { status: 'missing', latestNonce: String(local.nonce + (indexedSavedPending ? 1 : 0)) };
+  } : undefined),
   async saveCache() {},
   async saveView(_scope, view, guard) {
     saveRequests++;

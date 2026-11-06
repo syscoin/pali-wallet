@@ -386,7 +386,7 @@ export function NativeSend({
               {review.replay?.missingNonce !== undefined && <Card style={s.summary}>
                 <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
                 <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
-                {!review.replay.predecessorCount && <Text style={s.hint}>The earlier transaction is not saved on this device.</Text>}
+                {!review.replay.predecessorCount && <Text style={s.hint}>No earlier transaction is available to retry on this device.</Text>}
                 {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
                   title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
                   onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}

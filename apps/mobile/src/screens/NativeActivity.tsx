@@ -76,14 +76,17 @@ const status = (row: ActivityRow) => {
     : 'Indexed · not verified';
 };
 function savedPendingStatus(row: ActivityRow) {
-  const observed = status(row);
-  if (observed !== 'Submission unconfirmed') return observed;
-  if (row.retainedObservation?.status === 'missing' && row.local &&
-      BigInt(row.retainedObservation.latestNonce) > BigInt(row.local.nonce))
+  const retained = row.retainedObservation;
+  if (currentObservation(row) || !row.local) return status(row);
+  if (retained?.status === 'mined')
+    return retained.outcome === 'confirmed' ? 'Confirmed' : 'Reverted';
+  if (retained?.status === 'missing' && BigInt(retained.latestNonce) > BigInt(row.local.nonce))
     return 'Nonce consumed · outcome unavailable';
-  if (row.local?.phase === 'signed') return 'Signed · submission not confirmed';
-  if (row.local?.phase === 'submitted') return 'Submitted · waiting for confirmation';
-  return observed;
+  if (row.checking) return 'Checking transaction…';
+  if (row.unavailable) return 'Current status unavailable';
+  if (row.local.phase === 'signed') return 'Signed · submission not confirmed';
+  if (row.local.phase === 'submitted') return 'Submitted · waiting for confirmation';
+  return 'Submission unconfirmed';
 }
 function direction(
   row: ActivityRow,
@@ -280,8 +283,11 @@ function NativeActivityContent({
     ['signed', 'attempted', 'submitted'].includes(chosen.local.phase) &&
     chosen.retainedObservation?.status === 'missing' &&
     chosen.retainedObservation.latestNonce === String(chosen.local.nonce);
+  const retained = chosen?.retainedObservation;
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
+    : savedPending && retained
+    ? retained.status === 'mined' ? retained.block.number : undefined
     : chosen?.indexed?.blockNumber || chosen?.observation?.block?.number;
   const hiddenCount = snapshot.rows.filter((row) => zeroOnly(row)).length;
   const savePosition = async (): Promise<void> => {

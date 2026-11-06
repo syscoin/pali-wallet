@@ -5,7 +5,7 @@ import { ActivityExplorerReader, type ActivityFeed, type DiscoveredActivityCandi
 import { ActivityReceiptReader, type ActivityTransactionObservation } from '../src/activity/receiptReader.ts';
 import { createActivityScope, DEFAULT_ACTIVITY_VIEW, type ActivityCandidate, type EvmActivityReadScope as ActivityScope, type ActivityViewState, type LocalActivityRecord, type TerminalActivityRecord } from '../src/activity/types.ts';
 import { mapEvmExplorerTransaction, mapEvmExplorerTokenTransfer, getEvmHistoryDirection } from '../../../source/shared/evmHistory.ts';
-import type { EvmTransactionObservation } from '../../../source/shared/evmTransactionObservation.ts';
+import { observeEvmTransaction, type EvmTransactionObservation } from '../../../source/shared/evmTransactionObservation.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
 const OWNER = '0x1111111111111111111111111111111111111111';
@@ -116,7 +116,7 @@ test('saved pending pages reach older hashes without polling them, and Back reti
 
   f.controller.inspect(older.hash);
   await until(() => !!f.controller.getSnapshot().savedPending?.rows.find((row) => row.hash === older.hash)?.retainedObservation);
-  assert.deepEqual(f.receipts.calls.map((call) => call.hash), [older.hash]);
+  assert.deepEqual(f.receipts.calls, []);
   assert.deepEqual(f.localReads.map((row) => row.hash), [older.hash]);
 
   f.controller.closeSavedPending();
@@ -126,6 +126,62 @@ test('saved pending pages reach older hashes without polling them, and Back reti
   held.resolve({ records: [older], nextCursor: null });
   await late;
   assert.equal(f.controller.getSnapshot().savedPending, undefined);
+});
+
+test('older saved detail uses one owned observation even when explorer history still says confirmed', async () => {
+  const older = fixture().local(1, 'submitted');
+  const methods: string[] = [];
+  const f = fixture({
+    explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []),
+    receipts: new FakeReceipts(() => null),
+    async loadSavedPending() { return { records: [older], nextCursor: null }; },
+    observeLocal: (local) => observeEvmTransaction({
+      chainId: local.chainId, hash: local.hash, from: local.address, to: local.recipient, nonce: String(local.nonce),
+    }, async (method, params) => {
+      methods.push(method);
+      if (method === 'eth_chainId') return '0x1';
+      if (method === 'eth_getTransactionReceipt') {
+        assert.deepEqual(params, [older.hash]);
+        return null;
+      }
+      assert.equal(method, 'eth_getTransactionCount');
+      assert.deepEqual(params, [OWNER, 'latest']);
+      return '0x2';
+    }, () => undefined),
+  });
+  await f.controller.refresh();
+  await f.controller.loadSavedPending();
+  assert.equal(f.controller.getSnapshot().rows[0]?.indexedStatus, 'confirmed');
+  assert.equal(f.controller.getSnapshot().savedPending?.rows[0]?.indexed, undefined);
+  assert.deepEqual(methods, []);
+  f.controller.inspect(older.hash);
+  await until(() => f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation?.status === 'missing');
+  assert.deepEqual(f.receipts.calls, []);
+  assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_chainId']);
+  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
+});
+
+test('an old saved-detail read cannot overwrite a new page for the same hash', async () => {
+  const older = fixture().local(1, 'submitted');
+  const old = deferred<EvmTransactionObservation>();
+  let reads = 0;
+  const f = fixture({
+    receipts: new FakeReceipts(() => null),
+    async loadSavedPending() { return { records: [older], nextCursor: null }; },
+    observeLocal: async () => ++reads === 1 ? old.promise : { status: 'missing', latestNonce: '2' },
+  });
+  await f.controller.refresh();
+  await f.controller.loadSavedPending();
+  f.controller.inspect(older.hash);
+  await until(() => reads === 1);
+  f.controller.closeSavedPending();
+  await f.controller.loadSavedPending();
+  f.controller.inspect(older.hash);
+  await until(() => reads === 2);
+  old.resolve({ status: 'mined', outcome: 'confirmed', block: { number: '2', hash: hash(2) } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.deepEqual(f.controller.getSnapshot().savedPending?.rows[0]?.retainedObservation, { status: 'missing', latestNonce: '2' });
+  assert.deepEqual(f.receipts.calls, []);
 });
 
 test('local journal/archive, cached candidates and duplicate ERC20 discovery merge by transaction hash', async () => {

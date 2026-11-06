@@ -58,7 +58,7 @@ test('a nonce gap stays visible when no previous transaction was saved', async (
   await page.waitForFunction(() => !!window.__erc20SendFixture);
   const { second } = await page.evaluate(() => window.__erc20SendFixture.seedPredecessor(0));
   await expect(page.getByText('PREVIOUS TRANSACTION · NONCE 0')).toBeVisible();
-  await expect(page.getByText('The earlier transaction is not saved on this device.')).toBeVisible();
+  await expect(page.getByText('No earlier transaction is available to retry on this device.')).toBeVisible();
   await expect(page.getByText(second, { exact: true })).toBeVisible();
   expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
 });
