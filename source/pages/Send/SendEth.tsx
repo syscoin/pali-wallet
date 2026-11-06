@@ -17,6 +17,7 @@ import {
   parseErc20Decimals,
   parseErc20Units,
 } from '../../shared/erc20';
+import { findLocalEvmRecipientChoices } from '../../shared/evmRecipientChoices';
 import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost';
 import { TransactionType } from '../../types/transactions';
 import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
@@ -589,22 +590,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       const q = String(query || '').toLowerCase();
 
       // Local accounts (EVM)
-      try {
-        localRecipientAccounts.forEach((acct) => {
-          const addressLower = String(acct?.address || '').toLowerCase();
-          const labelLower = String(acct?.label || '').toLowerCase();
-          if (!addressLower) return;
-          // Only show EVM-style addresses here
-          if (!addressLower.startsWith('0x')) return;
-          if (!q || addressLower.includes(q) || labelLower.includes(q)) {
-            results.push({
-              label: acct?.label || acct?.address,
-              address: acct.address,
-              type: 'account',
-            });
-          }
-        });
-      } catch {}
+      for (const account of findLocalEvmRecipientChoices(
+        localRecipientAccounts,
+        q
+      ))
+        results.push({ ...account, type: 'account' });
 
       // Only recipients from canonical outbound transactions are trusted as
       // recent. Incoming dust and explorer token-event placeholders are never

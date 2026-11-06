@@ -22,7 +22,7 @@ import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
 import { NativePortfolio } from './NativePortfolio';
-import { NativeSend } from './NativeSend';
+import { NativeSend, type NativeRecipientPicker } from './NativeSend';
 import { NativeUtxoSendScreen } from './NativeUtxoSend';
 import { NativeSecurity } from './NativeSecurity';
 import { NativeWalletRemovalScreen, type RemovalScreenOutcome } from './NativeWalletRemoval';
@@ -125,7 +125,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
-  const [sendDraft, setSendDraft] = useState<Readonly<{ context: string; target: SendTarget }> | null>(null);
+  const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker }> | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -183,14 +183,32 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
   const openStage = (next: Stage, sendTarget?: SendTarget) => {
-    const current = readyContext();
+    const local = controllers.current;
+    const owner = local?.authority.getSnapshot();
+    const capturedCatalogue = local?.authority.getCatalogue();
+    const current = custodyContext(owner, capturedCatalogue);
     if (stage !== 'choose' || AppState.currentState !== 'active' || !current) return;
+    const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
     if (next === 'send') {
       if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
         !canSign && !(canSendUtxo && sendTarget.kind === 'native'))) return;
-      setSendDraft({ context: current.context, target: sendTarget });
+      const sender = owner?.account?.address.toLowerCase();
+      const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
+        capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
+        ? {
+          current: () => {
+            if (AppState.currentState !== 'active' || controllers.current !== local ||
+                rootOrigin.current !== origin || epoch.current !== origin.epoch) return false;
+            const latest = local.authority.getCatalogue();
+            return latest?.revision === capturedCatalogue.revision &&
+              custodyContext(local.authority.getSnapshot(), latest)?.context === origin.context;
+          },
+          accounts: () => capturedCatalogue.accounts.flatMap(({ address, label }) =>
+            address.toLowerCase() === sender ? [] : [{ address, label }]),
+        } : undefined;
+      setSendDraft({ origin, target: sendTarget, recipientPicker });
     }
-    rootOrigin.current = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
+    rootOrigin.current = origin;
     setStage(next);
   };
   const closeStage = () => {
@@ -202,7 +220,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       shell.restoreRoot(origin.tab, origin.identity);
   };
   const sendTarget = stage === 'send' && sendDraft &&
-    sendDraft.context === custodyContext(snapshot, catalogue)?.context
+    sendDraft.origin.context === custodyContext(snapshot, catalogue)?.context
     ? sendDraft.target : undefined;
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
@@ -625,6 +643,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   </>;
   else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
+    recipientPicker={sendDraft?.recipientPicker}
     token={sendTarget.kind === 'token' ? sendTarget.token : undefined}
     collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined}
     savedHash={sendTarget.kind === 'saved' ? sendTarget.hash : undefined}

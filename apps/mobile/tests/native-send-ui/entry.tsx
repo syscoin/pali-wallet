@@ -23,7 +23,7 @@ import type {
   NativeAccountRequest,
 } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
-import { NativeSend } from '../../src/screens/NativeSend';
+import { NativeSend, type NativeRecipientPicker } from '../../src/screens/NativeSend';
 import { parseDecimalAmount } from '../../src/core/amounts';
 import type {
   NativeTransferSnapshot,
@@ -173,6 +173,18 @@ function publishReview(to: string, amountUnits: string, replacement?: NonNullabl
   expiry = setTimeout(() => publish(idle()), 90000);
 }
 
+function createRecipientPicker(name: string): NativeRecipientPicker {
+  const picker: NativeRecipientPicker = {
+    current: () => localRecipientPicker === picker,
+    accounts: () => [
+      { label: name, address: recipient },
+      { label: name, address: '0x' + '4'.repeat(40) },
+    ],
+  };
+  return picker;
+}
+let localRecipientPicker = route.has('local-recipient') ? createRecipientPicker('Savings account') : undefined;
+
 declare global {
   interface Window {
     __nativeSendFixture: {
@@ -181,6 +193,8 @@ declare global {
       reviewId(): string | null;
       confirmations(): readonly { id: string }[];
       changeContext(): void;
+      replaceRecipientScope(name: string): void;
+      retireRecipientScope(): void;
       settle(status: 'confirmed' | 'reverted' | 'nonce-consumed'): void;
     };
   }
@@ -199,6 +213,11 @@ window.__nativeSendFixture = {
     sendContext = getNativeSendContext('ethereum');
     publish({ ...snapshot, context: sendContext });
   },
+  replaceRecipientScope(name) {
+    localRecipientPicker = createRecipientPicker(name);
+    publish(idle());
+  },
+  retireRecipientScope() { localRecipientPicker = undefined; },
   settle: (phase) => publish({ ...snapshot, phase }),
 };
 
@@ -318,6 +337,11 @@ function Fixture() {
     () => accountFailure,
     () => accountFailure
   );
+  const recipientPicker = useSyncExternalStore(
+    controller.subscribe,
+    () => localRecipientPicker,
+    () => localRecipientPicker
+  );
   return (
     <SafeAreaProvider>
       {new URLSearchParams(window.location.search).has('faucet') ? (
@@ -351,6 +375,7 @@ function Fixture() {
           controller={controller}
           context={sendContext}
           replacement={replacement}
+          recipientPicker={recipientPicker}
           collectible={collectible}
           onBack={() => undefined}
         />

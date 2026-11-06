@@ -1,6 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 
-test.use({ baseURL: 'http://127.0.0.1:4179' });
+test.use({
+  baseURL: process.env.PALI_NATIVE_SEND_UI_URL ?? 'http://127.0.0.1:4179',
+});
 const recipient = '0x1111111111111111111111111111111111111111';
 const passwordInput = (page: Page) =>
   page.getByLabel('Confirm your wallet password', { exact: true });
@@ -12,6 +14,132 @@ async function prepare(page: Page) {
   await expect(page.getByTestId('native-send-confirm')).toBeVisible();
   await expect(passwordInput(page)).toHaveCount(0);
 }
+
+test('local recipient picker keeps duplicate labels distinguishable at 320px and prepares only on Review', async ({ page }, info) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/?local-recipient');
+  await page.getByRole('button', { name: 'Choose account' }).click();
+  const search = page.getByRole('textbox', { name: 'Find account' });
+  await search.fill('savings');
+  await expect(search).toBeFocused();
+  await page.evaluate(() => {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>('div, span, input'))) {
+      if (element.childElementCount || !element.textContent?.trim() && element.tagName !== 'INPUT') continue;
+      const { fontSize, lineHeight } = getComputedStyle(element);
+      element.style.fontSize = `${parseFloat(fontSize) * 1.6}px`;
+      if (Number.isFinite(parseFloat(lineHeight)))
+        element.style.lineHeight = `${parseFloat(lineHeight) * 1.6}px`;
+    }
+  });
+  const choice = page.getByRole('button', { name: `Savings account, ${recipient}` });
+  const secondRecipient = '0x' + '4'.repeat(40);
+  const secondChoice = page.getByRole('button', { name: `Savings account, ${secondRecipient}` });
+  await expect(choice).toBeVisible();
+  await expect(secondChoice).toBeVisible();
+  expect((await choice.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(320);
+  await page.screenshot({ path: info.outputPath('local-recipient-320.png') });
+  await secondChoice.scrollIntoViewIfNeeded();
+  await expect(secondChoice).toBeInViewport({ ratio: 0.9 });
+  await page.screenshot({ path: info.outputPath('local-recipient-second-320.png') });
+  await secondChoice.click();
+  await expect(page.getByRole('textbox', { name: 'Ethereum address' })).toHaveValue(secondRecipient);
+  await expect(search).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).toBeNull();
+  await page.getByRole('textbox', { name: 'Amount in ETH' }).fill('0.001');
+  await page.getByTestId('native-send-review').click();
+  await expect(page.getByTestId('native-send-recipient')).toHaveText(secondRecipient);
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+});
+
+test('a retired picker cannot choose or prepare on a new account scope', async ({ page }) => {
+  await page.goto('/?local-recipient');
+  const open = page.getByRole('button', { name: 'Choose account' });
+  const address = page.getByRole('textbox', { name: 'Ethereum address' });
+  await open.click();
+  await page.getByRole('button', { name: `Savings account, ${recipient}` }).click();
+  await expect(address).toHaveValue(recipient);
+
+  await page.evaluate(() => window.__nativeSendFixture.replaceRecipientScope('Second wallet'));
+  await expect(address).toHaveValue('');
+  await open.click();
+  const stale = page.getByRole('button', { name: `Second wallet, ${recipient}` });
+  await stale.evaluate((element) => {
+    window.__nativeSendFixture.retireRecipientScope();
+    (element as HTMLElement).click();
+  });
+  await expect(address).toHaveValue('');
+  await page.evaluate(() => window.__nativeSendFixture.replaceRecipientScope('Savings account'));
+  await expect(page.getByRole('textbox', { name: 'Find account' })).toHaveCount(0);
+  await expect(address).toHaveValue('');
+  expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).toBeNull();
+});
+
+test('queued recipient callbacks cannot change a closed or newly opened picker', async ({ page }) => {
+  await page.goto('/?local-recipient');
+  const open = page.getByRole('button', { name: 'Choose account' });
+  const hide = page.getByRole('button', { name: 'Hide accounts' });
+  const search = page.getByRole('textbox', { name: 'Find account' });
+  const address = page.getByRole('textbox', { name: 'Ethereum address' });
+
+  await open.click();
+  // Keep the original rendered callbacks to emulate a delayed native event.
+  // Dispatching an event on a detached web node would never call them.
+  const callbacks = await page.evaluateHandle((recipientAddress) => {
+    const callback = (label: string, name: string) => {
+      type Fiber = { memoizedProps?: Record<string, unknown>; return?: Fiber };
+      const element = document.querySelector(`[aria-label="${label}"]`);
+      if (!element) throw Error('Picker control was not rendered');
+      const key = Object.keys(element).find((key) => key.startsWith('__reactFiber$'));
+      if (!key) throw Error('Picker control has no React fiber');
+      let fiber = (element as unknown as Record<string, Fiber>)[key];
+      let handler: ((value?: unknown) => void) | undefined;
+      for (; fiber; fiber = fiber.return) {
+        const props = fiber.memoizedProps;
+        if (props?.accessibilityLabel === label && typeof props[name] === 'function')
+          handler = props[name] as typeof handler;
+      }
+      if (!handler) throw Error('Picker callback was not found');
+      return handler;
+    };
+    return {
+      search: callback('Find account', 'onChangeText'),
+      row: callback(`Savings account, ${recipientAddress}`, 'onPress'),
+    };
+  }, recipient);
+
+  const flush = () => page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await hide.click();
+  await callbacks.evaluate(({ search }) => search('retired query'));
+  await flush();
+  await expect.soft(search).toHaveCount(0, { timeout: 500 });
+  if (await hide.isVisible()) await hide.click();
+
+  await open.click();
+  await callbacks.evaluate(({ row }) => row({ nativeEvent: {} }));
+  await flush();
+  await expect.soft(address).toHaveValue('', { timeout: 500 });
+  await expect(search).toHaveValue('', { timeout: 500 });
+  await callbacks.dispose();
+});
+
+test('an unavailable local picker blocks its selected address but leaves manual review usable', async ({ page }) => {
+  await page.goto('/?local-recipient');
+  await page.getByRole('button', { name: 'Choose account' }).click();
+  await page.getByRole('button', { name: `Savings account, ${recipient}` }).click();
+  await page.getByRole('textbox', { name: 'Amount in ETH' }).fill('0.001');
+  await page.evaluate(() => window.__nativeSendFixture.retireRecipientScope());
+  await page.getByTestId('native-send-review').click();
+  expect(await page.evaluate(() => window.__nativeSendFixture.reviewId())).toBeNull();
+
+  const manual = '0x' + '5'.repeat(40);
+  await page.getByRole('textbox', { name: 'Ethereum address' }).fill(manual);
+  await page.getByTestId('native-send-review').click();
+  await expect(page.getByTestId('native-send-recipient')).toHaveText(manual);
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+});
 
 test('cancellation shows the original and maximum fee before one explicit approval at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
