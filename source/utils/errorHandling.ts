@@ -177,6 +177,13 @@ export const handleTransactionError = (
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
   if (
+    error?.code === 'EVM_SIGNED_RECORD_NONCE_CONFLICT' &&
+    error?.transactionNotBroadcast === true
+  ) {
+    alert.error(t('send.savedNonceConflict'));
+    return true;
+  }
+  if (
     error?.code === 'UTXO_NETWORK_CATCHING_UP' ||
     error?.message ===
       'The network is still updating your previous transaction. Please try again shortly.'

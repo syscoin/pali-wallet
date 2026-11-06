@@ -76,6 +76,7 @@ async function withController(
     retainedBytes(hash: string): Promise<string | undefined>;
     reopen(): Promise<NativeTransfers>;
     confirmOnChain(raw: string): void;
+    setPendingNonce(nonce: string): void;
     invalidateCancellationObservation(mode: ObservationFault, readNumber: 1 | 2): void;
     holdOriginalObservation(hash: string): Readonly<{
       started: Promise<void>;
@@ -137,6 +138,7 @@ async function withController(
   let clockOffset = 0;
   let hasHolding = true;
   let confirmed: Transaction | undefined;
+  let pendingNonce: string | undefined;
   let invalidObservation: Readonly<{ mode: ObservationFault; readNumber: 1 | 2 }> | undefined;
   let omitTransaction = false;
   let confirmationsRead = 0;
@@ -225,7 +227,8 @@ async function withController(
         }
         case 'eth_getTransactionCount':
           assert.equal(call.params[0], owner);
-          result = confirmed ? '0x' + (confirmed.nonce + 1).toString(16) : '0x0';
+          const minedNonce = confirmed ? '0x' + (confirmed.nonce + 1).toString(16) : '0x0';
+          result = call.params[1] === 'pending' ? pendingNonce ?? minedNonce : minedNonce;
           break;
         case 'eth_getBalance':
           assert.equal(call.params[0], owner);
@@ -248,7 +251,7 @@ async function withController(
           } else {
             assert.deepEqual(call.params, [{
               from: owner, to: contractAddress, value: '0x0', data: asset.data, type: '0x2',
-              chainId: '0x1', nonce: '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
+              chainId: '0x1', nonce: pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
             }, 'pending']);
             result = '0x7530';
           }
@@ -343,6 +346,7 @@ async function withController(
         await authority.unlock(password);
         return transfers;
       },
+      setPendingNonce(nonce) { pendingNonce = nonce; },
       confirmOnChain(raw) { confirmed = Transaction.from(raw); confirmationsRead = 0; },
       invalidateCancellationObservation(mode, readNumber) { invalidObservation = { mode, readNumber }; },
       holdOriginalObservation(hash) {
@@ -406,6 +410,31 @@ async function reviewCollectible(transfers: NativeTransfers, asset: Case) {
   assert.equal(Object.hasOwn(review, 'transaction'), false);
   return review.id;
 }
+
+test('a collectible can use a different pending nonce without repeating its wire nonce check', async () => {
+  const asset = collectibleFixture('ERC-721');
+  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, acknowledgeCommit }) => {
+    acknowledgeCommit();
+    await transfers.prepare(recipient, '0.000000000000000001');
+    await transfers.confirm(transfers.getSnapshot().review!.id);
+    assert.equal(posted.length, 1);
+    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), {
+      code: 'PENDING_TRANSFER',
+    });
+    assert.equal(transfers.getSnapshot().hash, Transaction.from(posted[0]!).hash);
+    setPendingNonce('0x1');
+    await transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units);
+    const approved = transfers.getSnapshot().review!;
+    assert.equal(approved.nonce, '1');
+    const firstConfirmCall = calls.length;
+    await transfers.confirm(approved.id);
+    assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0, 1]);
+    assert.equal((await retained()).length, 2);
+    assert.equal(calls.slice(firstConfirmCall).filter(({ method, params }) =>
+      method === 'eth_getTransactionCount' && params[1] === 'pending').length, 2,
+    'confirmation reads pending once to refresh the review and once at wire admission');
+  });
+});
 
 for (const tokenStandard of ['ERC-721', 'ERC-1155'] as const) {
   test(`controller signs and posts the exact reviewed ${tokenStandard} only after durable acknowledgement`, async () => {

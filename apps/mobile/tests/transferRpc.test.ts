@@ -275,8 +275,8 @@ test('requires broadcast admission after preflight and never posts if admission 
     }),
     /late review/
   );
-  assert.deepEqual(methodsAtAdmission, ['eth_chainId']);
-  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
+  assert.deepEqual(methodsAtAdmission, ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
   const revoked = {
     mode: 'new-send' as const,
     admit: async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('review revoked'); },
@@ -284,7 +284,53 @@ test('requires broadcast admission after preflight and never posts if admission 
   const pending = f.rpc.broadcast(raw, hash, signal(), revoked);
   Object.assign(revoked, { mode: 'replay' });
   await assert.rejects(pending);
-  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_chainId']);
+  assert.deepEqual(f.calls.map((call) => call.method), [
+    'eth_chainId', 'eth_getTransactionCount', 'eth_chainId',
+    'eth_chainId', 'eth_getTransactionCount', 'eth_chainId',
+  ]);
+});
+
+test('an endpoint chain change during the wire pending-nonce read prevents a new POST', async () => {
+  const raw = await sender.signTransaction({
+    type: 2, chainId: 1, nonce: 0, to: recipient, value: 1,
+    gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
+  });
+  const hash = keccak256(raw);
+  const nonceEntered = Promise.withResolvers<void>();
+  const nonceResponse = Promise.withResolvers<string>();
+  let chain = '0x1';
+  const f = fixture({
+    eth_getTransactionCount: ({ params }: { params: string[] }) => {
+      assert.deepEqual(params, [sender.address, 'pending']);
+      nonceEntered.resolve();
+      return nonceResponse.promise;
+    },
+    eth_chainId: () => chain,
+    eth_sendRawTransaction: hash,
+  });
+  const pending = f.rpc.broadcast(raw, hash, signal(), {
+    mode: 'new-send',
+    async admit(send, preflight) {
+      await preflight!();
+      return send();
+    },
+  });
+  const rejected = assert.rejects(pending, { code: 'INVALID_RESPONSE' });
+  await nonceEntered.promise;
+  chain = '0x2';
+  nonceResponse.resolve('0x0');
+  await rejected;
+  assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId']);
+
+  const mismatched = fixture({ eth_chainId: '0x2' });
+  await assert.rejects(mismatched.rpc.broadcast(raw, hash, signal(), {
+    mode: 'new-send',
+    async admit(send, preflight) {
+      await preflight!();
+      return send();
+    },
+  }), { code: 'INVALID_RESPONSE' });
+  assert.deepEqual(mismatched.calls.map(({ method }) => method), ['eth_chainId']);
 });
 
 test('retained cancellation reads the latest nonce before latest and pending code inside admission', async () => {

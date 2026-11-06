@@ -1,4 +1,5 @@
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
+import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import { isExternalWalletUrl } from 'utils/extensionContexts';
@@ -125,6 +126,11 @@ export const controllerErrorResponse = (error: any) => {
     error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
   )
     submission.code = error.code;
+  if (
+    error?.code === EVM_SIGNED_RECORD_NONCE_CONFLICT &&
+    error?.transactionNotBroadcast === true
+  )
+    submission.code = EVM_SIGNED_RECORD_NONCE_CONFLICT;
   if (
     (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
       error.transactionNotBroadcast === true) ||

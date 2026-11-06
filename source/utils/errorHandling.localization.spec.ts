@@ -33,6 +33,24 @@ describe.each(Object.keys(resources))(
         interpolation: { escapeValue: true },
       })
     );
+    it('routes a definite saved-nonce conflict to localized Activity guidance', () => {
+      const alert = { error: jest.fn() };
+      expect(
+        handleTransactionError(
+          {
+            code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+            transactionNotBroadcast: true,
+          },
+          alert,
+          i18n.t
+        )
+      ).toBe(true);
+      expect(alert.error).toHaveBeenCalledWith(
+        i18n.t('send.savedNonceConflict')
+      );
+      expect(i18n.exists('send.savedNonceConflict')).toBe(true);
+    });
+
     it('presents typed hardware cancellation as a localized neutral notice', () => {
       const alert = { error: jest.fn(), info: jest.fn() };
       expect(

@@ -242,7 +242,7 @@ export function NativeSend({
       });
       return;
     }
-    void controller.recover(!!savedHash, savedHash).catch(() => undefined);
+    if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
   }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
     if (!review || busy) return;

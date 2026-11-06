@@ -1,7 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
-import { EvmSignedRecordCancellationFence, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -174,10 +174,6 @@ type PrivateReview = {
   replacement?: NativeReplacementApproval;
   collectible?: CollectibleReview;
 };
-const isTerminal = (
-  phase: string
-): phase is 'confirmed' | 'reverted' | 'nonce-consumed' =>
-  ['confirmed', 'reverted', 'nonce-consumed'].includes(phase);
 const isCollectibleRecord = (operation: string) =>
   operation === 'erc721' || operation === 'erc1155';
 const initial = (): NativeTransferSnapshot =>
@@ -417,6 +413,15 @@ export class NativeTransfers {
         } catch {
           throw new NativeTransferError('CANCELLED');
         }
+        if (error instanceof EvmSignedRecordNonceConflict) {
+          this.publish({
+            phase: 'unknown', hash: error.recoveryHash, review: null,
+            intent: null, collectible: undefined,
+            inspectionOnly: isCollectibleRecord(error.operation),
+            message: 'Check the saved transaction before sending this payment.',
+          });
+          throw new NativeTransferError('PENDING_TRANSFER');
+        }
         if (error instanceof EvmSignedRecordCancellationFence) {
           const hash = error.recoveryHash;
           this.publish({
@@ -640,23 +645,9 @@ export class NativeTransfers {
       });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
-      const old = await journal.load();
-      assertCurrent();
-      if (old && !isTerminal(old.phase)) {
-        this.publish({
-          phase: 'unknown',
-          review: null,
-          hash: old.hash,
-          intent: old.intent ?? null,
-          collectible: old.collectible,
-          inspectionOnly: old.inspectionOnly,
-          message: 'Check your pending transfer before starting another.',
-        });
-        throw new NativeTransferError('PENDING_TRANSFER');
-      }
       const quote = await rpc.prepare(address, to, units, signal);
       assertCurrent();
-      if (old) await journal.assertSpendingNonce(Number(quote.transaction.nonce));
+      await journal.assertSpendingNonce(Number(quote.transaction.nonce));
       assertCurrent();
       this.showReview(quote.transaction, undefined, context);
     });
@@ -689,20 +680,6 @@ export class NativeTransfers {
       if (!runtime.token) throw new NativeTransferError('NOT_READY');
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
-      const old = await journal.load();
-      assertCurrent();
-      if (old && !isTerminal(old.phase)) {
-        this.publish({
-          phase: 'unknown',
-          review: null,
-          hash: old.hash,
-          intent: old.intent ?? null,
-          collectible: old.collectible,
-          inspectionOnly: old.inspectionOnly,
-          message: 'Check your pending transfer before starting another.',
-        });
-        throw new NativeTransferError('PENDING_TRANSFER');
-      }
       const token = await runtime.token(contract, assertCurrent);
       assertCurrent();
       let intent: Erc20TransferIntent;
@@ -724,7 +701,7 @@ export class NativeTransfers {
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal);
       assertCurrent();
-      if (old) await journal.assertSpendingNonce(Number(quote.transaction.nonce));
+      await journal.assertSpendingNonce(Number(quote.transaction.nonce));
       assertCurrent();
       this.showReview(quote.transaction, intent, context);
     });
@@ -761,17 +738,10 @@ export class NativeTransfers {
       guard();
       const journal = await runtime.journal(guard);
       guard();
-      const old = await journal.load();
-      guard();
-      if (old && !isTerminal(old.phase)) {
-        this.publish({ phase: 'unknown', review: null, hash: old.hash, intent: old.intent ?? null,
-          inspectionOnly: old.inspectionOnly ?? false, collectible: old.collectible, message: 'Check your pending transfer before starting another.' });
-        throw new NativeTransferError('PENDING_TRANSFER');
-      }
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
       const quote = await withNftInventorySignal(signal, inventory.signal, (owned) => rpc.prepareNft(selection, request, owned, guard)).catch((error: unknown) => { guard(); throw error; });
       guard();
-      if (old) await journal.assertSpendingNonce(Number(quote.envelope.nonce));
+      await journal.assertSpendingNonce(Number(quote.envelope.nonce));
       guard();
       this.showReview(quote.envelope, undefined, context, undefined, Object.freeze({ selection, quote, assertInventoryCurrent, inventorySignal: inventory.signal }));
     });
@@ -940,7 +910,8 @@ export class NativeTransfers {
         // storage adapter simultaneously revoked the session.
         if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
         assertCurrent();
-        if (error instanceof EvmSignedRecordCancellationFence) throw error;
+        if (error instanceof EvmSignedRecordCancellationFence ||
+            error instanceof EvmSignedRecordNonceConflict) throw error;
         if (!startedSubmission) {
           // A signature alone does not prove the signed record was committed.
           // Check under the wallet owner, since the review may have expired.

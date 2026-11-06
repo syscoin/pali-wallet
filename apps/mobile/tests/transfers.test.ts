@@ -301,21 +301,20 @@ for (const [kind, amount] of [
   });
 }
 
-test('invalid ERC20 amount cannot reset or replace an unresolved native journal', async () => {
+test('invalid ERC20 input makes no RPC or writes with a saved native transfer', async () => {
   const f = fixture();
   try {
     f.loseAcknowledgment();
     const approved = await review(f);
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
-    const hash = f.transfers.getSnapshot().hash;
     const calls = f.rpcMethods.length;
     await assert.rejects(
       f.transfers.prepareToken(token.contractAddress, to, '0'),
-      { code: 'PENDING_TRANSFER' }
+      { code: 'INVALID_INPUT' }
     );
-    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
-    assert.equal(f.transfers.getSnapshot().hash, hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.equal(f.transfers.getSnapshot().review, null);
     assert.deepEqual(f.records, before);
     assert.equal(f.rpcMethods.length, calls);
     assert.equal(f.signatures(), 1);
@@ -323,6 +322,21 @@ test('invalid ERC20 amount cannot reset or replace an unresolved native journal'
   } finally {
     f.close();
   }
+});
+
+test('a pending nonce change during durable append preserves the approved bytes without posting', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.holdWrite(async () => f.nextNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved?.nonce, 0);
+    assert.equal(saved?.hash, f.transfers.getSnapshot().hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+  } finally { f.close(); }
 });
 
 test('real signed bytes are journaled before one network submission and never exposed to UI', async () => {
@@ -873,11 +887,11 @@ for (const type of [0, 2] as const) test(`current-format type ${type} terminal b
 test('predecessor choices page locally without changing consent or making more RPC reads',async()=>{
  const f=fixture();
  try {
-  const journal=await f.runtime.journal(()=>undefined);
-  for(let value=1;value<=23;value++){
-   const raw=await wallet.signTransaction({type:2,chainId:1,nonce:value===23?1:0,to,value,gasLimit:21000,maxFeePerGas:2,maxPriorityFeePerGas:1});
-   await journal.saveSigned(raw);
-  }
+  const raws = await Promise.all(Array.from({ length: 23 }, (_, index) =>
+    wallet.signTransaction({ type: 2, chainId: 1, nonce: index === 22 ? 1 : 0, to, value: index + 1,
+      gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 })));
+  const session = signedRecordTestSession();
+  f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, raws, 'signed');
   await f.transfers.recover(true);
   const before=f.transfers.getSnapshot().review!;
   assert.equal(before.replay!.predecessorCount,22);assert.equal(before.replay!.predecessors.length,20);

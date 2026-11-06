@@ -228,6 +228,16 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await assert.rejects(transfers!.prepare(RECIPIENT, '0.001'), {
       code: 'PENDING_TRANSFER',
     });
+    await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
+      code: 'PENDING_TRANSFER',
+    });
+    assert.equal(transfers!.getSnapshot().hash, hash);
+    values.nonce = 1;
+    await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
+    assert.equal(sent.length, 1);
+    transfers!.cancel();
+    values.nonce = 0;
     await runtime!.tokens!.remove(1, CONTRACT, () => undefined);
     await runtime!.tokens!.add(2, { ...TOKEN, decimals: 3 }, () => undefined);
     transfers!.dispose();
