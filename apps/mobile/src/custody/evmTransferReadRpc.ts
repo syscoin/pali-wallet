@@ -226,10 +226,13 @@ export class EvmTransferReadRpc {
       read.assertCurrent();
       if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
       let gas: bigint;
-      try { gas = bufferEvmFeeEstimate(estimate, BigInt(this.network.chainId), sampled.gasLimit); }
-      catch { return rejectRead('INVALID_RESPONSE'); }
+      try {
+        gas = approved
+          ? BigInt(approved.gasLimit)
+          : bufferEvmFeeEstimate(estimate, BigInt(this.network.chainId), sampled.gasLimit);
+      } catch { return rejectRead('INVALID_RESPONSE'); }
       const tx = snapshotUnsignedTransfer({ ...request, ...selectedFees, chainId: this.network.chainId,
-        nonce: nonce.toString(), gasLimit: (approved ? BigInt(approved.gasLimit) : gas).toString() }, this.network);
+        nonce: nonce.toString(), gasLimit: gas.toString() }, this.network);
       let cost: ReturnType<typeof getEvmTransferCost>;
       try {
         cost = getEvmTransferCost(BigInt(tx.value), BigInt(tx.gasLimit),
@@ -238,7 +241,7 @@ export class EvmTransferReadRpc {
       {
         const approval = captureEvmFeeApproval(tx, this.network.registrationHash,
           this.monotonicMilliseconds() + EVM_FEE_APPROVAL_LIFETIME_MS);
-        try { assertEvmFeeEstimateApproved(approval, { estimatedGas: gas, sampledBlockGasLimit: sampled.gasLimit,
+        try { assertEvmFeeEstimateApproved(approval, { estimatedGas: estimate, sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds()); }
         catch (error) {
           return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
