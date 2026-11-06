@@ -1,5 +1,5 @@
 import { getAddress } from 'ethers/address';
-import { getEvmFeeData, bufferedEvmGasLimit, assertEvmGasLimit, planEvmCancellationFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
@@ -9,6 +9,8 @@ import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFee
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest.ts';
+import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
+  EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
@@ -223,14 +225,9 @@ export class EvmTransferReadRpc {
       }), 'pending']));
       read.assertCurrent();
       if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
-      const gas = bufferedEvmGasLimit(estimate);
-      try { assertEvmGasLimit(gas, BigInt(this.network.chainId), sampled.gasLimit); }
+      let gas: bigint;
+      try { gas = bufferEvmFeeEstimate(estimate, BigInt(this.network.chainId), sampled.gasLimit); }
       catch { return rejectRead('INVALID_RESPONSE'); }
-      if (approved && gas > BigInt(approved.gasLimit)) return rejectRead('REVIEW_REQUIRED');
-      if (approved) {
-        try { assertEvmGasLimit(BigInt(approved.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
-        catch { return rejectRead('REVIEW_REQUIRED'); }
-      }
       const tx = snapshotUnsignedTransfer({ ...request, ...selectedFees, chainId: this.network.chainId,
         nonce: nonce.toString(), gasLimit: (approved ? BigInt(approved.gasLimit) : gas).toString() }, this.network);
       let cost: ReturnType<typeof getEvmTransferCost>;
@@ -238,6 +235,15 @@ export class EvmTransferReadRpc {
         cost = getEvmTransferCost(BigInt(tx.value), BigInt(tx.gasLimit),
           BigInt(tx.type === 0 ? tx.gasPrice : tx.maxFeePerGas));
       } catch { return rejectRead('INVALID_RESPONSE'); }
+      {
+        const approval = captureEvmFeeApproval(tx, this.network.registrationHash,
+          this.monotonicMilliseconds() + EVM_FEE_APPROVAL_LIFETIME_MS);
+        try { assertEvmFeeEstimateApproved(approval, { estimatedGas: gas, sampledBlockGasLimit: sampled.gasLimit,
+          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }), balance }, this.monotonicMilliseconds()); }
+        catch (error) {
+          return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
+        }
+      }
       await this.canonical(read, sampled); await this.checkChain(read); read.assertCurrent();
       return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: cost.maximumFee.toString(), totalUnits: cost.total.toString() });
     });
@@ -247,17 +253,21 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
-      try { assertEvmGasLimit(BigInt(transaction.gasLimit), BigInt(this.network.chainId), sampled.gasLimit); }
+      const now = this.monotonicMilliseconds();
+      if (!Number.isSafeInteger(now) || now < 0) return rejectRead('INVALID_RESPONSE');
+      const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
+      const balance = quantity(await read('eth_getBalance', [transaction.from, 'pending']));
+      const observation = { balance, sampledBlockGasLimit: sampled.gasLimit,
+        ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) };
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: BigInt(transaction.gasLimit) }, now); }
       catch { return rejectRead('REVIEW_REQUIRED'); }
       const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
       const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
-      if (transaction.type === 2 && cap < (sampled.baseFee ?? 0n)) return rejectRead('REVIEW_REQUIRED');
       const gas = quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), 'pending']));
-      if (gas < 21000n || gas > BigInt(transaction.gasLimit) || gas > sampled.gasLimit) return rejectRead('REVIEW_REQUIRED');
+      try { assertEvmFeeEstimateApproved(approval, { ...observation, estimatedGas: gas }, this.monotonicMilliseconds()); }
+      catch { return rejectRead('REVIEW_REQUIRED'); }
       await this.canonical(read, sampled); await this.checkChain(read);
-      const now = this.monotonicMilliseconds();
-      if (!Number.isSafeInteger(now) || now < 0) return rejectRead('INVALID_RESPONSE');
-      return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, now + 90000);
+      return assembleFeeQuote(transaction, this.network, { number: sampled.number, hash: sampled.hash }, price > cap ? cap : price, approval.expiresAtMonotonicMilliseconds);
     });
   }
   observation(input: ReceiptRequest, signal: AbortSignal, guard: () => void): Promise<EvmTransactionObservation> {

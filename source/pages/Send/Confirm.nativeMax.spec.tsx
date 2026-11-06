@@ -195,7 +195,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
         'getRecommendedGasPrice',
@@ -216,11 +218,21 @@ function deferred() {
 function prepare(quoteCount = 1) {
   const quotes = Array.from({ length: quoteCount }, deferred);
   let nextQuote = 0;
-  mockEmitter.mockImplementation((path: string[]) => {
+  mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[nextQuote++].promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'getFreshNativeEvmGasLimit') {
+      expect(args[1]).toEqual(mockScope);
+      return Promise.resolve(21000);
+    }
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: args[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'refreshActiveAccountBalances')
       return mockRefreshFails
         ? Promise.reject(new Error('Synthetic balance read failure'))
@@ -258,7 +270,7 @@ const submissionCalls = () =>
   );
 const ready = async (
   max: boolean,
-  { balance = '100', legacy = false } = {}
+  { balance = '100', legacy = false, confirmable = true } = {}
 ) => {
   mockEIP1559 = !legacy;
   mockRefreshedBalance = balance;
@@ -270,11 +282,17 @@ const ready = async (
     maxPriorityFeePerGas: '0x00',
   };
   prepare();
-  await waitFor(() =>
-    expect(
-      screen.getByRole('button', { name: 'buttons.confirm' })
-    ).toBeEnabled()
-  );
+  if (confirmable) {
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: 'buttons.confirm' })
+      ).toBeEnabled()
+    );
+  } else {
+    await waitFor(() =>
+      expect(screen.getAllByText('0.000063 TSYS').length).toBeGreaterThan(0)
+    );
+  }
   if (!legacy) expect(edit()).toBeEnabled();
   expect(quoteRequests()).toHaveLength(0);
 };
@@ -404,8 +422,16 @@ it.each([false, true])(
 it.each([false, true])(
   'does not advertise an unaffordable native MAX gross amount (legacy=%s)',
   async (legacy) => {
-    await ready(true, { balance: '0.000063', legacy });
+    await ready(true, { balance: '0.000063', legacy, confirmable: false });
     expect(headline()).toBe('send.calculating TSYS');
+    expect(
+      screen.getByRole('button', { name: 'buttons.confirm' })
+    ).toBeDisabled();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+      )
+    ).toHaveLength(0);
     await act(async () =>
       fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
     );

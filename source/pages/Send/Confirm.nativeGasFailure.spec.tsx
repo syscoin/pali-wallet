@@ -10,6 +10,7 @@ import {
   render,
   screen,
 } from '@testing-library/react';
+import { randomUUID } from 'crypto';
 import React from 'react';
 
 import MainController from 'scripts/Background/controllers/MainController';
@@ -24,6 +25,11 @@ const { RpcResponseIntegrityError } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/providers'
 );
 const mockEmitter = jest.fn();
+const originalRandomUUID = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
+let reviewFailures: string[] = [];
 let mockEnsNameToAddress: Record<string, string> = {};
 const mockScope = { account: 'gas-read-account', network: 'gas-read-network' };
 const mockAuth = {
@@ -187,6 +193,10 @@ const advance = () =>
   });
 
 beforeAll(() => {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: randomUUID,
+  });
   globalThis.ResizeObserver = class {
     observe() {
       return undefined;
@@ -214,11 +224,17 @@ beforeAll(() => {
   })) as any;
 });
 afterAll(() => {
+  if (originalRandomUUID)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUUID);
+  else delete (globalThis.crypto as Partial<Crypto>).randomUUID;
+});
+afterAll(() => {
   globalThis.ResizeObserver = previousGlobals.ResizeObserver;
   globalThis.MessageChannel = previousGlobals.MessageChannel;
   window.matchMedia = previousGlobals.matchMedia;
 });
 beforeEach(() => {
+  reviewFailures = [];
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(console, 'error').mockImplementation();
@@ -287,6 +303,8 @@ beforeEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
       ];
       const method = methods.at(-1)!;
       if (!allowed.includes(method))
@@ -302,6 +320,7 @@ beforeEach(() => {
           gasOutcomes.push({ state: 'resolved', value: value.toString() });
         return value;
       } catch (error) {
+        if (method === 'reviewNativeEvmFee') reviewFailures.push(String(error));
         if (
           method === 'getTxGasLimit' ||
           method === 'getFreshNativeEvmGasLimit'
@@ -326,6 +345,8 @@ afterEach(() => {
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
       ].includes(path.at(-1))
     )
   ).toBe(true);
@@ -365,26 +386,33 @@ function assertHealthyQuote(mode: Mode, gas: number) {
 describe.each(modes)('ordinary native gas read in %s mode', (mode) => {
   it('healthy installed SDK estimate21000 uses its actual25200 buffered quote', async () => {
     await mount(mode);
+    expect(reviewFailures).toEqual([]);
     expect(provider.estimateGas).toHaveBeenCalledTimes(1);
     assertHealthyQuote(mode, 25200);
   });
 
-  it('healthy SDK successful simple-estimate fallback is not replaced by the UI default', async () => {
+  it('does not replace a failed initial estimate with a simplified fallback', async () => {
     provider.estimateGas
       .mockRejectedValueOnce(new Error('Synthetic ordinary estimate rejection'))
       .mockResolvedValueOnce(BigNumber.from(30000));
     await mount(mode);
-    expect(provider.estimateGas).toHaveBeenCalledTimes(2);
-    assertHealthyQuote(mode, 45000);
+    expect(provider.estimateGas).toHaveBeenCalledTimes(1);
+    expect(confirm()).toBeDisabled();
+    expect(gasOutcomes).toEqual([
+      { state: 'rejected', code: undefined, name: 'Error' },
+    ]);
   });
 
-  it('retains the SDK legitimate resolved generic-error fallback100000', async () => {
+  it('does not convert generic estimate failures into a 100000-gas quote', async () => {
     provider.estimateGas.mockRejectedValue(
       new Error('Synthetic ordinary estimates unavailable')
     );
     await mount(mode);
-    expect(provider.estimateGas).toHaveBeenCalledTimes(2);
-    assertHealthyQuote(mode, 100000);
+    expect(provider.estimateGas).toHaveBeenCalledTimes(1);
+    expect(confirm()).toBeDisabled();
+    expect(gasOutcomes).toEqual([
+      { state: 'rejected', code: undefined, name: 'Error' },
+    ]);
   });
 
   it.each(['integrity', 'abort'])(
@@ -479,7 +507,7 @@ it.each(modes)(
   }
 );
 
-it('consumes fresh-read mode once, so later resolved-recipient changes use the ordinary SDK path', async () => {
+it('keeps initial, retry and changed-recipient estimates on the same strict read path', async () => {
   mockLocation.state.tx.receivingAddress = 'recipient.eth';
   mockEnsNameToAddress = {
     'recipient.eth': '0x2222222222222222222222222222222222222222',
@@ -498,9 +526,11 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
     mockEmitter.mock.calls.filter(
       ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
     )
-  ).toHaveLength(1);
-  expect(mockFreshProviders).toHaveLength(1);
-  expect(mockFreshProviders[0].destroy).toHaveBeenCalledTimes(1);
+  ).toHaveLength(2);
+  expect(mockFreshProviders).toHaveLength(2);
+  expect(
+    mockFreshProviders.every((item) => item.destroy.mock.calls.length === 1)
+  ).toBe(true);
   // The confirmation deliberately retains its original route payload. A new
   // verified ENS cache result is a real recomputation trigger and changes the
   // fee cache key without replacing that protected transaction entry.
@@ -516,10 +546,10 @@ it('consumes fresh-read mode once, so later resolved-recipient changes use the o
     mockEmitter.mock.calls.filter(
       ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
     )
-  ).toHaveLength(1);
+  ).toHaveLength(3);
   expect(
     mockEmitter.mock.calls.filter(([path]) => path.at(-1) === 'getTxGasLimit')
-  ).toHaveLength(2);
+  ).toHaveLength(0);
   expect(mockLocation.state.tx.receivingAddress).toBe('recipient.eth');
   expect(provider.estimateGas).toHaveBeenLastCalledWith(
     expect.objectContaining({
@@ -535,6 +565,9 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
     new RpcResponseIntegrityError('Synthetic stale estimate', false)
   );
   await mount('prefetched');
+  const initialReads = mockEmitter.mock.calls.filter(
+    ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
+  ).length;
   provider.estimateGas
     .mockResolvedValueOnce(BigNumber.from(21000))
     .mockResolvedValueOnce(BigNumber.from(30000))
@@ -544,9 +577,9 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
   });
   await advance();
   expect(confirm()).toBeEnabled();
-  const retries = mockEmitter.mock.calls.filter(
-    ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
-  );
+  const retries = mockEmitter.mock.calls
+    .filter(([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit')
+    .slice(initialReads);
   const total = BigNumber.from(10).pow(18).mul(100),
     rate = BigNumber.from(3000000000),
     buffer = BigNumber.from(1000000000000);
@@ -556,7 +589,33 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
     )
   );
   for (const [, args] of retries) expect(args[1]).toEqual(mockScope);
-  expect(mockFreshProviders).toHaveLength(3);
+  expect(mockFreshProviders).toHaveLength(initialReads + 3);
   for (const reader of mockFreshProviders)
     expect(reader.destroy).toHaveBeenCalledTimes(1);
+});
+
+it('expires the displayed native fee review and requires explicit Retry before confirming', async () => {
+  await mount('fresh');
+  expect(confirm()).toBeEnabled();
+  const estimates = provider.estimateGas.mock.calls.length;
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(90000);
+  });
+  expect(confirm()).toBeDisabled();
+  expect(provider.estimateGas).toHaveBeenCalledTimes(estimates);
+  const reviews = mockEmitter.mock.calls.filter(
+    ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+  );
+  expect(reviews).toHaveLength(1);
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
+  });
+  await advance();
+  expect(confirm()).toBeEnabled();
+  expect(provider.estimateGas).toHaveBeenCalledTimes(estimates + 1);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+    )
+  ).toHaveLength(2);
 });

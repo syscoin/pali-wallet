@@ -204,7 +204,9 @@ afterEach(() => {
   for (const [path] of mockEmitter.mock.calls)
     expect([
       'getFeeDataWithDynamicMaxPriorityFeePerGas',
-      'getTxGasLimit',
+      'getFreshNativeEvmGasLimit',
+      'reviewNativeEvmFee',
+      'discardNativeEvmFeeReview',
       'refreshActiveAccountBalances',
       'sendAndSaveEthTransaction',
       'sendAndSaveTokenTransaction',
@@ -242,11 +244,21 @@ function mount(kind: 'native' | 'token') {
       symbol: 'QA',
     };
   }
-  mockEmitter.mockImplementation((path: string[]) => {
+  mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quote.promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'getFreshNativeEvmGasLimit') {
+      expect(args[1]).toEqual(mockScope);
+      return Promise.resolve(21000);
+    }
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: args[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'refreshActiveAccountBalances')
       return Promise.resolve({ nativeBalance: '100' });
     if (
@@ -293,6 +305,11 @@ it.each(['native', 'token'] as const)(
     expect(feeRequests()).toHaveLength(1);
     expect(confirm()).toBeDisabled();
     expect(sendRequests()).toHaveLength(0);
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.at(-1) === 'reviewNativeEvmFee'
+      )
+    ).toHaveLength(0);
     await resolveQuote(quote);
     expect(confirm()).toBeEnabled();
     expect(feeRequests()).toHaveLength(1);
@@ -415,10 +432,19 @@ it('reviews and submits the same exact fixed native maximum above Number precisi
   expect(legacy).toBe(false);
   expect(options).toEqual({
     nativeReview: {
-      maximumFee: '189151184349560979000',
+      id: 'fixture-review',
       scope: mockScope,
     },
   });
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'reviewNativeEvmFee'],
+    [
+      expect.objectContaining({ maxFeePerGas: cap, maxPriorityFeePerGas: '0' }),
+      false,
+      '189151184349560979000',
+      mockScope,
+    ]
+  );
   expect(
     mockEmitter.mock.calls.some(
       ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
