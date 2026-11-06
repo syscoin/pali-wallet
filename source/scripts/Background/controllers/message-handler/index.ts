@@ -3,7 +3,7 @@ import { ethErrors } from 'helpers/errors';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { getDappOrigin } from 'utils/dappOrigin';
+import { matchAttestedDappOrigin } from 'utils/dappOrigin';
 
 import { getMethodConfig } from './method-registry';
 import { createRequestLifetime } from './request-lifetime';
@@ -29,8 +29,8 @@ export const onMessage = async (
     return { error: { message: 'Unknown method', code: -32601 } };
   }
 
-  const host = getDappOrigin(sender?.url || '') || '';
-  if (methodConfig.requiresTabId && (!host || sender?.tab?.id === undefined)) {
+  const host = matchAttestedDappOrigin(sender?.url, sender?.origin);
+  if (!host || (methodConfig.requiresTabId && sender?.tab?.id === undefined)) {
     return { error: { message: 'Invalid requesting page', code: 4100 } };
   }
 

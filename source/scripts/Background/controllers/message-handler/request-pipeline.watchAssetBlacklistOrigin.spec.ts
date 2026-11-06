@@ -48,6 +48,7 @@ const request = (origin: string) =>
     },
     {
       url: `${origin}/watchasset`,
+      origin,
       tab: { id: 50 },
     } as chrome.runtime.MessageSender
   );

@@ -50,7 +50,11 @@ const request = (address = TOKEN, asset?: any) =>
         ],
       },
     },
-    { url: `${HOST}/`, tab: { id: 50 } } as chrome.runtime.MessageSender
+    {
+      url: `${HOST}/`,
+      origin: HOST,
+      tab: { id: 50 },
+    } as chrome.runtime.MessageSender
   );
 
 const seedToken = async (chainId: number) => {

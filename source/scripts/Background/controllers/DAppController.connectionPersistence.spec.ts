@@ -182,7 +182,7 @@ it('continues a connected request through its exact durable account-selection su
   const scope = watchConnectedPersonalSignGrant({
     host,
     method: 'personal_sign',
-    sender: { documentId: 'site-document', url: host },
+    sender: { documentId: 'site-document', url: host, origin: host },
     type: 'METHOD_REQUEST',
   })!;
   try {
@@ -472,6 +472,7 @@ describe('connected personal-sign approval authority', () => {
           frameId,
           tab: { id: 7 },
           url: `${host}/page`,
+          origin: host,
         } as chrome.runtime.MessageSender,
         type: 'METHOD_REQUEST',
       },

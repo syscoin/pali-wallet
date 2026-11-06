@@ -621,7 +621,11 @@ describe('legacy dapp permission isolation', () => {
     );
   });
 
-  it('rechecks the receiving origin after a queried tab navigates', async () => {
+  it('checks the receiving document origin before publishing account data', async () => {
+    (chrome.runtime as any).id = 'test-extension';
+    dispatchMock.mockImplementation((action) => {
+      getStateMock().dapp.dapps[action.payload.host] = action.payload;
+    });
     getStateMock.mockReturnValue({
       vault: {
         accounts: { HDAccount: { 0: { address: '0x1234', xpub: 'xpub' } } },
@@ -636,7 +640,8 @@ describe('legacy dapp permission isolation', () => {
     (chrome as any).scripting = {
       executeScript: jest.fn().mockResolvedValue([]),
     };
-    await connect(DAppController(), {
+    const controller = DAppController(() => true);
+    await connect(controller, {
       host: 'https://example.com',
       accountId: 0,
       accountType: KeyringAccountType.HDAccount,
@@ -657,12 +662,18 @@ describe('legacy dapp permission isolation', () => {
         () => coverage,
       ])
     );
-    const receive = (origin: string) => {
+    const receive = (urlOrigin: string, actualOrigin = urlOrigin) => {
       const dispatchEvent = jest.fn();
+      const documentWindow = {
+        location: { origin: urlOrigin },
+        origin: actualOrigin,
+        dispatchEvent,
+      };
       runInNewContext(`(${serialized})(...args)`, {
         ...coverageHelpers,
         args: injection.args,
-        window: { location: { origin }, dispatchEvent },
+        self: documentWindow,
+        window: documentWindow,
         CustomEvent: class {
           constructor(public type: string, public options: unknown) {}
         },
@@ -672,7 +683,23 @@ describe('legacy dapp permission isolation', () => {
     expect(receive('https://attacker.example')).not.toHaveBeenCalled();
     expect(receive('http://example.com')).not.toHaveBeenCalled();
     expect(receive('https://example.com:8443')).not.toHaveBeenCalled();
-    expect(receive('https://example.com')).toHaveBeenCalledTimes(1);
+    expect(receive('https://example.com', 'null')).not.toHaveBeenCalled();
+
+    expect(injection.world).toBe('ISOLATED');
+    expect(injection.target).toEqual({ tabId: 7 });
+    const receiveApproved = receive('https://example.com');
+    expect(receiveApproved).toHaveBeenCalledTimes(1);
+    expect(receiveApproved).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'paliNotification',
+        options: {
+          detail: JSON.stringify({
+            id: PaliEvents.accountsChanged,
+            data: { method: PaliEvents.accountsChanged, params: ['0x1234'] },
+          }),
+        },
+      })
+    );
   });
 });
 
@@ -733,8 +760,8 @@ describe('per-site account notification disclosure', () => {
 
   const controller = () => {
     const instance = DAppController(() => unlocked);
-    instance.setup({ url: `${originA}/page` });
-    instance.setup({ url: `${originB}/page` });
+    instance.setup({ url: `${originA}/page`, origin: originA });
+    instance.setup({ url: `${originB}/page`, origin: originB });
     return instance;
   };
   const deliver = async (instance, method, params) => {
@@ -745,6 +772,13 @@ describe('per-site account notification disclosure', () => {
     (chrome.scripting.executeScript as jest.Mock).mock.calls
       .filter(([call]) => call.target.tabId === tabId)
       .map(([call]) => JSON.parse(call.args[0]).data);
+
+  it('does not set up a connected site for an opaque document at its URL', async () => {
+    const instance = DAppController(() => unlocked);
+    instance.setup({ url: originA + '/sandboxed', origin: 'null' });
+    await deliver(instance, PaliEvents.accountsChanged, [addressA]);
+    expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
+  });
 
   it('does not disclose the globally active EVM account to other site connections', async () => {
     await deliver(controller(), PaliEvents.accountsChanged, [addressB]);
@@ -907,7 +941,7 @@ describe('Ethereum property toggle dispatch', () => {
 
   it('delivers normal remove, disconnect and re-enable to live top-frame tabs without reconnecting', async () => {
     const controller = DAppController();
-    controller.setup({ url: `${origin}/page` });
+    controller.setup({ url: `${origin}/page`, origin: origin });
     await controller.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
       params: { type: PaliEvents.removeProperty },

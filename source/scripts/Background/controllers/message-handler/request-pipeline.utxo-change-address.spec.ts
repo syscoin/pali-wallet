@@ -75,6 +75,7 @@ const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const request = (method: string) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [] } }, {
     url: `${HOST}/page`,
+    origin: HOST,
     tab: { id: 101 },
   } as any);
 

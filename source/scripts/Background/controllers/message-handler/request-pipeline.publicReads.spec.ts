@@ -54,6 +54,7 @@ const deferred = <T>() => {
 const request = (method: string, host = READ_HOST, tabId = 1, params?: any[]) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params } }, {
     url: `${host}/page`,
+    origin: host,
     documentId: `site-document-${tabId}`,
     tab: { id: tabId },
   } as chrome.runtime.MessageSender);

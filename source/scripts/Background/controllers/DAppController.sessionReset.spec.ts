@@ -71,7 +71,7 @@ it.each([
       () => true,
       () => mockGeneration
     );
-    if (hasRuntimeSession) dapp.setup({ url: `${HOST}/page` });
+    if (hasRuntimeSession) dapp.setup({ url: `${HOST}/page`, origin: HOST });
     const origins = Object.keys(dapp.getAll());
     mockState.dapp.dapps = {};
     await dapp.resetSessions(hasPersistedOrigin ? origins : []);
@@ -120,7 +120,7 @@ it.each(['generation', 'new grant'])(
       () => true,
       () => mockGeneration
     );
-    dapp.setup({ url: `${HOST}/page` });
+    dapp.setup({ url: `${HOST}/page`, origin: HOST });
     mockState.dapp.dapps = {};
     const resetting = dapp.resetSessions([HOST]);
     if (change === 'generation') mockGeneration += 1;

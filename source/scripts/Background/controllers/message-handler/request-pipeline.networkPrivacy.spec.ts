@@ -39,6 +39,7 @@ const cases = [
 const request = (method: string) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [] } }, {
     url: `${HOST}/page`,
+    origin: HOST,
     tab: { id: 8 },
   } as chrome.runtime.MessageSender);
 const select = (network: INetwork) => {

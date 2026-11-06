@@ -12,6 +12,7 @@ jest.mock('state/store', () => ({
 
 import { onMessage } from './index';
 import { getMethodConfig } from './method-registry';
+import { isUnlocked } from './requests';
 
 describe('runtime provider request boundary', () => {
   beforeEach(() => {
@@ -39,6 +40,7 @@ describe('runtime provider request boundary', () => {
         tab: { id: 1 },
         frameId: 2,
         url: `${origin}/page`,
+        origin,
       } as chrome.runtime.MessageSender;
       await expect(onMessage(request, sender)).resolves.toEqual(['account']);
       expect(methodRequestMock).toHaveBeenLastCalledWith(
@@ -62,6 +64,51 @@ describe('runtime provider request boundary', () => {
       expect(methodRequestMock).not.toHaveBeenCalled();
     }
   );
+
+  it.each([
+    undefined,
+    'null',
+    'https://example.com',
+    'http://example.com:8443',
+  ])(
+    'rejects a provider request when the browser reports origin %s',
+    async (origin) => {
+      const sender = {
+        url: 'https://example.com:8443/frame',
+        origin,
+        tab: { id: 1 },
+        frameId: 2,
+        documentId: 'requesting-frame',
+      } as chrome.runtime.MessageSender;
+      await expect(
+        onMessage(
+          { type: 'METHOD_REQUEST', data: { method: 'eth_accounts' } },
+          sender
+        )
+      ).resolves.toMatchObject({ error: { code: 4100 } });
+      expect(methodRequestMock).not.toHaveBeenCalled();
+      expect(chrome.tabs.onRemoved.addListener).not.toHaveBeenCalled();
+    }
+  );
+
+  it('preserves the public unlock query for an attested requesting tab only', async () => {
+    jest.mocked(isUnlocked).mockReturnValue(true);
+    const sender = {
+      url: 'https://example.com/page',
+      origin: 'https://example.com',
+    };
+    const request = { type: 'IS_UNLOCKED' };
+    await expect(onMessage(request, sender)).resolves.toMatchObject({
+      error: { code: 4100 },
+    });
+    expect(isUnlocked).not.toHaveBeenCalled();
+    await expect(
+      onMessage(request, {
+        ...sender,
+        tab: { id: 1 },
+      } as chrome.runtime.MessageSender)
+    ).resolves.toBe(true);
+  });
 
   it.each(['constructor', 'toString', '__proto__'])(
     'rejects inherited method key %s',
