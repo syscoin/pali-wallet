@@ -20,11 +20,13 @@ interface IImportableAsset {
   chainId?: number;
   contractAddress?: string;
   decimals?: number;
+  exactBalance?: string;
   id: string;
   isNft?: boolean;
   logo?: string;
   name?: string;
   originDecimals?: number;
+  rawBalance?: string;
   symbol: string;
   tokenId?: string;
   tokenStandard?: string;
@@ -164,18 +166,23 @@ const ImportableAssetsListComponent: React.FC<IImportableAssetsListProps> = ({
 
                 <div className="flex flex-col flex-1 min-w-0">
                   <p className="flex flex-wrap items-center gap-x-2">
-                    <span className="text-brand-white font-medium">
-                      {(assetType === 'utxo' &&
-                        !isSptBalanceAvailable(asset.balance)) ||
-                      (asset.tokenStandard === 'ERC-721' &&
-                        !isErc721BalanceAvailable(asset.balance))
-                        ? t('settings.unavailable')
-                        : asset.balance === 0
-                        ? '—'
-                        : formatFullPrecisionBalance(
-                            asset.balance || 0,
-                            Math.min(asset.decimals ?? 8, 4) // Limit displayed decimals
-                          )}
+                    <span
+                      className={`text-brand-white font-medium${
+                        asset.exactBalance !== undefined ? ' break-all' : ''
+                      }`}
+                    >
+                      {asset.exactBalance ??
+                        ((assetType === 'utxo' &&
+                          !isSptBalanceAvailable(asset.balance)) ||
+                        (asset.tokenStandard === 'ERC-721' &&
+                          !isErc721BalanceAvailable(asset.balance))
+                          ? t('settings.unavailable')
+                          : asset.balance === 0
+                          ? '—'
+                          : formatFullPrecisionBalance(
+                              asset.balance || 0,
+                              Math.min(asset.decimals ?? 8, 4) // Limit displayed decimals
+                            ))}
                     </span>
                     <span
                       className="text-brand-royalbluemedium hover:text-brand-deepPink100 cursor-pointer underline transition-colors duration-200"

@@ -12,15 +12,15 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
   PsbtUtils: {},
 }));
 const mockGetEthRpc = jest.fn();
-const mockGetSysRpc = jest.fn();
+const mockObserveSysRpc = jest.fn();
 const mockValidate = jest.fn();
 const mockEndpoint = jest.fn();
 let mockReady: Promise<void>;
 jest.mock('@sidhujag/sysweb3-network', () => ({
   ...jest.requireActual('@sidhujag/sysweb3-network'),
   getEthRpc: (...args: any[]) => mockGetEthRpc(...args),
-  getSysRpc: (...args: any[]) => mockGetSysRpc(...args),
-  validateRpcBatchUniversal: (...args: any[]) => mockValidate(...args),
+  observeSysRpc: (...args: any[]) => mockObserveSysRpc(...args),
+  validateEvmRpcBatch: (...args: any[]) => mockValidate(...args),
 }));
 jest.mock('./providers/walletHttpIdentity', () => ({
   withWalletBackend: (url: string, operation: () => Promise<unknown>) => {
@@ -38,23 +38,38 @@ for (const kind of ['ethereum', 'syscoin', 'quality', 'explorer'] as const) {
       release = resolve;
     });
     const network = {
-      url: 'https://rpc.public-fixture.invalid/path?public=value',
+      url:
+        kind === 'syscoin'
+          ? 'https://rpc.public-fixture.invalid/path'
+          : 'https://rpc.public-fixture.invalid/path?public=value',
       isSyscoinRpc: kind === 'syscoin',
     };
     mockGetEthRpc.mockResolvedValue({ formattedNetwork: network });
-    mockGetSysRpc.mockResolvedValue({ rpc: { formattedNetwork: network } });
+    mockObserveSysRpc.mockResolvedValue({ rpc: { formattedNetwork: network } });
     mockValidate.mockResolvedValue({ success: true });
     const explorer = jest.fn().mockResolvedValue({ success: true });
     const wallet = Object.create(MainController.prototype) as MainController;
     (wallet as any).evmTransactionsController = { testExplorerApi: explorer };
+    (wallet as any).isUnlocked = () => true;
     const result =
       kind === 'quality'
         ? wallet.testRpcConnection(network.url, 'ethereum' as any, 1)
         : kind === 'explorer'
         ? wallet.testExplorerApi(network.url)
+        : kind === 'syscoin'
+        ? wallet.previewUtxoRpc({
+            purpose: 'first-use',
+            url: network.url,
+            label: 'Synthetic',
+          })
         : wallet.getRpc(network as any);
     expect(mockEndpoint).toHaveBeenCalledWith(network.url);
-    for (const probe of [mockGetEthRpc, mockGetSysRpc, mockValidate, explorer])
+    for (const probe of [
+      mockGetEthRpc,
+      mockObserveSysRpc,
+      mockValidate,
+      explorer,
+    ])
       expect(probe).not.toHaveBeenCalled();
     release();
     await result;
@@ -64,7 +79,7 @@ for (const kind of ['ethereum', 'syscoin', 'quality', 'explorer'] as const) {
         : kind === 'explorer'
         ? explorer
         : kind === 'syscoin'
-        ? mockGetSysRpc
+        ? mockObserveSysRpc
         : mockGetEthRpc
     ).toHaveBeenCalledTimes(1);
   });

@@ -223,6 +223,7 @@ async function prepare(language: string, count = 1, token = false) {
     defaultGasLimit: token ? 100000 : 21000,
     ...(token
       ? {
+          tokenAmountUnits: '1000000000000000000',
           token: {
             symbol: 'QA',
             name: 'Synthetic QA token',
@@ -369,6 +370,9 @@ describe.each(['en', 'de', 'fr'])(
       await succeedQuote(quotes[0], instance);
       expect(feeRequests()).toHaveLength(1);
       expect(mockLocation.state.tx.amount).toBe('1');
+      expect(mockLocation.state.tx.tokenAmountUnits).toBe(
+        '1000000000000000000'
+      );
       expect(mockLocation.state.tx.token.contractAddress).toBe(
         '0x3333333333333333333333333333333333333333'
       );
@@ -388,6 +392,9 @@ describe.each(['en', 'de', 'fr'])(
       await succeedQuote(quotes[1], instance);
       expect(feeRequests()).toHaveLength(2);
       expect(mockLocation.state.tx.amount).toBe('1');
+      expect(mockLocation.state.tx.tokenAmountUnits).toBe(
+        '1000000000000000000'
+      );
       expect(mockLocation.state.tx.token.contractAddress).toBe(
         '0x3333333333333333333333333333333333333333'
       );

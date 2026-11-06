@@ -5,6 +5,27 @@ jest.mock('..', () => ({
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+jest.mock('./providers/utxoRpcVerification', () => ({
+  withUtxoRpcVerification: async (
+    _url: string,
+    assertCurrent: () => void,
+    operation: any
+  ) => operation({ assertCurrent, signal: new AbortController().signal }),
+}));
+jest.mock('@sidhujag/sysweb3-network', () => ({
+  ...jest.requireActual('@sidhujag/sysweb3-network'),
+  getSysRpc: jest.fn(async (_draft, owner) => {
+    owner.assertCurrent();
+    expect(owner.registration).toEqual(
+      expect.objectContaining({
+        chainId: expect.any(Number),
+        slip44: expect.any(Number),
+      })
+    );
+    expect(owner.backendChain).toBe('test');
+    return { rpc: { formattedNetwork: { currency: 'test' } } };
+  }),
+}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
   CustomJsonRpcProvider: jest.fn(),
@@ -31,10 +52,11 @@ import MainController from './MainController';
 
 const network = {
   chainId: 999,
-  currency: 'TEST',
+  currency: 'test',
   kind: INetworkType.Syscoin,
   label: 'Test network A',
   slip44: 1,
+  utxoBackendChain: 'test',
   url: 'https://one.invalid',
 };
 const other = {
@@ -67,6 +89,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
   wallet = Object.create(MainController.prototype);
   wallet.isRemovingNetwork = false;
+  wallet.isUnlocked = () => true;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.saveWalletState = jest.fn().mockResolvedValue(undefined);
   jest.mocked(chromeStorage.setItem).mockReset().mockResolvedValue(undefined);

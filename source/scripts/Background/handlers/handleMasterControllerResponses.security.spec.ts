@@ -1,3 +1,5 @@
+import { KeyringAccountType } from '@sidhujag/sysweb3-keyring';
+
 import { isValidMethod } from '../controllers/message-handler/method-registry';
 
 import { watchApprovalSubmission } from './approvalSubmission';
@@ -76,9 +78,26 @@ describe('native approval controller submission lifecycle', () => {
       const add = chrome.runtime.onMessage.addListener as jest.Mock;
       const listener = add.mock.calls[add.mock.calls.length - 1][0];
       const possible = jest.fn();
+      const lifetime = new AbortController();
       const stop = watchApprovalSubmission(
         'native-approval-document',
-        possible
+        possible,
+        {
+          context: {
+            account: {
+              address: `0x${'1'.repeat(40)}`,
+              id: 0,
+              type: KeyringAccountType.HDAccount,
+            },
+            chainId: 1,
+            rpcUrl: 'https://rpc.invalid',
+            sessionGeneration: 0,
+            slip44: 60,
+          },
+          assertCurrent: jest.fn(),
+          checkDocument: jest.fn().mockResolvedValue(undefined),
+          getSignal: () => lifetime.signal,
+        }
       );
       const logging = jest.spyOn(console, 'error').mockImplementation();
       try {
@@ -358,6 +377,9 @@ describe('controller actions during wallet setup', () => {
         'signSyscoinPsbt',
         'signPSBT',
         'ethSendTransaction',
+        'ethSign',
+        'rawProviderSend',
+        'sendSignedErc20Transaction',
         'signAction',
         'getActiveKeyring',
         'lock',
@@ -373,7 +395,10 @@ describe('controller actions during wallet setup', () => {
     const sdk = {
       signPSBT: calls.signPSBT,
       ethSendTransaction: calls.ethSendTransaction,
+      ethSign: calls.ethSign,
       getBalance: calls.getBalance,
+      sendSignedErc20Transaction: calls.sendSignedErc20Transaction,
+      web3Provider: { send: calls.rawProviderSend },
     };
     sdkGetter = jest.fn(() => sdk);
     const wallet = {
@@ -394,11 +419,11 @@ describe('controller actions during wallet setup', () => {
 
   afterEach(() => logging.mockRestore());
 
-  const invoke = (methods: string[]) =>
+  const invoke = (methods: string[], params: unknown[] = []) =>
     listener(
       {
         type: 'CONTROLLER_ACTION',
-        data: { methods, params: [] },
+        data: { methods, params },
       },
       sender,
       sendResponse
@@ -433,12 +458,51 @@ describe('controller actions during wallet setup', () => {
     }
   );
 
+  it('refuses raw wallet SDK submission paths before resolving their getters', () => {
+    const routes = [
+      ['wallet', 'getActiveKeyring'],
+      ['wallet', 'syscoinTransaction', 'signPSBT'],
+      ['wallet', 'ethereumTransaction', 'ethSendTransaction'],
+      ['wallet', 'ethereumTransaction', 'sendSignedErc20Transaction'],
+      ['wallet', 'ethereumTransaction', 'sendFormattedTransaction'],
+      ['wallet', 'ethereumTransaction', 'web3Provider', 'broadcastTransaction'],
+    ];
+    for (const route of routes) expect(invoke(route)).toBe(false);
+    expect(
+      invoke(
+        ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+        ['eth_sendRawTransaction', ['0x1234']]
+      )
+    ).toBe(false);
+    expect(sdkGetter).not.toHaveBeenCalled();
+    expect(calls.getActiveKeyring).not.toHaveBeenCalled();
+    expect(calls.rawProviderSend).not.toHaveBeenCalled();
+    expect(sendResponse).toHaveBeenCalledWith({
+      error: 'Use the approved wallet operation',
+      success: false,
+    });
+  });
+
+  it.each(['eth_call', 'eth_estimateGas', 'eth_getBlockByNumber'])(
+    'preserves the explicit provider read for wallet transaction review: %s',
+    async (method) => {
+      expect(
+        invoke(
+          ['wallet', 'ethereumTransaction', 'web3Provider', 'send'],
+          [method, []]
+        )
+      ).toBe(true);
+      await settle();
+      expect(calls.rawProviderSend).toHaveBeenCalledWith(method, []);
+    }
+  );
+
   it('rechecks admission before invoking a previously resolved SDK signing method', async () => {
-    expect(invoke(['wallet', 'syscoinTransaction', 'signPSBT'])).toBe(true);
+    expect(invoke(['wallet', 'ethereumTransaction', 'ethSign'])).toBe(true);
     expect(sdkGetter).toHaveBeenCalledTimes(1);
     status = 'busy';
     await settle();
-    expect(calls.signPSBT).not.toHaveBeenCalled();
+    expect(calls.ethSign).not.toHaveBeenCalled();
     expect(sendResponse).toHaveBeenCalledWith({
       error: 'Wallet setup is in progress. Signing is unavailable.',
       success: false,

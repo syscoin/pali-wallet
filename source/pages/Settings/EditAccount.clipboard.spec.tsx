@@ -55,9 +55,9 @@ jest.mock('utils/navigationState', () => ({
   navigateBack: jest.fn(),
 }));
 jest.mock('utils/format', () => ({ ellipsis: (value: string) => value }));
-jest.mock('antd/lib/form/Form', () => ({ useForm: () => [{}] }));
 jest.mock('antd', () => {
   const Form: any = ({ children }: any) => <form>{children}</form>;
+  Form.useForm = () => [{}];
   Form.Item = ({ children }: any) => children;
   Form.Item.displayName = 'MockFormItem';
   return { Form, Input: (props: any) => <input {...props} /> };

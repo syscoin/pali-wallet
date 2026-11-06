@@ -125,6 +125,8 @@ const originalResizeObserver = globalThis.ResizeObserver;
 const HOST = 'https://type-switch.synthetic.invalid';
 const TYPE = KeyringAccountType.HDAccount;
 const FAILURE = 'Synthetic type-switch disconnect refusal';
+const PHRASE =
+  'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const PASSWORD = 'Synthetic type switch test password!';
 const utxoNetwork = {
   kind: INetworkType.Syscoin,
@@ -299,6 +301,9 @@ describe.each([true, false])(
               if (callback) callback();
               else return Promise.resolve();
             },
+            async remove(key: string) {
+              delete records[key];
+            },
           },
         },
         tabs: {
@@ -392,12 +397,7 @@ describe.each([true, false])(
       };
       // Public BIP39 fixture only; initialize an actual SDK session so the real
       // MainController transfers its secure session during the network switch.
-      await wallet
-        .getActiveKeyring()
-        .initializeSession(
-          'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
-          PASSWORD
-        );
+      await wallet.getActiveKeyring().initializeSession(PHRASE, PASSWORD);
       mockController.dapp.setup({ url: `${HOST}/page` });
       jest.mocked(popupPromise).mockImplementation(async (popup) => {
         if (popup.route === MethodRoute.SwitchUtxoEvm) {
@@ -542,8 +542,18 @@ describe.each([true, false])(
       chrome.tabs.query = jest.fn((_query, reply: any) =>
         reply([{ id: 101, url: `${HOST}/page` }])
       ) as any;
+      const sourceKeyring = wallet.getActiveKeyring();
+      expect(sourceKeyring.isUnlocked()).toBe(true);
       await wallet.setActiveNetwork(targetNetwork, false);
       await finishScheduledSave();
+      const targetKeyring = wallet.getActiveKeyring();
+      expect(targetKeyring).not.toBe(sourceKeyring);
+      expect(sourceKeyring.isUnlocked()).toBe(false);
+      await expect(sourceKeyring.getSeed(PASSWORD)).rejects.toThrow(
+        'Unlock wallet first'
+      );
+      expect(targetKeyring.isUnlocked()).toBe(true);
+      await expect(targetKeyring.getSeed(PASSWORD)).resolves.toBe(PHRASE);
       expect(mockController.dapp.get(HOST).chain).toBe(sourceNetwork.kind);
       expect(mockController.dapp.getAll()[HOST]).toBe(
         mockController.dapp.get(HOST)

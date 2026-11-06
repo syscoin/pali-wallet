@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useSearchParams, useLocation } from 'react-router-dom';
 
+import { formatTokenUnits } from '../../shared/erc20';
 import { getHomeBrowsingScope } from '../Home/useHomeBrowsingState';
 import PaliLogo from 'assets/all_assets/favicon-32.png';
 import {
@@ -601,7 +602,9 @@ export const ImportToken: React.FC = () => {
         let tokenId =
           activeTab === 'custom' ? customTokenId.trim() : asset.tokenId;
         const rawBalance =
-          activeTab === 'custom' ? verifiedTokenRawBalance : asset.rawBalance;
+          activeTab === 'custom' && asset.tokenStandard === 'ERC-1155'
+            ? verifiedTokenRawBalance
+            : asset.rawBalance;
 
         if (asset.tokenStandard === 'ERC-1155' && !tokenId) {
           throw new Error(t('tokens.tokenIdRequired'));
@@ -641,9 +644,7 @@ export const ImportToken: React.FC = () => {
           logo: tokenLogo,
           tokenStandard: asset.tokenStandard || 'ERC-20',
           ...(asset.tokenStandard === 'ERC-1155' && tokenId ? { tokenId } : {}),
-          ...(asset.tokenStandard === 'ERC-1155' && rawBalance
-            ? { rawBalance }
-            : {}),
+          ...(rawBalance ? { rawBalance } : {}),
         };
 
         await controllerEmitter(
@@ -779,6 +780,17 @@ export const ImportToken: React.FC = () => {
         : customTokenDetails;
 
     const assets = convertToImportableAssets([tokenWithCorrectBalance]);
+    const { rawBalance, decimals, isNft } = customTokenDetails;
+    if (isNft === false && rawBalance !== undefined) {
+      try {
+        const exactBalance =
+          rawBalance === '0' ? '—' : formatTokenUnits(rawBalance, decimals);
+        return assets.map((asset) => ({ ...asset, exactBalance, rawBalance }));
+      } catch {
+        // Older or invalid navigation data keeps the compatible display.
+        return assets;
+      }
+    }
     return customTokenDetails.tokenStandard === 'ERC-1155' &&
       verifiedTokenRawBalance !== null
       ? assets.map((asset) => ({

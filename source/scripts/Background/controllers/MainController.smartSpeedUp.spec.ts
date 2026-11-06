@@ -1,5 +1,4 @@
 import { BigNumber } from '@sidhujag/sysweb3-keyring/cjs/ethers-v6';
-import { KeyringManager } from '@sidhujag/sysweb3-keyring/cjs/keyring-manager';
 import {
   privateKeyToAccount,
   sendLocalEvmTransaction,
@@ -7,6 +6,7 @@ import {
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import vaultReducer from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -69,12 +69,6 @@ jest.mock('syscoinjs-lib', () => ({
   utils: { bitcoinjs: {} },
   networks: { bitcoin: {}, syscoin: {} },
 }));
-jest.mock(
-  '@sidhujag/sysweb3-keyring/cjs/hardware-wallet-manager-singleton',
-  () => ({
-    HardwareWalletManagerSingleton: { getInstance: () => ({}) },
-  })
-);
 jest.mock('@sidhujag/sysweb3-keyring/cjs/ledger', () => ({
   LedgerKeyring: jest.fn(),
 }));
@@ -170,7 +164,7 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     legacy = false,
     signer = PAYER,
     approvedMaximumFee: string | null = APPROVED_MAXIMUM_FEE,
-    walletScope?: ReturnType<typeof getWalletNavigationScope>
+    walletScope = getWalletNavigationScope()
   ) =>
     handleUpdateTransaction({
       t: (key, options) => (options ? `${key}: ${options.hash}` : key),
@@ -238,10 +232,11 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     provider = {
       getTransaction: jest.fn().mockResolvedValue(rawOriginal()),
       getBalance: jest.fn().mockResolvedValue(BigNumber.from('1000000000')),
+      verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
       sendTransaction: jest.fn().mockResolvedValue(response),
     };
     currentProvider = provider;
-    keyring = new KeyringManager();
+    keyring = createTestKeyringManager();
     keyring.setVaultStateGetter(() => mockState.vault);
     replaceGetter = jest.spyOn(keyring, 'setVaultStateGetter');
     keyring.sessionPassword = { isCleared: () => false };
@@ -328,6 +323,58 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     }
   );
 
+  function selectOrdinaryPayer() {
+    mockState.vault.activeAccount = {
+      type: KeyringAccountType.HDAccount,
+      id: 3,
+    };
+    mockState.vault.accountTransactions.HDAccount = {
+      ...mockState.vault.accountTransactions.HDAccount,
+      3: {
+        syscoin: {},
+        ethereum: {
+          [CHAIN]: [{ ...rawOriginal(), value: '7', input: '0x1234' }],
+        },
+      },
+    };
+  }
+
+  it('quotes then sends an ordinary pending replacement through the same guarded controller', async () => {
+    selectOrdinaryPayer();
+    const scope = getWalletNavigationScope();
+    const maximumFee = await previewSpeedUpTransaction(
+      ORIGINAL,
+      false,
+      CHAIN,
+      PAYER,
+      scope
+    );
+    expect(maximumFee).toBe('3024000');
+    expect(aes.decrypt).not.toHaveBeenCalled();
+    expect(sendLocalEvmTransaction).not.toHaveBeenCalled();
+    await run(false, PAYER, maximumFee, scope);
+    expect(sendLocalEvmTransaction).toHaveBeenCalledTimes(1);
+    expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
+    expect(mockPersist).toHaveBeenCalledTimes(1);
+    expect(alert.success).toHaveBeenCalled();
+    expect(replaceGetter).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale ordinary account scope before requesting the original transaction', async () => {
+    selectOrdinaryPayer();
+    const scope = getWalletNavigationScope();
+    mockState.vault.activeNetwork.url = 'https://other-rpc.synthetic.invalid';
+    await expect(
+      wallet.speedUpEvmTransaction(ORIGINAL, false, CHAIN, PAYER, {
+        previewOnly: true,
+        walletScope: scope,
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(provider.getTransaction).not.toHaveBeenCalled();
+    expect(aes.decrypt).not.toHaveBeenCalled();
+    expect(provider.sendTransaction).not.toHaveBeenCalled();
+  });
+
   it.each([false, true])(
     'previews the authenticated maximum without keys and carries approval through the real utility (legacy=%s)',
     async (legacy) => {
@@ -347,14 +394,26 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
       expect(mockPersist).not.toHaveBeenCalled();
       expect(controllerEmitter).toHaveBeenLastCalledWith(
         ['wallet', 'speedUpEvmTransaction'],
-        [ORIGINAL, legacy, CHAIN, PAYER, { previewOnly: true }]
+        [
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { previewOnly: true, walletScope: scope },
+        ]
       );
 
       await run(legacy, PAYER, maximumFee, scope);
 
       expect(controllerEmitter).toHaveBeenCalledWith(
         ['wallet', 'speedUpEvmTransaction'],
-        [ORIGINAL, legacy, CHAIN, PAYER, { approvedMaximumFee: maximumFee }]
+        [
+          ORIGINAL,
+          legacy,
+          CHAIN,
+          PAYER,
+          { approvedMaximumFee: maximumFee, walletScope: scope },
+        ]
       );
       expect(aes.decrypt).toHaveBeenCalledTimes(1);
       expect(provider.sendTransaction).toHaveBeenCalledTimes(1);
@@ -753,12 +812,18 @@ describe('SmartAccount speedup utility to actual keyring handoff', () => {
     });
     keyring.ledgerSigner.evm = { signEVMTransaction: sign };
     const sending = run(false, hardwareAddress);
-    await started.promise;
+    await Promise.race([
+      started.promise,
+      sending.then(() => {
+        throw new Error('Replacement did not reach the Ledger device');
+      }),
+    ]);
     transactions()[0].isReplaced = true;
     transactions()[0].status = 'replaced';
     pending.resolve();
     await sending;
     expect(sign).toHaveBeenCalledTimes(1);
+    expect(provider.verifyConfiguredChainId).toHaveBeenCalledTimes(1);
     expect(provider.sendTransaction).not.toHaveBeenCalled();
     expect(mockPersist).not.toHaveBeenCalled();
     expect(alert.success).not.toHaveBeenCalled();

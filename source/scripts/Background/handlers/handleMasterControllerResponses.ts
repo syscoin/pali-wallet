@@ -1,9 +1,19 @@
+import { walletTokenReviewError } from '../../../shared/walletTokenReview';
+import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
+import { isExternalWalletUrl } from 'utils/extensionContexts';
 import { extractErrorMessage } from 'utils/index';
 
-import { beginApprovalSubmission } from './approvalSubmission';
+import {
+  beginApprovalSubmission,
+  captureDappEvmSubmission,
+  captureDappSmartAccountSubmission,
+  captureDappUtxoSubmission,
+  transactionApprovalExpired,
+} from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
+import { assertWalletControllerRoute } from './walletControllerRoutes';
 
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
@@ -96,7 +106,7 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   return extractErrorMessage(error, 'Unknown error');
 };
 
-const controllerErrorResponse = (error: any) => {
+export const controllerErrorResponse = (error: any) => {
   const message = normalizeControllerErrorMessage(error);
   const submission: {
     code?: string;
@@ -104,11 +114,22 @@ const controllerErrorResponse = (error: any) => {
     recipientBlockSeverity?: string;
     transactionHash?: string;
     transactionNotBroadcast?: boolean;
+    txid?: string;
   } = {};
   if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
   if (error?.code === 'HARDWARE_REQUEST_CANCELLED')
     submission.code = error.code;
+  if (
+    (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&
+      error.transactionNotBroadcast === true) ||
+    (error?.code === 'UTXO_SUBMISSION_UNKNOWN' &&
+      error.transactionNotBroadcast === false)
+  ) {
+    submission.code = error.code;
+    if (typeof error.txid === 'string' && /^[a-f0-9]{64}$/.test(error.txid))
+      submission.txid = error.txid;
+  }
   if (
     error?.code === 'PALI_TOKEN_RECIPIENT_BLOCKED' &&
     error?.transactionNotBroadcast === true &&
@@ -160,7 +181,12 @@ export const handleMasterControllerResponses = (
       }
 
       const { methods, params } = data;
-
+      if (
+        Array.isArray(methods) &&
+        methods[0] === 'wallet' &&
+        methods[1] === 'sendAndSaveTokenTransaction'
+      )
+        throw walletTokenReviewError();
       const assertSetupAdmission = () => {
         if (!MasterControllerInstance.wallet?.getWalletSetupStatus?.()) return;
         // Member traversal also reaches SDK objects and TypeScript-private
@@ -190,6 +216,7 @@ export const handleMasterControllerResponses = (
           );
       };
       assertSetupAdmission();
+      assertWalletControllerRoute(methods, params);
       const personalSignApproval = requirePersonalSignApproval(
         sender,
         methods,
@@ -198,7 +225,9 @@ export const handleMasterControllerResponses = (
 
       let targetMethod = MasterControllerInstance;
 
-      for (const method of methods) {
+      const signer = personalSignApproval?.signer;
+      const route = signer ? ['wallet', signer.method] : methods;
+      for (const method of route) {
         if (targetMethod && method in targetMethod) {
           targetMethod = targetMethod[method];
         } else {
@@ -208,14 +237,116 @@ export const handleMasterControllerResponses = (
 
       if (typeof targetMethod === 'function') {
         const finishSubmission = beginApprovalSubmission(sender, methods);
+        let assertUtxoSignatureCurrent: (() => void) | undefined;
+        let retiredBatch:
+          | {
+              isSoleRetiredAttempt: () => boolean;
+              release: () => Promise<void>;
+            }
+          | undefined;
         Promise.resolve()
           .then(async () => {
             if (personalSignApproval)
               await personalSignApproval.checkDocument();
             assertSetupAdmission();
             personalSignApproval?.assertCurrent();
+            const walletMethod =
+              route.length === 2 && route[0] === 'wallet'
+                ? route[1]
+                : undefined;
+            const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
+            const dappApproval = sendsEvm
+              ? captureDappEvmSubmission(sender)
+              : undefined;
+            if (dappApproval?.batch) {
+              const release = await captureStartedEoaSendCallsAttempt(
+                dappApproval.batch,
+                dappApproval.context.chainId,
+                params?.[4]?.sendCallsSubmissionId
+              );
+              if (!release) throw transactionApprovalExpired();
+              retiredBatch = {
+                isSoleRetiredAttempt: dappApproval.isSoleRetiredAttempt,
+                release,
+              };
+            }
+            if (dappApproval) await dappApproval.checkDocument();
+            else if (sendsEvm && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
+            const smartMethod =
+              walletMethod === 'submitSmartAccountExecution' ||
+              walletMethod === 'registerSmartAccountOnChain'
+                ? walletMethod
+                : undefined;
+            const smartApproval = smartMethod
+              ? captureDappSmartAccountSubmission(sender, smartMethod)
+              : undefined;
+            if (smartApproval) await smartApproval.checkDocument();
+            else if (smartMethod && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
+            const utxoMethod =
+              walletMethod === 'signSyscoinPsbt' ||
+              walletMethod === 'signSendAndSaveTransaction'
+                ? walletMethod
+                : undefined;
+            const utxoApproval = utxoMethod
+              ? captureDappUtxoSubmission(sender, utxoMethod, params?.[0])
+              : undefined;
+            if (utxoApproval) await utxoApproval.checkDocument();
+            else if (
+              utxoMethod &&
+              (utxoMethod === 'signSyscoinPsbt' ||
+                isExternalWalletUrl(sender.url) ||
+                params?.[0]?.ordinaryWalletSend !== true)
+            )
+              throw transactionApprovalExpired();
+
+            let argumentsForCall = params;
+            if (sendsEvm) {
+              argumentsForCall = [
+                params?.[0],
+                params?.[1],
+                params?.[2],
+                params?.[3],
+                {
+                  ...params?.[4],
+                  // Background-only capabilities do not cross the UI boundary.
+                  assertCurrentContext: undefined,
+                  assertBeforeSign: undefined,
+                  authorizeDapp: dappApproval?.assertCurrent,
+                  sendCallsSubmissionId: undefined,
+                  ...(dappApproval && {
+                    expectedContext: dappApproval.context,
+                  }),
+                },
+              ];
+            } else if (smartMethod) {
+              // This capability belongs to the worker, not the renderer.
+              argumentsForCall = [
+                smartApproval?.context
+                  ? { ...params?.[0], expectedContext: smartApproval.context }
+                  : params?.[0],
+                smartApproval?.assertCurrent,
+              ];
+            } else if (utxoApproval) {
+              argumentsForCall = [utxoApproval.input, utxoApproval.authority];
+            } else if (utxoMethod) {
+              argumentsForCall = [params[0]];
+            }
             // Always execute the method; never attempt to send functions over messaging
-            const response = await (targetMethod as any)(...params);
+            dappApproval?.assertCurrent();
+            smartApproval?.assertCurrent();
+            utxoApproval?.authority.assertCurrent();
+            const response = await (targetMethod as any)(
+              ...(signer
+                ? [
+                    ...signer.args,
+                    signer.method === 'signSLHDSAActionHash'
+                      ? personalSignApproval
+                      : personalSignApproval.assertCurrent,
+                  ]
+                : argumentsForCall)
+            );
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the
             // existing admission gate closes. Transaction submissions retain
@@ -231,9 +362,14 @@ export const handleMasterControllerResponses = (
               assertSetupAdmission();
             if (personalSignApproval)
               await personalSignApproval.checkDocument();
+            if (utxoMethod === 'signSyscoinPsbt' && utxoApproval) {
+              await utxoApproval.checkDocument();
+              assertUtxoSignatureCurrent = utxoApproval.authority.assertCurrent;
+            }
             return response;
           })
           .then((response) => {
+            assertUtxoSignatureCurrent?.();
             if (personalSignApproval) {
               assertSetupAdmission();
               personalSignApproval.assertCurrent();
@@ -241,8 +377,26 @@ export const handleMasterControllerResponses = (
             finishSubmission();
             sendResponse(response);
           })
-          .catch((error) => {
+          .catch(async (error) => {
+            const release =
+              error instanceof Error &&
+              Object.getOwnPropertyDescriptor(error, 'transactionNotBroadcast')
+                ?.value === true &&
+              !('transactionHash' in error) &&
+              retiredBatch?.isSoleRetiredAttempt()
+                ? retiredBatch.release
+                : undefined;
             finishSubmission(error);
+            if (release) {
+              try {
+                await release();
+              } catch (releaseError) {
+                console.error(
+                  'Failed to release retired sendCalls attempt:',
+                  releaseError
+                );
+              }
+            }
             console.error('Error executing method:', error);
             // Preserve structured errors from syscoinjs-lib
             if (

@@ -73,20 +73,23 @@ export function createExtensionEvmReplay(
         ),
       dispatch: (raw, admit, context) => {
         const broadcast = () => send('eth_sendRawTransaction', [raw]);
-        if (context.operation !== 'cancel' && !context.requiresPayerCheck)
-          return admit(broadcast);
-        const tx = Transaction.from(raw);
-        if (
-          tx.from?.toLowerCase() !== context.from.toLowerCase() ||
-          !isEvmProtectedEmptySelfCall(tx, context.operation)
-        )
-          throw new EvmReplayError('INVALID_RESPONSE');
+        const requiresPayerCheck =
+          context.operation === 'cancel' || context.requiresPayerCheck;
+        if (requiresPayerCheck) {
+          const tx = Transaction.from(raw);
+          if (
+            tx.from?.toLowerCase() !== context.from.toLowerCase() ||
+            !isEvmProtectedEmptySelfCall(tx, context.operation)
+          )
+            throw new EvmReplayError('INVALID_RESPONSE');
+        }
         return admit(broadcast, async () => {
           await assertLiveEvmReplacementChain(
             captured.provider,
             context.chainId,
             captured.assertCurrent
           );
+          if (!requiresPayerCheck) return;
           await assertEvmCancellationPayerReady(
             context.from,
             context.nonce,

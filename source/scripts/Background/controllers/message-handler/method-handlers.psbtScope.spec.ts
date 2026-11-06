@@ -1,8 +1,12 @@
 const mockState = jest.fn();
 const mockController = jest.fn();
+const mockSubscribe = jest.fn();
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState() },
+  default: {
+    getState: () => mockState(),
+    subscribe: (listener: () => void) => mockSubscribe(listener),
+  },
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => mockController(),
@@ -23,8 +27,12 @@ import { popupPromise } from './popup-promise';
 
 describe('extension-owned PSBT approval context', () => {
   const account = { id: 0, address: 'approved-address', xpub: 'approved-xpub' };
+  const grant = { accountId: 0, accountType: KeyringAccountType.HDAccount };
+  let currentGrant: typeof grant | undefined;
   beforeEach(() => {
     jest.clearAllMocks();
+    currentGrant = grant;
+    mockSubscribe.mockReturnValue(jest.fn());
     mockState.mockReturnValue({
       vault: {
         isBitcoinBased: true,
@@ -40,10 +48,7 @@ describe('extension-owned PSBT approval context', () => {
     mockController.mockReturnValue({
       wallet: { prepareSentryFeePsbt: jest.fn().mockResolvedValue(undefined) },
       dapp: {
-        get: () => ({
-          accountId: 0,
-          accountType: KeyringAccountType.HDAccount,
-        }),
+        get: () => currentGrant,
         getAccount: () => account,
       },
     });
@@ -136,5 +141,35 @@ describe('extension-owned PSBT approval context', () => {
       } as any)
     ).rejects.toThrow(/connected account/);
     expect(popupPromise).not.toHaveBeenCalled();
+  });
+
+  it('retires a request when the original grant is removed and restored during preflight', async () => {
+    let finish!: () => void;
+    mockController().wallet.prepareSentryFeePsbt.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      })
+    );
+    const pending = new SysMethodHandler().handle({
+      originalRequest: {
+        host: 'site.example',
+        method: 'sys_sign',
+        params: [{ psbt: 'fixture' }],
+      },
+      methodConfig: {
+        hasPopup: true,
+        popupRoute: 'sign',
+        popupEventName: 'sign',
+      },
+    } as any);
+    const onStoreChange = mockSubscribe.mock.calls[0][0];
+    currentGrant = undefined;
+    onStoreChange();
+    currentGrant = grant;
+    onStoreChange();
+    finish();
+    await expect(pending).rejects.toMatchObject({ code: 4001 });
+    expect(popupPromise).not.toHaveBeenCalled();
+    expect(mockSubscribe.mock.results[0].value).toHaveBeenCalledTimes(1);
   });
 });

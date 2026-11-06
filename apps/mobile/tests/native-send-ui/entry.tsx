@@ -4,6 +4,7 @@ import React, { useSyncExternalStore } from 'react';
 import { NativeNetworkPortfolioFixture } from './nativeNetworkPortfolioFixture';
 import { NativeFaucetFixture } from './nativeFaucetFixture';
 import { NativeTokenPortfolioFixture } from './nativeTokenPortfolioFixture';
+import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { registerRootComponent } from 'expo';
@@ -276,6 +277,8 @@ function Fixture() {
     <SafeAreaProvider>
       {new URLSearchParams(window.location.search).has('faucet') ? (
         <NativeFaucetFixture />
+      ) : new URLSearchParams(window.location.search).has('utxo-send') ? (
+        <NativeUtxoSendFixture />
       ) : new URLSearchParams(window.location.search).has('erc20-send') ? (
         <Erc20SendFixture />
       ) : new URLSearchParams(window.location.search).has('token-portfolio') ? (

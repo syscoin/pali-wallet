@@ -15,6 +15,7 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import { restoreVaultSnapshot, setNetworkChange } from 'state/vault';
@@ -185,7 +186,7 @@ beforeEach(async () => {
   );
   store.dispatch(setActiveSlip44(1));
   await persistCommittedWalletState(true);
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   const actualImport = manager.importWatchOnly.bind(manager);
@@ -429,10 +430,15 @@ it('persists an EVM public address without Blockbook and retains the real SDK wa
     type: KeyringAccountType.Imported,
   });
   expect((manager as any).isWatchOnlyAccount(account)).toBe(true);
-  await expect(manager.getPubkey(0, false)).rejects.toThrow(
-    'Public key not available for single-address imported accounts'
+  const read = {
+    assertCurrent: () => undefined,
+    fetch: globalThis.fetch,
+    signal: new AbortController().signal,
+  };
+  await expect(manager.getPubkey(0, false, read)).rejects.toThrow(
+    'Wallet signing context changed'
   );
-  await expect(manager.getBip32Path(0, false)).rejects.toThrow(
-    'BIP32 path not available for single-address imported accounts'
+  await expect(manager.getBip32Path(0, false, read)).rejects.toThrow(
+    'Wallet signing context changed'
   );
 });

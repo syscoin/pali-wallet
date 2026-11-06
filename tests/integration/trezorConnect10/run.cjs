@@ -131,15 +131,17 @@ async function run() {
 
   const hardware = new utils.HDSigner(HARDWARE_PHRASE, '', false);
   const xpub = hardware.getAccountXpub();
+  const address = hardware.createAddress(0, false, 84);
   hardware.createAccount();
   const secondXpub = hardware.getAccountXpub();
+  const secondAddress = hardware.createAddress(0, false, 84);
   const keys = [xpub, secondXpub];
   const counts = {
     connections: 0,
     closedConnections: 0,
     handshakes: 0,
     calls: 0,
-    fixtureReads: 0,
+    importDiscoveryReads: 0,
     deniedHttp: 0,
     allowedConnect: 0,
   };
@@ -353,6 +355,8 @@ async function run() {
     assert.equal(new URL(initial.network.url).origin, BACKEND_ORIGIN);
     assert.equal(initial.hardware.length, 0);
 
+    // Observe the old import-specific index lookup without answering it.
+    // All external traffic still goes through the deny proxy.
     await context.route('**/*', async (route) => {
       const request = route.request();
       const url = new URL(request.url());
@@ -360,23 +364,13 @@ async function run() {
         url.origin === BACKEND_ORIGIN &&
         request.method() === 'GET' &&
         keys.some((key) => url.pathname === `/api/v2/xpub/${key}`) &&
-        url.search === '?tokens=used&details=tokens' &&
+        url.searchParams.get('tokens') === 'used' &&
+        url.searchParams.get('details') === 'tokens' &&
         request.serviceWorker() === worker
       ) {
-        counts.fixtureReads++;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          headers: { 'access-control-allow-origin': '*' },
-          body: JSON.stringify({
-            address: url.pathname.split('/').pop(),
-            balance: '0',
-            unconfirmedBalance: '0',
-            txs: 0,
-            tokens: [],
-          }),
-        });
-      } else await route.continue(); // The already installed proxy refuses this.
+        counts.importDiscoveryReads++;
+      }
+      await route.continue();
     });
     // Grant Chrome's real local-network permission, without changing its APIs.
     const cdp = await context.newCDPSession(page);
@@ -410,9 +404,9 @@ async function run() {
       imported && !imported.error && imported.xpub === xpub,
       'Real controller import failed'
     );
+    assert.equal(imported.address, address);
     const first = await state();
-    assert.equal(first.hardware.length, 1);
-    assert.equal(first.hardware[0].xpub, xpub);
+    assert.deepEqual(first.hardware, [{ xpub, address }]);
     assert.equal(counts.calls, 1);
     const pagesBeforeLock = context.pages().length;
     const createdBeforeLock = browserPages.length;
@@ -481,15 +475,20 @@ async function run() {
       reconnected && !reconnected.error && reconnected.xpub === secondXpub,
       'Reconnect import failed'
     );
+    assert.equal(reconnected.address, secondAddress);
     const final = await state();
-    assert.deepEqual(
-      final.hardware.map((account) => account.xpub).sort(),
-      [...keys].sort()
-    );
+    assert.deepEqual(final.hardware, [
+      { xpub, address },
+      { xpub: secondXpub, address: secondAddress },
+    ]);
     assert.equal(counts.calls, 3);
     assert.equal(counts.connections, 2);
     assert.equal(counts.handshakes, 3);
-    assert.equal(counts.fixtureReads, 2);
+    assert.equal(
+      counts.importDiscoveryReads,
+      0,
+      'Hardware import must derive its initial receive address locally'
+    );
     assert.equal(context.pages().length, pagesBeforeLock);
     assert.equal(browserPages.length, createdBeforeLock);
     assert.deepEqual(
@@ -520,7 +519,8 @@ async function run() {
       localCancellationAndLateReplyFence: true,
       noDisposalInducedPopup: true,
       realOnboardingControllerStorageAndConnect: true,
-      syntheticDesktopAndReadOnlyBackend: true,
+      syntheticDesktopAndDeniedExternalNetwork: true,
+      hardwareReceiveAddressesVerified: true,
       physicalDeviceQualified: false,
     };
   } finally {

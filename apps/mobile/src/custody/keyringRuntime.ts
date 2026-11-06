@@ -2,6 +2,7 @@ import type { EvmObservationRequest, EvmTransactionObservation } from '../../../
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
 import { createNativeSignedRecordView } from './sharedSignedRecords.ts';
@@ -25,8 +26,8 @@ import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime }
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import type { NativeTransferRuntime } from './transfers.ts';
-import { assertTransferIntentEnvelope, snapshotErc20TransferIntent } from './transferIntent.ts';
-import { snapshotUnsignedTransfer } from './evmFeeContracts.ts';
+import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
+import { snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenInventory, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -43,6 +44,7 @@ import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
 import type { IPrivateVaultSession } from '../../../../source/wallet/privateVault.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from './noteBackupRuntime.ts';
+import type { NativeUtxoSend } from './utxoSend.ts';
 
 type SoftwareSdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 type IndexedKeyring = InstanceType<SoftwareSdk['SoftwareKeyring']> & {
@@ -62,6 +64,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   loadSdk?: () => Promise<SoftwareSdk>;
   assertActive?: () => void;
   readUtxoAccount?: (id: UtxoNetworkId, xpub: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
+  utxoFetch?: typeof globalThis.fetch;
   observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
 }>;
 
@@ -78,6 +81,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   };
   /** Native transfer host only; never exposed directly to a screen. */
   readonly transfers?: NativeTransferRuntime;
+  openUtxoSend?(assertCurrent: () => void): Promise<NativeUtxoSend>;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
   openNoteBackup?(assertCurrent: () => void): Promise<NativeNoteBackupRuntime>;
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
@@ -126,7 +130,7 @@ export function createKeyringRuntimeFactory(
       try {
         const sdk = await (dependencies.loadSdk?.() ?? import('@sidhujag/sysweb3-keyring/cjs/software.js'));
         if (typeof sdk.captureEvmSubmission !== 'function' || typeof sdk.submitSignedEvmTransaction !== 'function') throw new Error('Shared EVM submission SDK is required');
-        const host = sdk.createSoftwareKeyringHost(storage.keyringStorage, { captureEvmSubmission: (context) => captureSignedSubmission(context) });
+        const host = sdk.createKeyringHost(storage.keyringStorage);
         const initialEvmNetwork = getNativeNetwork('ethereum');
         const sdkEvmNetwork = (network: NativeNetworkRegistration): SdkNetwork => ({
           kind: sdk.INetworkType.Ethereum, chainId: Number(network.chainId), slip44: network.slip44,
@@ -142,7 +146,7 @@ export function createKeyringRuntimeFactory(
         });
         type State = ReturnType<typeof initialState>;
         const openKeyring = (scope: State) => {
-          const instance = new sdk.SoftwareKeyring(host) as IndexedKeyring;
+          const instance = new sdk.SoftwareKeyring(host, { captureEvmSubmission: null }) as IndexedKeyring;
           instance.setVaultStateGetter(() => scope);
           return instance;
         };
@@ -152,18 +156,24 @@ export function createKeyringRuntimeFactory(
         const tokens = new NativeTokenRegistry(storage.keyringStorage);
         const activityHistory = new NativeActivityHistory(storage.keyringStorage);
         const signedRecords = new EvmSignedRecords(storage.signedRecords, Date.now, () => { void lock().catch(() => undefined); });
+        const utxoRecords = storage.utxoSignedRecords && new (await import('../../../../source/wallet/utxoSignedRecords.ts')).UtxoSignedRecords(
+          storage.utxoSignedRecords, storage.utxoSignedRecords,
+          () => { void lock().catch(() => undefined); }
+        );
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
         let pendingBalance: AbortController | null = null;
+        let utxoSend: NativeUtxoSend | undefined;
         type NoteRuntime = ReturnType<typeof import('./noteBackupRuntime.ts').createNativeNoteBackupRuntime>;
         let noteBackups: NoteRuntime | undefined;
         let noteStorageFault: 'unreported' | 'reopen' | undefined;
         const requireNoteReopen = () => { noteStorageFault ??= 'unreported'; };
-        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen || noteStorageFault === 'reopen';
+        const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
           noteBackups?.invalidate();
           pendingBalance?.abort();
+          utxoSend?.cancel(); utxoSend = undefined;
           return next;
         };
         let closed = false;
@@ -198,6 +208,7 @@ export function createKeyringRuntimeFactory(
           authenticatedPair = null; verifiedIdentity = null;
           noteBackups?.invalidate();
           pendingBalance?.abort();
+          utxoSend?.cancel(); utxoSend = undefined;
           // Retire secrets synchronously, then report quarantine asynchronously.
           // storage.close() must still install its cleanup promise and drain work.
           return pending.then(() => {
@@ -329,7 +340,7 @@ export function createKeyringRuntimeFactory(
             await (keyring === target ? source : target).destroy();
           }
         };
-        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void = () => undefined, metadata?: Readonly<Record<string, unknown>>) {
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -378,6 +389,10 @@ export function createKeyringRuntimeFactory(
           if (JSON.stringify(await readIdentity()) !== JSON.stringify(identity)) throw new KeyringRuntimeError('CANCELLED');
           current(captured);
           await signedRecords.validate({keyring,assertCurrent:()=>current(captured)}); current(captured);
+          if (admitted.records.some(({ key }) => key === UTXO_SIGNED_RECORD_KEY)) {
+            if (!utxoRecords) throw new KeyringRuntimeError('OPERATION_FAILED');
+            await utxoRecords.validate({ keyring, assertCurrent: () => current(captured) }); current(captured);
+          }
           authenticatedPair = identity.pairFingerprint;
           verifiedIdentity = identity;
         };
@@ -690,6 +705,21 @@ export function createKeyringRuntimeFactory(
                         const hasAlias = before.accounts.some((candidate) => candidate.id !== account.id && candidate.address.toLowerCase() === account.address.toLowerCase());
                         if (!hasAlias && retained.some((entry) => !['confirmed','reverted','nonce-consumed'].includes(entry.phase))) throw new TransferJournalError('PENDING_TRANSFER');
                         current(captured); checkGuard(assertCurrent);
+                      } else {
+                        const network = findUtxoNetwork(before.active.networkId);
+                        const source = state.accounts[account.type][account.index];
+                        if (!utxoRecords || !network || network.slip44 !== account.slip44 ||
+                            !source?.xpub || source.address !== account.address)
+                          throw new KeyringRuntimeError('NOT_READY');
+                        const guard = () => { current(captured); checkGuard(assertCurrent); };
+                        await dataBinding(captured, guard); guard();
+                        const pending = await utxoRecords.hasUnresolvedForAccount(
+                          { keyring, assertCurrent: guard },
+                          account.slip44,
+                          { type: account.type, id: account.index, xpub: source.xpub },
+                        );
+                        guard();
+                        if (pending) throw new TransferJournalError('PENDING_TRANSFER');
                       }
                     }
                   }
@@ -754,11 +784,11 @@ export function createKeyringRuntimeFactory(
         };
         const accounts: NativeAccountRuntime = {
           supported: () => typeof keyring.addNewAccount === 'function',
-          getSnapshot: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot,
+          getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot,
           reserve: (input, expectedRevision) => reserveContext(input, expectedRevision),
         };
         const networks: NativeNetworkRuntime = {
-          getSelectedId: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
+          getSelectedId: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
           reserve: (input, expectedRevision) => {
             const request = typeof input === 'string' ? { kind: 'select-network' as const, id: input } : input;
             return reserveContext(request, expectedRevision, true);
@@ -839,7 +869,7 @@ export function createKeyringRuntimeFactory(
               return tokenOperation(guard, (scope, check) => tokens.removeCollectible(scope, revision, target, check));
             },
           },
-          catalogue: { getSnapshot: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot },
+          catalogue: { getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot },
           keyExport: {
             readSelected: (input, password, assertCurrent) => {
               let scope;
@@ -900,7 +930,7 @@ export function createKeyringRuntimeFactory(
               return { authenticated };
             }),
             async readSelectedAddress() {
-              if (closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked()) throw new Error('NOT_READY');
+              if (closed || requiresReopen() || !keyring.isUnlocked()) throw new Error('NOT_READY');
               const selected = selectedAccount();
               return normalizePublicAddress(selected.address, catalogueSnapshot!.active.networkId);
             },
@@ -933,6 +963,43 @@ export function createKeyringRuntimeFactory(
               if (pendingBalance === controller) pendingBalance = null;
               controller.abort();
             }
+          } } : {}),
+          ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
+            const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
+            const selected = selectedAccount(), network = findUtxoNetwork(snapshot?.active.networkId);
+            if (!network || network.decimals !== 8 || selected.type !== 'HDAccount') throw new KeyringRuntimeError('NOT_READY');
+            const sdkNetwork = getUtxoSdkNetwork(network.id), { xpub } = state.accounts.HDAccount[selected.index]!;
+            const guard = () => {
+              current(captured); checkGuard(assertOwner); current(captured);
+              const actual = state.activeNetwork;
+              if (ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
+                  state.accounts.HDAccount[selected.index]?.xpub !== xpub ||
+                  actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
+                  actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
+                  actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
+                throw new KeyringRuntimeError('CANCELLED');
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+            };
+            guard(); await dataBinding(captured, guard); guard();
+            const profileId = await ring.getPrivateRecordProfileId(); guard();
+            utxoSend?.cancel();
+            const { createNativeUtxoSend } = await import('./utxoSend.ts'); guard();
+            const opened = createNativeUtxoSend(network, {
+              profileId,
+              account: { address: selected.address, id: selected.index, type: 'HDAccount', xpub },
+              network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
+                genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
+            }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!);
+            utxoSend = opened;
+            return Object.freeze<NativeUtxoSend>({ ...opened, async confirm(view) {
+              const pending = opened.confirm(view);
+              pendingSubmissions.add(pending);
+              try { return await pending; }
+              finally {
+                pendingSubmissions.delete(pending);
+                if (utxoRecords.requiresReopen) void lock().catch(() => undefined);
+              }
+            } });
           } } : {}),
           activity: {
             async load(assertCurrent) {
@@ -1015,27 +1082,64 @@ export function createKeyringRuntimeFactory(
               void address;
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent) => {
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;
-              const work = Promise.resolve().then(async () => {
-              current(captured); checkGuard(assertCurrent);
-              const selected = selectedAccount(); const network = getNativeNetwork(catalogueSnapshot!.active.networkId,catalogueSnapshot!.networks);
-              const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-              const context: EvmSubmissionContext = { account:{id:selected.index,type:selected.type,address:selected.address},network:{kind:'ethereum',chainId:Number(network.chainId),slip44:60,url:network.rpcUrl},operation:intent?'erc20':'send' };
-              const boundary = sdk.captureEvmSubmission(context,() => { current(captured); checkGuard(assertCurrent); },() => captureSignedSubmission(context,assertCurrent,intent?{intent}:undefined));
-              const tx = Transaction.from(rawTransaction);
-              if (tx.to === null) throw new KeyringRuntimeError('INVALID_INPUT');
-              assertTransferIntentEnvelope({chainId:tx.chainId.toString(),to:tx.to,value:tx.value.toString(),data:tx.data},intent);
-              if (tx.hash !== hash) throw new KeyringRuntimeError('INVALID_INPUT');
-              try { await sdk.submitSignedEvmTransaction(rawTransaction,broadcast,boundary); }
-              catch (error) {
-                if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED')) throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
-                throw error;
+              let review: {
+                context: EvmSubmissionContext;
+                intent: Erc20TransferIntent | undefined;
+                expectedUnsigned: string;
+              };
+              const check = () => {
+                current(captured);
+                checkGuard(assertCurrent);
+                if (!keyring.isUnlocked() || !canSign())
+                  throw new KeyringRuntimeError('NOT_READY');
+              };
+              try {
+                check();
+                const selected = selectedAccount();
+                const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+                const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
+                const approved = snapshotUnsignedTransfer(inputApproval, network);
+                assertTransferIntentEnvelope(approved, intent);
+                if (approved.from.toLowerCase() !== selected.address.toLowerCase())
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                const context: EvmSubmissionContext = {
+                  account: { id: selected.index, type: selected.type, address: selected.address },
+                  network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
+                  operation: intent ? 'erc20' : 'send',
+                };
+                review = { context, intent, expectedUnsigned: unsignedTransferBytes(approved) };
+              } catch (error) {
+                return Promise.reject(error);
               }
+              const work = Promise.resolve().then(async () => {
+                check();
+                const { context, intent, expectedUnsigned } = review;
+                const boundary = sdk.captureEvmSubmission(
+                  context,
+                  check,
+                  () => captureSignedSubmission(context, check, intent ? { intent } : undefined)
+                );
+                const tx = Transaction.from(rawTransaction);
+                if (tx.to === null || tx.hash !== hash)
+                  throw new KeyringRuntimeError('INVALID_INPUT');
+                assertTransferIntentEnvelope({
+                  chainId: tx.chainId.toString(), to: tx.to,
+                  value: tx.value.toString(), data: tx.data,
+                }, intent);
+                try {
+                  await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
+                } catch (error) {
+                  if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
+                    throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                  throw error;
+                }
               });
               const pending = work.finally(() => { pendingSubmissions.delete(pending); });
-              pendingSubmissions.add(pending); return pending;
+              pendingSubmissions.add(pending);
+              return pending;
             },
             assertUnlocked: (assertCurrent) => {
               const captured = generation;

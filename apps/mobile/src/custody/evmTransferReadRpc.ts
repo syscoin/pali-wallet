@@ -6,6 +6,8 @@ import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, r
   rejectRead, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
 import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
+import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_gasPrice' |
@@ -166,10 +168,9 @@ export class EvmTransferReadRpc {
           : { type: 2 as const, maxFeePerGas: fees.maxFeePerGas.toString(), maxPriorityFeePerGas: fees.maxPriorityFeePerGas.toString() };
       if (approved && (approved.nonce !== nonce.toString() || approved.from !== request.from || approved.to !== request.to || approved.value !== request.value || approved.data !== request.data)) return rejectRead('REVIEW_REQUIRED');
       if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
-      const rpcFees = selectedFees.type === 0 ? { gasPrice: hex(BigInt(selectedFees.gasPrice)) }
-        : { maxFeePerGas: hex(BigInt(selectedFees.maxFeePerGas)), maxPriorityFeePerGas: hex(BigInt(selectedFees.maxPriorityFeePerGas)) };
-      const estimate = quantity(await read('eth_estimateGas', [{ ...request, value: hex(BigInt(request.value)),
-        type: hex(BigInt(selectedFees.type)), chainId: hex(BigInt(this.network.chainId)), nonce: hex(nonce), ...rpcFees }, 'pending']));
+      const estimate = quantity(await read('eth_estimateGas', [evmEstimateRequest({
+        ...request, ...selectedFees, chainId: this.network.chainId, nonce: nonce.toString(),
+      }), 'pending']));
       read.assertCurrent();
       if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
       const gas = bufferedEvmGasLimit(estimate);
@@ -182,11 +183,13 @@ export class EvmTransferReadRpc {
       }
       const tx = snapshotUnsignedTransfer({ ...request, ...selectedFees, chainId: this.network.chainId,
         nonce: nonce.toString(), gasLimit: (approved ? BigInt(approved.gasLimit) : gas).toString() }, this.network);
-      const rate = tx.type === 0 ? tx.gasPrice : tx.maxFeePerGas;
-      const maximumFee = units((BigInt(tx.gasLimit) * BigInt(rate)).toString(), 'INVALID_RESPONSE');
-      const total = units((BigInt(request.value) + maximumFee).toString(), 'INVALID_RESPONSE');
+      let cost: ReturnType<typeof getEvmTransferCost>;
+      try {
+        cost = getEvmTransferCost(BigInt(tx.value), BigInt(tx.gasLimit),
+          BigInt(tx.type === 0 ? tx.gasPrice : tx.maxFeePerGas));
+      } catch { return rejectRead('INVALID_RESPONSE'); }
       await this.canonical(read, sampled); await this.checkChain(read); read.assertCurrent();
-      return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: maximumFee.toString(), totalUnits: total.toString() });
+      return Object.freeze({ transaction: tx, balanceUnits: balance.toString(), maximumFeeUnits: cost.maximumFee.toString(), totalUnits: cost.total.toString() });
     });
   }
   quoteFees(input: EvmUnsignedTransfer, signal: AbortSignal, guard: () => void): Promise<EvmFeeQuote> {
@@ -199,9 +202,7 @@ export class EvmTransferReadRpc {
       const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
       const price = transaction.type === 0 ? cap : (sampled.baseFee ?? rejectRead('INVALID_RESPONSE')) + BigInt(transaction.maxPriorityFeePerGas);
       if (transaction.type === 2 && cap < (sampled.baseFee ?? 0n)) return rejectRead('REVIEW_REQUIRED');
-      const fees = transaction.type === 0 ? { gasPrice: hex(cap) } : { maxFeePerGas: hex(cap), maxPriorityFeePerGas: hex(BigInt(transaction.maxPriorityFeePerGas)) };
-      const gas = quantity(await read('eth_estimateGas', [{ from: transaction.from, to: transaction.to, value: hex(BigInt(transaction.value)), data: transaction.data,
-        type: hex(BigInt(transaction.type)), chainId: hex(BigInt(transaction.chainId)), nonce: hex(BigInt(transaction.nonce)), ...fees }, 'pending']));
+      const gas = quantity(await read('eth_estimateGas', [evmEstimateRequest(transaction), 'pending']));
       if (gas < 21000n || gas > BigInt(transaction.gasLimit) || gas > sampled.gasLimit) return rejectRead('REVIEW_REQUIRED');
       await this.canonical(read, sampled); await this.checkChain(read);
       const now = this.monotonicMilliseconds();

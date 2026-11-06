@@ -14,7 +14,6 @@ const consumedEntries = new Map<string, symbol>();
 const BROADCAST_METHODS = new Set([
   'signSendAndSaveTransaction',
   'sendAndSaveEthTransaction',
-  'sendAndSaveTokenTransaction',
   'submitSmartAccountExecution',
 ]);
 
@@ -68,6 +67,7 @@ export const useConfirmSubmission = ({
   const attemptRef = useRef<{
     definitelyNotBroadcast: boolean;
     mayBroadcast: boolean;
+    ownsPendingTransport?: () => boolean;
     successful: boolean;
   } | null>(null);
   const [blocked, setBlocked] = useState(consumed);
@@ -121,17 +121,23 @@ export const useConfirmSubmission = ({
   const hasTrustedAuth = () => {
     const live = liveRef.current;
     const fresh = getControllerStatus();
+    const attempt = attemptRef.current;
+    // Returning from a hardware window refreshes renderer status. A live
+    // review Port already owns its one pending attempt in the background.
+    const ownedHardwareAttempt =
+      attempt?.ownsPendingTransport &&
+      (attempt.successful ||
+        attempt.definitelyNotBroadcast ||
+        attempt.ownsPendingTransport());
     const trusted =
       live.isUnlocked &&
       !live.isLoading &&
-      !live.connectionUnavailable &&
       fresh.isUnlocked &&
       !fresh.isLoading &&
-      !fresh.connectionUnavailable;
-    // Status can publish before React commits new auth props. A begun attempt
-    // must stay consumed even if trust recovers before the next render.
-    if (!trusted && attemptRef.current) departedRef.current = true;
-    return trusted;
+      ((!live.connectionUnavailable && !fresh.connectionUnavailable) ||
+        ownedHardwareAttempt);
+    if (!trusted && attempt) departedRef.current = true;
+    return Boolean(trusted);
   };
   const isCurrent = () => {
     const live = liveRef.current;
@@ -185,16 +191,20 @@ export const useConfirmSubmission = ({
       attemptRef.current.definitelyNotBroadcast = true;
     }
   };
-  const invoke = async (...args: any[]) => {
-    const broadcasting = BROADCAST_METHODS.has(args[0]?.[1]);
+  const dispatch = async <T>(
+    operation: () => Promise<T>,
+    broadcasting: boolean,
+    ownsPendingTransport?: () => boolean
+  ): Promise<T> => {
     if (broadcasting && attemptRef.current) {
       assertCurrent();
       attemptRef.current.mayBroadcast = true;
       attemptRef.current.definitelyNotBroadcast = false;
       attemptRef.current.successful = false;
+      attemptRef.current.ownsPendingTransport = ownsPendingTransport;
     }
     try {
-      const response = await controllerEmitter(...args);
+      const response = await operation();
       if (broadcasting && attemptRef.current)
         attemptRef.current.successful = true;
       return response;
@@ -203,6 +213,11 @@ export const useConfirmSubmission = ({
       throw error;
     }
   };
+  const invoke = (...args: any[]) =>
+    dispatch(
+      () => controllerEmitter(...args),
+      BROADCAST_METHODS.has(args[0]?.[1])
+    );
   const run = async (action: () => Promise<void>) => {
     if (blockedRef.current || !stateRef.current?.tx || !isCurrent()) return;
     blockedRef.current = true;
@@ -284,6 +299,10 @@ export const useConfirmSubmission = ({
         ? undefined
         : stateRef.current,
     controllerEmitter: invoke,
+    submit: <T>(
+      operation: () => Promise<T>,
+      ownsPendingTransport?: () => boolean
+    ) => dispatch(operation, true, ownsPendingTransport),
     recordError,
     beforeBroadcast: async () => {
       assertCurrent();

@@ -22,10 +22,13 @@ const mockBlockbookLookup = jest.fn((...args: unknown[]) => {
   void args;
   throw new Error('Offline signing test must not request Blockbook');
 });
-jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
-  fetchBackendAccountCached: (...args: unknown[]) =>
-    mockBlockbookLookup(...args),
-}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/utils/owned-blockbook-account',
+  () => ({
+    fetchOwnedBlockbookAccount: (...args: unknown[]) =>
+      mockBlockbookLookup(...args),
+  })
+);
 
 it('the installed SDK refuses a selected watch-only account without signatures, HD fallback or broadcast', async () => {
   const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
@@ -46,38 +49,31 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
   let manager: any;
   try {
     const fixture = createUtxoFixture();
-    // A separate module graph confines the SDK's shared storage client to this
-    // test. Initialization/encryption/signing remain the installed SDK code.
+    const records = new Map<string, unknown>();
     jest.isolateModules(() => {
-      const { KeyringManager } = jest.requireActual(
-        '@sidhujag/sysweb3-keyring'
-      );
-      manager = new KeyringManager();
-    });
-    const records: Record<string, unknown> = {};
-    manager.setStorage({
-      get: async (keys: string[]) =>
-        Object.fromEntries(keys.map((key) => [key, records[key]])),
-      set: async (items: Record<string, unknown>) => {
-        Object.assign(records, items);
-      },
-      remove: async (key: string) => {
-        delete records[key];
-      },
-      createItemsIfAbsent: async (items: Record<string, string>) => {
-        if (Object.keys(items).some((key) => records[key] !== undefined))
-          return false;
-        Object.assign(
-          records,
-          Object.fromEntries(
-            Object.entries(items).map(([key, value]) => [
-              key,
-              JSON.parse(value),
-            ])
-          )
-        );
-        return true;
-      },
+      const { KeyringManager, HardwareWalletManager, createKeyringHost } =
+        jest.requireActual('@sidhujag/sysweb3-keyring');
+      const host = createKeyringHost({
+        get: async (key: string) => records.get(key),
+        async set(key: string, value: unknown) {
+          records.set(key, value);
+        },
+        async deleteItem(key: string) {
+          records.delete(key);
+        },
+        async createManyIfAbsent(items: Record<string, unknown>) {
+          if (Object.keys(items).some((key) => records.has(key))) return false;
+          for (const [key, value] of Object.entries(items))
+            records.set(key, value);
+          return true;
+        },
+      });
+      manager = new KeyringManager(host, {
+        captureEvmSubmission: () => {
+          throw new Error('EVM submission is outside this fixture');
+        },
+        hardwareManager: new HardwareWalletManager(),
+      });
     });
     const vault: any = {
       activeAccount: { id: 0, type: 'HDAccount' },
@@ -114,12 +110,18 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     const mnemonic = jest.spyOn(manager, 'getDecryptedMnemonic');
     const sign = jest.spyOn(transactions, 'signPSBTWithSigner');
     const broadcast = jest.spyOn(transactions, 'sendTransaction');
+    const ownedRead = {
+      assertCurrent: () => undefined,
+      fetch: jest.fn(denyNetwork),
+      signal: new AbortController().signal,
+    };
 
     // A real signature control proves that the PSBT, prevout and installed
     // signer work; a parser/scope/setup failure cannot satisfy the negative.
-    const signed = await transactions.signPSBT({
-      psbt: JSON.parse(JSON.stringify(fixture.single)),
-    });
+    const signed = await transactions.signPSBT(
+      { psbt: JSON.parse(JSON.stringify(fixture.single)) },
+      ownedRead
+    );
     expect(verifyFixtureSignature(fixture, signed, false)).toBeTruthy();
     expect(hd).toHaveBeenCalledWith(0);
     expect(fresh).toHaveBeenCalled();
@@ -133,10 +135,12 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     const method = jest.spyOn(transactions, 'signPSBTWithMethod');
     let result: unknown;
     await expect(
-      transactions.signPSBT({ psbt: request }).then((value: unknown) => {
-        result = value;
-        return value;
-      })
+      transactions
+        .signPSBT({ psbt: request }, ownedRead)
+        .then((value: unknown) => {
+          result = value;
+          return value;
+        })
     ).rejects.toThrow('Failed to decrypt imported account key');
     expect(result).toBeUndefined();
     expect(method).toHaveBeenCalledTimes(1);
@@ -155,6 +159,7 @@ it('the installed SDK refuses a selected watch-only account without signatures, 
     for (const spy of [hd, fresh, mnemonic, sign, broadcast])
       expect(spy).not.toHaveBeenCalled();
     expect(mockBlockbookLookup).not.toHaveBeenCalled();
+    expect(ownedRead.fetch).not.toHaveBeenCalled();
     for (const transport of transports)
       expect(transport).not.toHaveBeenCalled();
   } finally {

@@ -8,6 +8,7 @@ import { recoveryVerificationRecords,
   replaceRecoveredAccountRecords,
   WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
 import { stageAccountRecovery } from '../../../../source/wallet/accountRecovery.ts';
+import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 
 type Sdk = typeof import('@sidhujag/sysweb3-keyring/cjs/software.js');
 export type RecoveryErrorCode = 'BUSY' | 'NOT_READY' | 'INVALID_INPUT' | 'WRONG_PHRASE' | 'INVALID_SAVED_DATA' | 'AUTH_THROTTLED' | 'CANCELLED' | 'STATE_CHANGED' | 'UNAVAILABLE' | 'REOPEN_REQUIRED';
@@ -160,6 +161,18 @@ export class NativeRecoveryCoordinator {
               if (before.identity!.root && JSON.stringify(before.identity!.root) !== JSON.stringify(actual)) return fail('INVALID_SAVED_DATA');
           },
             validateRetained: async ({ keyring, profileId }) => {
+              const utxo = before.records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
+              if (utxo) {
+                const captured = utxo.value;
+                const { UtxoSignedRecords } = await import('../../../../source/wallet/utxoSignedRecords.ts'); check();
+                const snapshot = {
+                  read: async (profile: string) => profile === profileId ? captured : fail('INVALID_SAVED_DATA'),
+                  compareAndSet: async () => fail('INVALID_SAVED_DATA'),
+                };
+                const reader = new UtxoSignedRecords(snapshot, snapshot);
+                try { await reader.validate({ keyring, assertCurrent: check }); check(); }
+                catch { check(); return fail('INVALID_SAVED_DATA'); }
+              }
               if (before.signedRecords.length) {
           const { EvmSignedRecords } = await import(
                   '../../../../source/wallet/evmSignedRecords.ts'

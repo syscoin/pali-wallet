@@ -1,14 +1,91 @@
-import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import {
+  walletTokenReviewError,
+  type WalletTokenReviewPayload,
+} from '../../../shared/walletTokenReview';
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
+import type {
+  IUtxoSigningContext,
+  UtxoDappSigningAuthority,
+} from 'utils/utxoSigningContext';
 
-type Watch = { attempts: Set<object>; notify: (possible: boolean) => void };
+import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import type { EoaSendCallsReservation } from '../controllers/message-handler/sendCallsBundles';
+import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
+
+export type TransactionApprovalDocument = Readonly<{
+  assertCurrent: () => void;
+  checkDocument: () => Promise<void>;
+  getSignal: () => AbortSignal;
+}>;
+
+type DappEvmReview = TransactionApprovalDocument &
+  Readonly<{
+    batch?: EoaSendCallsReservation;
+    context: IEvmTransactionContext;
+  }>;
+
+export type DappUtxoReview = TransactionApprovalDocument &
+  Readonly<{
+    context: IUtxoSigningContext;
+    method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
+    psbt: Readonly<{
+      assets: string;
+      psbt: string;
+      sentryFeeAuthorization?: string;
+    }>;
+  }>;
+
+export type DappSmartAccountMethod =
+  | 'registerSmartAccountOnChain'
+  | 'submitSmartAccountExecution';
+
+type DappSmartAccountReview = TransactionApprovalDocument &
+  Readonly<{ methods: readonly DappSmartAccountMethod[] }>;
+
+type Watch = {
+  attempts: Set<object>;
+  evmSend?: DappEvmReview;
+  notify: (possible: boolean) => void;
+  smart?: DappSmartAccountReview;
+  utxo?: DappUtxoReview;
+};
 const watches = new Map<string, Set<Watch>>();
 
 /** Service-worker-local state for an already enrolled approval document. */
 export const watchApprovalSubmission = (
   documentId: string,
-  notify: Watch['notify']
+  notify: Watch['notify'],
+  evmSend?: DappEvmReview,
+  utxo?: DappUtxoReview,
+  smart?: DappSmartAccountReview
 ): (() => void) => {
-  const watch: Watch = { attempts: new Set(), notify };
+  const watch: Watch = {
+    attempts: new Set(),
+    evmSend:
+      evmSend &&
+      Object.freeze({
+        ...evmSend,
+        batch: evmSend.batch && Object.freeze({ ...evmSend.batch }),
+        context: Object.freeze({
+          ...evmSend.context,
+          account: Object.freeze({ ...evmSend.context.account }),
+        }),
+      }),
+    notify,
+    smart:
+      smart &&
+      Object.freeze({ ...smart, methods: Object.freeze([...smart.methods]) }),
+    utxo:
+      utxo &&
+      Object.freeze({
+        ...utxo,
+        context: Object.freeze({
+          ...utxo.context,
+          account: Object.freeze({ ...utxo.context.account }),
+        }),
+        psbt: Object.freeze({ ...utxo.psbt }),
+      }),
+  };
   const current = watches.get(documentId) || new Set<Watch>();
   current.add(watch);
   watches.set(documentId, current);
@@ -16,6 +93,116 @@ export const watchApprovalSubmission = (
     current.delete(watch);
     if (!current.size) watches.delete(documentId);
   };
+};
+
+export const transactionApprovalExpired = () =>
+  Object.assign(new Error('This transaction approval is no longer current.'), {
+    transactionNotBroadcast: true,
+  });
+
+const captureApprovalDocument = (
+  documentId: string,
+  watch: Watch,
+  review: TransactionApprovalDocument
+) => {
+  const signal = review.getSignal();
+  const assertCurrent = () => {
+    if (signal.aborted || !watches.get(documentId)?.has(watch))
+      throw transactionApprovalExpired();
+    review.assertCurrent();
+  };
+  assertCurrent();
+  return {
+    assertCurrent,
+    signal,
+    async checkDocument() {
+      assertCurrent();
+      await review.checkDocument();
+      assertCurrent();
+    },
+  };
+};
+
+/** Bind an exact reviewed PSBT to its enrolled browser document and method. */
+export const captureDappUtxoSubmission = (
+  sender: chrome.runtime.MessageSender,
+  method: DappUtxoReview['method'],
+  input: { psbt?: DappUtxoReview['psbt'] } | undefined
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find(
+    (candidate) => candidate.utxo
+  );
+  if (!watch?.utxo) return;
+  const review = watch.utxo;
+  const { assertCurrent, checkDocument, signal } = captureApprovalDocument(
+    documentId,
+    watch,
+    review
+  );
+  if (
+    method !== review.method ||
+    input?.psbt?.psbt !== review.psbt.psbt ||
+    input.psbt.assets !== review.psbt.assets ||
+    input.psbt.sentryFeeAuthorization !== review.psbt.sentryFeeAuthorization
+  )
+    throw transactionApprovalExpired();
+  const authority: UtxoDappSigningAuthority = Object.freeze({
+    assertCurrent,
+    signal,
+  });
+  return {
+    authority,
+    checkDocument,
+    input: { psbt: review.psbt, expectedContext: review.context },
+  };
+};
+
+/** Only the browser's enrolled transaction approval document can enter this lane. */
+export const captureDappEvmSubmission = (
+  sender: chrome.runtime.MessageSender
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find(
+    (candidate) => candidate.evmSend
+  );
+  if (!watch?.evmSend) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.evmSend
+  );
+  return {
+    batch: watch.evmSend.batch,
+    context: watch.evmSend.context,
+    assertCurrent,
+    checkDocument,
+    // A prior success or unknown dispatch remains in attempts. It may not
+    // have a durable bundle hash yet, so a later failure cannot release it.
+    isSoleRetiredAttempt: () =>
+      !watches.get(documentId)?.has(watch) && watch.attempts.size === 1,
+  };
+};
+
+/** The enrolled route determines which smart-account operations it may submit. */
+export const captureDappSmartAccountSubmission = (
+  sender: chrome.runtime.MessageSender,
+  method: DappSmartAccountMethod
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find((candidate) =>
+    candidate.smart?.methods.includes(method)
+  );
+  if (!watch?.smart) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.smart
+  );
+  return { context: watch.evmSend?.context, assertCurrent, checkDocument };
 };
 
 /** Called only around the actual trusted controller invocation, never by a dapp. */
@@ -60,3 +247,111 @@ export const beginApprovalSubmission = (
     }
   };
 };
+
+type WalletTokenReviewAdmission = Readonly<{
+  assertCurrent: () => void;
+  payload: WalletTokenReviewPayload;
+}>;
+const WALLET_TOKEN_REVIEW_TTL_MS = 300_000;
+
+export function watchWalletTokenReview(
+  port: chrome.runtime.Port,
+  capture: (
+    request: unknown,
+    persistentTab: boolean
+  ) => WalletTokenReviewAdmission,
+  submit: (
+    payload: WalletTokenReviewPayload,
+    approval: IReviewedEvmTokenApproval
+  ) => Promise<{ hash: string }>,
+  formatError: (error: unknown) => { error: unknown; success: boolean }
+): void {
+  const sender = port.sender;
+  if (
+    !sender?.url ||
+    !isTrustedExtensionPageSender(sender) ||
+    new URL(sender.url).pathname !== '/app.html'
+  ) {
+    port.disconnect();
+    return;
+  }
+
+  const tabId = sender.tab?.id;
+  const persistentTab =
+    Number.isInteger(tabId) &&
+    tabId >= 0 &&
+    (sender.frameId === undefined || sender.frameId === 0);
+  let phase: 'review' | 'submit' | 'submitted' | 'closed' = 'review';
+  let approved: WalletTokenReviewAdmission;
+  let expires: number;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const authority = new AbortController();
+  const close = () => {
+    phase = 'closed';
+    clearTimeout(timeout);
+    authority.abort();
+  };
+  port.onDisconnect.addListener(close);
+  const reply = (value: unknown) => {
+    if (phase === 'closed') return;
+    try {
+      port.postMessage(value);
+    } catch {
+      close();
+    }
+  };
+  port.onMessage.addListener((message: unknown) => {
+    if (phase === 'closed') return;
+    if (phase === 'review') {
+      try {
+        approved = capture(message, persistentTab);
+        expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
+        timeout = setTimeout(
+          () => authority.abort(),
+          WALLET_TOKEN_REVIEW_TTL_MS
+        );
+        phase = 'submit';
+        reply({ type: 'reviewed' });
+      } catch (error) {
+        reply({ type: 'failure', ...formatError(error) });
+        close();
+      }
+      return;
+    }
+    if (phase !== 'submit' || message !== 'submit') {
+      close();
+      port.disconnect();
+      return;
+    }
+    phase = 'submitted';
+    const assertCurrent = () => {
+      if (
+        phase !== 'submitted' ||
+        authority.signal.aborted ||
+        performance.now() >= expires
+      )
+        throw walletTokenReviewError();
+      approved.assertCurrent();
+    };
+    void Promise.resolve()
+      .then(() => {
+        assertCurrent();
+        return submit(
+          approved.payload,
+          Object.freeze({ assertCurrent, signal: authority.signal })
+        );
+      })
+      .then(
+        ({ hash }) => {
+          // Preserve a known acknowledgement even if the approval expired
+          // after the POST. A disconnected renderer reconciles its journal.
+          reply({ type: 'submitted', hash });
+          close();
+        },
+        (error) => {
+          reply({ type: 'failure', ...formatError(error) });
+          close();
+        }
+      );
+  });
+}

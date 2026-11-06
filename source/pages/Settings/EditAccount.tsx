@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import { QRCodeSVG } from 'qrcode.react';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -70,7 +69,7 @@ const EditAccountView = () => {
 
   const { controllerEmitter } = useController();
 
-  const [form] = useForm();
+  const [form] = Form.useForm();
   const slip44 = useSelector(
     (reduxState: RootState) => reduxState.vaultGlobal?.activeSlip44
   );

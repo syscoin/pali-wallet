@@ -1,4 +1,6 @@
+import type { DeviceUnlockEnrollmentPort } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import type { EvmSignedRecordStorage } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { UtxoRecordStorage } from '../../../../source/wallet/utxoSignedRecords.ts';
 
 /** Internal storage ports. Never expose these handles or stored values to UI. */
 export type StorageErrorCode =
@@ -93,27 +95,11 @@ export type WalletRemovalResult = Readonly<{
   status: 'wallet-records-removed' | 'reopen-required';
 }>;
 
-/** Internal nonsecret reference. Only the exact read result owns a mutation. */
-export type DeviceUnlockEnrollmentSnapshot = Readonly<{
-  installationId: string;
-  walletBindingId: string;
-  pairFingerprint: string;
-  enrollmentId: string | null;
-}>;
-
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
-  readonly deviceUnlockEnrollment?: Readonly<{
-    /** An invalid reference has no active enrollment ID. Never an authentication result. */
-    read(): Promise<DeviceUnlockEnrollmentSnapshot | null>;
-    /** Activate a fresh, already protected ID or revoke with null. Consumes expected. */
-    compareAndSet(
-      expected: DeviceUnlockEnrollmentSnapshot,
-      enrollmentId: string | null,
-      assertCurrent: () => void
-    ): Promise<boolean>;
-  }>;
+  readonly utxoSignedRecords?: UtxoRecordStorage;
+  readonly deviceUnlockEnrollment?: DeviceUnlockEnrollmentPort;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{
     read(): Promise<readonly NoteDomainRow[]>;

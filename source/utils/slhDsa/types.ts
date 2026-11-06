@@ -12,6 +12,12 @@ export type SLHDSASignActionHashParams = {
   pkSeed: string;
 };
 
+/** Connected personal-sign consent is distinct from the signing key session. */
+export type SLHDSADispatchApproval = {
+  assertCurrent: () => void;
+  checkDocument: (recheckSite: true) => Promise<void>;
+};
+
 export type SLHDSAProvisionedState = {
   accountIndex: number;
   createdAt: number;

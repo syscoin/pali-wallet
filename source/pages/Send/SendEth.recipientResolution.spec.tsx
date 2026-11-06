@@ -193,7 +193,11 @@ beforeEach(() => {
     },
     vaultGlobal: { activeSlip44: 60, isBitcoinBased: false },
   };
-  mockEmitter.mockImplementation(async () => undefined);
+  mockEmitter.mockImplementation(async (path) =>
+    path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas'
+      ? { maxFeePerGas: '1000000000', maxPriorityFeePerGas: '100000000' }
+      : undefined
+  );
   mockSave.mockResolvedValue(undefined);
 });
 const receiver = () =>
@@ -353,7 +357,7 @@ describe('reverse ENS suggestion query ownership', () => {
     };
     mockEmitter.mockImplementation(async (path, args) => {
       if (path[1] === 'reverseResolveEns') return reverse(args[0]);
-      if (path[1] === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
+      if (path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
         return {
           maxFeePerGas: '1000000000',
           maxPriorityFeePerGas: '100000000',

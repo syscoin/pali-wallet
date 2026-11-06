@@ -300,10 +300,16 @@ for (const locale of locales) {
             method: call.method,
             phase,
             failed:
-              call.method === 'eth_gasPrice' && phase.endsWith('-failure'),
+              (phase === 'native-failure' &&
+                call.method === 'eth_estimateGas') ||
+              (phase === 'token-failure' && call.method === 'eth_gasPrice'),
             completed: false,
           };
           entries.push(entry);
+          // A normal estimate RPC error can use the SDK's bounded fallback.
+          // An invalid response envelope must surface as a failed quote.
+          if (entry.failed && call.method === 'eth_estimateGas')
+            return { jsonrpc: '2.0', id: call.id };
           return entry.failed
             ? {
                 jsonrpc: '2.0',
@@ -415,10 +421,14 @@ for (const locale of locales) {
           exact: true,
         });
         const expectedActions = asset === 'native' ? 1 : 2;
+        const feeMethod =
+          asset === 'native' ? 'eth_estimateGas' : 'eth_gasPrice';
         await wallet.step(
           `${locale.code} ${asset}: failed fee HTTP read exposes every localized Retry and blocks Confirm`,
           async () => {
-            phase = asset + '-failure';
+            // Native composition requires a valid price for its affordability
+            // check. Fail the recipient-specific estimate only on review.
+            phase = asset === 'native' ? 'native-compose' : 'token-failure';
             await wallet!.ensureOnHome();
             await page.locator('#send-btn').click();
             if (asset === 'token') {
@@ -436,10 +446,17 @@ for (const locale of locales) {
               .getByPlaceholder(locale.text.send.receiver, { exact: true })
               .fill(fixture.evmAddresses[1]);
             await amount.fill(asset === 'native' ? '0.001' : '1');
+            const next = page.locator('#send-eth-next-btn');
+            await expect(next).toBeEnabled();
+            phase = asset + '-failure';
             const failuresBeforeNext = reads.filter(
-              (read) => read.phase === phase && read.failed && read.completed
+              (read) =>
+                read.phase === phase &&
+                read.method === feeMethod &&
+                read.failed &&
+                read.completed
             ).length;
-            await page.locator('#send-eth-next-btn').click();
+            await next.click();
             await expect(page).toHaveURL(/#\/send\/confirm$/);
             await expect(confirm).toBeDisabled();
             await expect(
@@ -452,7 +469,10 @@ for (const locale of locales) {
                 () =>
                   reads.filter(
                     (read) =>
-                      read.phase === phase && read.failed && read.completed
+                      read.phase === phase &&
+                      read.method === feeMethod &&
+                      read.failed &&
+                      read.completed
                   ).length
               )
               .toBeGreaterThan(failuresBeforeNext);
@@ -505,7 +525,7 @@ for (const locale of locales) {
                   reads.filter(
                     (read) =>
                       read.phase === phase &&
-                      read.method === 'eth_gasPrice' &&
+                      read.method === feeMethod &&
                       !read.failed &&
                       read.completed
                   ).length

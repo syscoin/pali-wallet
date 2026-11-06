@@ -5,8 +5,9 @@
 import '@testing-library/jest-dom';
 import {
   clearRpcCaches,
+  findUtxoCoinByRegistration,
   getEthRpc,
-  getSysRpc,
+  observeSysRpc,
 } from '@sidhujag/sysweb3-network';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
@@ -292,14 +293,22 @@ beforeEach(() => {
         json: async () => ({ jsonrpc: '2.0', id: 1, result: '0x1644' }),
       } as Response;
     }
-    expect(String(url)).toBe(BLOCKBOOK + '/api/v2');
-    expect(options?.method).toBeUndefined();
+    if (url === BLOCKBOOK + '/api/v2/')
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          blockbook: { coin: 'Syscoin Testnet' },
+          backend: { chain: 'test' },
+        }),
+      } as Response;
+    expect(String(url)).toBe(BLOCKBOOK + '/api/v2/block-index/0');
     return {
       ok: true,
       status: 200,
       json: async () => ({
-        blockbook: { coin: 'Syscoin Testnet' },
-        backend: { chain: 'test' },
+        blockHash: findUtxoCoinByRegistration({ chainId: 5700, slip44: 1 })!
+          .hashGenesisBlock,
       }),
     } as Response;
   });
@@ -322,13 +331,18 @@ describe.each(CASES)(
           symbol: 'SYS',
         };
         const result = bitcoinBased
-          ? await getSysRpc(data)
+          ? await observeSysRpc(data, {
+              signal: new AbortController().signal,
+              assertCurrent() {},
+              readJson: async (url, signal) =>
+                (await fetch(url, { signal })).json(),
+            })
           : await getEthRpc(data, false);
         const network = bitcoinBased
           ? (result as any).rpc.formattedNetwork
           : (result as any).formattedNetwork;
         expect(network.explorer).toBe(explorer);
-        expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+        expect(globalThis.fetch).toHaveBeenCalledTimes(bitcoinBased ? 2 : 1);
         const address = bitcoinBased ? SYS_ADDRESS : ADDRESS;
         const xpub = missingXpub ? undefined : singleAddress ? address : XPUB;
         const account = {

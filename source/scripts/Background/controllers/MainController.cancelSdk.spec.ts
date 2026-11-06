@@ -3,6 +3,7 @@ import { EthereumTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions
 import { sendLocalEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-local-signer';
 import { Transaction } from 'ethers/transaction';
 
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -171,7 +172,9 @@ describe('Pali cancellation through the manifest-pinned installed SDK', () => {
         activeNetwork: readVault().activeNetwork,
       }),
       { evm: { signEVMTransaction: hardwareDenied } } as any,
-      { signEthTransaction: hardwareDenied } as any
+      { signEthTransaction: hardwareDenied } as any,
+      () => () => undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {
       configurable: true,

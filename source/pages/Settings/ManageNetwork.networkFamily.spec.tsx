@@ -3,7 +3,10 @@
  * @jest-environment-options {"customExportConditions":["node","node-addons"]}
  */
 import '@testing-library/jest-dom';
-import { clearRpcCaches } from '@sidhujag/sysweb3-network';
+import {
+  clearRpcCaches,
+  findUtxoCoinByRegistration,
+} from '@sidhujag/sysweb3-network';
 import {
   cleanup,
   render,
@@ -30,6 +33,7 @@ import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import * as actions from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 let mockWallet: any;
 const mockEmitter = jest.fn();
@@ -199,7 +203,12 @@ const registerBothFamilies = async () => {
   expect(mockAlert.error).not.toHaveBeenCalled();
   expect(mockAlert.success).toHaveBeenCalledTimes(2);
   expect(requests).toEqual([
-    { method: 'GET', path: '/api/v2' },
+    { method: 'GET', path: '/api/v2/' },
+    { method: 'GET', path: '/api/v2/block-index/0' },
+    { method: 'GET', path: '/api/v2/' },
+    { method: 'GET', path: '/api/v2/block-index/0' },
+    { method: 'GET', path: '/api/v2/' },
+    { method: 'GET', path: '/api/v2/block-index/0' },
     { method: 'POST', path: '/', rpcMethod: 'eth_chainId' },
   ]);
   cleanup();
@@ -234,13 +243,19 @@ beforeEach(async () => {
       ...(parsed ? { rpcMethod: parsed.method } : {}),
     });
     response.setHeader('Content-Type', 'application/json');
-    if (request.method === 'GET' && request.url === '/api/v2') {
+    if (request.method === 'GET' && request.url === '/api/v2/') {
       response.end(
         JSON.stringify({
           blockbook: { coin: 'Litecoin', network: 'LTC' },
           backend: { chain: 'main' },
         })
       );
+    } else if (
+      request.method === 'GET' &&
+      request.url === '/api/v2/block-index/0'
+    ) {
+      const coin = findUtxoCoinByRegistration({ chainId: 2, slip44: 2 })!;
+      response.end(JSON.stringify({ blockHash: coin.hashGenesisBlock }));
     } else if (
       request.method === 'POST' &&
       request.url === '/' &&
@@ -259,7 +274,11 @@ beforeEach(async () => {
   if (!address || typeof address === 'string') throw Error('No loopback port');
   url = `http://127.0.0.1:${address.port}`;
   global.fetch = async (target: any, options?: any) => {
-    if (String(target) !== url && String(target) !== url + '/api/v2')
+    if (
+      ![url, url + '/api/v2/', url + '/api/v2/block-index/0'].includes(
+        String(target)
+      )
+    )
       throw Error('Disallowed nonfixture request: ' + String(target));
     expect(
       httpRules.some(
@@ -387,11 +406,19 @@ beforeEach(async () => {
         balances: { syscoin: 0, ethereum: 0 },
       }),
       setSignerNetwork: jest.fn(async (network: any) => {
-        const actual = await mockWallet.getRpc({
-          ...network,
-          symbol: network.currency,
-          isSyscoinRpc: network.kind === INetworkType.Syscoin,
-        });
+        const actual =
+          network.kind === INetworkType.Syscoin
+            ? await mockWallet.previewUtxoRpc({
+                url: network.url,
+                chainId: network.chainId,
+                expectedRegistration: networkRegistrationFingerprint(network),
+                purpose: 'edit',
+              })
+            : await mockWallet.getRpc({
+                ...network,
+                symbol: network.currency,
+                isSyscoinRpc: false,
+              });
         expect(actual).toMatchObject({
           url: network.url,
           kind: network.kind,
@@ -449,7 +476,11 @@ beforeEach(async () => {
   mockEmitter.mockImplementation(async ([area, method], args) => {
     expect(area).toBe('wallet');
     if (method === 'getChainData') return [];
-    if (['getRpc', 'addCustomRpc', 'setActiveNetwork'].includes(method))
+    if (
+      ['getRpc', 'previewUtxoRpc', 'addCustomRpc', 'setActiveNetwork'].includes(
+        method
+      )
+    )
       return mockWallet[method](...args);
     throw Error('Unexpected fixture dispatch: ' + method);
   });

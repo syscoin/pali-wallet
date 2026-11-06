@@ -1,5 +1,4 @@
 import { Form, Input } from 'antd';
-import { useForm } from 'antd/lib/form/Form';
 import React, { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -41,7 +40,7 @@ const CustomRPCExternal = () => {
   const apiValidation = useRef(0);
   const { alert } = useUtils();
   const { controllerEmitter } = useController();
-  const [form] = useForm();
+  const [form] = Form.useForm();
 
   React.useEffect(
     () => () => {

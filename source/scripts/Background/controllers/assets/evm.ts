@@ -12,6 +12,8 @@ import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 import isEmpty from 'lodash/isEmpty';
 
 import {
+  formatErc20Balance,
+  parseErc20Decimals,
   parseErc20ReadFields,
   parseErc20Units,
 } from '../../../../shared/erc20';
@@ -32,7 +34,7 @@ import {
   ITokenDetails,
   ITokenSearchResult,
 } from 'types/tokens';
-import { formatUnits, isAddress, parseUnits } from 'utils/ethersV6Compat';
+import { formatUnits, isAddress } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
 import { fetchOwnedTokenRows, TokenDiscoveryError } from 'utils/tokenDiscovery';
 
@@ -43,11 +45,6 @@ import {
 } from './nft-utils';
 import { IEvmAssetsController } from './types';
 import { validateAndManageUserAssets } from './utils';
-
-const toSafeNumber = (value: any, fallback = 0): number => {
-  const numeric = Number(value?.toString ? value.toString() : value);
-  return Number.isFinite(numeric) ? numeric : fallback;
-};
 
 // SYSCOIN: Shared across short-lived polling controllers; never hammer an
 // unavailable discovery endpoint. This does not block on-chain balance reads.
@@ -258,13 +255,8 @@ const EvmAssetsController = (): IEvmAssetsController => {
         contract.decimals(),
         contract.balanceOf(walletAddress),
       ]);
-      const safeDecimals = toSafeNumber(decimals, 18);
-
-      // Calculate the formatted balance using BigNumber to avoid precision loss
-      // formatUnits returns a string with full precision
-      const balanceString = formatUnits(balanceRaw, safeDecimals);
-      // Store full precision balance, UI will format for display
-      const balance = parseFloat(balanceString);
+      const precision = parseErc20Decimals(decimals);
+      const { balance, rawBalance } = formatErc20Balance(balanceRaw, precision);
 
       // Lightweight token type detection (optional, non-blocking)
       let tokenStandard: 'ERC-20' | 'ERC-777' | 'ERC-4626' = 'ERC-20';
@@ -298,8 +290,9 @@ const EvmAssetsController = (): IEvmAssetsController => {
         symbol: cleanTokenSymbol(symbol).toUpperCase(),
         name: name || symbol, // Keep names intact - they can have spaces
         contractAddress,
-        decimals: safeDecimals,
-        balance, // Full precision balance
+        decimals: precision,
+        balance,
+        rawBalance,
         chainId: context.chainId,
         tokenStandard,
         isNft: false,
@@ -528,11 +521,7 @@ const EvmAssetsController = (): IEvmAssetsController => {
       updatedRegularTokens = regularTokens.map((token) => {
         const balance = balances.get(token.contractAddress.toLowerCase());
         if (balance === undefined) return token;
-        const updated = {
-          ...token,
-          balance: parseFloat(balance),
-          rawBalance: parseUnits(balance, token.decimals).toString(),
-        };
+        const updated = { ...token, ...balance };
         onBalanceRead?.(updated);
         return updated;
       });
@@ -913,14 +902,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
         walletAddress,
         w3Provider
       );
-      const balance = parseFloat(
-        formatUnits(metadata.balance || '0', Number(metadata.decimals ?? 18))
+      const decimals = parseErc20Decimals(metadata.decimals ?? 18);
+      const { balance, rawBalance } = formatErc20Balance(
+        metadata.balance,
+        decimals
       );
 
       if (!contextIsCurrent(context.key)) return null;
       return {
         ...basicDetails,
-        balance: balance, // Keep full precision
+        decimals,
+        balance,
+        rawBalance,
       };
     } catch (error) {
       console.error(
@@ -964,6 +957,10 @@ const EvmAssetsController = (): IEvmAssetsController => {
         const details = { ...cached.details };
         if (detailsWithBalance.balance === undefined) delete details.balance;
         else details.balance = detailsWithBalance.balance;
+        if (detailsWithBalance.rawBalance !== undefined) {
+          details.rawBalance = detailsWithBalance.rawBalance;
+          details.decimals = detailsWithBalance.decimals;
+        }
         return details;
       }
 
@@ -990,15 +987,18 @@ const EvmAssetsController = (): IEvmAssetsController => {
               ...detailsWithBalance, // Our wallet-specific data (symbol, decimals, balance, etc.)
               isVerified: true,
             };
+            // Only the wallet's on-chain read supplies atomic units.
+            if (detailsWithBalance.rawBalance === undefined)
+              delete enhancedDetails.rawBalance;
 
             console.log(
               `[EvmAssetsController] Enhanced ${detailsWithBalance.tokenStandard} token ${contractAddress} with CoinGecko market data`
             );
 
-            // Cache the enhanced data (excluding balance)
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-            const { balance: _balanceToExclude, ...cacheableData } =
-              enhancedDetails;
+            // Both balance representations come from a fresh read.
+            const cacheableData = { ...enhancedDetails };
+            delete cacheableData.balance;
+            delete cacheableData.rawBalance;
             tokenDetailsCache.set(cacheKey, {
               details: cacheableData,
               timestamp: now,

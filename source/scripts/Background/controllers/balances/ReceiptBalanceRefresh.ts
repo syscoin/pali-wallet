@@ -1,5 +1,6 @@
+import { formatErc20Balance } from '../../../../shared/erc20';
 import { ITokenEthProps } from 'types/tokens';
-import { Contract, formatUnits, id } from 'utils/ethersV6Compat';
+import { Contract, id } from 'utils/ethersV6Compat';
 
 type RefreshJob = {
   attempt: number;
@@ -132,10 +133,7 @@ export const readTrackedTokenBalance = async (
   const raw = is1155
     ? await contract.balanceOf(address, token.tokenId, { blockTag })
     : await contract.balanceOf(address, { blockTag });
-  const balance = Number(formatUnits(raw, token.isNft ? 0 : token.decimals));
-  if (!Number.isFinite(balance) || balance < 0)
-    throw new Error('Invalid balance');
-  return { balance, rawBalance: raw.toString() };
+  return formatErc20Balance(raw, token.isNft ? 0 : token.decimals);
 };
 
 const address = (value: unknown): string =>

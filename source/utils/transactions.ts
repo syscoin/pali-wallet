@@ -9,7 +9,6 @@ import {
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
 import type { IEvmTransactionResponse } from 'scripts/Background/controllers/transactions/types';
 import store from 'state/store';
-import { KeyringAccountType } from 'types/network';
 import { ITokenDetails } from 'types/tokens';
 import { ITransactionParams, ITxState } from 'types/transactions';
 import { id } from 'utils/ethersV6Compat';
@@ -21,6 +20,7 @@ import {
   getWalletNavigationScope,
   IWalletNavigationScope,
 } from './navigationState';
+import type { EvmReplacementFeeApproval } from '@sidhujag/sysweb3-keyring';
 
 export {
   isERC1155Transfer,
@@ -428,34 +428,29 @@ const requestSpeedUp = (
   isLegacy: boolean,
   chainId: number,
   signerAddress: string | undefined,
-  options: { approvedMaximumFee?: string; previewOnly?: boolean }
+  options: EvmReplacementFeeApproval & { walletScope: IWalletNavigationScope }
 ) =>
-  store.getState().vault.activeAccount?.type === KeyringAccountType.SmartAccount
-    ? controllerEmitter(
-        ['wallet', 'speedUpEvmTransaction'],
-        [txHash, isLegacy, chainId, signerAddress, options]
-      )
-    : controllerEmitter(
-        ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-        [txHash, isLegacy, options]
-      );
+  controllerEmitter(
+    ['wallet', 'speedUpEvmTransaction'],
+    [txHash, isLegacy, chainId, signerAddress, options]
+  );
 
 export const previewSpeedUpTransaction = async (
   txHash: string,
   isLegacy: boolean,
   chainId: number,
-  signerAddress?: string
+  signerAddress?: string,
+  scope = getWalletNavigationScope()
 ): Promise<string> => {
   const { isBitcoinBased, activeNetwork } = store.getState().vault;
   if (isBitcoinBased || Number(activeNetwork?.chainId) !== chainId)
     throw new Error('Transaction network changed');
-  const scope = getWalletNavigationScope();
   const response = (await requestSpeedUp(
     txHash,
     isLegacy,
     chainId,
     signerAddress,
-    { previewOnly: true }
+    { previewOnly: true, walletScope: scope }
   )) as
     | {
         code?: string;
@@ -493,9 +488,9 @@ const speedUpTransaction = async (
   chainId: number,
   alert: any,
   t: (key: string, options?: { hash: string }) => string,
-  signerAddress?: string,
-  approvedMaximumFee?: string,
-  walletScope?: IWalletNavigationScope
+  signerAddress: string | undefined,
+  approvedMaximumFee: string | undefined,
+  walletScope: IWalletNavigationScope
 ) => {
   // Safety check: this function is only for EVM networks
   const { isBitcoinBased } = store.getState().vault;
@@ -507,18 +502,23 @@ const speedUpTransaction = async (
   try {
     const current = getWalletNavigationScope();
     if (
-      walletScope &&
-      (current.account !== walletScope.account ||
-        current.network !== walletScope.network ||
-        Number(store.getState().vault.activeNetwork?.chainId) !== chainId)
+      !walletScope ||
+      current.account !== walletScope.account ||
+      current.network !== walletScope.network ||
+      Number(store.getState().vault.activeNetwork?.chainId) !== chainId
     )
       throw new Error('Transaction context changed');
+    if (
+      typeof approvedMaximumFee !== 'string' ||
+      !/^(0|[1-9][0-9]{0,77})$/.test(approvedMaximumFee)
+    )
+      throw new Error('Replacement fee approval required');
     const response = await requestSpeedUp(
       txHash,
       isLegacy,
       chainId,
       signerAddress,
-      { approvedMaximumFee }
+      { approvedMaximumFee, walletScope }
     ).catch((error) => {
       if (error?.code === 'REPLACEMENT_VALUE_WOULD_CHANGE') return error;
       throw error;
@@ -599,19 +599,15 @@ export const handleUpdateTransaction = async ({
   t: (key: string, options?: { hash: string }) => string;
   updateData: {
     alert: any;
-    approvedMaximumFee?: string;
+    approvedMaximumFee: string;
     chainId: number;
     isLegacy: boolean;
     nonce?: number;
     signerAddress?: string;
     txHash: string;
-  } & (
-    | { updateType: UpdateTxAction.Cancel; walletScope: IWalletNavigationScope }
-    | {
-        updateType: UpdateTxAction.SpeedUp;
-        walletScope?: IWalletNavigationScope;
-      }
-  );
+    updateType: UpdateTxAction;
+    walletScope: IWalletNavigationScope;
+  };
 }) => {
   const {
     alert,

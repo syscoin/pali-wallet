@@ -34,6 +34,7 @@ import { webcrypto } from 'crypto';
 import { Interface } from 'ethers';
 
 import { getController } from '..';
+import { createTestEvmSubmissionCapture } from '../../../../tests/helpers/evmSubmission';
 import { walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -388,7 +389,9 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
         accounts: run.state.vault.accounts,
       }),
       {},
-      {}
+      {},
+      () => () => undefined,
+      createTestEvmSubmissionCapture()
     );
     Object.defineProperty(sdk, 'web3Provider', {
       configurable: true,

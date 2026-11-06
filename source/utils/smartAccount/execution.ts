@@ -508,6 +508,7 @@ export type SmartAccountLocalEcdsaSigner = (params: {
   actionHash: string;
   executionContextId?: string;
   owner: SmartAccountLocalOwner;
+  validator: string;
 }) => Promise<string>;
 
 export type SmartAccountAuthenticatorRuntimeContexts = Partial<
@@ -536,6 +537,10 @@ export type SmartAccountSLHDSASigner = (params: {
 
 type SLHDSAAuthenticatorRuntimeContext = {
   signActionHash?: SmartAccountSLHDSASigner;
+  signPersonalActionHash?: (
+    keyId: string,
+    validator: string
+  ) => Promise<string>;
 };
 
 const stringifyError = (error: unknown): string => {
@@ -620,9 +625,11 @@ export class SmartAccountExternalSignatureRequired extends Error {
 export const getSmartAccountLocalOwnerContexts = ({
   accounts,
   controllerEmitter,
+  personalSignValidator,
 }: {
   accounts: Record<string, Record<string, any>>;
   controllerEmitter: ControllerEmitter;
+  personalSignValidator?: string;
 }): SmartAccountAuthenticatorRuntimeContexts => {
   const ownerTypes: KeyringAccountType[] = [
     'HDAccount' as KeyringAccountType,
@@ -648,11 +655,30 @@ export const getSmartAccountLocalOwnerContexts = ({
     )
   );
 
+  const signPersonalActionHash =
+    personalSignValidator === undefined
+      ? undefined
+      : (signer: SmartAccountLocalOwner | string, validator: string) =>
+          controllerEmitter(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [signer, personalSignValidator, validator],
+            typeof signer === 'string' ? 600000 : undefined
+          );
+
   return {
     ecdsa: {
       localOwners,
-      signActionHash: ({ actionHash, executionContextId, owner }) =>
-        controllerEmitter(
+      signActionHash: ({
+        actionHash,
+        executionContextId,
+        owner,
+        validator,
+      }: Parameters<SmartAccountLocalEcdsaSigner>[0]) => {
+        const software =
+          owner.type === 'HDAccount' || owner.type === 'Imported';
+        if (software && signPersonalActionHash)
+          return signPersonalActionHash(owner, validator);
+        return controllerEmitter(
           ['wallet', 'signSmartAccountActionDigestInternal'],
           [
             [owner.address, actionHash],
@@ -660,16 +686,14 @@ export const getSmartAccountLocalOwnerContexts = ({
             ...(executionContextId ? [executionContextId] : []),
           ],
           owner.type === 'Ledger' || owner.type === 'Trezor' ? 300000 : 10000
-        ) as Promise<string>,
+        );
+      },
     },
     'slh-dsa': {
       signActionHash: (params) =>
-        controllerEmitter(
-          ['wallet', 'signSLHDSAActionHash'],
-          [params],
-          600000
-        ) as Promise<string>,
-    },
+        controllerEmitter(['wallet', 'signSLHDSAActionHash'], [params], 600000),
+      signPersonalActionHash,
+    } satisfies SLHDSAAuthenticatorRuntimeContext,
   };
 };
 
@@ -800,6 +824,7 @@ const ecdsaDriver: SmartAccountAuthenticatorDriver<
               ? { executionContextId: context.executionContextId }
               : {}),
             owner,
+            validator: context.validator.address,
           })
         )
       );
@@ -849,16 +874,21 @@ const slhDsaDriver: SmartAccountAuthenticatorDriver<
     const slhDsaContext = runtimeContext as
       | SLHDSAAuthenticatorRuntimeContext
       | undefined;
-    const signature = await slhDsaContext?.signActionHash?.({
-      accountId,
-      actionHash,
-      ...(executionContextId ? { executionContextId } : {}),
-      allowReservedSignature: allowReservedSLHDSASignature,
-      keyId: validator.config.keyId,
-      parameterSet: validator.config.parameterSet,
-      pkRoot: validator.config.pkRoot,
-      pkSeed: validator.config.pkSeed,
-    });
+    const signature = slhDsaContext?.signPersonalActionHash
+      ? await slhDsaContext.signPersonalActionHash(
+          validator.config.keyId,
+          validator.address
+        )
+      : await slhDsaContext?.signActionHash?.({
+          accountId,
+          actionHash,
+          ...(executionContextId ? { executionContextId } : {}),
+          allowReservedSignature: allowReservedSLHDSASignature,
+          keyId: validator.config.keyId,
+          parameterSet: validator.config.parameterSet,
+          pkRoot: validator.config.pkRoot,
+          pkSeed: validator.config.pkSeed,
+        });
 
     if (!signature) {
       throw new SmartAccountExternalSignatureRequired(

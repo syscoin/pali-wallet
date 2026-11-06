@@ -118,7 +118,9 @@ beforeEach(() => {
     readSecrets,
     readSecrets as any,
     undefined as never,
-    undefined as never
+    undefined as never,
+    () => () => undefined,
+    null
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => originalProvider });
   sdk.setGasOverrides({ minGasLimit: '35000' });

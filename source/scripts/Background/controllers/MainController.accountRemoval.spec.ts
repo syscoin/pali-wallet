@@ -63,6 +63,7 @@ describe('account removal delivery context', () => {
               ...initial.accounts.HDAccount[0],
               id: 7,
               address: 'selected-address',
+              xpub: 'selected-public-key',
               label: 'Saved account',
             },
           },
@@ -98,6 +99,10 @@ describe('account removal delivery context', () => {
     });
     wallet = Object.create(MainController.prototype);
     (wallet as any).resetAutoLockTimer = jest.fn();
+    (wallet as any).getActiveKeyring = () => ({
+      getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+    });
+    jest.spyOn(chromeStorage, 'getItems').mockResolvedValue({});
     const dapp = DAppController(() => true);
     captureSessions = jest.spyOn(dapp, 'captureAccountSessionRetirement');
     jest.mocked(getController).mockReturnValue({ dapp } as any);
@@ -171,6 +176,14 @@ describe('account removal delivery context', () => {
   it('preserves existing two-argument internal callers', async () => {
     await wallet.removeAccount(7, KeyringAccountType.HDAccount);
     expect(state.vault.accounts.HDAccount[7]).toBeUndefined();
+  });
+
+  it('refuses a UTXO removal if the stored account has no owner identity', async () => {
+    state.vault.accounts.HDAccount[7].xpub = '';
+    await expect(
+      wallet.removeAccount(7, KeyringAccountType.HDAccount, expected)
+    ).rejects.toThrow('Wallet session changed');
+    expect(writes).not.toHaveBeenCalled();
   });
 
   it('rejects malformed context instead of falling back to an unbound removal', async () => {

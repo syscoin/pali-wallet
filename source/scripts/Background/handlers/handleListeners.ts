@@ -1,13 +1,19 @@
+import {
+  WALLET_TOKEN_REVIEW_PORT,
+  walletTokenReviewError,
+} from '../../../shared/walletTokenReview';
 import { onMessage } from '../controllers/message-handler';
+import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
 import { IMasterController } from 'scripts/Background/controllers';
 import { handleLogout } from 'scripts/Background/handlers/handleLogout';
 import { startPolling } from 'scripts/Background/utils/startPolling';
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
-import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
-import { PRIVACY_ALARM_PREFIX } from '../controllers/privacy';
 import type { PrivacyPoolId } from 'utils/privacy/types';
+import { persistSLHDSASmartAccountSetupProgress } from 'utils/slhDsa/smartAccountSetup';
 
+import { watchWalletTokenReview } from './approvalSubmission';
+import { controllerErrorResponse } from './handleMasterControllerResponses';
 import { checkForUpdates } from './handlePaliUpdates';
 import {
   isPrivilegedInternalMessage,
@@ -260,6 +266,28 @@ export const handleListeners = (masterController: IMasterController) => {
 
   // 🚀 NEW: Port connection approach for popup close detection (no permissions needed)
   chrome.runtime.onConnect.addListener((port) => {
+    if (port.name === WALLET_TOKEN_REVIEW_PORT) {
+      const wallet = currentMasterController.wallet;
+      watchWalletTokenReview(
+        port,
+        (request, persistentTab) =>
+          wallet.captureWalletTokenReview(request, persistentTab),
+        (payload, approval) =>
+          wallet.sendAndSaveTokenTransaction(
+            payload,
+            Object.freeze({
+              signal: approval.signal,
+              assertCurrent: () => {
+                if (wallet !== currentMasterController.wallet)
+                  throw walletTokenReviewError();
+                approval.assertCurrent();
+              },
+            })
+          ),
+        controllerErrorResponse
+      );
+      return;
+    }
     if (port.name === 'popup-connection') {
       console.log('[Background] 🔌 Popup connected via port');
 

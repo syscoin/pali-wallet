@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 
 import en from '../../source/assets/locales/en.json';
+import { blockbookRegistrationProof } from '../harness/blockbookRegistrationFixture';
 import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
@@ -37,6 +38,7 @@ const publicNetworkState = (page: Page) =>
             label: network.label,
             slip44: network.slip44,
             url: network.url,
+            utxoBackendChain: network.utxoBackendChain,
           }
         : null;
     const ref = state.vault.activeAccount;
@@ -168,10 +170,13 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
       explorers: [{ name: 'Previous EVM explorer', url: OLD_EXPLORER }],
     },
   ]);
-  const blockbookWire = JSON.stringify({
-    blockbook: { network: 'Litecoin', coin: 'Litecoin' },
-    backend: { chain: 'main' },
-  });
+  const blockbookProof = blockbookRegistrationProof('Litecoin');
+  const readProof = (step: string) =>
+    [...blockbookProof.keys()].every((pathname) =>
+      reads.some(
+        (read) => read.phase === step && read.url === LITECOIN_RPC + pathname
+      )
+    );
   try {
     server = await startUtxoFixtureServer();
     Object.assign(E2E_CONFIG, {
@@ -257,7 +262,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
       const url = new URL(request.url());
       if (
         request.method() !== 'GET' ||
-        url.pathname !== '/api/v2' ||
+        !blockbookProof.has(url.pathname) ||
         url.search ||
         url.hash ||
         url.username ||
@@ -271,7 +276,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
         status: 200,
         contentType: 'application/json',
         headers: { 'access-control-allow-origin': '*' },
-        body: blockbookWire,
+        body: JSON.stringify(blockbookProof.get(url.pathname)),
       });
     });
     const page = wallet.page;
@@ -482,12 +487,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
         await expect(
           page.getByRole('button', { name: en.buttons.save, exact: true })
         ).toBeEnabled();
-        expect(
-          reads.filter(
-            (read) =>
-              read.phase === phase && read.url === LITECOIN_RPC + '/api/v2'
-          ).length
-        ).toBeGreaterThanOrEqual(3);
+        await expect.poll(() => readProof(phase)).toBe(true);
         observations.litecoinSuggestion = {
           explorer: await page.locator('#rpc_explorer').inputValue(),
           url: await page.locator('#rpc_url').inputValue(),
@@ -505,6 +505,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
           .getByRole('button', { name: en.buttons.save, exact: true })
           .click();
         await expect(page).toHaveURL(/#\/home$/);
+        expect(readProof(phase)).toBe(true);
         const expected = {
           chainId: 2,
           currency: 'ltc',
@@ -514,6 +515,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
           label: 'Litecoin',
           slip44: 2,
           url: LITECOIN_RPC,
+          utxoBackendChain: 'main',
         };
         await expect
           .poll(async () => {
@@ -551,7 +553,7 @@ test('network suggestions reset reopened typeahead and do not carry an EVM explo
             .update(chainlistWire)
             .digest('hex'),
           blockbookWireSha256: createHash('sha256')
-            .update(blockbookWire)
+            .update(JSON.stringify([...blockbookProof]))
             .digest('hex'),
           observations,
           reads,

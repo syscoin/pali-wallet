@@ -1,6 +1,7 @@
 import {
   _TypedDataEncoder,
   defaultAbiCoder,
+  hashMessage,
   hexConcat,
   keccak256,
   toUtf8Bytes,
@@ -12,6 +13,7 @@ import {
   encodePaliErc7739TypedDataSignature,
   getPaliErc7739DomainSeparator,
   getPaliErc7739PersonalSignHash,
+  hashPersonalSignMessage,
   PALI_ERC7739_DOMAIN_NAME,
   PALI_ERC7739_DOMAIN_VERSION,
   signPaliErc7739TypedDataV4,
@@ -23,6 +25,15 @@ const APP = '0x3333333333333333333333333333333333333333';
 const CHAIN_ID = 5700;
 
 describe('Pali ERC-7739 helpers', () => {
+  it('hashes the exact displayed UTF-8 bytes for text and hex personal messages', () => {
+    expect(hashPersonalSignMessage('0xe280a2')).toBe(hashMessage('•'));
+    expect(hashPersonalSignMessage('•')).toBe(hashMessage('•'));
+    expect(hashPersonalSignMessage('0xe280a2')).not.toBe(
+      hashMessage('0xe280a2')
+    );
+    expect(hashPersonalSignMessage('0x')).toBe(hashMessage(''));
+  });
+
   it('binds personal signatures to the account EIP-712 domain', () => {
     const hash = keccak256(toUtf8Bytes('application challenge'));
     const personalTypeHash = keccak256(

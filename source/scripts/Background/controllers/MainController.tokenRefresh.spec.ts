@@ -1121,22 +1121,33 @@ it.each(['unchanged', 'failed', 'mixed'])(
   }
 );
 
-it('retains external-dapp preflight for an unimported ERC20 without adding an asset', async () => {
-  const external = `0x${'66'.repeat(20)}`;
-  controller.getERC20TokenInfo = jest.fn().mockResolvedValue({
-    balance: '123',
-    decimals: 2,
-    symbol: 'EXT',
-    name: 'External',
-  });
-  const result = await controller.refreshActiveEvmTokenBalance(external);
-  expect(result).toMatchObject({
-    balance: 1.23,
-    tokenSymbol: 'EXT',
-    contractAddress: external,
-  });
-  expect(state.vault.accountAssets[type][0].ethereum).toHaveLength(2);
-});
+it.each([
+  { decimals: 2, units: '123', expected: 1.23 },
+  {
+    decimals: 255,
+    units: '90071992547409931234567',
+    expected: Number('9.007199254740993e-233'),
+  },
+])(
+  'retains exact unimported ERC20 preflight at $decimals decimals without adding an asset',
+  async ({ decimals, units, expected }) => {
+    const external = `0x${'66'.repeat(20)}`;
+    controller.getERC20TokenInfo = jest.fn().mockResolvedValue({
+      balance: units,
+      decimals,
+      symbol: 'EXT',
+      name: 'External',
+    });
+    const result = await controller.refreshActiveEvmTokenBalance(external);
+    expect(result).toMatchObject({
+      balance: expected,
+      rawBalance: units,
+      tokenSymbol: 'EXT',
+      contractAddress: external,
+    });
+    expect(state.vault.accountAssets[type][0].ethereum).toHaveLength(2);
+  }
+);
 
 it.each([undefined, null, 0, 2])(
   'does not select a stored token with chainId %s for current-chain preflight',
