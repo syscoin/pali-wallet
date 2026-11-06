@@ -161,12 +161,12 @@ class WatchNoticeProbe : Activity() {
   private fun present(tag: String) = manager.activeNotifications.any { it.tag == tag && it.id == numericId }
   private fun allowed() = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-  private fun observe(label: String, test: () -> Boolean, finish: () -> Unit, attempts: Int = 40) {
+  private fun observe(label: String, test: () -> Boolean, attempts: Int = 40, finish: () -> Unit) {
     verify {
       if (test()) finish()
       else {
         check(attempts > 1) { "could not observe $label" }
-        main.postDelayed({ observe(label, test, finish, attempts - 1) }, 100)
+        main.postDelayed({ observe(label, test, attempts - 1, finish) }, 100)
       }
     }
   }

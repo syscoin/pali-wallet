@@ -51,7 +51,7 @@ keytool -genkeypair -keystore "$stage/probe.p12" -storetype PKCS12 \
 "$tools/apksigner" verify --verbose "$out/watch-notice-probe.apk" > "$out/apk-signature.txt"
 "$tools/aapt2" dump badging "$out/watch-notice-probe.apk" > "$out/apk-badging.txt"
 grep -q "^package: name='org.syscoin.pali.watchnoticeprobe' " "$out/apk-badging.txt"
-grep -Fxq "sdkVersion:'35'" "$out/apk-badging.txt"
+grep -Fxq "minSdkVersion:'35'" "$out/apk-badging.txt"
 grep -Fxq "targetSdkVersion:'35'" "$out/apk-badging.txt"
 grep -Fxq "uses-permission: name='android.permission.POST_NOTIFICATIONS'" "$out/apk-badging.txt"
 if grep -Fq "android.permission.INTERNET" "$out/apk-badging.txt"; then
