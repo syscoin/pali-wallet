@@ -21,9 +21,11 @@ import { normalizeErc20Address } from '../portfolio/erc20Metadata';
 import type { OwnedCollectibleSuggestion } from '../portfolio/ownedTokenReader';
 import type {
   CollectibleQuery,
+  CollectibleSaveTicket,
   NativeTokenSnapshot,
   NativeTokenView,
 } from '../portfolio/nativeTokens';
+import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { Button, Card, Coin, colors, Notice, styles, Text } from '../ui';
 
 type Props = {
@@ -33,11 +35,15 @@ type Props = {
   onBackHandlerChange?(handler: (() => boolean) | null): void;
   onModeChange?(title: string | null): void;
 };
+type CollectibleSource =
+  | { source: 'manual' }
+  | { source: 'explorer'; item: OwnedCollectibleSuggestion }
+  | { source: 'saved'; item: SavedCollectible };
 type Route =
   | { kind: 'list' }
   | { kind: 'import' }
   | { kind: 'collectibles' }
-  | { kind: 'collectible'; item: OwnedCollectibleSuggestion | null; account: NonNullable<NativeTokenSnapshot['account']> }
+  | ({ kind: 'collectible'; account: NonNullable<NativeTokenSnapshot['account']> } & CollectibleSource)
   | { kind: 'detail' | 'remove'; contract: string };
 const scopeOf = (snapshot: NativeTokenSnapshot) =>
   snapshot.account
@@ -95,7 +101,7 @@ function TokenContent({
       : route.kind === 'collectibles'
       ? 'Collectibles'
       : route.kind === 'collectible'
-      ? route.item ? 'Collectible' : 'Check collectible'
+      ? route.source === 'manual' ? 'Check collectible' : 'Collectible'
       : route.kind === 'detail'
       ? 'Token details'
       : route.kind === 'remove'
@@ -182,13 +188,18 @@ function TokenContent({
     setRoute({ kind: 'import' });
   };
   const discovery = snapshot.discovery;
-  const openCollectible = (item: OwnedCollectibleSuggestion | null) => {
+  const openCollectible = (entry: CollectibleSource) => {
     const current = controller.getSnapshot();
-    if (!current.canCheckCollectible || !current.account || current.account !== snapshot.account ||
-      (item && !current.discovery?.collectibles?.includes(item))) return;
+    if (!current.account || current.account !== snapshot.account || current.busy ||
+      (entry.source === 'manual' && !current.canCheckCollectible) ||
+      (entry.source === 'explorer' && !current.discovery?.collectibles?.includes(entry.item)) ||
+      (entry.source === 'saved' && !current.collectibles?.includes(entry.item))) return;
     const account = current.account;
-    setRoute((previous) => previous.kind === 'collectibles' ? { kind: 'collectible', item, account } : previous);
+    setRoute((previous) => previous.kind === 'collectibles'
+      ? { kind: 'collectible', account, ...entry }
+      : previous);
   };
+  const returnToCollectibles = () => setRoute({ kind: 'collectibles' });
   const metadata =
     route.kind === 'import' ? snapshot.preview?.metadata : token?.metadata;
   const balance = (item: {
@@ -336,7 +347,7 @@ function TokenContent({
                 disabled={busy || snapshot.status === 'loading'}
                 onPress={() => run(() => controller.refresh())}
               />
-              {(discovery || snapshot.canCheckCollectible) && (
+              {(discovery || snapshot.canCheckCollectible || !!snapshot.collectibles?.length) && (
                 <Button
                   title="Collectibles"
                   variant="secondary"
@@ -352,8 +363,30 @@ function TokenContent({
             </>
           ) : route.kind === 'collectibles' ? (
             <View style={s.section} testID="native-collectibles">
+              {!!snapshot.collectibles?.length && <>
+                <Text accessibilityRole="header" style={s.name}>Saved</Text>
+                {snapshot.collectibles.map((item) => {
+                  const id = 'tokenId' in item ? item.tokenId : undefined;
+                  const label = id === undefined ? 'Saved collection' : `Saved token ${id}`;
+                  return (
+                    <Card key={`${item.contractAddress}:${id ?? ''}`} style={s.tokenRow}>
+                      <Text style={s.name}>{label}</Text>
+                      <Text style={styles.muted}>{item.tokenStandard}</Text>
+                      <Text selectable style={s.contract}>{item.contractAddress}</Text>
+                      <IdlePressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`View ${label.toLowerCase()}, ${item.contractAddress}`}
+                        style={s.collectibleLink}
+                        onPress={() => openCollectible({ source: 'saved', item })}
+                      >
+                        <Text style={s.provenance}>View collectible ›</Text>
+                      </IdlePressable>
+                    </Card>
+                  );
+                })}
+              </>}
               {snapshot.canCheckCollectible && (
-                <Button title="Check by contract" variant="secondary" onPress={() => openCollectible(null)} />
+                <Button title="Check by contract" variant="secondary" onPress={() => openCollectible({ source: 'manual' })} />
               )}
               {discovery && <Text style={styles.muted}>
                 Reported by the explorer. Ownership hasn’t been verified.
@@ -380,7 +413,7 @@ function TokenContent({
                   {snapshot.canCheckCollectible && <IdlePressable accessibilityRole="button"
                     accessibilityLabel={`View ${name} ${tokenId === undefined ? 'collection' : `token ${tokenId}`}`}
                     style={s.collectibleLink}
-                    onPress={() => openCollectible(item)}><Text style={s.provenance}>View collectible ›</Text></IdlePressable>}
+                    onPress={() => openCollectible({ source: 'explorer', item })}><Text style={s.provenance}>View collectible ›</Text></IdlePressable>}
                 </Card>;
               })}
               {discovery?.limited && <Text style={styles.muted}>Showing up to 20 results.</Text>}
@@ -397,13 +430,26 @@ function TokenContent({
               )}
             </View>
           ) : route.kind === 'collectible' && route.account === snapshot.account &&
-            (route.item ? discovery?.collectibles?.includes(route.item) : snapshot.canCheckCollectible) ? (
+            (route.source === 'explorer' ? discovery?.collectibles?.includes(route.item)
+              : route.source === 'saved' ? snapshot.collectibles?.includes(route.item)
+              : snapshot.canCheckCollectible) ? (
             <CollectibleOwnership
-              item={route.item}
+              item={route.source === 'manual' ? null : route.item}
               network={network.name}
-              check={(query, signal) => route.item
+              busy={busy}
+              canCheck={snapshot.canCheckCollectible === true}
+              check={(query, signal) => route.source === 'explorer'
                 ? controller.checkCollectible(route.item, query.tokenId, signal)
+                : route.source === 'saved'
+                ? controller.checkSavedCollectible(route.account, route.item, query.tokenId, signal)
                 : controller.checkManualCollectible(route.account, query, signal)}
+              onSave={(ticket) => run(async () => {
+                if (!(await controller.saveCollectible(ticket))) throw new Error('CHANGED');
+              }, returnToCollectibles)}
+              onRemove={route.source === 'saved' ? () => run(async () => {
+                if (!(await controller.removeCollectible(route.account, route.item)))
+                  throw new Error('CHANGED');
+              }, returnToCollectibles) : undefined}
               onLeaveChange={setCollectibleLeave}
             />
           ) : route.kind === 'import' ? (
@@ -697,29 +743,39 @@ function TokenContent({
 
 const collectibleStandards = ['ERC-721', 'ERC-1155'] as const;
 
-function CollectibleOwnership({ item, network, check, onLeaveChange }: {
-  item: OwnedCollectibleSuggestion | null;
+function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, onRemove, onLeaveChange }: {
+  item: OwnedCollectibleSuggestion | SavedCollectible | null;
   network: string;
+  busy: boolean;
+  canCheck: boolean;
   check(query: CollectibleQuery, signal: AbortSignal): ReturnType<NativeTokenView['checkCollectible']>;
+  onSave(ticket: CollectibleSaveTicket): Promise<void>;
+  onRemove?(): Promise<void>;
   onLeaveChange(leave: (() => void) | null): void;
 }) {
+  const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const [draft, setDraft] = useState<{
     contractAddress: string;
     tokenId: string;
     tokenStandard: CollectibleQuery['tokenStandard'] | null;
-  }>({ contractAddress: item?.contractAddress ?? '', tokenId: item?.tokenId ?? '', tokenStandard: item?.tokenStandard ?? null });
+  }>({ contractAddress: item?.contractAddress ?? '', tokenId: fixedId ?? '', tokenStandard: item?.tokenStandard ?? null });
   const currentDraft = useRef(draft);
   const [result, setResult] = useState<
     | { kind: 'idle' | 'loading' | 'error' }
     | { kind: 'invalid'; message: string }
-    | { kind: 'ready'; units: string }
+    | { kind: 'ready'; units: string; ticket?: CollectibleSaveTicket; alreadySaved?: true }
   >({ kind: 'idle' });
   const active = useRef<AbortController | null>(null);
+  const reviewed = useRef<{ request: AbortController; ticket: CollectibleSaveTicket } | null>(null);
   const alive = useRef(false);
   const cancel = useCallback(() => {
     const request = active.current;
     active.current = null;
     request?.abort();
+    const review = reviewed.current;
+    reviewed.current = null;
+    review?.request.abort();
   }, []);
   useLayoutEffect(() => {
     alive.current = true;
@@ -734,7 +790,7 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
     };
   }, [cancel, item, onLeaveChange]);
   const edit = (fields: Partial<typeof draft>) => {
-    if (!alive.current) return;
+    if (!alive.current || busy) return;
     cancel();
     const next = { ...currentDraft.current, ...fields };
     currentDraft.current = next;
@@ -742,7 +798,8 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
     setResult({ kind: 'idle' });
   };
   const read = async () => {
-    if (!alive.current || active.current) return;
+    if (!alive.current || active.current || busy || !canCheck) return;
+    cancel();
     const { contractAddress: address, tokenId: id, tokenStandard } = currentDraft.current;
     if (!tokenStandard) return;
     let contractAddress: string, tokenId: string;
@@ -755,8 +812,11 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
     Keyboard.dismiss();
     setResult({ kind: 'loading' });
     try {
-      const { units } = await check({ contractAddress, tokenId, tokenStandard }, request.signal);
-      if (active.current === request) setResult({ kind: 'ready', units });
+      const { units, saveTicket, alreadySaved } = await check({ contractAddress, tokenId, tokenStandard }, request.signal);
+      if (active.current === request) {
+        if (saveTicket) reviewed.current = { request, ticket: saveTicket };
+        setResult({ kind: 'ready', units, ticket: saveTicket, alreadySaved });
+      }
     } catch {
       if (active.current === request) setResult({ kind: 'error' });
     } finally {
@@ -765,15 +825,16 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
   };
   return <View style={s.section} testID="native-collectible-ownership">
     {item ? <Card style={s.tokenRow}>
-      <Text style={s.provenance}>Explorer-reported name</Text>
-      <Text style={s.name}>{item.name}</Text>
+      {'name' in item && <Text style={s.provenance}>Explorer-reported name</Text>}
+      <Text style={s.name}>{'name' in item ? item.name : fixedId === undefined ? 'Saved collection' : 'Saved collectible'}</Text>
       <Text style={styles.muted}>{item.tokenStandard}</Text>
       <Text selectable style={s.contract}>{item.contractAddress}</Text>
+      {fixedId !== undefined && <Text selectable style={s.contract}>Token ID {fixedId}</Text>}
     </Card> : <>
       <Text style={styles.muted}>Check this account on {network}.</Text>
       <View style={s.field}>
         <Text style={s.label}>CONTRACT ADDRESS</Text>
-        <IdleTextInput accessibilityLabel="Collectible contract address" value={draft.contractAddress}
+        <IdleTextInput accessibilityLabel="Collectible contract address" value={draft.contractAddress} editable={!busy}
           onChangeText={(contractAddress) => edit({ contractAddress })}
           autoCapitalize="none" autoCorrect={false} spellCheck={false}
           autoComplete="off" textContentType="none" maxLength={128} style={s.input}
@@ -790,6 +851,7 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
                 accessibilityRole="button"
                 accessibilityState={{ selected }}
                 aria-pressed={selected}
+                disabled={busy}
                 onPress={() => {
                   if (currentDraft.current.tokenStandard !== tokenStandard)
                     edit({ tokenStandard });
@@ -806,22 +868,40 @@ function CollectibleOwnership({ item, network, check, onLeaveChange }: {
         </View>
       </View>
     </>}
-    {item?.tokenId === undefined ? <View style={s.field}>
+    {!confirmRemove && canCheck && fixedId === undefined && <View style={s.field}>
       <Text style={s.label}>TOKEN ID</Text>
-      <IdleTextInput accessibilityLabel="Token ID" value={draft.tokenId}
+      <IdleTextInput accessibilityLabel="Token ID" value={draft.tokenId} editable={!busy}
         onChangeText={(tokenId) => edit({ tokenId })}
         keyboardType="number-pad" autoCapitalize="none" autoCorrect={false}
         maxLength={256} style={s.input} />
-    </View> : <Text selectable style={s.contract}>Token ID {item.tokenId}</Text>}
+    </View>}
     {result.kind === 'invalid' && <Text accessibilityRole="alert" style={s.error}>{result.message}</Text>}
     {result.kind === 'error' && <Notice title="Ownership unavailable" body="The network couldn’t confirm this item. Try again." tone="amber" />}
     {result.kind === 'ready' && <Text selectable accessibilityLiveRegion="polite" testID="native-collectible-quantity">
       {draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
     </Text>}
-    <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
-      disabled={!draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading'}
-      onPress={() => void read()} />
+    {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
+      disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading'}
+      onPress={() => void read()} />}
     {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}
+    {result.kind === 'ready' && result.alreadySaved && <Text style={styles.muted}>Already in your saved list.</Text>}
+    {result.kind === 'ready' && result.ticket && <Button
+      title="Save collectible" variant="secondary" disabled={busy}
+      onPress={() => {
+        if (!alive.current || busy || !result.ticket || reviewed.current?.ticket !== result.ticket) return;
+        setResult({ kind: 'ready', units: result.units });
+        void onSave(result.ticket);
+      }}
+    />}
+    {onRemove && (confirmRemove ? <>
+      <Notice title="Remove this collectible?" body="It will be removed from your saved list. Its ownership won’t change." />
+      <Button title="Remove from saved list" variant="danger" disabled={busy} onPress={() => void onRemove()} />
+      <Button title="Cancel" variant="quiet" disabled={busy} onPress={() => setConfirmRemove(false)} />
+    </> : <Button title="Remove collectible" variant="quiet" disabled={busy} onPress={() => {
+      cancel();
+      setResult({ kind: 'idle' });
+      setConfirmRemove(true);
+    }} />)}
   </View>;
 }
 

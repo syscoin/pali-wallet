@@ -229,6 +229,8 @@ function retained(
 
 test('real SDK recovery preserves imported ciphertext, account IDs and three-chain signed bytes through repeated password changes', async () => {
   const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+  const collection = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-721' as const };
+  const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
   try {
     await f.owner.manageAccounts({ kind: 'create', label: 'Second HD', password: OLD }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported private account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
@@ -239,6 +241,14 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     f.write(NATIVE_TOKEN_REGISTRY_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, entries: [{ accountId: 'imported:60:1', address: importedWallet2.address,
       network: 'ethereum', chainId: '1', registrationHash: ethereum.registrationHash,
       metadata: { contractAddress: importedWallet.address, name: 'Public fixture token', symbol: 'FIX', decimals: 19 } }] });
+    const draft = { ...item };
+    const saving = f.runtime.tokens!.addCollectible(0, draft, () => undefined);
+    draft.tokenId = '1';
+    assert.deepEqual((await saving).collectibles, [item]);
+    await f.runtime.tokens!.addCollectible(1, collection, () => undefined);
+    await f.owner.manageAccounts({ kind: 'select', id: 'hd:60:0' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    assert.equal((await f.runtime.tokens!.load(() => undefined)).collectibles, undefined);
+    await f.owner.manageAccounts({ kind: 'select', id: 'imported:60:1' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     f.write(ACTIVITY_STORAGE_KEY, { version: 1, revision: 0, walletFingerprint: fingerprint, truncated: false, archived: [],
       cached: [{ sourceId: activityScope.sourceId, scopeKey: activityScope.key, candidates: [{ hash: `0x${'a'.repeat(64)}`, blockNumber: '1', timestamp: 1, tokenHint: false }] }],
       views: [{ sourceId: activityScope.sourceId, view: { filter: 'sent', showZero: false, anchor: null, offset: 7 } }] });
@@ -254,6 +264,8 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     }
     const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.status, 'needs-matching-phrase-verification', JSON.stringify({ inventory, keys: f.read().records.map((r) => r.key) }));
+    assert.equal(inventory.counts?.tokenEntries, 3);
+    assert.equal(JSON.stringify(inventory).includes(item.contractAddress), false);
     const before = f.read(); f.owner.lock(); recovery = f.coordinator();
     const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
     assert.deepEqual(Object.keys(proof), []); assert.equal(f.owner.getSnapshot().phase, 'disposed'); assert.equal(f.retires, 1);
@@ -269,7 +281,9 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     await f.owner.unlock(NEXT); assert.equal(f.owner.getSnapshot().phase, 'ready');
     assert.equal(f.owner.getCatalogue()!.accounts.length, 4);
     assert.equal(f.owner.getCatalogue()!.active.accountId, 'imported:60:1');
-    assert.equal((await f.runtime.tokens!.load(() => undefined)).items.length, 1);
+    const saved = await f.runtime.tokens!.load(() => undefined);
+    assert.equal(saved.items.length, 1);
+    assert.deepEqual(saved.collectibles, [item, collection]);
     const activity = await f.runtime.activity!.load(() => undefined);
     assert.equal(activity.saved.candidates.length, 1); assert.equal(activity.saved.view.filter, 'sent');
     assert.equal(await f.runtime.keyExport!.readSelected({ authorityRevision: f.owner.getSnapshot().revision, catalogueRevision: f.owner.getCatalogue()!.revision,
@@ -282,6 +296,47 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
     assert.equal((await f.store.recovery.readIdentity())?.walletBindingId, fingerprint);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { await recovery?.dispose(); await f.close(); }
+});
+
+test('protected collectible operations revoke on lock and quarantine a lost SQL commit acknowledgement', async () => {
+  const f = await fixture();
+  const pause = latch();
+  const item = { contractAddress: `0x${'33'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: '0' };
+  const sibling = { ...item, tokenId: '1' };
+  const current = () => undefined;
+  const record = () => f.read().records.find(({ key }) => key === NATIVE_TOKEN_REGISTRY_KEY);
+  try {
+    const tokens = f.runtime.tokens!;
+    await tokens.addCollectible(0, item, current);
+    const before = record();
+    f.setHook(async (kind, sql) => {
+      if (kind !== 'get' || !sql.includes('keyring_records')) return;
+      f.setHook(); pause.enter(); await pause.gate;
+    });
+    const pending = assert.rejects(tokens.removeCollectible(1, item, current), /CANCELLED|NOT_READY/);
+    await pause.reached;
+    await assert.rejects(f.owner.selectNetwork('base', f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision), /BUSY/);
+    f.owner.lock();
+    pause.release();
+    await pending;
+    assert.deepEqual(record(), before);
+    await f.owner.unlock(OLD);
+    assert.deepEqual((await tokens.load(current)).collectibles, [item]);
+
+    f.setAfter((kind, sql) => {
+      if (kind === 'exec' && sql === 'COMMIT') {
+        f.setAfter(); throw new Error('lost acknowledgement');
+      }
+    });
+    await assert.rejects(tokens.addCollectible(1, sibling, current), { code: 'CLEANUP_FAILED' });
+    assert.equal(f.runtime.catalogue.getSnapshot(), null);
+    assert.equal(f.unlockedKeyrings(), 0);
+    await assert.rejects(tokens.removeCollectible(2, sibling, current), { code: 'CLEANUP_FAILED' });
+    await f.reopen(true);
+    await f.owner.unlock(OLD);
+    assert.deepEqual((await f.runtime.tokens!.load(current)).collectibles, [item, sibling]);
+    assert.deepEqual((await f.runtime.tokens!.removeCollectible(2, item, current)).collectibles, [sibling]);
+  } finally { pause.release(); await f.close(); }
 });
 
 for (const mutation of ['root-ciphertext', 'missing-entry'] as const) test(`recovery refuses ${mutation} in a structurally valid signed bundle without replacing any bytes`, async () => {

@@ -28,8 +28,8 @@ import type { NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent } from './transferIntent.ts';
 import { snapshotUnsignedTransfer } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
-import { NativeTokenRegistry } from '../portfolio/tokenRegistry.ts';
-import type { NativeTokenScope } from '../portfolio/tokenRegistry.ts';
+import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
+import type { NativeTokenInventory, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenRuntime } from '../portfolio/nativeTokens.ts';
 import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
@@ -72,7 +72,10 @@ export interface KeyringRuntime extends CustodyRuntime {
   readonly keyExport?: NativeHdKeyExportRuntime;
   readonly activity?: NativeActivityRuntime;
   /** Local public token descriptors only; never exposes the underlying store. */
-  readonly tokens?: NativeTokenRuntime;
+  readonly tokens?: NativeTokenRuntime & {
+    addCollectible(revision: number, collectible: SavedCollectible, guard: () => void): Promise<NativeTokenInventory>;
+    removeCollectible(revision: number, collectible: SavedCollectible, guard: () => void): Promise<NativeTokenInventory>;
+  };
   /** Native transfer host only; never exposed directly to a screen. */
   readonly transfers?: NativeTransferRuntime;
   /** Trusted note file adapter only. Never part of a public wallet snapshot. */
@@ -827,6 +830,14 @@ export function createKeyringRuntimeFactory(
             },
             add: (revision, metadata, guard) => tokenOperation(guard, (scope, check) => tokens.add(scope, revision, metadata, check)),
             remove: (revision, contract, guard) => tokenOperation(guard, (scope, check) => tokens.remove(scope, revision, contract, check)),
+            async addCollectible(revision, collectible, guard) {
+              const target = snapshotSavedCollectible(collectible);
+              return tokenOperation(guard, (scope, check) => tokens.addCollectible(scope, revision, target, check));
+            },
+            async removeCollectible(revision, collectible, guard) {
+              const target = snapshotSavedCollectible(collectible);
+              return tokenOperation(guard, (scope, check) => tokens.removeCollectible(scope, revision, target, check));
+            },
           },
           catalogue: { getSnapshot: () => closed || tokens.requiresReopen || signedRecords.requiresReopen || !keyring.isUnlocked() ? null : catalogueSnapshot },
           keyExport: {

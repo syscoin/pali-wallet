@@ -8,7 +8,7 @@ import {
   getNativeNetwork,
   type EvmNetworkId,
 } from '../../src/custody/networkContext';
-import { NativeTokens } from '../../src/portfolio/nativeTokens';
+import { NativeTokens, type NativeTokenRuntime } from '../../src/portfolio/nativeTokens';
 import { createOwnedTokenReader } from '../../src/portfolio/ownedTokenReader';
 import { createNftOwnershipReader } from '../../src/portfolio/nftOwnershipReadRpc';
 import {
@@ -205,15 +205,20 @@ const readNft = query.has('collectible-check') ? createNftOwnershipReader({
   if (call.name === 'balanceOf') return respond(nftAbi.encodeFunctionResult('balanceOf', [0n]));
   return respond(nftAbi.encodeFunctionResult('balanceOfBatch', [[900719925474099312345n]]));
 } }) : undefined;
+const tokenRuntime: NativeTokenRuntime = {
+  load: (guard) => registry.load(scope(), guard),
+  add: (revision, metadata, guard) =>
+    registry.add(scope(), revision, metadata, guard),
+  remove: (revision, contractAddress, guard) =>
+    registry.remove(scope(), revision, contractAddress, guard),
+  addCollectible: (revision, item, guard) =>
+    registry.addCollectible(scope(), revision, item, guard),
+  removeCollectible: (revision, item, guard) =>
+    registry.removeCollectible(scope(), revision, item, guard),
+};
 const controller = new NativeTokens(
   source,
-  () => ({
-    load: (guard) => registry.load(scope(), guard),
-    add: (revision, metadata, guard) =>
-      registry.add(scope(), revision, metadata, guard),
-    remove: (revision, contractAddress, guard) =>
-      registry.remove(scope(), revision, contractAddress, guard),
-  }),
+  () => tokenRuntime,
   reader,
   () => 1000,
   undefined,
