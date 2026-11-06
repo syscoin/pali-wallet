@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
@@ -96,7 +97,7 @@ const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), '
 const fingerprint = '1'.repeat(64);
 
 let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
-  revision: 0, networks: NATIVE_NETWORKS,
+  revision: 0, networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
   active: wifFixtureEnabled ? { accountId: 'hd:0:0', networkId: 'bitcoin' } : { accountId: 'hd:60:0', networkId: 'ethereum' },
   accounts: wifFixtureEnabled ? [
     { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },

@@ -161,7 +161,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       ? { context: `${state.revision}:${current.active.accountId}:${state.account.network}`, identity: `${current.active.accountId}:${state.account.network}` } : null;
   }, []);
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
-  const utxo = findUtxoNetwork(snapshot.account?.network);
+  const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendUtxo = !!openUtxoSend && !!catalogue && utxo?.decimals === 8;
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
@@ -413,7 +413,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
-    const network = findUtxoNetwork(context.account.network);
+    const network = findUtxoNetwork(context.account.network, current.utxoNetworks);
     setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision, utxo: !!network,
       networkLabel: network?.name ?? getNativeSendContext(context.account.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
@@ -490,7 +490,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
     const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
     const extended = selected.type === 'HDAccount' || selected.utxoExtended;
-    const script = utxo && !extended ? findWifAddressType(selected.address, utxo.id) : undefined;
+    const script = utxo && !extended ? findWifAddressType(selected.address, utxo) : undefined;
     const keyFormat = canSign ? 'evm' : utxo && extended
       ? { kind: 'extended' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS.p2wpkh }
       : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;

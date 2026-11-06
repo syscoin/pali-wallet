@@ -3,6 +3,7 @@ import { getNetworkConfigFromCoin } from '@sidhujag/sysweb3-network/cjs/networks
 import { isNonBlankNetworkText } from '../../../../source/shared/networkText.ts';
 import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
 import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
+import type { INetwork, INetworkType } from '../../../../source/types/network.ts';
 
 export type CustomUtxoNetworkId = `utxo:custom:${string}`;
 export type UtxoNetworkId = 'syscoin' | 'bitcoin' | `utxo:${number}` | CustomUtxoNetworkId;
@@ -129,7 +130,26 @@ export function resolveUtxoNetwork(scope: UtxoNetwork | UtxoNetworkId): UtxoNetw
   return scope;
 }
 
-/** Custody remains limited to the shared shipped defaults in this slice. */
-export function getUtxoSdkNetwork(id: UtxoNetworkId): ReturnType<typeof getDefaultUTXONetworks>[number] {
-  return { ...sdkDefaults[getUtxoNetwork(id).chainId]! };
+export function supportsUtxoSoftwareCustody(network: UtxoNetwork): boolean {
+  return network.decimals === 8 && network.slip44 !== 60 &&
+    findUtxoCoinByRegistration(network)?.segwit === true;
+}
+
+export function getUtxoSdkNetwork(scope: UtxoNetworkId | UtxoNetwork): INetwork & {
+  kind: INetworkType.Syscoin;
+  utxoBackendChain: string;
+} {
+  const network = resolveUtxoNetwork(scope);
+  if (!isCustomUtxoNetworkId(network.id)) return { ...sdkDefaults[network.chainId]! };
+  return {
+    kind: 'syscoin' as INetworkType.Syscoin,
+    chainId: network.chainId,
+    slip44: network.slip44,
+    utxoBackendChain: network.backendChain,
+    currency: network.symbol.toLowerCase(),
+    url: network.endpoint,
+    explorer: network.explorer,
+    label: network.name,
+    default: false,
+  };
 }

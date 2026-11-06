@@ -111,7 +111,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
 }) {
   const [query, setQuery] = useState('');
   const [catalogueQuery, setCatalogueQuery] = useState('');
-  const [form, setForm] = useState<{ id?: string; name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
+  const [form, setForm] = useState<{ id?: string; utxo?: true; name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
 
   const [ui, setUi] = useState({ owner: controller, busy: false, error: '' });
   // Reset during a controller replacement before committing its rendered children.
@@ -204,7 +204,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   }, [controller, snapshot]);
 
   const save = async (remove = false) => {
-    if (!form || !snapshot || working.current || !controller.save) return;
+    if (!form || !snapshot || working.current || (form.utxo ? !controller.addUtxo : !controller.save)) return;
     const contextRevision = controller.getContextRevision();
     const catalogueRevision = snapshot.revision;
     const epoch = lifetime.current.epoch, operation = {};
@@ -214,17 +214,20 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       if (remove) {
         if (!form.id || !controller.remove) return;
         await controller.remove(form.id as Id, contextRevision, catalogueRevision);
+      } else if (form.utxo) {
+        await controller.addUtxo!({ endpoint: form.rpcUrl.trim(), name: form.name.trim(), explorer: '' },
+          contextRevision, catalogueRevision);
       } else {
         const chainId = form.chainId.trim();
         const registration = createNativeNetwork({ id: form.id ?? `custom:${chainId}`, name: form.name, kind: 'evm',
           chainId, slip44: 60, rpcUrl: form.rpcUrl.trim(), symbol: form.symbol, decimals: 18, testnet: form.testnet });
-        await controller.save(registration, contextRevision, catalogueRevision);
+        await controller.save!(registration, contextRevision, catalogueRevision);
       }
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) setForm(null);
     } catch {
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
           controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision)
-        setUi({ owner: controller, busy: false, error: 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.' });
+        setUi({ owner: controller, busy: false, error: form.utxo ? 'Check the Blockbook URL and make sure this coin type is not already saved.' : 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.' });
     } finally {
       if (working.current === operation) {
         working.current = null;
@@ -250,20 +253,21 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
-        <Header title={form ? form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? discardForm : close} />
+        <Header title={form ? form.utxo ? "Add UTXO network" : form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? discardForm : close} />
         {form ? <>
-          {!form.id && snapshot && controller.loadCatalogue && (
+          {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
               load={controller.loadCatalogue} networks={snapshot.networks} busy={busy}
               onChoose={chooseSuggestion} />
           )}
-          {field('name', 'Network name')}{field('rpcUrl', 'RPC URL')}{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
+          {field('name', form.utxo ? 'Network name (optional)' : 'Network name')}{field('rpcUrl', form.utxo ? 'Blockbook URL' : 'RPC URL')}
+          {!form.utxo && <>{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
           <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
             <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
           </IdlePressable>
-          <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>
+          <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text></>}
           <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
           {form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
@@ -286,6 +290,10 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             </View>;
           })}
           {controller.save && <Button title="Add network" variant="quiet" disabled={busy} onPress={() => edit()} />}
+          {controller.addUtxo && <Button title="Add UTXO network" variant="quiet" disabled={busy} onPress={() => {
+            setUi({ owner: controller, busy: false, error: '' });
+            setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
+          }} />}
         </>}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Text style={s.buildLabel}>Development build · Use a test wallet</Text>

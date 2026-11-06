@@ -1389,14 +1389,14 @@ test('UTXO custody balance sends the selected account key only after verified Bl
       guard();
       calls.push(url);
       assert.equal(init.method, 'GET');
-      const network = getUtxoNetwork(id);
+      const network = id;
       if (url === `${network.endpoint}/api/v2/`) {
         if (holdStatus) {
           activeSignal = init.signal ?? undefined;
           hold.enter();
           await hold.gate;
         }
-        return Response.json(utxoMetadata(id));
+        return Response.json(utxoMetadata(id.id));
       }
       if (url === `${network.endpoint}/api/v2/block-index/0`)
         return Response.json({ blockHash: wrongGenesis ? 'a'.repeat(64) : network.genesisHash });
@@ -1545,7 +1545,7 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
     createUtxoBalanceReader({ fetch: async (url) => {
       guard();
       requests.push(url);
-      if (url === `${bitcoin.endpoint}/api/v2/`) return Response.json(utxoMetadata(id));
+      if (url === `${bitcoin.endpoint}/api/v2/`) return Response.json(utxoMetadata(id.id));
       if (url === `${bitcoin.endpoint}/api/v2/block-index/0`)
         return Response.json({ blockHash: bitcoin.genesisHash });
       assert.equal(url, `${bitcoin.endpoint}/api/v2/xpub/${xpub}?details=tokenBalances&tokens=nonzero`);

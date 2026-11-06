@@ -5,7 +5,6 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { getNativeSendContext, nativeSigningEnabled } from '../custody/networkContext';
 import { getTestnetFaucet, openTestnetFaucet } from '../custody/testnetFaucet';
-import { findUtxoNetwork } from '../core/utxoNetworks';
 import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
@@ -61,7 +60,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const account = snapshot.account;
-  const utxo = findUtxoNetwork(account?.network);
+  const utxo = model.getUtxoNetwork(account?.network);
   const registration = account && !utxo ? model.getNetworkRegistration(account.network) : null;
   const network = utxo ? { ...utxo, networkId: utxo.symbol } : registration ? getNativeSendContext(registration)
     : { networkId: '', name: 'Network', symbol: '', decimals: 18, testnet: false };

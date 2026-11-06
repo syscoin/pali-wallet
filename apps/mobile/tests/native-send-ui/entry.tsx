@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
@@ -171,7 +172,7 @@ let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   Object.freeze<NativeWalletCatalogueSnapshot>({
     revision: 0,
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
-    networks: NATIVE_NETWORKS,
+    networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
     accounts: Array.from({length: new URLSearchParams(window.location.search).has('many-accounts') ? 1000 : 2}, (_, index) => ({
       id: `hd:60:${index}`,
       type: 'HDAccount' as const,

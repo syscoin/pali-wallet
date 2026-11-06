@@ -17,7 +17,7 @@ export function normalizeUtxoAddress(value: unknown, scope: UtxoNetworkId | Utxo
 }
 
 /** Decode the existing public address; a WIF itself does not select a script. */
-export function findWifAddressType(address: string, networkId: UtxoNetworkId): UtxoImportAddressType | undefined {
+export function findWifAddressType(address: string, networkId: UtxoNetworkId | UtxoNetwork): UtxoImportAddressType | undefined {
   const network = resolveUtxoNetwork(networkId).addressNetwork;
   const { payments } = syscoinUtils.bitcoinjs;
   return UTXO_IMPORT_TYPES.find((type) => {

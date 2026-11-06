@@ -18,7 +18,8 @@ import type {
   UtxoRecordSession,
   UtxoSignedRecords,
 } from '../../../../source/wallet/utxoSignedRecords.ts';
-import type { UtxoNetwork } from '../core/utxoNetworks.ts';
+import { isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
+import { verifySavedUtxoEndpoint } from '../core/utxoReadSession.ts';
 
 const REVIEW_MS = 90_000;
 type Output = Readonly<{ address: string; amountSatoshis: string }>;
@@ -75,9 +76,31 @@ export function createNativeUtxoSend(
       busy = false;
     }
   };
-  const ownedRead = (assertCurrent: () => void) => {
+  const custom = isCustomUtxoNetworkId(network.id);
+  if (custom && scope.network.url !== network.endpoint)
+    throw new CustodyRuntimeError('NOT_READY');
+  const verifyEndpoint = (signal: AbortSignal, assertCurrent: () => void) =>
+    verifySavedUtxoEndpoint(network, { fetch, timeoutMs: 10_000 }, signal, assertCurrent);
+
+  // SDK prepare runs inside the shared journal's dispatch admission. Check
+  // the saved endpoint after the bytes are durable and before SDK POST.
+  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = custom ? {
+    sendTransaction(raw, authority) {
+      return sdk.sendTransaction(raw, {
+        ...authority,
+        async prepare(candidate) {
+          await authority.prepare(candidate);
+          await verifyEndpoint(authority.signal, authority.assertCurrent);
+          authority.assertCurrent();
+        },
+      });
+    },
+  } : sdk;
+  const ownedRead = async (assertCurrent: () => void) => {
     readController?.abort();
-    readController = new AbortController();
+    const controller = new AbortController();
+    readController = controller;
+    if (custom) await verifyEndpoint(controller.signal, assertCurrent);
     return createOwnedUtxoBlockbookRead(
       {
         kind: 'wallet',
@@ -85,7 +108,7 @@ export function createNativeUtxoSend(
         xpub: scope.account.xpub,
         url: scope.network.url,
       },
-      readController.signal,
+      controller.signal,
       assertCurrent,
       fetch
     );
@@ -104,15 +127,15 @@ export function createNativeUtxoSend(
         let recipient: string, amountSatoshis: string;
         const max = input.max === true;
         try {
-          recipient = normalizeUtxoAddress(input.recipient.trim(), network.id);
+          recipient = normalizeUtxoAddress(input.recipient.trim(), network);
           amountSatoshis = max
             ? '0'
             : parseDecimalAmount(input.amount, network.decimals).toString();
         } catch {
           throw new CustodyRuntimeError('INVALID_INPUT');
         }
-        const read = ownedRead(check);
         try {
+          const read = await ownedRead(check);
           const { outpoints: excludedOutpoints } = await records.fundingExclusions(
             { ...session, assertCurrent: check },
             owner
@@ -164,8 +187,8 @@ export function createNativeUtxoSend(
       return run(async () => {
         const check = capture(revision, now() + REVIEW_MS);
         check();
-        const read = ownedRead(check);
         try {
+          const read = await ownedRead(check);
           return await records.observe(
             { ...session, assertCurrent: check },
             owner,
@@ -224,14 +247,14 @@ export function createNativeUtxoSend(
         if ('retained' in selected)
           return submitReviewedUtxo({
             record: selected.retained,
-            sender: sdk,
+            sender,
             records,
             session: currentSession,
             fetch,
             intent: 'replay',
           });
-        const read = ownedRead(check);
         try {
+          const read = await ownedRead(check);
           const signed = await sdk.signPSBT(
             { psbt: selected.binding.psbt },
             read
@@ -249,7 +272,7 @@ export function createNativeUtxoSend(
               outpoints: record.review.outpoints,
               virtualSize: record.virtualSize,
             },
-            sender: sdk,
+            sender,
             records,
             session: currentSession,
             fetch,

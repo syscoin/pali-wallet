@@ -1,6 +1,6 @@
-import { UTXO_NETWORKS } from '../core/utxoNetworks.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { createNativeChainCatalogue, type NativeNetworkSuggestion } from './networkCatalogue.ts';
+import type { NativeUtxoNetworkDraft } from './accounts.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { getNativeSendContext } from './networkContext.ts';
@@ -26,6 +26,7 @@ export interface NativeNetworkView<Id extends string = string> {
   subscribe(listener: () => void): () => void;
   select(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   save?(registration: import('./networkContext.ts').NativeNetworkRegistration, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
+  addUtxo?(draft: NativeUtxoNetworkDraft, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   loadCatalogue?(retry?: boolean): Promise<readonly NativeNetworkSuggestion[]>;
   remove?(id: Id, expectedContextRevision: number, expectedCatalogueRevision: number): Promise<void>;
   cancel(): void;
@@ -35,7 +36,7 @@ export interface NativeNetworkView<Id extends string = string> {
 
 /** Narrow projection: network selection still reserves the custody authority. */
 export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
-  'getSnapshot' | 'getCatalogue' | 'subscribe' | 'selectNetwork' | 'cancelAccountOperation'> & Partial<Pick<NativeCustodyAuthority, 'manageNetwork'>>, options: { utxoSendAvailable: boolean; fetch?: (url: string, init: RequestInit) => Promise<Response> }): NativeNetworkView<EvmNetworkId> {
+  'getSnapshot' | 'getCatalogue' | 'subscribe' | 'selectNetwork' | 'cancelAccountOperation'> & Partial<Pick<NativeCustodyAuthority, 'manageNetwork' | 'addUtxoNetwork'>>, options: { utxoSendAvailable: boolean; fetch?: (url: string, init: RequestInit) => Promise<Response> }): NativeNetworkView<EvmNetworkId> {
   const { utxoSendAvailable } = options;
   let checking: AbortController | null = null;
   let cachedCatalogue: NativeWalletCatalogueSnapshot | null = null;
@@ -59,7 +60,7 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
               testnet: registration.testnet,
               canSign: nativeSigningEnabled(registration.id, catalogue.networks), registration,
             })),
-            ...UTXO_NETWORKS.map((network) => Object.freeze({
+            ...catalogue.utxoNetworks.map((network) => Object.freeze({
               id: network.id, name: network.name, symbol: network.symbol,
               testnet: network.testnet, canSign: utxoSendAvailable && network.decimals === 8,
             })),
@@ -73,6 +74,15 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
     subscribe: (listener: () => void) => authority.subscribe(() => listener()),
     select: (id: EvmNetworkId, revision: number, catalogueRevision: number) => authority.selectNetwork(id, revision, catalogueRevision),
     ...(loadCatalogue ? { loadCatalogue } : {}),
+    ...(authority.addUtxoNetwork && utxoSendAvailable ? {
+      async addUtxo(draft: NativeUtxoNetworkDraft, revision: number, catalogueRevision: number) {
+        checking?.abort();
+        const controller = new AbortController();
+        checking = controller;
+        try { await authority.addUtxoNetwork!(draft, revision, catalogueRevision, controller.signal); }
+        finally { if (checking === controller) checking = null; controller.abort(); }
+      },
+    } : {}),
     ...(authority.manageNetwork ? { save: async (registration: import('./networkContext.ts').NativeNetworkRegistration, revision: number, catalogueRevision: number) => {
       const selected = snapshotNativeNetwork(registration);
       checking?.abort(); const signal = new AbortController(); checking = signal;

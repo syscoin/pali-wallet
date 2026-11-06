@@ -76,6 +76,7 @@ export class NativePortfolioController {
   }
 
   getNetworkRegistration(id: string) { return getNativeNetwork(id, this.source.getCatalogue?.()?.networks); }
+  getUtxoNetwork(id: unknown) { return findUtxoNetwork(id, this.source.getCatalogue?.()?.utxoNetworks); }
 
   private readAccount(): NativePortfolioAccount | null {
     try {
@@ -84,10 +85,10 @@ export class NativePortfolioController {
         current.phase !== 'ready' || !current.account ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
-      const network = findUtxoNetwork(current.account.network) ??
+      const network = this.getUtxoNetwork(current.account.network) ??
         getNativeNetwork(current.account.network, this.source.getCatalogue?.()?.networks);
       return Object.freeze({
-        address: normalizePublicAddress(current.account.address, network.id),
+        address: normalizePublicAddress(current.account.address, network.id, this.source.getCatalogue?.()?.utxoNetworks),
         network: network.id as EvmNetworkId,
         revision: current.revision,
       });
@@ -220,12 +221,12 @@ export class NativePortfolioController {
     this.replace(snapshot(account, 'loading'), true);
     if (!this.current(request)) return;
     try {
-      const network = findUtxoNetwork(account.network);
+      const network = this.getUtxoNetwork(account.network);
       if (network) {
         const result = await this.reader.readUtxoBalance?.(network.id, account.address, request.controller.signal);
         if (!this.current(request)) return;
         if (!result) throw new Error('Invalid observation');
-        const balance = utxoObservation(result, network.id, this.now());
+        const balance = utxoObservation(result, network, this.now());
         if (!this.current(request)) return;
         this.pending = null;
         this.replace(snapshot(account, 'available', balance.units, balance.updatedAt, balance.pendingDeltaUnits), true);

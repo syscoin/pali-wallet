@@ -22,6 +22,10 @@ jest.mock('utils/navigationState', () => ({
 }));
 
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring';
+import {
+  findUtxoCoinByRegistration,
+  getNetworkConfigFromCoin,
+} from '@sidhujag/sysweb3-network';
 import { webcrypto } from 'crypto';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
@@ -223,7 +227,22 @@ describe('PSBT approval context', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('uses owned prevouts and refuses the exact legacy WIF funding mismatch before review', async () => {
+  it.each([
+    {
+      chainId: 5700,
+      slip44: 1,
+      currency: 'tsys',
+      label: 'Syscoin Testnet',
+      backend: 'test',
+    },
+    {
+      chainId: 2,
+      slip44: 2,
+      currency: 'ltc',
+      label: 'Litecoin',
+      backend: 'Provider-main_2',
+    },
+  ])('rejects a mismatched $label WIF prevout', async (registration) => {
     const { SoftwareKeyring, createKeyringHost } = jest.requireActual(
       '@sidhujag/sysweb3-keyring/cjs/software.js'
     );
@@ -250,7 +269,10 @@ describe('PSBT approval context', () => {
       { captureEvmSubmission: null }
     );
     const bitcoin = syscoinUtils.bitcoinjs;
-    const network = syscoinUtils.syscoinNetworks.testnet;
+    const coin = findUtxoCoinByRegistration(registration)!;
+    const { networks } = getNetworkConfigFromCoin(coin);
+    const network =
+      registration.slip44 === 1 ? networks.testnet : networks.mainnet;
     const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 18), {
       network,
     });
@@ -266,16 +288,16 @@ describe('PSBT approval context', () => {
     const txid = previous.getId();
     state.vault.activeNetwork = {
       kind: INetworkType.Syscoin,
-      chainId: 5700,
-      slip44: 1,
-      currency: 'tsys',
-      label: 'Syscoin Testnet',
+      chainId: registration.chainId,
+      slip44: registration.slip44,
+      currency: registration.currency,
+      label: registration.label,
       url: endpoint,
     };
-    state.vaultGlobal.activeSlip44 = 1;
-    state.vaultGlobal.networks.syscoin[5700] = {
+    state.vaultGlobal.activeSlip44 = registration.slip44;
+    state.vaultGlobal.networks.syscoin[registration.chainId] = {
       ...state.vault.activeNetwork,
-      utxoBackendChain: 'test',
+      utxoBackendChain: registration.backend,
     };
     state.vault.accounts = {
       HDAccount: {},
