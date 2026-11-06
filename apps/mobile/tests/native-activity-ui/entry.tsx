@@ -65,13 +65,14 @@ let savedView: ActivityViewState = DEFAULT_ACTIVITY_VIEW;
 let saveDelay = 0;
 const identityRegression = new URLSearchParams(window.location.search).get('history-identity');
 const tokenMetadata = new URLSearchParams(window.location.search).get('token-metadata');
-const retainedCollectible = new URLSearchParams(window.location.search).has('retained-collectible');
+const retainedCollectible = new URLSearchParams(window.location.search).get('retained-collectible');
+const indexedCollectible = retainedCollectible === 'indexed';
 const collectibleContract = `0x${'33'.repeat(20)}`;
-const collectibleLocals: readonly LocalActivityRecord[] = retainedCollectible ? [{
+const collectibleLocals: readonly LocalActivityRecord[] = retainedCollectible !== null ? [{
   walletFingerprint: scope.walletFingerprint, accountId: scope.accountId,
   address: owner, networkId: scope.network.id, registrationHash: scope.network.registrationHash,
   chainId: scope.network.chainId, hash: hash(1), phase: 'signed', nonce: 0,
-  createdAt: 1700000000000, recipient: collectibleContract, amountUnits: '0',
+  createdAt: 1700000000000, recipient, amountUnits: '0',
   maximumFeeUnits: '150000', inspectionOnly: true,
   collectibleTransfer: {
     kind: 'nft-transfer', chainId: scope.network.chainId, from: owner,
@@ -97,7 +98,13 @@ class Explorer extends ActivityExplorerReader {
   ): Promise<readonly DiscoveredActivityCandidate[]> {
     feedReads++;
     if (fail) throw new Error('fixture unavailable');
-    if (retainedCollectible) return [];
+    if (retainedCollectible !== null) {
+      if (!indexedCollectible || feed !== 'txlist' || page !== 1) return [];
+      return decodeActivityPage({ status: '1', message: 'OK', result: [{
+        hash: hash(1), from: owner, to: collectibleContract, value: '0', nonce: '0',
+        blockNumber: '100', timeStamp: '1700000000', confirmations: '1', input: '0x', isError: '0',
+      }] }, feed, owner, 1);
+    }
     if (identityRegression) {
       const mixed = identityRegression === 'mixed-case';
       const raw = (index: number, token: boolean) => ({
@@ -358,9 +365,14 @@ function Fixture() {
           controller={controller}
           accountLabel="Public test account"
           onBack={() => setOpen(false)}
-          onReplay={retainedCollectible ? () => { throw new Error('Read-only collectible cannot replay'); }
+          onReplay={retainedCollectible !== null ? () => { throw new Error('Read-only collectible cannot replay'); }
             : freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
           onCancelPending={freshStatus ? () => setOpen(false) : undefined}
+          onCancelSaved={freshStatus ? (hash) => {
+            if (!freshStatus.locals.some((record) => record.hash === hash))
+              throw new Error('Expected the retained transaction hash');
+            setOpen(false);
+          } : undefined}
           onSpeedUpPending={freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
         />
       ) : (

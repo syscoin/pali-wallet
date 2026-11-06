@@ -478,7 +478,7 @@ type SelectedNftReadOptions = Required<
   Pick<ReadOptions, 'fetch' | 'registrations'>
 > &
   Pick<ReadOptions, 'timeoutMs'>;
-type ScopedCallOutcome =
+export type ScopedCallOutcome =
   | Readonly<{ kind: 'result'; data: string }>
   | Readonly<{ kind: 'rpc-error'; error: unknown }>;
 

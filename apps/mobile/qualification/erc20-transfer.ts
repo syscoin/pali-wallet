@@ -268,6 +268,7 @@ export async function qualifyNativeErc20Transfer(
     journal: (assertCurrent) => transfer.journal(assertCurrent),
     async sign(transaction, assertCurrent, intent) {
       signatures++;
+      expect(intent?.kind !== 'nft-transfer');
       expect(
         signatures <= 1 &&
           phase === 'create' &&
