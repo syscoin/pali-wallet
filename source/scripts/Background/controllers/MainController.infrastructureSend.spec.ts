@@ -129,6 +129,56 @@ describe('infrastructure transaction broadcast boundary', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it.each([
+    [KeyringAccountType.Ledger, undefined, 7, 'automatic'],
+    [KeyringAccountType.Trezor, 0, 0, 'manual'],
+  ])(
+    'binds the selected native nonce before invoking %s',
+    async (type, nonce, expected, source) => {
+      const address = `0x${'11'.repeat(20)}`;
+      currentState.vault.activeAccount = { id: 0, type };
+      currentState.vault.accounts[type] = { 0: { id: 0, address } };
+      wallet.assertAssetMutationContext = jest.fn();
+      wallet.captureFreshEvmRead = jest.fn(() => ({
+        network: currentState.vault.activeNetwork,
+      }));
+      wallet.inspectOrdinaryEvmNonce = jest.fn(async () => ({
+        nonce: expected,
+      }));
+      const transaction = {
+        from: address,
+        to: `0x${'22'.repeat(20)}`,
+        chainId: 1,
+        data: '0x',
+        value: '0x1',
+        gasPrice: '0x1',
+        gasLimit: '0x5208',
+        ...(nonce === undefined ? {} : { nonce }),
+      };
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          transaction,
+          true,
+          undefined,
+          undefined,
+          { hardwareScope: { account: 'a', network: 'b' } }
+        )
+      ).resolves.toBe(response);
+      expect(wallet.inspectOrdinaryEvmNonce).toHaveBeenCalledWith(
+        expect.any(Object),
+        address,
+        expect.objectContaining({
+          reviewed: nonce === undefined ? undefined : { nonce, source },
+        })
+      );
+      expect(send).toHaveBeenCalledWith(
+        { ...transaction, nonce: expected },
+        true,
+        expect.objectContaining({ walletNonce: { nonce: expected, source } })
+      );
+    }
+  );
+
   it.each([{ maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' }])(
     'blocks zero EIP-1559 maximum fees before SDK submission: %p',
     async (fees) => {

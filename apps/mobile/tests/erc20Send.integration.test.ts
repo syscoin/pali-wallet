@@ -53,6 +53,8 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     decimals: 2,
     eth: 10n ** 18n,
     nonce: 0,
+    pendingNonce: undefined as number | undefined,
+    peerSeesPending: false,
     base: 1,
     gas: 50000,
     loseResponse: true,
@@ -95,8 +97,10 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
             hash: '0x' + 'a'.repeat(64), baseFeePerGas: `0x${values.base.toString(16)}`, gasLimit: '0x1c9c380',
           };
         else if (b.method === 'eth_getCode') result = '0x6000';
-        else if (b.method === 'eth_getTransactionCount')
-          result = values.finalized ? '0x1' : `0x${values.nonce.toString(16)}`;
+        else if (b.method === 'eth_getTransactionCount') {
+          const nonce = b.params[1] === 'pending' ? values.pendingNonce ?? values.nonce : values.nonce;
+          result = values.finalized ? '0x1' : `0x${nonce.toString(16)}`;
+        }
         else if (b.method === 'eth_getBalance')
           result = `0x${values.eth.toString(16)}`;
         else if (b.method === 'eth_gasPrice') result = `0x${(values.base + 1).toString(16)}`;
@@ -121,7 +125,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
         else if (b.method === 'eth_getTransactionByHash') {
           const raw = sent.find((candidate) => keccak256(candidate) === b.params[0]);
           const tx = raw && Transaction.from(raw);
-          result = tx ? { hash: tx.hash, from: tx.from, to: tx.to, value: '0x0', nonce: '0x0',
+          result = values.peerSeesPending && tx ? { hash: tx.hash, from: tx.from, to: tx.to, value: '0x0', nonce: `0x${tx.nonce.toString(16)}`,
             blockNumber: null, blockHash: null, transactionIndex: null } : null;
         }
         else if (b.method === 'eth_getTransactionReceipt')
@@ -232,12 +236,24 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
       code: 'PENDING_TRANSFER',
     });
     assert.equal(transfers!.getSnapshot().hash, hash);
-    values.nonce = 1;
+
+    // A hash-specific pending sighting fills the nonce gap even when the
+    // pending count lags. A second transfer of the same token needs its state.
+    values.peerSeesPending = true;
+    await transfers!.prepare(RECIPIENT, '0.001');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
+    assert.equal(sent.length, 1);
+    await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
+      code: 'EXPIRED',
+    });
+    assert.match(transfers!.getSnapshot().message ?? '', /network is still updating/);
+
+    values.pendingNonce = 1;
     await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
     assert.equal(transfers!.getSnapshot().review?.nonce, '1');
     assert.equal(sent.length, 1);
     transfers!.cancel();
-    values.nonce = 0;
+    values.pendingNonce = undefined;
     await runtime!.tokens!.remove(1, CONTRACT, () => undefined);
     await runtime!.tokens!.add(2, { ...TOKEN, decimals: 3 }, () => undefined);
     transfers!.dispose();

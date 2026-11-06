@@ -250,6 +250,7 @@ export const beginApprovalSubmission = (
 
 type WalletTokenReviewAdmission = Readonly<{
   assertCurrent: () => void;
+  nonce: number;
   payload: WalletTokenReviewPayload;
 }>;
 const WALLET_TOKEN_REVIEW_TTL_MS = 300_000;
@@ -258,8 +259,9 @@ export function watchWalletTokenReview(
   port: chrome.runtime.Port,
   capture: (
     request: unknown,
-    persistentTab: boolean
-  ) => WalletTokenReviewAdmission,
+    persistentTab: boolean,
+    signal: AbortSignal
+  ) => Promise<WalletTokenReviewAdmission>,
   submit: (
     payload: WalletTokenReviewPayload,
     approval: IReviewedEvmTokenApproval
@@ -281,7 +283,8 @@ export function watchWalletTokenReview(
     Number.isInteger(tabId) &&
     tabId >= 0 &&
     (sender.frameId === undefined || sender.frameId === 0);
-  let phase: 'review' | 'submit' | 'submitted' | 'closed' = 'review';
+  let phase: 'review' | 'capturing' | 'submit' | 'submitted' | 'closed' =
+    'review';
   let approved: WalletTokenReviewAdmission;
   let expires: number;
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -303,19 +306,28 @@ export function watchWalletTokenReview(
   port.onMessage.addListener((message: unknown) => {
     if (phase === 'closed') return;
     if (phase === 'review') {
-      try {
-        approved = capture(message, persistentTab);
-        expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
-        timeout = setTimeout(
-          () => authority.abort(),
-          WALLET_TOKEN_REVIEW_TTL_MS
-        );
-        phase = 'submit';
-        reply({ type: 'reviewed' });
-      } catch (error) {
-        reply({ type: 'failure', ...formatError(error) });
-        close();
-      }
+      phase = 'capturing';
+      void Promise.resolve()
+        .then(() => {
+          if (authority.signal.aborted) throw walletTokenReviewError();
+          return capture(message, persistentTab, authority.signal);
+        })
+        .then((admission) => {
+          if (phase !== 'capturing') return;
+          admission.assertCurrent();
+          approved = admission;
+          expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
+          timeout = setTimeout(
+            () => authority.abort(),
+            WALLET_TOKEN_REVIEW_TTL_MS
+          );
+          phase = 'submit';
+          reply({ type: 'reviewed' });
+        })
+        .catch((error) => {
+          reply({ type: 'failure', ...formatError(error) });
+          close();
+        });
       return;
     }
     if (phase !== 'submit' || message !== 'submit') {
@@ -338,7 +350,11 @@ export function watchWalletTokenReview(
         assertCurrent();
         return submit(
           approved.payload,
-          Object.freeze({ assertCurrent, signal: authority.signal })
+          Object.freeze({
+            assertCurrent,
+            nonce: approved.nonce,
+            signal: authority.signal,
+          })
         );
       })
       .then(

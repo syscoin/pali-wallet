@@ -4,9 +4,11 @@ import { sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { concat, getBytes } from 'ethers/utils';
 
+import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 
+import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
 import type {
   IEncryptedPrivateRecord,
@@ -456,6 +458,7 @@ async function entriesHash(entries: readonly Entry[]): Promise<string> {
 
 /** One portable retention policy; host ports own physical atomicity and protection. */
 export class EvmSignedRecords {
+  readonly autoNonceAcceptance = new EvmAutoNonceAcceptance();
   private readonly storage: EvmSignedRecordStorage;
   private readonly now: () => number;
   private readonly onUnavailable: () => void;
@@ -1092,6 +1095,77 @@ export class EvmSignedRecords {
       return bundle?.entries.length ?? 0;
     });
   }
+  private autoNonceSnapshot(
+    session: EvmSignedRecordSession,
+    owner: string,
+    entries: readonly Entry[]
+  ): EvmAutoNonceSnapshot {
+    const byHash = new Map(entries.map((entry) => [entry.hash, entry]));
+    const budgets = new Map<
+      string,
+      Readonly<{
+        callTarget: string | null;
+        maximumCost: bigint;
+      }>
+    >();
+    const readBudget = async (hash: string) => {
+      guard(session);
+      const cached = budgets.get(hash);
+      if (cached) return cached;
+      const entry = byHash.get(hash);
+      if (!entry) throw new Error('EVM_SIGNED_RECORD_NOT_FOUND');
+      const tx = Transaction.from(
+        (await this.materialize(session, entry)).rawTransaction
+      );
+      const feePerGas = tx.maxFeePerGas ?? tx.gasPrice;
+      // These envelope types each consume exactly one sender nonce.
+      if (
+        feePerGas === null ||
+        (tx.type !== 0 && tx.type !== 1 && tx.type !== 2)
+      )
+        throw new Error('EVM_AUTO_NONCE_UNSUPPORTED_PREDECESSOR');
+      guard(session);
+      const budget = Object.freeze({
+        callTarget: tx.to?.toLowerCase() ?? null,
+        maximumCost: tx.value + tx.gasLimit * feePerGas,
+      });
+      budgets.set(hash, budget);
+      return budget;
+    };
+    return Object.freeze({
+      owner,
+      retained: Object.freeze(
+        entries.map(({ chainId, from, hash, nonce, phase }) =>
+          Object.freeze({ chainId, from, hash, nonce, phase })
+        )
+      ),
+      readMaximumCost: async (hash: string) =>
+        (await readBudget(hash)).maximumCost,
+      touchesContract: async (hash: string, contract: string) =>
+        (await readBudget(hash)).callTarget === contract.toLowerCase(),
+    });
+  }
+
+  captureAutoNonceSnapshot(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string
+  ): Promise<EvmAutoNonceSnapshot> {
+    const from = getAddress(address).toLowerCase();
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      guard(session);
+      return this.autoNonceSnapshot(
+        session,
+        id,
+        (bundle?.entries ?? []).filter(
+          (entry) => entry.chainId === chainId && entry.from === from
+        )
+      );
+    });
+  }
+
   listSender(
     session: EvmSignedRecordSession,
     chainId: string,
@@ -1266,7 +1340,13 @@ export class EvmSignedRecords {
     >,
     admit: (predecessors: readonly EvmSignedRecordSummary[]) => T,
     predecessorNonce?: number,
-    preflight?: Readonly<{ assertCurrent(): void; run(): Promise<void> }>
+    preflight?: Readonly<{
+      assertCurrent(): void;
+      run(
+        owner: string,
+        autoNonceSnapshot: () => EvmAutoNonceSnapshot
+      ): Promise<void>;
+    }>
   ): Promise<Readonly<{ result: T }> | null> {
     const address = getAddress(from).toLowerCase();
     return this.exclusive(async () => {
@@ -1299,7 +1379,13 @@ export class EvmSignedRecords {
             ).map(summary);
       guard(session);
       if (preflight) {
-        await preflight.run();
+        await preflight.run(id, () =>
+          this.autoNonceSnapshot(
+            session,
+            id,
+            sender.filter((entry) => entry.hash !== hash)
+          )
+        );
         guard(session);
       }
       return { result: admit(predecessors) };
@@ -1476,6 +1562,8 @@ export class EvmSignedRecords {
         const reconcile = hasSibling ? cancellation : undefined;
         if (reconcile && !reconcile.inclusionVerified)
           throw new Error('EVM_SIGNED_RECORD_OBSERVATION_CHANGED');
+        if (!isPendingPhase(phase) || !isPendingPhase(entry.phase))
+          this.autoNonceAcceptance.retireNonce(id, entry);
         if (!reconcile && entry.phase === phase) return summary(entry);
         const next =
           entry.phase === phase ? entry : Object.freeze({ ...entry, phase });
@@ -1514,10 +1602,12 @@ export function createEvmSignedRecordLifecycle(
   records: EvmSignedRecords,
   session: EvmSignedRecordSession,
   options?: Readonly<{
+    automaticNonceEndpoint?: string;
     metadata?: Readonly<Record<string, unknown>>;
     preflight?: (
       record: EvmSignedSubmission,
-      assertCurrent: () => void
+      assertCurrent: () => void,
+      autoNonceSnapshot: EvmAutoNonceSnapshot
     ) => Promise<void>;
     replacement?:
       | EvmVerifiedReplacementBinding
@@ -1543,6 +1633,7 @@ export function createEvmSignedRecordLifecycle(
       preflight: () => Promise<void>
     ): Promise<T> {
       let expires: number | undefined;
+      let trackAcknowledgement: (() => (hash: unknown) => void) | undefined;
       const expired = () => new Error('EVM_SIGNED_DISPATCH_PREFLIGHT_EXPIRED');
       const assertAdmission = () => {
         guard(session);
@@ -1561,14 +1652,50 @@ export function createEvmSignedRecordLifecycle(
         },
         () => {
           assertAdmission();
-          const response = initiate();
+          const recordAcknowledgement = trackAcknowledgement?.();
+          let response: Promise<T>;
+          try {
+            response = initiate();
+          } catch (error) {
+            recordAcknowledgement?.(undefined);
+            throw error;
+          }
+          if (recordAcknowledgement) {
+            response = response.then(
+              (value) => {
+                try {
+                  guard(session);
+                  recordAcknowledgement(
+                    value && typeof value === 'object' && 'hash' in value
+                      ? value.hash
+                      : value
+                  );
+                } catch {
+                  // The acknowledged send may have outlived its wallet scope.
+                  recordAcknowledgement(undefined);
+                }
+                return value;
+              },
+              (error: unknown) => {
+                recordAcknowledgement(undefined);
+                throw error;
+              }
+            );
+          }
           void response.catch(() => undefined);
           return response;
         },
         undefined,
         {
           assertCurrent: assertAdmission,
-          async run() {
+          async run(owner, autoNonceSnapshot) {
+            const endpoint = options?.automaticNonceEndpoint;
+            if (endpoint) {
+              if (endpoint !== record.context.network.url)
+                throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+              trackAcknowledgement = () =>
+                records.autoNonceAcceptance.track(owner, endpoint, record);
+            }
             const timeout = 12_000;
             expires = performance.now() + timeout;
             let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1577,7 +1704,11 @@ export function createEvmSignedRecordLifecycle(
                 (async () => {
                   await preflight();
                   assertAdmission();
-                  await options?.preflight?.(record, assertAdmission);
+                  await options?.preflight?.(
+                    record,
+                    assertAdmission,
+                    autoNonceSnapshot()
+                  );
                   assertAdmission();
                 })(),
                 new Promise<never>((_resolve, reject) => {

@@ -8,6 +8,7 @@ import {
   bufferEvmFeeEstimate,
   captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS,
+  EvmFeeBalanceError,
 } from '../../../shared/evmFeeApproval';
 import { BigNumber } from '../../../utils/ethersV6Compat';
 
@@ -152,7 +153,11 @@ export function captureReviewedNativeEvmTransfer(
 export async function recheckReviewedNativeEvmTransfer(
   review: ReturnType<typeof captureReviewedNativeEvmTransfer>,
   provider: CustomJsonRpcProvider,
-  assertCurrent: () => void
+  assertCurrent: () => void,
+  noncePlan: Readonly<{
+    state: 'latest' | 'pending';
+    maximumPredecessorCost: bigint;
+  }>
 ) {
   const check = () => {
     assertSynchronousEvmFeeGuard(assertCurrent);
@@ -166,17 +171,18 @@ export async function recheckReviewedNativeEvmTransfer(
     return result;
   };
   check();
+  const nonce = review.nonce;
+  if (nonce === undefined) throw new Error('Missing reviewed native nonce');
   await provider.verifyConfiguredChainId();
   const tx = review.transaction;
-  const [header, rawBalance, rawNonce] = await Promise.all([
+  const { state, maximumPredecessorCost } = noncePlan;
+  const [header, rawBalance] = await Promise.all([
     read('eth_getBlockByNumber', ['latest', false]),
-    read('eth_getBalance', [tx.from, 'pending']),
-    review.nonce ?? read('eth_getTransactionCount', [tx.from, 'pending']),
+    read('eth_getBalance', [tx.from, state]),
   ]);
-  const balance = parseEvmFeeQuantity(rawBalance, 'native balance');
-  const nonce = parseEvmFeeQuantity(rawNonce, 'native nonce');
-  if (nonce > BigInt(Number.MAX_SAFE_INTEGER))
-    throw new Error('Invalid reviewed native nonce');
+  const balance =
+    parseEvmFeeQuantity(rawBalance, 'native balance') - maximumPredecessorCost;
+  if (balance < BigInt(0)) throw new EvmFeeBalanceError();
   const observation = {
     balance,
     sampledBlockGasLimit: parseEvmFeeQuantity(
@@ -196,7 +202,7 @@ export async function recheckReviewedNativeEvmTransfer(
   );
   const request = { ...tx, nonce: nonce.toString() };
   const estimate = parseEvmFeeQuantity(
-    await read('eth_estimateGas', [evmEstimateRequest(request), 'pending']),
+    await read('eth_estimateGas', [evmEstimateRequest(request), state]),
     'native gas estimate'
   );
   assertEvmFeeEstimateApproved(

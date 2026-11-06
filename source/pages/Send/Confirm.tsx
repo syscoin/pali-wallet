@@ -45,6 +45,7 @@ import {
 } from 'utils/addressPoisoning';
 import { assertSupportedEvmFees } from 'utils/dappTransaction';
 import { handleTransactionError } from 'utils/errorHandling';
+import { isSavedEvmNonceConflict } from 'utils/evmTransactionContext';
 import {
   formatEther,
   formatUnits,
@@ -769,11 +770,15 @@ export const SendConfirm = () => {
         }, remaining);
         nativeFeeExpiry.current = expiry;
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
           discard();
           if (fresh) setRefreshingCustomNativeFee(false);
-          setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+          setFeeCalculationError(
+            isSavedEvmNonceConflict(error)
+              ? t('send.savedNonceConflict')
+              : t('send.feeCalculationFailedRetry')
+          );
         }
       });
     return () => {
@@ -1592,7 +1597,11 @@ export const SendConfirm = () => {
             if (isNativeSoftwareSend) {
               retireNativeFeeApproval();
               if (error?.transactionNotBroadcast === true)
-                setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+                setFeeCalculationError(
+                  isSavedEvmNonceConflict(error)
+                    ? t('send.savedNonceConflict')
+                    : t('send.feeCalculationFailedRetry')
+                );
             }
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
@@ -2286,7 +2295,9 @@ export const SendConfirm = () => {
       <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
         <Icon name="warning" className="w-3 h-3 text-warning-error" />
         <span className="text-warning-error text-xs">
-          {t('send.unableToLoad')}
+          {feeCalculationError === t('send.savedNonceConflict')
+            ? feeCalculationError
+            : t('send.unableToLoad')}
         </span>
       </div>
       <Tooltip content={feeCalculationError}>

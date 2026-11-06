@@ -5,7 +5,7 @@ import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedRepla
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
-import { createNativeSignedRecordView } from './sharedSignedRecords.ts';
+import { createNativeAutomaticNoncePlanner, createNativeSignedRecordView } from './sharedSignedRecords.ts';
 import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -32,7 +32,7 @@ import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from '.
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
-import { NativeTransferError, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
+import { NativeTransferError, type NativeAutomaticNonceDispatch, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
 import { assertSpeedUpEnvelope } from './transferRpc.ts';
 import { snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
@@ -385,7 +385,8 @@ export function createKeyringRuntimeFactory(
           }
         };
         function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void,
-          metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding) {
+          metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding,
+          verifyAutomaticNonce?: NativeAutomaticNonceDispatch) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -398,8 +399,17 @@ export function createKeyringRuntimeFactory(
           };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
-          if (requiresReplacement !== (replacement !== undefined)) throw new NativeTransferError('EXPIRED');
-          return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check }, { metadata, replacement });
+          if (requiresReplacement !== (replacement !== undefined) || (replacement && verifyAutomaticNonce))
+            throw new NativeTransferError('EXPIRED');
+          const session = { keyring, assertCurrent: check };
+          return createEvmSignedRecordLifecycle(signedRecords, session, {
+            metadata, replacement,
+            automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
+            preflight: verifyAutomaticNonce ? (_record, assertCurrent, snapshot) => verifyAutomaticNonce(
+              createNativeAutomaticNoncePlanner(signedRecords, session, String(context.network.chainId), context.account.address, context.network.url, snapshot),
+              assertCurrent
+            ) : undefined,
+          });
         }
         function snapshotReviewedTransfer(transaction: Parameters<NativeTransferRuntime['sign']>[0],
           intent: NativeAssetTransferIntent | undefined, replacement?: NativeReplacementApproval) {
@@ -1481,7 +1491,7 @@ export function createKeyringRuntimeFactory(
               void address;
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement) => {
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement, verifyAutomaticNonce) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;
               let review: {
@@ -1520,7 +1530,8 @@ export function createKeyringRuntimeFactory(
                 const boundary = sdk.captureEvmSubmission(
                   context,
                   check,
-                  () => captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined, replacement?.binding)
+                  () => captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined,
+                    replacement?.binding, verifyAutomaticNonce)
                 );
                 const tx = Transaction.from(rawTransaction);
                 if (tx.to === null || tx.hash !== hash)

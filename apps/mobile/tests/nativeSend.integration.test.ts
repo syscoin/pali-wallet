@@ -80,6 +80,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
           result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
         else if (b.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (b.method === 'eth_estimateGas') result = '0x5208';
+        else if (b.method === 'eth_getTransactionByHash') result = null;
         else if (b.method === 'eth_getTransactionReceipt') {
           const tx = mined === b.params[0] ? Transaction.from(submitted[0]!) : null;
           result = tx ? { transactionHash: mined, from: tx.from, to: tx.to, status: '0x1',
@@ -581,6 +582,28 @@ async function prepareSavedCancellation(f: Awaited<ReturnType<typeof cancellatio
   await f.transfers.prepareCancellation(originalHash);
   return { originalHash, review: f.transfers.getSnapshot().review! };
 }
+
+test('an acknowledged ordinary send can be followed by the next nonce while pending RPC lags', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+
+    // The same captured endpoint still reports zero for both counts and has
+    // no by-hash sighting. Its exact POST acknowledgement bridges this lag.
+    await f.transfers.prepare(RECIPIENT, '0.002');
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.nonce, '1');
+    await f.transfers.confirm(review.id);
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+    const saved = JSON.parse((await f.readDurableJournal())!);
+    assert.deepEqual(saved.entries.map((entry: { hash: string }) => entry.hash), f.broadcasts.map((raw) => keccak256(raw)));
+  } finally {
+    await f.close();
+  }
+});
 
 for (const type of [0, 2] as const) {
   test(`Speed Up type ${type} retains execution and saves linked exact bytes before POST`, async () => {

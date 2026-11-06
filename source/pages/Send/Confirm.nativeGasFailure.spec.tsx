@@ -17,6 +17,7 @@ import React from 'react';
 import MainController from 'scripts/Background/controllers/MainController';
 import { BigNumber } from 'utils/ethersV6Compat';
 
+import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
 import { SendConfirm } from './Confirm';
 
 const { EthereumTransactions } = jest.requireActual(
@@ -264,9 +265,11 @@ beforeEach(() => {
     getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000000000)),
     getBlock: jest.fn(async () => block()),
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
+    verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
     send: jest.fn(async (method: string) => {
       if (method === 'eth_getBlockByNumber') return block();
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
+      if (method === 'eth_getTransactionCount') return '0x2';
       throw new Error(`Unexpected RPC ${method}`);
     }),
   };
@@ -290,6 +293,14 @@ beforeEach(() => {
   wallet = Object.create(MainController.prototype);
   const keyring = { ethereumTransaction: sdk, isUnlocked: () => true };
   wallet.getActiveKeyring = () => keyring;
+  wallet.getRetainedEvmRecords = () => ({
+    autoNonceAcceptance: new EvmAutoNonceAcceptance(),
+    captureAutoNonceSnapshot: async () => ({
+      owner: 'synthetic',
+      retained: [],
+      readMaximumCost: jest.fn(),
+    }),
+  });
   wallet.getWalletSetupStatus = () => undefined;
   wallet.isUnlocked = () => true;
   wallet.walletSessionGeneration = 0;
@@ -530,7 +541,7 @@ it('keeps initial, retry and changed-recipient estimates on the same strict read
       ([path]) => path.at(-1) === 'getFreshNativeEvmGasLimit'
     )
   ).toHaveLength(2);
-  expect(mockFreshProviders).toHaveLength(2);
+  expect(mockFreshProviders).toHaveLength(3);
   expect(
     mockFreshProviders.every((item) => item.destroy.mock.calls.length === 1)
   ).toBe(true);
@@ -589,7 +600,7 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
     [500000, 25200, 36000].map((gas) => total.sub(rate.mul(gas)).toHexString())
   );
   for (const [, args] of retries) expect(args[1]).toEqual(mockScope);
-  expect(mockFreshProviders).toHaveLength(initialReads + 3);
+  expect(mockFreshProviders).toHaveLength(initialReads + 4);
   for (const reader of mockFreshProviders)
     expect(reader.destroy).toHaveBeenCalledTimes(1);
 });

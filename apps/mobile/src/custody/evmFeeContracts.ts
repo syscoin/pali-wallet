@@ -10,6 +10,15 @@ export class EvmTransferReadError extends Error {
     'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE';
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
+export class EvmAutomaticNonceUnresolved extends EvmTransferReadError {
+  readonly nonce: number;
+  readonly reason?: 'asset-state';
+  constructor(nonce: number, reason?: 'asset-state') {
+    super('REVIEW_REQUIRED');
+    this.nonce = nonce;
+    this.reason = reason;
+  }
+}
 export const rejectRead = (code: EvmTransferReadError['code']): never => { throw new EvmTransferReadError(code); };
 // Automatic selection is tied to the pending count. A deliberate override may
 // replace an external pending transaction, but must clear the canonical count.
