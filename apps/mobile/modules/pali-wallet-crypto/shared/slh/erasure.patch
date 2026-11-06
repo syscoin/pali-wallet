@@ -1,0 +1,625 @@
+--- a/upstream/fors.c
++++ b/upstream/fors.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdlib.h>
+ #include <stdint.h>
+ #include <string.h>
+@@ -84,11 +85,15 @@
+                const uint32_t fors_addr[8])
+ {
+     uint32_t indices[SPX_FORS_TREES];
++    PALI_SLH_CLEAR_ON_RETURN(indices);
+     unsigned char roots[SPX_FORS_TREES * SPX_N];
++    PALI_SLH_CLEAR_ON_RETURN(roots);
+     uint32_t fors_tree_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(fors_tree_addr);
+     struct fors_gen_leaf_info fors_info = {0};
+     uint32_t *fors_leaf_addr = fors_info.leaf_addrx;
+     uint32_t fors_pk_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(fors_pk_addr);
+     uint32_t idx_offset;
+     unsigned int i;
+ 
+@@ -137,10 +142,15 @@
+                       const uint32_t fors_addr[8])
+ {
+     uint32_t indices[SPX_FORS_TREES];
++    PALI_SLH_CLEAR_ON_RETURN(indices);
+     unsigned char roots[SPX_FORS_TREES * SPX_N];
++    PALI_SLH_CLEAR_ON_RETURN(roots);
+     unsigned char leaf[SPX_N];
++    PALI_SLH_CLEAR_ON_RETURN(leaf);
+     uint32_t fors_tree_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(fors_tree_addr);
+     uint32_t fors_pk_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(fors_pk_addr);
+     uint32_t idx_offset;
+     unsigned int i;
+ 
+--- a/upstream/sha2.c
++++ b/upstream/sha2.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ /* Based on the public domain implementation in
+  * crypto_hash/sha512/ref/ from http://bench.cr.yp.to/supercop.html
+  * by D. J. Bernstein */
+@@ -132,16 +133,27 @@
+ static size_t crypto_hashblocks_sha256(uint8_t *statebytes,
+                                        const uint8_t *in, size_t inlen) {
+     uint32_t state[8];
++    PALI_SLH_CLEAR_ON_RETURN(state);
+     uint32_t a;
++    PALI_SLH_CLEAR_ON_RETURN(a);
+     uint32_t b;
++    PALI_SLH_CLEAR_ON_RETURN(b);
+     uint32_t c;
++    PALI_SLH_CLEAR_ON_RETURN(c);
+     uint32_t d;
++    PALI_SLH_CLEAR_ON_RETURN(d);
+     uint32_t e;
++    PALI_SLH_CLEAR_ON_RETURN(e);
+     uint32_t f;
++    PALI_SLH_CLEAR_ON_RETURN(f);
+     uint32_t g;
++    PALI_SLH_CLEAR_ON_RETURN(g);
+     uint32_t h;
++    PALI_SLH_CLEAR_ON_RETURN(h);
+     uint32_t T1;
++    PALI_SLH_CLEAR_ON_RETURN(T1);
+     uint32_t T2;
++    PALI_SLH_CLEAR_ON_RETURN(T2);
+ 
+     a = load_bigendian_32(statebytes + 0);
+     state[0] = a;
+@@ -162,21 +174,37 @@
+ 
+     while (inlen >= 64) {
+         uint32_t w0  = load_bigendian_32(in + 0);
++        PALI_SLH_CLEAR_ON_RETURN(w0);
+         uint32_t w1  = load_bigendian_32(in + 4);
++        PALI_SLH_CLEAR_ON_RETURN(w1);
+         uint32_t w2  = load_bigendian_32(in + 8);
++        PALI_SLH_CLEAR_ON_RETURN(w2);
+         uint32_t w3  = load_bigendian_32(in + 12);
++        PALI_SLH_CLEAR_ON_RETURN(w3);
+         uint32_t w4  = load_bigendian_32(in + 16);
++        PALI_SLH_CLEAR_ON_RETURN(w4);
+         uint32_t w5  = load_bigendian_32(in + 20);
++        PALI_SLH_CLEAR_ON_RETURN(w5);
+         uint32_t w6  = load_bigendian_32(in + 24);
++        PALI_SLH_CLEAR_ON_RETURN(w6);
+         uint32_t w7  = load_bigendian_32(in + 28);
++        PALI_SLH_CLEAR_ON_RETURN(w7);
+         uint32_t w8  = load_bigendian_32(in + 32);
++        PALI_SLH_CLEAR_ON_RETURN(w8);
+         uint32_t w9  = load_bigendian_32(in + 36);
++        PALI_SLH_CLEAR_ON_RETURN(w9);
+         uint32_t w10 = load_bigendian_32(in + 40);
++        PALI_SLH_CLEAR_ON_RETURN(w10);
+         uint32_t w11 = load_bigendian_32(in + 44);
++        PALI_SLH_CLEAR_ON_RETURN(w11);
+         uint32_t w12 = load_bigendian_32(in + 48);
++        PALI_SLH_CLEAR_ON_RETURN(w12);
+         uint32_t w13 = load_bigendian_32(in + 52);
++        PALI_SLH_CLEAR_ON_RETURN(w13);
+         uint32_t w14 = load_bigendian_32(in + 56);
++        PALI_SLH_CLEAR_ON_RETURN(w14);
+         uint32_t w15 = load_bigendian_32(in + 60);
++        PALI_SLH_CLEAR_ON_RETURN(w15);
+ 
+         F_32(w0, 0x428a2f98)
+         F_32(w1, 0x71374491)
+@@ -289,16 +317,27 @@
+ static int crypto_hashblocks_sha512(unsigned char *statebytes,const unsigned char *in,unsigned long long inlen)
+ {
+   uint64_t state[8];
++  PALI_SLH_CLEAR_ON_RETURN(state);
+   uint64_t a;
++  PALI_SLH_CLEAR_ON_RETURN(a);
+   uint64_t b;
++  PALI_SLH_CLEAR_ON_RETURN(b);
+   uint64_t c;
++  PALI_SLH_CLEAR_ON_RETURN(c);
+   uint64_t d;
++  PALI_SLH_CLEAR_ON_RETURN(d);
+   uint64_t e;
++  PALI_SLH_CLEAR_ON_RETURN(e);
+   uint64_t f;
++  PALI_SLH_CLEAR_ON_RETURN(f);
+   uint64_t g;
++  PALI_SLH_CLEAR_ON_RETURN(g);
+   uint64_t h;
++  PALI_SLH_CLEAR_ON_RETURN(h);
+   uint64_t T1;
++  PALI_SLH_CLEAR_ON_RETURN(T1);
+   uint64_t T2;
++  PALI_SLH_CLEAR_ON_RETURN(T2);
+ 
+   a = load_bigendian_64(statebytes +  0); state[0] = a;
+   b = load_bigendian_64(statebytes +  8); state[1] = b;
+@@ -311,21 +350,37 @@
+ 
+   while (inlen >= 128) {
+     uint64_t w0  = load_bigendian_64(in +   0);
++    PALI_SLH_CLEAR_ON_RETURN(w0);
+     uint64_t w1  = load_bigendian_64(in +   8);
++    PALI_SLH_CLEAR_ON_RETURN(w1);
+     uint64_t w2  = load_bigendian_64(in +  16);
++    PALI_SLH_CLEAR_ON_RETURN(w2);
+     uint64_t w3  = load_bigendian_64(in +  24);
++    PALI_SLH_CLEAR_ON_RETURN(w3);
+     uint64_t w4  = load_bigendian_64(in +  32);
++    PALI_SLH_CLEAR_ON_RETURN(w4);
+     uint64_t w5  = load_bigendian_64(in +  40);
++    PALI_SLH_CLEAR_ON_RETURN(w5);
+     uint64_t w6  = load_bigendian_64(in +  48);
++    PALI_SLH_CLEAR_ON_RETURN(w6);
+     uint64_t w7  = load_bigendian_64(in +  56);
++    PALI_SLH_CLEAR_ON_RETURN(w7);
+     uint64_t w8  = load_bigendian_64(in +  64);
++    PALI_SLH_CLEAR_ON_RETURN(w8);
+     uint64_t w9  = load_bigendian_64(in +  72);
++    PALI_SLH_CLEAR_ON_RETURN(w9);
+     uint64_t w10 = load_bigendian_64(in +  80);
++    PALI_SLH_CLEAR_ON_RETURN(w10);
+     uint64_t w11 = load_bigendian_64(in +  88);
++    PALI_SLH_CLEAR_ON_RETURN(w11);
+     uint64_t w12 = load_bigendian_64(in +  96);
++    PALI_SLH_CLEAR_ON_RETURN(w12);
+     uint64_t w13 = load_bigendian_64(in + 104);
++    PALI_SLH_CLEAR_ON_RETURN(w13);
+     uint64_t w14 = load_bigendian_64(in + 112);
++    PALI_SLH_CLEAR_ON_RETURN(w14);
+     uint64_t w15 = load_bigendian_64(in + 120);
++    PALI_SLH_CLEAR_ON_RETURN(w15);
+ 
+     F_64(w0 ,0x428a2f98d728ae22ULL)
+     F_64(w1 ,0x7137449123ef65cdULL)
+@@ -491,6 +546,7 @@
+ 
+ void sha256_inc_blocks(uint8_t *state, const uint8_t *in, size_t inblocks) {
+     uint64_t bytes = load_bigendian_64(state + 32);
++    PALI_SLH_CLEAR_ON_RETURN(bytes);
+ 
+     crypto_hashblocks_sha256(state, in, 64 * inblocks);
+     bytes += 64 * inblocks;
+@@ -500,6 +556,7 @@
+ 
+ void sha512_inc_blocks(uint8_t *state, const uint8_t *in, size_t inblocks) {
+     uint64_t bytes = load_bigendian_64(state + 64);
++    PALI_SLH_CLEAR_ON_RETURN(bytes);
+ 
+     crypto_hashblocks_sha512(state, in, 128 * inblocks);
+     bytes += 128 * inblocks;
+@@ -509,7 +566,9 @@
+ 
+ void sha256_inc_finalize(uint8_t *out, uint8_t *state, const uint8_t *in, size_t inlen) {
+     uint8_t padded[128];
++    PALI_SLH_CLEAR_ON_RETURN(padded);
+     uint64_t bytes = load_bigendian_64(state + 32) + inlen;
++    PALI_SLH_CLEAR_ON_RETURN(bytes);
+ 
+     crypto_hashblocks_sha256(state, in, inlen);
+     in += inlen;
+@@ -557,7 +616,9 @@
+ 
+ void sha512_inc_finalize(uint8_t *out, uint8_t *state, const uint8_t *in, size_t inlen) {
+     uint8_t padded[256];
++    PALI_SLH_CLEAR_ON_RETURN(padded);
+     uint64_t bytes = load_bigendian_64(state + 64) + inlen;
++    PALI_SLH_CLEAR_ON_RETURN(bytes);
+ 
+     crypto_hashblocks_sha512(state, in, inlen);
+     in += inlen;
+@@ -606,6 +667,7 @@
+ 
+ void sha256(uint8_t *out, const uint8_t *in, size_t inlen) {
+     uint8_t state[40];
++    PALI_SLH_CLEAR_ON_RETURN(state);
+ 
+     sha256_inc_init(state);
+     sha256_inc_finalize(out, state, in, inlen);
+@@ -613,6 +675,7 @@
+ 
+ void sha512(uint8_t *out, const uint8_t *in, size_t inlen) {
+     uint8_t state[72];
++    PALI_SLH_CLEAR_ON_RETURN(state);
+ 
+     sha512_inc_init(state);
+     sha512_inc_finalize(out, state, in, inlen);
+@@ -628,7 +691,9 @@
+           const unsigned char *in, unsigned long inlen)
+ {
+     SPX_VLA(uint8_t, inbuf, inlen+4);
++    PALI_SLH_CLEAR_ON_RETURN(inbuf);
+     unsigned char outbuf[SPX_SHA256_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(outbuf);
+     unsigned long i;
+ 
+     memcpy(inbuf, in, inlen);
+@@ -654,7 +719,9 @@
+           const unsigned char *in, unsigned long inlen)
+ {
+     SPX_VLA(uint8_t, inbuf, inlen+4);
++    PALI_SLH_CLEAR_ON_RETURN(inbuf);
+     unsigned char outbuf[SPX_SHA512_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(outbuf);
+     unsigned long i;
+ 
+     memcpy(inbuf, in, inlen);
+@@ -681,6 +748,7 @@
+  **/
+ void seed_state(spx_ctx *ctx) {
+     uint8_t block[SPX_SHA512_BLOCK_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(block);
+     size_t i;
+ 
+     for (i = 0; i < SPX_N; ++i) {
+--- a/upstream/utilsx1.c
++++ b/upstream/utilsx1.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <string.h>
+ 
+ #include "utils.h"
+@@ -33,6 +34,7 @@
+ {
+     /* This is where we keep the intermediate nodes */
+     SPX_VLA(uint8_t, stack, tree_height*SPX_N);
++    PALI_SLH_CLEAR_ON_RETURN(stack);
+ 
+     uint32_t idx;
+     uint32_t max_idx = (uint32_t)((1 << tree_height) - 1);
+--- a/upstream/wots.c
++++ b/upstream/wots.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -69,6 +70,7 @@
+ {
+     unsigned int csum = 0;
+     unsigned char csum_bytes[(SPX_WOTS_LEN2 * SPX_WOTS_LOGW + 7) / 8];
++    PALI_SLH_CLEAR_ON_RETURN(csum_bytes);
+     unsigned int i;
+ 
+     /* Compute checksum. */
+@@ -100,6 +102,7 @@
+                       const spx_ctx *ctx, uint32_t addr[8])
+ {
+     unsigned int lengths[SPX_WOTS_LEN];
++    PALI_SLH_CLEAR_ON_RETURN(lengths);
+     uint32_t i;
+ 
+     chain_lengths(lengths, msg);
+--- a/upstream/wotsx1.c
++++ b/upstream/wotsx1.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -22,6 +23,7 @@
+     uint32_t *pk_addr = info->pk_addr;
+     unsigned int i, k;
+     unsigned char pk_buffer[ SPX_WOTS_BYTES ];
++    PALI_SLH_CLEAR_ON_RETURN(pk_buffer);
+     unsigned char *buffer;
+     uint32_t wots_k_mask;
+ 
+--- a/upstream/hash_sha2.c
++++ b/upstream/hash_sha2.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -40,8 +41,11 @@
+               const uint32_t addr[8])
+ {
+     uint8_t sha2_state[40];
++    PALI_SLH_CLEAR_ON_RETURN(sha2_state);
+     unsigned char buf[SPX_SHA256_ADDR_BYTES + SPX_N];
++    PALI_SLH_CLEAR_ON_RETURN(buf);
+     unsigned char outbuf[SPX_SHA256_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(outbuf);
+ 
+     /* Retrieve precomputed state containing pub_seed */
+     memcpy(sha2_state, ctx->state_seeded, 40 * sizeof(uint8_t));
+@@ -71,7 +75,9 @@
+     (void)ctx;
+ 
+     unsigned char buf[SPX_SHAX_BLOCK_BYTES + SPX_SHAX_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(buf);
+     uint8_t state[8 + SPX_SHAX_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(state);
+     int i;
+ 
+ #if SPX_N > SPX_SHAX_BLOCK_BYTES
+@@ -132,6 +138,7 @@
+ #define SPX_DGST_BYTES (SPX_FORS_MSG_BYTES + SPX_TREE_BYTES + SPX_LEAF_BYTES)
+ 
+     unsigned char seed[2*SPX_N + SPX_SHAX_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(seed);
+ 
+     /* Round to nearest multiple of SPX_SHAX_BLOCK_BYTES */
+ #if (SPX_SHAX_BLOCK_BYTES & (SPX_SHAX_BLOCK_BYTES-1)) != 0
+@@ -140,10 +147,13 @@
+ #define SPX_INBLOCKS (((SPX_N + SPX_PK_BYTES + SPX_SHAX_BLOCK_BYTES - 1) & \
+                         -SPX_SHAX_BLOCK_BYTES) / SPX_SHAX_BLOCK_BYTES)
+     unsigned char inbuf[SPX_INBLOCKS * SPX_SHAX_BLOCK_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(inbuf);
+ 
+     unsigned char buf[SPX_DGST_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(buf);
+     unsigned char *bufp = buf;
+     uint8_t state[8 + SPX_SHAX_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(state);
+ 
+     shaX_inc_init(state);
+ 
+--- a/upstream/sign.c
++++ b/upstream/sign.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stddef.h>
+ #include <string.h>
+ #include <stdint.h>
+@@ -54,6 +55,7 @@
+                              const unsigned char *seed)
+ {
+     spx_ctx ctx;
++    PALI_SLH_TRACK_SECRET(ctx);
+ 
+     /* Initialize SK_SEED, SK_PRF and PUB_SEED from seed. */
+     memcpy(sk, seed, CRYPTO_SEEDBYTES);
+@@ -83,6 +85,7 @@
+ int crypto_sign_keypair(unsigned char *pk, unsigned char *sk)
+ {
+   unsigned char seed[CRYPTO_SEEDBYTES];
++  PALI_SLH_TRACK_SECRET(seed);
+   randombytes(seed, CRYPTO_SEEDBYTES);
+   crypto_sign_seed_keypair(pk, sk, seed);
+ 
+@@ -96,18 +99,24 @@
+                           const uint8_t *m, size_t mlen, const uint8_t *sk)
+ {
+     spx_ctx ctx;
++    PALI_SLH_TRACK_SECRET(ctx);
+ 
+     const unsigned char *sk_prf = sk + SPX_N;
+     const unsigned char *pk = sk + 2*SPX_N;
+ 
+     unsigned char optrand[SPX_N];
++    PALI_SLH_TRACK_SECRET(optrand);
+     unsigned char mhash[SPX_FORS_MSG_BYTES];
++    PALI_SLH_TRACK_SECRET(mhash);
+     unsigned char root[SPX_N];
++    PALI_SLH_TRACK_SECRET(root);
+     uint32_t i;
+     uint64_t tree;
+     uint32_t idx_leaf;
+     uint32_t wots_addr[8] = {0};
++    PALI_SLH_TRACK_SECRET(wots_addr);
+     uint32_t tree_addr[8] = {0};
++    PALI_SLH_TRACK_SECRET(tree_addr);
+ 
+     memcpy(ctx.sk_seed, sk, SPX_N);
+     memcpy(ctx.pub_seed, pk, SPX_N);
+@@ -164,17 +173,25 @@
+                        const uint8_t *m, size_t mlen, const uint8_t *pk)
+ {
+     spx_ctx ctx;
++    PALI_SLH_TRACK_SECRET(ctx);
+     const unsigned char *pub_root = pk + SPX_N;
+     unsigned char mhash[SPX_FORS_MSG_BYTES];
++    PALI_SLH_TRACK_SECRET(mhash);
+     unsigned char wots_pk[SPX_WOTS_BYTES];
++    PALI_SLH_TRACK_SECRET(wots_pk);
+     unsigned char root[SPX_N];
++    PALI_SLH_TRACK_SECRET(root);
+     unsigned char leaf[SPX_N];
++    PALI_SLH_TRACK_SECRET(leaf);
+     unsigned int i;
+     uint64_t tree;
+     uint32_t idx_leaf;
+     uint32_t wots_addr[8] = {0};
++    PALI_SLH_TRACK_SECRET(wots_addr);
+     uint32_t tree_addr[8] = {0};
++    PALI_SLH_TRACK_SECRET(tree_addr);
+     uint32_t wots_pk_addr[8] = {0};
++    PALI_SLH_TRACK_SECRET(wots_pk_addr);
+ 
+     if (siglen != SPX_BYTES) {
+         return -1;
+--- a/upstream/thash_sha2_simple.c
++++ b/upstream/thash_sha2_simple.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -26,8 +27,11 @@
+ #endif
+ 
+     unsigned char outbuf[SPX_SHA256_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(outbuf);
+     uint8_t sha2_state[40];
++    PALI_SLH_CLEAR_ON_RETURN(sha2_state);
+     SPX_VLA(uint8_t, buf, SPX_SHA256_ADDR_BYTES + inblocks*SPX_N);
++    PALI_SLH_CLEAR_ON_RETURN(buf);
+ 
+     /* Retrieve precomputed state containing pub_seed */
+     memcpy(sha2_state, ctx->state_seeded, 40 * sizeof(uint8_t));
+@@ -44,8 +48,11 @@
+            const spx_ctx *ctx, uint32_t addr[8])
+ {
+     unsigned char outbuf[SPX_SHA512_OUTPUT_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(outbuf);
+     uint8_t sha2_state[72];
++    PALI_SLH_CLEAR_ON_RETURN(sha2_state);
+     SPX_VLA(uint8_t, buf, SPX_SHA256_ADDR_BYTES + inblocks*SPX_N);
++    PALI_SLH_CLEAR_ON_RETURN(buf);
+ 
+     /* Retrieve precomputed state containing pub_seed */
+     memcpy(sha2_state, ctx->state_seeded_512, 72 * sizeof(uint8_t));
+--- a/upstream/utils.c
++++ b/upstream/utils.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <string.h>
+ 
+ #include "utils.h"
+@@ -54,6 +55,7 @@
+ {
+     uint32_t i;
+     unsigned char buffer[2 * SPX_N];
++    PALI_SLH_CLEAR_ON_RETURN(buffer);
+ 
+     /* If leaf_idx is odd (last bit = 1), current path element is a right child
+        and auth_path has to go left. Otherwise it is the other way around. */
+@@ -111,7 +113,9 @@
+               uint32_t tree_addr[8])
+ {
+     SPX_VLA(uint8_t, stack, (tree_height+1)*SPX_N);
++    PALI_SLH_CLEAR_ON_RETURN(stack);
+     SPX_VLA(unsigned int, heights, tree_height+1);
++    PALI_SLH_CLEAR_ON_RETURN(heights);
+     unsigned int offset = 0;
+     uint32_t idx;
+     uint32_t tree_idx;
+--- a/upstream/merkle.c
++++ b/upstream/merkle.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ #include <stdint.h>
+ #include <string.h>
+ 
+@@ -49,8 +50,11 @@
+        code to have just one treehash routine that computes both root and path
+        in one function. */
+     unsigned char auth_path[SPX_TREE_HEIGHT * SPX_N + SPX_WOTS_BYTES];
++    PALI_SLH_CLEAR_ON_RETURN(auth_path);
+     uint32_t top_tree_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(top_tree_addr);
+     uint32_t wots_addr[8] = {0};
++    PALI_SLH_CLEAR_ON_RETURN(wots_addr);
+ 
+     set_layer_addr(top_tree_addr, SPX_D - 1);
+     set_layer_addr(wots_addr, SPX_D - 1);
+--- a/slhdsa_emscripten_wrapper.c
++++ b/slhdsa_emscripten_wrapper.c
+@@ -1,3 +1,4 @@
++#include "pali_slh_secure_clear.h"
+ // SPDX-License-Identifier: MIT
+ //
+ // Browser wrapper for nconsigny/SPHINCS- signers/sphincsplus-128-24.
+@@ -136,11 +137,17 @@
+   uint32_t count
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   uint32_t tree_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(tree_addr);
+   uint32_t wots_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(wots_addr);
+   uint32_t leaf_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(leaf_addr);
+   uint32_t pk_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(pk_addr);
+   unsigned int zero_steps[SPX_WOTS_LEN] = {0};
++  PALI_SLH_TRACK_SECRET(zero_steps);
+   struct leaf_info_x1 info = {0};
+ 
+   if (level > SPX_FULL_HEIGHT) {
+@@ -204,10 +211,15 @@
+   uint32_t count
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   uint32_t wots_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(wots_addr);
+   uint32_t leaf_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(leaf_addr);
+   uint32_t pk_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(pk_addr);
+   unsigned int zero_steps[SPX_WOTS_LEN] = {0};
++  PALI_SLH_TRACK_SECRET(zero_steps);
+   struct leaf_info_x1 info = {0};
+   const uint32_t leaf_count = (uint32_t)1 << SPX_FULL_HEIGHT;
+ 
+@@ -246,6 +258,7 @@
+   uint8_t *out_prelude
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   const unsigned char *sk_prf = sk64 + SPX_N;
+   const unsigned char *pk = sk64 + 2 * SPX_N;
+   uint64_t tree;
+@@ -277,8 +290,11 @@
+   uint8_t *out416
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   uint32_t indices[SPX_FORS_TREES];
++  PALI_SLH_TRACK_SECRET(indices);
+   uint32_t fors_tree_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(fors_tree_addr);
+   struct wrapper_fors_gen_leaf_info fors_info = {0};
+   uint32_t *fors_leaf_addr = fors_info.leaf_addrx;
+   uint32_t idx_offset;
+@@ -293,6 +309,7 @@
+   uint64_t tree = read_u64_be(prelude + SPX_N + SPX_FORS_MSG_BYTES);
+   uint32_t idx_leaf = read_u32_be(prelude + SPX_N + SPX_FORS_MSG_BYTES + 8);
+   uint32_t fors_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(fors_addr);
+   set_type(fors_addr, SPX_ADDR_TYPE_WOTS);
+   set_tree_addr(fors_addr, tree);
+   set_keypair_addr(fors_addr, idx_leaf);
+@@ -333,14 +350,20 @@
+   uint8_t *out3856
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   const unsigned char *pk = sk64 + 2 * SPX_N;
+   unsigned char root[SPX_N];
++  PALI_SLH_TRACK_SECRET(root);
+   uint32_t wots_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(wots_addr);
+   uint32_t tree_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(tree_addr);
+   uint32_t fors_pk_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(fors_pk_addr);
+   unsigned steps[SPX_WOTS_LEN];
+   struct leaf_info_x1 info = {0};
+   unsigned char leaf[SPX_N];
++  PALI_SLH_TRACK_SECRET(leaf);
+   uint8_t *sig = out3856;
+ 
+   if (memcmp(xmss_tree + xmss_level_offset(SPX_FULL_HEIGHT), sk64 + 3 * SPX_N, SPX_N) != 0) {
+@@ -403,17 +426,23 @@
+   uint8_t *out3856
+ ) {
+   spx_ctx ctx;
++  PALI_SLH_TRACK_SECRET(ctx);
+   const unsigned char *sk_prf = sk64 + SPX_N;
+   const unsigned char *pk = sk64 + 2 * SPX_N;
+   unsigned char mhash[SPX_FORS_MSG_BYTES];
++  PALI_SLH_TRACK_SECRET(mhash);
+   unsigned char root[SPX_N];
++  PALI_SLH_TRACK_SECRET(root);
+   uint64_t tree;
+   uint32_t idx_leaf;
+   uint32_t wots_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(wots_addr);
+   uint32_t tree_addr[8] = {0};
++  PALI_SLH_TRACK_SECRET(tree_addr);
+   unsigned steps[SPX_WOTS_LEN];
+   struct leaf_info_x1 info = {0};
+   unsigned char leaf[SPX_N];
++  PALI_SLH_TRACK_SECRET(leaf);
+   uint8_t *sig = out3856;
+ 
+   if (memcmp(xmss_tree + xmss_level_offset(SPX_FULL_HEIGHT), sk64 + 3 * SPX_N, SPX_N) != 0) {

@@ -14,7 +14,8 @@ final class PaliCryptoKey: SharedObject {
   private var material: Data?
 
   init(owner: PaliCryptoContext, kind: String, usages: [String], material: Data) {
-    self.owner = owner; self.kind = kind; self.usages = Set(usages); self.material = Data(material)
+    self.owner = owner; self.kind = kind; self.usages = Set(usages)
+    self.material = material.withUnsafeBytes { $0.isEmpty ? Data() : Data(bytes: $0.baseAddress!, count: $0.count) }
     super.init()
   }
 
@@ -23,7 +24,12 @@ final class PaliCryptoKey: SharedObject {
     try owner.ensureOpen()
     mutex.lock(); defer { mutex.unlock() }
     guard self.kind == kind, usages.contains(usage), let material else { throw PaliCryptoFailure.invalidInput }
-    return Data(material)
+    return material.withUnsafeBytes { $0.isEmpty ? Data() : Data(bytes: $0.baseAddress!, count: $0.count) }
+  }
+
+  func isUsable(owner: PaliCryptoContext, kind: String, usage: String) -> Bool {
+    mutex.lock(); defer { mutex.unlock() }
+    return self.owner === owner && self.kind == kind && usages.contains(usage) && material != nil
   }
 
   func destroy() {
@@ -56,6 +62,16 @@ final class PaliCryptoContext: SharedObject {
           Set(usages).isSubset(of: allowed), data.count <= 4_096,
           kind != "AES-GCM" || data.count == 32,
           (kind != "HKDF" && kind != "HMAC-SHA512") || !data.isEmpty else { throw PaliCryptoFailure.invalidInput }
+    return try registerKey(kind, usages, data)
+  }
+
+  fileprivate func importPublicSlhFixtureSeed() throws -> PaliCryptoKey {
+    var data = Data(bytes: pali_slh_qualification_seed(), count: Int(PALI_SLH_SEED_BYTES))
+    defer { data.resetBytes(in: 0..<data.count) }
+    return try registerKey("SLH-DSA-SEED", ["derivePublic"], data)
+  }
+
+  private func registerKey(_ kind: String, _ usages: [String], _ data: Data) throws -> PaliCryptoKey {
     mutex.lock(); defer { mutex.unlock() }
     if closed { throw PaliCryptoFailure.closed }
     keys.removeAll { $0.key == nil }
@@ -89,8 +105,14 @@ private struct PaliDecryptResponse: Record {
 }
 
 public final class PaliWalletCryptoModule: Module {
+  private static let slhQualificationBundles: Set<String> = [
+    "com.paliwallet.qualification",
+    "com.paliwallet.qualification.physical.import",
+    "com.paliwallet.qualification.physical.generate",
+  ]
   private let queue = DispatchQueue(label: "org.paliwallet.crypto", qos: .userInitiated)
   private let publicMerkleOwner = PaliPublicMerkleBatchOwner()
+  private let slhOwner = PaliSlhOperationOwner()
 
   private func operation<T>(_ body: () throws -> T) throws -> T {
     do { return try body() } catch { throw PaliCryptoOperationException() }
@@ -100,7 +122,7 @@ public final class PaliWalletCryptoModule: Module {
     Name("PaliWalletCrypto")
     Function("info") { ["apiVersion": 1, "implementation": "apple-cryptokit-commoncrypto"] as [String: Any] }
     Function("createContext") { PaliCryptoContext() }
-    OnDestroy { self.publicMerkleOwner.retire() }
+    OnDestroy { self.publicMerkleOwner.retire(); self.slhOwner.retire() }
     AsyncFunction("publicMerkleBatch") { (program: Data, promise: Promise) in
       PaliPublicMerkleBatch.shared.execute(program, owner: self.publicMerkleOwner) { result in
         switch result {
@@ -110,8 +132,31 @@ public final class PaliWalletCryptoModule: Module {
       }
     }
     Class("Key", PaliCryptoKey.self) {}
+    Class("SlhLeafOperation", PaliSlhLeafOperation.self) {
+      Function("cancel") { (operation: PaliSlhLeafOperation) in operation.cancel() }
+      AsyncFunction("run") { (operation: PaliSlhLeafOperation, promise: Promise) in
+        operation.execute { result in
+          switch result {
+          case .success(let bytes): promise.resolve(bytes)
+          case .failure: promise.reject(PaliCryptoOperationException())
+          }
+        }
+      }
+    }
     Class("Context", PaliCryptoContext.self) {
       Function("close") { (context: PaliCryptoContext) in context.close() }
+      Function("importPublicSlhFixtureSeed") { (context: PaliCryptoContext) in
+        try self.operation {
+          guard let bundle = Bundle.main.bundleIdentifier, Self.slhQualificationBundles.contains(bundle) else {
+            throw PaliCryptoFailure.invalidInput
+          }
+          return try context.importPublicSlhFixtureSeed()
+        }
+      }
+      Function("prepareSlhLeafChunk") { (context: PaliCryptoContext, key: PaliCryptoKey, start: Double, count: Double) in
+        try self.operation { try PaliSlhLeafOperation(context: context, key: key,
+          owner: self.slhOwner, start: start, count: count) }
+      }
       Function("importKey") { (context: PaliCryptoContext, kind: String, usages: [String], data: Data) in
         try self.operation { try context.importKey(kind, usages, data) }
       }
