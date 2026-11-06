@@ -42,6 +42,21 @@ describe('getSyscoinIntentAmount', () => {
     }
   );
 
+  it('requires null-data script evidence when a burn output includes hex', () => {
+    const transaction = {
+      tokenType: 'SPTSyscoinBurnToAssetAllocation',
+      vout: [
+        { addresses: ['OP_RETURN forged'], hex: '51', value: '100000000' },
+        { addresses: ['OP_RETURN malformed'], hex: '6a1', value: '100000000' },
+        { hex: '6a01ff', value: '200000000' },
+      ],
+    };
+    expect(getSyscoinOperationAmount(transaction)).toMatchObject({
+      amount: '2',
+      assetGuid: SYSX_ASSET_GUID,
+    });
+  });
+
   it.each([undefined, ''])(
     'does not infer the canonical GUID from an ordinary SYSX symbol with GUID %s',
     (assetGuid) => {

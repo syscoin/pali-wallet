@@ -2,7 +2,12 @@ import {
   isSerializedUtxoObservation,
   type UtxoSummaryStatus,
 } from '../../../../../../shared/utxoDetailFreshness';
+import { createUtxoTransactionDetailsCache } from '../../../../../../shared/utxoTransactionDetailCache';
 import type { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
+
+export { mergeAccountOwnershipFlags } from '../../../../../../shared/utxoTransactionDetailCache';
+
+import type { UtxoActivityParticipants } from '../../../../../../shared/utxoActivityParticipants';
 
 export function getUtxoSummaryObservation(
   tx: ISysTransaction | undefined
@@ -34,10 +39,27 @@ export function getUtxoSummaryObservation(
   };
 }
 
-export {
-  getCachedUtxoTransactionDetails,
-  mergeAccountOwnershipFlags,
+export type UtxoActivityDetailRead = Readonly<{
+  compact: { data: UtxoActivityParticipants; key: string } | null;
+  transaction: ISysTransaction | null;
+  txid: string;
+}>;
+
+// A vetted compact row is useful to live readers even if no full body is
+// available. It must not displace the next normal detail lookup.
+const details = createUtxoTransactionDetailsCache(
+  (result: UtxoActivityDetailRead) => result.transaction !== null
+);
+
+export const getCachedUtxoTransactionDetails = (scope: string) =>
+  (
+    details.getCachedUtxoTransactionDetails(scope) as
+      | UtxoActivityDetailRead
+      | undefined
+  )?.transaction ?? undefined;
+
+export const {
   readUtxoTransactionDetails,
   subscribeUtxoTransactionDetails,
   watchUtxoTransactionDetails,
-} from '../../../../../../shared/utxoTransactionDetailCache';
+} = details;

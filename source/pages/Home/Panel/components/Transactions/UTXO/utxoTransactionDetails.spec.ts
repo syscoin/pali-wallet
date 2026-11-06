@@ -3,6 +3,7 @@ import {
   readUtxoTransactionDetails,
   subscribeUtxoTransactionDetails,
   watchUtxoTransactionDetails,
+  type UtxoActivityDetailRead,
 } from './utxoTransactionDetails';
 
 const deferred = () => {
@@ -18,6 +19,11 @@ const flush = async () => {
 let sequence = 0;
 const scope = () => `read-${++sequence}`;
 const hash = 'a'.repeat(64);
+const detail = (transaction: { txid: string }) => ({
+  txid: transaction.txid,
+  transaction,
+  compact: null,
+});
 
 it('reads the cache synchronously without starting any transaction request', () => {
   expect(getCachedUtxoTransactionDetails(scope())).toBeUndefined();
@@ -30,11 +36,14 @@ it('notifies only matching cache subscribers after a successful Details read and
   const stop = subscribeUtxoTransactionDetails(key, changed);
   const stopOther = subscribeUtxoTransactionDetails(scope(), otherChanged);
   const transaction = { txid: hash, vin: [], vout: [] };
-  const read = jest.fn().mockResolvedValue(transaction);
+  const reply = detail(transaction);
+  const read = jest.fn().mockResolvedValue(reply);
   try {
     expect(changed).not.toHaveBeenCalled();
     expect(getCachedUtxoTransactionDetails(key)).toBeUndefined();
-    await readUtxoTransactionDetails(key, hash, read, () => true);
+    await expect(
+      readUtxoTransactionDetails(key, hash, read, () => true)
+    ).resolves.toBe(reply);
     expect(getCachedUtxoTransactionDetails(key)).toBe(transaction);
     expect(getCachedUtxoTransactionDetails(key)).toBe(transaction);
     expect(changed).toHaveBeenCalledTimes(1);
@@ -60,7 +69,7 @@ it('removes an unsubscribed listener without removing another mounted subscriber
     await readUtxoTransactionDetails(
       key,
       hash,
-      async () => ({ txid: hash }),
+      async () => detail({ txid: hash }),
       () => true
     );
     expect(departed).not.toHaveBeenCalled();
@@ -77,8 +86,8 @@ it('expires a cached snapshot after five minutes and accepts a fresh Details rea
   const next = { txid: hash, value: '200000000' };
   const read = jest
     .fn()
-    .mockResolvedValueOnce(first)
-    .mockResolvedValueOnce(next);
+    .mockResolvedValueOnce(detail(first))
+    .mockResolvedValueOnce(detail(next));
   try {
     await readUtxoTransactionDetails(key, hash, read, () => true);
     await flush();
@@ -99,7 +108,7 @@ it('evicts the oldest cached transaction after 100 later entries without refetch
   await readUtxoTransactionDetails(
     firstKey,
     hash,
-    async () => ({ txid: hash }),
+    async () => detail({ txid: hash }),
     () => true
   );
   let newestKey = firstKey;
@@ -108,7 +117,7 @@ it('evicts the oldest cached transaction after 100 later entries without refetch
     await readUtxoTransactionDetails(
       newestKey,
       hash,
-      async () => ({ txid: hash }),
+      async () => detail({ txid: hash }),
       () => true
     );
   }
@@ -126,24 +135,27 @@ it('deduplicates matching scoped reads and shares only matching raw chain metada
   expect(second).toBe(first);
   await flush();
   expect(read).toHaveBeenCalledTimes(1);
-  result.resolve({ txid: hash.toUpperCase(), vin: [] });
-  await expect(first).resolves.toEqual({ txid: hash.toUpperCase(), vin: [] });
+  const transaction = { txid: hash.toUpperCase(), vin: [] };
+  const reply = detail(transaction);
+  result.resolve(reply);
+  await expect(first).resolves.toBe(reply);
   await expect(
     readUtxoTransactionDetails(key, hash, read, () => true)
-  ).resolves.toEqual({ txid: hash.toUpperCase(), vin: [] });
+  ).resolves.toBe(reply);
   expect(read).toHaveBeenCalledTimes(1);
 });
 
-it.each([null, { txid: 'b'.repeat(64) }])(
+it.each([null, detail({ txid: 'b'.repeat(64) })])(
   'does not cache a missing or mismatched transaction: %p',
   async (invalid) => {
     const key = scope();
     const changed = jest.fn();
     const stop = subscribeUtxoTransactionDetails(key, changed);
+    const reply = detail({ txid: hash });
     const read = jest
       .fn()
       .mockResolvedValueOnce(invalid)
-      .mockResolvedValue({ txid: hash });
+      .mockResolvedValue(reply);
     await expect(
       readUtxoTransactionDetails(key, hash, read, () => true)
     ).resolves.toBeNull();
@@ -152,12 +164,46 @@ it.each([null, { txid: 'b'.repeat(64) }])(
     await flush();
     await expect(
       readUtxoTransactionDetails(key, hash, read, () => true)
-    ).resolves.toEqual({ txid: hash });
+    ).resolves.toBe(reply);
     expect(read).toHaveBeenCalledTimes(2);
     expect(changed).toHaveBeenCalledTimes(1);
     stop();
   }
 );
+
+it('returns vetted compact data to current readers without caching it as a full transaction', async () => {
+  const key = scope();
+  const changed = jest.fn();
+  const stop = subscribeUtxoTransactionDetails(key, changed);
+  const compactOnly: UtxoActivityDetailRead = {
+    txid: hash,
+    transaction: null,
+    compact: { key: 'compact-observation', data: { from: ['source'], to: [] } },
+  };
+  const full = detail({ txid: hash });
+  const read = jest
+    .fn()
+    .mockResolvedValueOnce(compactOnly)
+    .mockResolvedValueOnce(full);
+  try {
+    const first = readUtxoTransactionDetails(key, hash, read, () => true);
+    await expect(
+      readUtxoTransactionDetails(key, hash, read, () => true)
+    ).resolves.toBe(compactOnly);
+    await expect(first).resolves.toBe(compactOnly);
+    expect(getCachedUtxoTransactionDetails(key)).toBeUndefined();
+    expect(changed).not.toHaveBeenCalled();
+    await flush();
+    await expect(
+      readUtxoTransactionDetails(key, hash, read, () => true)
+    ).resolves.toBe(full);
+    expect(getCachedUtxoTransactionDetails(key)).toBe(full.transaction);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(changed).toHaveBeenCalledTimes(1);
+  } finally {
+    stop();
+  }
+});
 
 it('bounds concurrency and keeps a queued read alive when a new Details consumer joins', async () => {
   const first = deferred();
@@ -176,18 +222,19 @@ it('bounds concurrency and keeps a queued read alive when a new Details consumer
   );
   let rowCurrent = true;
   const key = scope();
-  const read = jest.fn().mockResolvedValue({ txid: hash });
+  const reply = detail({ txid: hash });
+  const read = jest.fn().mockResolvedValue(reply);
   const row = readUtxoTransactionDetails(key, hash, read, () => rowCurrent);
   rowCurrent = false;
   const details = readUtxoTransactionDetails(key, hash, read, () => true);
   await flush();
   expect(read).not.toHaveBeenCalled();
-  first.resolve({ txid: hash });
+  first.resolve(reply);
   await firstRead;
-  await expect(details).resolves.toEqual({ txid: hash });
+  await expect(details).resolves.toBe(reply);
   expect(details).toBe(row);
   expect(read).toHaveBeenCalledTimes(1);
-  second.resolve({ txid: hash });
+  second.resolve(reply);
   await secondRead;
   await flush();
 });
@@ -202,7 +249,7 @@ it('bounds backlog and skips queued reads whose entire scope has left', async ()
       () => true
     )
   );
-  const read = jest.fn().mockResolvedValue({ txid: hash });
+  const read = jest.fn().mockResolvedValue(detail({ txid: hash }));
   const queued = Array.from({ length: 30 }, () =>
     readUtxoTransactionDetails(scope(), hash, read, () => false).catch(
       (error) => error.message
@@ -211,7 +258,7 @@ it('bounds backlog and skips queued reads whose entire scope has left', async ()
   await expect(
     readUtxoTransactionDetails(scope(), hash, read, () => true)
   ).rejects.toThrow('History read queue full');
-  blockers.forEach((blocker) => blocker.resolve({ txid: hash }));
+  blockers.forEach((blocker) => blocker.resolve(detail({ txid: hash })));
   await Promise.all(blockingReads);
   expect(await Promise.all(queued)).toEqual(
     Array(30).fill('History scope changed')
@@ -221,7 +268,7 @@ it('bounds backlog and skips queued reads whose entire scope has left', async ()
 });
 
 it('does not share cached metadata across account or network scopes', async () => {
-  const read = jest.fn().mockResolvedValue({ txid: hash });
+  const read = jest.fn().mockResolvedValue(detail({ txid: hash }));
   const key = scope();
   await readUtxoTransactionDetails(
     `${key}:account-a:network-a`,
@@ -259,9 +306,10 @@ it('wakes live overflow consumers on capacity but never reads for unmounted or s
       () => undefined
     )
   );
-  const unmountedRead = jest.fn().mockResolvedValue({ txid: hash });
-  const staleRead = jest.fn().mockResolvedValue({ txid: hash });
-  const currentRead = jest.fn().mockResolvedValue({ txid: hash });
+  const reply = detail({ txid: hash });
+  const unmountedRead = jest.fn().mockResolvedValue(reply);
+  const staleRead = jest.fn().mockResolvedValue(reply);
+  const currentRead = jest.fn().mockResolvedValue(reply);
   const staleData = jest.fn(),
     staleError = jest.fn(),
     currentData = jest.fn();
@@ -294,11 +342,11 @@ it('wakes live overflow consumers on capacity but never reads for unmounted or s
   expect(currentRead).not.toHaveBeenCalled();
   stopUnmounted();
   staleCurrent = false;
-  blockers.forEach((blocker) => blocker.resolve({ txid: hash }));
+  blockers.forEach((blocker) => blocker.resolve(reply));
   await Promise.all([...blocking, ...queued]);
   await flush();
   expect(currentRead).toHaveBeenCalledTimes(1);
-  expect(currentData).toHaveBeenCalledWith({ txid: hash });
+  expect(currentData).toHaveBeenCalledWith(reply);
   expect(unmountedRead).not.toHaveBeenCalled();
   expect(staleRead).not.toHaveBeenCalled();
   expect(staleData).not.toHaveBeenCalled();
@@ -329,7 +377,7 @@ it.each([
     await readUtxoTransactionDetails(
       scope(),
       hash,
-      async () => ({ txid: hash }),
+      async () => detail({ txid: hash }),
       () => true
     );
     await flush();
