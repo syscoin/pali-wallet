@@ -264,6 +264,7 @@ test('smart-account policy refresh serializes with real message signing and reje
         await confirm.click();
         await expect(confirm).toBeDisabled();
         await fixture.waitForRead(1);
+        await capture(popup);
         const { hdAccount } = await publicState(page);
         // Recheck the real main-window guard independently of popup event timing.
         await page.reload();
@@ -293,20 +294,13 @@ test('smart-account policy refresh serializes with real message signing and reje
           .toMatchObject({
             active: { type: 'HDAccount', id: 0, address: hdAccount.address },
           });
-        fixture.releaseRead(1);
-        const error = popup
-          .getByRole('dialog')
-          .filter({ hasText: en.transactions.signatureFailed });
-        await expect(error).toBeVisible();
-        await capture(popup);
-        await clickClosingPopup({
-          click: () =>
-            error.getByRole('button', { name: 'Ok', exact: true }).click(),
-          isClosed: () => popup.isClosed(),
-        });
+        // Switching accounts retires the admitted approval without waiting for
+        // the old hydration to finish or for another click in the popup.
+        await expect.poll(() => popup.isClosed()).toBe(true);
         const response = await settle(dapp, request, 30_000);
         expect(response.result).toBeUndefined();
-        expect(response.error).toBeDefined();
+        expect(response.error).toMatchObject({ code: 4001 });
+        fixture.releaseRead(1);
         expect(fixture.metadataReadCount).toBe(1);
         expect(fixture.audit.deniedWrites).toEqual([]);
         observations.controlledRealControllerAccountChangeRejected = {

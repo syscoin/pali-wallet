@@ -9,20 +9,13 @@ export const assertRequestActive = (signal?: AbortSignal) => {
   if (signal?.aborted) throw requestCancelledError();
 };
 
-export const isRequestDocumentLive = async (
-  sender?: chrome.runtime.MessageSender
+export const probeDocumentLiveness = async (
+  probe: () => Promise<boolean>
 ): Promise<boolean> => {
-  if (sender?.tab?.id === undefined || !sender.documentId) return true;
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      chrome.tabs
-        .sendMessage(
-          sender.tab.id,
-          { type: 'PALI_PROVIDER_DOCUMENT_CHECK' },
-          { documentId: sender.documentId, frameId: sender.frameId }
-        )
-        .then((response) => response?.documentActive === true),
+      probe(),
       new Promise<boolean>((resolve) => {
         timeout = setTimeout(() => resolve(false), 1000);
       }),
@@ -32,6 +25,21 @@ export const isRequestDocumentLive = async (
   } finally {
     if (timeout) clearTimeout(timeout);
   }
+};
+
+export const isRequestDocumentLive = async (
+  sender?: chrome.runtime.MessageSender
+): Promise<boolean> => {
+  const tabId = sender?.tab?.id;
+  if (tabId === undefined || !sender?.documentId) return true;
+  return probeDocumentLiveness(async () => {
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      { type: 'PALI_PROVIDER_DOCUMENT_CHECK' },
+      { documentId: sender.documentId, frameId: sender.frameId }
+    );
+    return response?.documentActive === true;
+  });
 };
 
 /** Queued requests must not outlive the document that requested approval. */
