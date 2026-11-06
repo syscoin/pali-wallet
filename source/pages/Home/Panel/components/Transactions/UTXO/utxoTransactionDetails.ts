@@ -53,10 +53,10 @@ const details = createUtxoTransactionDetailsCache(
 
 export const getCachedUtxoTransactionDetails = (scope: string) =>
   (
-    details.getCachedUtxoTransactionDetails(
-      scope
-    ) as UtxoActivityDetailRead | null
-  )?.transaction ?? null;
+    details.getCachedUtxoTransactionDetails(scope) as
+      | UtxoActivityDetailRead
+      | undefined
+  )?.transaction ?? undefined;
 
 export const {
   readUtxoTransactionDetails,
