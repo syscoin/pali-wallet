@@ -9,6 +9,7 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { randomUUID } from 'crypto';
 import React from 'react';
@@ -304,6 +305,7 @@ beforeEach(() => {
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
         'reviewNativeEvmFee',
+        'refreshNativeEvmFeeReview',
         'discardNativeEvmFeeReview',
       ];
       const method = methods.at(-1)!;
@@ -346,6 +348,7 @@ afterEach(() => {
         'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
         'reviewNativeEvmFee',
+        'refreshNativeEvmFeeReview',
         'discardNativeEvmFeeReview',
       ].includes(path.at(-1))
     )
@@ -619,3 +622,126 @@ it('expires the displayed native fee review and requires explicit Retry before c
     )
   ).toHaveLength(2);
 });
+
+it.each([false, true])(
+  'refreshes an expired custom approval with the same envelope (MAX: %s)',
+  async (isMax) => {
+    if (isMax) {
+      mockLocation.state.tx.isMax = true;
+      mockLocation.state.tx.amount = '100';
+    }
+    await mount('fresh');
+    expect(confirm()).toBeEnabled();
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'send.editFee' }))
+    );
+    const dialog = within(screen.getByRole('dialog'));
+    fireEvent.change(dialog.getByPlaceholderText('send.maxFee (GWEI)'), {
+      target: { value: '4' },
+    });
+    fireEvent.change(dialog.getByPlaceholderText('send.gasLimit'), {
+      target: { value: '27000' },
+    });
+    await act(async () =>
+      fireEvent.click(dialog.getByRole('button', { name: 'buttons.save' }))
+    );
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(confirm()).toBeEnabled();
+    const [, approved] = mockEmitter.mock.calls
+      .filter(([path]) => path.at(-1) === 'reviewNativeEvmFee')
+      .at(-1)!;
+    expect(approved[0]).toMatchObject({
+      gasLimit: '27000',
+      maxFeePerGas: '4000000000',
+    });
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(90000);
+    });
+    expect(confirm()).toBeDisabled();
+    const retry = () =>
+      act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }))
+      );
+    let settleEstimate!: (gas: string) => void;
+    const heldEstimate = new Promise<string>((resolve) => {
+      settleEstimate = resolve;
+    });
+    let estimate: string | Promise<string> = heldEstimate;
+    provider.verifyConfiguredChainId = jest.fn().mockResolvedValue(undefined);
+    provider.send.mockImplementation(async (method: string) => {
+      if (method === 'eth_getBlockByNumber') return block();
+      if (method === 'eth_getBalance') return '0x56bc75e2d63100000';
+      if (method === 'eth_getTransactionCount') return '0x2';
+      if (method === 'eth_estimateGas') return estimate;
+      throw new Error(`Unexpected RPC ${method}`);
+    });
+    await retry();
+    expect(confirm()).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'send.editFee' })).toBeDisabled();
+    expect(
+      provider.send.mock.calls.filter(([m]) => m === 'eth_estimateGas')
+    ).toHaveLength(1);
+    await act(async () => settleEstimate('0x6979')); // 27001
+    expect(confirm()).toBeDisabled();
+    estimate = '0x6979';
+    if (isMax) {
+      // After an insufficient custom limit, the editor remains available.
+      await act(async () =>
+        fireEvent.click(screen.getByRole('button', { name: 'send.editFee' }))
+      );
+      const editor = within(screen.getByRole('dialog'));
+      expect(editor.getByPlaceholderText('send.maxFee (GWEI)')).toHaveValue(4);
+      expect(editor.getByPlaceholderText('send.gasLimit')).toHaveValue(27000);
+      fireEvent.change(editor.getByPlaceholderText('send.gasLimit'), {
+        target: { value: '28000' },
+      });
+      // A valid custom fee field can still exceed the MAX spendable balance.
+      fireEvent.change(editor.getByPlaceholderText('send.maxFee (GWEI)'), {
+        target: { value: '4000000' },
+      });
+      await act(async () =>
+        fireEvent.click(editor.getByRole('button', { name: 'buttons.save' }))
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(confirm()).toBeDisabled();
+      const edit = screen.getByRole('button', { name: 'send.editFee' });
+      expect(edit).toBeEnabled();
+      await act(async () => fireEvent.click(edit));
+      const reopened = within(screen.getByRole('dialog'));
+      fireEvent.change(reopened.getByPlaceholderText('send.maxFee (GWEI)'), {
+        target: { value: '4' },
+      });
+      await act(async () =>
+        fireEvent.click(reopened.getByRole('button', { name: 'buttons.save' }))
+      );
+    } else {
+      estimate = '0x6978'; // 27000
+      await retry();
+    }
+    expect(confirm()).toBeEnabled();
+    const refreshes = mockEmitter.mock.calls
+      .filter(([path]) => path.at(-1) === 'refreshNativeEvmFeeReview')
+      .map(([, args]) => args);
+    expect(refreshes[0]).toEqual(approved);
+    expect(refreshes[1]).toEqual(
+      isMax
+        ? [
+            {
+              ...approved[0],
+              gasLimit: '28000',
+              value: (
+                BigInt(approved[0].value) - BigInt('4000000000000')
+              ).toString(),
+            },
+            false,
+            '112000000000000',
+            mockScope,
+          ]
+        : approved
+    );
+    expect(
+      provider.send.mock.calls.filter(([m]) => m === 'eth_estimateGas')
+    ).toHaveLength(2);
+  }
+);
