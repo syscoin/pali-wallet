@@ -172,10 +172,12 @@ export function createUtxoTransactionBinding(
   });
 }
 
+const MAX_SPT_GUID = BigInt('18446744073709551615');
+
 export const isPositiveSptGuid = (value: unknown): value is string =>
   typeof value === 'string' &&
   /^[1-9][0-9]{0,19}$/.test(value) &&
-  BigInt(value) <= 0xffffffffffffffffn;
+  BigInt(value) <= MAX_SPT_GUID;
 
 function assertSptFunding(
   network: UtxoSignedScope['network'],

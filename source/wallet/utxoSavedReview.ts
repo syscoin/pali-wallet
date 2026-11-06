@@ -57,7 +57,7 @@ export function reviewSavedUtxoOutputs(
     }
   }
 
-  return transaction.outs.map((output, index) => {
+  return transaction.outs.map((output, index): SavedUtxoReviewOutput => {
     const amountSatoshis = output.value.toString();
     const asset = byOutput.get(index);
     try {
