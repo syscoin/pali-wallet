@@ -235,6 +235,22 @@ jobs:
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
         run: node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
+      - name: Exercise isolated Android watch notice permission and delivery
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=qualification/watch-notice-android
+          output="$RUNNER_TEMP/pali-watch-notice-apk"
+          evidence="$RUNNER_TEMP/pali-native-android/watch-notice"
+          mkdir -p "$evidence"
+          emulator_serial=$("$ANDROID_HOME/platform-tools/adb" -H 127.0.0.1 -P 5037 devices | awk '
+            $1 ~ /^emulator-[0-9]+$/ && $2 == "device" { serial = $1; count++ }
+            END { if (count != 1) exit 1; print serial }')
+          bash "$fixture/build.sh" "$GITHUB_WORKSPACE" "$output" 2>&1 | tee "$evidence/build.log"
+          cp "$output"/{transport-source.txt,apk.sha256,apk-signature.txt,apk-badging.txt} "$evidence/"
+          python3 "$fixture/run-emulator.py" --serial "$emulator_serial" --avd PaliQualification \
+            "$output/watch-notice-probe.apk" "$evidence/runtime" 2>&1 | tee "$evidence/test.log"
       - name: Stop isolated emulator
         if: always()
         run: adb emu kill || true

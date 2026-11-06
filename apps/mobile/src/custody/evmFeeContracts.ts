@@ -1,11 +1,11 @@
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
-import { getAddress } from 'ethers/address';
-import { assertEvmGasLimit } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { assertEvmCancellationEnvelope, type EvmCancellationEnvelopeIntent } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-cancellation.js';
 import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
+import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshApproved, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 export class EvmTransferReadError extends Error {
-  readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED';
+  readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' | 'INSUFFICIENT_BALANCE';
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
 export const rejectRead = (code: EvmTransferReadError['code']): never => { throw new EvmTransferReadError(code); };
@@ -45,23 +45,26 @@ export function checkedReadHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return rejectRead('INVALID_RESPONSE');
   return value.toLowerCase();
 }
+function snapshotEvmEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
+  try {
+    const transaction = snapshotEvmFeeEnvelope(value);
+    if (transaction.chainId !== network.chainId || transaction.nonce === undefined ||
+        transaction.data.length > 138 || BigInt(transaction.gasLimit) > BigInt(Number.MAX_SAFE_INTEGER))
+      return rejectRead('INVALID_INPUT');
+    return transaction as EvmUnsignedTransfer;
+  } catch { return rejectRead('INVALID_INPUT'); }
+}
 export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
-  const type = Object.getOwnPropertyDescriptor(value, 'type')?.value;
-  const feeFields = type === 0 ? ['gasPrice'] : ['maxFeePerGas', 'maxPriorityFeePerGas'];
-  const data = readOwnData(value, ['type', 'from', 'to', 'chainId', 'nonce', 'value', 'gasLimit', 'data', ...feeFields]);
-  if ((data.type !== 0 && data.type !== 2) || data.chainId !== network.chainId || typeof data.data !== 'string' ||
-      !/^0x(?:[0-9a-f]{2})*$/.test(data.data) || data.data.length > 138) return rejectRead('INVALID_INPUT');
-  let from: string, to: string;
-  try { from = getAddress(data.from as string); to = getAddress(data.to as string); } catch { return rejectRead('INVALID_INPUT'); }
-  const nonce = units(data.nonce), valueUnits = units(data.value), gas = units(data.gasLimit);
-  if (/^0x0{40}$/i.test(from) || /^0x0{40}$/i.test(to) || nonce > BigInt(Number.MAX_SAFE_INTEGER) ||
-      gas < 21000n || gas > BigInt(Number.MAX_SAFE_INTEGER) || (data.data === '0x' && valueUnits === 0n)) return rejectRead('INVALID_INPUT');
-  try { assertEvmGasLimit(gas, BigInt(network.chainId)); } catch { return rejectRead('INVALID_INPUT'); }
-  const common = { from, to, chainId: network.chainId, nonce: nonce.toString(), value: valueUnits.toString(), gasLimit: gas.toString(), data: data.data };
-  if (data.type === 0) return Object.freeze({ ...common, type: 0, gasPrice: units(data.gasPrice).toString() });
-  const cap = units(data.maxFeePerGas), tip = units(data.maxPriorityFeePerGas);
-  if (cap === 0n || tip > cap) return rejectRead('INVALID_INPUT');
-  return Object.freeze({ ...common, type: 2, maxFeePerGas: cap.toString(), maxPriorityFeePerGas: tip.toString() });
+  const transaction = snapshotEvmEnvelope(value, network);
+  if (transaction.data === '0x' && transaction.value === '0') return rejectRead('INVALID_INPUT');
+  return transaction;
+}
+export function snapshotCancellationTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration,
+  payer: string, feePlan: EvmCancellationEnvelopeIntent['feePlan']): EvmUnsignedTransfer {
+  const transaction = snapshotEvmEnvelope(value, network);
+  if (transaction.from.toLowerCase() !== payer.toLowerCase()) return rejectRead('INVALID_INPUT');
+  assertEvmCancellationEnvelope(unsignedTransferBytes(transaction), { payer, chainId: network.chainId, nonce: transaction.nonce, feePlan });
+  return transaction;
 }
 export function unsignedTransferBytes(transaction: EvmUnsignedTransfer): string {
   const tx = Transaction.from({ type: transaction.type, to: transaction.to, chainId: BigInt(transaction.chainId),
@@ -71,27 +74,30 @@ export function unsignedTransferBytes(transaction: EvmUnsignedTransfer): string 
   if (tx.isSigned() || raw.length > 4096) return rejectRead('INVALID_INPUT');
   return raw;
 }
-const issuedQuotes = new WeakSet<object>();
+const issuedQuotes = new WeakMap<object, EvmFeeApproval>();
 export function assembleFeeQuote(input: EvmUnsignedTransfer, network: NativeNetworkRegistration, block: EvmSampledBlock,
   estimatedGasPrice: bigint, expiresAtMonotonicMilliseconds: number): EvmFeeQuote {
   snapshotNativeNetwork(network);
   const transaction = snapshotUnsignedTransfer(input, network);
   const rawBlock = readOwnData(block, ['number', 'hash']);
   const sampledBlock = Object.freeze({ number: units(rawBlock.number, 'INVALID_RESPONSE').toString(), hash: checkedReadHash(rawBlock.hash) });
+  let approval: EvmFeeApproval;
+  try { approval = captureEvmFeeApproval(transaction, network.registrationHash, expiresAtMonotonicMilliseconds); }
+  catch { return rejectRead('INVALID_RESPONSE'); }
   const cap = BigInt(transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas);
   if (typeof estimatedGasPrice !== 'bigint' || estimatedGasPrice < 0n || estimatedGasPrice > cap ||
       !Number.isSafeInteger(expiresAtMonotonicMilliseconds) || expiresAtMonotonicMilliseconds < 0) return rejectRead('INVALID_RESPONSE');
-  const envelope = units((BigInt(transaction.gasLimit) * cap).toString(), 'INVALID_RESPONSE').toString();
+  const envelope = approval.maximumFeeUnits;
   const estimate = units((BigInt(transaction.gasLimit) * estimatedGasPrice).toString(), 'INVALID_RESPONSE').toString();
-  const total = units((BigInt(transaction.value) + BigInt(envelope)).toString(), 'INVALID_RESPONSE').toString();
+  const total = approval.maximumTotalUnits;
   const quote = Object.freeze({ registrationHash: network.registrationHash, from: transaction.from, unsignedEnvelopeHash: keccak256(unsignedTransferBytes(transaction)),
     sampledBlock, envelopeFeeCapUnits: envelope, estimatedEnvelopeFeeUnits: estimate, estimatedFeeUnits: estimate,
     fundingEstimateUnits: total, maximumTotalUnits: total, expiresAtMonotonicMilliseconds });
-  issuedQuotes.add(quote); return quote;
+  issuedQuotes.set(quote, approval); return quote;
 }
 export function assertFeeRefreshApproved(approved: EvmFeeQuote, refreshed: EvmFeeQuote, monotonicMilliseconds: number): void {
-  if (!issuedQuotes.has(approved) || !issuedQuotes.has(refreshed) || approved.from !== refreshed.from ||
-      !Number.isSafeInteger(monotonicMilliseconds) || monotonicMilliseconds < 0 || monotonicMilliseconds >= approved.expiresAtMonotonicMilliseconds || monotonicMilliseconds >= refreshed.expiresAtMonotonicMilliseconds ||
-      approved.registrationHash !== refreshed.registrationHash || approved.unsignedEnvelopeHash !== refreshed.unsignedEnvelopeHash || approved.envelopeFeeCapUnits !== refreshed.envelopeFeeCapUnits)
-    rejectRead('REVIEW_REQUIRED');
+  const first = issuedQuotes.get(approved), second = issuedQuotes.get(refreshed);
+  if (!first || !second) return rejectRead('REVIEW_REQUIRED');
+  try { assertEvmFeeRefreshApproved(first, second, monotonicMilliseconds); }
+  catch { rejectRead('REVIEW_REQUIRED'); }
 }

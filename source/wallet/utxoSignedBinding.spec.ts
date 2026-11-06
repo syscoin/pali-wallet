@@ -3,7 +3,10 @@ jest.unmock('syscoinjs-lib');
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { prepareUtxoSignedBinding } from './utxoSignedBinding';
+import {
+  createUtxoTransactionBinding,
+  prepareUtxoSignedBinding,
+} from './utxoSignedBinding';
 
 const bitcoin = syscoinUtils.bitcoinjs;
 const network = bitcoin.networks.bitcoin;
@@ -85,6 +88,85 @@ function fixture(witness = true) {
     signingScope,
   };
 }
+
+it.each([true, false])(
+  'shares the attested quote and final byte contract across hosts (witness %s)',
+  async (witness) => {
+    const f = fixture(witness);
+    const quote = PsbtUtils.fromPali(f.quote, f.signingScope.network);
+    const shared = createUtxoTransactionBinding(quote, '1000', () => undefined);
+    const mobile = await f.prepare();
+    const finalized = PsbtUtils.fromPali(f.sign(), f.signingScope.network);
+    const transaction = shared.bindSigned(finalized);
+    expect(shared.review).toEqual({
+      feeSatoshis: mobile.review.feeSatoshis,
+      unsignedHash: Buffer.from(
+        bitcoin.crypto.hash256(quote.data.globalMap.unsignedTx.toBuffer())
+      ).toString('hex'),
+    });
+    const mobileRecord = mobile.bindSigned(f.sign()).record;
+    expect(transaction).toEqual({
+      rawTransaction: mobileRecord.rawTransaction,
+      txid: mobileRecord.txid,
+      virtualSize: mobileRecord.virtualSize,
+      feeSatoshis: mobileRecord.review.feeSatoshis,
+      outpoints: mobileRecord.review.outpoints,
+    });
+    expect(Object.isFrozen(shared.review)).toBe(true);
+    expect(Object.isFrozen(transaction)).toBe(true);
+    expect(Object.isFrozen(transaction.outpoints)).toBe(true);
+  }
+);
+
+it('rejects extracted bytes that differ from the captured unsigned PSBT', () => {
+  const f = fixture();
+  const quote = PsbtUtils.fromPali(f.quote, f.signingScope.network);
+  const binding = createUtxoTransactionBinding(quote, '1000', () => undefined);
+  const finalized = PsbtUtils.fromPali(f.sign(), f.signingScope.network);
+  const changed = finalized.extractTransaction().clone();
+  changed.outs[0]!.value -= BigInt(1);
+  jest.spyOn(finalized, 'extractTransaction').mockReturnValue(changed);
+  expect(() => binding.bindSigned(finalized)).toThrow(
+    'Signed transaction differs from the reviewed inputs or fee'
+  );
+});
+
+it('retains the original unsigned quote and exact fee across later mutations', () => {
+  const f = fixture();
+  const quote = PsbtUtils.fromPali(f.quote, f.signingScope.network);
+  const binding = createUtxoTransactionBinding(quote, '1000', () => undefined);
+  quote.setInputSequence(0, 0xfffffffc);
+  expect(() =>
+    binding.bindSigned(PsbtUtils.fromPali(f.sign(), f.signingScope.network))
+  ).not.toThrow();
+  expect(() =>
+    binding.bindSigned(
+      PsbtUtils.fromPali(
+        f.sign({ value: BigInt(111_000) }),
+        f.signingScope.network
+      )
+    )
+  ).toThrow('Signed transaction differs from the reviewed inputs or fee');
+});
+
+it('requires a synchronous live owner before capture and after signing', () => {
+  const f = fixture();
+  const quote = PsbtUtils.fromPali(f.quote, f.signingScope.network);
+  expect(() =>
+    createUtxoTransactionBinding(quote, '1000', async () => undefined)
+  ).toThrow('UTXO binding requires a synchronous owner');
+  let current = true;
+  const binding = createUtxoTransactionBinding(quote, '1000', () => {
+    if (!current) throw new Error('Review expired');
+  });
+  const finalized = PsbtUtils.fromPali(f.sign(), f.signingScope.network);
+  const extract = finalized.extractTransaction.bind(finalized);
+  jest.spyOn(finalized, 'extractTransaction').mockImplementation(() => {
+    current = false;
+    return extract();
+  });
+  expect(() => binding.bindSigned(finalized)).toThrow('Review expired');
+});
 
 it.each([true, false])(
   'binds the exact SJS descriptor and signed vsize (witness %s)',

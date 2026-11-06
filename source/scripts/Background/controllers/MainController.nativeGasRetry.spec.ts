@@ -154,10 +154,10 @@ it('uses the same SDK20 percent buffer above the configured floor', async () => 
   mockEstimate.mockResolvedValue(BigNumber.from(50000));
   await expect(run()).resolves.toEqual(BigNumber.from(60000));
 });
-it('retains actual SDK generic-error fallback and rejects integrity failure', async () => {
+it('refuses a failed estimate without issuing a synthetic fallback quote', async () => {
   mockEstimate.mockRejectedValue(new Error('Ordinary estimate unavailable'));
-  await expect(run()).resolves.toEqual(BigNumber.from(35000));
-  expect(mockEstimate).toHaveBeenCalledTimes(2);
+  await expect(run()).rejects.toThrow('Ordinary estimate unavailable');
+  expect(mockEstimate).toHaveBeenCalledTimes(1);
   mockEstimate
     .mockClear()
     .mockRejectedValue(new RpcResponseIntegrityError('Bad correlation', false));
@@ -246,11 +246,11 @@ it.each([
   }
 );
 
-it('preserves no-override SDK success25200 and generic-error fallback100000', async () => {
+it('preserves no-override success25200 and rejects a failed estimate', async () => {
   sdk.setGasOverrides({});
   await expect(run()).resolves.toEqual(BigNumber.from(25200));
   mockEstimate.mockRejectedValue(new Error('Ordinary estimate unavailable'));
-  await expect(run()).resolves.toEqual(BigNumber.from(100000));
+  await expect(run()).rejects.toThrow('Ordinary estimate unavailable');
 });
 
 it.each(['account', 'network'])(

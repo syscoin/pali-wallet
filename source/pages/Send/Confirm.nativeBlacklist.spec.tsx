@@ -7,6 +7,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { randomUUID } from 'crypto';
 import React from 'react';
 
 import { SendConfirm } from 'pages/Send/Confirm';
@@ -69,10 +70,15 @@ jest.mock('./walletTokenReviewPort', () => ({
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockNativeReplies: any[] = [];
+const originalRandomUuid = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
 
 const mockMessages: any[] = [];
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
+let mockPendingBalanceWei = '100000000000000000000';
 const mockAlertError = jest.fn();
 const mockEmitter = jest.fn();
 const mockAuth = {
@@ -160,8 +166,8 @@ jest.mock('components/index', () => ({
   Button: jest.requireActual('components/Button/Button').Button,
   Icon: ({ name }: any) => <span>{name}</span>,
   Tooltip: ({ children }: any) => <>{children}</>,
-  IconButton: ({ children, onClick }: any) => (
-    <button type="button" onClick={onClick}>
+  IconButton: ({ children, onClick, 'aria-label': label }: any) => (
+    <button type="button" onClick={onClick} aria-label={label}>
       {children}
     </button>
   ),
@@ -208,6 +214,10 @@ jest.mock('utils/validations', () => ({
 }));
 
 beforeAll(() => {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: randomUUID,
+  });
   globalThis.ResizeObserver = class {
     observe() {
       // JSDOM has no layout.
@@ -234,6 +244,11 @@ beforeAll(() => {
     dispatchEvent: jest.fn(),
   }));
 });
+afterAll(() => {
+  if (originalRandomUuid)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUuid);
+  else delete (globalThis.crypto as any).randomUUID;
+});
 beforeEach(() => {
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/');
@@ -241,6 +256,7 @@ beforeEach(() => {
   mockEIP1559 = true;
   mockMessages.length = 0;
   mockNativeReplies.length = 0;
+  mockPendingBalanceWei = '100000000000000000000';
   (chrome.runtime as any).id = 'synthetic-extension';
   jest.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((
     message: any,
@@ -248,10 +264,12 @@ beforeEach(() => {
   ) => {
     mockMessages.push(message);
     const method = message.data.methods.at(-1);
-    if (method === 'getTxGasLimit') return callback(21000);
+    if (method === 'getFreshNativeEvmGasLimit') return callback(21000);
     if (method === 'getRecommendedGasPrice') return callback('3000000000');
     if (method === 'refreshActiveAccountBalances')
       return callback({ nativeBalance: mockRefreshedBalance });
+    if (['reviewNativeEvmFee', 'discardNativeEvmFeeReview'].includes(method))
+      return mockListener(message, { id: 'synthetic-extension' }, callback);
     if (method === 'sendAndSaveEthTransaction')
       return mockListener(
         message,
@@ -281,7 +299,7 @@ beforeEach(() => {
       send: async (method: string) => {
         if (method === 'eth_getBlockByNumber')
           return { gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
-        if (method === 'eth_getBalance') return '100000000000000000000';
+        if (method === 'eth_getBalance') return mockPendingBalanceWei;
         if (method === 'eth_getTransactionCount') return '0x7';
         if (method === 'eth_estimateGas') return '0x5208';
         throw new Error(`Unexpected native read ${method}`);
@@ -291,6 +309,11 @@ beforeEach(() => {
   mockWallet.sendAndSaveTransaction = jest.fn(async () => undefined);
   mockWallet.sendAndSaveEthTransaction =
     mockWallet.sendAndSaveEthTransaction.bind(mockWallet);
+  mockWallet.reviewNativeEvmFee = jest.fn(
+    mockWallet.reviewNativeEvmFee.bind(mockWallet)
+  );
+  mockWallet.discardNativeEvmFeeReview =
+    mockWallet.discardNativeEvmFeeReview.bind(mockWallet);
   (getController as jest.Mock).mockReturnValue({ wallet: mockWallet });
   mockSdkSend
     .mockReset()
@@ -335,7 +358,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
         'sendAndSaveTokenTransaction',
@@ -393,6 +418,9 @@ async function readyNative(blacklisted: boolean) {
 
 it('shows the real native pre-send blacklist refusal without unknown status', async () => {
   await readyNative(true);
+  const issued = mockWallet.reviewNativeEvmFee.mock.results.length;
+  const firstReviewId =
+    mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
@@ -428,14 +456,27 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
       transactionNotBroadcast: true,
     },
   });
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued);
+  fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
+  expect(mockNativeReplies).toHaveLength(1);
+  expect(mockSdkSend).not.toHaveBeenCalled();
+  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
+  expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
   await waitFor(() =>
     expect(
       screen.getByRole('button', { name: 'buttons.confirm' })
     ).toBeEnabled()
   );
+  expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued + 1);
+  expect(mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id).not.toBe(
+    firstReviewId
+  );
+  expect(mockNativeReplies).toHaveLength(1);
   expect(mockSdkSend).not.toHaveBeenCalled();
-  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
-  expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
 });
 it('accepts an unlisted native recipient through the same controller path', async () => {
   await readyNative(false);
@@ -461,6 +502,49 @@ it('accepts an unlisted native recipient through the same controller path', asyn
     screen.queryByText('send.submissionStatusUnknown')
   ).not.toBeInTheDocument();
 });
+it.each([
+  ['101000000000000000000', true],
+  ['99999999999999999999', false],
+])(
+  'submits the exact software MAX review only if the pending balance %s can cover it',
+  async (pendingBalance, affordable) => {
+    mockLocation.state.tx.transactionType = 'NATIVE_ETH';
+    await ready(true);
+    const reviewId = mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
+    const reviewedValue = '99999937000000000000';
+    mockPendingBalanceWei = pendingBalance;
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+    );
+    await waitFor(() => expect(mockNativeReplies).toHaveLength(1));
+    expect(mockMessages.map(({ data }) => data.methods.at(-1))).not.toContain(
+      'refreshActiveAccountBalances'
+    );
+    const { data } = mockMessages.find(
+      (message) => message.data.methods.at(-1) === 'sendAndSaveEthTransaction'
+    );
+    expect(data.params[0].value).toBe(reviewedValue);
+    expect(data.params[4]).toEqual({
+      nativeReview: { id: reviewId, scope: mockScope },
+    });
+    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
+    if (affordable) {
+      expect(mockSdkSend).toHaveBeenCalledTimes(1);
+      expect(mockSdkSend.mock.calls[0][0].value).toBe(reviewedValue);
+      expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1);
+    } else {
+      expect(mockNativeReplies[0]).toEqual({
+        success: false,
+        error: {
+          message: expect.stringContaining('Insufficient funds'),
+          transactionNotBroadcast: true,
+        },
+      });
+      expect(mockSdkSend).not.toHaveBeenCalled();
+      expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+    }
+  }
+);
 it('keeps a native ambiguous SDK rejection in unknown status', async () => {
   mockSdkSend.mockRejectedValueOnce(new Error('synthetic SDK failure'));
   await readyNative(false);

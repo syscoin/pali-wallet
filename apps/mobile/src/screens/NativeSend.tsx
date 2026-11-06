@@ -37,7 +37,7 @@ import {
   Text,
 } from '../ui';
 
-const failure = (error: unknown, context: NativeSendContext, token = false, hasSavedTransaction = false) => {
+const failure = (error: unknown, context: NativeSendContext, token = false, hasSavedTransaction = false, cancellation = false) => {
   const code = error instanceof Error ? error.message : '';
   if (code === 'INVALID_INPUT')
     return `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
@@ -46,9 +46,10 @@ const failure = (error: unknown, context: NativeSendContext, token = false, hasS
   if (code === 'EXPIRED')
     return hasSavedTransaction
       ? 'A signed transaction was saved before the review expired. Check it before sending again.'
+      : cancellation ? 'This cancellation is unavailable. Check the original transaction or try again.'
       : 'Network conditions changed or this review expired. Review the transfer again.';
   if (code === 'INSUFFICIENT_BALANCE')
-    return token
+    return token || cancellation
       ? `Not enough ${context.symbol} for the maximum network fee.`
       : `Not enough ${context.symbol} for the amount and maximum network fee.`;
   if (code === 'INSUFFICIENT_TOKEN_BALANCE')
@@ -73,6 +74,7 @@ export function NativeSend({
   token,
   context,
   savedHash,
+  cancellationHash,
 }: {
   controller: NativeTransferView;
   onBack(): void;
@@ -80,6 +82,7 @@ export function NativeSend({
   token?: Erc20Metadata;
   context: NativeSendContext;
   savedHash?: string;
+  cancellationHash?: string;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
@@ -153,12 +156,22 @@ export function NativeSend({
       await operation();
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch)
-        setError(failure(cause, capturedContext, !!token || !!snapshot.intent, !!controller.getSnapshot().hash));
+        setError(failure(cause, capturedContext, !!token || !!snapshot.intent, !!controller.getSnapshot().hash, !!cancellationHash));
     }
   };
   useEffect(() => {
+    if (cancellationHash) {
+      const captured = lifetime.current.epoch;
+      void controller.prepareCancellation(cancellationHash).catch((cause) => {
+        if (lifetime.current.alive && captured === lifetime.current.epoch)
+          setError(cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
+            ? 'The account cannot cover the maximum network fee.'
+            : 'Pali could not verify that this transaction is still pending.');
+      });
+      return;
+    }
     void controller.recover(!!savedHash, savedHash).catch(() => undefined);
-  }, [controller, savedHash]);
+  }, [controller, savedHash, cancellationHash]);
   const submit = () => {
     if (!review || busy) return;
     Keyboard.dismiss();
@@ -204,7 +217,7 @@ export function NativeSend({
       'nonce-consumed',
       'unavailable',
     ].includes(snapshot.phase);
-  const footer = !review && !hasOutcome ? (
+  const footer = !review && !hasOutcome && !cancellationHash ? (
     <Button
       title="Review transfer"
       disabled={busy || !recipient.trim() || !amount}
@@ -231,7 +244,9 @@ export function NativeSend({
         <Screen footer={footer}>
           <Header
             title={
-              review
+              cancellationHash
+                ? hasOutcome ? 'Cancellation status' : 'Review cancellation'
+                : review
                 ? (review.retry ? 'Review resend' : 'Review transfer')
                 : hasOutcome
                 ? 'Transfer status'
@@ -279,7 +294,7 @@ export function NativeSend({
                   onPress={() => void run(() => controller.loadMorePredecessors())} />}
               </Card>}
               <Card style={s.summary}>
-                <Text style={s.label}>TO</Text>
+                <Text style={s.label}>{review.cancellation ? 'TO · YOUR ADDRESS' : 'TO'}</Text>
                 <Text
                   selectable
                   style={s.address}
@@ -296,7 +311,7 @@ export function NativeSend({
                 <Text style={s.hint}>
                   The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
                 </Text>
-                {!reviewedToken && (
+                {!reviewedToken && !review.cancellation && (
                   <>
                     <View style={s.separator} />
                     <Text style={s.label}>AMOUNT + EXECUTION FEE LIMIT</Text>
@@ -315,6 +330,11 @@ export function NativeSend({
                   tone="amber"
                 />
               )}
+              {review.cancellation && <Card style={s.summary}>
+                <Text style={s.label}>ORIGINAL TRANSACTION · NONCE {review.nonce}</Text>
+                <Text selectable style={s.address}>{review.cancellation.originalHash}</Text>
+                <Text style={s.hint}>This sends zero to your own address with a higher fee. The original can still confirm first.</Text>
+              </Card>}
               {review.replay && <Card style={s.summary}>
                 <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>
                 <Text selectable style={s.address}>{review.replay.hash}</Text>
@@ -324,22 +344,23 @@ export function NativeSend({
                 {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
                 {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
               </Card>}
-              <Text style={s.hint}>
+              {!review.cancellation && <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
-              </Text>
+              </Text>}
               <Button
-                title={review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+                title={review.cancellation ? 'Submit cancellation' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
                 disabled={busy}
                 onPress={submit}
                 testID="native-send-confirm"
               />
               <Button
-                title={review.retry ? 'Close review' : 'Edit transfer'}
+                title={review.retry || review.cancellation ? 'Close review' : 'Edit transfer'}
                 variant="quiet"
                 disabled={busy}
                 onPress={() => {
-                  controller.cancel();
+                  if (cancellationHash) close();
+                  else controller.cancel();
                 }}
               />
             </>
@@ -352,16 +373,18 @@ export function NativeSend({
                 />
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
-                    ? outcomeToken
+                    ? cancellationHash
+                      ? 'Cancellation confirmed'
+                      : outcomeToken
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
-                    ? 'Transfer reverted'
+                    ? cancellationHash ? 'Cancellation reverted' : 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
                     ? 'Checking submission'
-                    : 'Transfer pending'}
+                    : cancellationHash ? 'Cancellation submitted' : 'Transfer pending'}
                 </Text>
               </View>
               {outcomeToken && tokenIdentity(outcomeToken)}
@@ -393,17 +416,17 @@ export function NativeSend({
                 title="Check status"
                 variant={terminal ? 'secondary' : 'primary'}
                 disabled={busy}
-                onPress={() => void run(() => controller.recover())}
+                onPress={() => void run(() => controller.recover(false, cancellationHash ? snapshot.hash! : undefined))}
               />
               {snapshot.phase === 'unknown' && (
                 <Button
                   title="Review retry"
                   variant="secondary"
                   disabled={busy}
-                  onPress={() => void run(() => controller.recover(true))}
+                  onPress={() => void run(() => controller.recover(true, cancellationHash ? snapshot.hash! : undefined))}
                 />
               )}
-              {['confirmed', 'reverted', 'nonce-consumed'].includes(
+              {!cancellationHash && ['confirmed', 'reverted', 'nonce-consumed'].includes(
                 snapshot.phase
               ) && (
                 <Button
@@ -416,8 +439,10 @@ export function NativeSend({
                   }}
                 />
               )}
-              <Button title="Back to wallet" variant="quiet" onPress={close} />
+              <Button title={cancellationHash ? 'Back to Activity' : 'Back to wallet'} variant="quiet" onPress={close} />
             </>
+          ) : cancellationHash ? (
+            !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => controller.prepareCancellation(cancellationHash))} />
           ) : (
             <>
               {input(
