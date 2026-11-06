@@ -39,6 +39,7 @@ type NativeNoteBackupPorts = Readonly<{
 export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   let capture: IPrivateVaultSession | undefined;
   let invalidate: (() => void) | undefined;
+  let resumeInventory: (() => void) | undefined;
   const crypto = globalThis.crypto;
   const monotonicNow = () => performance.now();
   const randomId = () => crypto.randomUUID();
@@ -77,6 +78,16 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     now: Date.now,
     deadlineNow: monotonicNow,
     randomId,
+    yieldInventory: () => new Promise<void>((resolve) => {
+      const timer = setTimeout(resume, 0);
+      function resume() {
+        if (resumeInventory !== resume) return;
+        resumeInventory = undefined;
+        clearTimeout(timer);
+        resolve();
+      }
+      resumeInventory = resume;
+    }),
     storage: {
       getItem: (key) => withStorage(async () => {
         const scope = await bindKey(key);
@@ -109,8 +120,8 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     vault,
   });
   return {
-    invalidate: () => invalidate?.(),
-    dispose: () => service.dispose(),
+    invalidate() { resumeInventory?.(); invalidate?.(); },
+    dispose() { resumeInventory?.(); service.dispose(); },
     async readInventory(session: IPrivateVaultSession): Promise<NativeNoteInventory> {
       session.assertCurrent();
       const { notes } = await withSession(session, vault.getNotes);
