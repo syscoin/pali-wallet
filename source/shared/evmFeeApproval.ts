@@ -229,7 +229,8 @@ export function bufferEvmFeeEstimate(
   );
 }
 
-/** The final pending estimate may fit the approved envelope but never enlarge it. */
+/** Compare the raw pending estimate with the approved limit. Quote padding is
+ * applied only when preparing the initial envelope, never to this observation. */
 export function assertEvmFeeEstimateApproved(
   approval: EvmFeeApproval,
   observed: Readonly<{

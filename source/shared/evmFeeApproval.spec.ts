@@ -155,3 +155,25 @@ it('shares the successful-estimate buffer and configured floor exactly', () => {
     bufferEvmFeeEstimate(BigInt(25000), BigInt(743211), BigInt(29000))
   ).toThrow();
 });
+
+it.each([21000, 22000, 25200])(
+  'accepts raw estimate %s within the approved limit without padding it again',
+  (estimatedGas) => {
+    const approval = capture();
+    expect(bufferEvmFeeEstimate(BigInt(22000), BigInt(743211))).toBe(
+      BigInt(26400)
+    );
+    expect(() =>
+      assertEvmFeeEstimateApproved(
+        approval,
+        {
+          ...observation,
+          estimatedGas: BigInt(estimatedGas),
+          sampledBlockGasLimit: BigInt(25200),
+        },
+        10
+      )
+    ).not.toThrow();
+    expect(approval.transaction.gasLimit).toBe('25200');
+  }
+);
