@@ -147,14 +147,31 @@ private enum PublicSnapshotDownloadChecks {
       } catch PaliPublicSnapshotDownloadError.invalid {}
     }
     let selectedOrigin = "http://127.0.0.1:\(port)"
+    let bridge = PaliPublicSnapshotBridge()
+    let old = try bridge.prepare {
+      try host.prepareLoopback(port: port, path: "must-not-hit", timeout: 3, completion: $0)
+    }
+    let oldReleased = DispatchSemaphore(value: 0)
+    try bridge.release(old) { oldReleased.signal() }
+    precondition(oldReleased.wait(timeout: .now() + 5) == .success)
     let selectedResult = Completion()
-    let selected = try host.prepare(pool: "eth-1", serviceOrigin: selectedOrigin) { selectedResult.accept($0) }
-    selected.start()
+    let selected = try bridge.prepare {
+      try host.prepare(pool: "eth-1", serviceOrigin: selectedOrigin, completion: $0)
+    }
+    try bridge.release(old) {} // Exact stale release cannot retire the next handle.
+    try bridge.start(selected) { outcome in
+      if case .success(let info) = outcome {
+        precondition(info.status == 200 && info.byteCount == 5)
+      }
+      selectedResult.accept(outcome.map { _ in () })
+    }
     try selectedResult.wait().get()
-    let selectedInfo = try selected.info()
-    let selectedBytes = try selected.pull()
-    let selectedEnd = try selected.pull()
-    precondition(selectedInfo.byteCount == 5 && selectedBytes == Data("again".utf8) && selectedEnd == nil)
+    let selectedBytes = try bridge.pull(selected)
+    let selectedEnd = try bridge.pull(selected)
+    precondition(selectedBytes == Data("again".utf8) && selectedEnd == nil)
+    let selectedReleased = DispatchSemaphore(value: 0)
+    try bridge.release(selected) { selectedReleased.signal() }
+    precondition(selectedReleased.wait(timeout: .now() + 5) == .success)
     print("explicit service origins and registered pool allowlist")
 
     try checkAnchorPosts(port: port, host: host, heldReady: CommandLine.arguments[2])
@@ -267,9 +284,17 @@ private enum PublicSnapshotDownloadChecks {
     try expectError("truncated", .unavailable)
 
     let cancelled = Completion()
-    let held = try host.prepareLoopback(port: port, path: "held", timeout: 3) { cancelled.accept($0) }
-    held.start()
-    held.start()
+    let completionEntered = DispatchSemaphore(value: 0)
+    let resumeCompletion = DispatchSemaphore(value: 0)
+    let held = try bridge.prepare {
+      let finish = $0
+      return try host.prepareLoopback(port: port, path: "held", timeout: 3) { result in
+        completionEntered.signal()
+        precondition(resumeCompletion.wait(timeout: .now() + 5) == .success)
+        finish(result)
+      }
+    }
+    try bridge.start(held) { outcome in cancelled.accept(outcome.map { _ in () }) }
     Thread.sleep(forTimeInterval: 0.1)
     do {
       _ = try host.prepareLoopback(port: port, path: "must-not-hit", timeout: 3) { _ in
@@ -277,16 +302,28 @@ private enum PublicSnapshotDownloadChecks {
       }
       preconditionFailure("process slot not held")
     } catch PaliPublicSnapshotDownloadError.busy {}
-    held.cancel()
-    held.cancel()
+    let heldReleased = DispatchSemaphore(value: 0)
+    try bridge.release(held) { heldReleased.signal() }
+    bridge.cancelActive()
+    precondition(completionEntered.wait(timeout: .now() + 5) == .success)
+    precondition(heldReleased.wait(timeout: .now()) == .timedOut, "release was acknowledged before completion")
+    do {
+      _ = try bridge.prepare {
+        try host.prepareLoopback(port: port, path: "must-not-hit", timeout: 3, completion: $0)
+      }
+      preconditionFailure("replacement admitted before bridge drain")
+    } catch PaliPublicSnapshotDownloadError.busy {}
+    resumeCompletion.signal()
     guard case .failure(.cancelled) = cancelled.wait() else { preconditionFailure("cancelled body delivered") }
+    precondition(heldReleased.wait(timeout: .now() + 5) == .success, "release did not drain")
     func checkSmall(_ path: String) throws {
       let (handle, outcome) = try run(path)
       try outcome.get()
       try checkBody(handle, status: 200, count: 5) { _, _ in Data("again".utf8) }
     }
     try checkSmall("reopened")
-    held.cancel()
+    try bridge.release(held) {}
+    bridge.close()
     precondition(cancelled.count == 1)
     print("busy slot, one cancellation acknowledgement, safe next admission")
 

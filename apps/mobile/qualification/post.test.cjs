@@ -3,7 +3,7 @@ const test = require('node:test');
 const { createHash } = require('node:crypto');
 const { Buffer } = require('node:buffer');
 const { createNativeHttpFetch } = require('../src/platform/httpPolicy.ts');
-const { createHttpFixture } = require('./http-server.cjs');
+const { createHttpFixture, snapshotFixtureControl } = require('./http-server.cjs');
 const { assertAudit } = require('./http-companion.cjs');
 const { assertPostAudit, partialPostAudit } = require('./post-server.cjs');
 const { POST_CASES, assertPostReport, postDiagnosticCase, validPostFailureDetail } = require('./post-contract.ts');
@@ -22,7 +22,7 @@ test('actual Node loopback control retains every HTTP case and independently val
   const fixture = await createHttpFixture(); fixture.begin(token);
   let cookie;
   try {
-    const get = await qualifyNativeHttp({ ...options(fixture), cookieFetch: async (url, init) => {
+    const get = await qualifyNativeHttp({ ...options(fixture), snapshotTransport: snapshotFixtureControl, cookieFetch: async (url, init) => {
       const headers = new Headers(init.headers); if (cookie) headers.set('Cookie', cookie);
       const value = await fetch(url, { ...init, headers }); const set = value.headers.get('set-cookie');
       if (set) cookie = set.includes('Max-Age=0') ? undefined : set.split(';')[0]; return value;
