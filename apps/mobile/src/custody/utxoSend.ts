@@ -8,7 +8,7 @@ import {
 } from '../../../../source/wallet/utxoSignedBinding.ts';
 import { submitReviewedUtxo } from '../../../../source/wallet/utxoSubmission.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../core/amounts.ts';
-import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
+import { canUseUtxoCustodyAddress, normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { CustodyRuntimeError } from './types.ts';
 
 import type { ISyscoinTransactions } from '@sidhujag/sysweb3-keyring';
@@ -128,6 +128,9 @@ export function createNativeUtxoSend(
         const max = input.max === true;
         try {
           recipient = normalizeUtxoAddress(input.recipient.trim(), network);
+          if (!canUseUtxoCustodyAddress(scope.account.address, network) ||
+              !canUseUtxoCustodyAddress(recipient, network))
+            throw new Error('Unsupported UTXO spending script');
           amountSatoshis = max
             ? '0'
             : parseDecimalAmount(input.amount, network.decimals).toString();

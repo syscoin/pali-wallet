@@ -1,5 +1,6 @@
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { createNativeChainCatalogue, type NativeNetworkSuggestion } from './networkCatalogue.ts';
+import { supportsUtxoSoftwareCustody } from '../core/utxoNetworks.ts';
 import type { NativeUtxoNetworkDraft } from './accounts.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -62,7 +63,7 @@ export function createNativeNetworkView(authority: Pick<NativeCustodyAuthority,
             })),
             ...catalogue.utxoNetworks.map((network) => Object.freeze({
               id: network.id, name: network.name, symbol: network.symbol,
-              testnet: network.testnet, canSign: utxoSendAvailable && network.decimals === 8,
+              testnet: network.testnet, canSign: utxoSendAvailable && supportsUtxoSoftwareCustody(network),
             })),
           ]),
         });

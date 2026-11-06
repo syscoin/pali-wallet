@@ -163,8 +163,7 @@ export function catalogueEvmNetworks(record: NativeAccountRecord): readonly Nati
 
 function savedUtxoNetwork({ kind: _kind, ...registration }: SavedUtxoNetwork): UtxoNetwork {
   const network = projectUtxoRegistration(registration);
-  if (!isCustomUtxoNetworkId(network.id) || !supportsUtxoSoftwareCustody(network))
-    return invalid();
+  if (!isCustomUtxoNetworkId(network.id)) return invalid();
   return network;
 }
 

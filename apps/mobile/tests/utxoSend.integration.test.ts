@@ -29,6 +29,7 @@ import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKey
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
+import { verifyUtxoRegistration } from '../src/core/utxoReadSession.ts';
 import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/core/utxoAddresses.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { metadata } from './publicWatchFixtures.ts';
@@ -188,6 +189,14 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
       records,
       fetcher
     );
+    if (network === litecoinRegistration) {
+      const versions = [1, 2];
+      for (const version of versions) {
+        const unsupported = bitcoin.address.toBech32(Buffer.alloc(32, 9), version, network.addressNetwork.bech32);
+        await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
+        assert.deepEqual(calls, []);
+      }
+    }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.equal(review.outputs[0]?.address, recipient);
     assert.equal(review.outputs[0]?.amountSatoshis, '40000');
@@ -247,10 +256,15 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   let hdXpub = '';
   let backendDrift = false;
   let blockBroadcast = false;
+  let beforeSigningJournal: string | undefined;
   const endpoint = litecoinEndpoint;
   const unsupportedEndpoint = 'https://offline-zec.invalid/blockbook';
   const zec = findUtxoCoinByRegistration({ chainId: 133, slip44: 133 })!;
+  const btgEndpoint = 'https://offline-btg.invalid/blockbook';
+  const btg = findUtxoCoinByRegistration({ chainId: 156, slip44: 156 })!;
   assert.equal(zec.segwit, false);
+  assert.equal(btg.segwit, true);
+  assert.equal(btg.forkId, 79);
   const registration = litecoinRegistration;
   let address = '';
   let lookup = '';
@@ -269,23 +283,27 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     assert.equal(typeof input, 'string');
     const url = String(input);
-    if (url.startsWith(unsupportedEndpoint + '/')) {
-      const path = url.slice(unsupportedEndpoint.length);
+    const unsupported = url.startsWith(btgEndpoint + '/') ? [btgEndpoint, btg] as const
+      : url.startsWith(unsupportedEndpoint + '/') ? [unsupportedEndpoint, zec] as const : undefined;
+    if (unsupported) {
+      const [base, coin] = unsupported;
+      const path = url.slice(base.length);
       calls.push(`${init?.method} ${path}`);
       assert.equal(init?.method, 'GET');
       if (path === '/api/v2/') return reply(url, {
-        blockbook: { coin: zec.coinLabel, network: zec.coinShortcut, decimals: zec.decimals },
+        blockbook: { coin: coin.coinLabel, network: coin.coinShortcut, decimals: coin.decimals },
         backend: { chain: 'main' },
       });
       assert.equal(path, '/api/v2/block-index/0');
-      return reply(url, { blockHash: zec.hashGenesisBlock });
+      return reply(url, { blockHash: coin.hashGenesisBlock });
     }
     const path = url.slice(network.endpoint.length);
     calls.push(`${init?.method} ${path}`);
     assert(url.startsWith(network.endpoint));
     if (path === '/api/v2/') {
       const status = metadata(network);
-      if (backendDrift || (blockBroadcast && (await storage.recovery.readSnapshot()).records.some((row) => row.key === UTXO_SIGNED_RECORD_KEY)))
+      if (backendDrift || (blockBroadcast && (await storage.recovery.readSnapshot()).records
+        .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value !== beforeSigningJournal))
         status.backend.chain = 'mismatched-backend';
       return reply(url, status);
     }
@@ -379,9 +397,18 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
 
     const beforeUnsupported = owner.getCatalogue()!;
     const priorUnsupportedRequests = calls.length;
-    await assert.rejects(owner.addUtxoNetwork({ endpoint: unsupportedEndpoint, name: '', explorer: '' },
-      owner.getSnapshot().revision, beforeUnsupported.revision, new AbortController().signal));
-    assert.deepEqual(calls.slice(priorUnsupportedRequests), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+    for (const endpoint of [unsupportedEndpoint, btgEndpoint]) {
+      const add = owner.addUtxoNetwork({ endpoint, name: '', explorer: '' },
+        owner.getSnapshot().revision, beforeUnsupported.revision, new AbortController().signal);
+      if (endpoint === btgEndpoint) await assert.rejects(add, { code: 'INVALID_INPUT' });
+      else await assert.rejects(add);
+      assert.equal(owner.getCatalogue(), beforeUnsupported);
+    }
+    assert.deepEqual(calls.slice(priorUnsupportedRequests), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'GET /api/v2/', 'GET /api/v2/block-index/0']);
+    assert.equal(owner.getCatalogue(), beforeUnsupported);
+    const publicRegistration = await verifyUtxoRegistration({ endpoint: btgEndpoint, name: '', explorer: '' }, undefined,
+      { fetch: fetcher, timeoutMs: 1000 }, new AbortController().signal, current);
+    assert.equal(publicRegistration.symbol, 'BTG');
     assert.equal(owner.getCatalogue(), beforeUnsupported);
     await assert.rejects(owner.manageNetwork({ kind: 'add-utxo-network' }, owner.getSnapshot().revision,
       beforeUnsupported.revision), { code: 'CANCELLED' });
@@ -440,7 +467,16 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         pubkey: accountNode.derive(change).derive(index).publicKey,
         network: network.addressNetwork,
       }).address!;
-      const scripts = target === custom ? ['p2wpkh'] as const : [...UTXO_IMPORT_TYPES, undefined];
+      if (target === custom) {
+        const taproot = bitcoin.payments.p2tr({ network: network.addressNetwork, internalPubkey: key.publicKey.slice(1) }).address!;
+        const stored = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+        const beforeCalls = calls.length;
+        await assert.rejects(preview(wif, 'p2tr'), { code: 'INVALID_INPUT' });
+        await assert.rejects(submit(wif, 'p2tr', taproot), { code: 'INVALID_INPUT' });
+        assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), stored);
+        assert.equal(calls.length, beforeCalls);
+      }
+      const scripts = target === custom ? ['p2wpkh', 'p2pkh'] as const : [...UTXO_IMPORT_TYPES, undefined];
       for (const [index, script] of scripts.entries()) {
         const options = { network: network.addressNetwork };
         const secret = script ? wif : zPrivate;
@@ -591,6 +627,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert(BigInt(review.feeSatoshis) > 0n);
         let txid: string, raw: string | undefined;
         if (target === custom) {
+          beforeSigningJournal = (await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
           blockBroadcast = true;
           const beforePosts = posts.length;
           await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
@@ -631,7 +669,9 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         assert.equal(laneRequests.some((entry) => entry.includes(secret)), false);
       }
     }
-    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 1);
+    // Default lanes post initially and again after restart. Each custom WIF
+    // lane posts only on retry because its first dispatch is blocked.
+    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 2);
     await selectAccount(`hd:${network.slip44}:0`);
     await removeAccount(`imported:${network.slip44}:0`);
     assert.equal(owner.getCatalogue()!.accounts.some((account) => account.id === `imported:${network.slip44}:0`), false);

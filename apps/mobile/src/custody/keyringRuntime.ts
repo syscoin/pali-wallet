@@ -772,6 +772,7 @@ export function createKeyringRuntimeFactory(
                     if (request.kind === 'select-network') {
                       const guard = () => { current(captured); checkGuard(assertCurrent); };
                       const utxo = findUtxoNetwork(request.id, before.utxoNetworks);
+                      if (utxo && !supportsUtxoSoftwareCustody(utxo)) throw new KeyringRuntimeError('INVALID_INPUT');
                       if ((utxo?.slip44 ?? 60) !== state.activeNetwork.slip44) {
                         await dataBinding(captured, guard); guard();
                         const initialGroup = await switchAccountGroup(request.id, guard); guard();
@@ -829,6 +830,8 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('NOT_READY');
             try {
               const { privateKey, utxoAddressType } = normalizeUtxoImport(input);
+              if (!supportsUtxoSoftwareCustody(network, utxoAddressType === 'p2tr' ? 1 : 0))
+                throw new KeyringRuntimeError('INVALID_INPUT');
               guard();
               const account = await ring.importAccount(privateKey, undefined, utxoAddressType ? { utxoAddressType } : undefined);
               guard();
@@ -859,6 +862,8 @@ export function createKeyringRuntimeFactory(
                     !(utxo && fields === 'expectedAddress,label,privateKey,utxoAddressType')) ||
                   typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label ||
                   request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label)) throw new Error('INVALID_INPUT');
+              if (utxo && !supportsUtxoSoftwareCustody(utxo, request.utxoAddressType === 'p2tr' ? 1 : 0))
+                throw new KeyringRuntimeError('INVALID_INPUT');
               const key = utxo
                 ? normalizeUtxoImport({ privateKey: request.privateKey, utxoAddressType: request.utxoAddressType }).privateKey
                 : normalizeImportedKey(request.privateKey);
@@ -1138,7 +1143,7 @@ export function createKeyringRuntimeFactory(
           ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
             const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
             const selected = selectedAccount(), network = snapshot && findUtxoNetwork(snapshot.active.networkId, snapshot.utxoNetworks);
-            if (!network || network.decimals !== 8) throw new KeyringRuntimeError('NOT_READY');
+            if (!network || !supportsUtxoSoftwareCustody(network)) throw new KeyringRuntimeError('NOT_READY');
             const sdkNetwork = getUtxoSdkNetwork(network), account = state.accounts[selected.type][selected.index]!;
             const { xpub } = account;
             if (selected.type === 'Imported') checkedUtxoImport(account, network);

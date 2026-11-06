@@ -130,10 +130,7 @@ export function resolveUtxoNetwork(scope: UtxoNetwork | UtxoNetworkId): UtxoNetw
   return scope;
 }
 
-export function supportsUtxoSoftwareCustody(network: UtxoNetwork): boolean {
-  return network.decimals === 8 && network.slip44 !== 60 &&
-    findUtxoCoinByRegistration(network)?.segwit === true;
-}
+export { supportsUtxoSoftwareCustody } from '../../../../source/shared/utxoSoftwareCustody.ts';
 
 export function getUtxoSdkNetwork(scope: UtxoNetworkId | UtxoNetwork): INetwork & {
   kind: INetworkType.Syscoin;
