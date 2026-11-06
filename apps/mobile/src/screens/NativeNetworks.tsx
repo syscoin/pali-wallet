@@ -113,8 +113,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   const [catalogueQuery, setCatalogueQuery] = useState('');
   const [form, setForm] = useState<{ id?: string; utxo?: true; catalogueRevision?: number; contextRevision?: number;
     name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
-  const [endpointCheck, setEndpointCheck] = useState<{ url: string; status?: 'checking' | 'verified' | 'error' } | null>(null);
-
   const [ui, setUi] = useState({ owner: controller, busy: false, error: '' });
   // Reset during a controller replacement before committing its rendered children.
   // Object equality alone is insufficient when a retired controller returns later.
@@ -122,7 +120,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setUi({ owner: controller, busy: false, error: '' });
     setForm(null);
     setCatalogueQuery('');
-    setEndpointCheck(null);
   }
   const busy = ui.owner === controller && ui.busy;
   const error = ui.owner === controller ? ui.error : '';
@@ -139,7 +136,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setUi({ owner: controller, busy: false, error: '' });
     setCatalogueQuery('');
     setForm(null);
-    setEndpointCheck(null);
     if (cancel) controller.cancel();
     Keyboard.dismiss();
   }, [controller]);
@@ -177,7 +173,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     if (working.current || !snapshot || !network.customUtxoEndpoint) return;
     setUi({ owner: controller, busy: false, error: '' });
     setCatalogueQuery('');
-    setEndpointCheck(null);
     setForm({ utxo: true, id: network.id, catalogueRevision: snapshot.revision, contextRevision: controller.getContextRevision(),
       name: network.name, rpcUrl: network.customUtxoEndpoint,
       chainId: '', symbol: network.symbol, testnet: network.testnet });
@@ -186,33 +181,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   const editSaved = (network: NativeNetworkSnapshot<Id>['networks'][number]) => {
     if (network.registration) edit(network.registration);
     else editUtxo(network);
-  };
-
-  const verifyEndpoint = async () => {
-    if (!form?.id || !form.utxo || !snapshot || !isCurrentUtxoEdit() ||
-        !endpointCheck?.url.trim() || !controller.verifyUtxoEndpoint || working.current) return;
-    const revision = controller.getContextRevision(), catalogueRevision = snapshot.revision;
-    const epoch = lifetime.current.epoch, operation = {};
-    const current = () => working.current === operation && lifetime.current.alive &&
-      epoch === lifetime.current.epoch && controller.getContextRevision() === revision &&
-      controller.getSnapshot()?.revision === catalogueRevision;
-    const url = endpointCheck.url;
-    working.current = operation;
-    setEndpointCheck({ url, status: 'checking' });
-    setUi({ owner: controller, busy: true, error: '' });
-    Keyboard.dismiss();
-    try {
-      await controller.verifyUtxoEndpoint(form.id as Id, url.trim(), revision, catalogueRevision);
-      if (current()) setEndpointCheck({ url, status: 'verified' });
-    } catch {
-      if (current()) setEndpointCheck({ url, status: 'error' });
-    } finally {
-      if (working.current === operation) {
-        working.current = null;
-        if (lifetime.current.alive && epoch === lifetime.current.epoch)
-          setUi((previous) => previous.owner === controller ? { ...previous, busy: false } : previous);
-      }
-    }
   };
 
   const chooseSuggestion = (chain: NativeNetworkSuggestion) => {
@@ -250,7 +218,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   }, [controller, snapshot]);
 
   const save = async (remove = false) => {
-    if (!form || !snapshot || working.current || (form.utxo ? (form.id ? !controller.renameUtxo : !controller.addUtxo) : !controller.save)) return;
+    if (!form || !snapshot || working.current || (form.utxo ? (form.id ? !controller.editUtxo : !controller.addUtxo) : !controller.save)) return;
     if (form.utxo && form.id && !isCurrentUtxoEdit()) {
       setUi({ owner: controller, busy: false, error: 'This network changed. Reopen it to edit the current settings.' });
       return;
@@ -265,9 +233,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
         if (form.utxo || !form.id || !controller.remove) return;
         await controller.remove(form.id as Id, contextRevision, catalogueRevision);
       } else if (form.utxo) {
-        if (form.id) await controller.renameUtxo!(form.id as Id, form.name.trim(), contextRevision, catalogueRevision);
-        else await controller.addUtxo!({ endpoint: form.rpcUrl.trim(), name: form.name.trim(), explorer: '' },
-          contextRevision, catalogueRevision);
+        const draft = { endpoint: form.rpcUrl.trim(), name: form.name.trim() };
+        if (form.id) await controller.editUtxo!(form.id as Id, draft, contextRevision, catalogueRevision);
+        else await controller.addUtxo!({ ...draft, explorer: '' }, contextRevision, catalogueRevision);
       } else {
         const chainId = form.chainId.trim();
         const registration = createNativeNetwork({ id: form.id ?? `custom:${chainId}`, name: form.name, kind: 'evm',
@@ -276,12 +244,15 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       }
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) {
         setForm(null);
-        setEndpointCheck(null);
       }
-    } catch {
+    } catch (cause) {
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
           controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision) {
-        const message = form.utxo ? form.id ? 'Check the network name and try again.'
+        const blocked = cause && typeof cause === 'object' && 'code' in cause &&
+          cause.code === 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER';
+        const message = form.utxo ? form.id ? blocked
+          ? 'Check your saved transfers before changing this endpoint.'
+          : 'Check the network name and use a Blockbook URL for this network.'
           : 'Check the Blockbook URL and make sure this coin type is not already saved.'
           : 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.';
         setUi({ owner: controller, busy: false, error: message });
@@ -308,8 +279,6 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   const isCurrentUtxoEdit = () => form?.catalogueRevision !== undefined &&
     form.catalogueRevision === controller.getSnapshot()?.revision &&
     form.contextRevision === controller.getContextRevision();
-  const currentUtxoEdit = isCurrentUtxoEdit();
-  const endpointStatus = currentUtxoEdit ? endpointCheck?.status : undefined;
   const search = query.trim().toLocaleLowerCase();
   const matches = snapshot?.networks.filter((network) =>
     !search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search)) ?? [];
@@ -324,23 +293,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
               onChoose={chooseSuggestion} />
           )}
           {field('name', form.utxo && !form.id ? 'Network name (optional)' : 'Network name')}
-          {form.utxo && form.id ? <>
-            <Text style={s.help}>Saved Blockbook URL</Text>
-            <Text selectable style={s.help}>{form.rpcUrl}</Text>
-            {controller.verifyUtxoEndpoint && (endpointCheck ? <>
-              <Text style={s.help}>URL to check</Text>
-              <IdleTextInput accessibilityLabel="URL to check" placeholder="https://" placeholderTextColor={colors.muted}
-                value={endpointCheck.url} editable={!busy} maxLength={2048} style={s.search}
-                keyboardType="url" autoCapitalize="none" autoCorrect={false}
-                onChangeText={(url) => { if (!working.current) setEndpointCheck({ url }); }} />
-              <Button title={busy && endpointStatus === 'checking' ? 'Checking URL…' : 'Verify URL'} variant="quiet"
-                disabled={busy || !currentUtxoEdit || !endpointCheck.url.trim()} onPress={() => { void verifyEndpoint(); }} />
-              {endpointStatus === 'verified' && <Text accessibilityLiveRegion="polite" style={s.help}>Same network verified.</Text>}
-              {endpointStatus === 'error' && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>
-                Could not verify this URL for the saved network.
-              </Text>}
-            </> : <Button title="Check another URL" variant="quiet" disabled={busy || !currentUtxoEdit} onPress={() => setEndpointCheck({ url: '' })} />)}
-          </> : field('rpcUrl', form.utxo ? 'Blockbook URL' : 'RPC URL')}
+          {field('rpcUrl', form.utxo ? 'Blockbook URL' : 'RPC URL')}
           {!form.utxo && <>{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
           <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
@@ -348,10 +301,10 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
           </IdlePressable>
           <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text></>}
-          <Button title={form.utxo && form.id ? 'Save name' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
+          <Button title={form.utxo && form.id ? busy ? 'Saving…' : 'Save changes' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
           {!form.utxo && form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {!form.utxo && form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
-          <Button title="Cancel" variant="quiet" disabled={busy && endpointStatus !== 'checking'} onPress={discardForm} />
+          <Button title="Cancel" variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
         <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
           value={query} onChangeText={setQuery} maxLength={80} editable={!busy} autoCapitalize="none" autoCorrect={false}
@@ -366,7 +319,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
               <Text style={s.sectionTitle}>{testnet ? 'Test networks' : 'Main networks'}</Text>
               {testnet && <Text style={s.help}>Test networks use tokens intended for testing.</Text>}
               {networks.map((network) => {
-                const canEdit = network.registration ? controller.save : controller.renameUtxo && network.customUtxoEndpoint;
+                const canEdit = network.registration ? controller.save : controller.editUtxo && network.customUtxoEndpoint;
                 return <NetworkOption key={network.id} network={network}
                   selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={canEdit ? editSaved : undefined} />;
               })}

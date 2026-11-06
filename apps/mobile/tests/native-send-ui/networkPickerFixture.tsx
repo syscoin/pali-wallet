@@ -48,16 +48,15 @@ const controller: NativeNetworkView = {
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   cancel() { cancelled++; contextRevision++; },
   loadCatalogue,
-  async verifyUtxoEndpoint(id, endpoint, expectedContextRevision, expectedCatalogueRevision) {
-    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
-        snapshot.revision !== expectedCatalogueRevision || endpoint !== 'https://replacement.example/blockbook')
-      throw Error('INVALID_INPUT');
-  },
-  async renameUtxo(id, name, expectedContextRevision, expectedCatalogueRevision) {
+  async editUtxo(id, { endpoint, name }, expectedContextRevision, expectedCatalogueRevision) {
     if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
         snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    if (endpoint === 'https://unresolved.example/blockbook')
+      throw Object.assign(new Error('Saved transfer pending'), { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' });
+    if (!['https://replacement.example/blockbook', customUtxo.customUtxoEndpoint].includes(endpoint))
+      throw Error('INVALID_INPUT');
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
-      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name } : network) });
+      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name, customUtxoEndpoint: endpoint } : network) });
     contextRevision++; notify();
   },
   async save(registration, expectedContextRevision, expectedCatalogueRevision) {

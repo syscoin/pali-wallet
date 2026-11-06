@@ -259,25 +259,27 @@ test('Back retires held catalogue feedback and save errors before the next draft
 });
 
 
-test('custom UTXO settings verify another URL and rename without changing the saved route', async ({ page }, testInfo) => {
+test('custom UTXO settings save a verified URL only on explicit action', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/?networks=1&utxo=1');
   await page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true }).click();
-  await expect(page.getByText('https://litecoin.example/blockbook', { exact: true })).toBeVisible();
-  await expect(page.getByLabel('URL to check')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Check another URL' }).click();
-  await page.getByLabel('URL to check').fill('https://wrong.example/blockbook');
-  await page.getByRole('button', { name: 'Verify URL' }).click();
-  await expect(page.getByRole('alert')).toContainText('Could not verify this URL');
-  await page.getByLabel('URL to check').fill('https://replacement.example/blockbook');
-  await page.getByRole('button', { name: 'Verify URL' }).click();
-  await expect(page.getByText('Same network verified.')).toBeVisible();
-  await expect(page.getByText('https://litecoin.example/blockbook', { exact: true })).toBeVisible();
+  const url = page.getByLabel('Blockbook URL', { exact: true });
+  const save = page.getByRole('button', { name: 'Save changes', exact: true });
+  await expect(url).toHaveValue('https://litecoin.example/blockbook');
+  await url.fill('https://wrong.example/blockbook');
+  await save.click();
+  await expect(page.getByRole('alert')).toContainText('use a Blockbook URL for this network');
+  await url.fill('https://unresolved.example/blockbook');
+  await save.click();
+  await expect(page.getByRole('alert')).toContainText('Check your saved transfers');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true }).click();
+  await expect(url).toHaveValue('https://litecoin.example/blockbook');
+  await url.fill('https://replacement.example/blockbook');
+  await page.getByLabel('Network name', { exact: true }).fill('Personal Litecoin');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('native-utxo-network-settings.png'), fullPage: true });
-  await page.getByLabel('Network name', { exact: true }).fill('Personal Litecoin');
-  await page.getByRole('button', { name: 'Save name', exact: true }).click();
+  await save.click();
   await page.getByRole('button', { name: 'Edit Personal Litecoin', exact: true }).click();
-  await expect(page.getByText('https://litecoin.example/blockbook', { exact: true })).toBeVisible();
-  await expect(page.getByText('Same network verified.')).toHaveCount(0);
+  await expect(url).toHaveValue('https://replacement.example/blockbook');
 });
