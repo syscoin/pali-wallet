@@ -750,6 +750,38 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
   ).rejects.toThrow('EXPIRED');
 });
 
+it.each([false, true])(
+  'checks live fees before replaying a saved Speed Up (%s)',
+  async (executable) => {
+    entry.operation = 'speed-up';
+    entry.originalHash = '0x' + 'a'.repeat(64);
+    const previous = provider.send.getMockImplementation()!;
+    provider.send.mockImplementation(async (method, params) =>
+      method === 'eth_getBlockByNumber'
+        ? { gasLimit: '0x1c9c380', baseFeePerGas: executable ? '0x2' : '0x4' }
+        : previous(method, params)
+    );
+    const prepared = await wallet.prepareEvmSignedReplay(entry.hash);
+    expect(prepared.status).toBe('review');
+    const result = wallet.confirmEvmSignedReplay(prepared.review.id);
+    if (executable)
+      await expect(result).resolves.toMatchObject({
+        status: 'submitted',
+        hash: entry.hash,
+      });
+    else
+      await expect(result).rejects.toThrow(
+        'The signed Speed Up is no longer executable'
+      );
+    const posts = provider.send.mock.calls.filter(
+      ([method]) => method === 'eth_sendRawTransaction'
+    );
+    expect(posts).toEqual(
+      executable ? [['eth_sendRawTransaction', [raw]]] : []
+    );
+  }
+);
+
 it('refuses cancellation metadata on a signed payment before any code read or send', async () => {
   entry.operation = 'cancel';
   const prepared = await wallet.prepareEvmSignedReplay(entry.hash);

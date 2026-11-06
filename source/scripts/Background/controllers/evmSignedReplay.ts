@@ -4,6 +4,7 @@ import {
   assertEvmCancellationPayerReady,
   isEvmProtectedEmptySelfCall,
 } from '../../../shared/evmCancellationPayer.ts';
+import { assertEvmSpeedUpExecutable } from '../../../shared/evmFeeApproval.ts';
 import { observeEvmTransaction } from '../../../shared/evmTransactionObservation.ts';
 import {
   EvmReplayError,
@@ -75,6 +76,10 @@ export function createExtensionEvmReplay(
         const broadcast = () => send('eth_sendRawTransaction', [raw]);
         const requiresPayerCheck =
           context.operation === 'cancel' || context.requiresPayerCheck;
+        const speedUp =
+          context.operation === 'speed-up' && !requiresPayerCheck
+            ? Transaction.from(raw)
+            : undefined;
         if (requiresPayerCheck) {
           const tx = Transaction.from(raw);
           if (
@@ -89,6 +94,19 @@ export function createExtensionEvmReplay(
             context.chainId,
             captured.assertCurrent
           );
+          if (speedUp) {
+            const [nonce, block] = await Promise.all([
+              send('eth_getTransactionCount', [context.from, 'latest']),
+              send('eth_getBlockByNumber', ['latest', false]),
+            ]);
+            captured.assertCurrent();
+            assertEvmSpeedUpExecutable(speedUp, nonce, block);
+            await assertLiveEvmReplacementChain(
+              captured.provider,
+              context.chainId,
+              captured.assertCurrent
+            );
+          }
           if (!requiresPayerCheck) return;
           await assertEvmCancellationPayerReady(
             context.from,

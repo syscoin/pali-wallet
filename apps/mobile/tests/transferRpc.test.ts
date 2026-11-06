@@ -52,7 +52,8 @@ test('new cancellation preserves a saved legacy nonce and rejects unsupported or
     },
     eth_getCode: '0x',
   });
-  const quote = await f.rpc.prepareCancellation(hash, legacy, sender.address, signal(), () => undefined);
+  const rates = { type: 0 as const, gasPrice: 150n };
+  const quote = await f.rpc.prepareCancellation(hash, legacy, sender.address, signal(), () => undefined, rates);
   assert.equal(quote.transaction.type, 0);
   assert.equal(quote.transaction.nonce, '1');
   assert.equal(quote.maximumFeeUnits, '7560000');
@@ -63,7 +64,7 @@ test('new cancellation preserves a saved legacy nonce and rejects unsupported or
     gasLimit: 21000, gasPrice: 150,
   });
   f.calls.length = 0;
-  await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined), { code: 'REVIEW_REQUIRED' });
+  await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined, rates), { code: 'REVIEW_REQUIRED' });
   assert.equal(f.calls.length, 0);
 });
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
@@ -326,6 +327,31 @@ test('ordinary native replay preserves shared admission failures with no cancell
   const mislabeled = fixture();
   await assert.rejects(mislabeled.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context: { ...context, operation: 'cancel' } }), { code: 'INVALID_RESPONSE' });
   assert.equal(mislabeled.calls.length, 0);
+});
+
+test('Speed Up exact replay rechecks executable fees, gas and nonce without requiring the original in the mempool', async () => {
+  const raw = await sender.signTransaction({
+    type: 2, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 25_200, maxFeePerGas: 110, maxPriorityFeePerGas: 2,
+  });
+  const hash = keccak256(raw);
+  const context = { chainId: '1', from: sender.address, hash, nonce: 1, operation: 'speed-up' as const };
+  for (const sample of [
+    { baseFeePerGas: '0x6f', gasLimit: '0x1c9c380', nonce: '0x1' },
+    { baseFeePerGas: '0x64', gasLimit: '0x61ff', nonce: '0x1' },
+    { baseFeePerGas: '0x64', gasLimit: '0x1c9c380', nonce: '0x2' },
+    { baseFeePerGas: '0x64', gasLimit: '0x1c9c380', nonce: '0x1', valid: true },
+  ]) {
+    const f = fixture({ eth_getBlockByNumber: { baseFeePerGas: sample.baseFeePerGas, gasLimit: sample.gasLimit },
+      eth_getTransactionCount: sample.nonce, eth_sendRawTransaction: hash });
+    const admit: EvmReplayDispatchAdmission = async (send, preflight) => { await preflight(); return send(); };
+    const replay = f.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context });
+    if (sample.valid) assert.equal(await replay, hash);
+    else await assert.rejects(replay, { code: 'REVIEW_REQUIRED' });
+    assert.equal(f.calls.some(({ method }) => method === 'eth_getTransactionByHash'), false);
+    assert.deepEqual(f.calls.filter(({ method }) => method === 'eth_sendRawTransaction').map(({ params }) => params),
+      sample.valid ? [[raw]] : []);
+  }
 });
 
 test('ordinary native replay checks the chain once inside final admission before POST', async () => {

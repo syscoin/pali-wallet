@@ -151,6 +151,7 @@ export function NativeActivityScreen({
   navigation,
   onReplay,
   onCancelPending,
+  onSpeedUpPending,
 }: {
   controller: NativeActivity;
   accountLabel: string;
@@ -158,6 +159,7 @@ export function NativeActivityScreen({
   navigation?: ShellLeafNavigation;
   onReplay?(hash: string): void;
   onCancelPending?(hash: string): void;
+  onSpeedUpPending?(hash: string): void;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -175,6 +177,7 @@ export function NativeActivityScreen({
       navigation={navigation}
       onReplay={onReplay}
       onCancelPending={onCancelPending}
+      onSpeedUpPending={onSpeedUpPending}
     />
   );
 }
@@ -186,6 +189,7 @@ function NativeActivityContent({
   navigation,
   onReplay,
   onCancelPending,
+  onSpeedUpPending,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
@@ -194,6 +198,7 @@ function NativeActivityContent({
   navigation?: ShellLeafNavigation;
   onReplay?(hash: string): void;
   onCancelPending?(hash: string): void;
+  onSpeedUpPending?(hash: string): void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -234,8 +239,18 @@ function NativeActivityContent({
   const chosen = snapshot.rows.find((row) => row.hash === selected);
   const collectible = chosen?.local?.collectibleTransfer;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
-  const cancellation = snapshot.rows.find((row) => row.local?.operation === 'cancel' && row.local.originalHash === chosen?.hash);
+  const replacement = snapshot.rows.find((row) => row.local?.originalHash === chosen?.hash &&
+    (row.local?.operation === 'cancel' || row.local?.operation === 'speed-up'));
   const original = chosen?.local?.originalHash && snapshot.rows.find((row) => row.hash === chosen.local!.originalHash);
+  const replacementBlocksReview = chosen?.local && snapshot.rows.some(({ local }) =>
+    local?.nonce === chosen.local!.nonce &&
+    (local.operation === 'cancel' || (local.originalHash === chosen.hash &&
+      local.operation === 'speed-up' && local.phase !== 'signed' && local.phase !== 'attempted'))
+  );
+  const canReplace = chosen?.local && chosen.local.operation !== 'cancel' && !replacementBlocksReview &&
+    (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
+    chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === owner.toLowerCase() &&
+    chosenObservation.nonce === String(chosen.local.nonce);
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
     : chosen?.indexed?.blockNumber || chosen?.observation?.block?.number;
@@ -685,11 +700,11 @@ function NativeActivityContent({
             onPress={() => controller.inspect(chosen.hash)}
           />
           {original && <Button title="View original transaction" variant="quiet" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
-          {cancellation && <Button title="View cancellation attempt" variant="secondary" onPress={() => { setSelected(cancellation.hash); controller.inspect(cancellation.hash); }} />}
-          {chosen.local && chosen.local.operation !== 'cancel' && !cancellation &&
-            (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
-            chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === owner.toLowerCase() &&
-            chosenObservation.nonce === String(chosen.local.nonce) && onCancelPending && (
+          {replacement && <Button title={replacement.local?.operation === 'cancel' ? 'View cancellation attempt' : 'View Speed Up attempt'} variant="secondary" onPress={() => { setSelected(replacement.hash); controller.inspect(replacement.hash); }} />}
+          {canReplace && chosen.local?.speedUpEligible && onSpeedUpPending && (
+            <Button title="Speed Up" variant="secondary" onPress={() => void afterPositionSaved(() => onSpeedUpPending(chosen.hash))} />
+          )}
+          {canReplace && onCancelPending && (
             <Button title="Cancel pending transaction" variant="secondary" onPress={() => void afterPositionSaved(() => onCancelPending(chosen.hash))} />
           )}
           {chosen.local && !chosen.local.inspectionOnly && onReplay && (

@@ -162,7 +162,7 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
   }
 });
 
-async function cancellationFixture() {
+async function cancellationFixture(type: 0 | 2 = 2) {
   const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-send-cancel-'));
   const file = path.join(directory, 'wallet.sqlite');
@@ -370,7 +370,7 @@ async function cancellationFixture() {
           result = {
             number: number === 'latest' ? '0x20' : number,
             hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64),
-            baseFeePerGas: replacement.baseFee,
+            ...(type === 2 ? { baseFeePerGas: replacement.baseFee } : {}),
             gasLimit: '0x1c9c380',
           };
         } else {
@@ -386,7 +386,7 @@ async function cancellationFixture() {
               current && number === current.receipt?.blockNumber
                 ? current.canonicalHash
                 : '0x' + 'f'.repeat(64),
-            baseFeePerGas: replacement.baseFee,
+            ...(type === 2 ? { baseFeePerGas: replacement.baseFee } : {}),
             gasLimit: '0x1c9c380',
           };
         }
@@ -548,11 +548,144 @@ async function prepareSavedCancellation(f: Awaited<ReturnType<typeof cancellatio
   return { originalHash, review: f.transfers.getSnapshot().review! };
 }
 
+for (const type of [0, 2] as const) {
+  test(`Speed Up type ${type} retains execution and saves linked exact bytes before POST`, async () => {
+    const f = await cancellationFixture(type);
+    try {
+      await f.transfers.prepare(RECIPIENT, '0.001');
+      await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+      const originalHash = f.transfers.getSnapshot().hash!;
+      const original = Transaction.from(f.broadcasts[0]!);
+      f.replacement.pending = true;
+      await f.transfers.prepareSpeedUp(originalHash);
+      const review = f.transfers.getSnapshot().review!;
+      assert.equal(review.replacement?.mode, 'speed-up');
+      assert.equal(review.replacement?.originalHash, originalHash);
+      assert.equal(review.recipient, RECIPIENT);
+      assert.equal(review.amountUnits, original.value.toString());
+      assert.equal(f.signatures, 1);
+      assert.equal(f.broadcasts.length, 1);
+      const originalFee = original.gasPrice ?? original.maxFeePerGas!;
+      assert.equal(review.replacement?.originalMaximumFeeUnits, (original.gasLimit * originalFee).toString());
+      assert(BigInt(review.maximumFeeUnits) > original.gasLimit * originalFee);
+      const gate = f.hold('cancellation-original');
+      const submit = f.transfers.confirm(review.id);
+      try {
+        await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
+        assert.equal(f.broadcasts.length, 1);
+        const stored = JSON.parse((await f.readDurableJournal())!);
+        assert.equal(stored.entries.length, 2);
+        assert.equal(stored.entries[1].operation, 'speed-up');
+        assert.equal(stored.entries[1].originalHash, originalHash);
+      } finally {
+        gate.finish();
+        await submit;
+      }
+      assert.equal(f.broadcasts.length, 2);
+      const replaced = Transaction.from(f.broadcasts[1]!);
+      assert.deepEqual([replaced.from, replaced.to, replaced.value, replaced.nonce, replaced.data, replaced.type],
+        [original.from, original.to, original.value, original.nonce, original.data, type]);
+      assert.equal(replaced.gasLimit * (replaced.gasPrice ?? replaced.maxFeePerGas!), BigInt(review.maximumFeeUnits));
+      await f.reopen();
+      const journal = await f.runtime.transfers!.journal(() => undefined);
+      assert.equal((await journal.load(originalHash))?.rawTransaction, f.broadcasts[0]);
+      assert.equal((await journal.load(replaced.hash!))?.rawTransaction, f.broadcasts[1]);
+      await assert.rejects(f.transfers.prepareSpeedUp(originalHash), { code: 'EXPIRED' });
+    } finally { await f.close(); }
+  });
+}
+
+test('Speed Up refuses POST when the saved original disappears after the new signature is persisted', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const originalHash = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(originalHash);
+    const gate = f.hold('cancellation-original');
+    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id), { code: 'EXPIRED' });
+    try {
+      await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
+      f.replacement.pending = false;
+    } finally {
+      gate.finish();
+      await refused;
+    }
+    const entries = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(entries[1].operation, 'speed-up');
+    assert.equal(entries[1].originalHash, originalHash);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.transfers.getSnapshot().hash, entries[1].hash);
+  } finally { await f.close(); }
+});
+
+test('a saved Speed Up blocked by a higher base fee can be reviewed again after restart', async () => {
+  const f = await cancellationFixture(2);
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const originalHash = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = true;
+    await f.transfers.prepareSpeedUp(originalHash);
+    const gate = f.hold('cancellation-original');
+    const refused = assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id), { code: 'EXPIRED' });
+    try {
+      await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
+      f.replacement.baseFee = '0x3e8';
+    } finally { gate.finish(); await refused; }
+    const savedHash = f.transfers.getSnapshot().hash!;
+    assert.equal(f.broadcasts.length, 1);
+
+    await f.reopen();
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    const original = await journal.load(originalHash);
+    const saved = await journal.load(savedHash);
+    assert(saved && original);
+    assert.equal(saved.phase, 'signed');
+    assert.equal((await journal.load())?.hash, savedHash);
+    await f.transfers.recover(true, savedHash);
+    await assert.rejects(f.transfers.confirm(f.transfers.getSnapshot().review!.id), { code: 'EXPIRED' });
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.signatures, 2);
+
+    await f.transfers.prepareCancellation(originalHash);
+    assert.equal(f.transfers.getSnapshot().review?.replacement?.originalHash, originalHash);
+    f.transfers.cancel();
+    await f.transfers.prepareSpeedUp(originalHash);
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.replacement?.originalHash, originalHash);
+    assert.equal(review.amountUnits, Transaction.from(original.rawTransaction).value.toString());
+    assert(BigInt(review.maximumFeePerGas) >= BigInt(f.replacement.baseFee) + BigInt(review.priorityFeePerGas!));
+    assert(BigInt(review.priorityFeePerGas!) > Transaction.from(saved.rawTransaction).maxPriorityFeePerGas!);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.signatures, 2);
+
+    f.replacement.baseFee = '0x3e9';
+    await assert.rejects(f.transfers.confirm(review.id), { code: 'EXPIRED' });
+    assert.equal(f.signatures, 2);
+    assert.equal(f.broadcasts.length, 1);
+    f.replacement.baseFee = '0x3e8';
+    await f.transfers.prepareSpeedUp(originalHash);
+    const renewed = f.transfers.getSnapshot().review!;
+    f.replacement.baseFee = '0x3e7';
+    await f.transfers.confirm(renewed.id);
+    assert.equal(f.broadcasts.length, 2);
+    assert.equal(f.signatures, 3);
+    const repriced = Transaction.from(f.broadcasts[1]!);
+    assert.equal(repriced.maxFeePerGas?.toString(), renewed.maximumFeePerGas);
+    assert.equal((await journal.load(savedHash))?.rawTransaction, saved.rawTransaction);
+    assert.equal((await journal.load(originalHash))?.rawTransaction, original.rawTransaction);
+    await assert.rejects(f.transfers.prepareSpeedUp(originalHash), { code: 'EXPIRED' });
+  } finally { await f.close(); }
+});
+
 test('new cancellation signs the saved nonce once and persists both linked exact envelopes before POST', async () => {
   const f = await cancellationFixture();
   try {
     const { originalHash, review } = await prepareSavedCancellation(f);
-    assert.equal(review.cancellation?.originalHash, originalHash);
+    assert.equal(review.replacement?.mode, 'cancel');
+    assert.equal(review.replacement?.originalHash, originalHash);
     assert.equal(review.recipient, review.from);
     assert.equal(review.amountUnits, '0');
     assert.equal(f.signatures, 1);
@@ -703,7 +836,8 @@ test('a previously confirmed saved transaction can be canceled after a fresh reo
     await f.transfers.prepareCancellation(original.hash!);
     assert.equal((await f.readJournal())?.phase, 'submitted');
     const review = f.transfers.getSnapshot().review!;
-    assert.equal(review.cancellation?.originalHash, original.hash);
+    assert.equal(review.replacement?.mode, 'cancel');
+    assert.equal(review.replacement?.originalHash, original.hash);
     await f.transfers.confirm(review.id);
     assert.equal(f.broadcasts.length, 2);
     assert.equal(Transaction.from(f.broadcasts[1]!).nonce, original.nonce);

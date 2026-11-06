@@ -110,7 +110,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
-  const [savedTransfer, setSavedTransfer] = useState<Readonly<{ hash: string; action: 'replay' | 'cancel' }>>();
+  const [savedTransfer, setSavedTransfer] = useState<Readonly<{ hash: string; action: 'replay' | 'cancel' | 'speed-up' }>>();
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -585,7 +585,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransfer?.action === 'replay' ? savedTransfer.hash : undefined} cancellationHash={savedTransfer?.action === 'cancel' ? savedTransfer.hash : undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransfer(undefined); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransfer?.action === 'replay' ? savedTransfer.hash : undefined} replacement={savedTransfer && savedTransfer.action !== 'replay' ? { hash: savedTransfer.hash, mode: savedTransfer.action } : undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransfer(undefined); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && stage === 'send' && utxo && canSendUtxo && openUtxoSend) return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
@@ -605,6 +605,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
           onReplay={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'replay' }); openStage('send'); } : undefined}
           onCancelPending={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'cancel' }); openStage('send'); } : undefined}
+          onSpeedUpPending={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'speed-up' }); openStage('send'); } : undefined}
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}

@@ -1,5 +1,5 @@
 import { getAddress } from 'ethers/address';
-import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
+import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
@@ -12,6 +12,7 @@ import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest
 import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
+import type { EvmReplacementRates } from '../../../../source/wallet/evmSignedRecords.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
 type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_gasPrice' |
@@ -153,9 +154,9 @@ export class EvmTransferReadRpc {
     }, { signal, assertCurrent: () => read.assertCurrent() });
   }
 
-  prepareCancellation(original: Transaction, signal: AbortSignal, guard: () => void): Promise<EvmCancellationQuote> {
-    const { from, type, nonce, gasPrice, maxFeePerGas, maxPriorityFeePerGas, chainId } = original;
-    if (!from || (type !== 0 && type !== 2) || chainId.toString() !== this.network.chainId)
+  prepareCancellation(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void): Promise<EvmCancellationQuote> {
+    const { from, nonce, chainId } = original;
+    if (!from || rates.type !== original.type || chainId.toString() !== this.network.chainId)
       return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
@@ -171,12 +172,12 @@ export class EvmTransferReadRpc {
           }),
       ]);
       read.assertCurrent();
-      if (type === 2 && fees.baseFeePerGas === undefined) return rejectRead('REVIEW_REQUIRED');
-      const feePlan = type === 0
-        ? planEvmCancellationFees({ type: 0, currentGasPrice: fees.gasPrice, originalGasPrice: gasPrice ?? undefined })
+      if (rates.type === 2 && fees.baseFeePerGas === undefined) return rejectRead('REVIEW_REQUIRED');
+      const feePlan = rates.type === 0
+        ? planEvmCancellationFees({ type: 0, currentGasPrice: fees.gasPrice, originalGasPrice: rates.gasPrice })
         : planEvmCancellationFees({ type: 2, currentMaxFeePerGas: fees.maxFeePerGas,
-          currentMaxPriorityFeePerGas: fees.maxPriorityFeePerGas, originalMaxFeePerGas: maxFeePerGas ?? undefined,
-          originalMaxPriorityFeePerGas: maxPriorityFeePerGas ?? undefined });
+          currentMaxPriorityFeePerGas: fees.maxPriorityFeePerGas, originalMaxFeePerGas: rates.maxFeePerGas,
+          originalMaxPriorityFeePerGas: rates.maxPriorityFeePerGas });
       assertEvmGasLimit(feePlan.gasLimit, chainId, sampled.gasLimit);
       const transaction = snapshotCancellationTransfer({
         from, to: from, chainId: this.network.chainId, nonce: String(nonce),
@@ -190,6 +191,56 @@ export class EvmTransferReadRpc {
       const maximumFeeUnits = feePlan.maximumFee.toString();
       return Object.freeze({ transaction, feePlan, balanceUnits: quantity(rawBalance).toString(), maximumFeeUnits, totalUnits: maximumFeeUnits });
     });
+  }
+
+  prepareSpeedUp(original: Transaction, rates: EvmReplacementRates, signal: AbortSignal, guard: () => void): Promise<EvmPreparedQuote> {
+    const { from, to, nonce, value, data, gasLimit, chainId } = original;
+    if (!from || !to || original.accessList?.length || rates.type !== original.type || chainId.toString() !== this.network.chainId)
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, async (read) => {
+      await this.checkChain(read);
+      const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const [rawBalance, rawNonce] = await Promise.all([
+        read('eth_getBalance', [from, 'latest']),
+        read('eth_getTransactionCount', [from, 'latest']),
+      ]);
+      read.assertCurrent();
+      if (quantity(rawNonce) > BigInt(nonce) || (rates.type === 2 && sampled.baseFee === null))
+        return rejectRead('REVIEW_REQUIRED');
+      const bounds = { chainId, gasLimit, sampledBlockGasLimit: sampled.gasLimit, sampledBaseFeePerGas: sampled.baseFee };
+      const fees = rates.type === 2 && rates.maxFeePerGas === 0n ? await this.feeData(read, sampled, signal) : undefined;
+      const gasPrice = rates.type === 0 && rates.gasPrice === 0n ? quantity(await read('eth_gasPrice', [])) : undefined;
+      read.assertCurrent();
+      let plan: ReturnType<typeof planEvmSpeedUpFees>;
+      try {
+        plan = rates.type === 0
+          ? planEvmSpeedUpFees({ ...bounds, type: 0, gasPrice: gasPrice ?? rates.gasPrice })
+          : planEvmSpeedUpFees({ ...bounds, type: 2, maxFeePerGas: fees?.maxFeePerGas ?? rates.maxFeePerGas,
+            maxPriorityFeePerGas: fees?.maxPriorityFeePerGas ?? rates.maxPriorityFeePerGas });
+      } catch { return rejectRead('REVIEW_REQUIRED'); }
+      const rate = plan.type === 0 ? plan.gasPrice : plan.maxFeePerGas;
+      if (rate === 0n || (sampled.baseFee !== null && rate < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
+      const transaction = snapshotUnsignedTransfer({
+        from, to, chainId: this.network.chainId, nonce: String(nonce),
+        value: value.toString(), data, gasLimit: plan.gasLimit.toString(),
+        ...(plan.type === 0 ? { type: 0, gasPrice: plan.gasPrice.toString() } : {
+          type: 2, maxFeePerGas: plan.maxFeePerGas.toString(), maxPriorityFeePerGas: plan.maxPriorityFeePerGas.toString(),
+        }),
+      }, this.network);
+      const balance = quantity(rawBalance);
+      const now = this.monotonicMilliseconds();
+      const approval = captureEvmFeeApproval(transaction, this.network.registrationHash, now + EVM_FEE_APPROVAL_LIFETIME_MS);
+      try {
+        assertEvmFeeEstimateApproved(approval, { estimatedGas: gasLimit, balance, sampledBlockGasLimit: sampled.gasLimit,
+          ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, now);
+      } catch (error) {
+        return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
+      }
+      await this.canonical(read, sampled);
+      await this.checkChain(read);
+      return Object.freeze({ transaction, balanceUnits: balance.toString(),
+        maximumFeeUnits: approval.maximumFeeUnits, totalUnits: approval.maximumTotalUnits });
+    }, true);
   }
 
   /** One SDK fee policy serves live native/token preparation and exact-envelope requotes. */

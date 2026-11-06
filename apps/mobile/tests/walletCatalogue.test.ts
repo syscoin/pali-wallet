@@ -458,10 +458,11 @@ test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and
     const owner = { walletFingerprint: f.identity.walletFingerprint, address: signer.address, chainId: '1' };
     const history = new NativeActivityHistory(f.storage.keyringStorage);
     const archiveConfirmed = async (activity: import('../src/activity/types.ts').LocalActivityRecord) => {
-      const { operation, transactionType, originalHash, ...record } = activity;
+      const { operation, transactionType, originalHash, speedUpEligible, ...record } = activity;
       assert.equal(operation, 'send');
       assert.equal(transactionType, 2);
       assert.equal(originalHash, undefined);
+      assert.equal(speedUpEligible, true);
       assert.ok(record.recipient);
       await history.archiveTerminal({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
     };
