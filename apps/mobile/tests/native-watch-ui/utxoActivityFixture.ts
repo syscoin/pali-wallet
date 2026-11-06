@@ -1,5 +1,6 @@
 // Public synthetic account-history data. The real authority, shared SJS reader
 // and WatchSession remain in use; no signing or live endpoint is available.
+import { utils } from 'syscoinjs-lib';
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import { UTXO_ADDRESSES } from '../publicWatchFixtures';
 import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from '../sentryNodeFixtures';
@@ -40,13 +41,17 @@ function assetData() {
 }
 function transaction(n: number, network: ReturnType<typeof getUtxoNetwork>): Record<string, any> {
   const address = UTXO_ADDRESSES[network.id as keyof typeof UTXO_ADDRESSES];
+  const recipient = utils.bitcoinjs.payments.p2pkh({
+    hash: new Uint8Array(20).fill(17),
+    network: network.addressNetwork,
+  }).address!;
   const pending = mode === 'pending' && n === 1;
     return { txid: mode === 'sentry' && n === 1 ? SENTRY_TXID : id(n + (mode.startsWith('asset') ? (modes.indexOf(mode) + 1) * 1000 : 0)), blockHeight: pending ? -1 : 190, blockHash: pending ? undefined : 'b'.repeat(64), confirmations: pending || mode === 'included' ? 0 : 11, blockTime: pending ? 0 : 1700000000,
       valueIn: '1100000000', value: '1000000000', fees: '100000000',
       ...(mode === 'unknown' ? {} : { addressValueIn: '1100000000', addressValueOut: '100000000' }),
       ...(mode === 'asset' ? { tokenType: 'SPT', memo: '<img src=hostile>', tokenTransfers: [{ value: '999999999' }] } : {}),
       vin: [{ n: 0, txid: id(900), addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '1100000000' }],
-      vout: [{ n: 0, addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '100000000' }, { n: 1, addresses: ['1UnrelatedLegacyAddress'], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: false }), value: '900000000' }], ...assetData() };
+      vout: [{ n: 0, addresses: [address], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: true }), value: '100000000' }, { n: 1, addresses: [recipient], isAddress: true, ...(mode === 'unknown' ? {} : { isOwn: false }), value: '900000000' }], ...assetData() };
 }
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 export async function activityFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response | null> {

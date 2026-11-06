@@ -99,6 +99,7 @@ test('seeded UTXO Activity uses the shared list and detail at 320 pixels', async
   await row.press('Enter');
   await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
   await expect(page.getByText('Whole transaction fee: 1.0 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByText('12ZEw5Hcv1hTb6YUQJ69y1V7uhcoDz92PH', { exact: true })).toBeVisible();
   expect((await calls()).filter(url => /\/api\/v2\/tx\//.test(url))).toHaveLength(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
   await page.screenshot({ path: testInfo.outputPath('seeded-utxo-activity-detail-320.png') });

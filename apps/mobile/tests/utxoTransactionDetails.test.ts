@@ -7,7 +7,7 @@ import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/pub
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { createUtxoTransactionDetailsCache } from '../../../source/shared/utxoTransactionDetailCache.ts';
-import { XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
+import { UTXO_ADDRESSES, XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
 const H = 'ab'.repeat(32), BLOCK = 'cd'.repeat(32), OTHER = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
 const signal = () => new AbortController().signal;
@@ -58,6 +58,22 @@ test('selected detail uses actual SJS raw transport/shared ownership and keeps D
     assert.deepEqual(Object.keys(result).sort(), ['from', 'row', 'to', 'txid']);
     assert.ok(!JSON.stringify(result).includes(XPUB) && !JSON.stringify(result).includes('PRIVATE-RAW-HEX'));
     assert.deepEqual(f.writes, []);
+  } finally { owner.lock(); }
+});
+
+test('detail exposes only canonical network addresses and drops decorated account identifiers', async () => {
+  const f = fixture(), owner = await f.open();
+  try {
+    await owner.readUtxoActivityPage({ page: 1 }, signal());
+    f.full = { ...f.summary(),
+      vin: [{ value: '1100000000', addresses: [f.address.toUpperCase(), `${f.identifier}/0/0`, 'unverified-input'] }],
+      vout: [{ value: '100000000', addresses: [f.address, f.address.toUpperCase(), 'unverified-output'] },
+        { value: '900000000', addresses: [UTXO_ADDRESSES.syscoin, OTHER] }],
+    };
+    const detail = await owner.readUtxoActivityDetail({ txid: H }, signal());
+    assert.deepEqual(detail.from, [f.address]);
+    assert.deepEqual(detail.to, [f.address, OTHER]);
+    assert.deepEqual(f.calls.slice(3), ['/api/v2/', '/api/v2/block-index/0', '/api/v2/tx/' + H]);
   } finally { owner.lock(); }
 });
 

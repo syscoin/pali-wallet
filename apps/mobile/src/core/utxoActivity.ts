@@ -66,6 +66,14 @@ function context(value: UtxoActivityContext, network: UtxoNetwork): UtxoActivity
   if (network.id !== value.networkId) return fail('CHANGED');
   return Object.freeze({ accountId: value.accountId, networkId: network.id, address: normalizeUtxoAddress(value.address, network), generation: value.generation });
 }
+function networkParticipantAddresses(values: readonly string[], network: UtxoNetwork): string[] {
+  const addresses = new Set<string>();
+  for (const value of values) {
+    try { addresses.add(normalizeUtxoAddress(value, network)); }
+    catch { /* Unrecognized provider text is not a participant address. */ }
+  }
+  return [...addresses];
+}
 function units(value: unknown): string | null {
   // Same bounded native amount domain used by the public balance surface.
   if (typeof value === 'string' && value.length > UTXO_ACTIVITY_LIMITS.nativeIntegerDigits) return null;
@@ -264,9 +272,12 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       });
       check();
       const merged = mergeAccountSummaryWithFullTransaction(summary, full, accepted.observation);
-      const row = projectTransaction(merged), from = getSendingAddresses(merged), to = getReceivingAddresses(merged);
-      assertJsonWorkBudget({ from, to }, 32768, 4, 2048);
-      if (isAccount && [...from, ...to].some(value => value === identifier)) return fail('INVALID');
+      const row = projectTransaction(merged);
+      const raw = { from: getSendingAddresses(merged), to: getReceivingAddresses(merged) };
+      assertJsonWorkBudget(raw, 32768, 4, 2048);
+      if (isAccount && (raw.from.includes(identifier) || raw.to.includes(identifier))) return fail('INVALID');
+      const from = networkParticipantAddresses(raw.from, network);
+      const to = networkParticipantAddresses(raw.to, network);
       check();
       const proTxHash = readSentry ? publicSentryRegistration(network, row, full) : undefined;
       const readPublicNode: UtxoActivityDetail['readSentryNode'] = proTxHash === undefined ? undefined
