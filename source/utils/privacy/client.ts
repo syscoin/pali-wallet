@@ -1,6 +1,7 @@
 import {
   createPrivacyRpc,
   PRIVACY_POOL_ABI,
+  readPrivacyJson,
   readPrivacyPoolSnapshot,
   verifyPrivacySnapshotAnchor,
 } from './publicSyncProtocol';
@@ -12,34 +13,10 @@ import type { PrivacyPoolId, PrivacySnapshot } from './types';
 export { validatePrivacyRpcUrl, validateSnapshot } from './snapshotValidation';
 export { PRIVACY_SERVICE_URL } from './publicSyncProtocol';
 
-async function readJson(response: Response, limit: number): Promise<unknown> {
-  const declared = response.headers.get('content-length');
-  if (declared && Number(declared) > limit)
-    throw new Error('privacy_data_invalid');
-  if (!response.body) throw new Error('privacy_data_invalid');
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder('utf-8', { fatal: true });
-  let length = 0;
-  let text = '';
-  try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      length += value.byteLength;
-      if (length > limit) throw new Error('privacy_data_invalid');
-      text += decoder.decode(value, { stream: true });
-    }
-    text += decoder.decode();
-    return JSON.parse(text);
-  } finally {
-    await reader.cancel().catch(() => undefined);
-  }
-}
-
 const requestJson: PrivacyJsonTransport = async (url, init, responseLimit) => {
   const response = await fetch(url, init);
   return {
-    data: await readJson(response, responseLimit(response)),
+    data: await readPrivacyJson(response, responseLimit(response)),
     status: response.status,
   };
 };

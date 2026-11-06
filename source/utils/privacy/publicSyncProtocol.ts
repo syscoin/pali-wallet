@@ -33,6 +33,33 @@ export const PRIVACY_POOL_ABI = new Interface([
   'function isSpent(bytes32 nullifierHash) view returns (bool)',
 ]);
 
+export async function readPrivacyJson(
+  response: Response,
+  limit: number
+): Promise<unknown> {
+  const declared = response.headers.get('content-length');
+  if (declared && Number(declared) > limit)
+    throw new Error('privacy_data_invalid');
+  if (!response.body) throw new Error('privacy_data_invalid');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder('utf-8', { fatal: true });
+  let length = 0;
+  let text = '';
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      length += value.byteLength;
+      if (length > limit) throw new Error('privacy_data_invalid');
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return JSON.parse(text);
+  } finally {
+    await reader.cancel().catch(() => undefined);
+  }
+}
+
 export async function readPrivacyPoolSnapshot(
   poolId: PrivacyPoolId,
   signal: AbortSignal,
@@ -64,6 +91,35 @@ export async function readPrivacyPoolSnapshot(
   return data;
 }
 
+function privacyRpcResponseLimit(block: boolean): number {
+  return block ? MAX_BLOCK_RPC_BYTES : MAX_SCALAR_RPC_BYTES;
+}
+
+function privacyRpcResult(data: unknown, id: number) {
+  const body: any = data;
+  if (
+    !body ||
+    body.jsonrpc !== '2.0' ||
+    body.id !== id ||
+    body.error ||
+    !('result' in body)
+  )
+    throw new Error('privacy_rpc_unavailable');
+  return body.result;
+}
+
+export async function readPrivacyRpcResponse(
+  response: Response,
+  id: number,
+  block: boolean
+) {
+  if (!response.ok) throw new Error('privacy_rpc_unavailable');
+  return privacyRpcResult(
+    await readPrivacyJson(response, privacyRpcResponseLimit(block)),
+    id
+  );
+}
+
 export function createPrivacyRpc(requestJson: PrivacyJsonTransport) {
   let requestId = 0;
   return async function rpc(
@@ -85,40 +141,61 @@ export function createPrivacyRpc(requestJson: PrivacyJsonTransport) {
       },
       ({ ok }) => {
         if (!ok) throw new Error('privacy_rpc_unavailable');
-        return method === 'eth_getBlockByNumber' ||
-          method === 'eth_getTransactionReceipt'
-          ? MAX_BLOCK_RPC_BYTES
-          : MAX_SCALAR_RPC_BYTES;
+        return privacyRpcResponseLimit(
+          method === 'eth_getBlockByNumber' ||
+            method === 'eth_getTransactionReceipt'
+        );
       }
     );
-    const body: any = data;
-    if (
-      !body ||
-      body.jsonrpc !== '2.0' ||
-      body.id !== id ||
-      body.error ||
-      !('result' in body)
-    )
-      throw new Error('privacy_rpc_unavailable');
-    return body.result;
+    return privacyRpcResult(data, id);
   };
 }
+
+const anchorScalars = [
+  'nextIndex',
+  'getLastRoot',
+  'levels',
+  'denomination',
+] as const;
+
+export type PrivacyAnchorRead =
+  | 'chainId'
+  | 'block'
+  | 'isKnownRoot'
+  | (typeof anchorScalars)[number];
+
+type PrivacyAnchorFacts = Pick<
+  PrivacySnapshot,
+  'asOfBlockNumber' | 'asOfBlockHash' | 'leafCount' | 'root'
+>;
+
+type PrivacyAnchorAccess =
+  | ReturnType<typeof createPrivacyRpc>
+  | Readonly<{ read(kind: PrivacyAnchorRead): Promise<unknown> }>;
 
 // Read the selected Ethereum RPC independently of Sysnode, never its RPC URL.
 // Number-pinned eth_call is guarded by matching block hashes before and after.
 export async function verifyPrivacySnapshotAnchor(
   poolId: PrivacyPoolId,
-  snapshot: PrivacySnapshot,
+  snapshot: PrivacyAnchorFacts,
   rpcUrl: string,
   signal: AbortSignal,
-  rpc: ReturnType<typeof createPrivacyRpc>
+  access: PrivacyAnchorAccess
 ): Promise<{ blockTimestamp: number }> {
   const pool = getPrivacyPool(poolId);
   const url = validatePrivacyRpcUrl(rpcUrl);
-  if ((await rpc(url, 'eth_chainId', [], signal)) !== '0x1')
+  const owned = typeof access !== 'function';
+  const query = (kind: PrivacyAnchorRead, method: string, params: unknown[]) =>
+    owned ? access.read(kind) : access(url, method, params, signal);
+  if ((await query('chainId', 'eth_chainId', [])) !== '0x1')
     throw new Error('privacy_wrong_chain');
   const tag = toQuantity(snapshot.asOfBlockNumber);
-  const block = () => rpc(url, 'eth_getBlockByNumber', [tag, false], signal);
+  const block = () =>
+    query('block', 'eth_getBlockByNumber', [tag, false]) as Promise<{
+      hash?: string;
+      number?: string;
+      timestamp?: unknown;
+    } | null>;
   const before = await block();
   if (
     before?.hash?.toLowerCase() !== snapshot.asOfBlockHash ||
@@ -138,24 +215,18 @@ export async function verifyPrivacySnapshotAnchor(
   const blockTimestamp = Number(BigInt(timestamp)) * 1000;
   if (!Number.isSafeInteger(blockTimestamp) || blockTimestamp <= 0)
     throw new Error('privacy_rpc_unavailable');
-  const read = async (fn: string) => {
-    const result = await rpc(
-      url,
-      'eth_call',
-      [
-        { to: pool.address, data: PRIVACY_POOL_ABI.encodeFunctionData(fn) },
-        tag,
-      ],
-      signal
-    );
-    return PRIVACY_POOL_ABI.decodeFunctionResult(fn, result)[0];
+  const read = async (fn: (typeof anchorScalars)[number]) => {
+    const result = await query(fn, 'eth_call', [
+      { to: pool.address, data: PRIVACY_POOL_ABI.encodeFunctionData(fn) },
+      tag,
+    ]);
+    return PRIVACY_POOL_ABI.decodeFunctionResult(fn, result as string)[0];
   };
-  const [count, root, levels, denomination] = await Promise.all([
-    read('nextIndex'),
-    read('getLastRoot'),
-    read('levels'),
-    read('denomination'),
-  ]);
+  const scalars = owned ? [] : await Promise.all(anchorScalars.map(read));
+  if (owned) {
+    for (const fn of anchorScalars) scalars.push(await read(fn));
+  }
+  const [count, root, levels, denomination] = scalars;
   const after = await block();
   if (
     after?.hash !== before.hash ||
@@ -172,20 +243,15 @@ export async function verifyPrivacySnapshotAnchor(
     throw new Error('privacy_verification_failed');
   const known = PRIVACY_POOL_ABI.decodeFunctionResult(
     'isKnownRoot',
-    await rpc(
-      url,
-      'eth_call',
-      [
-        {
-          to: pool.address,
-          data: PRIVACY_POOL_ABI.encodeFunctionData('isKnownRoot', [
-            snapshot.root,
-          ]),
-        },
-        'latest',
-      ],
-      signal
-    )
+    (await query('isKnownRoot', 'eth_call', [
+      {
+        to: pool.address,
+        data: PRIVACY_POOL_ABI.encodeFunctionData('isKnownRoot', [
+          snapshot.root,
+        ]),
+      },
+      'latest',
+    ])) as string
   )[0];
   if (known !== true) throw new Error('privacy_snapshot_stale');
   return { blockTimestamp };
