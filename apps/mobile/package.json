@@ -21,7 +21,7 @@
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
     "@noble/curves": "1.9.7",
-    "@sidhujag/sysweb3-keyring": "file:vendor/sysweb3-keyring-2.1.5-speedup-6a4b2a3.tgz",
+    "@sidhujag/sysweb3-keyring": "2.1.6",
     "@sidhujag/sysweb3-network": "2.0.0",
     "assert": "2.1.0",
     "bech32": "2.0.0",
@@ -62,8 +62,6 @@
   "overrides": {
     "glob": "14.0.3",
     "minimatch": "11.0.4",
-    "syscoinjs-lib": "$syscoinjs-lib",
-    "syscointx-js": "$syscointx-js",
     "axios@<1.20.0": "1.21.0",
     "jws": "^4.0.1",
     "isomorphic-fetch@2.2.1": {

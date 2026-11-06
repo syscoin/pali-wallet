@@ -2708,10 +2708,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz#b13e85229a1aeb727a9616719ea4ba8bed14e691"
   integrity sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==
 
-"@sidhujag/sysweb3-keyring@file:apps/mobile/vendor/sysweb3-keyring-2.1.5-speedup-6a4b2a3.tgz":
-  version "2.1.5"
-  resolved "file:apps/mobile/vendor/sysweb3-keyring-2.1.5-speedup-6a4b2a3.tgz#b790affedfc29ec3fe5696e918f1ef42e2fa680e"
-  integrity sha512-G4Rqc+jC8i8yxTR4jXS0bHqUwHcQXtmy2Aror/5aLPYIq3rCW6WzVThogM+R2WIopzk+czhUp3zcVsNsGaoy4Q==
+"@sidhujag/sysweb3-keyring@2.1.6":
+  version "2.1.6"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.6.tgz#ecf1f6a938a3de3b3592584b5346d936828acb2f"
+  integrity sha512-uSyyzGD7gPY8FQiL9l2qZC/TaYtmWb7b9IyrvHzPO8ZooOqS147eqJ13o7W7MgmafsKJe2qxUigoNVCrQbz+mw==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -2721,7 +2721,7 @@
     "@metamask/eth-sig-util" "^8.2.0"
     "@sidhujag/sysweb3-core" "1.0.30"
     "@sidhujag/sysweb3-network" "2.0.0"
-    "@sidhujag/sysweb3-utils" "1.1.281"
+    "@sidhujag/sysweb3-utils" "1.1.282"
     "@trezor/connect-webextension" "10.0.1"
     bip32 "^5.0.1"
     bip32-path "^0.4.2"
@@ -2752,10 +2752,10 @@
     "@noble/post-quantum" "0.7.1"
     "@scure/base" "2.4.0"
 
-"@sidhujag/sysweb3-utils@1.1.281":
-  version "1.1.281"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.281.tgz#1cca75264f512844bb37622b9f3bff190ecc75f8"
-  integrity sha512-Tm12mm3guA0DEY5UXzF7X063A9F5HnJpbBjNwqldX7W2xWzBPwwvhez4oDujNdDuh9vZqQjiptmfE7nVwbOICA==
+"@sidhujag/sysweb3-utils@1.1.282":
+  version "1.1.282"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-utils/-/sysweb3-utils-1.1.282.tgz#b3cb072c77ec9ca82cc63e69a59b1c357410a4dd"
+  integrity sha512-uUdQr4gN/OEjWRGY0eZOIVqUomYQtxrdNWKGJUlBYtjpbdc7CDLTgKpH+0H6dT9R7xGe7MYvoU69AQmn9M2h3g==
   dependencies:
     "@sidhujag/sysweb3-network" "2.0.0"
     bech32 "^2.0.0"
