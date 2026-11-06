@@ -1167,8 +1167,8 @@ export class NativeTransfers {
     }
     return this.perform(async ({ assertCurrent, runtime, context, rpc }) => {
       this.review = null;
-      this.publish({ phase: 'preparing', context, review: null, message: null,
-        collectible: undefined, inspectionOnly: false });
+      this.publish({ phase: 'preparing', context, review: null, hash: null, message: null,
+        intent: null, collectible: undefined, inspectionOnly: false });
       assertCurrent();
       let selected = hash;
       if (!selected) { const entry = await (await runtime.journal(assertCurrent)).load(); assertCurrent(); selected = entry?.hash; }
@@ -1181,7 +1181,14 @@ export class NativeTransfers {
           throw new NativeTransferError('CANCELLED');
       };
       const replay = runtime.replay(current, {
-        observe: ({ hash, from, to, nonce }) => rpc.observation({ hash, from, to, nonce }, abort.signal),
+        observe: ({ hash, from, to, nonce }) => {
+          // Replay calls this only after the selected record is authenticated for
+          // the current wallet and network. Keep its identity if the RPC read fails.
+          current();
+          if (this.snapshot.hash !== hash) this.publish({ hash });
+          current();
+          return rpc.observation({ hash, from, to, nonce }, abort.signal);
+        },
         dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, { mode: 'replay', admit, context }),
       }, { now: this.now, randomBytes: this.randomBytes });
       this.replay = replay;

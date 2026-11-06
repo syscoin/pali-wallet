@@ -570,6 +570,8 @@ export function NativeSend({
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
                     ? 'Checking submission'
+                    : snapshot.phase === 'unavailable'
+                    ? 'Status unavailable'
                     : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transfer pending'}
                 </Text>
               </View>
@@ -587,6 +589,7 @@ export function NativeSend({
                 }
                 tone={
                   snapshot.phase === 'unknown' ||
+                  snapshot.phase === 'unavailable' ||
                   snapshot.phase === 'reverted' ||
                   snapshot.phase === 'nonce-consumed'
                     ? 'amber'

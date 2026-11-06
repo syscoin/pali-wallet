@@ -164,6 +164,34 @@ test('real ERC20 controller shows asset intent and preserves exact signed bytes 
   ).toBeVisible();
 });
 
+test('saved recovery remains actionable through an observation outage', async ({ page }, info) => {
+  await page.goto('/?erc20-send');
+  await prepare(page);
+  await page.getByTestId('native-send-confirm').click();
+  const hash = await page.getByTestId('native-send-hash').textContent();
+  expect(hash).toBeTruthy();
+
+  // Activity opens the retained transaction after the original lost ACK.
+  await page.goto(`/?erc20-send&saved=${hash!}&observation-unavailable`);
+  await expect(page.getByTestId('native-send-hash')).toHaveText(hash!);
+  await expect(page.getByText('Status unavailable', { exact: true })).toBeVisible();
+  await page.screenshot({ path: info.outputPath('saved-status-unavailable.png') });
+  await expect(page.getByRole('button', { name: 'Check status', exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-send-review')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Review retry', exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(0);
+
+  await page.evaluate(() => window.__erc20SendFixture.restoreObservation());
+  await page.getByRole('button', { name: 'Check status', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Review retry', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Review retry', exact: true }).click();
+  await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
+  await page.screenshot({ path: info.outputPath('saved-status-retry-review.png') });
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(0);
+});
+
 test('a fresh Send opens an editable form while the prior payment remains recoverable', async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/?erc20-send&multiple-pending');

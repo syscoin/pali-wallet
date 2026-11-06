@@ -42,6 +42,7 @@ function fixture() {
   let dropped = false;
   let final = false;
   let receiptMissing = false;
+  let observationUnavailable = false;
   let signatures = 0;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
@@ -125,6 +126,8 @@ function fixture() {
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
+      if (observationUnavailable && body.method === 'eth_getTransactionReceipt')
+        throw Error('Observation unavailable');
       let result: unknown;
       if (body.method === 'eth_chainId') {
         if (Object.keys(records).length > 0 && beforeBroadcastChainResponse)
@@ -227,6 +230,9 @@ function fixture() {
     },
     loseAcknowledgment() {
       dropped = true;
+    },
+    setObservationUnavailable(value: boolean) {
+      observationUnavailable = value;
     },
     finalize() {
       final = true;
@@ -633,6 +639,39 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 2);
     assert.equal(f.broadcasts[0], f.broadcasts[1]);
+  } finally {
+    f.close();
+  }
+});
+test('a saved transaction stays visible when status observation is unavailable', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.loseAcknowledgment();
+    await f.transfers.confirm(approved.id);
+    const hash = f.transfers.getSnapshot().hash!;
+    assert(hash);
+    const retained = JSON.stringify(f.records);
+    f.transfers.cancel(); // Activity opens a fresh recovery screen.
+    f.setObservationUnavailable(true);
+    await assert.rejects(f.transfers.recover(true, hash), { code: 'FAILED' });
+    const unavailable = f.transfers.getSnapshot();
+    assert.equal(unavailable.phase, 'unavailable');
+    assert.equal(unavailable.hash, hash);
+    assert.equal(unavailable.review, null);
+    assert(!JSON.stringify(unavailable).includes(f.broadcasts[0]!));
+    assert.equal(JSON.stringify(f.records), retained);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+
+    f.setObservationUnavailable(false);
+    await f.transfers.recover(false, hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+    assert.equal(f.transfers.getSnapshot().hash, hash);
+    await f.transfers.recover(true, hash);
+    assert.equal(f.transfers.getSnapshot().review?.replay?.hash, hash);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
   } finally {
     f.close();
   }

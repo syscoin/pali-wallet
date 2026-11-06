@@ -74,6 +74,7 @@ const rpcMethods: string[] = [];
 let signatures = 0;
 let unlockChecks = 0;
 let finalized = false;
+let observationUnavailable = new URLSearchParams(window.location.search).has('observation-unavailable');
 let loseResponse = true;
 let pendingNonce = '0x0';
 let heldQuote: Promise<void> | null = null;
@@ -91,6 +92,8 @@ const rpc = new NativeTransferRpc({
   fetch: async (_url, init) => {
     const request = JSON.parse(String(init.body));
     rpcMethods.push(request.method);
+    if (observationUnavailable && request.method === 'eth_getTransactionReceipt')
+      throw Error('Synthetic observation outage');
     if (request.method === 'eth_gasPrice' && heldQuote) await heldQuote;
     let result: unknown;
     if (request.method === 'eth_chainId') result = '0x1';
@@ -207,6 +210,7 @@ declare global {
       rpcMethods(): readonly string[];
       journal(): unknown;
       finalized(): void;
+      restoreObservation(): void;
       revise(): void;
       setRuntimePrecision(value: number): void;
       acceptBroadcasts(): void;
@@ -260,6 +264,9 @@ window.__erc20SendFixture = {
   journal: () => localStorage.getItem(key('signed-records')),
   finalized: () => {
     finalized = true;
+  },
+  restoreObservation: () => {
+    observationUnavailable = false;
   },
   revise() {
     state = Object.freeze({ ...state, revision: state.revision + 1 });

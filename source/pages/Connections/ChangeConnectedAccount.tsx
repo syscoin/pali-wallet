@@ -15,6 +15,7 @@ import {
   selectAccountAssets,
 } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
+import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
@@ -24,7 +25,7 @@ export const ChangeConnectedAccount = () => {
   const { t } = useTranslation();
   const activeAccountRef = useSelector(selectActiveAccountRef);
   const activeAccount = useSelector(selectActiveAccount);
-  const { activeNetwork, isBitcoinBased } = useSelector(
+  const { accounts, activeNetwork, isBitcoinBased } = useSelector(
     (state: RootState) => state.vault
   );
   const accountAssets = useSelector(selectAccountAssets);
@@ -33,24 +34,43 @@ export const ChangeConnectedAccount = () => {
   const { host, eventName, connectedAccount, accountType } = useQueryData();
   const [isChanging, setIsChanging] = useState(false);
   const [switchError, setSwitchError] = useState('');
-  const canSwitchAccount =
-    Boolean(connectedAccount) &&
-    canPublishAccountAddress(
-      connectedAccount,
-      accountType,
-      activeNetwork?.chainId
-    );
+  // The popup query contains only the public ID, address and label. Resolve
+  // smart-account metadata from the vault, never from the popup URL.
+  const resolveSmartAccount = (
+    currentAccounts: RootState['vault']['accounts'],
+    currentNetwork: RootState['vault']['activeNetwork']
+  ) => {
+    const current =
+      currentAccounts?.[KeyringAccountType.SmartAccount]?.[
+        connectedAccount?.id
+      ];
+    return current &&
+      current.address === connectedAccount?.address &&
+      isAccountCompatibleWithNetwork(current, accountType, currentNetwork) &&
+      canPublishAccountAddress(current, accountType, currentNetwork.chainId)
+      ? current
+      : undefined;
+  };
+  const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
+  const verifiedAccount = isSmartAccount
+    ? resolveSmartAccount(accounts, activeNetwork)
+    : undefined;
+  const requiredAccount = isSmartAccount
+    ? verifiedAccount || {
+        id: connectedAccount?.id,
+        label: connectedAccount?.label,
+      }
+    : connectedAccount;
+  const canSwitchAccount = isSmartAccount
+    ? Boolean(verifiedAccount)
+    : Boolean(connectedAccount);
 
   const handleAccept = async () => {
     if (!canSwitchAccount) return;
-    if (accountType === KeyringAccountType.SmartAccount) {
-      const { accounts, activeNetwork: currentNetwork } =
+    if (isSmartAccount) {
+      const { accounts: currentAccounts, activeNetwork: currentNetwork } =
         store.getState().vault;
-      const current = accounts[accountType]?.[connectedAccount.id];
-      if (
-        current?.address !== connectedAccount.address ||
-        !canPublishAccountAddress(current, accountType, currentNetwork?.chainId)
-      ) {
+      if (!resolveSmartAccount(currentAccounts, currentNetwork)) {
         setSwitchError(t('receive.addressUnavailable'));
         return;
       }
@@ -77,12 +97,15 @@ export const ChangeConnectedAccount = () => {
   };
 
   // Get tokens for both accounts
-  const connectedAccountTokens = getAccountReviewTokens(
-    accountAssets,
-    isBitcoinBased,
-    connectedAccount,
-    accountType
-  );
+  const connectedAccountTokens =
+    isSmartAccount && !verifiedAccount
+      ? []
+      : getAccountReviewTokens(
+          accountAssets,
+          isBitcoinBased,
+          requiredAccount,
+          accountType
+        );
   const activeAccountTokens = getAccountReviewTokens(
     accountAssets,
     isBitcoinBased,
@@ -165,23 +188,25 @@ export const ChangeConnectedAccount = () => {
                 )}
               </div>
             </div>
-            {/* Keep the loading skeleton and a short balance in one footprint. */}
-            <div className="ml-auto flex items-center justify-end gap-3 flex-shrink-0 min-w-[80px] min-h-10">
-              <div className="text-right">
-                <LazyAccountBalance
-                  account={account}
-                  accountType={type}
-                  showFiat={true}
-                  showSkeleton={true}
-                  precision={8}
-                />
-                {tokens && tokens.length > 0 && (
-                  <div className="mt-0.5 flex justify-end">
-                    <TokenIconStack tokens={tokens} />
-                  </div>
-                )}
+            {/* Only display balances and assets for the verified identity. */}
+            {address && (
+              <div className="ml-auto flex items-center justify-end gap-3 flex-shrink-0 min-w-[80px] min-h-10">
+                <div className="text-right">
+                  <LazyAccountBalance
+                    account={account}
+                    accountType={type}
+                    showFiat={true}
+                    showSkeleton={true}
+                    precision={8}
+                  />
+                  {tokens && tokens.length > 0 && (
+                    <div className="mt-0.5 flex justify-end">
+                      <TokenIconStack tokens={tokens} />
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
@@ -213,7 +238,7 @@ export const ChangeConnectedAccount = () => {
         {/* Account comparison */}
         <div className="px-6 py-6 space-y-4">
           {renderAccountCard(
-            connectedAccount,
+            requiredAccount,
             accountType,
             connectedAccountTokens,
             true
