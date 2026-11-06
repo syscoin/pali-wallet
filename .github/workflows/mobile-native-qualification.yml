@@ -47,6 +47,8 @@ on:
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/utils/psbtWorkBudget.ts'
+      - 'source/utils/slhDsa/constants.ts'
+      - 'source/utils/slhDsa/hex.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
       - 'source/utils/tokenDiscovery.ts'
@@ -101,6 +103,7 @@ jobs:
             -module-cache-path "$RUNNER_TEMP/pali-snapshot-swift-cache" \
             -D PALI_SNAPSHOT_LOOPBACK -parse-as-library \
             "$snapshot_module/ios/PaliPublicSnapshotDownload.swift" \
+            "$snapshot_module/ios/PaliPublicSnapshotBridge.swift" \
             "$snapshot_module/tests/PublicSnapshotDownloadChecks.swift" \
             -o "$snapshot_binary" 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
           SWIFT_BACKTRACE=enable=no python3 "$snapshot_module/tests/public_snapshot_loopback.py" \
