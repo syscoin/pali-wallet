@@ -55,6 +55,10 @@ const failure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'CANCELLATION_QUEUED')
+    return hasSavedTransaction
+      ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
+      : 'This cancellation must wait for earlier transactions. Check Activity before trying again.';
   if (code === 'INVALID_NONCE') return 'Enter a valid whole number for the nonce.';
   if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
   if (code === 'NONCE_UNAVAILABLE')
@@ -320,7 +324,9 @@ export function NativeSend({
       const captured = lifetime.current.epoch;
       void prepareReplacement(replacementHash).catch((cause) => {
         if (lifetime.current.alive && captured === lifetime.current.epoch)
-          setError(cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
+          setError(cause instanceof Error && cause.message === 'CANCELLATION_QUEUED'
+            ? 'This cancellation must wait for earlier transactions. Check Activity before trying again.'
+            : cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
             ? 'The account cannot cover the replacement amount and maximum fee.'
             : replacementMode === 'cancel-saved'
               ? 'Pali could not verify that this saved transaction can still be cancelled.'

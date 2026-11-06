@@ -574,6 +574,23 @@ async function cancellationFixture(type: 0 | 2 = 2) {
   };
 }
 
+test('queued pending cancellation reports the earlier nonce without signing', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001', '1');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const originalHash = f.transfers.getSnapshot().hash!;
+    f.replacement.pending = true;
+    await assert.rejects(f.transfers.prepareCancellation(originalHash), { code: 'CANCELLATION_QUEUED' });
+    assert.equal(f.transfers.getSnapshot().message,
+      'This cancellation must wait for earlier transactions. Check Activity before trying again.');
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+  } finally {
+    await f.close();
+  }
+});
+
 async function prepareSavedCancellation(f: Awaited<ReturnType<typeof cancellationFixture>>) {
   await f.transfers.prepare(RECIPIENT, '0.001');
   await f.transfers.confirm(f.transfers.getSnapshot().review!.id);

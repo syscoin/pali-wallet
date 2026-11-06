@@ -112,6 +112,7 @@ export class NativeTransferRpcError extends Error {
     | 'UNAVAILABLE'
     | 'REVIEW_REQUIRED'
     | 'NONCE_UNAVAILABLE'
+    | 'CANCELLATION_QUEUED'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
     | 'INSUFFICIENT_NFT_BALANCE'
@@ -356,7 +357,7 @@ export class NativeTransferRpc {
       if (error.code === 'INSUFFICIENT_BALANCE') throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
       if (error.code === 'INSUFFICIENT_NFT_BALANCE' || error.code === 'NFT_TRANSFER_REJECTED')
         throw new NativeTransferRpcError(error.code);
-      if (error.code === 'REVIEW_REQUIRED' || error.code === 'NONCE_UNAVAILABLE') throw new NativeTransferRpcError(error.code);
+      if (error.code === 'REVIEW_REQUIRED' || error.code === 'NONCE_UNAVAILABLE' || error.code === 'CANCELLATION_QUEUED') throw new NativeTransferRpcError(error.code);
       if (error.code === 'CANCELLED') throw new NativeTransferRpcError('CANCELLED');
       if (error.code === 'INVALID_INPUT' || error.code === 'INVALID_RESPONSE' || error.code === 'PROFILE_CHANGED') throw new NativeTransferRpcError('INVALID_RESPONSE');
     }
@@ -633,6 +634,8 @@ export class NativeTransferRpc {
               hash: original.hash, nonce: String(original.nonce),
             }, (method, params) => this.call(method, params, local), assertActive);
           } catch (error) {
+            if (error instanceof EvmCancellationNonceError && error.reason === 'queued')
+              throw new NativeTransferRpcError('CANCELLATION_QUEUED');
             if (error instanceof EvmObservationError || error instanceof EvmCancellationNonceError ||
                 error instanceof EvmCancellationPayerCodeError)
               throw new NativeTransferRpcError('REVIEW_REQUIRED');
@@ -666,13 +669,15 @@ export class NativeTransferRpc {
           return;
         }
         if (!cancellation) return;
-        const { from, nonce } = cancellation;
+        const { from, nonce, operation } = cancellation;
         const assertPayerReady = () =>
           assertEvmCancellationPayerReady(
             from, nonce,
             (method, address, tag) => this.call(method, [address, tag], local),
             assertActive
           ).catch((error) => {
+            if (error instanceof EvmCancellationNonceError && error.reason === 'queued' && operation === 'cancel')
+              throw new NativeTransferRpcError('CANCELLATION_QUEUED');
             if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
               throw new NativeTransferRpcError('REVIEW_REQUIRED');
             throw error;

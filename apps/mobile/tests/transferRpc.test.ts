@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { assertEvmCancellationNonceReady } from '../../../source/shared/evmCancellationPayer.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission } from '../../../source/wallet/evmSignedReplay.ts';
 const sender = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
@@ -105,7 +106,7 @@ test('saved cancellation cannot POST after its queued admission loses receipt, n
   });
   await assert.rejects(dispatch(true), { code: 'REVIEW_REQUIRED' });
   nonce = '0x0';
-  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  await assert.rejects(dispatch(), { code: 'CANCELLATION_QUEUED' });
   nonce = '0x2';
   await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
   nonce = '0x1';
@@ -120,6 +121,30 @@ test('saved cancellation cannot POST after its queued admission loses receipt, n
   await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
   assert(!f.calls.some(({ method }) => method === 'eth_sendRawTransaction'));
 });
+test('cancellation nonce reason distinguishes only a validated lower count', () => {
+  assert.doesNotThrow(() => assertEvmCancellationNonceReady(1, '0x1'));
+  assert.throws(() => assertEvmCancellationNonceReady(1, '0x0'), { code: 'EVM_CANCELLATION_NONCE', reason: 'queued' });
+  for (const value of ['0x2', '0x01', '0x', '1', '0x' + '1'.repeat(65)])
+    assert.throws(() => assertEvmCancellationNonceReady(1, value), { code: 'EVM_CANCELLATION_NONCE', reason: 'unavailable' });
+  assert.throws(() => assertEvmCancellationNonceReady(-1, '0x0'), { code: 'EVM_CANCELLATION_NONCE', reason: 'unavailable' });
+  assert.throws(() => assertEvmCancellationNonceReady((1n << 256n).toString(), '0x0'), { code: 'EVM_CANCELLATION_NONCE', reason: 'unavailable' });
+});
+
+test('cancellation classifies only a validated lower latest nonce as queued', async () => {
+  const raw = await sender.signTransaction({ type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 21000, gasPrice: 150 });
+  const hash = keccak256(raw);
+  const pending = { hash, from: sender.address, to: recipient, value: '0x1', nonce: '0x1',
+    blockHash: null, blockNumber: null, transactionIndex: null };
+  for (const [latest, expected] of [['0x0', 'CANCELLATION_QUEUED'], ['0x2', 'REVIEW_REQUIRED'], ['0x01', 'REVIEW_REQUIRED']] as const) {
+    const f = fixture({ eth_getTransactionByHash: pending, eth_getTransactionReceipt: null,
+      eth_getTransactionCount: latest, eth_getCode: '0x' });
+    await assert.rejects(f.rpc.prepareCancellation(hash, raw, sender.address, signal(), () => undefined,
+      { type: 0, gasPrice: 150n }), { code: expected });
+    assert(!f.calls.some(({ method }) => method === 'eth_sendRawTransaction'));
+  }
+});
+
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
   const quote = await f.rpc.prepare(sender.address, recipient, '123', signal());
@@ -369,7 +394,7 @@ test('retained cancellation reads the latest nonce before latest and pending cod
     };
     const result = f.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context });
     if (ready) assert.equal(await result, hash);
-    else await assert.rejects(result, { code: 'REVIEW_REQUIRED' });
+    else await assert.rejects(result, { code: latestNonce === '0x0' ? 'CANCELLATION_QUEUED' : 'REVIEW_REQUIRED' });
     assert.deepEqual(f.calls.map(({ method, params }) => [method, params]), [
       ['eth_chainId', []],
       ['eth_getTransactionCount', [sender.address, 'latest']],
@@ -419,6 +444,15 @@ test('a ready retained type-1 self fee replacement preserves its exact access li
   };
   assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context }), hash);
   assert.deepEqual(f.calls.at(-1)?.params, [raw]);
+
+  // A speed-up also uses the payer check, but is not a cancellation.
+  const queued = fixture({ eth_getTransactionCount: '0x0', eth_getCode: '0x', eth_sendRawTransaction: hash });
+  const queuedAdmission: EvmReplayDispatchAdmission = async (send, preflight) => {
+    await preflight();
+    return send();
+  };
+  await assert.rejects(queued.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit: queuedAdmission, context }), { code: 'REVIEW_REQUIRED' });
+  assert(!queued.calls.some(({ method }) => method === 'eth_sendRawTransaction'));
 });
 
 test('ordinary native replay preserves shared admission failures with no cancellation reads or POST', async () => {
