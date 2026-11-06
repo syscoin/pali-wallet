@@ -82,6 +82,7 @@ import {
   createOwnedUtxoBlockbookRead,
   type UtxoBlockbookReadScope,
 } from '../../../wallet/utxoBlockbookReads';
+import { reviewSavedUtxoOutputs } from '../../../wallet/utxoSavedReview';
 import {
   createUtxoTransactionBinding,
   extractUtxoSignedTransaction,
@@ -1110,24 +1111,10 @@ class MainController {
       record.url !== utxoSubmissionUrl(network.url)
     )
       throw new Error('Saved transfer is unavailable on this network');
-    const transaction = syscoinjs.utils.bitcoinjs.Transaction.fromHex(
-      record.rawTransaction
-    );
     const { networks } = getNetworkConfig(network.slip44, network.currency);
     const addressNetwork =
       network.slip44 === 1 ? networks.testnet : networks.mainnet;
-    const outputs = transaction.outs.map((output) => {
-      let address: string;
-      try {
-        address = syscoinjs.utils.bitcoinjs.address.fromOutputScript(
-          output.script,
-          addressNetwork
-        );
-      } catch {
-        address = Buffer.from(output.script).toString('hex');
-      }
-      return { address, amountSatoshis: output.value.toString() };
-    });
+    const outputs = reviewSavedUtxoOutputs(record, addressNetwork);
     const { id } = preparing;
     utxoReviewsByWallet.set(this, {
       id,
