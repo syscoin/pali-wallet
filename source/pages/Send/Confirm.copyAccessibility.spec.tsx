@@ -150,11 +150,21 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/');
-  mockEmitter.mockImplementation(async (path: string[]) => {
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return { maxFeePerGas: '3000000000', maxPriorityFeePerGas: '0' };
-    if (method === 'getTxGasLimit') return 21000;
+    if (method === 'getFreshNativeEvmGasLimit') {
+      expect(args[1]).toEqual(mockScope);
+      return 21000;
+    }
+    if (method === 'reviewNativeEvmFee')
+      return {
+        id: 'fixture-review',
+        maximumFee: args[2],
+        validForMs: 90000,
+      };
+    if (method === 'discardNativeEvmFeeReview') return undefined;
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
   });
 });
@@ -163,9 +173,12 @@ afterEach(() => {
   // No signing, broadcast, persistence, balance mutation or navigation.
   expect(
     mockEmitter.mock.calls.every(([path]) =>
-      ['getFeeDataWithDynamicMaxPriorityFeePerGas', 'getTxGasLimit'].includes(
-        path.at(-1)
-      )
+      [
+        'getFeeDataWithDynamicMaxPriorityFeePerGas',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
+      ].includes(path.at(-1))
     )
   ).toBe(true);
   expect(mockNavigate).not.toHaveBeenCalled();
