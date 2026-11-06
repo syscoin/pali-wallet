@@ -459,6 +459,7 @@ export class NativeTransferRpc {
         inventorySignal: admission.inventorySignal, onDispatch: admission.onDispatch } : undefined;
     let nft: Readonly<{ intent: NftTransferIntent; envelope: EvmUnsignedTransfer }> | undefined;
     let speedUp: Readonly<{ transaction: Transaction; from: string }> | undefined;
+    let newSend: Readonly<{ from: string; nonce: number }> | undefined;
     let cancellation: Readonly<{ from: string; nonce: number; operation: string }> | undefined = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
       ? replay.context : undefined;
     if (
@@ -520,7 +521,10 @@ export class NativeTransferRpc {
         if (!tx.from) return invalid();
         speedUp = { transaction: tx, from: tx.from };
       }
-      if (mode === 'new-send' && isEvmEmptySelfCall(tx)) return invalid();
+      if (mode === 'new-send') {
+        if (!tx.from || isEvmEmptySelfCall(tx)) return invalid();
+        newSend = { from: tx.from, nonce: tx.nonce };
+      }
       if (cancellation && !isEvmProtectedEmptySelfCall(tx, cancellation.operation)) return invalid();
       assertEvmGasLimit(tx.gasLimit, tx.chainId);
       if (intent) assertTransferIntentEnvelope(
@@ -552,7 +556,7 @@ export class NativeTransferRpc {
       };
       const send = () => {
         assertActive();
-        if (dispatched || ((nft || mode === 'cancel-saved') && !protectedPreflightComplete))
+        if (dispatched || ((nft || newSend || mode === 'cancel-saved') && !protectedPreflightComplete))
           throw new NativeTransferRpcError('REVIEW_REQUIRED');
         if (collectible) guardedRead(collectible.onDispatch);
         dispatched = true;
@@ -591,6 +595,14 @@ export class NativeTransferRpc {
           return;
         }
         await this.checkChain(local);
+        if (newSend) {
+          const nonce = await this.call('eth_getTransactionCount', [newSend.from, 'pending'], local);
+          assertActive();
+          if (parseRpcQuantity(nonce) !== BigInt(newSend.nonce))
+            throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          protectedPreflightComplete = true;
+          return;
+        }
         if (speedUp) {
           if (original) await this.assertPendingOriginal(original, local, assertActive);
           const [rawNonce, rawBlock] = await Promise.all([

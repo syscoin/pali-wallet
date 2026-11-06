@@ -275,8 +275,8 @@ test('requires broadcast admission after preflight and never posts if admission 
     }),
     /late review/
   );
-  assert.deepEqual(methodsAtAdmission, ['eth_chainId']);
-  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
+  assert.deepEqual(methodsAtAdmission, ['eth_chainId', 'eth_getTransactionCount']);
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount']);
   const revoked = {
     mode: 'new-send' as const,
     admit: async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('review revoked'); },
@@ -284,7 +284,7 @@ test('requires broadcast admission after preflight and never posts if admission 
   const pending = f.rpc.broadcast(raw, hash, signal(), revoked);
   Object.assign(revoked, { mode: 'replay' });
   await assert.rejects(pending);
-  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_chainId']);
+  assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId', 'eth_getTransactionCount']);
 });
 
 test('retained cancellation reads the latest nonce before latest and pending code inside admission', async () => {

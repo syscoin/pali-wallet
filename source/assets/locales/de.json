@@ -398,6 +398,7 @@
     "hex": "Hex",
     "reduceFee": "Bitte reduzieren Sie die Gebühren, um die Transaktion zu senden.",
     "cantCompleteTxs": "Transaktion kann nicht abgeschlossen werden. Versuchen Sie es später erneut.",
+    "savedNonceConflict": "Eine gespeicherte Transaktion verwendet diese Nonce bereits. Prüfe die Aktivitäten.",
     "txSuccessfull": "Transaktion erfolgreich",
     "txSuccessfullMessage": "Ihre Transaktion wurde erfolgreich übermittelt. Weitere Details finden Sie unter Aktivitäten auf Ihrer Startseite.",
     "estimatedGasFee": "Geschätzte Gasgebühr",

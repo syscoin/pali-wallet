@@ -47,6 +47,27 @@ export class EvmSignedRecordCancellationFence extends Error {
   }
 }
 
+export const EVM_SIGNED_RECORD_NONCE_CONFLICT =
+  'EVM_SIGNED_RECORD_NONCE_CONFLICT';
+
+export class EvmSignedRecordNonceConflict extends Error {
+  readonly code = EVM_SIGNED_RECORD_NONCE_CONFLICT;
+  readonly transactionNotBroadcast = true;
+  readonly operation: EvmSignedRecordSummary['operation'];
+  readonly #recoveryHash: string;
+
+  constructor(owner: Pick<EvmSignedRecordSummary, 'hash' | 'operation'>) {
+    super(EVM_SIGNED_RECORD_NONCE_CONFLICT);
+    this.name = 'EvmSignedRecordNonceConflict';
+    this.operation = owner.operation;
+    this.#recoveryHash = owner.hash;
+  }
+
+  get recoveryHash(): string {
+    return this.#recoveryHash;
+  }
+}
+
 const MAX_PHASE_BYTES = Math.max(...SIGNED_PHASES.map((phase) => phase.length));
 const MAX_REVISION_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
 
@@ -701,14 +722,22 @@ export class EvmSignedRecords {
     });
   }
 
-  private async assertNoCancellationFence(
+  private async assertOrdinaryNonceAvailable(
     session: EvmSignedRecordSession,
     entries: readonly Entry[],
     scope: Pick<VerifiedPendingOriginal, 'chainId' | 'from' | 'nonce'>
   ): Promise<void> {
     const fence = await this.cancellationFence(session, entries, scope);
+    guard(session);
     if (fence)
       throw new EvmSignedRecordCancellationFence(fence.tip?.hash ?? null);
+    // A terminal observation can change in a reorg. An ordinary send never
+    // replaces a retained nonce, even if it would produce the same wire hash.
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const entry = entries[index]!;
+      if (matchesNonce(entry, scope))
+        throw new EvmSignedRecordNonceConflict(entry);
+    }
   }
 
   assertSpendingNonce(
@@ -723,7 +752,7 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
-      await this.assertNoCancellationFence(
+      await this.assertOrdinaryNonceAvailable(
         session,
         bundle?.entries ?? [],
         scope
@@ -877,7 +906,7 @@ export class EvmSignedRecords {
           )
             throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
         } else {
-          await this.assertNoCancellationFence(
+          await this.assertOrdinaryNonceAvailable(
             session,
             previous.bundle?.entries ?? [],
             signedNonce

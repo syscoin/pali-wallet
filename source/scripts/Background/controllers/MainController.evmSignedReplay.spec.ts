@@ -19,12 +19,15 @@ jest.mock('state/store', () => ({
 import {
   captureEvmSubmission,
   evmSubmissionFailure,
+  SoftwareKeyring,
   submitSignedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import { submitSignedHardwareEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { webcrypto } from 'crypto';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -287,6 +290,103 @@ it('advanceWalletSession cancels the retained review owner and pending preparati
   await rejected;
   expect(provider.send).not.toHaveBeenCalled();
 });
+it.each([
+  ['wallet software', KeyringAccountType.HDAccount],
+  ['wallet Ledger', KeyringAccountType.Ledger],
+  ['wallet Trezor', KeyringAccountType.Trezor],
+  ['approved dapp', KeyringAccountType.HDAccount],
+])(
+  'the %s lifecycle preserves an unused explicit nonce and refuses a retained one',
+  async (lane, type) => {
+    mockState.vault.activeAccount.type = type;
+    mockState.vault.accounts[type][0] = { id: 0, address: signer.address };
+    const sdkKeyring = Object.assign(
+      Object.create(SoftwareKeyring.prototype),
+      keyring,
+      {
+        sessionPassword: { isCleared: () => false },
+        sessionMnemonic: { isCleared: () => false },
+        privateRecordSessionRevision: 0,
+        getDecryptedMnemonic: () => 'Public journal nonce test fixture',
+      }
+    );
+    wallet.getActiveKeyring.mockReturnValue(sdkKeyring);
+    let saved: string | undefined;
+    const journal = new EvmSignedRecords({
+      async read() {
+        return saved;
+      },
+      async compareAndSet(_id, expected, next, assertCurrent) {
+        assertCurrent();
+        if (saved !== expected) return false;
+        saved = next;
+        return true;
+      },
+    });
+    wallet.getRetainedEvmRecords.mockReturnValue(journal);
+    const owner = { ...context, account: { ...context.account, type } };
+    const send = jest.fn(async (bytes: string) => Transaction.from(bytes).hash);
+    const authorize = jest.fn();
+    const sign = (nonce: number, value: number) =>
+      signer.signTransaction({
+        chainId: 123,
+        nonce,
+        type: 2,
+        to: receiver,
+        value,
+        gasLimit: 21000,
+        maxFeePerGas: 3,
+        maxPriorityFeePerGas: 1,
+      });
+    const submit = async (bytes: string) => {
+      const boundary = captureEvmSubmission(
+        owner,
+        () => {
+          if (lane === 'approved dapp') authorize();
+        },
+        () => wallet.captureEvmSignedSubmission(sdkKeyring, owner)
+      );
+      const broadcast: Parameters<
+        typeof submitSignedEvmTransaction<string | null>
+      >[1] = ({ rawTransaction, admit }) => admit(() => send(rawTransaction));
+      const unsigned = Transaction.from(bytes).unsignedSerialized;
+      return type === KeyringAccountType.Ledger ||
+        type === KeyringAccountType.Trezor
+        ? submitSignedHardwareEvmTransaction(
+            bytes,
+            broadcast,
+            boundary,
+            undefined,
+            unsigned,
+            async () => undefined
+          )
+        : submitSignedEvmTransaction(
+            bytes,
+            broadcast,
+            boundary,
+            undefined,
+            unsigned
+          );
+    };
+    const first = await sign(0, 1);
+    const next = await sign(4, 2);
+    const firstHash = Transaction.from(first).hash!;
+    await expect(submit(first)).resolves.toBe(firstHash);
+    await expect(submit(next)).resolves.toBe(Transaction.from(next).hash);
+    const conflict = {
+      code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+      transactionNotBroadcast: true,
+      recoveryHash: firstHash,
+    };
+    await expect(submit(await sign(0, 3))).rejects.toMatchObject(conflict);
+    await expect(submit(first)).rejects.toMatchObject(conflict);
+    expect(
+      send.mock.calls.map(([bytes]) => Transaction.from(bytes).nonce)
+    ).toEqual([0, 4]);
+    if (lane === 'approved dapp') expect(authorize).toHaveBeenCalled();
+  }
+);
+
 it('normal shared SDK submission rejects a network request epoch change after persistence', async () => {
   const lifecycle = wallet.captureEvmSignedSubmission(keyring, context);
   const boundary = captureEvmSubmission(

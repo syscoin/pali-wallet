@@ -29,19 +29,51 @@ test('actual SDK encryption retains aliases and type0/1/2 predecessor bytes afte
  for(const input of inputs)assert.equal((await reopened.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);
  assert.equal(await reopened.validate(f.session()),3);
 });
-test('duplicate append retains original attribution and exact ciphertext',async()=>{const f=fixture(),input=await signed();await f.store.append(f.session(),input);const before=f.value(),writes=f.writes();
- const result=await f.store.append(f.session(),{...input,context:{...input.context,account:{...input.context.account,type:'Imported',id:1}}});assert.equal(result.signer.type,'HDAccount');assert.equal(f.value(),before);assert.equal(f.writes(),writes);
+test('a new ordinary attempt cannot redispatch identical saved bytes under an account alias', async () => {
+  const f = fixture(), input = await signed();
+  await f.store.append(f.session(), input);
+  const before = f.value(), writes = f.writes();
+  await assert.rejects(f.store.append(f.session(), {
+    ...input, context: { ...input.context, account: { ...input.context.account, type: 'Imported', id: 1 } },
+  }), { code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: input.hash, transactionNotBroadcast: true });
+  const saved = await f.store.readExact(f.session(), input.chainId, signer.address, input.hash);
+  assert.equal(saved?.signer.type, 'HDAccount');
+  assert.equal(f.value(), before);
+  assert.equal(f.writes(), writes);
 });
 test('chunking retains large calldata beyond one private-record bound',async()=>{const f=fixture(),input=await signed(0,2,'0x'+'ab'.repeat(100000));await f.store.append(f.session(),input);assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);assert(JSON.parse(f.value()!).entries[0].chunks.length>1);});
 test('tampering or a different profile refuses without a write',async()=>{const f=fixture(),input=await signed();await f.store.append(f.session(),input);const saved=f.value()!,corrupt=JSON.parse(saved);corrupt.entries[0].nonce++;f.replace(JSON.stringify(corrupt));await assert.rejects(f.store.validate(f.session()));assert.equal(f.writes(),1);const other=fixture();other.replace(saved);(other.session().keyring as any).getDecryptedMnemonic=()=> 'different root';await assert.rejects(other.store.validate(other.session()));});
 test('caller identity is captured before the first encryption await',async()=>{const f=fixture(),input=await signed();const promise=f.store.append(f.session(),input);input.context.account.id=300;input.context.network.chainId=1;assert.equal((await promise).signer.id,0);assert.equal((await f.store.listSender(f.session(),'7654321',signer.address))[0]!.chainId,'7654321');});
 
-test('same-nonce alternatives and nonce-used observations never replace predecessor bytes',async()=>{
- const f=fixture(),first=await signed(0,2,'0x01'),alternative=await signed(0,2,'0x02'),next=await signed(1);
- for(const input of [first,alternative,next])await f.store.append(f.session(),input);
- await f.store.updatePhase(f.session(),'7654321',signer.address,first.hash,'nonce-consumed');
- const all=await f.store.listSender(f.session(),'7654321',signer.address);assert.equal(all.length,3);
- for(const input of [first,alternative,next])assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);
+test('ordinary nonce ownership survives terminal observations and keeps different nonces independent', async () => {
+  const f = fixture(), first = await signed(0, 2, '0x01'), alternative = await signed(0, 2, '0x02'), next = await signed(1);
+  const session = f.session();
+  await f.store.append(session, first);
+  await f.store.append(session, next);
+  for (const phase of ['signed', 'confirmed', 'reverted', 'nonce-consumed'] as const) {
+    if (phase !== 'signed') await f.store.updatePhase(session, first.chainId, signer.address, first.hash, phase);
+    const conflict = { code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: first.hash, transactionNotBroadcast: true };
+    await assert.rejects(f.store.assertSpendingNonce(session, first.chainId, signer.address, 0), conflict);
+    await assert.rejects(f.store.append(session, alternative), conflict);
+  }
+  assert.equal((await f.store.listSender(session, first.chainId, signer.address)).length, 2);
+  for (const input of [first, next])
+    assert.equal((await f.store.readExact(session, input.chainId, signer.address, input.hash))?.rawTransaction, input.rawTransaction);
+});
+test('an ordinary append rechecks ownership after a different journal instance wins the CAS', async () => {
+  const f = fixture(), winner = await signed(0, 2, '0x01'), loser = await signed(0, 2, '0x02');
+  const other = new EvmSignedRecords({ ...f.port });
+  const commit = f.port.compareAndSet;
+  f.port.compareAndSet = async (...args) => {
+    f.port.compareAndSet = commit;
+    await other.append(f.session(), winner);
+    return commit(...args);
+  };
+  await assert.rejects(f.store.append(f.session(), loser), {
+    code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: winner.hash, transactionNotBroadcast: true,
+  });
+  assert.equal(f.writes(), 1);
+  assert.equal(await f.store.readExact(f.session(), loser.chainId, signer.address, loser.hash), null);
 });
 test('pending pages use an append-order cursor even after the cursor becomes terminal', async () => {
   const f = fixture(), session = f.session();
@@ -251,9 +283,9 @@ for (const phase of ['signed', 'attempted', 'submitted'] as const) {
   });
 }
 
-test('current selection follows committed append order across unresolved alternatives and later phase updates', async () => {
+test('current selection follows committed append order across unresolved nonces and later phase updates', async () => {
   let clock = 2000;
-  const f = fixture(() => clock), first = await signed(3, 2, '0x01'), second = await signed(3, 2, '0x02');
+  const f = fixture(() => clock), first = await signed(3, 2, '0x01'), second = await signed(4, 2, '0x02');
   assert.equal(await f.store.readCurrent(f.session(), '7654321', signer.address), null);
   await f.store.append(f.session(), first);
   clock = 1000;

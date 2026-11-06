@@ -217,6 +217,24 @@ describe('controller action sender authorization', () => {
     expect(sendResponse).toHaveBeenCalledTimes(1);
   };
 
+  it('preserves the local nonce-conflict code without forwarding the saved hash', async () => {
+    await rejectControllerAction(
+      Object.assign(new Error('EVM_SIGNED_RECORD_NONCE_CONFLICT'), {
+        code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        transactionNotBroadcast: true,
+        recoveryHash: '0x' + '12'.repeat(32),
+      })
+    );
+    expect(sendResponse).toHaveBeenCalledWith({
+      success: false,
+      error: {
+        code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        message: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        transactionNotBroadcast: true,
+      },
+    });
+  });
+
   it.each([true, false])(
     'preserves the exact submission boolean %s alongside the normalized message',
     async (transactionNotBroadcast) => {

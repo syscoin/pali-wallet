@@ -26,12 +26,15 @@ const PHRASE =
 const PASSWORD = 'Public native transfer fixture password 1!';
 const RECIPIENT = '0x1111111111111111111111111111111111111111';
 
-test('shared SDK and SQLite retain exact pending bytes across a process-style authority restart', async () => {
+test('shared SDK and SQLite admit a different pending nonce and retain reorg predecessors across restart', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-native-send-'));
   const file = path.join(directory, 'wallet.sqlite');
   const oldFetch = globalThis.fetch;
   let leakedNetwork = 0;
   let loseResponse = true;
+  let pendingNonce = '0x0';
+  let latestNonce = '0x0';
+  let mined: string | null = null;
   globalThis.fetch = (async () => {
     leakedNetwork++;
     throw Error('Public network forbidden');
@@ -70,14 +73,18 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
         const b = JSON.parse(String(init.body));
         let result: unknown;
         if (b.method === 'eth_chainId') result = '0x1';
-        else if (b.method === 'eth_getTransactionCount') result = '0x0';
+        else if (b.method === 'eth_getTransactionCount') result = b.params[1] === 'pending' ? pendingNonce : latestNonce;
         else if (b.method === 'eth_getBalance') result = '0x10000000000000000';
         else if (b.method === 'eth_gasPrice') result = '0x2';
         else if (b.method === 'eth_feeHistory')
           result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', '0x1'] };
         else if (b.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (b.method === 'eth_estimateGas') result = '0x5208';
-        else if (b.method === 'eth_getTransactionReceipt') result = null;
+        else if (b.method === 'eth_getTransactionReceipt') {
+          const tx = mined === b.params[0] ? Transaction.from(submitted[0]!) : null;
+          result = tx ? { transactionHash: mined, from: tx.from, to: tx.to, status: '0x1',
+            blockNumber: '0x10', blockHash: '0x' + 'f'.repeat(64) } : null;
+        }
         else if (b.method === 'eth_getBlockByNumber')
           result = {
             number: b.params[0] === 'latest' ? '0x20' : b.params[0],
@@ -91,14 +98,13 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
           const persisted = await storage!.signedRecords.read(
             identity.root.profileId
           );
-          assert(
-            persisted &&
-              inspectEvmSignedBundle(persisted, identity.root.profileId)
-                .transactions === 1
-          );
+          assert(persisted);
+          const hash = keccak256(b.params[0]);
+          const expectedRecords = new Set([...submitted, b.params[0]]).size;
+          assert.equal(inspectEvmSignedBundle(persisted, identity.root.profileId).transactions, expectedRecords);
           const entry = await (
             await runtime!.transfers!.journal(() => undefined)
-          ).load();
+          ).load(hash);
           assert(entry && ['signed', 'submitted'].includes(entry.phase));
           assert.equal(entry.rawTransaction, b.params[0]);
           assert(
@@ -134,25 +140,53 @@ test('shared SDK and SQLite retain exact pending bytes across a process-style au
     const firstHash = transfers!.getSnapshot().hash;
     assert.equal(Transaction.from(submitted[0]!).to, RECIPIENT);
     assert.equal(Transaction.from(submitted[0]!).value, 1000000000000000n);
+    await assert.rejects(transfers!.prepare(RECIPIENT, '0.002'), { code: 'PENDING_TRANSFER' });
+    assert.equal(transfers!.getSnapshot().hash, firstHash);
+    assert.equal(submitted.length, 1);
+
+    // The original still has no receipt, but the peer now knows its nonce.
+    pendingNonce = '0x1';
+    loseResponse = false;
+    await transfers!.prepare(RECIPIENT, '0.002');
+    const successor = transfers!.getSnapshot().review!;
+    assert.equal(successor.nonce, '1');
+    await transfers!.confirm(successor.id);
+    const secondHash = transfers!.getSnapshot().hash!;
+    assert.equal(transfers!.getSnapshot().phase, 'pending');
+    assert.equal(submitted.length, 2);
+    assert.deepEqual(submitted.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+
+    mined = firstHash;
+    latestNonce = '0x1';
+    await transfers!.recover(false, firstHash!);
+    assert.equal(transfers!.getSnapshot().phase, 'confirmed');
+    mined = null;
+    latestNonce = '0x0';
+    pendingNonce = '0x0';
     transfers!.dispose();
     await authority!.dispose();
     await open();
     await authority!.unlock(PASSWORD);
-    await transfers!.recover();
+
+    await transfers!.recover(true, secondHash);
+    const gap = transfers!.getSnapshot().review?.replay;
+    assert.equal(gap?.missingNonce, '0');
+    assert.ok(gap?.predecessors.some((entry) => entry.hash === firstHash));
+    await assert.rejects(transfers!.prepare(RECIPIENT, '0.003'), { code: 'PENDING_TRANSFER' });
     assert.equal(transfers!.getSnapshot().hash, firstHash);
-    assert.equal(transfers!.getSnapshot().phase, 'unknown');
-    await assert.rejects(transfers!.prepare(RECIPIENT, '0.002'), {
-      code: 'PENDING_TRANSFER',
-    });
-    await transfers!.recover(true);
+    assert.equal(submitted.length, 2);
+
+    await transfers!.recover(true, firstHash!);
     const retry = transfers!.getSnapshot().review!;
     assert.equal(retry.retry, true);
-    loseResponse = false;
+    assert.equal(retry.replay?.hash, firstHash);
     await transfers!.confirm(retry.id);
-    assert.equal(submitted.length, 2);
-    assert.equal(submitted[0], submitted[1]);
+    assert.equal(submitted.length, 3);
+    assert.equal(submitted[2], submitted[0]);
     assert.equal(transfers!.getSnapshot().phase, 'pending');
     assert.equal(transfers!.getSnapshot().hash, firstHash);
+    const journal = await runtime!.transfers!.journal(() => undefined);
+    assert.equal((await journal.load(secondHash))?.rawTransaction, submitted[1]);
     assert.equal(leakedNetwork, 0);
   } finally {
     transfers?.dispose();
@@ -928,25 +962,14 @@ test('wall-clock rollback cannot hide an unresolved signed transfer after a cold
     await f.reopen();
     assert.equal(f.authority.getSnapshot().phase, 'ready');
     assert.equal((await f.readJournal())!.hash, unresolvedHash);
-    for (const prepare of [
-      () => f!.transfers.prepare(RECIPIENT, '0.003'),
-      () =>
-        f!.transfers.prepareToken(
-          '0x2222222222222222222222222222222222222222',
-          RECIPIENT,
-          '1'
-        ),
-    ]) {
-      const beforeRequests: number = f.requests.length;
-      await assert.rejects(prepare(), { code: 'PENDING_TRANSFER' });
-      assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
-      assert.equal(f.transfers.getSnapshot().review, null);
-      assert.equal(
-        f.requests.length,
-        beforeRequests,
-        'pending admission must precede quote or token reads'
-      );
-    }
+    const beforeRequests = f.requests.length;
+    await assert.rejects(f.transfers.prepare(RECIPIENT, '0.003'), { code: 'PENDING_TRANSFER' });
+    assert.equal(f.transfers.getSnapshot().hash, unresolvedHash);
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert(f.requests.slice(beforeRequests).some((call) =>
+      call.method === 'eth_getTransactionCount' && call.params[1] === 'pending'));
+    assert.equal(f.signatures, signatures);
+    assert.deepEqual(f.broadcasts, broadcasts);
     const beforeRecovery = f.requests.length;
     await f.transfers.recover();
     const receiptReads = f.requests
@@ -1100,12 +1123,14 @@ for (const repeated of [false, true]) {
         assert.equal(f.signatures, 1);
         assert.equal(f.broadcasts.length, 1);
       }
-      if (!repeated)
-        await assert.rejects(f.transfers.prepare(RECIPIENT, '0.002'), {
-          code: 'PENDING_TRANSFER',
-        });
-      // A later bounded null receipt can separately establish nonce use. Only
-      // that real read enables the explicit higher-nonce send below.
+      if (!repeated) {
+        await f.transfers.prepare(RECIPIENT, '0.002');
+        assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
+        assert.deepEqual(await f.readJournal(), retained);
+        assert.equal(f.broadcasts.length, 1);
+      }
+      // A bounded null receipt can independently update the older saved row.
+      // Neither a new quote nor a malformed receipt changes its observation.
       f.recovery.oversized = false;
       f.setRecovery({
         receipt: null,
