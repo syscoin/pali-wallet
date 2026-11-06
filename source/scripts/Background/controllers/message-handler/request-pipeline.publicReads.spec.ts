@@ -1,6 +1,7 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
 
 import DAppController from '../DAppController';
+import { waitForExternalWalletClosure } from '../externalWalletCreation';
 import dappReducer, { addDApp, removeDApp } from 'state/dapp';
 import spamFilterReducer from 'state/spamFilter';
 import vaultReducer from 'state/vault';
@@ -32,6 +33,10 @@ jest.mock('scripts/Background', () => ({
 }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({ PsbtUtils: {} }));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
+// Popup rendering is mocked in this suite, so no browser view remains.
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 
 const ACCOUNT = '0x1111111111111111111111111111111111111111';
 const READ_HOST = 'https://public-read.invalid';
@@ -286,7 +291,13 @@ it.each(['pipeline queue', 'popup delay'])(
   async (waiting) => {
     const params = ['0x74657374', ACCOUNT];
     const blocking = deferred<null>();
+    const windowCheck = deferred<void>();
     let first: Promise<unknown> | undefined;
+    if (waiting === 'popup delay') {
+      jest
+        .mocked(waitForExternalWalletClosure)
+        .mockReturnValueOnce(windowCheck.promise);
+    }
     if (waiting === 'pipeline queue') {
       jest.mocked(popupPromise).mockReturnValueOnce(blocking.promise);
       first = request('personal_sign', OTHER_HOST, 3, params);
@@ -302,6 +313,7 @@ it.each(['pipeline queue', 'popup delay'])(
     mockStore.dispatch(removeDApp(CONNECTED_HOST));
     mockStore.dispatch(addDApp(grant));
     blocking.resolve(null);
+    windowCheck.resolve();
     await jest.advanceTimersByTimeAsync(100);
     await first;
     expect(await result).toMatchObject({ error: { code: 4001 } });

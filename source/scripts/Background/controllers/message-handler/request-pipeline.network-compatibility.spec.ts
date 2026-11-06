@@ -20,6 +20,9 @@ jest.mock('./method-handlers', () => ({
   clearProviderCache: jest.fn(),
 }));
 
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('./popup-promise', () => ({
   popupPromise: jest.fn().mockResolvedValue(null),
 }));

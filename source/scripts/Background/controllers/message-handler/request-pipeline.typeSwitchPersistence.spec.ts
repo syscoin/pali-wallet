@@ -79,6 +79,9 @@ jest.mock('scripts/Background', () => ({
 jest.mock('../providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';

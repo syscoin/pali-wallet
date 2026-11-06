@@ -144,10 +144,11 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
-  const actions = receiving ? <View style={[s.actions, stackActions && s.stackedActions]}>
+  const feedbackView = currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>;
+  const actions = receiving ? <>{feedbackView}<View style={[s.actions, stackActions && s.stackedActions]}>
     <Button title="Copy address" icon="copy" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
     <Button title="Share address" icon="share" variant="secondary" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
-  </View> : undefined;
+  </View></> : undefined;
 
   return <SafeAreaView edges={navigation && !receiving && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
     <Screen key={receiving ? 'receive' : 'portfolio'} footer={actions}>
@@ -198,7 +199,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
           onReceive={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
         {!tokenTitle && <Card style={s.tools}>{onActivity && <Row title="Activity" subtitle="Transactions and token transfer events" icon="clock" onPress={onActivity} />}{onManageNetworks && <Row title="Network" subtitle={`${networkName}${network.testnet ? ' · Test network' : ''}`} icon="globe" onPress={onManageNetworks} />}<Row title={onSecurity ? "Security & backups" : "View recovery phrase"} subtitle={onSecurity ? "Recovery phrase and account key" : "Confirm your password to continue"} icon="shield" onPress={onSecurity ?? onViewRecovery} /><Row title="Lock wallet" icon="lock" onPress={onLock} last /></Card>}
       </>}
-      {currentFeedback && <Text accessibilityRole={currentFeedback.failed ? 'alert' : undefined} accessibilityLiveRegion="polite" style={[s.feedback, currentFeedback.failed && { color: colors.red }]}>{currentFeedback.text}</Text>}
+      {!receiving && feedbackView}
       <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
     </Screen>
   </SafeAreaView>;

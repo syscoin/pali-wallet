@@ -529,3 +529,70 @@ test('watch actions remain whole and side by side at 320px with font scale 1.3',
     expect(splitWords).toEqual([]);
   }
 });
+
+for (const scale of [1, 1.6]) {
+  for (const outcome of ['success', 'failure'] as const) {
+    test(`watch Receive ${outcome} feedback stays beside actions at ${scale} text scale`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 320, height: 740 });
+      await page.goto(scale === 1 ? '/' : '/?font-scale=1.6');
+      await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      if (scale !== 1) await scaleVisibleText(page, scale);
+      await page.evaluate((fail) => {
+        navigator.clipboard.writeText = async () => { if (fail) throw Error('fixture denied'); };
+        if (fail) document.execCommand = () => { throw Error('fixture denied'); };
+      }, outcome === 'failure');
+      const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+      await copy.click();
+      const message = page.getByText(outcome === 'success' ? 'Ethereum address copied.' : 'Could not copy this address. Try again.', { exact: true });
+      await expect(message).toBeVisible();
+      if (scale !== 1) await scaleVisibleText(page, scale);
+      await expect(message).toHaveAttribute('aria-live', 'polite');
+      if (outcome === 'failure') await expect(message).toHaveAttribute('role', 'alert');
+      const status = (await message.boundingBox())!, button = (await copy.boundingBox())!;
+      expect(status.y).toBeGreaterThanOrEqual(0);
+      expect(status.y + status.height).toBeLessThanOrEqual(button.y);
+      await expect(message).toBeInViewport({ ratio: 1 });
+      await expect(copy).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: testInfo.outputPath(`watch-receive-${outcome}-${scale}.png`) });
+    });
+  }
+}
+
+for (const { width, height } of [{ width: 320, height: 360 }, { width: 844, height: 390 }]) {
+  for (const scale of [1, 1.6]) {
+    test(`watch Receive failure controls stay reachable at ${width}x${height} and ${scale} text scale`, async ({ page }, testInfo) => {
+
+      await page.setViewportSize({ width, height });
+      await page.goto(scale === 1 ? '/' : '/?font-scale=1.6');
+      await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      const scaleText = async () => page.evaluate((factor) => {
+        const values = Array.from(document.querySelectorAll<HTMLElement>('[dir="auto"]'))
+          .filter((element) => !element.hasAttribute('data-qa-font-scaled'))
+          .map((element) => { const style = getComputedStyle(element); return { element, font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) }; });
+        for (const { element, font, line } of values) {
+          element.setAttribute('data-qa-font-scaled', 'true');
+          if (Number.isFinite(font)) element.style.setProperty('font-size', `${font * factor}px`, 'important');
+          if (Number.isFinite(line)) element.style.setProperty('line-height', `${line * factor}px`, 'important');
+        }
+      }, scale);
+      if (scale !== 1) await scaleText();
+      await page.evaluate(() => {
+        navigator.clipboard.writeText = async () => { throw Error('fixture denied'); };
+        document.execCommand = () => { throw Error('fixture denied'); };
+      });
+      const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+      await copy.click();
+      const message = page.getByText('Could not copy this address. Try again.', { exact: true });
+      await expect(message).toBeVisible();
+      if (scale !== 1) await scaleText();
+      await expect(message).toBeInViewport({ ratio: 1 });
+      await expect(copy).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: testInfo.outputPath(`watch-receive-${width}x${height}-${scale}.png`) });
+    });
+  }
+}

@@ -43,6 +43,10 @@ jest.mock('scripts/Background', () => ({
   notificationManager: { notifyAccountChange: jest.fn() },
 }));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
+// Popup rendering is mocked in this suite, so no browser view remains.
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('../providers/walletHttpIdentity', () => ({
   ...jest.requireActual('../providers/walletHttpIdentity'),
   withWalletBackend: async (_endpoint: string, work: () => Promise<unknown>) =>

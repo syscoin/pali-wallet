@@ -34,6 +34,9 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('scripts/Provider/EthProvider', () => ({ EthProvider: jest.fn() }));
 jest.mock('scripts/Provider/SysProvider', () => ({ SysProvider: jest.fn() }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 const HOST = 'https://connected.example';

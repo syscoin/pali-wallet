@@ -65,6 +65,7 @@ test('a dapp can switch back to its connected smart account before approval', as
   try {
     wallet = await PaliWallet.launch('smart-account-dapp-switch', {
       offlineHttpProxy: server.url,
+      recordVideo: false,
       viewport: { width: 400, height: 620 },
     });
     await fixture.install(wallet.context, server.url);
@@ -187,6 +188,14 @@ test('a dapp can switch back to its connected smart account before approval', as
           })
         ).toBeVisible();
         await expect(switchButton).toBeEnabled();
+        // Keep the accepted prompt registered briefly to exercise a slow
+        // browser-window close before the subsequent signing approval opens.
+        await popup.evaluate(() => {
+          const close = window.close.bind(window);
+          window.close = () => {
+            window.setTimeout(close, 250);
+          };
+        });
         await clickClosingPopup({
           click: () => switchButton.click(),
           isClosed: () => popup.isClosed(),
