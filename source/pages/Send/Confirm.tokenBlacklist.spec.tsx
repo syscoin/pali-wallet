@@ -340,10 +340,17 @@ beforeEach(() => {
   ) => {
     mockMessages.push(message);
     const method = message.data.methods.at(-1);
-    if (method === 'getTxGasLimit') return callback(21000);
+    if (method === 'getFreshNativeEvmGasLimit') return callback(21000);
     if (method === 'getRecommendedGasPrice') return callback('3000000000');
     if (method === 'refreshActiveAccountBalances')
       return callback({ nativeBalance: mockRefreshedBalance });
+    if (method === 'reviewNativeEvmFee')
+      return callback({
+        id: 'fixture-review',
+        maximumFee: message.data.params[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return callback(undefined);
     if (method === 'sendAndSaveEthTransaction') {
       if (mockTransportOutcome === 'success')
         return callback({ hash: `0x${'11'.repeat(32)}` });
@@ -416,7 +423,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
+        'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
         'sendAndSaveEthTransaction',
         'sendAndSaveTokenTransaction',

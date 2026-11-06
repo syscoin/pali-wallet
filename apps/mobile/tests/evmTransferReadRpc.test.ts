@@ -26,6 +26,7 @@ function fixture(network=getNativeNetwork('ethereum'), override?:(call:Call)=>un
    else if(call.method==='eth_getBlockByNumber')result={number:call.params[0]==='latest'?'0x64':call.params[0],hash:blockHash,baseFeePerGas:'0x4',gasLimit:'0x1c9c380'};
    else if(call.method==='eth_estimateGas')result='0x5208';
    else if(call.method==='eth_getTransactionCount')result='0x1';
+   else if(call.method==='eth_getBalance')result='0xffffffffffff';
    else if(call.method==='eth_getTransactionReceipt')result={transactionHash:hash,from,to,status:'0x1',blockNumber:'0x50',blockHash};
    else throw Error('Unexpected read method '+call.method);
   }
@@ -95,4 +96,33 @@ test('aborted input emits no request and malformed RPC envelopes never become fe
  const f=fixture(),controller=new AbortController();controller.abort();await assert.rejects(f.rpc.quoteFees(transaction(),controller.signal,()=>undefined),{code:'CANCELLED'});assert.equal(f.calls.length,0);
  const rpc=new EvmTransferReadRpc(custom,{fetch:async(_url,init)=>{const body=JSON.parse(String(init.body));return new Response(JSON.stringify({jsonrpc:'2.0',id:body.id,error:{code:-32000,message:'unavailable'}}));}});
  await assert.rejects(rpc.quoteFees(transaction(custom),signal(),()=>undefined),{code:'INVALID_RESPONSE'});
+});
+
+for (const legacy of [false, true]) test(`approved native requote uses raw gas within the original margin (legacy=${legacy})`, async () => {
+ let estimate = 21000;
+ let blockGasLimit = 25200;
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getBlockByNumber') return {
+   number: call.params[0] === 'latest' ? '0x64' : call.params[0],
+   hash: blockHash, gasLimit: '0x' + blockGasLimit.toString(16), ...(legacy ? {} : { baseFeePerGas: '0x4' }),
+  };
+  if (call.method === 'eth_estimateGas') return '0x' + estimate.toString(16);
+  if (call.method === 'eth_gasPrice') return '0xa';
+  if (call.method === 'eth_maxPriorityFeePerGas') return '0x2';
+  return undefined;
+ });
+ const input = { from, to, value: '100', data: '0x' };
+ const quote = await f.rpc.prepare(input, signal(), () => undefined);
+ assert.equal(quote.transaction.gasLimit, '25200');
+ assert.equal(quote.transaction.type, legacy ? 0 : 2);
+ for (estimate of [21000, 22000, 25200]) {
+  const refreshed = await f.rpc.prepare(input, signal(), () => undefined, quote.transaction);
+  assert.deepEqual(refreshed.transaction, quote.transaction);
+  assert.equal(refreshed.maximumFeeUnits, quote.maximumFeeUnits);
+ }
+ blockGasLimit = 30000;
+ estimate = 25201;
+ await assert.rejects(f.rpc.prepare(input, signal(), () => undefined, quote.transaction), {
+  code: 'REVIEW_REQUIRED',
+ });
 });

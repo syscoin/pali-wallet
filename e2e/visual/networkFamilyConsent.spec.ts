@@ -540,9 +540,21 @@ for (const width of [400, 320]) {
           await picker
             .getByRole('button', { name: 'Syscoin NEVM Testnet', exact: true })
             .click();
-          await picker
-            .getByRole('button', { name: en.buttons.connect, exact: true })
-            .click();
+          // The request continues in a separate approval popup after the
+          // network picker closes. Wait for that handoff before finding it.
+          await Promise.all([
+            picker.waitForEvent('close', { timeout: 15_000 }),
+            clickClosingPopup({
+              click: () =>
+                picker
+                  .getByRole('button', {
+                    name: en.buttons.connect,
+                    exact: true,
+                  })
+                  .click(),
+              isClosed: () => picker.isClosed(),
+            }),
+          ]);
           const result = await approve(
             wallet!.context,
             dapp,

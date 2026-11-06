@@ -1,7 +1,8 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
-import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
+import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, captureEvmFeeApproval,
+  EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { EvmCancellationQuote } from './evmTransferReadRpc.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
@@ -141,6 +142,7 @@ type PrivateReview = {
   public: NativeTransferReview;
   transaction?: PreparedEvmTransaction;
   expires: number;
+  feeApproval?: EvmFeeApproval;
   replay?: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
   cancellation?: NativeCancellationApproval;
 };
@@ -480,19 +482,16 @@ export class NativeTransfers {
     entropy.fill(0);
     const fee =
       transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas;
-    const cost = getEvmTransferCost(
-      BigInt(transaction.value),
-      BigInt(transaction.gasLimit),
-      BigInt(fee)
-    );
+    const feeApproval = captureEvmFeeApproval(transaction, context.registrationHash,
+      Math.floor(this.now()) + EVM_FEE_APPROVAL_LIFETIME_MS);
     const publicReview: NativeTransferReview = Object.freeze({
       id,
       context,
       from: transaction.from,
       recipient: intent?.recipient ?? transaction.to,
       amountUnits: intent?.amountUnits ?? transaction.value,
-      maximumFeeUnits: cost.maximumFee.toString(),
-      totalUnits: cost.total.toString(),
+      maximumFeeUnits: feeApproval.maximumFeeUnits,
+      totalUnits: feeApproval.maximumTotalUnits,
       gasLimit: transaction.gasLimit,
       maximumFeePerGas: fee,
       priorityFeePerGas:
@@ -506,12 +505,13 @@ export class NativeTransfers {
       public: publicReview,
       transaction,
       cancellation,
-      expires: this.now() + 90000,
+      feeApproval,
+      expires: feeApproval.expiresAtMonotonicMilliseconds,
     };
     if (this.expiry !== null) clearTimeout(this.expiry);
     this.expiry = setTimeout(() => {
       if (this.review?.public.id === id && !this.active) this.cancel();
-    }, 90000);
+    }, EVM_FEE_APPROVAL_LIFETIME_MS);
     this.publish({
       phase: 'review',
       review: publicReview,
@@ -662,8 +662,11 @@ export class NativeTransfers {
       let startedSubmission = false;
       const guard = () => {
         assertCurrent();
-        if (!startedSubmission && this.now() >= approved.expires)
-          throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        if (!startedSubmission) {
+          if (!approved.feeApproval) throw new NativeTransferRpcError('REVIEW_REQUIRED');
+          try { assertEvmFeeApprovalCurrent(approved.feeApproval, Math.floor(this.now())); }
+          catch { throw new NativeTransferRpcError('REVIEW_REQUIRED'); }
+        }
       };
       const journal = await runtime.journal(guard);
       guard();
@@ -682,7 +685,12 @@ export class NativeTransfers {
           ? await rpc.prepareCancellation(cancellation.original.hash, original!, address, signal, guard)
           : await rpc.requote(approved.transaction!, signal, approved.public.intent);
         guard();
-        if (
+        if (!cancellation) {
+          const refreshed = captureEvmFeeApproval(latest.transaction, context.registrationHash,
+            approved.feeApproval!.expiresAtMonotonicMilliseconds);
+          try { assertEvmFeeRefreshApproved(approved.feeApproval!, refreshed, Math.floor(this.now())); }
+          catch { throw new NativeTransferError('EXPIRED'); }
+        } else if (
           (cancellation && (latest.transaction.type !== approved.transaction!.type ||
             (latest.transaction.type === 2 && approved.transaction!.type === 2 &&
               BigInt(latest.transaction.maxPriorityFeePerGas) > BigInt(approved.transaction!.maxPriorityFeePerGas)))) ||

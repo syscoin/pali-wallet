@@ -166,17 +166,21 @@ beforeAll(() => {
   }));
 });
 beforeEach(() => {
+  jest.useFakeTimers();
   jest.clearAllMocks();
   window.history.replaceState(null, '', '/');
   mockLocation.key += '-next';
 });
 afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
   expect(
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
         'refreshActiveAccountBalances',
       ].includes(path.at(-1))
     )
@@ -199,7 +203,13 @@ function prepare(quoteCount = 1) {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[nextQuote++].promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: params[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'getFreshNativeEvmGasLimit') {
       expect(params).toEqual([
         {
@@ -224,8 +234,12 @@ const quoteRequests = () =>
   mockEmitter.mock.calls.filter(
     ([path]) => path.at(-1) === 'getFeeDataWithDynamicMaxPriorityFeePerGas'
   );
-const waitForQuote = (count = 1) =>
-  waitFor(() => expect(quoteRequests()).toHaveLength(count));
+const waitForQuote = async (count = 1) => {
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(500);
+  });
+  expect(quoteRequests()).toHaveLength(count);
+};
 const resolveQuote = (
   quote: ReturnType<typeof deferred>,
   priority = '1000000000'
