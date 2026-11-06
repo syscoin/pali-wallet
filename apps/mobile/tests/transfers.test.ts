@@ -36,6 +36,8 @@ function fixture() {
   const listeners = new Set<(state: CustodySnapshot) => void>();
   const records: Record<string, unknown> = {};
   let availableBalance = '0x10000000000000000';
+  let canonicalBalance: string | undefined;
+  let expectedEstimateState: 'latest' | 'pending' | undefined;
   let nonce = '0x0';
   let minedNonce = '0x0';
   let baseFee = '0x1';
@@ -147,7 +149,8 @@ function fixture() {
             : 1n)
             .toString(16)
             .padStart(64, '0');
-      else if (body.method === 'eth_getBalance') result = availableBalance;
+      else if (body.method === 'eth_getBalance')
+        result = body.params[1] === 'latest' ? canonicalBalance ?? availableBalance : availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
@@ -157,7 +160,10 @@ function fixture() {
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-      else if (body.method === 'eth_estimateGas') result = '0x5208';
+      else if (body.method === 'eth_estimateGas') {
+        if (expectedEstimateState) assert.equal(body.params[1], expectedEstimateState);
+        result = '0x5208';
+      }
       else if (body.method === 'eth_sendRawTransaction') {
         const record = (JSON.parse(Object.values(records)[0] as string) as { entries: { phase: string }[] }).entries[0]!;
         assert(['signed', 'submitted'].includes(record.phase));
@@ -209,6 +215,11 @@ function fixture() {
     },
     insufficient() {
       availableBalance = '0x1';
+    },
+    externalPendingBalance(state: 'latest' | 'pending') {
+      canonicalBalance = '0xde0b6b3a7640000';
+      availableBalance = '0x1';
+      expectedEstimateState = state;
     },
     lowerFeesWithReducedBalance() {
       baseFee = '0x0';
@@ -335,8 +346,9 @@ test('ordinary coin and token sends preserve a deliberate override below the ext
     const f = fixture();
     try {
       f.nextNonce();
+      f.externalPendingBalance('latest');
       await (asset === 'coin'
-        ? f.transfers.view.prepare(to, '0.001', '0')
+        ? f.transfers.view.prepare(to, '0.9', '0')
         : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'));
       const approved = f.transfers.getSnapshot().review!;
       assert.equal(approved.nonce, '0');
@@ -348,8 +360,9 @@ test('ordinary coin and token sends preserve a deliberate override below the ext
       assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 0);
       await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_RETAINED' });
       assert.equal(f.transfers.getSnapshot().phase, 'idle');
-      await f.transfers.view.prepare(to, '0.001', '4');
-      assert.equal(f.transfers.getSnapshot().review?.nonce, '4');
+      f.externalPendingBalance('pending');
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '4'), { code: 'INSUFFICIENT_BALANCE' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
       assert.equal(f.broadcasts.length, 1);
     } finally { f.close(); }
   }

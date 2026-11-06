@@ -388,6 +388,21 @@ export class EvmTransferReadRpc {
   }
 
 
+  private async sampleSendNonce(read: Reader, from: string, nonceOverride?: number): Promise<{
+    count: bigint;
+    state: 'latest' | 'pending';
+  }> {
+    const readCount = async (tag: 'latest' | 'pending') =>
+      quantity(await read('eth_getTransactionCount', [from, tag]));
+    if (nonceOverride === undefined)
+      return { count: await readCount('pending'), state: 'pending' };
+    const [count, pending] = await Promise.all([readCount('latest'), readCount('pending')]);
+    if (pending < count) return rejectRead('REVIEW_REQUIRED');
+    // An external transaction at the overridden nonce can already affect
+    // pending balance and execution state, though only one of the two can mine.
+    return { count, state: BigInt(nonceOverride) < pending ? 'latest' : 'pending' };
+  }
+
   /** Check the exact collectible envelope while the journal owns wire admission. */
   verifyNftForDispatch(intent: NftTransferIntent, input: EvmUnsignedTransfer, signal: AbortSignal,
     guard: () => void, replay: boolean, nonceOverride?: number): Promise<void> {
@@ -398,13 +413,16 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
-      const [rawNonce, rawBalance, rawEstimate] = await Promise.all([
-        read('eth_getTransactionCount', [intent.from, replay || manual ? 'latest' : 'pending']),
-        read('eth_getBalance', [intent.from, 'pending']),
-        this.verifyNftAtBlock(read, sampled, intent, envelope.data).then(() =>
-          read('eth_estimateGas', [evmEstimateRequest(envelope), 'pending'])),
+      const nonceState = replay
+        ? read('eth_getTransactionCount', [intent.from, 'latest']).then((value) => ({ count: quantity(value), state: 'pending' as const }))
+        : this.sampleSendNonce(read, intent.from, nonceOverride);
+      const state = manual ? nonceState.then((sample) => sample.state) : Promise.resolve('pending');
+      const [{ count: observed }, rawBalance, rawEstimate] = await Promise.all([
+        nonceState,
+        state.then((tag) => read('eth_getBalance', [intent.from, tag])),
+        this.verifyNftAtBlock(read, sampled, intent, envelope.data).then(async () =>
+          read('eth_estimateGas', [evmEstimateRequest(envelope), await state])),
       ]);
-      const observed = quantity(rawNonce);
       const nonce = BigInt(envelope.nonce);
       if (replay ? observed > nonce : !matchesSendNonce(observed, nonce, manual))
         return rejectRead(manual ? 'NONCE_UNAVAILABLE' : 'REVIEW_REQUIRED');
@@ -427,13 +445,15 @@ export class EvmTransferReadRpc {
     const manual = nonceOverride !== undefined;
     if (manual && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
       return rejectRead('INVALID_INPUT');
-    const [rawNonce, rawBalance, fees] = await Promise.all([
-      read('eth_getTransactionCount', [request.from, manual ? 'latest' : 'pending']),
-      read('eth_getBalance', [request.from, 'pending']),
+    const nonceState = this.sampleSendNonce(read, request.from, nonceOverride);
+    const [{ count: observed, state }, rawBalance, fees] = await Promise.all([
+      nonceState,
+      manual
+        ? nonceState.then((sample) => read('eth_getBalance', [request.from, sample.state]))
+        : read('eth_getBalance', [request.from, 'pending']),
       this.feeData(read, sampled, signal),
     ]);
     read.assertCurrent();
-    const observed = quantity(rawNonce);
     const balance = quantity(rawBalance);
     if (observed > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
     const nonce = manual ? BigInt(nonceOverride) : observed;
@@ -448,7 +468,7 @@ export class EvmTransferReadRpc {
     if (selectedFees.type === 2 && (sampled.baseFee === null || BigInt(selectedFees.maxFeePerGas) < sampled.baseFee)) return rejectRead('REVIEW_REQUIRED');
     const estimate = quantity(await read('eth_estimateGas', [evmEstimateRequest({
       ...request, ...selectedFees, chainId: this.network.chainId, nonce: nonce.toString(),
-    }), 'pending']));
+    }), state]));
     read.assertCurrent();
     if (estimate < 21000n || estimate > sampled.gasLimit) return rejectRead('INVALID_RESPONSE');
     let gas: bigint;
