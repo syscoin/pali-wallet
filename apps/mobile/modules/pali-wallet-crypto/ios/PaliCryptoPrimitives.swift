@@ -28,6 +28,13 @@ enum PaliCryptoPrimitives {
     return Data(SHA256.hash(data: data))
   }
 
+  static func signHmacSha512(_ key: Data, _ data: Data) throws -> Data {
+    guard !key.isEmpty, key.count <= 4_096, data.count <= maxDigestData else {
+      throw PaliCryptoFailure.invalidInput
+    }
+    return Data(HMAC<SHA512>.authenticationCode(for: data, using: SymmetricKey(data: key)))
+  }
+
   static func pbkdf2(_ password: Data, _ salt: Data, _ iterations: Int, _ hash: String, _ length: Int) throws -> Data {
     guard password.count <= 4_096, salt.count <= maxParameter,
           (1...2_000_000).contains(iterations), (1...64).contains(length),
