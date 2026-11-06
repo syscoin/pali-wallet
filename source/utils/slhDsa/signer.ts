@@ -1,330 +1,57 @@
-import { isHexString } from 'utils/ethersV6Compat';
+import { createSlhDsaSigner } from '../../wallet/slhDsaSigner';
 
-import {
-  SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,
-  SLH_DSA_PARAMETER_SET,
-  SLH_DSA_SIGNATURE_LENGTH,
-  SLH_DSA_SIGNATURE_HEX_LENGTH,
-  getSLHDSAKeyId,
-} from './constants';
-import { normalizeSLHDSAPublicKeyField } from './hex';
 import {
   prepareSLHDSAKeypairInOffscreen,
   signSLHDSAInOffscreen,
 } from './offscreenClient';
-import {
-  createSLHDSAProvisionedState,
-  loadEncryptedSLHDSAState,
-  saveEncryptedSLHDSAState,
-  validateSLHDSAProvisionedState,
-  type SLHDSASessionStateCrypto,
-} from './state';
-import type {
-  SLHDSAProvisionedState,
-  SLHDSADispatchApproval,
-  SLHDSASignActionHashParams,
-} from './types';
+import { loadEncryptedSLHDSAState, saveEncryptedSLHDSAState } from './state';
 
-const runtimeStates = new Map<string, SLHDSAProvisionedState>();
-const signingQueues = new Map<string, Promise<void>>();
-let sessionStateCrypto: SLHDSASessionStateCrypto | null = null;
-let sessionGeneration = 0;
+const signer = createSlhDsaSigner({
+  stateStore: {
+    load: (request) => loadEncryptedSLHDSAState(request),
+    save: (state, crypto, owner) =>
+      saveEncryptedSLHDSAState(state, crypto, owner),
+  },
+  execution: {
+    prepareKeypair: (request, owner) =>
+      prepareSLHDSAKeypairInOffscreen(request, owner),
+    signActionHash: (request, owner, approval) =>
+      signSLHDSAInOffscreen(request, owner, ...(approval ? [approval] : [])),
+  },
+  now: () => Date.now(),
+});
 
-export const getSLHDSASessionGeneration = () => sessionGeneration;
-
-export const assertSLHDSASessionGeneration = (expected: number) => {
-  if (expected !== sessionGeneration) {
-    throw new Error('SLH-DSA wallet session changed; unlock and retry');
-  }
-};
-
-export const configureSLHDSASessionStateCrypto = (
-  crypto: SLHDSASessionStateCrypto
-) => {
-  sessionStateCrypto = crypto;
-};
-
-const getSessionStateCrypto = () => {
-  if (!sessionStateCrypto) {
-    throw new Error('SLH-DSA session encryption is not available');
-  }
-  return sessionStateCrypto;
-};
-
-const mergeSLHDSAUsageHistory = (
-  state: SLHDSAProvisionedState,
-  previous?: SLHDSAProvisionedState | null
-): SLHDSAProvisionedState => {
-  validateSLHDSAProvisionedState(state);
-  if (!previous) {
-    return { ...state };
-  }
-  validateSLHDSAProvisionedState(previous);
-  if (
-    state.keyId !== previous.keyId ||
-    normalizeSLHDSAPublicKeyField(state.pkRoot) !==
-      normalizeSLHDSAPublicKeyField(previous.pkRoot) ||
-    normalizeSLHDSAPublicKeyField(state.pkSeed) !==
-      normalizeSLHDSAPublicKeyField(previous.pkSeed) ||
-    (state.secretKeyHex &&
-      previous.secretKeyHex &&
-      state.secretKeyHex.toLowerCase() !== previous.secretKeyHex.toLowerCase())
-  ) {
-    throw new Error(
-      'SLH-DSA local signer state conflicts with existing key material'
-    );
-  }
-  return {
-    ...state,
-    secretKeyHex: state.secretKeyHex ?? previous.secretKeyHex,
-    signatureCount: Math.max(state.signatureCount, previous.signatureCount),
-  };
-};
+export const getSLHDSASessionGeneration = signer.getSLHDSASessionGeneration;
+export const assertSLHDSASessionGeneration =
+  signer.assertSLHDSASessionGeneration;
+export const configureSLHDSASessionStateCrypto =
+  signer.configureSLHDSASessionStateCrypto;
+export const clearRuntimeSLHDSAStates = signer.clearRuntimeSLHDSAStates;
 
 export const putRuntimeSLHDSAState = (
-  state: SLHDSAProvisionedState,
-  expectedGeneration = sessionGeneration
-) => {
-  assertSLHDSASessionGeneration(expectedGeneration);
-  // Hydration can finish after another request has already used this key.
-  const merged = mergeSLHDSAUsageHistory(state, runtimeStates.get(state.keyId));
-  runtimeStates.set(state.keyId, merged);
-  return { ...merged };
-};
+  state: Parameters<typeof signer.putRuntimeSLHDSAState>[0],
+  generation = signer.getSLHDSASessionGeneration()
+) => signer.putRuntimeSLHDSAState(state, generation);
 
 export const registerRuntimeSLHDSAState = (
-  state: SLHDSAProvisionedState,
-  expectedGeneration = sessionGeneration
-) =>
-  withSigningQueue(state.keyId, async () => {
-    const assertSession = () =>
-      assertSLHDSASessionGeneration(expectedGeneration);
-    assertSession();
-    const crypto = getSessionStateCrypto();
-    const persisted = await loadEncryptedSLHDSAState({
-      crypto,
-      keyId: state.keyId,
-      assertOwner: assertSession,
-    });
-    assertSession();
-    const merged = mergeSLHDSAUsageHistory(
-      mergeSLHDSAUsageHistory(state, persisted),
-      runtimeStates.get(state.keyId)
-    );
-    await saveEncryptedSLHDSAState(merged, crypto, assertSession);
-    return putRuntimeSLHDSAState(merged, expectedGeneration);
-  });
+  state: Parameters<typeof signer.registerRuntimeSLHDSAState>[0],
+  generation = signer.getSLHDSASessionGeneration()
+) => signer.registerRuntimeSLHDSAState(state, generation);
 
-export const provisionRuntimeSLHDSAState = async (
-  params: {
-    accountIndex: number;
-    derivationLabel: string;
-    keyId: string;
-    pkRoot: string;
-    pkSeed: string;
-    setupSecretHex: string;
-  },
-  expectedGeneration = sessionGeneration
-) => {
-  assertSLHDSASessionGeneration(expectedGeneration);
-  const keypair = await prepareSLHDSAKeypairInOffscreen(
-    {
-      setupSecretHex: params.setupSecretHex,
-    },
-    () => assertSLHDSASessionGeneration(expectedGeneration)
-  );
-  assertSLHDSASessionGeneration(expectedGeneration);
-  if (
-    keypair.pkRoot.toLowerCase() !==
-      normalizeSLHDSAPublicKeyField(params.pkRoot).toLowerCase() ||
-    keypair.pkSeed.toLowerCase() !==
-      normalizeSLHDSAPublicKeyField(params.pkSeed).toLowerCase()
-  ) {
-    throw new Error(
-      'Derived SLH-DSA keypair does not match validator metadata'
-    );
-  }
+export const provisionRuntimeSLHDSAState = (
+  request: Parameters<typeof signer.provisionRuntimeSLHDSAState>[0],
+  generation = signer.getSLHDSASessionGeneration()
+) => signer.provisionRuntimeSLHDSAState(request, generation);
 
-  const state = createSLHDSAProvisionedState({
-    accountIndex: params.accountIndex,
-    derivationLabel: params.derivationLabel,
-    keyId: params.keyId,
-    pkRoot: keypair.pkRoot,
-    pkSeed: keypair.pkSeed,
-    secretKeyHex: keypair.secretKeyHex,
-  });
-  return registerRuntimeSLHDSAState(state, expectedGeneration);
-};
+export const provisionRuntimeSLHDSAStateFromSetupSecret = (
+  request: Parameters<
+    typeof signer.provisionRuntimeSLHDSAStateFromSetupSecret
+  >[0],
+  generation = signer.getSLHDSASessionGeneration()
+) => signer.provisionRuntimeSLHDSAStateFromSetupSecret(request, generation);
 
-export const provisionRuntimeSLHDSAStateFromSetupSecret = async (
-  params: {
-    accountId?: number;
-    accountIndex: number;
-    derivationLabel: string;
-    setupJobId?: string;
-    setupSecretHex: string;
-  },
-  expectedGeneration = sessionGeneration
-) => {
-  assertSLHDSASessionGeneration(expectedGeneration);
-  const keypair = await prepareSLHDSAKeypairInOffscreen(
-    {
-      accountId: params.accountId,
-      ...(params.setupJobId ? { setupJobId: params.setupJobId } : {}),
-      setupSecretHex: params.setupSecretHex,
-    },
-    () => assertSLHDSASessionGeneration(expectedGeneration)
-  );
-  assertSLHDSASessionGeneration(expectedGeneration);
-  const keyId = getSLHDSAKeyId({
-    pkRoot: keypair.pkRoot,
-    pkSeed: keypair.pkSeed,
-  });
-  const state = createSLHDSAProvisionedState({
-    accountIndex: params.accountIndex,
-    derivationLabel: params.derivationLabel,
-    keyId,
-    pkRoot: keypair.pkRoot,
-    pkSeed: keypair.pkSeed,
-    secretKeyHex: keypair.secretKeyHex,
-  });
-  return registerRuntimeSLHDSAState(state, expectedGeneration);
-};
-
-export const clearRuntimeSLHDSAStates = () => {
-  sessionGeneration += 1;
-  runtimeStates.clear();
-  // Pending storage writes must finish before a new session writes this key.
-  sessionStateCrypto = null;
-};
-
-const validateSignature = (signature: string) => {
-  if (
-    !isHexString(signature) ||
-    signature.length !== SLH_DSA_SIGNATURE_HEX_LENGTH
-  ) {
-    throw new Error(
-      `SLH-DSA signer returned an invalid signature length; expected ${SLH_DSA_SIGNATURE_LENGTH} bytes`
-    );
-  }
-};
-
-const withSigningQueue = async <T>(
-  keyId: string,
-  task: () => Promise<T>
-): Promise<T> => {
-  const previous = signingQueues.get(keyId) || Promise.resolve();
-  const queued = previous.catch(() => undefined).then(task);
-  const stored = queued.then(
-    () => undefined,
-    () => undefined
-  );
-  signingQueues.set(keyId, stored);
-  try {
-    return await queued;
-  } finally {
-    if (signingQueues.get(keyId) === stored) {
-      signingQueues.delete(keyId);
-    }
-  }
-};
-
-const signSLHDSAActionHashLocalUnlocked = async (
-  params: SLHDSASignActionHashParams,
-  expectedGeneration: number,
-  approval?: SLHDSADispatchApproval
-) => {
-  const assertSession = () => assertSLHDSASessionGeneration(expectedGeneration);
-  assertSession();
-  approval?.assertCurrent();
-  if (params.parameterSet !== SLH_DSA_PARAMETER_SET) {
-    throw new Error(`Unsupported SLH-DSA parameter set ${params.parameterSet}`);
-  }
-  if (!isHexString(params.actionHash, 32)) {
-    throw new Error('SLH-DSA actionHash must be a bytes32 hex string');
-  }
-
-  const runtimeState = runtimeStates.get(params.keyId);
-  if (!runtimeState) {
-    throw new Error(
-      'SLH-DSA key is not available in this unlocked session. Provision the local PQ signer state before signing.'
-    );
-  }
-  const crypto = getSessionStateCrypto();
-  const persisted = await loadEncryptedSLHDSAState({
-    crypto,
-    keyId: params.keyId,
-    assertOwner: assertSession,
-  });
-  assertSession();
-  if (!persisted) {
-    throw new Error(
-      'SLH-DSA persisted signer state is missing; usage history is unsafe'
-    );
-  }
-  // Keep the existing high-water policy while refusing unreadable/replaced
-  // storage before handing any key material to the signing worker.
-  const state = mergeSLHDSAUsageHistory(
-    mergeSLHDSAUsageHistory(runtimeState, runtimeStates.get(params.keyId)),
-    persisted
-  );
-  if (
-    normalizeSLHDSAPublicKeyField(state.pkRoot).toLowerCase() !==
-      normalizeSLHDSAPublicKeyField(params.pkRoot).toLowerCase() ||
-    normalizeSLHDSAPublicKeyField(state.pkSeed).toLowerCase() !==
-      normalizeSLHDSAPublicKeyField(params.pkSeed).toLowerCase()
-  ) {
-    throw new Error('SLH-DSA key metadata does not match the active validator');
-  }
-  const canUseReservedSignature =
-    params.allowReservedSignature &&
-    state.signatureCount < SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT;
-  if (
-    state.signatureCount >= state.signatureLimit &&
-    !canUseReservedSignature
-  ) {
-    throw new Error('SLH-DSA signature limit reached; rotate this key');
-  }
-
-  if (!state.secretKeyHex) {
-    throw new Error(
-      'SLH-DSA key is missing prepared local signing material. Re-run PQ validator setup before signing.'
-    );
-  }
-  const signature = await signSLHDSAInOffscreen(
-    {
-      ...params,
-      secretKeyHex: state.secretKeyHex,
-    },
-    assertSession,
-    ...(approval ? [approval] : [])
-  );
-  assertSession();
-  validateSignature(signature);
-
-  const currentState = mergeSLHDSAUsageHistory(
-    state,
-    runtimeStates.get(params.keyId)
-  );
-  const updatedState: SLHDSAProvisionedState = {
-    ...currentState,
-    signatureCount: currentState.signatureCount + 1,
-    updatedAt: Date.now(),
-  };
-  runtimeStates.set(params.keyId, updatedState);
-  await saveEncryptedSLHDSAState(updatedState, crypto, assertSession);
-  assertSession();
-
-  return signature;
-};
-
-export const signSLHDSAActionHashLocal = async (
-  params: SLHDSASignActionHashParams,
-  expectedGeneration = sessionGeneration,
-  approval?: SLHDSADispatchApproval
-) => {
-  const request = Object.freeze({ ...params });
-  return withSigningQueue(request.keyId, () =>
-    signSLHDSAActionHashLocalUnlocked(request, expectedGeneration, approval)
-  );
-};
+export const signSLHDSAActionHashLocal = (
+  request: Parameters<typeof signer.signSLHDSAActionHashLocal>[0],
+  generation = signer.getSLHDSASessionGeneration(),
+  approval?: Parameters<typeof signer.signSLHDSAActionHashLocal>[2]
+) => signer.signSLHDSAActionHashLocal(request, generation, approval);
