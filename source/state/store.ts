@@ -312,7 +312,18 @@ function persistMainMutation(
       assertWalletPersistenceAllowed();
       if (isSameWallet && !isSameWallet()) throw error;
       const currentState = getMainStateForStorage(store.getState());
-      await chromeStorage.setItem('state', currentState);
+      try {
+        await chromeStorage.setItem('state', currentState);
+      } catch (repairError) {
+        if (isSameWallet && !isSameWallet()) throw error;
+        walletPersistenceGate.blocked = true;
+        throw new Error(
+          'Could not restore wallet storage. Close and reopen Pali.',
+          {
+            cause: repairError,
+          }
+        );
+      }
       lastPersistedState = currentState;
       throw error;
     }
