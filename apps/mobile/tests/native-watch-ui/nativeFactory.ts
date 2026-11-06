@@ -296,6 +296,7 @@ export function createNativeWalletControllers() {
       if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
       guard();
       events.push('key:finish');
+      if (wifFixtureEnabled && scope.accountId.startsWith('hd:0:')) return `zprv${'A'.repeat(107)}`;
       return importedKeys.get(scope.accountId) ?? PUBLIC_TEST_KEY;
     },
   };

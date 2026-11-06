@@ -391,9 +391,12 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
             await owner.unlock(password);
             await selectAccount(`hd:${network.slip44}:0`);
             const beforeHd = exports;
-            await assert.rejects(keyFlow.begin(password), { message: 'KEY_EXPORT_UNAVAILABLE' });
-            assert.equal(exports, beforeHd);
+            const extended = await keyFlow.begin(password);
+            assert.equal(extended.accountId, `hd:${network.slip44}:0`);
+            assert(extended.privateKey.startsWith(network.testnet ? 'vprv' : 'zprv'));
+            assert.equal(exports, beforeHd + 1);
             await selectAccount(accountId);
+            assert.equal(keyFlow.isCurrent(extended.id), false);
             assert.equal(calls.length, callsBeforeReveal);
           }
         } finally { keyFlow.dispose(); }
