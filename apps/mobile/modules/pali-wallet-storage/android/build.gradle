@@ -10,3 +10,9 @@ android {
   namespace 'org.syscoin.pali.storage'
   defaultConfig { versionCode 1; versionName '1.0.0' }
 }
+
+dependencies {
+  // Use the same OkHttp and Okio API dependencies exported by the app's ReactAndroid pin.
+  implementation 'com.facebook.react:react-android'
+  testImplementation 'junit:junit:4.13.2'
+}

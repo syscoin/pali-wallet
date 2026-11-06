@@ -59,7 +59,7 @@ export function recordMerkleSubtree(
     !word(root)
   )
     throw unavailable();
-  index.levels[level - MERKLE_PATH_CACHE_LEVEL][nodeIndex] = root;
+  index.levels[level - MERKLE_PATH_CACHE_LEVEL]![nodeIndex] = root;
 }
 
 /**
@@ -148,7 +148,7 @@ export async function getMerklePath(
     const first = nodeIndex * 2 ** level;
     if (first >= leaves.length) return getMerkleZero(level);
     if (first + 2 ** level <= leaves.length) {
-      const root = index.levels[level - MERKLE_PATH_CACHE_LEVEL][nodeIndex];
+      const root = index.levels[level - MERKLE_PATH_CACHE_LEVEL]![nodeIndex];
       if (!word(root)) throw unavailable();
       return root;
     }
@@ -160,11 +160,11 @@ export async function getMerklePath(
   };
   for (let level = MERKLE_PATH_CACHE_LEVEL; level < TREE_DEPTH; level++)
     pathElements.push(upper(level, Math.floor(leafIndex / 2 ** level) ^ 1));
-  let root = leaves[leafIndex];
+  let root = leaves[leafIndex]!;
   for (let level = 0; level < TREE_DEPTH; level++)
     root = pathIndices[level]
-      ? hash(pathElements[level], root)
-      : hash(root, pathElements[level]);
+      ? hash(pathElements[level]!, root)
+      : hash(root, pathElements[level]!);
   check();
   if (root !== expectedRoot || work.root !== expectedRoot) throw unavailable();
   return { pathElements, pathIndices };

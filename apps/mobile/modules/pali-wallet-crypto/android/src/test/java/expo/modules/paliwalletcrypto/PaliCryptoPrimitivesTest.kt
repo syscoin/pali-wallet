@@ -39,6 +39,21 @@ class PaliCryptoPrimitivesTest {
     assertThrows(IllegalArgumentException::class.java) { PaliCryptoPrimitives.randomBytes(65_537) }
   }
 
+  @Test fun hmacSha512MatchesRfc4231AndRejectsInvalidBounds() {
+    assertEquals(
+      "87aa7cdea5ef619d4ff0b4241a1d6cb02379f4e2ce4ec2787ad0b30545e17cdedaa833b7d6b8a702038b274eaea3f4e4be9d914eeb61f1702e696c203a126854",
+      hex(PaliCryptoPrimitives.signHmacSha512(ByteArray(20) { 11 }, "Hi There".toByteArray()))
+    )
+    assertEquals(
+      "80b24263c7c1a3ebb71493c1dd7be8b49b46d1f41b4aeec1121b013783f8f3526b56d037e05f2598bd0fd2215d6a1e5295e64f73f63f0aec8b915a985d786598",
+      hex(PaliCryptoPrimitives.signHmacSha512(ByteArray(131) { 0xaa.toByte() },
+        "Test Using Larger Than Block-Size Key - Hash Key First".toByteArray()))
+    )
+    assertThrows(IllegalArgumentException::class.java) { PaliCryptoPrimitives.signHmacSha512(byteArrayOf(), byteArrayOf()) }
+    assertThrows(IllegalArgumentException::class.java) { PaliCryptoPrimitives.signHmacSha512(ByteArray(4_097), byteArrayOf()) }
+    assertThrows(IllegalArgumentException::class.java) { PaliCryptoPrimitives.signHmacSha512(byteArrayOf(1), ByteArray(1_048_577)) }
+  }
+
   @Test fun backupPayloadBoundIsEightMiBWhileDigestKeepsItsSmallerLimit() {
     val plaintext = ByteArray(8 * 1024 * 1024) { 0x37 }
     val key = ByteArray(32)

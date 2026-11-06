@@ -286,15 +286,27 @@ test('pending placement and unknown account amounts are ordinary activity states
 
 test('100-row window navigates older and newer without an arbitrary end-of-history claim', async ({ page }) => {
   await open(page, 'bitcoin', false, 'window'); await load(page);
+  const list = page.getByTestId('watch-activity-list');
+  const clickPage = async (direction: 'Older' | 'Newer', lastRow: number) => {
+    const button = page.getByRole('button', { name: `${direction} activity`, exact: true });
+    // The virtualized footer can move when an automatic scroll measures more rows.
+    // Reach the last loaded row and footer together before sending the pointer click.
+    await expect(async () => {
+      await list.evaluate(element => { element.scrollTop = element.scrollHeight; });
+      await expect(list.getByTestId(`watch-activity-row-${ID(lastRow)}`)).toBeInViewport({ timeout: 250 });
+      await expect(button).toBeInViewport({ timeout: 250 });
+    }).toPass({ timeout: 5000 });
+    await button.click();
+  };
   for (const count of [40, 60, 80, 100]) {
-    await page.getByRole('button', { name: 'Older activity', exact: true }).click();
+    await clickPage('Older', count - 20);
     await expect(page.getByText(new RegExp(`^${count} transactions shown`))).toBeVisible();
   }
-  await page.getByRole('button', { name: 'Older activity', exact: true }).click();
+  await clickPage('Older', 100);
   await expect(page.getByText('100 transactions shown · Pages 2–6', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Newer activity', exact: true })).toBeVisible();
   await expect(page.getByText(/display limit|complete history/)).toHaveCount(0);
-  await page.getByRole('button', { name: 'Newer activity', exact: true }).click();
+  await clickPage('Newer', 120);
   await expect(page.getByText(/^100 transactions shown/)).toBeVisible();
   await expect(page.getByTestId(`watch-activity-row-${ID(1)}`)).toBeVisible();
   expect((await page.evaluate(() => window.__watchFixture.activity.calls())).some(url => url.includes('page=6&pageSize=20'))).toBe(true);

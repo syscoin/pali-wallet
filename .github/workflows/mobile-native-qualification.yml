@@ -34,8 +34,14 @@ on:
       - 'source/utils/nftTokenId.ts'
       - 'source/utils/personalSignReview.ts'
       - 'source/utils/privacy/note.ts'
+      - 'source/utils/privacy/merkle.ts'
+      - 'source/utils/privacy/merklePath.ts'
+      - 'source/utils/privacy/ownedAnchor.ts'
+      - 'source/utils/privacy/publicSyncProtocol.ts'
       - 'source/utils/privacy/privateVaultTypes.ts'
       - 'source/utils/privacy/registry.ts'
+      - 'source/utils/privacy/snapshotValidation.ts'
+      - 'source/utils/privacy/trustedSnapshot.ts'
       - 'source/utils/privacy/transactionTypes.ts'
       - 'source/utils/privacy/types.ts'
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
@@ -87,6 +93,20 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
+      - name: Run Swift public snapshot loopback
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pali-native-ios" "$RUNNER_TEMP/pali-snapshot-swift-cache"
+          snapshot_module=modules/pali-wallet-storage
+          snapshot_binary="$RUNNER_TEMP/pali-snapshot-swift-loopback"
+          xcrun --sdk macosx swiftc -swift-version 5 -warnings-as-errors \
+            -module-cache-path "$RUNNER_TEMP/pali-snapshot-swift-cache" \
+            -D PALI_SNAPSHOT_LOOPBACK -parse-as-library \
+            "$snapshot_module/ios/PaliPublicSnapshotDownload.swift" \
+            "$snapshot_module/tests/PublicSnapshotDownloadChecks.swift" \
+            -o "$snapshot_binary" 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
+          SWIFT_BACKTRACE=enable=no python3 "$snapshot_module/tests/public_snapshot_loopback.py" \
+            "$snapshot_binary" 2>&1 | tee -a "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform ios --no-install
       - run: pod install --project-directory=ios
@@ -162,6 +182,14 @@ jobs:
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
+      - name: Run Android JVM public snapshot loopback
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pali-native-android"
+          (cd android && ./gradlew :pali-wallet-storage:testDebugUnitTest \
+            --tests org.syscoin.pali.storage.PaliPublicSnapshotDownloadTest \
+            --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
+            2>&1 | tee "$RUNNER_TEMP/pali-native-android/public-snapshot-loopback.log"
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)
@@ -215,6 +243,22 @@ jobs:
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
         run: node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
+      - name: Exercise isolated Android watch notice permission and delivery
+        timeout-minutes: 8
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=qualification/watch-notice-android
+          output="$RUNNER_TEMP/pali-watch-notice-apk"
+          evidence="$RUNNER_TEMP/pali-native-android/watch-notice"
+          mkdir -p "$evidence"
+          emulator_serial=$("$ANDROID_HOME/platform-tools/adb" -H 127.0.0.1 -P 5037 devices | awk '
+            $1 ~ /^emulator-[0-9]+$/ && $2 == "device" { serial = $1; count++ }
+            END { if (count != 1) exit 1; print serial }')
+          bash "$fixture/build.sh" "$GITHUB_WORKSPACE" "$output" 2>&1 | tee "$evidence/build.log"
+          cp "$output"/{transport-source.txt,apk.sha256,apk-signature.txt,apk-badging.txt} "$evidence/"
+          python3 "$fixture/run-emulator.py" --serial "$emulator_serial" --avd PaliQualification \
+            "$output/watch-notice-probe.apk" "$evidence/runtime" 2>&1 | tee "$evidence/test.log"
       - name: Stop isolated emulator
         if: always()
         run: adb emu kill || true

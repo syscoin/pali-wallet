@@ -15,6 +15,7 @@ export interface NativeCryptoContext {
   }>;
   randomBytes(length: number): Uint8Array;
   digestSha256(data: Uint8Array): Promise<Uint8Array>;
+  signHmacSha512(key: NativeKey, data: Uint8Array): Promise<Uint8Array>;
   close(): void;
 }
 
@@ -23,7 +24,7 @@ export interface NativeCryptoModule {
   createContext(): NativeCryptoContext;
 }
 
-type KeyKind = 'AES-GCM' | 'PBKDF2' | 'HKDF';
+type KeyKind = 'AES-GCM' | 'PBKDF2' | 'HKDF' | 'HMAC-SHA512';
 type KeyRecord = { native: NativeKey; kind: KeyKind; usages: readonly KeyUsage[] };
 const providers = new WeakMap<object, { close(): void }>();
 const MAX_AES_DATA = 8 * 1024 * 1024;
@@ -79,7 +80,7 @@ function output(value: Uint8Array, length?: number): ArrayBuffer {
 }
 
 function usagesFor(kind: KeyKind, usages: readonly KeyUsage[]): readonly KeyUsage[] {
-  const allowed = kind === 'AES-GCM' ? ['encrypt', 'decrypt'] : ['deriveBits', 'deriveKey'];
+  const allowed = kind === 'AES-GCM' ? ['encrypt', 'decrypt'] : kind === 'HMAC-SHA512' ? ['sign'] : ['deriveBits', 'deriveKey'];
   if (!Array.isArray(usages) || usages.length === 0 || usages.length > 2 ||
     new Set(usages).size !== usages.length || usages.some((usage) => !allowed.includes(usage)))
     throw error('SyntaxError', 'Invalid key usages');
@@ -110,9 +111,10 @@ export function createWalletCrypto(module: NativeCryptoModule, onStep?: (step: C
       return result;
     } finally { pending--; }
   };
-  const makeKey = (native: NativeKey, kind: KeyKind, usages: readonly KeyUsage[]): CryptoKey => {
+  const makeKey = (native: NativeKey, kind: KeyKind, usages: readonly KeyUsage[], hmacLength?: number): CryptoKey => {
     if (!native || typeof native !== 'object') throw error('NativeCryptoError', 'Invalid native key');
-    const algorithm = Object.freeze(kind === 'AES-GCM' ? { name: kind, length: 256 } : { name: kind });
+    const algorithm = Object.freeze(kind === 'AES-GCM' ? { name: kind, length: 256 } :
+      kind === 'HMAC-SHA512' ? { name: 'HMAC', hash: Object.freeze({ name: 'SHA-512' }), length: hmacLength } : { name: kind });
     const key = Object.freeze({ type: 'secret', extractable: false, algorithm, usages,
       [Symbol.toStringTag]: 'CryptoKey' }) as unknown as CryptoKey;
     keys.set(key, { native, kind, usages });
@@ -154,14 +156,21 @@ export function createWalletCrypto(module: NativeCryptoModule, onStep?: (step: C
       extractable: boolean, requestedUsages: KeyUsage[]): Promise<CryptoKey> {
       assertOpen();
       if (format !== 'raw' || extractable !== false) unsupported();
-      const kind = nameOf(algorithm) as KeyKind;
-      if (!['AES-GCM', 'PBKDF2', 'HKDF'].includes(kind)) unsupported();
+      const name = nameOf(algorithm);
+      const kind = name === 'HMAC' ? 'HMAC-SHA512' : name as KeyKind;
+      if (!['AES-GCM', 'PBKDF2', 'HKDF', 'HMAC-SHA512'].includes(kind) || name === 'HMAC-SHA512') unsupported();
+      if (kind === 'HMAC-SHA512' &&
+          (typeof algorithm === 'string' || nameOf((algorithm as HmacImportParams).hash) !== 'SHA-512')) unsupported();
       const usages = usagesFor(kind, requestedUsages);
       const raw = bytes(data, MAX_KEY);
       try {
-        if ((kind === 'AES-GCM' && raw.length !== 32) || (kind === 'HKDF' && raw.length === 0))
+        if ((kind === 'AES-GCM' && raw.length !== 32) ||
+            ((kind === 'HKDF' || kind === 'HMAC-SHA512') && raw.length === 0))
           throw error('DataError', 'Invalid key size');
-        return makeKey(nativeSync(() => context.importKey(kind, [...usages], raw)), kind, usages);
+        if (kind === 'HMAC-SHA512' && (algorithm as HmacImportParams).length !== undefined &&
+            (algorithm as HmacImportParams).length !== raw.length * 8) unsupported();
+        return makeKey(nativeSync(() => context.importKey(kind, [...usages], raw)), kind, usages,
+          kind === 'HMAC-SHA512' ? raw.length * 8 : undefined);
       } finally { raw.fill(0); }
     },
     async deriveBits(algorithm: AlgorithmIdentifier, key: CryptoKey, length: number): Promise<ArrayBuffer> {
@@ -220,8 +229,16 @@ export function createWalletCrypto(module: NativeCryptoModule, onStep?: (step: C
       try { return await run(async () => output(await nativeAsync(() => context.digestSha256(input)), 32)); }
       finally { input.fill(0); }
     },
+    async sign(algorithm: AlgorithmIdentifier, key: CryptoKey, data: BufferSource): Promise<ArrayBuffer> {
+      if (nameOf(algorithm) !== 'HMAC') unsupported();
+      const input = bytes(data, MAX_DIGEST_DATA);
+      try {
+        const native = requireKey(key, 'HMAC-SHA512', 'sign');
+        return await run(async () => output(await nativeAsync(() => context.signHmacSha512(native, input)), 64));
+      } finally { input.fill(0); }
+    },
     exportKey: async () => unsupported(), generateKey: async () => unsupported(),
-    sign: async () => unsupported(), verify: async () => unsupported(),
+    verify: async () => unsupported(),
     wrapKey: async () => unsupported(), unwrapKey: async () => unsupported(),
   };
   const crypto = Object.freeze({
