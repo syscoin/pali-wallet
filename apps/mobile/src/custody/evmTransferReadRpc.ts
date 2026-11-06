@@ -53,7 +53,7 @@ export type EvmCancellationQuote = EvmPreparedQuote & Readonly<{
   feePlan: ReturnType<typeof planEvmCancellationFees>;
 }>;
 export type NativeGuardianRecoveryStatus =
-  | Readonly<{ status: 'unsupported' }>
+  | Readonly<{ status: 'unsupported' | 'no-compatible-policy' }>
   | Readonly<{ status: 'observed'; observation: GuardianRecoveryObservation }>;
 function quantity(value: unknown): bigint {
   try { return parseRpcQuantity(value); } catch { return rejectRead('INVALID_RESPONSE'); }
@@ -183,7 +183,7 @@ export class EvmTransferReadRpc {
   }
   readGuardianRecoveryStatus(account: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
     return this.operation(signal, guard, async (read) => {
-      const [{ readGuardianRecoveryObservation, GuardianRecoveryUnsupportedError }, { getPaliModuleAddress }] = await Promise.all([
+      const [{ readGuardianRecoveryObservation, GuardianRecoveryUnsupportedError, GuardianRecoveryNoAccountCodeError }, { getPaliModuleAddress }] = await Promise.all([
         import('../../../../source/utils/smartAccount/guardianStatus.ts'),
         import('../../../../source/utils/smartAccount/contracts.ts'),
       ]);
@@ -199,6 +199,7 @@ export class EvmTransferReadRpc {
         return { status: 'observed', observation };
       } catch (error) {
         if (error instanceof GuardianRecoveryUnsupportedError) return { status: 'unsupported' };
+        if (error instanceof GuardianRecoveryNoAccountCodeError) return { status: 'no-compatible-policy' };
         throw error;
       }
     }, 'endpoint');

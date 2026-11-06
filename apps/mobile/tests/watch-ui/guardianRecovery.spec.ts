@@ -43,13 +43,22 @@ test('watch recovery checks explicitly and renders a verified schedule at 320 px
 
 test('watch recovery separates unsupported module from an unavailable endpoint', async ({ page }) => {
   await openGuardian(page);
-  await selectMode(page, 'unsupported');
+  await selectMode(page, 'unsupported-revert');
   await page.getByRole('button', { name: 'Check status' }).click();
   await expect(page.getByText('Guardian module unsupported', { exact: true })).toBeVisible();
   await selectMode(page, 'unavailable');
   await page.getByRole('button', { name: 'Check again' }).click();
   await expect(page.getByText('Status unavailable', { exact: true })).toBeVisible();
   await expect(page.getByText('No guardian policy found', { exact: true })).toHaveCount(0);
+});
+
+test('an ordinary address displays no compatible guardian policy at 320 px', async ({ page }, testInfo) => {
+  await openGuardian(page);
+  await selectMode(page, 'eoa');
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await expect(page.getByText('No compatible guardian policy', { exact: true })).toBeVisible();
+  await expect(page.getByText('Status unavailable', { exact: true })).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath('guardian-no-policy-320.png'), fullPage: true });
 });
 
 test('Back and a changed network retire a held watch recovery read', async ({ page }) => {

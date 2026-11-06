@@ -52,6 +52,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
   const observation = state.status === 'observed' ? state.observation : undefined;
   const operation = observation?.active;
   const message = state.status === 'unsupported' ? 'Guardian module unsupported'
+    : state.status === 'no-compatible-policy' ? 'No compatible guardian policy'
     : state.status === 'unavailable' ? 'Status unavailable'
     : state.status === 'loading' ? 'Checking recovery status…'
     : observation ? !observation.exists ? 'No guardian policy found'
@@ -65,6 +66,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
     {message && <Card style={styles.card}>
       <Text accessibilityLiveRegion="polite" style={styles.status}>{message}</Text>
       {state.status === 'unsupported' && <Text style={styles.body}>Pali’s guardian module could not be verified on this network.</Text>}
+      {state.status === 'no-compatible-policy' && <Text style={styles.body}>This address has no smart account code on this network.</Text>}
       {state.status === 'unavailable' && <Text style={styles.body}>This network did not return a verified status. Try again.</Text>}
       {operation?.status === 'pending' && <Text style={styles.body}>
         Ready {new Date(operation.executableAt * 1000).toLocaleString()}
