@@ -10,7 +10,7 @@ export function projectUtxoChainCatalogue(
     const urls = coin.blockchainLink?.url;
     if (!urls?.length) return [];
     const rpcUrls = Array.isArray(urls) ? urls : [urls];
-    const chainId = coin.chainId || coin.slip44;
+    const chainId = coin.chainId ?? coin.slip44;
     const name = coin.name || coin.coinLabel;
     const icon =
       coin.coinName?.toLowerCase().replace(/\s+/g, '') ||
