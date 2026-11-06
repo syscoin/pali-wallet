@@ -78,6 +78,7 @@ const originalRandomUuid = Object.getOwnPropertyDescriptor(
 const mockMessages: any[] = [];
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
+let mockPendingBalanceWei = '100000000000000000000';
 const mockAlertError = jest.fn();
 const mockEmitter = jest.fn();
 const mockAuth = {
@@ -255,6 +256,7 @@ beforeEach(() => {
   mockEIP1559 = true;
   mockMessages.length = 0;
   mockNativeReplies.length = 0;
+  mockPendingBalanceWei = '100000000000000000000';
   (chrome.runtime as any).id = 'synthetic-extension';
   jest.spyOn(chrome.runtime, 'sendMessage').mockImplementation(((
     message: any,
@@ -297,7 +299,7 @@ beforeEach(() => {
       send: async (method: string) => {
         if (method === 'eth_getBlockByNumber')
           return { gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
-        if (method === 'eth_getBalance') return '100000000000000000000';
+        if (method === 'eth_getBalance') return mockPendingBalanceWei;
         if (method === 'eth_getTransactionCount') return '0x7';
         if (method === 'eth_estimateGas') return '0x5208';
         throw new Error(`Unexpected native read ${method}`);
@@ -500,6 +502,50 @@ it('accepts an unlisted native recipient through the same controller path', asyn
     screen.queryByText('send.submissionStatusUnknown')
   ).not.toBeInTheDocument();
 });
+it.each([
+  ['101000000000000000000', true],
+  ['99999999999999999999', false],
+])(
+  'submits the exact software MAX review only if the pending balance %s can cover it',
+  async (pendingBalance, affordable) => {
+    mockLocation.state.tx.transactionType = 'NATIVE_ETH';
+    await ready(true);
+    const reviewId =
+      mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
+    const reviewedValue = '99999937000000000000';
+    mockPendingBalanceWei = pendingBalance;
+    await act(async () =>
+      fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+    );
+    await waitFor(() => expect(mockNativeReplies).toHaveLength(1));
+    expect(mockMessages.map(({ data }) => data.methods.at(-1))).not.toContain(
+      'refreshActiveAccountBalances'
+    );
+    const { data } = mockMessages.find(
+      (message) => message.data.methods.at(-1) === 'sendAndSaveEthTransaction'
+    );
+    expect(data.params[0].value).toBe(reviewedValue);
+    expect(data.params[4]).toEqual({
+      nativeReview: { id: reviewId, scope: mockScope },
+    });
+    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
+    if (affordable) {
+      expect(mockSdkSend).toHaveBeenCalledTimes(1);
+      expect(mockSdkSend.mock.calls[0][0].value).toBe(reviewedValue);
+      expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1);
+    } else {
+      expect(mockNativeReplies[0]).toEqual({
+        success: false,
+        error: {
+          message: expect.stringContaining('Insufficient funds'),
+          transactionNotBroadcast: true,
+        },
+      });
+      expect(mockSdkSend).not.toHaveBeenCalled();
+      expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
+    }
+  }
+);
 it('keeps a native ambiguous SDK rejection in unknown status', async () => {
   mockSdkSend.mockRejectedValueOnce(new Error('synthetic SDK failure'));
   await readyNative(false);
