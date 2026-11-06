@@ -6,7 +6,6 @@ import {
 } from '../../../../source/utils/privacy/ownedAnchor.ts';
 import {
   privacyRpcResponseLimit,
-  readPrivacyJson,
   readPrivacyPoolSnapshot,
   type PrivacyAnchorRead,
   type PrivacyJsonResponse,
@@ -363,7 +362,7 @@ export function createNativePrivacyPoolSync(
       return await readPrivacyPoolSnapshot(
         id,
         local.signal,
-        async (_url, _init, responseLimit) => {
+        async (_url, _init, responseLimit, readResponse) => {
           const limit = (status: number) =>
             responseLimit({ status, ok: status === 200 });
           const operation = reserve(
@@ -373,10 +372,7 @@ export function createNativePrivacyPoolSync(
           );
           try {
             const response = await operation.start(() => checkRun(active));
-            const data = await readPrivacyJson(
-              response,
-              limit(response.status)
-            );
+            const data = await readResponse(response, limit(response.status));
             checkRun(active);
             return { data, status: response.status };
           } finally {
