@@ -123,6 +123,41 @@ test('corrupt, foreign-wallet and unsupported catalogues are preserved without r
   } finally { await f.cleanup(); }
 });
 
+test('revoking catalogue ownership after the SQL update rolls back before commit', async () => {
+  let holdUpdate = false;
+  let live = true;
+  let entered!: () => void;
+  let release!: () => void;
+  const reached = new Promise<void>((resolve) => { entered = resolve; });
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  const f = await fixture({
+    after: async (kind, sql) => {
+      if (!holdUpdate || kind !== 'run' || !sql.startsWith('UPDATE keyring_records')) return;
+      holdUpdate = false;
+      entered();
+      await held;
+    },
+  });
+  try {
+    const catalogue = new NativeWalletCatalogue(f.storage.keyringStorage);
+    const before = await catalogue.reconcile(f.identity, current);
+    const stored = await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+    holdUpdate = true;
+    const mutation = catalogue.mutate(before.revision, {
+      kind: 'rename', id: 'hd:60:0', label: 'Cancelled edit',
+    }, () => { if (!live) throw Error('CANCELLED'); });
+    await reached;
+    live = false;
+    release();
+    await assert.rejects(mutation, /CANCELLED/);
+    assert.deepEqual(await f.storage.keyringStorage.get(WALLET_CATALOGUE_KEY), stored);
+    assert.equal(catalogue.requiresReopen, false);
+    assert.deepEqual(await catalogue.reconcile(f.identity, current), before);
+    await f.reopen();
+    assert.deepEqual(await new NativeWalletCatalogue(f.storage.keyringStorage).reconcile(f.identity, current), before);
+  } finally { release(); await f.cleanup(); }
+});
+
 for (const phase of ['read', 'commit'] as const) {
   test(`revocation during catalogue ${phase} cannot publish stale context`, async () => {
     let enabled = false;
