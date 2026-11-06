@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "この取引を高速化する前に、このアカウントに資金を追加してください。元の金額は変更されません。",
     "speedUpFeeUnavailable": "手数料を確認できませんでした。もう一度お試しください。",
     "replay": {
+      "reviewCancellation": "キャンセル内容を確認",
+      "cancellationDescription": "最大ネットワーク手数料 {{fee}} {{currency}} でこの取引をキャンセルしますか？元の取引が先に承認される可能性があります。",
+      "cancellationExpired": "キャンセルの確認期限が切れました。手数料を再確認してください。",
       "review": "再送信を確認",
       "title": "取引を再送信",
       "description": "元の金額と手数料で、同じ署名済み取引を再送信します。",

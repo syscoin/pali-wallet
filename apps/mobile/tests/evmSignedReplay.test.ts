@@ -493,6 +493,11 @@ test('Cancel bars payment replay in its own nonce scope, including historical ap
   const cancel = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
   assert.equal(await witness(cancel.hash!), cancel.serialized);
   await assert.rejects(witness(original.hash!), /ORIGINAL_CHANGED/);
+  const fenced = f.bytes();
+  await assert.rejects(f.append(0, 2, recipient, '0x', { fee: 8 }), {
+    name: 'EvmSignedRecordCancellationFence', recoveryHash: cancel.hash,
+  });
+  assert.equal(f.bytes(), fenced);
   await assert.rejects(f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 }), /ORIGINAL_CHANGED/);
   const historical = await f.append(0, 2, recipient, '0x', {
     operation: 'speed-up', originalHash: cancel.hash!, fee: 9, historical: true,
@@ -508,6 +513,10 @@ test('Cancel bars payment replay in its own nonce scope, including historical ap
   const repeatCancel = await f.append(0, 2, wallet.address, '0x', {
     operation: 'cancel', originalHash: reprice.hash!, fee: 12, gasLimit: 42000,
   });
+  await assert.rejects(f.records.assertSpendingNonce(f.session, '7654321', wallet.address, 0), {
+    name: 'EvmSignedRecordCancellationFence', recoveryHash: repeatCancel.hash,
+  });
+  await f.records.assertSpendingNonce(f.session, '7654321', wallet.address, 2);
   assert.equal((await replay.prepare(repeatCancel.hash!)).status, 'review');
   await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
 });
@@ -810,6 +819,67 @@ for (const phase of ['confirmed', 'reverted', 'nonce-consumed'] as const)
     assert.equal(f.dispatched.length, 0);
     assert.equal((await f.create().get(tx.hash!))!.phase, phase);
   });
+
+test('overlapping terminal observations of distinct nonces both persist', async () => {
+  const f = await fixture();
+  const first = await f.append(0);
+  const second = await f.append(1);
+  f.nonce(2);
+  const held = hold();
+  let reads = 0;
+  f.beforeObservation(async () => {
+    if (++reads === 1) await held.run();
+  });
+  const pending = f.create().prepare(first.hash!);
+  await held.started;
+  try {
+    const observed = await f.create().prepare(second.hash!);
+    assert.equal(observed.status, 'nonce-consumed');
+  } finally {
+    held.release();
+  }
+  assert.equal((await pending).status, 'nonce-consumed');
+  for (const tx of [first, second])
+    assert.equal((await f.create().get(tx.hash!))!.phase, 'nonce-consumed');
+});
+
+for (const conflict of ['changed target phase', 'new same-nonce sibling'] as const)
+  test(`terminal observation rejects a ${conflict}`, async () => {
+    const f = await fixture();
+    const tx = await f.append(0);
+    f.nonce(1);
+    const held = hold();
+    f.beforeObservation(held.run);
+    const pending = assert.rejects(f.create().prepare(tx.hash!), {
+      code: 'CONTEXT_CHANGED',
+    });
+    await held.started;
+    try {
+      if (conflict === 'changed target phase') {
+        await f.records.updatePhase(
+          f.session,
+          '7654321',
+          wallet.address,
+          tx.hash!,
+          'attempted'
+        );
+      } else {
+        await f.append(0, 2, recipient, '0x', {
+          operation: 'cancel',
+          originalHash: tx.hash!,
+          fee: 7,
+        });
+      }
+    } finally {
+      held.release();
+    }
+    await pending;
+    assert.equal(
+      (await f.create().get(tx.hash!))!.phase,
+      conflict === 'changed target phase' ? 'attempted' : 'signed'
+    );
+  });
+
 test('shared observation captures original stored tuple and refuses revocation before phase commit', async () => {
   const f = await fixture(),
     tx = await f.append(0),
@@ -846,9 +916,9 @@ test('shared observation captures original stored tuple and refuses revocation b
 test('queued revocation after retained helper resolves is checked again by replay prepare', async () => {
   const f = await fixture(), tx = await f.append(0);
   f.receipts.set(tx.hash!, {transactionHash:tx.hash,from:wallet.address,to:recipient,status:'0x1',blockNumber:'0xa',blockHash});
-  const update = f.records.updatePhase.bind(f.records);
+  const update = f.records.updateObservedPhase.bind(f.records);
   let armed=false, queued=false;
-  f.records.updatePhase=async (...args) => { const result=await update(...args);armed=true;return result; };
+  f.records.updateObservedPhase=async (...args) => { const result=await update(...args);armed=true;return result; };
   const check=f.session.assertCurrent;
   f.session.assertCurrent=()=>{check();if(armed&&!queued){queued=true;queueMicrotask(()=>f.revoke());}};
   await assert.rejects(f.create().prepare(tx.hash!), /revoked/);

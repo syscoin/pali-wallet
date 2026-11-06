@@ -6,7 +6,9 @@ import { formatTokenUnits } from '../../shared/erc20';
 import { ConfirmationModal } from 'components/Modal';
 import { useContextualState } from 'hooks/useContextualState';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
+import type { RetainedEvmCancellationReview } from 'scripts/Background/controllers/evmSignedReplay';
 import { RootState } from 'state/store';
+import { KeyringAccountType } from 'types/network';
 import { formatUnits } from 'utils/ethersV6Compat';
 import { getWalletNavigationScope } from 'utils/navigationState';
 
@@ -20,6 +22,8 @@ import type {
 type View = {
   additionalPredecessors?: readonly EvmReplayCandidate[];
   busy?: 'prepare' | 'confirm';
+  cancellation?: RetainedEvmCancellationReview;
+  cancellationHash?: string;
   loadingPrevious?: boolean;
   message?: string;
   predecessorCursor?: string | null;
@@ -27,11 +31,21 @@ type View = {
   review?: EvmReplayReview;
 };
 
+type ReviewReference = Readonly<{ id: string; kind: 'cancel' | 'replay' }>;
+
 /** Public review fields only. Raw bytes and the consumed consent stay in the background. */
 export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
   const { t } = useTranslation();
   const network = useSelector((state: RootState) => state.vault.activeNetwork);
   const walletScope = useSelector(getWalletNavigationScope, shallowEqual);
+  const canSignRetainedCancellation = useSelector(({ vault }: RootState) => {
+    const account = vault.activeAccount;
+    return (
+      account?.type === KeyringAccountType.HDAccount ||
+      (account?.type === KeyringAccountType.Imported &&
+        !!vault.accounts[account.type]?.[account.id]?.xprv)
+    );
+  });
   const scope = `${walletScope.account}:${
     walletScope.network
   }:${hash.toLowerCase()}`;
@@ -45,13 +59,18 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
   const [retained, setRetained] =
     useContextualState<EvmSavedTransaction | null>(scope, null);
   const [view, setView] = useContextualState<View>(scope, {});
-  const reviewId = useRef<string>();
+  const reviewReference = useRef<ReviewReference>();
   const confirming = useRef(false);
-  const cancelReview = (id?: string) => {
-    if (id)
+  const cancelReview = (review?: ReviewReference) => {
+    if (review)
       void controllerEmitter(
-        ['wallet', 'cancelEvmSignedReplay'],
-        [id],
+        [
+          'wallet',
+          review.kind === 'cancel'
+            ? 'cancelRetainedEvmCancellationReview'
+            : 'cancelEvmSignedReplay',
+        ],
+        [review.id],
         10000,
         false
       ).catch(() => undefined);
@@ -71,8 +90,8 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
     return () => {
       context.current.active = false;
       context.current.generation++;
-      cancelReview(reviewId.current);
-      reviewId.current = undefined;
+      cancelReview(reviewReference.current);
+      reviewReference.current = undefined;
       confirming.current = false;
     };
   }, [scope]);
@@ -80,31 +99,52 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
   const close = () => {
     if (confirming.current) return;
     context.current.generation++;
-    cancelReview(reviewId.current);
-    reviewId.current = undefined;
+    cancelReview(reviewReference.current);
+    reviewReference.current = undefined;
     setView({});
   };
-  const prepare = async (selectedHash = hash) => {
+  const prepare = async (
+    selectedHash = hash,
+    kind: ReviewReference['kind'] = 'replay'
+  ) => {
     if (confirming.current) return;
-    cancelReview(reviewId.current);
-    reviewId.current = undefined;
+    cancelReview(reviewReference.current);
+    reviewReference.current = undefined;
     const generation = ++context.current.generation;
     const current = () =>
       context.current.active && context.current.generation === generation;
     setView({ busy: 'prepare' });
     try {
-      const result = (await controllerEmitter(
-        ['wallet', 'prepareEvmSignedReplay'],
+      const response = await controllerEmitter(
+        [
+          'wallet',
+          kind === 'cancel'
+            ? 'prepareRetainedEvmCancellation'
+            : 'prepareEvmSignedReplay',
+        ],
         [selectedHash],
         15000,
         false
-      )) as EvmReplayPreparation;
+      );
+      if (kind === 'cancel') {
+        const cancellation = response as RetainedEvmCancellationReview;
+        const reference = { id: cancellation.id, kind };
+        if (!current()) {
+          cancelReview(reference);
+          return;
+        }
+        reviewReference.current = reference;
+        setView({ cancellation });
+        return;
+      }
+      const result = response as EvmReplayPreparation;
       if (!current()) {
-        if (result?.status === 'review') cancelReview(result.review.id);
+        if (result?.status === 'review')
+          cancelReview({ id: result.review.id, kind });
         return;
       }
       if (result.status === 'review') {
-        reviewId.current = result.review.id;
+        reviewReference.current = { id: result.review.id, kind };
         setView({
           review: result.review,
           predecessorCursor:
@@ -115,46 +155,101 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       } else {
         setView({ message: t(`transactions.replay.${result.status}`) });
       }
-    } catch {
-      if (current()) setView({ message: t('transactions.replay.unavailable') });
+    } catch (error) {
+      if (current())
+        setView({
+          message: t(
+            kind === 'cancel'
+              ? error instanceof Error &&
+                error.message === 'Insufficient funds for reviewed EVM transfer'
+                ? 'send.insufficientFundsForGas'
+                : 'transactions.cancelFeeUnavailable'
+              : 'transactions.replay.unavailable'
+          ),
+        });
     }
   };
+  const displayed = view.cancellation ?? view.review;
   useEffect(() => {
-    if (!view.review || view.busy === 'confirm') return;
-    const id = view.review.id;
+    const reference = reviewReference.current;
+    if (!displayed || !reference || view.busy === 'confirm') return;
     const timer = setTimeout(() => {
-      if (reviewId.current !== id || confirming.current) return;
-      cancelReview(id);
-      reviewId.current = undefined;
-      setView({ message: t('transactions.replay.expired') });
-    }, view.review.validForMs);
+      if (reviewReference.current !== reference || confirming.current) return;
+      cancelReview(reference);
+      reviewReference.current = undefined;
+      setView({
+        message: t(
+          reference.kind === 'cancel'
+            ? 'transactions.replay.cancellationExpired'
+            : 'transactions.replay.expired'
+        ),
+      });
+    }, displayed.validForMs);
     return () => clearTimeout(timer);
-  }, [view.review?.id, view.busy, scope, t]);
+  }, [displayed?.id, view.busy, scope, t]);
 
   const confirm = async () => {
-    const review = view.review;
-    if (!review || confirming.current || reviewId.current !== review.id) return;
+    const reference = reviewReference.current;
+    if (
+      !displayed ||
+      !reference ||
+      confirming.current ||
+      reference.id !== displayed.id
+    )
+      return;
     confirming.current = true;
     const generation = context.current.generation;
     const current = () =>
       context.current.active && context.current.generation === generation;
-    setView({ review, busy: 'confirm' });
+    setView({
+      review: view.review,
+      cancellation: view.cancellation,
+      busy: 'confirm',
+    });
     try {
       // A confirm must never be retried by the service-worker connection helper.
       const result = (await controllerEmitter(
-        ['wallet', 'confirmEvmSignedReplay'],
-        [review.id],
+        [
+          'wallet',
+          reference.kind === 'cancel'
+            ? 'confirmRetainedEvmCancellation'
+            : 'confirmEvmSignedReplay',
+        ],
+        [reference.id],
         30000,
         false
-      )) as { hash: string; status: 'submitted' | 'unknown' };
+      )) as
+        | { hash: string; status: 'submitted' | 'unknown' }
+        | { status: 'not-dispatched' };
+      if (current()) {
+        if (result.status === 'not-dispatched') {
+          setView({ message: t('transactions.transactionCancelFailed') });
+        } else {
+          const cancellation = reference.kind === 'cancel';
+          setView({
+            ...(cancellation ? { cancellationHash: result.hash } : {}),
+            message: t(
+              cancellation && result.status === 'submitted'
+                ? 'transactions.transactionCancelSubmitted'
+                : `transactions.replay.${result.status}`
+            ),
+          });
+        }
+      }
+    } catch (error) {
       if (current())
-        setView({ message: t(`transactions.replay.${result.status}`) });
-    } catch {
-      if (current())
-        setView({ message: t('transactions.replay.checkActivity') });
+        setView({
+          message: t(
+            reference.kind === 'cancel' &&
+              error instanceof Error &&
+              error.message === 'Insufficient funds for reviewed EVM transfer'
+              ? 'send.insufficientFundsForGas'
+              : 'transactions.replay.checkActivity'
+          ),
+        });
     } finally {
       if (current()) {
-        reviewId.current = undefined;
+        reviewReference.current = undefined;
         confirming.current = false;
       }
     }
@@ -168,7 +263,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
     const current = () =>
       context.current.active &&
       context.current.generation === generation &&
-      reviewId.current === review.id;
+      reviewReference.current?.id === review.id;
     setView((previous) => ({
       ...previous,
       loadingPrevious: true,
@@ -205,8 +300,19 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       ? retained.collectibleTransfer
       : undefined;
   const review = view.review;
+  const cancellation = view.cancellation;
   const currency = network.currency?.toUpperCase();
-  const rows = review
+  const rows = cancellation
+    ? [
+        [
+          t('transactions.replay.network'),
+          `${network.label} · ${cancellation.chainId}`,
+        ],
+        [t('transactions.replay.from'), cancellation.from],
+        [t('transactions.replay.original'), cancellation.hash],
+        [t('transactions.replay.nonce'), String(cancellation.nonce)],
+      ]
+    : review
     ? [
         [
           t('transactions.replay.operationLabel'),
@@ -304,20 +410,51 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
           ? t('buttons.loading')
           : t('transactions.replay.review')}
       </button>
+      {canSignRetainedCancellation &&
+        retained.hash === hash.toLowerCase() &&
+        !view.cancellationHash &&
+        retained.operation !== 'cancel' &&
+        (retained.type === 0 || retained.type === 2) &&
+        ['signed', 'attempted', 'submitted'].includes(retained.phase) && (
+          <button
+            type="button"
+            onClick={() => void prepare(hash, 'cancel')}
+            disabled={Boolean(view.busy)}
+            className="mt-2 w-full rounded-lg border border-bkg-white200 px-4 py-3 text-sm text-white hover:bg-alpha-whiteAlpha50 disabled:opacity-60"
+          >
+            {t('transactions.replay.reviewCancellation')}
+          </button>
+        )}
       {view.message && (
-        <p
+        <div
           role="status"
           className="mt-2 break-words text-sm text-brand-gray200"
         >
-          {view.message}
-        </p>
+          <p>{view.message}</p>
+          {view.cancellationHash && (
+            <p className="mt-1 break-all">
+              {t('transactions.replay.hash')}: {view.cancellationHash}
+            </p>
+          )}
+        </div>
       )}
-      {review && (
+      {displayed && (
         <ConfirmationModal
           show
-          title={t('transactions.replay.title')}
-          description={t('transactions.replay.description')}
-          buttonText={t('transactions.replay.resend')}
+          title={t(
+            cancellation ? 'header.cancelTx' : 'transactions.replay.title'
+          )}
+          description={
+            cancellation
+              ? t('transactions.replay.cancellationDescription', {
+                  fee: formatUnits(cancellation.maximumFee, 18),
+                  currency,
+                })
+              : t('transactions.replay.description')
+          }
+          buttonText={t(
+            cancellation ? 'buttons.confirm' : 'transactions.replay.resend'
+          )}
           onClose={close}
           onClick={() => void confirm()}
           isButtonLoading={view.busy === 'confirm'}
@@ -332,7 +469,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
               </div>
             ))}
           </dl>
-          {review.missingNonce !== undefined && (
+          {review?.missingNonce !== undefined && (
             <div className="mt-4 border-t border-bkg-white200 pt-4">
               <p className="text-sm text-brand-gray200">
                 {t('transactions.replay.previousNeeded', {

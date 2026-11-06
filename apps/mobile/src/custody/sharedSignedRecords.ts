@@ -27,6 +27,9 @@ export function createNativeSignedRecordView(
     ...(intent ? { intent } : {}),
   }); };
   return Object.freeze({
+    assertSpendingNonce(nonce: number) {
+      return checked(() => records.assertSpendingNonce(session, network.chainId, account.address, nonce));
+    },
     async load(hash?: string) {
       return checked(async () => {
         const entry = hash === undefined

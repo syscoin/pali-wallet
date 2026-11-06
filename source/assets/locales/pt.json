@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "Adicione fundos a esta conta antes de acelerar a transação. O valor original não será alterado.",
     "speedUpFeeUnavailable": "Não foi possível verificar a taxa. Tente novamente.",
     "replay": {
+      "reviewCancellation": "Rever cancelamento",
+      "cancellationDescription": "Cancelar esta transação com uma taxa de rede máxima de {{fee}} {{currency}}? A transação original ainda pode ser confirmada primeiro.",
+      "cancellationExpired": "A revisão do cancelamento expirou. Verifique novamente a taxa.",
       "review": "Rever reenvio",
       "title": "Reenviar transação",
       "description": "Reenvia a mesma transação assinada com o valor e as taxas originais.",
