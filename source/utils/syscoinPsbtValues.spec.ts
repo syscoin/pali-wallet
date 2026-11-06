@@ -870,6 +870,7 @@ describe('Syscoin PSBT value summary', () => {
           value: '1000000000',
         },
       ],
+      inputScripts: [new Uint8Array(previousTransaction.outs[1]!.script)],
       outputValuesSatoshis: ['1000000000', '79998999999000'],
     });
   });

@@ -56,6 +56,7 @@ import {
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
+import { assertUtxoSoftwareSpend } from '../../../shared/utxoSoftwareCustody';
 import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
@@ -1950,6 +1951,7 @@ class MainController {
     >[0]
   ) {
     const signing = this.captureUtxoSigningContext();
+    signing.assertSoftwareSpend([]);
     const collateral = await this.getProtectedSentryOutpoints();
     signing.assertCurrent();
     const owner = this.utxoRecordOwner(
@@ -1987,6 +1989,7 @@ class MainController {
       if (!result?.psbt) return result;
       const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
       read.assertCurrent();
+      signing.assertSoftwareSpend(summary.inputScripts, psbt.txOutputs);
       await this.assertNoSentryCollateralInputs(psbt);
       read.assertCurrent();
       this.assertOrdinaryUtxoInputsCurrent(psbt, signing.context);
@@ -8047,7 +8050,7 @@ class MainController {
             : undefined;
         if (ordinary) {
           await this.assertUtxoWalletReview(signing.walletReviewScope, review);
-          assertCurrent();
+          signing.assertSoftwareSpend([]);
         }
         const approvedPsbt = PsbtUtils.fromPali(params.psbt, activeNetwork);
         // Reject a different unsigned envelope before resolving its inputs.
@@ -8081,7 +8084,8 @@ class MainController {
             isLedger: params.isLedger,
             ...(review && { utxoFeeReview: review }),
           },
-          signing
+          signing,
+          ordinary
         );
         assertCurrent();
 
@@ -11573,12 +11577,34 @@ class MainController {
       if (networkGeneration !== this.networkRequestGeneration)
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
+    const assertSoftwareSpend = (
+      inputScripts: readonly Uint8Array[],
+      outputs: readonly { script: Uint8Array }[] = []
+    ) => {
+      assertWalletReviewCurrent();
+      const current = store.getState().vault;
+      if (current.activeNetwork.slip44 !== context.slip44)
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      const selectedAccount = current.accounts[selected.type]?.[selected.id];
+      // Match the SDK's actual device route, never the submitted device flags.
+      if (
+        selected.type !== KeyringAccountType.Ledger &&
+        selected.type !== KeyringAccountType.Trezor &&
+        selectedAccount?.isLedgerWallet !== true &&
+        selectedAccount?.isTrezorWallet !== true
+      )
+        assertUtxoSoftwareSpend(context, [
+          ...inputScripts,
+          ...outputs.map(({ script }) => script),
+        ]);
+    };
     assertCurrent();
     return {
       context,
       assertCurrent,
       walletReviewScope,
       assertWalletReviewCurrent,
+      assertSoftwareSpend,
       keyring,
       transactions: keyring.syscoinTransaction,
       withRead: <T>(
@@ -11614,7 +11640,7 @@ class MainController {
       params.expectedContext,
       dappAuthority
     );
-    return this.signReviewedSyscoinPsbt(params, signing);
+    return this.signReviewedSyscoinPsbt(params, signing, false);
   }
 
   private async signReviewedSyscoinPsbt(
@@ -11622,7 +11648,8 @@ class MainController {
       Parameters<MainController['signSyscoinPsbt']>[0],
       'expectedContext'
     >,
-    signing: ReturnType<MainController['captureUtxoSigningContext']>
+    signing: ReturnType<MainController['captureUtxoSigningContext']>,
+    ordinary: boolean
   ) {
     const { utxoFeeReview, ...signingParams } = params;
     const assertCurrent = signing.assertWalletReviewCurrent;
@@ -11652,6 +11679,11 @@ class MainController {
           )
         : undefined;
       try {
+        if (ordinary)
+          signing.assertSoftwareSpend(
+            verified.summary.inputScripts,
+            verified.psbt.txOutputs
+          );
         const signed = await signing.transactions.signPSBT(
           {
             ...signingParams,
