@@ -825,66 +825,69 @@ test('native MAX preserves a small exact decimal balance through unsigned review
       { initialBalanceWei, feeWei: '1', baseFeeWei: '0' }
     );
     const page = wallet.page;
-    await wallet.step('native-max-small-balance-open-and-review', async (capture) => {
-      await wallet!.importSeedAndCreatePassword();
-      await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
-      await expect
-        .poll(async () => {
-          const state = await publicNativeState(page);
-          return !state.loading && state.balance;
-        })
-        .toBe(exactAmount);
-      before = await publicNativeState(page);
-      expect(before).toMatchObject({
-        address: fixture.evmAddresses[0],
-        chainId: CHAIN,
-        rpcUrl: RPC,
-      });
-      await page.locator('#send-btn').click();
-      await expect(page).toHaveURL(/#\/send\/eth$/);
-      await page
-        .getByPlaceholder(en.send.receiver, { exact: true })
-        .fill(fixture.evmAddresses[1]);
-      await expect(page.locator('#send-eth-next-btn')).toBeEnabled();
-      await page.getByRole('button', { name: 'MAX', exact: true }).click();
-      await expect(
-        page.getByPlaceholder(en.send.amount, { exact: true })
-      ).toHaveValue(exactAmount);
-      await page.locator('#send-eth-next-btn').click();
-      await expect(page).toHaveURL(/#\/send\/confirm$/);
-      tx = await page.evaluate(() => {
-        const value = history.state?.usr?.tx;
-        return {
-          amount: value?.amount,
-          isMax: value?.isMax,
-          sender: value?.sender,
-          receivingAddress: value?.receivingAddress,
-          transactionType: value?.transactionType,
-        };
-      });
-      expect(tx).toMatchObject({
-        amount: exactAmount,
-        isMax: true,
-        sender: fixture.evmAddresses[0],
-        receivingAddress: fixture.evmAddresses[1],
-        transactionType: 'NATIVE_ETH',
-      });
-      await expect(
-        page.getByRole('button', { name: en.buttons.confirm, exact: true })
-      ).toBeEnabled();
-      const headline = page
-        .getByText(en.buttons.send, { exact: true })
-        .locator('..')
-        .locator('p')
-        .nth(1);
-      await expect(headline).toHaveText('0.0000000999999748 TSYS');
-      await capture(page);
-      // Never confirm: the real SDK fee/preview path is exercised without signing.
-      await page
-        .getByRole('button', { name: en.buttons.cancel, exact: true })
-        .click();
-      await expect(page).toHaveURL(/#\/send\/eth$/);
-    });
+    await wallet.step(
+      'native-max-small-balance-open-and-review',
+      async (capture) => {
+        await wallet!.importSeedAndCreatePassword();
+        await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
+        await expect
+          .poll(async () => {
+            const state = await publicNativeState(page);
+            return !state.loading && state.balance;
+          })
+          .toBe(exactAmount);
+        before = await publicNativeState(page);
+        expect(before).toMatchObject({
+          address: fixture.evmAddresses[0],
+          chainId: CHAIN,
+          rpcUrl: RPC,
+        });
+        await page.locator('#send-btn').click();
+        await expect(page).toHaveURL(/#\/send\/eth$/);
+        await page
+          .getByPlaceholder(en.send.receiver, { exact: true })
+          .fill(fixture.evmAddresses[1]);
+        await expect(page.locator('#send-eth-next-btn')).toBeEnabled();
+        await page.getByRole('button', { name: 'MAX', exact: true }).click();
+        await expect(
+          page.getByPlaceholder(en.send.amount, { exact: true })
+        ).toHaveValue(exactAmount);
+        await page.locator('#send-eth-next-btn').click();
+        await expect(page).toHaveURL(/#\/send\/confirm$/);
+        tx = await page.evaluate(() => {
+          const value = history.state?.usr?.tx;
+          return {
+            amount: value?.amount,
+            isMax: value?.isMax,
+            sender: value?.sender,
+            receivingAddress: value?.receivingAddress,
+            transactionType: value?.transactionType,
+          };
+        });
+        expect(tx).toMatchObject({
+          amount: exactAmount,
+          isMax: true,
+          sender: fixture.evmAddresses[0],
+          receivingAddress: fixture.evmAddresses[1],
+          transactionType: 'NATIVE_ETH',
+        });
+        await expect(
+          page.getByRole('button', { name: en.buttons.confirm, exact: true })
+        ).toBeEnabled();
+        const headline = page
+          .getByText(en.buttons.send, { exact: true })
+          .locator('..')
+          .locator('p')
+          .nth(1);
+        await expect(headline).toHaveText('0.0000000999999748 TSYS');
+        await capture(page);
+        // Never confirm: the real SDK fee/preview path is exercised without signing.
+        await page
+          .getByRole('button', { name: en.buttons.cancel, exact: true })
+          .click();
+        await expect(page).toHaveURL(/#\/send\/eth$/);
+      }
+    );
     await wallet.step('native-max-small-balance-read-only-audit', async () => {
       expect(
         rpc!.balanceReads.some(
@@ -1085,9 +1088,9 @@ test('native MAX keeps high precision unsigned review inside the popup', async (
             expect(quotedFeeWei % gasPriceWei).toBe(BigInt(0));
             const observedGasLimit = quotedFeeWei / gasPriceWei;
             expect(observedGasLimit.toString()).toBe('25200');
-            expect(
-              formatEther(BigInt(initialBalanceWei) - quotedFeeWei)
-            ).toBe(expectedNet);
+            expect(formatEther(BigInt(initialBalanceWei) - quotedFeeWei)).toBe(
+              expectedNet
+            );
             await expect(
               page.getByRole('button', { name: en.send.editFee, exact: true })
             ).toHaveCount(0);

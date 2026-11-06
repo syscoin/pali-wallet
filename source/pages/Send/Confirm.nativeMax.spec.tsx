@@ -336,8 +336,7 @@ const captureRefusedSubmission = async () => {
 };
 const expectedNet = (gas: bigint, capGwei: bigint) =>
   formatEther(
-    BigInt('100000000000000000000') -
-      gas * capGwei * BigInt(1000000000)
+    BigInt('100000000000000000000') - gas * capGwei * BigInt(1000000000)
   );
 
 it('healthy ordinary fixed amount displays and forwards its exact value at refused signing boundary', async () => {
