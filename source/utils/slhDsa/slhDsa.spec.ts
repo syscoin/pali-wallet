@@ -30,6 +30,7 @@ import {
   SLH_DSA_ROTATION_SIGNATURE_RESERVE,
   SLH_DSA_SIGNATURE_LIMIT,
   clearRuntimeSLHDSAStates,
+  getSLHDSASessionGeneration,
   configureSLHDSASessionStateCrypto,
   createSLHDSAProvisionedState,
   getSLHDSADerivationLabel,
@@ -83,13 +84,16 @@ describe('slhDsa utilities', () => {
 
   it('fails closed when local signer state is not provisioned', async () => {
     await expect(
-      signSLHDSAActionHashLocal({
-        actionHash: '0x' + 'aa'.repeat(32),
-        keyId: 'missing',
-        parameterSet: SLH_DSA_PARAMETER_SET,
-        pkRoot: '0x' + '11'.repeat(32),
-        pkSeed: '0x' + '22'.repeat(32),
-      })
+      signSLHDSAActionHashLocal(
+        {
+          actionHash: '0x' + 'aa'.repeat(32),
+          keyId: 'missing',
+          parameterSet: SLH_DSA_PARAMETER_SET,
+          pkRoot: '0x' + '11'.repeat(32),
+          pkSeed: '0x' + '22'.repeat(32),
+        },
+        getSLHDSASessionGeneration()
+      )
     ).rejects.toThrow('not available in this unlocked session');
   });
 
@@ -106,10 +110,13 @@ describe('slhDsa utilities', () => {
       pkSeed: '0x' + '22'.repeat(32),
       secretKeyHex: '0x' + '33'.repeat(64),
     });
-    await registerRuntimeSLHDSAState({
-      ...state,
-      signatureCount: SLH_DSA_SIGNATURE_LIMIT,
-    });
+    await registerRuntimeSLHDSAState(
+      {
+        ...state,
+        signatureCount: SLH_DSA_SIGNATURE_LIMIT,
+      },
+      getSLHDSASessionGeneration()
+    );
 
     const signParams = {
       actionHash: '0x' + 'aa'.repeat(32),
@@ -119,14 +126,17 @@ describe('slhDsa utilities', () => {
       pkSeed: state.pkSeed,
     };
 
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-      'signature limit reached'
-    );
     await expect(
-      signSLHDSAActionHashLocal({
-        ...signParams,
-        allowReservedSignature: true,
-      })
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow('signature limit reached');
+    await expect(
+      signSLHDSAActionHashLocal(
+        {
+          ...signParams,
+          allowReservedSignature: true,
+        },
+        getSLHDSASessionGeneration()
+      )
     ).resolves.toMatch(/^0x/);
   });
 
@@ -143,20 +153,26 @@ describe('slhDsa utilities', () => {
       pkSeed: '0x' + '22'.repeat(32),
       secretKeyHex: '0x' + '33'.repeat(64),
     });
-    await registerRuntimeSLHDSAState({
-      ...state,
-      signatureCount: SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,
-    });
+    await registerRuntimeSLHDSAState(
+      {
+        ...state,
+        signatureCount: SLH_DSA_ABSOLUTE_SIGNATURE_LIMIT,
+      },
+      getSLHDSASessionGeneration()
+    );
 
     await expect(
-      signSLHDSAActionHashLocal({
-        actionHash: '0x' + 'aa'.repeat(32),
-        allowReservedSignature: true,
-        keyId: state.keyId,
-        parameterSet: SLH_DSA_PARAMETER_SET,
-        pkRoot: state.pkRoot,
-        pkSeed: state.pkSeed,
-      })
+      signSLHDSAActionHashLocal(
+        {
+          actionHash: '0x' + 'aa'.repeat(32),
+          allowReservedSignature: true,
+          keyId: state.keyId,
+          parameterSet: SLH_DSA_PARAMETER_SET,
+          pkRoot: state.pkRoot,
+          pkSeed: state.pkSeed,
+        },
+        getSLHDSASessionGeneration()
+      )
     ).rejects.toThrow('signature limit reached');
   });
 });

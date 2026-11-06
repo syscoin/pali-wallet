@@ -18,8 +18,8 @@ export type AnchorBinding = Readonly<{
 type AnchorOperation = Readonly<{
   // Cancels an incomplete operation and drains its exact handle before reuse.
   release(): Promise<void>;
-  // The trusted port rechecks at native start and around pulls, including
-  // after any bridge turn. The response belongs to this exact handle.
+  // The port checks owner authority around bridge turns. Native transport
+  // independently admits only the live reservation and foreground state.
   start(
     assertCurrent: () => void
   ): Promise<PrivacyJsonResponse & Pick<Response, 'ok' | 'redirected' | 'url'>>;
