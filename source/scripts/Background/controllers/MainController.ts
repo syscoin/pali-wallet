@@ -29,6 +29,7 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
+import { formatErc20Balance } from '../../../shared/erc20';
 import {
   assertEvmCancellationPayerReady,
   isEvmEmptySelfCall,
@@ -10984,7 +10985,7 @@ class MainController {
         contractAddress,
         isNft: false,
         tokenStandard: 'ERC-20',
-        balance: Number(formatUnits(info.balance, info.decimals)),
+        ...formatErc20Balance(info.balance, info.decimals),
         decimals: info.decimals,
         name: info.name,
         tokenSymbol: info.symbol,

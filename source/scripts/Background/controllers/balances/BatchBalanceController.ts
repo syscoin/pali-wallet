@@ -1,10 +1,10 @@
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
+import { formatErc20Balance } from '../../../../shared/erc20';
 import { Queue } from '../transactions/queue';
 import { ITokenEthProps } from 'types/tokens';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
-import { formatUnits } from 'utils/ethersV6Compat';
 import { resolveMulticall3Address } from 'utils/smartAccount';
 
 // Minimal ERC20 ABI for balance queries
@@ -49,6 +49,8 @@ const MULTICALL3_ABI = [
   },
 ];
 
+type TokenBalances = Map<string, ReturnType<typeof formatErc20Balance>>;
+
 export class BatchBalanceController {
   private provider: CustomJsonRpcProvider;
 
@@ -63,8 +65,8 @@ export class BatchBalanceController {
   async getBatchTokenBalances(
     tokens: ITokenEthProps[],
     userAddress: string
-  ): Promise<Map<string, string>> {
-    const balances = new Map<string, string>();
+  ): Promise<TokenBalances> {
+    const balances: TokenBalances = new Map();
 
     // If no tokens, return empty
     if (tokens.length === 0) {
@@ -121,9 +123,10 @@ export class BatchBalanceController {
               ['uint256'],
               result.returnData
             );
-            const balance = decoded[0];
-            const formattedBalance = formatUnits(balance, token.decimals);
-            balances.set(token.contractAddress.toLowerCase(), formattedBalance);
+            balances.set(
+              token.contractAddress.toLowerCase(),
+              formatErc20Balance(decoded[0], token.decimals)
+            );
           } catch (decodeError) {
             console.error(
               `[BatchBalanceController] Failed to decode balance for ${token.tokenSymbol}:`,
@@ -152,11 +155,11 @@ export class BatchBalanceController {
   private async fallbackToIndividualCalls(
     tokens: ITokenEthProps[],
     userAddress: string
-  ): Promise<Map<string, string>> {
+  ): Promise<TokenBalances> {
     console.log(
       '[BatchBalanceController] Falling back to individual balance calls'
     );
-    const balances = new Map<string, string>();
+    const balances: TokenBalances = new Map();
 
     // Use Queue to limit concurrent requests to 3 to avoid rate limiting
     const queue = new Queue(3);
@@ -179,22 +182,12 @@ export class BatchBalanceController {
             this.provider
           );
           const balance = await contract.balanceOf(userAddress);
-          const formattedBalance = formatUnits(balance, token.decimals);
-
-          // Store the balance directly in our map
-          balances.set(token.contractAddress.toLowerCase(), formattedBalance);
-
-          return {
-            success: true,
-            address: token.contractAddress.toLowerCase(),
-            balance: formattedBalance,
-          };
-        } catch (error) {
-          return {
-            success: false,
-            address: token.contractAddress.toLowerCase(),
-            balance: '0',
-          };
+          balances.set(
+            token.contractAddress.toLowerCase(),
+            formatErc20Balance(balance, token.decimals)
+          );
+        } catch {
+          // A missing observation leaves the prior balance intact.
         }
       });
     });
