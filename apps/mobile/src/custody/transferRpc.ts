@@ -22,7 +22,7 @@ import {
   type Erc20TransferIntent,
 } from './transferIntent.ts';
 import { EvmTransferReadRpc, type EvmCancellationQuote, type EvmNftPreparedQuote } from './evmTransferReadRpc.ts';
-import { EvmTransferReadError, guardedRead, matchesPendingSendNonce, unsignedTransferBytes, type EvmUnsignedTransfer } from './evmFeeContracts.ts';
+import { EvmTransferReadError, guardedRead, matchesSendNonce, unsignedTransferBytes, type EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import type { NftTransferRequest, NftTransferSelection } from './nftTransferAdmission.ts';
 import { withNftInventorySignal } from './nftTransferAdmission.ts';
 import { getNativeNetwork, getNativeSendContext, snapshotNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
@@ -599,10 +599,11 @@ export class NativeTransferRpc {
         }
         await this.checkChain(local);
         if (newSend) {
-          const nonce = await this.call('eth_getTransactionCount', [newSend.from, 'pending'], local);
+          const manual = nonceOverride !== undefined;
+          const nonce = await this.call('eth_getTransactionCount', [newSend.from, manual ? 'latest' : 'pending'], local);
           assertActive();
-          if (!matchesPendingSendNonce(parseRpcQuantity(nonce), BigInt(newSend.nonce), nonceOverride !== undefined))
-            throw new NativeTransferRpcError(nonceOverride === undefined ? 'REVIEW_REQUIRED' : 'NONCE_UNAVAILABLE');
+          if (!matchesSendNonce(parseRpcQuantity(nonce), BigInt(newSend.nonce), manual))
+            throw new NativeTransferRpcError(manual ? 'NONCE_UNAVAILABLE' : 'REVIEW_REQUIRED');
           // Prove the chain again after the address-bearing read, at the wire.
           await this.checkChain(local);
           protectedPreflightComplete = true;

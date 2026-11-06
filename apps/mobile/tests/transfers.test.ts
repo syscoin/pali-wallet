@@ -37,6 +37,7 @@ function fixture() {
   const records: Record<string, unknown> = {};
   let availableBalance = '0x10000000000000000';
   let nonce = '0x0';
+  let minedNonce = '0x0';
   let baseFee = '0x1';
   let dropped = false;
   let final = false;
@@ -149,7 +150,7 @@ function fixture() {
       else if (body.method === 'eth_getBalance') result = availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
-          body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
+          body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
       else if (body.method === 'eth_getBlockByNumber')
         result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
       else if (body.method === 'eth_gasPrice') result = '0x2';
@@ -201,6 +202,10 @@ function fixture() {
     signatures: () => signatures,
     nextNonce() {
       nonce = '0x1';
+    },
+    consumeNonce() {
+      nonce = '0x1';
+      minedNonce = '0x1';
     },
     insufficient() {
       availableBalance = '0x1';
@@ -325,23 +330,23 @@ test('invalid ERC20 input makes no RPC or writes with a saved native transfer', 
   }
 });
 
-test('ordinary coin and token sends retain an explicit unused nonce when the pending nonce changes', async () => {
+test('ordinary coin and token sends preserve a deliberate override below the external pending count', async () => {
   for (const asset of ['coin', 'token'] as const) {
     const f = fixture();
     try {
-      await (asset === 'coin'
-        ? f.transfers.view.prepare(to, '0.001', '3')
-        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '3'));
-      const approved = f.transfers.getSnapshot().review!;
-      assert.equal(approved.nonce, '3');
-      assert.equal(approved.nonceOverride, 3);
-      assert.equal(f.signatures(), 0);
       f.nextNonce();
+      await (asset === 'coin'
+        ? f.transfers.view.prepare(to, '0.001', '0')
+        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'));
+      const approved = f.transfers.getSnapshot().review!;
+      assert.equal(approved.nonce, '0');
+      assert.equal(approved.nonceOverride, 0);
+      assert.equal(f.signatures(), 0);
       await f.transfers.confirm(approved.id);
       assert.equal(f.broadcasts.length, 1);
-      assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 3);
-      assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 3);
-      await assert.rejects(f.transfers.view.prepare(to, '0.001', '3'), { code: 'NONCE_RETAINED' });
+      assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 0);
+      assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 0);
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_RETAINED' });
       assert.equal(f.transfers.getSnapshot().phase, 'idle');
       await f.transfers.view.prepare(to, '0.001', '4');
       assert.equal(f.transfers.getSnapshot().review?.nonce, '4');
@@ -360,7 +365,7 @@ test('manual nonce rejects malformed inputs and accepts zero only while it is av
     await f.transfers.view.prepare(to, '0.001', '0');
     const approved = f.transfers.getSnapshot().review!;
     assert.equal(approved.nonceOverride, 0);
-    f.nextNonce();
+    f.consumeNonce();
     await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
     assert.equal(f.signatures(), 0);
     await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_UNAVAILABLE' });
@@ -374,7 +379,7 @@ test('a manual nonce claimed during durable append retains its exact signed byte
   try {
     await f.transfers.view.prepare(to, '0.001', '0');
     const approved = f.transfers.getSnapshot().review!;
-    f.holdWrite(async () => f.nextNonce());
+    f.holdWrite(async () => f.consumeNonce());
     await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);

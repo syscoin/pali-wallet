@@ -11,9 +11,10 @@ export class EvmTransferReadError extends Error {
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
 export const rejectRead = (code: EvmTransferReadError['code']): never => { throw new EvmTransferReadError(code); };
-// The pending count covers the contiguous executable prefix, including mined transactions.
-export function matchesPendingSendNonce(pending: bigint, nonce: bigint, manual: boolean): boolean {
-  return manual ? nonce >= pending : nonce === pending;
+// Automatic selection is tied to the pending count. A deliberate override may
+// replace an external pending transaction, but must clear the canonical count.
+export function matchesSendNonce(observed: bigint, nonce: bigint, manual: boolean): boolean {
+  return manual ? nonce >= observed : nonce === observed;
 }
 
 type EvmTransferFields = Readonly<{ from: string; to: string; chainId: string; nonce: string; value: string; gasLimit: string; data: string }>;

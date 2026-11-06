@@ -414,18 +414,18 @@ async function reviewCollectible(transfers: NativeTransfers, asset: Case) {
   return review.id;
 }
 
-test('collectible review and wire admission preserve an explicit unused nonce', async () => {
+test('collectible review preserves an explicit override below the external pending count', async () => {
   const asset = collectibleFixture('ERC-721');
   await withController(asset, 'success', async ({ transfers, posted, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
-    setExpectedEstimateNonce('0x3');
-    await transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '3');
-    const approved = transfers.getSnapshot().review!;
-    assert.equal(approved.nonce, '3');
-    assert.equal(approved.nonceOverride, 3);
     setPendingNonce('0x1');
+    setExpectedEstimateNonce('0x0');
+    await transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '0');
+    const approved = transfers.getSnapshot().review!;
+    assert.equal(approved.nonce, '0');
+    assert.equal(approved.nonceOverride, 0);
     await transfers.confirm(approved.id);
-    assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [3]);
+    assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0]);
   });
 });
 

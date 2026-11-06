@@ -9,7 +9,7 @@ import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransfer
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
-  matchesPendingSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
+  matchesSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
 import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
@@ -392,21 +392,21 @@ export class EvmTransferReadRpc {
   verifyNftForDispatch(intent: NftTransferIntent, input: EvmUnsignedTransfer, signal: AbortSignal,
     guard: () => void, replay: boolean, nonceOverride?: number): Promise<void> {
     const envelope = snapshotNftQuoteEnvelope(input, this.network, intent);
+    const manual = nonceOverride !== undefined;
+    if (manual && (replay || String(nonceOverride) !== envelope.nonce))
+      return Promise.reject(new EvmTransferReadError('REVIEW_REQUIRED'));
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
       const [rawNonce, rawBalance, rawEstimate] = await Promise.all([
-        read('eth_getTransactionCount', [intent.from, replay ? 'latest' : 'pending']),
+        read('eth_getTransactionCount', [intent.from, replay || manual ? 'latest' : 'pending']),
         read('eth_getBalance', [intent.from, 'pending']),
         this.verifyNftAtBlock(read, sampled, intent, envelope.data).then(() =>
           read('eth_estimateGas', [evmEstimateRequest(envelope), 'pending'])),
       ]);
-      const pending = quantity(rawNonce);
+      const observed = quantity(rawNonce);
       const nonce = BigInt(envelope.nonce);
-      const manual = nonceOverride !== undefined;
-      if (manual && (replay || String(nonceOverride) !== envelope.nonce))
-        return rejectRead('REVIEW_REQUIRED');
-      if (replay ? pending > nonce : !matchesPendingSendNonce(pending, nonce, manual))
+      if (replay ? observed > nonce : !matchesSendNonce(observed, nonce, manual))
         return rejectRead(manual ? 'NONCE_UNAVAILABLE' : 'REVIEW_REQUIRED');
       const now = this.monotonicMilliseconds();
       const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
@@ -424,18 +424,20 @@ export class EvmTransferReadRpc {
 
   private async prepareAtBlock(read: Reader, sampled: ReadBlock, request: TransferRequest, signal: AbortSignal,
     approved?: EvmUnsignedTransfer, nonceOverride?: number, nft?: NftTransferIntent): Promise<EvmPreparedQuote> {
+    const manual = nonceOverride !== undefined;
+    if (manual && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
+      return rejectRead('INVALID_INPUT');
     const [rawNonce, rawBalance, fees] = await Promise.all([
-      read('eth_getTransactionCount', [request.from, 'pending']), read('eth_getBalance', [request.from, 'pending']),
+      read('eth_getTransactionCount', [request.from, manual ? 'latest' : 'pending']),
+      read('eth_getBalance', [request.from, 'pending']),
       this.feeData(read, sampled, signal),
     ]);
     read.assertCurrent();
-    const pending = quantity(rawNonce);
+    const observed = quantity(rawNonce);
     const balance = quantity(rawBalance);
-    if (pending > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
-    if (nonceOverride !== undefined && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
-      return rejectRead('INVALID_INPUT');
-    const nonce = nonceOverride === undefined ? pending : BigInt(nonceOverride);
-    if (!matchesPendingSendNonce(pending, nonce, nonceOverride !== undefined))
+    if (observed > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
+    const nonce = manual ? BigInt(nonceOverride) : observed;
+    if (!matchesSendNonce(observed, nonce, manual))
       return rejectRead('NONCE_UNAVAILABLE');
     const selectedFees = approved
       ? approved.type === 0 ? { type: 0 as const, gasPrice: approved.gasPrice }

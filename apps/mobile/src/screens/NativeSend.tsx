@@ -54,7 +54,7 @@ const failure = (
   if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
   if (code === 'NONCE_UNAVAILABLE')
     return hasSavedTransaction ? 'Check the saved transaction in Activity.'
-      : 'The network reports that this nonce is already in use. Choose another or leave it blank.';
+      : 'This nonce has already been used on-chain. Choose another or leave it blank.';
   if (code === 'INVALID_INPUT')
     return asset === 'collectible'
       ? `Enter a valid ${context.name} recipient address.`
@@ -415,7 +415,7 @@ export function NativeSend({
                   <View style={s.separator} />
                   <Text style={s.label}>MANUAL NONCE</Text>
                   <Text testID="native-send-reviewed-nonce">{review.nonce}</Text>
-                  <Text style={s.hint}>A transaction queued elsewhere with the same nonce may be replaced.</Text>
+                  <Text style={s.hint}>This can replace a pending transaction with the same nonce, including one sent from another wallet.</Text>
                 </>}
                 <View style={s.separator} />
                 <Text style={s.label}>EXECUTION FEE LIMIT</Text>
