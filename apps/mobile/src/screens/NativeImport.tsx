@@ -2,7 +2,8 @@ import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport, UTXO_IMPORT_TYPES, type NativeImportView, type UtxoImportAddressType } from '../custody/importedAccounts';
+import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport, type NativeImportView } from '../custody/importedAccounts';
+import { UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
 type Props = {
@@ -17,7 +18,6 @@ type Props = {
   onSubmitEnd(): void;
 };
 
-const addressTypes = { p2wpkh: 'SegWit', p2pkh: 'Legacy', p2tr: 'Taproot' } as const;
 
 function failure(cause: unknown, invalidInput = 'Check the private key and account name, then review the address again.'): string {
   const code = cause instanceof Error ? cause.message : '';
@@ -133,7 +133,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         {address ? <>
           <Card style={s.identity}><Text style={s.label}>{name.trim()}</Text><Text style={s.address}>{address}</Text></Card>
           <Text style={styles.muted}>{utxo
-            ? `Check the complete ${addressTypes[utxoAddressType]} address for ${networkLabel}.`
+            ? `Check the complete ${UTXO_IMPORT_LABELS[utxoAddressType]} address for ${networkLabel}.`
             : 'Check the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.'}</Text>
           {utxo && <Notice title="Back up this key" body="Your recovery phrase cannot restore this account." tone="amber" />}
           <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: acknowledged, disabled: busy }} aria-checked={acknowledged} accessibilityLabel="I have a separate backup of this private key"
@@ -159,7 +159,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
               <IdlePressable key={type} accessibilityRole="radio" accessibilityState={{ checked: type === utxoAddressType, disabled: busy }}
                 aria-checked={type === utxoAddressType} disabled={busy} onPress={() => setUtxoAddressType(type)}
                 style={[s.addressOption, type === utxoAddressType && s.selectedAddressOption]}>
-                <Text style={[s.label, type === utxoAddressType && s.selectedAddressLabel]}>{addressTypes[type]}</Text>
+                <Text style={[s.label, type === utxoAddressType && s.selectedAddressLabel]}>{UTXO_IMPORT_LABELS[type]}</Text>
               </IdlePressable>
             ))}</View>
           </View> : <Text style={styles.muted}>Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.</Text>}

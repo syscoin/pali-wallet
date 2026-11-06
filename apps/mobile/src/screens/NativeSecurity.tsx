@@ -7,7 +7,7 @@ import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from 
 
 type Props = {
   keyExport: HdKeyExportFlow;
-  canRevealKey?: boolean;
+  keyFormat: 'evm' | { networkLabel: string; addressType: string } | null;
   accountId: string;
   accountType: 'HDAccount' | 'Imported';
   accountLabel: string;
@@ -20,7 +20,7 @@ type Props = {
 };
 
 /** Private presentation stays in this mounted, protected native screen only. */
-export function NativeSecurity({ keyExport, canRevealKey = true, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onLock, onBack, captureFailureHandler }: Props) {
+export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, accountLabel, address, onViewRecovery, onRemoveWallet, onLock, onBack, captureFailureHandler }: Props) {
   const [mode, setMode] = useState<'hub' | 'key' | 'recovery'>('hub');
   const [password, setPassword] = useState('');
   const [presentation, setPresentation] = useState<HdKeyExportPresentation | null>(null);
@@ -55,7 +55,7 @@ export function NativeSecurity({ keyExport, canRevealKey = true, accountId, acco
 
   const reveal = async () => {
     const state = lifecycle.current;
-    if (!canRevealKey || !state.mounted || state.busy || !password) return;
+    if (!keyFormat || !state.mounted || state.busy || !password) return;
     state.busy = true; setBusy(true); setError('');
     const entered = password; setPassword(''); Keyboard.dismiss();
     const request = ++state.request;
@@ -84,6 +84,7 @@ export function NativeSecurity({ keyExport, canRevealKey = true, accountId, acco
   };
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
+  const wif = keyFormat !== 'evm' ? keyFormat : null;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -91,18 +92,22 @@ export function NativeSecurity({ keyExport, canRevealKey = true, accountId, acco
         {mode === 'hub' ? <>
           <Notice title={accountType === 'Imported' ? 'Imported key needs a separate backup' : 'Recovery phrase backed up'} body={accountType === 'Imported' ? 'Your recovery phrase cannot restore this account. Keep its original private key backed up separately.' : 'Your written recovery phrase restores the accounts derived from this wallet. Keep it private and offline.'} />
           <Card><Row title="View recovery phrase" subtitle="Confirm your password to view your words" icon="shield" onPress={() => { hide(); onViewRecovery(); }} />
-            {canRevealKey && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
+            {keyFormat && <Row title="Reveal account private key" subtitle={accountLabel} icon="eye" onPress={() => { hide(); setMode('key'); }} />}
             <Row title="Recovery guide" subtitle="Understand what your backups restore" icon="help" onPress={() => { hide(); setMode('recovery'); }} last /></Card>
           <Button title="Lock wallet" variant="secondary" icon="lock" onPress={() => { hide(); onLock(); }} />
           {onRemoveWallet && <Button title="Remove wallet from this device" variant="danger" onPress={() => { hide(); onRemoveWallet(); }} />}
         </> : mode === 'recovery' ? <>
           <Text style={s.heading}>Keep your recovery phrase offline</Text>
-          <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. Imported accounts need their original private keys backed up separately. A private key restores only its one EVM account; it is not a complete wallet backup.</Text>
+          <Text style={styles.muted}>Your recovery phrase restores this wallet’s derived accounts. Keep a separate backup of each imported private key.</Text>
           <Text style={styles.muted}>If you forget this device’s password, lock your wallet and choose Forgot password? to verify the matching recovery phrase and preserve supported saved records. On a new or lost device, the phrase restores derived accounts; imported keys still need their separate backups.</Text>
           <Notice title="Keep secrets to yourself" body="Pali support will never ask for recovery words, private keys or your password. Never enter them into a website or send them to anyone." tone="amber" />
         </> : <>
-          <Card style={s.identity}><Text style={s.label}>{accountLabel}</Text><Text style={s.address}>{address}</Text></Card>
-          <Notice title="This key controls one EVM account" body="Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place." tone="amber" />
+          <Card style={s.identity}><Text style={s.label}>{accountLabel}</Text>
+            {wif && <Text style={s.label}>{wif.networkLabel} · {wif.addressType}</Text>}
+            <Text style={s.address}>{address}</Text></Card>
+          {wif
+            ? <Notice title="Keep this key private" body="Anyone with this WIF key can spend from this address. To restore it, select the network and address type shown above." tone="amber" />
+            : <Notice title="This key controls one EVM account" body="Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place." tone="amber" />}
           {shown ? <>
             <View style={s.secret}><Text style={s.key}>{shown.privateKey}</Text></View>
             <Button title="Hide private key" onPress={hide} />

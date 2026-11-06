@@ -1,10 +1,9 @@
 import { computeAddress } from 'ethers/transaction';
 import { SigningKey } from 'ethers/crypto';
 import { nativeAccountId } from './accountIdentity.ts';
+import { UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses.ts';
 
 export type ImportedKeyIdentity = Readonly<{ id: string; index: number; address: string; publicKey: string }>;
-export const UTXO_IMPORT_TYPES = ['p2wpkh', 'p2pkh', 'p2tr'] as const;
-export type UtxoImportAddressType = typeof UTXO_IMPORT_TYPES[number];
 export type NativeUtxoImportDraft = Readonly<{ privateKey: string; utxoAddressType: UtxoImportAddressType }>;
 
 /** Private form input; never an account-directory action or public snapshot. */
@@ -22,11 +21,13 @@ export interface NativeImportView {
   cancel(): void;
 }
 const invalid = (): never => { throw new Error('IMPORTED_KEY_INVALID'); };
+export const isUtxoWifText = (value: unknown): value is string =>
+  typeof value === 'string' && value.trim() === value && /^[1-9A-HJ-NP-Za-km-z]{32,60}$/.test(value);
 /** Bound the raw WIF lane before the SDK decodes checksum, network and key. */
 export function normalizeUtxoImport(input: NativeUtxoImportDraft): NativeUtxoImportDraft {
   const { privateKey, utxoAddressType } = input;
   if (typeof privateKey !== 'string' || privateKey.length > 64 ||
-      !/^[1-9A-HJ-NP-Za-km-z]{32,60}$/.test(privateKey.trim()) ||
+      !isUtxoWifText(privateKey.trim()) ||
       !UTXO_IMPORT_TYPES.includes(utxoAddressType)) return invalid();
   return Object.freeze({ privateKey: privateKey.trim(), utxoAddressType });
 }

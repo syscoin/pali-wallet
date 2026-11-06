@@ -1,4 +1,5 @@
 import { findUtxoNetwork } from '../core/utxoNetworks';
+import { findWifAddressType, UTXO_IMPORT_LABELS } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
@@ -486,9 +487,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     step={noteRestore.exportStep} busy={noteRestore.busy} error={noteRestore.error}
     onChoose={noteRestore.choose} onSave={noteRestore.saveExport} onShowVerify={noteRestore.showVerify} onVerify={noteRestore.verifyExport}
     onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
-  if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView)
+  if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
+    const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
+    const script = utxo && selected.type === 'Imported' ? findWifAddressType(selected.address, utxo.id) : undefined;
+    const keyFormat = canSign ? 'evm' : utxo && script
+      ? { networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
-      keyExport={keyExportView} canRevealKey={canSign} accountId={catalogue.active.accountId} accountType={catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!.type} accountLabel={accountLabel} address={snapshot.account.address}
+      keyExport={keyExportView} keyFormat={keyFormat} accountId={selected.id} accountType={selected.type} accountLabel={accountLabel} address={snapshot.account.address}
       onBack={closeStage} onLock={revoke} onViewRecovery={() => setStage('backup-auth')}
       onRemoveWallet={onWalletRemoved && canRemoveWallet ? openRemoval : undefined}
       captureFailureHandler={() => {
@@ -508,6 +513,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             setError(message(cause));
         };
       }} />;
+  }
   const restoreUnconfirmed = stage === 'restore-notes' && noteRestore.step.phase === 'unconfirmed';
   let body: React.ReactNode;
   if (unavailable) body = restoreUnconfirmed ? <NoteRestoreUnconfirmedNotice reopen /> :
