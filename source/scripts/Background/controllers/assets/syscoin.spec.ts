@@ -14,6 +14,7 @@ describe('SysAssetsController imported asset refresh', () => {
 
   it('refreshes chain values without dropping imported metadata', async () => {
     fetchBackendAccountCachedMock.mockResolvedValue({
+      address: 'zpub-account',
       tokensAsset: [
         {
           assetGuid: '123',
@@ -98,6 +99,7 @@ describe('SysAssetsController imported asset refresh', () => {
 
   it('preserves zero-decimal NFT and ERC-1155 balances', async () => {
     fetchBackendAccountCachedMock.mockResolvedValue({
+      address: 'zpub-account',
       tokensAsset: [
         {
           assetGuid: '4294967297',

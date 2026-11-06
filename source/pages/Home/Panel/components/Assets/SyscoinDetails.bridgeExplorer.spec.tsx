@@ -114,6 +114,7 @@ const createStore = (network: INetwork) => {
 const ownedAsset = async (contract = CONTRACT, symbol = 'BRIDGED') => {
   const network = mockStore.getState().vault.activeNetwork;
   mockRead.mockResolvedValue({
+    address: XPUB,
     tokensAsset: [
       {
         assetGuid: GUID,

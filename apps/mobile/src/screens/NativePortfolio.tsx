@@ -175,10 +175,12 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         </View>
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
-        {sysx && (sysx.confirmedUnits !== '0' || sysx.pendingDeltaUnits !== '0') && <Card style={s.accountCard}>
+        {sysx && <Card style={s.accountCard}>
           <Text accessibilityRole="header" style={s.label}>SYSX</Text>
-          <Text style={s.address} testID="native-portfolio-sysx">{formatBaseUnits(sysx.confirmedUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>
-          {sysx.pendingDeltaUnits !== '0' && <Text style={s.unit}>Pending {formatBalanceDelta(sysx.pendingDeltaUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>}
+          {sysx.status === 'available' ? <>
+            <Text style={s.address} testID="native-portfolio-sysx">{formatBaseUnits(sysx.confirmedUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>
+            {sysx.pendingDeltaUnits !== '0' && <Text style={s.unit}>Pending {formatBalanceDelta(sysx.pendingDeltaUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>}
+          </> : <Text style={s.unit} testID="native-portfolio-sysx">{loading ? 'Loading balance…' : 'Balance unavailable'}</Text>}
         </Card>}
         {faucetCard}
         </>}

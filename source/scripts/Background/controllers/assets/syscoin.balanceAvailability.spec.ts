@@ -93,19 +93,24 @@ beforeEach(() => {
     })
   );
   mockMetadata.mockResolvedValue({ ...metadata });
-  mockInventory.mockResolvedValue({ tokensAsset: [{ ...holding }] });
+  mockInventory.mockResolvedValue({
+    address: ACCOUNT.xpub,
+    tokensAsset: [{ ...holding }],
+  });
   controller = SysAssetsController();
 });
 afterEach(() => jest.restoreAllMocks());
 
 it('discovery rejects a partial inventory and preserves an exact retried balance', async () => {
   mockInventory.mockResolvedValueOnce({
+    address: ACCOUNT.xpub,
     tokensAsset: [{ ...holding, balance: undefined }],
   });
   await expect(controller.getUserOwnedTokens(ACCOUNT.xpub)).rejects.toThrow(
     'SPT token inventory is unavailable or invalid'
   );
   mockInventory.mockResolvedValue({
+    address: ACCOUNT.xpub,
     tokensAsset: [
       { ...holding, balance: '9007199254740993', unconfirmedBalance: '-1' },
       { ...holding, balance: '5', unconfirmedBalance: '0' },
@@ -124,6 +129,17 @@ it.each([
   [],
   'unavailable',
   {},
+  { addressOrXpub: ACCOUNT.xpub, tokensAsset: [{ ...holding }] },
+  {
+    address: 'other-account',
+    addressOrXpub: ACCOUNT.xpub,
+    tokensAsset: [{ ...holding }],
+  },
+  {
+    ...completeSummary,
+    addressOrXpub: 'other-account',
+    tokensAsset: [{ ...holding }],
+  },
   { tokensAsset: [] },
   { ...completeSummary, address: 'other-account', tokensAsset: [] },
   { error: 'Backend unavailable' },
@@ -133,24 +149,38 @@ it.each([
   { ...completeSummary, txs: undefined },
   { ...completeSummary, unconfirmedBalance: undefined },
   { ...completeSummary, unconfirmedTxs: -1 },
-  { tokensAsset: null },
-  { tokensAsset: {} },
-  { tokensAsset: [null] },
-  { tokensAsset: [{ balance: '0' }] },
-  { tokensAsset: [{ ...holding, balance: undefined }] },
-  { tokensAsset: [{ ...holding, balance: '25.00' }] },
-  { tokensAsset: [{ ...holding, balance: Number.MAX_SAFE_INTEGER + 1 }] },
-  { tokensAsset: [{ ...holding, balance: '9'.repeat(79) }] },
-  { tokensAsset: [{ ...holding, unconfirmedBalance: null }] },
-  { tokensAsset: [{ ...holding, unconfirmedBalance: '-1.5' }] },
-  { tokensAsset: [{ ...holding, totalSent: '-1' }] },
-  { tokensAsset: [{ ...holding, transfers: 1.5 }] },
-  { tokensAsset: [{ ...holding, decimals: -1 }] },
-  { tokensAsset: [{ ...holding, decimals: 3 }] },
+  { ...completeSummary, tokensAsset: null },
+  { ...completeSummary, tokensAsset: {} },
+  { ...completeSummary, tokensAsset: [null] },
+  { ...completeSummary, tokensAsset: [{ balance: '0' }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, balance: undefined }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, balance: '25.00' }] },
   {
+    ...completeSummary,
+    tokensAsset: [{ ...holding, balance: Number.MAX_SAFE_INTEGER + 1 }],
+  },
+  {
+    ...completeSummary,
+    tokensAsset: [{ ...holding, balance: '9'.repeat(79) }],
+  },
+  {
+    ...completeSummary,
+    tokensAsset: [{ ...holding, unconfirmedBalance: null }],
+  },
+  {
+    ...completeSummary,
+    tokensAsset: [{ ...holding, unconfirmedBalance: '-1.5' }],
+  },
+  { ...completeSummary, tokensAsset: [{ ...holding, totalSent: '-1' }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, transfers: 1.5 }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, decimals: -1 }] },
+  { ...completeSummary, tokensAsset: [{ ...holding, decimals: 3 }] },
+  {
+    ...completeSummary,
     tokensAsset: [{ ...holding }, { ...holding, decimals: 3 }],
   },
   {
+    ...completeSummary,
     tokensAsset: [
       { ...holding },
       { ...holding, assetGuid: '456', balance: 'unavailable' },
@@ -197,13 +227,13 @@ it('does not clear an imported balance or cache empty discovery from a partial r
   const imported = await add((await validate())!);
   expect(imported.balance).toBe('25.0');
 
-  mockInventory.mockResolvedValue({ tokensAsset: [] });
+  mockInventory.mockResolvedValue({ address: ACCOUNT.xpub, tokensAsset: [] });
   await expect(controller.getUserOwnedTokens(ACCOUNT.xpub)).rejects.toThrow(
     'SPT token inventory is unavailable or invalid'
   );
   for (const inventory of [
-    { tokensAsset: [] },
-    { tokensAsset: [{ ...holding, assetGuid: '456' }] },
+    { address: ACCOUNT.xpub, tokensAsset: [] },
+    { address: ACCOUNT.xpub, tokensAsset: [{ ...holding, assetGuid: '456' }] },
   ]) {
     mockInventory.mockResolvedValue(inventory);
     await expect(
@@ -225,7 +255,10 @@ it('does not clear an imported balance or cache empty discovery from a partial r
 
 it.each([
   { inventory: { ...completeSummary, tokensAsset: [] }, balance: '0' },
-  { inventory: { tokensAsset: [{ ...holding }] }, balance: '25.0' },
+  {
+    inventory: { address: ACCOUNT.xpub, tokensAsset: [{ ...holding }] },
+    balance: '25.0',
+  },
 ])(
   'refreshes an imported unknown balance to known $balance without changing metadata',
   async ({ inventory, balance }) => {
@@ -292,7 +325,10 @@ it.each([
 ])(
   'retains exact confirmed plus signed pending balance $balance',
   async ({ rows, balance }) => {
-    mockInventory.mockResolvedValue({ tokensAsset: rows });
+    mockInventory.mockResolvedValue({
+      address: ACCOUNT.xpub,
+      tokensAsset: rows,
+    });
     const token = await validate();
     expect(token).toHaveProperty('balance', balance);
     expect(await add(token!)).toHaveProperty('balance', balance);
@@ -302,6 +338,7 @@ it.each([
 it('keeps exact zero-decimal holdings and signed pending changes', async () => {
   mockMetadata.mockResolvedValue({ ...metadata, decimals: 0 });
   mockInventory.mockResolvedValue({
+    address: ACCOUNT.xpub,
     tokensAsset: [
       { ...holding, decimals: 0, balance: '2', unconfirmedBalance: '-1' },
     ],

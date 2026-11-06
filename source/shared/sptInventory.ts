@@ -74,16 +74,16 @@ export function parseSptInventory(
 ): SptInventory {
   const account = record(value);
   if ('error' in account) throw invalid();
-  const identifier = account.addressOrXpub ?? account.address;
+  // SJS adds addressOrXpub from the request. Match the address returned by
+  // Blockbook before interpreting any holding or absence.
   if (
+    !expectedIdentifier ||
+    account.address !== expectedIdentifier ||
     (account.addressOrXpub !== undefined &&
-      account.addressOrXpub !== expectedIdentifier) ||
-    (account.address !== undefined && account.address !== expectedIdentifier)
+      account.addressOrXpub !== expectedIdentifier)
   )
     throw invalid();
   const requireCompleteSummary = () => {
-    if (!expectedIdentifier || identifier !== expectedIdentifier)
-      throw invalid();
     integer(account.balance);
     integer(account.unconfirmedBalance, true);
     count(account.txs);
