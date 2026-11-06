@@ -48,7 +48,8 @@ function waitForHandle<T>(
 }
 
 type Handle = Readonly<{
-  // The host rechecks at the actual native start and around every bridge turn.
+  // The host checks owner authority around bridge turns and gates native start
+  // on the live reservation and foreground state.
   start(
     assertCurrent: () => void
   ): Promise<Readonly<{ status: number; byteCount: number }>>;

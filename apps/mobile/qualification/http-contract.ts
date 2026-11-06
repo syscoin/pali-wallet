@@ -1,8 +1,11 @@
 /** Public, fixed-loopback qualification only; never a wallet network registration. */
 export const HTTP_CASES = Object.freeze([
   'exact-get-url', 'client-identification', 'redirect-refused', 'seeded-cookie-omitted',
-  'abort-before-headers', 'abort-stream', 'limit-stream', 'quote-early-rejection', 'quote-stalled-deadline', 'healthy-after-cancel',
+  'abort-before-headers', 'abort-stream', 'limit-stream', 'quote-early-rejection', 'quote-stalled-deadline',
+  'public-snapshot-bridge', 'healthy-after-cancel',
 ] as const);
+export const PUBLIC_SNAPSHOT_FIXTURE_PATH = '/api/privacy/v1/pools/eth-1/snapshot';
+export const PUBLIC_SNAPSHOT_FIXTURE_BODY = '{"fixture":"' + 'a'.repeat(64 * 1024) + '"}';
 export const QUOTE_EARLY_REJECTIONS = Object.freeze([
   { route: 'quote-non-ok', status: 503, length: '64' },
   { route: 'quote-oversize', status: 200, length: '16385' },
