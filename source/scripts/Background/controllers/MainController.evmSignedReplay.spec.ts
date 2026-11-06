@@ -65,6 +65,20 @@ let provider: { _send: jest.Mock; send: jest.Mock };
 let raw: string;
 let entry: any;
 const observed = () => ({ entry, revision: 1 });
+const runReplayPreflight = async (
+  preflight: Parameters<EvmSignedRecords['withReplayAdmission']>[4]
+) => {
+  if (!preflight) return;
+  preflight.assertCurrent();
+  const owner = '0x' + '55'.repeat(32);
+  await preflight.run(owner, () => ({
+    owner,
+    retained: [],
+    readMaximumCost: async () => {
+      throw Error('Unexpected predecessor read in replacement fixture');
+    },
+  }));
+};
 
 beforeAll(async () => {
   raw = await signer.signTransaction({
@@ -139,8 +153,7 @@ beforeEach(() => {
     readPage: jest.fn(async () => ({ entries: [entry], nextCursor: null })),
     withReplayAdmission: jest.fn(
       async (_session, _target, admit, _predecessorNonce, preflight) => {
-        preflight?.assertCurrent();
-        await preflight?.run();
+        await runReplayPreflight(preflight);
         return { result: admit([]) };
       }
     ),
@@ -567,8 +580,7 @@ it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
         async (_session, _target, admit, _predecessor, preflight) => {
           waitingInQueue.resolve();
           await admitWrite.promise;
-          preflight.assertCurrent();
-          await preflight.run();
+          await runReplayPreflight(preflight);
           return { result: admit([]) };
         }
       );
