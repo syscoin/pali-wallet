@@ -14,7 +14,14 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import { webcrypto } from 'crypto';
-import { AbiCoder, getCreate2Address, keccak256 } from 'ethers';
+import {
+  AbiCoder,
+  concat,
+  getCreate2Address,
+  Interface,
+  keccak256,
+  ZeroAddress,
+} from 'ethers';
 import http from 'http';
 import https from 'https';
 
@@ -35,6 +42,10 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountFactoryInterface,
 } from 'utils/smartAccount';
+import {
+  PALI_ACCOUNT_PROXY_CREATION_CODE,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
+} from 'utils/smartAccount/deploymentMetadata';
 
 import MainController from './MainController';
 import SmartAccountController from './smartAccount';
@@ -51,6 +62,7 @@ let factoryReads: string[];
 let holdRead: ((name: string) => Promise<void>) | undefined;
 let infrastructureReads: string[];
 let rpcChainId: number;
+let substituteFactoryRead: 'getAddress' | 'getInitData' | undefined;
 let commits: number;
 const projection = (vault: any) => ({
   active: vault.activeAccount,
@@ -116,6 +128,7 @@ beforeEach(async () => {
   factoryReads = [];
   infrastructureReads = [];
   rpcChainId = 1;
+  substituteFactoryRead = undefined;
   holdRead = undefined;
   commits = 0;
   global.chrome = {
@@ -173,6 +186,9 @@ beforeEach(async () => {
   wallet.resetAutoLockTimer = jest.fn();
   wallet.refreshActiveAccountLightweight = jest.fn();
   const abi = AbiCoder.defaultAbiCoder();
+  const initializer = new Interface([
+    'function initializeAccount(bytes initCode)',
+  ]);
   // Only public read IO is synthetic. The real factory adapter encodes these
   // calls, the real controller derives each descriptor and the installed SDK
   // allocates the account ID. No signing or broadcasting is exposed.
@@ -199,9 +215,17 @@ beforeEach(async () => {
       factoryReads.push(call.name);
       if (holdRead) await holdRead(call.name);
       if (call.name === 'getInitData') {
+        const module = 'tuple(address module,bytes data)';
         return paliSmartAccountFactoryInterface.encodeFunctionResult(
           call.fragment,
-          [abi.encode(['address', 'bytes'], [call.args[0], call.args[1]])]
+          [
+            substituteFactoryRead === 'getInitData'
+              ? '0x1234'
+              : abi.encode(
+                  [`${module}[]`, `${module}[]`, module, `${module}[]`],
+                  [[[call.args[0], call.args[1]]], [], [ZeroAddress, '0x'], []]
+                ),
+          ]
         );
       }
       if (call.name === 'getAddress') {
@@ -209,11 +233,27 @@ beforeEach(async () => {
         return paliSmartAccountFactoryInterface.encodeFunctionResult(
           call.fragment,
           [
-            getCreate2Address(
-              transaction.to,
-              call.args[0],
-              keccak256(call.args[1])
-            ),
+            substituteFactoryRead === 'getAddress'
+              ? '0x2222222222222222222222222222222222222222'
+              : getCreate2Address(
+                  transaction.to,
+                  call.args[0],
+                  keccak256(
+                    concat([
+                      PALI_ACCOUNT_PROXY_CREATION_CODE,
+                      abi.encode(
+                        ['address', 'bytes'],
+                        [
+                          PALI_INFRASTRUCTURE_METADATA_BY_ID
+                            .accountImplementation.address,
+                          initializer.encodeFunctionData('initializeAccount', [
+                            call.args[1],
+                          ]),
+                        ]
+                      ),
+                    ])
+                  )
+                ),
           ]
         );
       }
@@ -271,6 +311,10 @@ it('persists the ordinary derived smart account with the SDK-allocated ID and de
   const account = await wallet.createSmartAccount({ label: 'Smart savings' });
   expect(account.id).toBe(0);
   expect(account.smartAccount.descriptor.accountIndex).toBe(0);
+  expect(account.smartAccount.deploymentAuth).toEqual({
+    data: account.smartAccount.auth.data,
+    validator: account.smartAccount.auth.validator,
+  });
   expect(account.smartAccount.factoryAddress).toBe(
     getPaliSmartAccountFactoryAddress(1)
   );
@@ -283,6 +327,35 @@ it('persists the ordinary derived smart account with the SDK-allocated ID and de
   expect(
     (await loadSlip44State(60)).accounts.SmartAccount[0].smartAccount
   ).toEqual(account.smartAccount);
+});
+
+it.each(['getInitData', 'getAddress'] as const)(
+  'rejects substituted %s before persisting or selecting a smart account',
+  async (response) => {
+    substituteFactoryRead = response;
+    await expect(
+      wallet.createSmartAccount({ label: 'Safe account' })
+    ).rejects.toThrow();
+    expect(factoryReads).toContain(response);
+    expect(commits).toBe(0);
+    expect(store.getState().vault.activeAccount.type).toBe(
+      KeyringAccountType.HDAccount
+    );
+    expect((await loadSlip44State(60)).accounts.SmartAccount).toEqual({});
+  }
+);
+
+it('rejects caller-supplied smart account addresses before using the RPC', async () => {
+  await expect(
+    wallet.createSmartAccount({
+      address: '0x2222222222222222222222222222222222222222',
+      metadata: {},
+    })
+  ).rejects.toThrow(
+    'Smart account creation does not accept an address or metadata'
+  );
+  expect(factoryReads).toEqual([]);
+  expect(commits).toBe(0);
 });
 
 it.each([
@@ -447,29 +520,19 @@ it('keeps a refused ordinary smart creation unpublished so same-form retry prese
   expect(projection(store.getState().vault).accounts).toHaveLength(1);
 });
 
-it('keeps a refused explicit-address smart record retryable through the same installed SDK path', async () => {
+it('does not expose an explicit creation bypass even for a correctly derived address', async () => {
   const { assertCurrent } = wallet.accountMutationContext();
   const derived = await wallet.smartAccount
     .captureSmartAccountBootstrap(assertCurrent)
     .deriveAccount(0);
   const params = { ...derived, label: 'Explicit smart record' };
   const before = projection(store.getState().vault);
-  refuseNextCommit = true;
-  await expect(wallet.createSmartAccount(params)).rejects.toMatchObject({
-    message: FAILURE,
-  });
-  const afterRefusal = projection(store.getState().vault);
-  const retry = await wallet.createSmartAccount(params).then(
-    (account: any) => ({ id: account.id }),
-    (error: Error) => ({ error: error.message })
+  await expect(wallet.createSmartAccount(params)).rejects.toThrow(
+    'Smart account creation does not accept an address or metadata'
   );
-  expect({ afterRefusal, retry }).toEqual({
-    afterRefusal: before,
-    retry: { id: 0 },
-  });
-  expect(projection(await loadSlip44State(60))).toEqual(
-    projection(store.getState().vault)
-  );
+  expect(commits).toBe(0);
+  expect(projection(store.getState().vault)).toEqual(before);
+  expect(projection(await loadSlip44State(60))).toEqual(before);
 });
 
 it('does not expose a smart record, cache entry or selection until its native write completes', async () => {

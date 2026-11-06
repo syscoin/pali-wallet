@@ -69,6 +69,8 @@ export interface ISmartAccountMetadata {
   contractVersion: string;
   /** Bring-your-own modules to probe during hydration (durable). */
   customModules?: SmartAccountCustomModuleRecord[];
+  /** Original constructor inputs, independent of the active validator. */
+  deploymentAuth?: Readonly<{ data: string; validator: string }>;
   deploymentGasPayer?: {
     address: string;
     id: number;

@@ -25,11 +25,18 @@ import https from 'https';
 import { getController } from '..';
 import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
-import store, { persistCommittedWalletState } from 'state/store';
+import store, {
+  persistAccountCreation,
+  persistCommittedWalletState,
+} from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
-import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  INetworkType,
+  initialActiveHdAccountState,
+  KeyringAccountType,
+} from 'types/network';
 
 import DAppController from './DAppController';
 import MainController from './MainController';
@@ -51,13 +58,31 @@ let records: Record<string, any>;
 let provider: any;
 const filters: any[] = [];
 const record = () => store.getState().vault.accounts[SMART][0] as any;
-const create = (address: string) =>
-  wallet.createSmartAccount({
+const create = async (address: string) => {
+  // Seed a historical record through the normal persistence queue. Account
+  // creation no longer accepts a caller-supplied address.
+  const account = {
+    ...initialActiveHdAccountState,
     address,
+    xpub: address,
+    isSmartAccount: true,
     label:
       address === A ? 'Old public smart account' : 'New public smart account',
-    metadata: { address, chainId: CHAIN_ID, isDeployed: true },
-  });
+    smartAccount: {
+      chainId: CHAIN_ID,
+      contractVersion: 'fixture',
+      deploymentSalt: '0x',
+      isDeployed: true,
+    },
+  };
+  await persistAccountCreation(
+    account,
+    SMART,
+    () => undefined,
+    () => true
+  );
+  return account;
+};
 const refresh = () =>
   wallet.updateUserTransactionsState({
     isBitcoinBased: false,

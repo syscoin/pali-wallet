@@ -3,6 +3,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { AppLayout } from 'components/Layout/AppLayout';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -340,7 +341,8 @@ describe('send forms across wallet navigation', () => {
       .mockImplementation(() => new Promise(() => undefined));
   });
 
-  const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
+  const wrongNetworkSmartAccount = smartAccountAddressFixture(5700).account;
+  const wrongNetworkSmartAddress = wrongNetworkSmartAccount.address;
 
   it('closes recipient suggestions when keyboard focus leaves for Amount', () => {
     mockState.vault.accounts.HDAccount[1].label = 'Local recipient';
@@ -465,23 +467,21 @@ describe('send forms across wallet navigation', () => {
       expect(navigateWithContext).not.toHaveBeenCalled();
     }
   );
-  const currentNetworkSmartAddress =
-    '0x4444444444444444444444444444444444444444';
+  const currentNetworkSmartAccount = smartAccountAddressFixture(1).account;
+  const currentNetworkSmartAddress = currentNetworkSmartAccount.address;
   const addSmartRecipients = () => {
     mockState.vault.accounts.SmartAccount = {
       0: {
+        ...wrongNetworkSmartAccount,
         id: 0,
         label: 'Smart account on another network',
-        address: wrongNetworkSmartAddress,
         isSmartAccount: true,
-        smartAccount: { chainId: 5700 },
       },
       1: {
+        ...currentNetworkSmartAccount,
         id: 1,
         label: 'Undeployed smart account on this network',
-        address: currentNetworkSmartAddress,
         isSmartAccount: true,
-        smartAccount: { chainId: 1, isDeployed: false },
       },
     };
     mockState.vault.accounts.HDAccount[1].label = 'Local EOA';
@@ -593,10 +593,15 @@ describe('send forms across wallet navigation', () => {
     ).toHaveLength(0);
   });
 
-  it.each(['undeployed smart account', 'EOA'])(
+  it.each(['undeployed smart account', 'deployed smart account', 'EOA'])(
     'keeps a compatible %s valid for sending without a deployment lookup',
     async (kind) => {
       addSmartRecipients();
+      if (kind === 'deployed smart account')
+        mockState.vault.accounts.SmartAccount[1].smartAccount = {
+          ...currentNetworkSmartAccount.smartAccount,
+          isDeployed: true,
+        };
       const receiver =
         kind === 'EOA'
           ? mockState.vault.accounts.HDAccount[1].address
@@ -624,6 +629,35 @@ describe('send forms across wallet navigation', () => {
       expect(mockEmitter).not.toHaveBeenCalled();
     }
   );
+
+  it('hides and rejects a smart recipient whose stored address differs from its verified identity', async () => {
+    addSmartRecipients();
+    const invalidAddress = '0x4444444444444444444444444444444444444444';
+    mockState.vault.accounts.SmartAccount[1] = {
+      ...mockState.vault.accounts.SmartAccount[1],
+      address: invalidAddress,
+      xpub: invalidAddress,
+    };
+    render(<SendEth />);
+    const receiver = screen.getByPlaceholderText('send.receiver');
+    fireEvent.focus(receiver);
+    expect(
+      screen.queryByRole('button', {
+        name: /Undeployed smart account on this network/,
+      })
+    ).toBeNull();
+    fireEvent.change(receiver, { target: { value: invalidAddress } });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '1' },
+    });
+    await expect(
+      mockReceiverValidator(undefined, invalidAddress)
+    ).rejects.toThrow();
+    await act(async () => {
+      await mockSubmitForm();
+    });
+    expect(navigateWithContext).not.toHaveBeenCalled();
+  });
 
   it.each(
     ['native', 'token'].flatMap((kind) =>

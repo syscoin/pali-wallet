@@ -8,6 +8,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { Receive } from './Receive';
 
@@ -67,8 +68,8 @@ const records = {
     isReadOnly: true,
   },
   SmartAccount: {
+    ...smartAccountAddressFixture().account,
     id: 2,
-    address: '0x2222222222222222222222222222222222222222',
     isSmartAccount: true,
   },
 };
@@ -203,6 +204,20 @@ it.each([
     expect(mockError).not.toHaveBeenCalled();
   }
 );
+
+it('does not display, encode or copy an unverifiable saved smart account', async () => {
+  const substituted = '0x2222222222222222222222222222222222222222';
+  select('SmartAccount', substituted);
+  mockState.vault.accounts.SmartAccount[2].xpub = substituted;
+  mount();
+  enter();
+  await settle();
+  expect(screen.getByText('receive.addressUnavailable')).toBeDefined();
+  expect(screen.queryByText(substituted)).toBeNull();
+  expect(visibleQr()).toEqual([]);
+  expect(screen.queryByRole('button', { name: 'buttons.copy' })).toBeNull();
+  expect(mockWrite).not.toHaveBeenCalled();
+});
 
 it.each(['{Enter}', ' '])(
   'copies through native keyboard %s activation',

@@ -312,6 +312,7 @@ import type {
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
+import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import { chromeStorage } from 'utils/storageAPI';
 import {
   assertUtxoBuilderFee,
@@ -1041,8 +1042,6 @@ class MainController {
         ),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
-      createSmartAccountRecord: (params) =>
-        this.createSmartAccountRecord(params),
       sendAndSaveEthTransaction: (
         params,
         isLegacy,
@@ -5034,21 +5033,16 @@ class MainController {
     return newAccount;
   }
 
-  public async createSmartAccount(params?: {
-    address: string;
-    label?: string;
-    metadata: ISmartAccountMetadata;
-  }): Promise<any> {
-    if (!params?.address || !params.metadata) {
-      return this.createSmartAccountRecord({ label: params?.label });
-    }
-    return this.createSmartAccountRecord(params);
+  public async createSmartAccount(params?: { label?: string }) {
+    if (params && ('address' in params || 'metadata' in params))
+      throw new Error(
+        'Smart account creation does not accept an address or metadata'
+      );
+    return this.createSmartAccountRecord({ label: params?.label });
   }
 
   private async createSmartAccountRecord(params: {
-    address?: string;
     label?: string;
-    metadata?: ISmartAccountMetadata;
   }): Promise<IKeyringAccountState> {
     const { keyring, assertCurrent: assertWallet } =
       this.accountMutationContext();
@@ -5063,18 +5057,17 @@ class MainController {
       )
         throw new Error(WALLET_SESSION_CHANGED_ERROR);
     };
-    const bootstrap = params.address
-      ? null
-      : this.smartAccount.captureSmartAccountBootstrap(assertWalletCurrent);
-    const assertCurrent = bootstrap?.assertCurrent ?? assertWalletCurrent;
+    const bootstrap =
+      this.smartAccount.captureSmartAccountBootstrap(assertWalletCurrent);
+    const { assertCurrent } = bootstrap;
+    const chainId = store.getState().vault.activeNetwork.chainId;
     assertCurrent();
     const account = await keyring.createSmartAccount({
-      address: params.address,
-      deriveAccount: bootstrap?.deriveAccount,
+      deriveAccount: bootstrap.deriveAccount,
       label: params.label,
-      metadata: params.metadata,
     });
     assertCurrent();
+    requireSmartAccountAddressIdentity(account, chainId);
 
     await this.storeCreatedAccount(
       account,

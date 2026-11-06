@@ -7,6 +7,7 @@ import {
 } from 'types/network';
 
 import { isAccountCompatibleWithNetwork } from './accountCompatibility';
+import { canPublishAccountAddress } from './smartAccount/addressIdentity';
 
 /** Local smart-account ownership is chain-specific, including before deployment. */
 export const getLocalEvmRecipients = (
@@ -15,11 +16,15 @@ export const getLocalEvmRecipients = (
 ): {
   accounts: IKeyringAccountState[];
   addresses: string[];
+  getRecipientIssue(
+    address: string
+  ): 'receive.addressUnavailable' | 'send.smartAccountWrongNetwork' | null;
   incompatibleSmartAddresses: Set<string>;
 } => {
   const accounts: IKeyringAccountState[] = [];
   const addresses = new Set<string>();
   const incompatibleSmartAddresses = new Set<string>();
+  const unverifiedSmartAddresses = new Set<string>();
 
   for (const [type, byId] of Object.entries(accountBuckets || {})) {
     for (const account of Object.values(byId || {})) {
@@ -34,8 +39,10 @@ export const getLocalEvmRecipients = (
         network.kind === INetworkType.Ethereum &&
         isAccountCompatibleWithNetwork(account, type, network)
       ) {
-        accounts.push(account);
-        addresses.add(address);
+        if (canPublishAccountAddress(account, type, network.chainId)) {
+          accounts.push(account);
+          addresses.add(address);
+        } else unverifiedSmartAddresses.add(address);
       } else if (type === KeyringAccountType.SmartAccount) {
         incompatibleSmartAddresses.add(address);
       }
@@ -44,7 +51,22 @@ export const getLocalEvmRecipients = (
 
   // An address can also belong to a compatible local account. Bucket order
   // must not block that destination merely because another chain uses it.
-  for (const address of addresses) incompatibleSmartAddresses.delete(address);
+  for (const address of addresses) {
+    incompatibleSmartAddresses.delete(address);
+    unverifiedSmartAddresses.delete(address);
+  }
 
-  return { accounts, addresses: [...addresses], incompatibleSmartAddresses };
+  return {
+    accounts,
+    addresses: [...addresses],
+    incompatibleSmartAddresses,
+    getRecipientIssue(address) {
+      const normalized = address.toLowerCase();
+      if (unverifiedSmartAddresses.has(normalized))
+        return 'receive.addressUnavailable';
+      if (incompatibleSmartAddresses.has(normalized))
+        return 'send.smartAccountWrongNetwork';
+      return null;
+    },
+  };
 };

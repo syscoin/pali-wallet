@@ -6,7 +6,7 @@ import { ExternalLinkSvg } from 'components/Icon/Icon';
 import SkeletonLoader from 'components/Loader/SkeletonLoader';
 import { useRequestScope } from 'hooks/useRequestScope';
 import { controllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
 import {
   selectActiveAccountWithTransactions,
   selectVaultCoreData,
@@ -17,6 +17,7 @@ import type {
   ITransactionInfoUtxo,
 } from 'types/useTransactionsInfo';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 import { EvmTransactionsList } from './components/Transactions/EVM/EvmList';
@@ -30,6 +31,9 @@ export const TransactionsPanel = () => {
   const { activeNetwork, isBitcoinBased, isSwitchingAccount } =
     useSelector(selectVaultCoreData);
   const explorer = useSelector(selectExplorerUrl);
+  const activeAccountType = useSelector(
+    (state: RootState) => state.vault.activeAccount.type
+  );
   const hasHistoryStatus = isBitcoinBased || Boolean(activeNetwork.apiUrl);
   const historyMayBeIncomplete = !isBitcoinBased && !activeNetwork.apiUrl;
 
@@ -169,7 +173,16 @@ export const TransactionsPanel = () => {
 
   // ✅ OPTIMIZED: Memoized explorer component with proper dependencies
   const OpenTransactionExplorer = useMemo(() => {
-    if (!activeAccount || !explorer) return null;
+    if (
+      !activeAccount ||
+      !explorer ||
+      !canPublishAccountAddress(
+        activeAccount,
+        activeAccountType,
+        activeNetwork.chainId
+      )
+    )
+      return null;
 
     const { xpub, address: userAddress, isImported } = activeAccount as any;
 
@@ -193,11 +206,28 @@ export const TransactionsPanel = () => {
         : xpub
       : userAddress;
 
-    const openExplorer = () =>
+    const openExplorer = () => {
+      const state = store.getState();
+      const currentRef = state.vault.activeAccount;
+      const currentAccount =
+        state.vault.accounts[currentRef.type]?.[currentRef.id];
+      const currentScope = getWalletNavigationScope();
+      if (
+        currentScope.account !== scope.account ||
+        currentScope.network !== scope.network ||
+        selectExplorerUrl(state) !== explorer ||
+        !canPublishAccountAddress(
+          currentAccount,
+          currentRef.type,
+          state.vault.activeNetwork.chainId
+        )
+      )
+        return;
       window.open(
         buildExplorerUrl(explorer, pathSegment, identifier),
         '_blank'
       );
+    };
 
     return (
       <div className="flex mt-5 items-center justify-center gap-2">
@@ -211,7 +241,16 @@ export const TransactionsPanel = () => {
         </button>
       </div>
     );
-  }, [activeAccount, explorer, isBitcoinBased, t]);
+  }, [
+    activeAccount,
+    activeAccountType,
+    activeNetwork.chainId,
+    explorer,
+    isBitcoinBased,
+    scope.account,
+    scope.network,
+    t,
+  ]);
 
   // Configured explorer history, like UTXO, requires an actual scoped read.
   // Networks without an explorer retain the existing RPC settle behavior.
