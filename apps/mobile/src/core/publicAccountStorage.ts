@@ -20,6 +20,12 @@ function assertSize(raw: string, limit: number): void {
 export type WatchRecordSnapshot = DecodedWatchRecords;
 export type WatchUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;
 export type WatchUtxoNetworkSettings = Readonly<{ networks: readonly UtxoNetwork[] }>;
+export class WatchUtxoNetworkReloadRequiredError extends Error {
+  constructor(message = 'Saved UTXO networks changed. Reopen them before saving.') {
+    super(message);
+    this.name = 'WatchUtxoNetworkReloadRequiredError';
+  }
+}
 export type WatchRecordRepository = Readonly<{
   load(): Promise<WatchRecordSnapshot>;
   assertNetworkCurrent(snapshot: WatchRecordSnapshot): void;
@@ -84,7 +90,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
     const ticket = settings.get(expected);
     const check = () => {
       if (!ticket || !signal || signal.aborted || networkEpoch !== ticket.epoch)
-        throw new Error('Saved UTXO networks changed. Reopen them before saving.');
+        throw new WatchUtxoNetworkReloadRequiredError();
     };
     check();
     return { raw: ticket!.raw, check };
@@ -96,7 +102,7 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
       owner.check();
       const current = await readNetworks();
       owner.check();
-      if (current.raw !== owner.raw) throw new Error('Saved UTXO networks changed. Reopen them before saving.');
+      if (current.raw !== owner.raw) throw new WatchUtxoNetworkReloadRequiredError();
       if (removed) {
         const records = createWatchAccountCodec(current.networks).decode(await readRecordRaw()).records;
         owner.check();
@@ -108,9 +114,11 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
       networkEpoch++;
       try { await port.set(WATCH_UTXO_NETWORKS_KEY, encoded); }
       catch { /* Exact readback distinguishes a lost acknowledgement. */ }
-      const observed = await readNetworks();
-      if (observed.raw !== encoded) throw new Error('Saved UTXO networks could not be verified.');
-      return issueSettings(observed.networks, encoded);
+      try {
+        const observed = await readNetworks();
+        if (observed.raw === encoded) return issueSettings(observed.networks, encoded);
+      } catch { /* No verified snapshot can be issued. */ }
+      throw new WatchUtxoNetworkReloadRequiredError('Saved UTXO networks could not be verified.');
     });
   }
   const utxoNetworkSettings = Object.freeze({
@@ -120,7 +128,9 @@ export function createPublicAccountStorage(port: PublicStoragePort, fetch?: Utxo
       const owner = networkOwner(expected, signal);
       const previous = editId === undefined ? undefined : findUtxoNetwork(editId, expected.networks);
       if (editId !== undefined && (!previous || !isCustomUtxoNetworkId(editId))) throw new Error('This network cannot be edited here.');
-      const selected = await verifyUtxoRegistration(draft, previous, { fetch, timeoutMs: 10_000 }, signal, owner.check);
+      let selected: UtxoNetwork;
+      try { selected = await verifyUtxoRegistration(draft, previous, { fetch, timeoutMs: 10_000 }, signal, owner.check); }
+      catch (error) { if (!signal.aborted) owner.check(); throw error; }
       owner.check();
       if ((!previous && findUtxoNetwork(selected.id, expected.networks)) ||
           expected.networks.some((network) => network.id !== selected.id &&

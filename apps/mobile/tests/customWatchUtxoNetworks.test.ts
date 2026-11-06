@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 
-import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY, WATCH_UTXO_NETWORKS_KEY } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY, WATCH_UTXO_NETWORKS_KEY, WatchUtxoNetworkReloadRequiredError } from '../src/core/publicAccountStorage.ts';
 import { createUtxoActivityReader } from '../src/core/utxoActivity.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
@@ -175,6 +175,48 @@ test('rejects a wrong genesis without persisting or looking up any account', asy
   assert.deepEqual(f.calls, [first + '/api/v2/', first + '/api/v2/block-index/0']);
   assert.equal(f.raw.size, 0);
 });
+
+for (const fault of ['write', 'readback'] as const) {
+  test(`an uncertain network ${fault} retires its snapshot until a read-only reload`, async () => {
+    const f = fixture();
+    let writes = 0;
+    let failRead = false;
+    const registry = createPublicAccountStorage({
+      async get(key) {
+        if (key === WATCH_UTXO_NETWORKS_KEY && failRead) {
+          failRead = false;
+          throw Error('Unavailable network readback');
+        }
+        return f.port.get(key);
+      },
+      async set(key, value) {
+        assert.equal(key, WATCH_UTXO_NETWORKS_KEY);
+        const firstWrite = ++writes === 1;
+        if (firstWrite && fault === 'write') throw Error('Unavailable network write');
+        await f.port.set(key, value);
+        failRead = firstWrite && fault === 'readback';
+      },
+    }, f.fetch).utxoNetworkSettings;
+    const old = await registry.load();
+    await assert.rejects(registry.save(old, draft(first), signal()), WatchUtxoNetworkReloadRequiredError);
+    const probes = [...f.calls];
+    await assert.rejects(registry.save(old, draft(first), signal()), WatchUtxoNetworkReloadRequiredError);
+    const current = await registry.load();
+    assert.equal(writes, 1);
+    assert.deepEqual(f.calls, probes);
+
+    if (fault === 'write') {
+      assert.equal(current.networks.some(({ endpoint }) => endpoint === first), false);
+      const saved = await registry.save(current, draft(first), signal());
+      assert.equal(writes, 2);
+      assert.equal(saved.networks.filter(({ endpoint }) => endpoint === first).length, 1);
+    } else {
+      assert.equal(current.networks.filter(({ endpoint }) => endpoint === first).length, 1);
+      await assert.rejects(registry.save(current, draft(first), signal()), /already saved/);
+      assert.equal(writes, 1);
+    }
+  });
+}
 
 test('custom Activity captures the synchronous registry owner before metadata dispatch', async () => {
   const f = fixture(), { saved, id } = await addWatchAccount(f);

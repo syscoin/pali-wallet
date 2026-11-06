@@ -1,13 +1,28 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, KeyboardAvoidingView, Platform, StyleSheet } from 'react-native';
 
-import type { WatchUtxoNetworksView, WatchUtxoNetworkSettings } from '../core/publicAccountStorage';
-import { isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks';
+import { WatchUtxoNetworkReloadRequiredError, type WatchUtxoNetworksView, type WatchUtxoNetworkSettings } from '../core/publicAccountStorage';
+import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, utxoRegistrationData, type UtxoNetwork } from '../core/utxoNetworks';
 import { Button, Card, colors, Header, Notice, Row, Screen, Text, styles } from '../ui';
 import { IdleTextInput } from './IdleActivityBoundary';
 
 type Draft = { endpoint: string; name: string; explorer: string; original?: UtxoNetwork };
 const emptyDraft = { endpoint: '', name: '', explorer: '' };
+
+function reconcileDraft(draft: Draft | null, { networks }: WatchUtxoNetworkSettings): Draft | null {
+  if (!draft) return null;
+  if (draft.original) {
+    const original = draft.original;
+    const current = networks.find(({ id }) => id === original.id);
+    if (!current || JSON.stringify(utxoRegistrationData(current)) !== JSON.stringify(utxoRegistrationData(original))) return null;
+    return { ...draft, original: current };
+  }
+  try {
+    const endpoint = canonicalUtxoEndpoint(draft.endpoint.trim());
+    if (networks.some((network) => isCustomUtxoNetworkId(network.id) && network.endpoint === endpoint)) return null;
+  } catch { /* Leave the unfinished draft available for correction. */ }
+  return draft;
+}
 
 export function WatchNetworks({ controller, onChanged, onBack }: {
   controller: WatchUtxoNetworksView;
@@ -21,23 +36,39 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
   const pending = useRef<AbortController | null>(null);
   const alive = useRef(false);
   const back = useRef(() => {});
-  const run = (operation: (signal: AbortSignal) => Promise<WatchUtxoNetworkSettings>, changed = false) => {
+  const run = (operation: (signal: AbortSignal) => Promise<WatchUtxoNetworkSettings>, mode: 'load' | 'mutate' | 'reload' = 'load') => {
     if (pending.current || AppState.currentState !== 'active') return;
     const owner = new AbortController();
     pending.current = owner;
+    let savedMutation = false;
+    const requireReload = () => {
+      setSaved(null);
+      setError('Reload to check which networks are saved.');
+    };
+    const checkCurrent = () => {
+      if (pending.current !== owner || !alive.current) return false;
+      if (!owner.signal.aborted) return true;
+      if (mode === 'mutate') requireReload();
+      return false;
+    };
     setBusy(true);
     setError('');
     void Promise.resolve().then(() => operation(owner.signal)).then(async (next) => {
-      if (owner.signal.aborted || !alive.current) return;
-      setSaved(next);
-      if (changed) {
-        setDraft(null);
+      if (!checkCurrent()) return;
+      if (mode !== 'load') {
+        savedMutation = mode === 'mutate';
         await onChanged();
+        if (!checkCurrent()) return;
       }
+      setSaved(next);
+      if (mode === 'mutate') setDraft(null);
+      else if (mode === 'reload') setDraft((current) => reconcileDraft(current, next));
     }).catch((cause: unknown) => {
-      if (!owner.signal.aborted && alive.current)
+      if (!checkCurrent()) return;
+      if (mode === 'mutate' && (savedMutation || cause instanceof WatchUtxoNetworkReloadRequiredError)) requireReload();
+      else
         setError(cause instanceof Error && cause.message === 'Remove the watch account using this network first.'
-          ? cause.message : changed ? 'Check the Blockbook URL and try again.' : 'Saved networks are unavailable.');
+          ? cause.message : mode === 'mutate' ? 'Check the Blockbook URL and try again.' : 'Saved networks are unavailable.');
     }).finally(() => {
       if (pending.current !== owner) return;
       pending.current = null;
@@ -78,12 +109,12 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
   const save = () => {
     if (!saved || !draft) return;
     const { endpoint, name, explorer, original } = draft;
-    run((signal) => controller.save(saved, { endpoint: endpoint.trim(), name: name.trim(), explorer }, signal, original?.id), true);
+    run((signal) => controller.save(saved, { endpoint: endpoint.trim(), name: name.trim(), explorer }, signal, original?.id), 'mutate');
   };
   const remove = () => {
     if (!saved || !draft?.original) return;
     const id = draft.original.id;
-    run((signal) => controller.remove(saved, id, signal), true);
+    run((signal) => controller.remove(saved, id, signal), 'mutate');
   };
   const custom = saved?.networks.filter(({ id }) => isCustomUtxoNetworkId(id)) ?? [];
   return <KeyboardAvoidingView style={layout.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -94,24 +125,24 @@ export function WatchNetworks({ controller, onChanged, onBack }: {
           <Text style={styles.muted}>Blockbook URL</Text>
           <IdleTextInput accessibilityLabel="Blockbook URL" style={layout.input}
             autoCapitalize="none" autoCorrect={false} autoComplete="off" keyboardType="url"
-            editable={!busy} maxLength={2048} placeholder="https://" placeholderTextColor={colors.muted}
+            editable={!busy && !!saved} maxLength={2048} placeholder="https://" placeholderTextColor={colors.muted}
             value={draft.endpoint} onChangeText={(endpoint) => { setDraft({ ...draft, endpoint }); setError(''); }} />
           <Text style={styles.muted}>Network name (optional)</Text>
-          <IdleTextInput accessibilityLabel="Network name" style={layout.input} editable={!busy}
+          <IdleTextInput accessibilityLabel="Network name" style={layout.input} editable={!busy && !!saved}
             maxLength={64} value={draft.name} onChangeText={(name) => { setDraft({ ...draft, name }); setError(''); }} />
         </Card>
-        <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy || !draft.endpoint.trim()} onPress={save} />
-        {draft.original && <Button title="Remove network" variant="quiet" disabled={busy} onPress={remove} />}
+        <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy || !saved || !draft.endpoint.trim()} onPress={save} />
+        {draft.original && <Button title="Remove network" variant="quiet" disabled={busy || !saved} onPress={remove} />}
       </> : <>
         {saved && custom.length === 0 && <Notice title="No custom networks" body="Add a Blockbook endpoint to watch accounts on another UTXO network." />}
         {custom.length > 0 && <Card>{custom.map((network, index) => <Row key={network.id}
           title={network.name} subtitle={`${network.symbol} · ${new URL(network.endpoint).hostname}`} icon="globe"
           onPress={() => { if (!busy) edit(network); }} last={index === custom.length - 1} />)}</Card>}
         {saved && <Button title="Add UTXO network" variant="secondary" disabled={busy} onPress={() => edit()} />}
-        {!saved && !busy && error && <Button title="Try again" variant="secondary" onPress={() => run(() => controller.load())} />}
       </>}
       {busy && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking network" />}
       {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite">{error}</Text>}
+      {!saved && !busy && <Button title="Reload saved networks" variant="secondary" onPress={() => run(() => controller.load(), 'reload')} />}
     </Screen>
   </KeyboardAvoidingView>;
 }

@@ -13,7 +13,10 @@ import { parseUtxoPublicIdentifier } from '../../src/core/utxoIdentifier';
 import { readAccounts, writeAccounts, readSelection, writeSelection, events, watchBalanceMode } from './state';
 import { getUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from '../../src/core/utxoNetworks';
 export const isNativePersistence = true;
-const customEnabled = new URLSearchParams(window.location.search).has('custom-utxo');
+const parameters = new URLSearchParams(window.location.search);
+const customEnabled = parameters.has('custom-utxo');
+let networkStorageFault = parameters.get('custom-utxo-storage-fault');
+let failNetworkReadback = false;
 const customEndpoint = 'https://watch-ltc.invalid/blockbook';
 const badEndpoint = 'https://wrong-ltc.invalid/blockbook';
 const ltc = findUtxoCoinByRegistration({ chainId: 2, slip44: 2 })!;
@@ -51,7 +54,13 @@ const codec = createWatchAccountCodec();
 const RECORDS_KEY = 'pali-public-watch-records-fixture-v1';
 const repository = createPublicAccountStorage({
   async get(key) {
-    if (key === WATCH_UTXO_NETWORKS_KEY) return localStorage.getItem(WATCH_UTXO_NETWORKS_KEY);
+    if (key === WATCH_UTXO_NETWORKS_KEY) {
+      if (failNetworkReadback) {
+        failNetworkReadback = false;
+        throw Error('Synthetic watch network readback failure');
+      }
+      return localStorage.getItem(WATCH_UTXO_NETWORKS_KEY);
+    }
     if (key === ACCOUNT_SELECTION_KEY) return JSON.stringify(readSelection());
     if (key !== PUBLIC_ACCOUNTS_KEY) throw Error('Unexpected fixture storage key');
     // Preserve the real read-failure fixture even after a canonical record write.
@@ -59,7 +68,15 @@ const repository = createPublicAccountStorage({
     return localStorage.getItem(RECORDS_KEY) ?? codec.encode(codec.validate(accounts.map((account) => ({ kind: 'address', ...account }))).records);
   },
   async set(key, value) {
-    if (key === WATCH_UTXO_NETWORKS_KEY) { localStorage.setItem(key, value); return; }
+    if (key === WATCH_UTXO_NETWORKS_KEY) {
+      events.push('watch-network-write');
+      const fault = networkStorageFault;
+      networkStorageFault = null;
+      if (fault === 'write') throw Error('Synthetic watch network write failure');
+      localStorage.setItem(key, value);
+      failNetworkReadback = fault === 'readback';
+      return;
+    }
     if (key === ACCOUNT_SELECTION_KEY) { writeSelection(parseAccountSelection(JSON.parse(value))); return; }
     if (key !== PUBLIC_ACCOUNTS_KEY) throw Error('Unexpected fixture storage key');
     if (!customEnabled) writeAccounts(codec.decode(value).accounts);

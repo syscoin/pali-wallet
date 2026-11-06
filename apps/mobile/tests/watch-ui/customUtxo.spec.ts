@@ -36,3 +36,40 @@ test('sets up a verified custom watch network and retains it across reopen', asy
   await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
   await expect(page.getByLabel('Litecoin confirmed balance 1.23456789 LTC', { exact: true })).toBeVisible();
 });
+
+for (const fault of ['write', 'readback'] as const) {
+  test(`reloads verified settings after an uncertain network ${fault}`, async ({ page }) => {
+    await page.goto(`/?empty=1&custom-utxo&custom-utxo-storage-fault=${fault}`);
+    await page.getByRole('button', { name: 'Watch an account', exact: true }).click();
+    await page.getByRole('button', { name: 'Manage watch networks', exact: true }).click();
+    await page.getByRole('button', { name: 'Add UTXO network', exact: true }).click();
+    const endpoint = page.getByRole('textbox', { name: 'Blockbook URL', exact: true });
+    const name = page.getByRole('textbox', { name: 'Network name', exact: true });
+    const save = page.getByRole('button', { name: 'Save network', exact: true });
+    await endpoint.fill('https://watch-ltc.invalid/blockbook');
+    await name.fill('My Litecoin');
+    await save.click();
+    const reload = page.getByRole('button', { name: 'Reload saved networks', exact: true });
+    await expect(reload).toBeVisible();
+    await expect(save).toBeDisabled();
+    const observed = () => page.evaluate(() => window.__watchFixture.events().filter((event) =>
+      event === 'watch-network-write' || event.startsWith('blockbook:')));
+    const beforeReload = await observed();
+    expect(beforeReload.filter((event) => event === 'watch-network-write')).toHaveLength(1);
+    await reload.click();
+
+    if (fault === 'write') {
+      await expect(save).toBeEnabled();
+      await expect(endpoint).toHaveValue('https://watch-ltc.invalid/blockbook');
+      await expect(name).toHaveValue('My Litecoin');
+      expect(await observed()).toEqual(beforeReload);
+      await save.click();
+      await expect(page.getByText('My Litecoin', { exact: true })).toBeVisible();
+      expect((await observed()).filter((event) => event === 'watch-network-write')).toHaveLength(2);
+    } else {
+      await expect(page.getByText('My Litecoin', { exact: true })).toBeVisible();
+      await expect(save).toHaveCount(0);
+      expect(await observed()).toEqual(beforeReload);
+    }
+  });
+}
