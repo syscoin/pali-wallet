@@ -7,7 +7,7 @@ import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from 
 
 type Props = {
   keyExport: HdKeyExportFlow;
-  keyFormat: 'evm' | { networkLabel: string; addressType: string } | null;
+  keyFormat: 'evm' | { kind: 'wif' | 'extended'; networkLabel: string; addressType: string } | null;
   accountId: string;
   accountType: 'HDAccount' | 'Imported';
   accountLabel: string;
@@ -84,7 +84,7 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
   };
   const shown = presentation && presentation.accountId === accountId && presentation.address === address &&
     keyExport.isCurrent(presentation.id) ? presentation : null;
-  const wif = keyFormat !== 'evm' ? keyFormat : null;
+  const utxo = keyFormat !== 'evm' ? keyFormat : null;
 
   return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -103,9 +103,11 @@ export function NativeSecurity({ keyExport, keyFormat, accountId, accountType, a
           <Notice title="Keep secrets to yourself" body="Pali support will never ask for recovery words, private keys or your password. Never enter them into a website or send them to anyone." tone="amber" />
         </> : <>
           <Card style={s.identity}><Text style={s.label}>{accountLabel}</Text>
-            {wif && <Text style={s.label}>{wif.networkLabel} · {wif.addressType}</Text>}
+            {utxo && <Text style={s.label}>{utxo.networkLabel} · {utxo.addressType}</Text>}
             <Text style={s.address}>{address}</Text></Card>
-          {wif
+          {utxo?.kind === 'extended'
+            ? <Notice title="Keep this account key private" body="This extended private key can spend from every address in this account. Reveal it only in a private place." tone="amber" />
+            : utxo?.kind === 'wif'
             ? <Notice title="Keep this key private" body="Anyone with this WIF key can spend from this address. To restore it, select the network and address type shown above." tone="amber" />
             : <Notice title="This key controls one EVM account" body="Anyone with this key can spend from this account on EVM networks. It does not back up the rest of your wallet. Reveal it only in a private place." tone="amber" />}
           {shown ? <>

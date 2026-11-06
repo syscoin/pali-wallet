@@ -14,6 +14,7 @@ import { Transaction } from 'ethers/transaction';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { getNativeNetwork, createNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import { type NativeAccountRecord, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
+import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { sameRecoverySnapshot } from '../src/storage/recoverySnapshot.ts';
 
 const PHRASE = 'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
@@ -1335,6 +1336,45 @@ test('HD key reveal uses real SDK across registered networks and recreated nonze
     await f.execute({ kind: 'remove', id: 'hd:60:1', password: PASSWORD });
     await f.execute({ kind: 'create', label: 'Recreated second', password: PASSWORD });
     assert.equal((await flow.begin(PASSWORD)).privateKey, key1.privateKey);
+  } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('UTXO HD reveal returns the selected SDK account key and clears on network changes', async () => {
+  const f = await readyAccounts(), flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  try {
+    let previous: string | undefined;
+    for (const network of UTXO_NETWORKS) {
+      await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+      if (previous) assert.equal(flow.isCurrent(previous), false);
+      const before = JSON.stringify([...f.disk.records]);
+      const shown = await flow.begin(PASSWORD);
+      assert(shown.privateKey.startsWith(network.testnet ? 'vprv' : 'zprv'));
+      assert.equal(shown.accountId, `hd:${network.slip44}:0`);
+      assert.equal(shown.address, f.authority.getSnapshot().account?.address);
+      assert.equal(flow.isCurrent(shown.id), true);
+      assert.equal(JSON.stringify([...f.disk.records]), before);
+      assert(!JSON.stringify(f.authority.getSnapshot()).includes(shown.privateKey));
+      previous = shown.id;
+    }
+    f.authority.lock();
+    assert.equal(flow.isCurrent(previous!), false);
+  } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
+});
+
+test('UTXO HD reveal rejects a valid extended key for a different account', async () => {
+  const sdk = await raceSdk(), f = await readyAccounts(sdk.loadSdk);
+  const flow = new HdKeyExportFlow(f.authority, () => f.runtime.keyExport);
+  try {
+    const network = UTXO_NETWORKS[0]!;
+    await f.authority.selectNetwork(network.id, f.authority.getSnapshot().revision, f.authority.getCatalogue()!.revision);
+    await f.execute({ kind: 'create', label: 'Another account', password: PASSWORD });
+    const shown = await flow.begin(PASSWORD);
+    assert.equal(shown.accountId, `hd:${network.slip44}:1`);
+    await f.execute({ kind: 'select', id: `hd:${network.slip44}:0` });
+    assert.equal(flow.isCurrent(shown.id), false);
+    sdk.setExportResult(shown.privateKey);
+    await assert.rejects(flow.begin(PASSWORD), /^Error: KEY_EXPORT_UNAVAILABLE$/);
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
   } finally { flow.dispose(); await f.authority.dispose(); f.disk.restoreNetwork(); }
 });
 

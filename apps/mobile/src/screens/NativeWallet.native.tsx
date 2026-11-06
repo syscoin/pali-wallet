@@ -490,8 +490,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
     const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
     const script = utxo && selected.type === 'Imported' ? findWifAddressType(selected.address, utxo.id) : undefined;
-    const keyFormat = canSign ? 'evm' : utxo && script
-      ? { networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
+    const keyFormat = canSign ? 'evm' : utxo && selected.type === 'HDAccount'
+      ? { kind: 'extended' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS.p2wpkh }
+      : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
       keyExport={keyExportView} keyFormat={keyFormat} accountId={selected.id} accountType={selected.type} accountLabel={accountLabel} address={snapshot.account.address}
       onBack={closeStage} onLock={revoke} onViewRecovery={() => setStage('backup-auth')}
