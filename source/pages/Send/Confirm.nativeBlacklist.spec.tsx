@@ -510,8 +510,7 @@ it.each([
   async (pendingBalance, affordable) => {
     mockLocation.state.tx.transactionType = 'NATIVE_ETH';
     await ready(true);
-    const reviewId =
-      mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
+    const reviewId = mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
     const reviewedValue = '99999937000000000000';
     mockPendingBalanceWei = pendingBalance;
     await act(async () =>

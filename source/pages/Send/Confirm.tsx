@@ -624,7 +624,10 @@ export const SendConfirm = () => {
         if (!feeEstimateReady) return t('send.calculating');
         if (isNativeSoftwareSend && exactWalletFeeReview)
           return exactWalletFeeReview.value > BigInt(0)
-            ? formatEther(exactWalletFeeReview.value.toString()).replace(/\.0$/, '')
+            ? formatEther(exactWalletFeeReview.value.toString()).replace(
+                /\.0$/,
+                ''
+              )
             : t('send.calculating');
         const gasLimit = BigNumber.from(
           validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
@@ -2075,9 +2078,10 @@ export const SendConfirm = () => {
   const getCalculatedFee = useMemo(() => {
     if (isBitcoinBased) return 0;
     if (isNativeSoftwareSend || isOrdinaryTokenSend) {
-      const canShowFee = isNativeSoftwareSend && basicTxValues.isMax
-        ? feeEstimateReady
-        : confirmationFeeReady;
+      const canShowFee =
+        isNativeSoftwareSend && basicTxValues.isMax
+          ? feeEstimateReady
+          : confirmationFeeReady;
       return canShowFee && exactWalletFeeReview
         ? formatEther(exactWalletFeeReview.maximumFee.toString())
         : undefined;
