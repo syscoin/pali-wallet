@@ -106,6 +106,23 @@ for (const mode of [
       });
     try {
       const before = JSON.stringify(f.state);
+      if (mode === 'extended') {
+        const sdkImport = jest.spyOn(f.keyring, 'importAccount');
+        try {
+          for (const utxoAddressType of ['p2pkh', 'p2tr'] as const) {
+            await expect(
+              importAccountWithRecovery(
+                f.keyring,
+                { secret, network: f.network, options: { utxoAddressType } },
+                current
+              )
+            ).rejects.toThrow('IMPORTED_RECOVERY_INVALID');
+          }
+          expect(sdkImport).not.toHaveBeenCalled();
+        } finally {
+          sdkImport.mockRestore();
+        }
+      }
       const imported = await importAccountWithRecovery(
         f.keyring,
         { secret, label: 'Saved import', network: f.network, options },
@@ -114,6 +131,8 @@ for (const mode of [
       expect(imported.account.id).toBe(0);
       expect(imported.account.isImported).toBe(true);
       expect(imported.account.label).toBe('Saved import');
+      if (mode === 'extended')
+        expect(imported.account.address).toMatch(/^bc1q/);
       expect(imported.recovery.identity).toEqual({
         ...f.network,
         id: 0,
