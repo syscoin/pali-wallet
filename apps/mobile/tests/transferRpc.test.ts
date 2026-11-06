@@ -67,6 +67,58 @@ test('new cancellation preserves a saved legacy nonce and rejects unsupported or
   await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined, rates), { code: 'REVIEW_REQUIRED' });
   assert.equal(f.calls.length, 0);
 });
+test('saved cancellation cannot POST after its queued admission loses receipt, nonce or code authority', async () => {
+  const raw = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 21000, gasPrice: 150,
+  });
+  const hash = keccak256(raw);
+  let nonce = '0x1', code = '0x', chain = '0x1';
+  let receipt: object | null = null;
+  const f = fixture({
+    eth_chainId: () => chain,
+    eth_getTransactionCount: () => nonce,
+    eth_getCode: () => code,
+    eth_getTransactionReceipt: ({ params }: { params: string[] }) => {
+      assert.deepEqual(params, [hash]);
+      return receipt;
+    },
+  });
+  const quote = await f.rpc.prepareSavedCancellation(hash, raw, sender.address, signal(), () => undefined,
+    { type: 0, gasPrice: 150n });
+  const transaction = quote.transaction;
+  assert.equal(transaction.type, 0);
+  const cancel = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: sender.address, value: 0,
+    gasLimit: BigInt(transaction.gasLimit), gasPrice: BigInt(transaction.gasPrice),
+  });
+  const dispatch = (skipPreflight = false) => f.rpc.broadcast(cancel, keccak256(cancel), signal(), {
+    mode: 'cancel-saved', original: quote.original,
+    async admit(send, preflight) {
+      if (!skipPreflight) {
+        assert.ok(preflight);
+        await preflight();
+      }
+      return send();
+    },
+  });
+  await assert.rejects(dispatch(true), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x0';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x2';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x1';
+  code = '0x6000';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  code = '0x';
+  chain = '0x2';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  chain = '0x1';
+  receipt = { transactionHash: hash, from: sender.address, to: recipient, status: '0x1',
+    blockNumber: '0x20', blockHash: '0x' + '2'.repeat(64) };
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  assert(!f.calls.some(({ method }) => method === 'eth_sendRawTransaction'));
+});
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
   const quote = await f.rpc.prepare(sender.address, recipient, '123', signal());

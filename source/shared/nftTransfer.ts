@@ -95,8 +95,8 @@ export function snapshotNftTransferIntent(value: unknown): NftTransferIntent {
   });
 }
 
-/** Ordinary software-wallet selectors from published sysweb3 keyring 2.1.2. */
-function encodeNftTransferData(intent: NftTransferIntent): string {
+/** Encode a validated intent with the published keyring's ordinary software-wallet selectors. */
+export function encodeNftTransferData(intent: NftTransferIntent): string {
   const args = [intent.from, intent.recipient, intent.tokenId];
   return intent.tokenStandard === 'ERC-721'
     ? abi.encodeFunctionData(erc721Method, args)
@@ -116,7 +116,13 @@ type RetainedNftContext = Readonly<{
   rawTransaction: string;
 }>;
 
-/** Inspection only. A shared selector cannot establish an NFT operation. */
+export function isRetainedNftReplayEnvelope(
+  tx: Pick<Transaction, 'type' | 'accessList'>
+): boolean {
+  return (tx.type === 0 || tx.type === 2) && !tx.accessList?.length;
+}
+
+/** Derive typed intent from authenticated retained bytes and operation. */
 export function decodeRetainedNftTransfer(
   entry: RetainedNftContext,
   tx: Transaction

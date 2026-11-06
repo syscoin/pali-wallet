@@ -24,6 +24,23 @@ test('retained collectible details show signed fields without a resend action at
   await page.screenshot({ path: testInfo.outputPath('retained-collectible-320.png') });
 });
 
+test('a retained collectible copies the signed recipient even when indexed history gives the contract', async ({ page }) => {
+  const signedRecipient = `0x${'22'.repeat(20)}`;
+  const contract = `0x${'33'.repeat(20)}`;
+  await page.goto('/?retained-collectible=indexed');
+  await page.waitForFunction(() => window.__activityFixture?.rowState().some(row => row.indexedStatus !== undefined));
+  await page.getByRole('button', { name: /Collectible transfer.*View transaction details/ }).click();
+  await expect(page.getByText('SIGNED RECIPIENT', { exact: true })).toBeVisible();
+  await expect(page.getByText(signedRecipient, { exact: true })).toBeVisible();
+  await expect(page.getByText(contract, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy recipient address' }).click();
+  await expect(page.getByText('Copy this address?', { exact: true })).toBeVisible();
+  const address = page.getByText(signedRecipient, { exact: true });
+  await expect(address).toHaveCount(2);
+  await expect(address.last()).toBeInViewport();
+  await expect(page.getByText(contract, { exact: true })).toHaveCount(1);
+});
+
 for (const decimals of [0, 18, 19, 255]) {
   test(`Activity renders a valid ${decimals}-decimal token in the list and details`, async ({
     page,

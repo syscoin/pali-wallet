@@ -1,5 +1,6 @@
 import type { EvmSignedPhase } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { Erc20TransferIntent } from './transferIntent.ts';
+import type { NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 
 /** Native screen DTO. Persistence and retention belong to the shared signed-record policy. */
 export type TransferJournalPhase = EvmSignedPhase;
@@ -13,6 +14,8 @@ export type TransferJournalEntry = Readonly<{
   nonce: number;
   createdAt: number;
   intent?: Erc20TransferIntent;
+  collectible?: NftTransferIntent;
+  inspectionOnly?: true;
 }>;
 
 /** Host-facing classification; the shared store supplies all persistence decisions. */

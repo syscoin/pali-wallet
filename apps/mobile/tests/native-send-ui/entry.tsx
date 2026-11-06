@@ -34,6 +34,13 @@ const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
+const collectibleStandard = route.get('collectible');
+const collectibleAddress = '0x3333333333333333333333333333333333333333';
+const collectible = collectibleStandard === '721'
+  ? { tokenStandard: 'ERC-721' as const, contractAddress: collectibleAddress }
+  : collectibleStandard === '1155'
+  ? { tokenStandard: 'ERC-1155' as const, contractAddress: collectibleAddress, tokenId: ((1n << 256n) - 1n).toString() }
+  : undefined;
 let sendContext = getNativeSendContext(
   new URLSearchParams(window.location.search).has('zksys-send')
     ? 'zksys-testnet'
@@ -73,8 +80,29 @@ const controller: NativeTransferView = {
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
+  async prepareCollectible(saved, to, tokenId, amountUnits) {
+    if (saved !== collectible) throw Error('Unexpected fixture draft');
+    const from = sender;
+    publish({
+      ...idle(),
+      phase: 'review',
+      review: {
+        context: sendContext, id: `fixture-review-${++sequence}`, from,
+        recipient: saved.contractAddress, amountUnits: '0', maximumFeeUnits: '63000',
+        totalUnits: '63000', gasLimit: '21000', maximumFeePerGas: '3',
+        priorityFeePerGas: '1', nonce: '0', retry: false,
+        collectible: {
+          kind: 'nft-transfer', chainId: '1', from, contractAddress: saved.contractAddress,
+          recipient: to, tokenId, amountUnits, tokenStandard: saved.tokenStandard,
+        },
+      },
+    });
+  },
   async prepareCancellation(hash) {
     publishReview(sender, '0', { mode: 'cancel', originalHash: hash, originalMaximumFeeUnits: '63000' });
+  },
+  async prepareSavedCancellation(hash) {
+    await this.prepareCancellation(hash);
   },
   async prepareSpeedUp(hash) {
     publishReview('0x1111111111111111111111111111111111111111', '1000000000000000000', {
@@ -104,11 +132,12 @@ const controller: NativeTransferView = {
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
     confirmations.push({ id });
-    const context = snapshot.review.context;
+    const { context, collectible } = snapshot.review;
     clearTimeout(expiry);
     publish({
       context,
       phase: 'pending',
+      collectible,
       review: null,
       hash: '0x' + '1'.repeat(64),
       message: null,
@@ -321,6 +350,7 @@ function Fixture() {
           controller={controller}
           context={sendContext}
           replacement={replacement}
+          collectible={collectible}
           onBack={() => undefined}
         />
       )}

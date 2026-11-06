@@ -14,6 +14,7 @@ import { createNftOwnershipReader } from '../../src/portfolio/nftOwnershipReadRp
 import {
   NativeTokenRegistry,
   type NativeTokenScope,
+  type SavedCollectible,
 } from '../../src/portfolio/tokenRegistry';
 import type { Erc20Reader } from '../../src/portfolio/erc20ReadRpc';
 import { NativePortfolio } from '../../src/screens/NativePortfolio';
@@ -227,6 +228,7 @@ const controller = new NativeTokens(
 );
 let setVisible: (value: boolean) => void = () => undefined;
 let sends = 0;
+const collectibleSends: SavedCollectible[] = [];
 declare global {
   interface Window {
     __nativeTokenPortfolio: {
@@ -243,6 +245,7 @@ declare global {
       visible(value: boolean): void;
       requests(): readonly string[];
       sends(): number;
+      collectibleSends(): readonly SavedCollectible[];
     };
   }
 }
@@ -292,6 +295,7 @@ window.__nativeTokenPortfolio = {
   },
   requests: () => [...requests],
   sends: () => sends,
+  collectibleSends: () => [...collectibleSends],
 };
 export function NativeTokenPortfolioFixture() {
   const [visible, updateVisible] = useState(true);
@@ -316,6 +320,7 @@ export function NativeTokenPortfolioFixture() {
       onSend={() => {
         sends++;
       }}
+      onSendCollectible={query.has('collectible-send') ? (item) => { collectibleSends.push(item); } : undefined}
       onExit={() => undefined}
       onLock={() => window.__nativeTokenPortfolio.lock()}
       onViewRecovery={() => undefined}

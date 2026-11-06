@@ -2,11 +2,12 @@ import { keccak256 } from 'ethers/crypto';
 import { assertEvmGasLimit, EVM_CANCELLATION_GAS_LIMIT } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { AdmitEvmSignedDispatch } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { Transaction } from 'ethers/transaction';
-import { assertEvmCancellationPayerReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmEmptySelfCall, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
+import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError, isEvmEmptySelfCall, isEvmProtectedEmptySelfCall } from '../../../../source/shared/evmCancellationPayer.ts';
 import { assertEvmSpeedUpExecutable } from '../../../../source/shared/evmFeeApproval.ts';
+import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 import { EVM_SIGNED_RECORD_LIMITS, type EvmReplacementRates } from '../../../../source/wallet/evmSignedRecords.ts';
 import { EvmReplayError, type EvmReplayDispatchAdmission, type EvmReplayDispatchContext } from '../../../../source/wallet/evmSignedReplay.ts';
-import type { EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
+import { EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { ActivityReceiptError, ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { assertBaseUnits } from '../core/amounts.ts';
@@ -20,8 +21,10 @@ import {
   snapshotErc20TransferIntent,
   type Erc20TransferIntent,
 } from './transferIntent.ts';
-import { EvmTransferReadRpc, type EvmCancellationQuote } from './evmTransferReadRpc.ts';
-import { EvmTransferReadError } from './evmFeeContracts.ts';
+import { EvmTransferReadRpc, type EvmCancellationQuote, type EvmNftPreparedQuote } from './evmTransferReadRpc.ts';
+import { EvmTransferReadError, guardedRead, unsignedTransferBytes, type EvmUnsignedTransfer } from './evmFeeContracts.ts';
+import type { NftTransferRequest, NftTransferSelection } from './nftTransferAdmission.ts';
+import { withNftInventorySignal } from './nftTransferAdmission.ts';
 import { getNativeNetwork, getNativeSendContext, snapshotNativeNetwork, type NativeNetworkRegistration, type EvmNetworkId } from './networkContext.ts';
 import {
   boundedResponseText,
@@ -67,7 +70,7 @@ type NativeBroadcastAdmission = Readonly<
       admit: AdmitEvmSignedDispatch<string>;
     }
   | {
-      mode: 'cancel';
+      mode: 'cancel' | 'cancel-saved';
       original: NativeReplacementOriginal;
       admit: AdmitEvmSignedDispatch<string>;
     }
@@ -75,6 +78,14 @@ type NativeBroadcastAdmission = Readonly<
       mode: 'speed-up';
       original: NativeReplacementOriginal;
       intent?: Erc20TransferIntent;
+      admit: AdmitEvmSignedDispatch<string>;
+    }
+  | {
+      mode: 'collectible';
+      approval: EvmNftPreparedQuote;
+      assertCurrent: () => void;
+      inventorySignal: AbortSignal;
+      onDispatch: () => void;
       admit: AdmitEvmSignedDispatch<string>;
     }
   | {
@@ -98,6 +109,8 @@ export class NativeTransferRpcError extends Error {
     | 'REVIEW_REQUIRED'
     | 'INSUFFICIENT_BALANCE'
     | 'INSUFFICIENT_TOKEN_BALANCE'
+    | 'INSUFFICIENT_NFT_BALANCE'
+    | 'NFT_TRANSFER_REJECTED'
     | 'TOKEN_CHANGED'
     | 'TOKEN_TRANSFER_REJECTED';
   constructor(code: NativeTransferRpcError['code']) {
@@ -153,7 +166,7 @@ export class NativeTransferRpc {
   private readonly registration: NativeNetworkRegistration;
   private readonly activityReceipts: ActivityReceiptReader;
   private sequence = 0;
-  constructor(options: ({ networkId: EvmNetworkId; registration?: NativeNetworkRegistration } | { registration: NativeNetworkRegistration; networkId?: EvmNetworkId }) & { fetch?: FetchLike; timeoutMs?: number }) {
+  constructor(options: ({ networkId: EvmNetworkId; registration?: NativeNetworkRegistration } | { registration: NativeNetworkRegistration; networkId?: EvmNetworkId }) & { fetch?: FetchLike; timeoutMs?: number; monotonicMilliseconds?: () => number }) {
     if (!options || (!options.registration && !options.networkId)) throw new Error('A selected EVM registration is required');
     const registration = snapshotNativeNetwork(options.registration ?? getNativeNetwork(options.networkId!));
     if (options.networkId && options.networkId !== registration.id) throw new Error('Mismatched EVM registration');
@@ -170,6 +183,7 @@ export class NativeTransferRpc {
     this.receiptRpc = new EvmTransferReadRpc(registration, {
       fetch: this.fetcher,
       timeoutMs: this.timeoutMs,
+      monotonicMilliseconds: options.monotonicMilliseconds,
     });
     this.registration = registration;
     this.activityReceipts = new ActivityReceiptReader({ fetch: this.fetcher, timeoutMs: this.timeoutMs });
@@ -294,9 +308,17 @@ export class NativeTransferRpc {
   }
   async prepareCancellation(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
     rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
+    return this.quoteCancellation('pending', hash, rawTransaction, payer, signal, guard, rates);
+  }
+  async prepareSavedCancellation(hash: string, rawTransaction: string, payer: string, signal: AbortSignal, guard: () => void,
+    rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
+    return this.quoteCancellation('saved', hash, rawTransaction, payer, signal, guard, rates);
+  }
+  private async quoteCancellation(source: 'pending' | 'saved', hash: string, rawTransaction: string,
+    payer: string, signal: AbortSignal, guard: () => void, rates: EvmReplacementRates): Promise<NativeCancellationQuote> {
     const { transaction, original } = this.authenticatedOriginal(hash, rawTransaction, payer);
-    await this.assertPendingOriginal(original, signal, guard);
-    const quote = await this.receiptRpc.prepareCancellation(transaction, rates, signal, guard)
+    if (source === 'pending') await this.assertPendingOriginal(original, signal, guard);
+    const quote = await this.receiptRpc.prepareCancellation(transaction, rates, source, signal, guard)
       .catch((error) => this.mapReadError(error));
     this.checkedQuote(quote);
     return Object.freeze({ ...quote, original });
@@ -321,6 +343,8 @@ export class NativeTransferRpc {
   private mapReadError(error: unknown): never {
     if (error instanceof EvmTransferReadError) {
       if (error.code === 'INSUFFICIENT_BALANCE') throw new NativeTransferRpcError('INSUFFICIENT_BALANCE');
+      if (error.code === 'INSUFFICIENT_NFT_BALANCE' || error.code === 'NFT_TRANSFER_REJECTED')
+        throw new NativeTransferRpcError(error.code);
       if (error.code === 'REVIEW_REQUIRED') throw new NativeTransferRpcError('REVIEW_REQUIRED');
       if (error.code === 'CANCELLED') throw new NativeTransferRpcError('CANCELLED');
       if (error.code === 'INVALID_INPUT' || error.code === 'INVALID_RESPONSE' || error.code === 'PROFILE_CHANGED') throw new NativeTransferRpcError('INVALID_RESPONSE');
@@ -348,6 +372,14 @@ export class NativeTransferRpc {
     return this.quoteToken(from, input, signal, (intent, local) => this.receiptRpc.prepare({
       from, to: intent.token.contractAddress, value: '0', data: encodeErc20Transfer(intent.recipient, intent.amountUnits),
     }, local, () => undefined, approved));
+  }
+  prepareNft(selection: NftTransferSelection, request: NftTransferRequest, signal: AbortSignal,
+    assertCurrent: () => void): Promise<EvmNftPreparedQuote> {
+    return this.receiptRpc.prepareNft(selection, request, signal, assertCurrent).catch((error) => this.mapReadError(error));
+  }
+  requoteNft(selection: NftTransferSelection, approval: EvmNftPreparedQuote, signal: AbortSignal,
+    assertCurrent: () => void): Promise<EvmNftPreparedQuote> {
+    return this.receiptRpc.requoteNft(selection, approval, signal, assertCurrent).catch((error) => this.mapReadError(error));
   }
   private quoteToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
     readQuote: (intent: Erc20TransferIntent, signal: AbortSignal) => Promise<NativeTransferQuote>): Promise<NativeTransferQuote> {
@@ -396,10 +428,15 @@ export class NativeTransferRpc {
   ): Promise<string> {
     if (
       !admission ||
-      (admission.mode !== 'new-send' && admission.mode !== 'cancel' && admission.mode !== 'speed-up' && admission.mode !== 'replay') ||
+      (admission.mode !== 'new-send' && admission.mode !== 'cancel' && admission.mode !== 'cancel-saved' && admission.mode !== 'speed-up' &&
+        admission.mode !== 'collectible' && admission.mode !== 'replay') ||
+      (admission.mode === 'collectible'
+        ? !admission.approval || !admission.inventorySignal || typeof admission.onDispatch !== 'function' ||
+          typeof admission.assertCurrent !== 'function' || 'intent' in admission
+        : 'approval' in admission || 'assertCurrent' in admission || 'inventorySignal' in admission || 'onDispatch' in admission) ||
       (admission.mode !== 'replay' && (
         typeof admission.admit !== 'function' || 'context' in admission ||
-        (admission.mode === 'cancel' ? !admission.original || 'intent' in admission
+        (admission.mode === 'cancel' || admission.mode === 'cancel-saved' ? !admission.original || 'intent' in admission
           : admission.mode === 'speed-up' ? !admission.original : 'original' in admission)
       )) ||
       (admission.mode === 'replay' && (
@@ -415,7 +452,12 @@ export class NativeTransferRpc {
       : undefined;
     const admit = admission.mode !== 'replay' ? admission.admit : undefined;
     const intent = admission.mode === 'new-send' || admission.mode === 'speed-up' ? admission.intent : undefined;
-    const original = admission.mode === 'cancel' || admission.mode === 'speed-up' ? Object.freeze({ ...admission.original }) : undefined;
+    const original = admission.mode === 'cancel' || admission.mode === 'cancel-saved' || admission.mode === 'speed-up'
+      ? Object.freeze({ ...admission.original }) : undefined;
+    const collectible = admission.mode === 'collectible'
+      ? { approval: admission.approval, assertCurrent: admission.assertCurrent,
+        inventorySignal: admission.inventorySignal, onDispatch: admission.onDispatch } : undefined;
+    let nft: Readonly<{ intent: NftTransferIntent; envelope: EvmUnsignedTransfer }> | undefined;
     let speedUp: Readonly<{ transaction: Transaction; from: string }> | undefined;
     let cancellation: Readonly<{ from: string; nonce: number; operation: string }> | undefined = replay && (replay.context.operation === 'cancel' || replay.context.requiresPayerCheck)
       ? replay.context : undefined;
@@ -437,13 +479,32 @@ export class NativeTransferRpc {
       if (tx.gasLimit < 21000n || tx.gasLimit > BigInt(Number.MAX_SAFE_INTEGER)) return invalid();
       if (replay && (replay.context.hash !== hash || replay.context.chainId !== this.context.chainId ||
           replay.context.nonce !== tx.nonce || tx.from?.toLowerCase() !== replay.context.from.toLowerCase())) return invalid();
+      if (collectible) {
+        const { approval, assertCurrent } = collectible;
+        guardedRead(assertCurrent);
+        this.receiptRpc.assertNftApproval(approval, true);
+        if (tx.from !== approval.intent.from || tx.unsignedSerialized !== unsignedTransferBytes(approval.envelope)) return invalid();
+        nft = { intent: approval.intent, envelope: approval.envelope };
+      }
+      if (replay?.context.operation === 'erc721' || replay?.context.operation === 'erc1155') {
+        const owned = decodeRetainedNftTransfer({ ...replay.context, from: replay.context.from.toLowerCase(), rawTransaction }, tx);
+        if (!owned || !isRetainedNftReplayEnvelope(tx)) return invalid();
+        const fields = { from: owned.from, to: owned.contractAddress, chainId: owned.chainId,
+          nonce: String(tx.nonce), value: '0', gasLimit: tx.gasLimit.toString(), data: tx.data };
+        const envelope = tx.type === 0 && tx.gasPrice !== null
+          ? { ...fields, type: 0 as const, gasPrice: tx.gasPrice.toString() }
+          : tx.type === 2 && tx.maxFeePerGas !== null && tx.maxPriorityFeePerGas !== null
+            ? { ...fields, type: 2 as const, maxFeePerGas: tx.maxFeePerGas.toString(), maxPriorityFeePerGas: tx.maxPriorityFeePerGas.toString() }
+            : invalid();
+        nft = { intent: owned, envelope };
+      }
       if (original) {
         if (!tx.from ||
             original.from.toLowerCase() !== tx.from.toLowerCase() || original.nonce !== tx.nonce ||
             original.type !== tx.type || original.registrationHash !== this.context.registrationHash ||
             checkedHash(original.hash) !== original.hash || original.hash === hash)
           return invalid();
-        if (mode === 'cancel') {
+        if (mode === 'cancel' || mode === 'cancel-saved') {
           if (tx.gasLimit !== EVM_CANCELLATION_GAS_LIMIT) return invalid();
           cancellation = { from: tx.from, nonce: tx.nonce, operation: 'cancel' };
         } else {
@@ -472,14 +533,28 @@ export class NativeTransferRpc {
         intent
       );
 
-    } catch {
+    } catch (error) {
+      if (collectible && error instanceof EvmTransferReadError && (error.code === 'REVIEW_REQUIRED' || error.code === 'CANCELLED'))
+        return Promise.reject(new NativeTransferRpcError(error.code));
       return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
     }
     return this.operation(signal, async (local) => {
       let dispatched = false;
-      const send = () => {
+      let protectedPreflightComplete = false;
+      const assertActive = () => {
         if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
-        if (dispatched) throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        if (collectible) {
+          try {
+            guardedRead(collectible.assertCurrent);
+            this.receiptRpc.assertNftApproval(collectible.approval, true);
+          } catch (error) { this.mapReadError(error); }
+        }
+      };
+      const send = () => {
+        assertActive();
+        if (dispatched || ((nft || mode === 'cancel-saved') && !protectedPreflightComplete))
+          throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        if (collectible) guardedRead(collectible.onDispatch);
         dispatched = true;
         // No automatic retry: the remote side may accept before a response is lost.
         return this.call('eth_sendRawTransaction', [rawTransaction], local).then((value) => {
@@ -488,10 +563,34 @@ export class NativeTransferRpc {
         });
       };
       const preflight = async () => {
+        if (nft) {
+          const { intent, envelope } = nft;
+          const read = (owned: AbortSignal) =>
+            this.receiptRpc.verifyNftForDispatch(intent, envelope, owned, assertActive, !!replay)
+              .catch((error: unknown) => {
+                assertActive();
+                return this.mapReadError(error);
+              });
+          await (collectible ? withNftInventorySignal(local, collectible.inventorySignal, read) : read(local));
+          protectedPreflightComplete = true;
+          return;
+        }
+        if (mode === 'cancel-saved' && original) {
+          try {
+            await assertRetainedEvmCancellationReady({
+              chainId: this.context.chainId, from: original.from, to: original.to,
+              hash: original.hash, nonce: String(original.nonce),
+            }, (method, params) => this.call(method, params, local), assertActive);
+          } catch (error) {
+            if (error instanceof EvmObservationError || error instanceof EvmCancellationNonceError ||
+                error instanceof EvmCancellationPayerCodeError)
+              throw new NativeTransferRpcError('REVIEW_REQUIRED');
+            throw error;
+          }
+          protectedPreflightComplete = true;
+          return;
+        }
         await this.checkChain(local);
-        const assertActive = () => {
-          if (local.aborted) throw new NativeTransferRpcError('CANCELLED');
-        };
         if (speedUp) {
           if (original) await this.assertPendingOriginal(original, local, assertActive);
           const [rawNonce, rawBlock] = await Promise.all([

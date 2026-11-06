@@ -22,6 +22,18 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('an unobserved saved transaction offers explicit same-nonce cancellation', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?fresh-status=retained-missing-missing');
+  await listRow(page).click();
+  const saved = page.getByRole('button', { name: 'Cancel saved transaction', exact: true });
+  await expect(saved).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Cancel pending transaction', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Speed Up', exact: true })).toHaveCount(0);
+  await saved.click();
+  await expect(page.getByRole('button', { name: 'Open Activity', exact: true })).toBeVisible();
+});
+
 test('a saved Speed Up leaves reviewed replacement actions on the live pending original', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?fresh-status=retained-missing-pending-speedup');

@@ -9,6 +9,7 @@ import {
 import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   decodeRetainedNftTransfer,
+  isRetainedNftReplayEnvelope,
   type NftTransferIntent,
 } from '../shared/nftTransfer.ts';
 
@@ -53,6 +54,7 @@ export type EvmSavedTransaction = EvmReplayCandidate &
 export type EvmReplayReview = Readonly<{
   accessListEntries: number;
   chainId: string;
+  collectibleTransfer?: NftTransferIntent;
   dataBytes: number;
   feePerGas: string;
   from: string;
@@ -456,6 +458,9 @@ export class EvmSignedReplay {
     const tx = Transaction.from(entry.rawTransaction),
       fee = tx.maxFeePerGas ?? tx.gasPrice;
     if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
+    const collectible = isRetainedNftReplayEnvelope(tx)
+      ? decodeRetainedNftTransfer(entry, tx)
+      : undefined;
     const entropy = this.randomBytes(16);
     if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
       throw new EvmReplayError('INVALID_RESPONSE');
@@ -479,6 +484,7 @@ export class EvmSignedReplay {
       selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
       accessListEntries: tx.accessList?.length ?? 0,
       operation: entry.operation,
+      ...(collectible ? { collectibleTransfer: collectible } : {}),
       ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
       ...(missingNonce === undefined ? {} : { missingNonce }),
       predecessors: Object.freeze(predecessors),
