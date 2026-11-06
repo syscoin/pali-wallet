@@ -194,8 +194,9 @@ afterEach(() => {
     mockEmitter.mock.calls.every(([path]) =>
       [
         'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getTxGasLimit',
         'getFreshNativeEvmGasLimit',
+        'reviewNativeEvmFee',
+        'discardNativeEvmFeeReview',
       ].includes(path.at(-1))
     )
   ).toBe(true);
@@ -251,7 +252,13 @@ async function prepare(language: string, count = 1, token = false) {
     const method = path.at(-1);
     if (method === 'getFeeDataWithDynamicMaxPriorityFeePerGas')
       return quotes[next++].promise;
-    if (method === 'getTxGasLimit') return Promise.resolve(21000);
+    if (method === 'reviewNativeEvmFee')
+      return Promise.resolve({
+        id: 'fixture-review',
+        maximumFee: params[2],
+        validForMs: 90000,
+      });
+    if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
     if (method === 'getFreshNativeEvmGasLimit') {
       expect(params[1]).toEqual(mockScope);
       expect(params[0]).toEqual(

@@ -644,7 +644,12 @@ async function runValidationSnapshot(info: TestInfo, width: number) {
           exact: true,
         });
         await importToken.click();
-        await expect(importToken).toBeDisabled();
+        await expect(
+          page.getByText(
+            en.tokens.hasBeenAddedToYourWallet.replace('{{token}}', SYMBOL),
+            { exact: true }
+          )
+        ).toBeVisible();
         await page
           .getByRole('button', { name: en.buttons.back, exact: true })
           .click();

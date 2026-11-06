@@ -11,6 +11,7 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { HDNodeWallet } from 'ethers/wallet';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 
 import {
   UTXO_SIGNED_RECORD_KEY,
@@ -33,7 +34,7 @@ const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const bitcoin = syscoinUtils.bitcoinjs;
 
-test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use the same scoped route', async () => {
+test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use the same scoped route', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-signed-'));
   const file = join(directory, 'wallet.sqlite');
   const db = nodeConnection(file);
@@ -177,12 +178,29 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
       records,
       fetcher
     );
-    const review = await send.prepare({ amount: '0.0004', recipient });
+    let review = await send.prepare({ amount: '0.0004', recipient });
     assert.equal(review.outputs[0]?.address, recipient);
     assert.equal(review.outputs[0]?.amountSatoshis, '40000');
     assert(BigInt(review.feeSatoshis) > 0n);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
     await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+    const originalSign = ring.syscoinTransaction.signPSBT.bind(ring.syscoinTransaction);
+    const dishonestSign = t.mock.method(ring.syscoinTransaction, 'signPSBT', async (...args: Parameters<typeof originalSign>) => {
+      const signed = await originalSign(...args);
+      const psbt = PsbtUtils.fromPali(signed, sdkNetwork);
+      const witness = psbt.data.inputs[0]?.witnessUtxo;
+      assert(witness);
+      witness.value += 1n;
+      return PsbtUtils.toPali(psbt);
+    });
+    await assert.rejects(send.confirm(review), {
+      code: 'UTXO_QUOTE_FEE_CHANGED',
+      transactionNotBroadcast: true,
+    });
+    assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
+    assert.equal((await send.list()).length, 0);
+    dishonestSign.mock.restore();
+    review = await send.prepare({ amount: '0.0004', recipient });
     const { txid } = await send.confirm(review);
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
