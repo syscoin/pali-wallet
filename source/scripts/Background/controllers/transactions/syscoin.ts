@@ -99,23 +99,25 @@ const storeActivitySnapshot = (
 };
 
 const SysTransactionController = (): ISysTransactionsController => {
-  const fetchTransactionDetailsFromBlockbook = async (
-    txid: string,
-    networkUrl: string
-  ): Promise<ISysTransaction | null> => {
-    if (!txid || !networkUrl) return null;
+  const fetchTransactionDetailsFromBlockbook: ISysTransactionsController['fetchTransactionDetailsFromBlockbook'] =
+    async (txid, networkUrl, read) => {
+      if (!txid || !networkUrl) return null;
 
-    const observation = nextObservation();
-    const transaction = await sys.utils.fetchBackendRawTx(networkUrl, txid);
+      const observation = nextObservation();
+      const transaction = await sys.utils.fetchBackendRawTx(
+        networkUrl,
+        txid,
+        read
+      );
 
-    if (
-      !transaction ||
-      typeof transaction !== 'object' ||
-      Array.isArray(transaction)
-    )
-      return null;
-    return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
-  };
+      if (
+        !transaction ||
+        typeof transaction !== 'object' ||
+        Array.isArray(transaction)
+      )
+        return null;
+      return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
+    };
 
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,

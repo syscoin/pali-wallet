@@ -227,7 +227,8 @@ export interface ISysTransaction {
 export interface ISysTransactionsController {
   fetchTransactionDetailsFromBlockbook: (
     txid: string,
-    networkUrl: string
+    networkUrl: string,
+    read: Readonly<{ fetch: typeof globalThis.fetch; signal: AbortSignal }>
   ) => Promise<ISysTransaction | null>;
   fetchTransactionsPageFromBlockbook: (
     xpub: string,

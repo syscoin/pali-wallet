@@ -28,6 +28,7 @@ let mockHash = '';
 let sequence = 0;
 const mockCopy = jest.fn();
 const mockEmitter = jest.fn();
+const originalFetch = globalThis.fetch;
 
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('syscoinjs-lib', () => {
@@ -40,6 +41,15 @@ jest.mock('syscoinjs-lib', () => {
 jest.mock(
   'scripts/Background/controllers/utils/fetchBackendAccountWrapper',
   () => ({ fetchBackendAccountCached: jest.fn() })
+);
+jest.mock(
+  'scripts/Background/controllers/providers/walletHttpIdentity',
+  () => ({
+    withWalletBackend: async (
+      _url: string,
+      operation: () => Promise<unknown>
+    ) => operation(),
+  })
 );
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
@@ -91,6 +101,7 @@ jest.mock('utils/index', () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  globalThis.fetch = jest.fn();
   mockHash = (++sequence).toString(16).padStart(64, 'a');
   mockState = {
     scope: { account: 'synthetic-account', network: 'synthetic-network' },
@@ -106,7 +117,10 @@ beforeEach(() => {
     value: { writeText: mockCopy.mockResolvedValue(undefined) },
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  globalThis.fetch = originalFetch;
+});
 
 const mountFromBlockbook = async (
   inputs: Array<string[] | { addresses?: unknown; isAddress?: boolean }>,
@@ -205,7 +219,14 @@ const mountFromBlockbook = async (
     <SyscoinTransactionDetails hash={mockHash} tx={summary} />
   );
   await waitFor(() =>
-    expect(sys.utils.fetchBackendRawTx).toHaveBeenCalledWith(URL, mockHash)
+    expect(sys.utils.fetchBackendRawTx).toHaveBeenCalledWith(
+      URL,
+      mockHash,
+      expect.objectContaining({
+        fetch: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      })
+    )
   );
   await waitFor(() =>
     expect(
