@@ -673,6 +673,49 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
       owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
     assert.deepEqual(calls.slice(beforeAdd), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+    const unused = owner.getCatalogue()!.utxoNetworks.find((candidate) => candidate.endpoint === endpoint)!;
+    const removeNetwork = (id: string) => owner.removeUtxoNetwork(
+      id, owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal
+    );
+    const beforeRemoval = await storage.recovery.readSnapshot();
+    const beforeRemovalCatalogue = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    const beforeRemovalRequests = calls.length;
+    await assert.rejects(removeNetwork('bitcoin'), { code: 'INVALID_INPUT' });
+    await assert.rejects(owner.removeUtxoNetwork(unused.id, owner.getSnapshot().revision,
+      beforeRemovalCatalogue.revision - 1, new AbortController().signal), { code: 'CANCELLED' });
+    await assert.rejects(owner.manageNetwork({ kind: 'remove-utxo-network' }, owner.getSnapshot().revision,
+      owner.getCatalogue()!.revision), { code: 'CANCELLED' });
+    const removalEntered = Promise.withResolvers<void>(), releaseRemoval = Promise.withResolvers<void>();
+    holdCatalogueUpdate = () => { removalEntered.resolve(); return releaseRemoval.promise; };
+    const interrupted = assert.rejects(removeNetwork(unused.id), { code: 'CANCELLED' });
+    try {
+      await Promise.race([removalEntered.promise, interrupted.then(() => { throw new Error('Removal did not reach SQLite'); })]);
+      owner.lock();
+    } finally {
+      releaseRemoval.resolve();
+    }
+    await interrupted;
+    assert.deepEqual((await storage.recovery.readSnapshot()).records, beforeRemoval.records);
+    await owner.unlock(password);
+    await removeNetwork(unused.id);
+    assert.equal(calls.length, beforeRemovalRequests);
+    await owner.dispose();
+    owner = newOwner();
+    await owner.initialize();
+    await owner.unlock(password);
+    const afterRemoval = await storage.recovery.readSnapshot();
+    const afterRemovalCatalogue = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+    assert.equal(owner.getCatalogue()!.utxoNetworks.some(({ id }) => id === unused.id), false);
+    assert.deepEqual(afterRemovalCatalogue, {
+      ...beforeRemovalCatalogue,
+      networks: beforeRemovalCatalogue.networks.filter(({ id }) => id !== unused.id),
+      revision: beforeRemovalCatalogue.revision + 1,
+    });
+    const withoutCatalogue = (snapshot: typeof beforeRemoval) => snapshot.records.filter(({ key }) => key !== WALLET_CATALOGUE_KEY);
+    assert.deepEqual(withoutCatalogue(afterRemoval), withoutCatalogue(beforeRemoval));
+
+    await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
+      owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
     const custom = owner.getCatalogue()!.utxoNetworks.find((candidate) => candidate.endpoint === endpoint)!;
     assert.equal(custom.backendChain, registration.backendChain);
     const beforeEdit = owner.getCatalogue()!;
@@ -718,7 +761,16 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
       network = target;
       await selectNetwork();
       if (target === custom) {
+        const beforeIneligibleRequests = calls.length;
+        await assert.rejects(removeNetwork(custom.id), { code: 'INVALID_INPUT' });
+        await owner.selectNetwork('ethereum', owner.getSnapshot().revision, owner.getCatalogue()!.revision);
         const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+        const ready = owner.getSnapshot();
+        await assert.rejects(removeNetwork(custom.id), { code: 'ACCOUNT_NOT_REMOVABLE' });
+        assert.equal(owner.getSnapshot(), ready);
+        assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), saved);
+        assert.equal(calls.length, beforeIneligibleRequests);
+        await selectNetwork();
         const hd = saved.groups.find((entry) => entry.key === '2')!.accounts.HDAccount[0]!;
         assert.match(hd.address, /^ltc1/);
         hdXpub = hd.xpub;

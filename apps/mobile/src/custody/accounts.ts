@@ -27,9 +27,13 @@ export interface NativeAccountView {
 
 export type NativeUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;
 export type NativeUtxoNetworkEditDraft = Readonly<Pick<NativeUtxoNetworkDraft, 'endpoint' | 'name'>>;
+export type NativeUtxoNetworkChange =
+  | Readonly<{ kind: 'edit-utxo-network'; id: string; draft: NativeUtxoNetworkEditDraft }>
+  | Readonly<{ kind: 'remove-utxo-network'; id: string }>;
 export type NativeUtxoNetworkApproval =
   | Readonly<{ kind: 'add-utxo-network' }>
-  | Readonly<{ kind: 'edit-utxo-network' }>;
+  | Readonly<{ kind: 'edit-utxo-network' }>
+  | Readonly<{ kind: 'remove-utxo-network' }>;
 
 export type NativeNetworkRequest =
   | Readonly<{ kind: 'select-network'; id: string }>
@@ -42,7 +46,7 @@ export type NativeNetworkRequest =
 export interface NativeNetworkRuntime {
   prepareUtxo?(draft: NativeUtxoNetworkDraft, expectedCatalogueRevision: number, signal: AbortSignal,
     assertCurrent: () => void): Promise<NativeUtxoNetworkApproval>;
-  withUtxoEditApproval?(id: string, draft: NativeUtxoNetworkEditDraft, expectedCatalogueRevision: number,
+  withUtxoChangeApproval?(request: NativeUtxoNetworkChange, expectedCatalogueRevision: number,
     signal: AbortSignal, assertCurrent: () => void, commit: (proof: NativeUtxoNetworkApproval) => Promise<void>): Promise<void>;
   reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;

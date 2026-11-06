@@ -12,7 +12,10 @@ const networks: NativeNetworkSnapshot['networks'][number][] = NATIVE_NETWORKS.ma
 const customUtxo = { id: 'custom-litecoin', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
   canSign: true, customUtxoEndpoint: 'https://litecoin.example/blockbook' };
 if (new URLSearchParams(window.location.search).has('utxo')) networks.push(customUtxo);
-let snapshot: NativeNetworkSnapshot | null = Object.freeze({ revision: 4, selectedId: 'ethereum', networks });
+const activeCustomUtxo = new URLSearchParams(window.location.search).has('activeUtxo');
+let snapshot: NativeNetworkSnapshot | null = Object.freeze({
+  revision: 4, selectedId: activeCustomUtxo ? customUtxo.id : 'ethereum', networks,
+});
 let contextRevision = 19;
 let cancelled = 0;
 let release: (() => void) | undefined;
@@ -57,6 +60,15 @@ const controller: NativeNetworkView = {
       throw Error('INVALID_INPUT');
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
       networks: snapshot.networks.map((network) => network.id === id ? { ...network, name, customUtxoEndpoint: endpoint } : network) });
+    contextRevision++; notify();
+  },
+  async removeUtxo(id, expectedContextRevision, expectedCatalogueRevision) {
+    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
+        snapshot.revision !== expectedCatalogueRevision || snapshot.selectedId === id) throw Error('CANCELLED');
+    if (new URLSearchParams(window.location.search).has('usedUtxo'))
+      throw Object.assign(new Error('Saved accounts'), { code: 'ACCOUNT_NOT_REMOVABLE' });
+    snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
+      networks: snapshot.networks.filter((network) => network.id !== id) });
     contextRevision++; notify();
   },
   async save(registration, expectedContextRevision, expectedCatalogueRevision) {

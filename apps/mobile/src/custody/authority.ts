@@ -134,11 +134,20 @@ export class NativeCustodyAuthority {
     return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
   }
 
-  async editUtxoNetwork(id: string, draft: import('./accounts.ts').NativeUtxoNetworkEditDraft, expectedRevision: number,
+  editUtxoNetwork(id: string, draft: import('./accounts.ts').NativeUtxoNetworkEditDraft, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    return this.changeUtxoNetwork({ kind: 'edit-utxo-network', id, draft }, expectedRevision, expectedCatalogueRevision, signal);
+  }
+
+  removeUtxoNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    return this.changeUtxoNetwork({ kind: 'remove-utxo-network', id }, expectedRevision, expectedCatalogueRevision, signal);
+  }
+
+  private async changeUtxoNetwork(request: import('./accounts.ts').NativeUtxoNetworkChange, expectedRevision: number,
     expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
     const { networks, check, checkRoute } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
-    if (!networks.withUtxoEditApproval) throw new CustodyOperationError('NOT_READY');
-    return networks.withUtxoEditApproval(id, draft, expectedCatalogueRevision, signal, check, (proof) => {
+    if (!networks.withUtxoChangeApproval) throw new CustodyOperationError('NOT_READY');
+    return networks.withUtxoChangeApproval(request, expectedCatalogueRevision, signal, check, (proof) => {
       check();
       return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
     });
