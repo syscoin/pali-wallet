@@ -18,7 +18,7 @@ const { matchesHdKeyRevealRestartEvidence } = require('./hd-key-reveal.ts');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { qualificationMode, assertSimulatorTarget, selectSimulatorTarget } = require('./simulator-contract.cjs');
 const { prepareAndroidRoot, launchIos } = require('./native-readiness.cjs');
-const { prepareIosSimulator, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
+const { prepareIosSimulator, probeIosFrontboard, createIosStageRecorder, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
 const { decodeNativeReport, assertFullNativeReport } = require('./report-validation.cjs');
 const { readHttpSidecar, readAndroidHttpSidecar } = require('./post-sidecar.cjs');
 const { captureIosLaunchReports } = require('./ios-launch-reports.cjs');
@@ -191,7 +191,7 @@ async function ios() {
   for (const scenario of (simulatorContract ? ['import'] : ['import', 'generate'])) {
     const stage = createIosStageRecorder((evidence) => fs.writeFileSync(
       path.join(output, `ios-${scenario}-stages.json`), `${JSON.stringify(evidence, null, 2)}\n`));
-    let device, container;
+    let device, container, diagnoseFrontboard = false;
     try {
       await stage('create', () => {
         const created = run('xcrun', [
@@ -243,6 +243,7 @@ async function ios() {
           return launchIos(run, device, `pali-wallet-qualification://run?phase=create&scenario=${scenario}${httpCreate}`,
             (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-launch.json`), `${JSON.stringify(evidence, null, 2)}\n`));
         } catch (error) {
+          diagnoseFrontboard = simulatorContract;
           try {
             captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
               path.join(output, `ios-${scenario}-create-launch-reports.json`), `${JSON.stringify(evidence, null, 2)}\n`));
@@ -362,6 +363,12 @@ async function ios() {
           ],
           true
         );
+        if (diagnoseFrontboard) {
+          try {
+            const evidence = await probeIosFrontboard(run, device, runtime.identifier);
+            fs.writeFileSync(path.join(output, `ios-${scenario}-frontboard.json`), `${JSON.stringify(evidence, null, 2)}\n`);
+          } catch { /* This post-failure control cannot replace the original result. */ }
+        }
         run('xcrun', ['simctl', 'shutdown', device], true);
         run('xcrun', ['simctl', 'delete', device], true);
       }

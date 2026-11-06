@@ -80,25 +80,30 @@ test('Android evidence write failure blocks readiness and preserves an earlier s
 
 test('iOS failure collects bounded owned-device summaries without relaunching or retaining messages', () => {
   const calls = [], evidence = [], secret = 'synthetic_secret_that_must_not_be_written';
+  const processImagePath = '/private/fixture/PaliQualification.app/PaliQualification';
+  const wall = [Date.UTC(2026, 10, 6, 15, 3), Date.UTC(2026, 10, 6, 15, 6)];
   const run = createCommandRunner((_command, args, options) => {
     calls.push({ args, timeout: options.timeout });
     if (args[1] === 'launch') return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch deadline'), { code: 'ETIMEDOUT' }) };
     if (args.includes('launchctl')) return ok(`PID\tStatus\tLabel\n12\t0\tcom.apple.SpringBoard\n34\t0\tUIKitApplication:${PACKAGE}[public]\n${secret}`);
+    if (args.at(-1) === 'process == "PaliQualification"')
+      return ok(JSON.stringify({ processImagePath, processID: 42, timestamp: '2026-11-06 15:04:30.100000+0000', eventMessage: secret }));
     return ok(JSON.stringify({ eventMessage: `${PACKAGE} launch failed timeout ${secret}` }) + '\n' + JSON.stringify({ eventMessage: `another.app ${secret}` }));
   });
   const times = [0, 180000, 180005];
-  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => evidence.push(value), () => times.shift()),
+  assert.throws(() => launchIos(run, 'owned-simulator', 'public-link', (value) => evidence.push(value), () => times.shift(), () => wall.shift()),
     (error) => describeQualificationFailure(error).errorCode === 'ETIMEDOUT');
   assert.equal(calls.filter((call) => call.args[1] === 'launch').length, 1);
   assert(calls.every((call) => call.args[2] === 'owned-simulator'));
-  assert.deepEqual(calls.map((call) => call.timeout), [180000, 10000, 10000]);
+  assert.deepEqual(calls.map((call) => call.timeout), [180000, 10000, 10000, 10000]);
   assert.equal(calls[2].args[calls[2].args.indexOf('--last') + 1], '5m');
   assert.deepEqual(evidence, [{ version: 3, stage: 'launch', elapsedMs: 180000, lookbackMinutes: 5, servicesAvailable: true, servicesTruncated: false,
     appServiceListed: true, appPidPresent: true, springboardPidPresent: true, logsAvailable: true,
     logsTruncated: false, logParseErrors: 0, fullAttemptRequested: true,
     logCounts: { matched: 1, failure: 1, timeout: 1, termination: 0 },
-    logCountConfidence: 'complete-for-query', logCountScope: 'selected-system-processes-with-package-marker' }]);
+    logCountConfidence: 'complete-for-query', logCountScope: 'selected-system-processes-with-package-marker', appPriorProcess: 'observed' }]);
   assert(!JSON.stringify(evidence).includes(secret));
+  assert(!JSON.stringify(evidence).includes(processImagePath));
 });
 
 test('iOS success needs no diagnostics and broken diagnostics cannot replace the launch failure', () => {
@@ -160,36 +165,48 @@ test('real Android runner never touches app after nonroot proof', async () => {
   assert.equal(JSON.parse(f.writes.find((entry) => entry.file.endsWith('android-root-readiness.json')).data).status, 'failed');
 });
 
-test('real iOS runner captures launch diagnostics before deleting owned simulator and remains failed', async () => {
+test('real iOS runner preserves launch evidence before its diagnostic stock control and remains failed', async () => {
   const source = readFileSync(require.resolve('./run-native.cjs'), 'utf8');
   const events = [], writes = [];
-  const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output' }, argv: ['node', 'runner', 'ios', '/public-app'], exitCode: 0 };
+  const fakeProcess = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/public-output',
+    GITHUB_SHA: 'a'.repeat(40) }, argv: ['node', 'runner', 'ios', '/public-app', '--ios-simulator-contract'], exitCode: 0 };
+  let settingsRunning = false;
   const spawn = (command, args) => {
     events.push(args);
-    if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? PACKAGE : 'PaliQualification');
+    if (command === 'plutil') return ok(args.includes('CFBundleIdentifier') ? PACKAGE :
+      args.includes('DTPlatformName') ? 'iphonesimulator' : 'PaliQualification');
     if (args.includes('runtimes')) return ok(JSON.stringify({ runtimes: [{ isAvailable: true, identifier: 'com.apple.CoreSimulator.SimRuntime.iOS-26-5', version: '26.5' }] }));
     if (args.includes('devicetypes')) return ok(JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] }));
     if (args.includes('create')) return ok('11111111-2222-3333-4444-555555555555');
     if (args.includes('devices')) return ok(JSON.stringify({ devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [
       { udid: '11111111-2222-3333-4444-555555555555', isAvailable: true, state: 'Booted' },
     ] } }));
-    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n');
+    if (args.includes('launchctl')) return ok('12\t0\tcom.apple.SpringBoard\n' +
+      (settingsRunning ? '73\t0\tUIKitApplication:com.apple.Preferences[fixture]\n' : ''));
     if (args.includes('get_app_container')) return ok('/public-container');
+    if (args[3] === 'com.apple.Preferences') {
+      settingsRunning = args[1] === 'launch';
+      return ok(settingsRunning ? 'com.apple.Preferences: 73' : '');
+    }
     if (args[1] === 'launch') return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch deadline'), { code: 'ETIMEDOUT' }) };
     return ok('');
   };
   await runInNewContext(source, {
     require(name) {
-      if (name === 'fs') return { existsSync: () => true, mkdirSync() {}, writeFileSync(file, data) { writes.push({ file, data }); events.push(['write', file]); } };
+      if (name === 'fs') return { existsSync: (file) => !file.endsWith('/ios-qualification.json'),
+        mkdirSync() {}, writeFileSync(file, data) { writes.push({ file, data }); events.push(['write', file]); } };
       if (name === 'child_process') return { spawnSync: spawn };
       return require(name);
     }, process: fakeProcess, console: { error() {}, log() {} }, setTimeout,
   });
   assert.equal(fakeProcess.exitCode, 1);
-  assert.equal(events.filter((args) => args[1] === 'launch').length, 1);
+  assert.equal(events.filter((args) => args[1] === 'launch' && args[3] === PACKAGE).length, 1);
   const collected = events.findIndex((args) => args[0] === 'write' && args[1].endsWith('ios-import-create-launch.json'));
+  const screenshot = events.findIndex((args) => args.includes('screenshot'));
+  const control = events.findIndex((args) => args[1] === 'launch' && args[3] === 'com.apple.Preferences');
   const deleted = events.findIndex((args) => args[1] === 'delete');
-  assert(collected > 0 && deleted > collected);
+  assert(collected > 0 && screenshot > collected && control > screenshot && deleted > control);
+  assert.equal(JSON.parse(writes.find((entry) => entry.file.endsWith('ios-import-frontboard.json')).data).status, 'passed');
   const failure = JSON.parse(writes.find((entry) => entry.file.endsWith('ios-failure.json')).data);
   assert.equal(failure.failure.errorCode, 'ETIMEDOUT');
   assert.equal(failure.failure.args[1], 'launch');

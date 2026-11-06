@@ -3,8 +3,8 @@ const test = require('node:test');
 const { readFileSync } = require('node:fs');
 const { runInNewContext } = require('node:vm');
 const { createCommandRunner, describeQualificationFailure } = require('./command-runner.cjs');
-const { prepareIosSimulator, createIosStageRecorder, inspectIosServices, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
-const { launchIos, summarizeIosLaunch } = require('./native-readiness.cjs');
+const { prepareIosSimulator, probeIosFrontboard, createIosStageRecorder, inspectIosServices, assertOwnedIosDevice } = require('./ios-runner-diagnostics.cjs');
+const { launchIos, summarizeIosLaunch, summarizeIosPriorProcess } = require('./native-readiness.cjs');
 
 const DEVICE = '11111111-2222-3333-4444-555555555555';
 const RUNTIME = 'com.apple.CoreSimulator.SimRuntime.iOS-26-5';
@@ -231,6 +231,60 @@ test('missing, malformed and truncated diagnostics cannot claim complete counts'
   assert.equal(truncated.servicesTruncated, true); assert.equal(truncated.logsTruncated, true);
   assert.equal(truncated.logCountConfidence, 'lower-bound');
   assert.equal(inspectIosServices(null).servicesAvailable, false);
+});
+
+test('prior app process evidence requires the exact executable, a positive PID and the attempt window', () => {
+  const window = { start: Date.UTC(2026, 10, 6, 15, 3), end: Date.UTC(2026, 10, 6, 15, 6) };
+  const row = { processImagePath: '/private/fixture/PaliQualification.app/PaliQualification',
+    processID: 42, timestamp: '2026-11-06 15:04:30.100000+0000', eventMessage: 'private fixture message' };
+  const status = (...rows) => summarizeIosPriorProcess(rows.map((entry) => JSON.stringify(entry)).join('\n'), window);
+  for (const changes of [
+    { timestamp: '2026-11-06 15:02:30.100000+0000' },
+    { timestamp: '2026-11-06 15:06:30.100000+0000' },
+    { processImagePath: row.processImagePath + '-other' },
+  ]) assert.equal(status({ ...row, ...changes }), 'not-observed');
+  assert.equal(status({ ...row, processID: 0 }), 'unavailable');
+  assert.equal(status({ ...row, timestamp: 'invalid' }), 'unavailable');
+  assert.equal(summarizeIosPriorProcess(' '.repeat(262145), window), 'unavailable');
+  assert.equal(status(row), 'observed');
+});
+
+test('FrontBoard diagnostic verifies a fresh stock Settings PID and retires only the owned control', async () => {
+  const stock = 'com.apple.Preferences';
+  const stockRow = '73\t0\tUIKitApplication:com.apple.Preferences[fixture]\n';
+  for (const mode of ['fresh', 'already-running', 'launch-timeout', 'wrong-pid', 'cleanup-failure', 'pali-running']) {
+    let running = mode === 'already-running';
+    const calls = [];
+    const run = createCommandRunner((command, args, { timeout }) => {
+      calls.push({ command, args, timeout });
+      const ok = (stdout = '') => ({ status: 0, stdout });
+      if (args.includes('devices')) return ok(inventory());
+      if (args.includes('launchctl')) return ok(SPRINGBOARD + (running ? stockRow : '') +
+        (mode === 'pali-running' ? '42\t0\tUIKitApplication:com.paliwallet.qualification[fixture]\n' : ''));
+      assert.equal(args[3], stock);
+      if (args[1] === 'launch') {
+        running = true;
+        if (mode === 'launch-timeout') return commandTimeout(10000, 'private diagnostic text');
+        return ok(`com.apple.Preferences: ${mode === 'wrong-pid' ? 74 : 73}`);
+      }
+      assert.equal(args[1], 'terminate');
+      if (mode !== 'cleanup-failure') running = false;
+      return ok();
+    });
+    const result = await probeIosFrontboard(run, DEVICE, RUNTIME);
+    assert(calls.every(({ command, args, timeout }) => command === 'xcrun' &&
+      (args[1] === 'list' || args[2] === DEVICE) && timeout <= 10000));
+    const launches = calls.filter(({ args }) => args[1] === 'launch');
+    const terminations = calls.filter(({ args }) => args[1] === 'terminate');
+    const shouldAttempt = !['already-running', 'pali-running'].includes(mode);
+    assert.equal(launches.length, Number(shouldAttempt));
+    assert.equal(terminations.length, Number(shouldAttempt));
+    assert.equal(result.attempted, shouldAttempt);
+    assert.equal(result.status, mode === 'fresh' ? 'passed' : shouldAttempt ? 'failed' : 'unavailable');
+    assert.equal(result.timedOut, mode === 'launch-timeout');
+    assert.equal(result.cleanup, mode === 'cleanup-failure' ? 'unconfirmed' : shouldAttempt ? 'complete' : 'not-needed');
+    assert(!JSON.stringify(result).includes('private diagnostic text'));
+  }
 });
 
 test('actual runner refuses unavailable owned simulator before app launch, preserves evidence and cleans up', async () => {

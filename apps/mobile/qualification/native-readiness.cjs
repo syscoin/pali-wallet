@@ -6,6 +6,9 @@ const { inspectIosServices } = require('./ios-runner-diagnostics.cjs');
 const CONNECTION_TIMEOUT_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 const PACKAGE = 'com.paliwallet.qualification';
+const APP_PROCESS = 'PaliQualification';
+const APP_IMAGE_SUFFIX = `/${APP_PROCESS}.app/${APP_PROCESS}`;
+const LAUNCH_LOG_LIMIT = 262144;
 const QUERY_ERROR_CODES = new Set(['EACCES', 'EAGAIN', 'EBADF', 'ECONNRESET', 'EFAULT', 'EINTR', 'EINVAL', 'EIO', 'EISDIR', 'EMFILE', 'ENFILE', 'ENOBUFS', 'ENOENT', 'ENOMEM', 'ENOTCONN', 'ENOTDIR', 'EPERM', 'EPIPE', 'ETIMEDOUT']);
 
 /** Fixed host failure fields only: never error text, arguments, or process output. */
@@ -60,13 +63,12 @@ function prepareAndroidRoot(run, record) {
 }
 
 function summarizeIosLaunch(services, logs, fullAttemptRequested = false) {
-  const limit = 262144;
   const logsAvailable = typeof logs === 'string';
-  const logsTruncated = logsAvailable && logs.length > limit;
+  const logsTruncated = logsAvailable && logs.length > LAUNCH_LOG_LIMIT;
   let logParseErrors = 0;
   const counts = { matched: 0, failure: 0, timeout: 0, termination: 0 };
   if (logsAvailable) {
-    for (const line of logs.slice(0, limit).split('\n')) {
+    for (const line of logs.slice(0, LAUNCH_LOG_LIMIT).split('\n')) {
       if (!line.trim()) continue;
       let entry;
       try { entry = JSON.parse(line); } catch { logParseErrors++; continue; }
@@ -83,13 +85,36 @@ function summarizeIosLaunch(services, logs, fullAttemptRequested = false) {
     logCountScope: 'selected-system-processes-with-package-marker' });
 }
 
+/** A retained process event is positive evidence. Even a complete query can
+ * miss an app that never logged or exited before emitting a retained event. */
+function summarizeIosPriorProcess(logs, window) {
+  if (typeof logs !== 'string' || !window) return 'unavailable';
+  let incomplete = logs.length > LAUNCH_LOG_LIMIT;
+  for (const line of logs.slice(0, LAUNCH_LOG_LIMIT).split('\n')) {
+    if (!line.trim()) continue;
+    let entry;
+    try { entry = JSON.parse(line); } catch { incomplete = true; continue; }
+    if (typeof entry?.processImagePath !== 'string' || !entry.processImagePath.endsWith(APP_IMAGE_SUFFIX)) continue;
+    const timestamp = typeof entry.timestamp === 'string' ? Date.parse(entry.timestamp) : NaN;
+    if (!Number.isFinite(timestamp) || !Number.isSafeInteger(entry.processID) || entry.processID <= 0)
+      incomplete = true;
+    else if (timestamp >= window.start && timestamp <= window.end) return 'observed';
+  }
+  return incomplete ? 'unavailable' : 'not-observed';
+}
+
 /** The original launch is attempted exactly once; observations do not grant success. */
-function launchIos(run, device, link, record, now = () => performance.now()) {
+function launchIos(run, device, link, record, now = () => performance.now(), wallNow = Date.now) {
   const started = now();
+  const startedWall = wallNow();
   try {
     return run('xcrun', ['simctl', 'launch', device, PACKAGE, '-PaliQualificationURL', link]);
   } catch (error) {
     const duration = now() - started;
+    const endedWall = wallNow();
+    const wallElapsed = endedWall - startedWall;
+    const window = Number.isSafeInteger(startedWall) && Number.isSafeInteger(endedWall) &&
+      wallElapsed >= 0 && Math.abs(wallElapsed - duration) <= 1000 ? { start: startedWall, end: endedWall } : undefined;
     const elapsedMs = Math.max(0, Math.min(600000, duration));
     // Only the freshly-created, caller-owned simulator is queried. No raw system
     // or app log messages enter the artifact, even if they contain secret text.
@@ -103,15 +128,23 @@ function launchIos(run, device, link, record, now = () => performance.now()) {
     const fullAttemptRequested = validClock && lookbackMinutes * 60000 >= untilQuery + 60000;
     let logQueryFailure;
     const queryStarted = now();
-    try { logs = run('xcrun', ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', `${lookbackMinutes}m`,
-      '--predicate', `(process == "SpringBoard" OR process == "runningboardd" OR process == "launchd") AND eventMessage CONTAINS "${PACKAGE}"`], false, PROBE_TIMEOUT_MS); }
+    const logArgs = ['simctl', 'spawn', device, 'log', 'show', '--style', 'ndjson', '--last', `${lookbackMinutes}m`, '--predicate'];
+    try { logs = run('xcrun', [...logArgs,
+      `(process == "SpringBoard" OR process == "runningboardd" OR process == "launchd") AND eventMessage CONTAINS "${PACKAGE}"`], false, PROBE_TIMEOUT_MS); }
     catch (queryError) { logQueryFailure = iosLogQueryFailure(queryError, now() - queryStarted); }
+    let appPriorProcess = 'unavailable';
+    if (window && fullAttemptRequested) {
+      try {
+        const appLogs = run('xcrun', [...logArgs, `process == "${APP_PROCESS}"`], false, PROBE_TIMEOUT_MS);
+        appPriorProcess = summarizeIosPriorProcess(appLogs, window);
+      } catch { /* The existing system diagnosis and original failure remain available. */ }
+    }
     try { record(Object.freeze({ version: 3, stage: 'launch', elapsedMs, lookbackMinutes,
       ...(logQueryFailure ? { logQueryFailure } : {}),
-      ...summarizeIosLaunch(services, logs, fullAttemptRequested) })); }
+      ...summarizeIosLaunch(services, logs, fullAttemptRequested), appPriorProcess })); }
     catch { /* preserve the original launch failure */ }
     throw error;
   }
 }
 
-module.exports = { prepareAndroidRoot, launchIos, summarizeIosLaunch };
+module.exports = { prepareAndroidRoot, launchIos, summarizeIosLaunch, summarizeIosPriorProcess };

@@ -4,6 +4,7 @@ const { isAmbiguousCommandFailure } = require('./command-runner.cjs');
 const READINESS_DEADLINE_MS = 30000;
 const PROBE_TIMEOUT_MS = 10000;
 const SERVICE_LIMIT = 65536;
+const FRONTBOARD_CONTROL = 'com.apple.Preferences';
 const RUNTIME = /^com\.apple\.CoreSimulator\.SimRuntime\.iOS-\d+-\d+(?:-\d+)?$/;
 const DEVICE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -84,6 +85,57 @@ async function prepareIosSimulator(run, device, runtime, record, options = {}) {
   }
 }
 
+/** The caller already preserved the Pali launch failure and owns this simulator. */
+async function probeIosFrontboard(run, device, runtime) {
+  const call = (...args) => run('xcrun', ['simctl', ...args], false, PROBE_TIMEOUT_MS);
+  const readControlPid = () => {
+    const services = call('spawn', device, 'launchctl', 'list');
+    if (typeof services !== 'string' || services.length > SERVICE_LIMIT)
+      throw Error('Incomplete iOS simulator service inventory');
+    const controlPids = services.split('\n').flatMap((line) => {
+      const match = /^([1-9]\d*)\t-?\d+\t(?:UIKitApplication:)?com\.apple\.Preferences(?:\[[^\r\n]+\])?$/.exec(line);
+      return match ? [Number(match[1])] : [];
+    });
+    if (controlPids.length > 1 || controlPids.some((pid) => !Number.isSafeInteger(pid)))
+      throw Error('Ambiguous iOS system app process');
+    return controlPids[0] ?? null;
+  };
+
+  let stage = 'readiness', attempted = false, status = 'unavailable', cleanup = 'not-needed', timedOut = false;
+  try {
+    await prepareIosSimulator(run, device, runtime, () => undefined);
+    stage = 'precheck';
+    if (readControlPid() !== null) throw Error('iOS system app control already running');
+    stage = 'launch';
+    status = 'failed';
+    attempted = true;
+    const output = call('launch', device, FRONTBOARD_CONTROL);
+    const launchPid = /^com\.apple\.Preferences: ([1-9]\d*)$/.exec(output);
+    stage = 'process';
+    if (!launchPid || Number(launchPid[1]) !== readControlPid())
+      throw Error('Unconfirmed iOS system app control process');
+    status = 'passed';
+  } catch (error) {
+    timedOut = error?.failure?.timedOut === true;
+  }
+  if (attempted) {
+    cleanup = 'unconfirmed';
+    try {
+      call('terminate', device, FRONTBOARD_CONTROL);
+      if (readControlPid() !== null) throw Error('iOS system app control still running');
+      cleanup = 'complete';
+    } catch (error) {
+      if (status === 'passed') {
+        stage = 'cleanup';
+        status = 'failed';
+        timedOut = error?.failure?.timedOut === true;
+      }
+    }
+  }
+  return Object.freeze({ version: 1, diagnosticOnly: true, status,
+    stage: status === 'passed' ? 'complete' : stage, attempted, cleanup, timedOut });
+}
+
 /** Persist running/completed stages without collecting command output or app data. */
 function createIosStageRecorder(record, now = () => performance.now()) {
   const stages = [];
@@ -104,4 +156,4 @@ function createIosStageRecorder(record, now = () => performance.now()) {
   };
 }
 
-module.exports = { prepareIosSimulator, createIosStageRecorder, inspectIosServices, assertOwnedIosDevice };
+module.exports = { prepareIosSimulator, probeIosFrontboard, createIosStageRecorder, inspectIosServices, assertOwnedIosDevice };
