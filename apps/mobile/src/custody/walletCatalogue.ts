@@ -596,12 +596,15 @@ export class NativeWalletCatalogue {
       const committed = await this.storage.compareAndSet(
         WALLET_CATALOGUE_KEY,
         this.stored,
-        validated
+        validated,
+        undefined,
+        guard
       );
       if (typeof committed !== 'boolean') return invalid();
       if (!committed) {
         writing = false;
         this.record = null;
+        guard();
         return changed();
       }
       guard();
