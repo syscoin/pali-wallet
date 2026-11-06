@@ -31,6 +31,59 @@ interface IExactAssetAllocation {
   values: Array<{ n: number; value: string }>;
 }
 
+export type UtxoFeeReview = Readonly<{
+  feeSatoshis: string;
+  unsignedHash: string;
+}>;
+
+export const assertUtxoBuilderFee = (
+  fee: number,
+  feeSatoshis: string
+): void => {
+  const exact = Number(feeSatoshis);
+  if (!Number.isSafeInteger(exact) || exact / 1e8 !== fee)
+    throw Object.assign(
+      new Error('Transaction or network fee changed. Review a new quote.'),
+      {
+        code: 'UTXO_QUOTE_FEE_CHANGED',
+        transactionNotBroadcast: true,
+      }
+    );
+};
+
+export const createUtxoFeeReview = (
+  psbt: any,
+  feeSatoshis: string
+): UtxoFeeReview =>
+  Object.freeze({
+    feeSatoshis,
+    unsignedHash: Buffer.from(
+      syscoinUtils.bitcoinjs.crypto.hash256(
+        psbt.data.globalMap.unsignedTx.toBuffer()
+      )
+    ).toString('hex'),
+  });
+
+export const assertUtxoFeeReview = (
+  psbt: any,
+  feeSatoshis: string,
+  expected: UtxoFeeReview | undefined
+): void => {
+  if (
+    !expected ||
+    expected.feeSatoshis !== feeSatoshis ||
+    expected.unsignedHash !==
+      createUtxoFeeReview(psbt, feeSatoshis).unsignedHash
+  )
+    throw Object.assign(
+      new Error('Transaction or network fee changed. Review a new quote.'),
+      {
+        code: 'UTXO_QUOTE_FEE_CHANGED',
+        transactionNotBroadcast: true,
+      }
+    );
+};
+
 type RawTransactionFetcher = (txid: string) => Promise<unknown>;
 
 const equalBytes = (left: Uint8Array, right: Uint8Array): boolean =>
@@ -199,7 +252,9 @@ const verifyAssetConservation = (
     !versionsThatRequireMatchingAssetTotals.has(transactionVersion)
   ) {
     throw new Error(
-      `Asset-bearing PSBT input ${inputAssets[0].inputIndex} is not allowed in transaction version ${transactionVersion}`
+      `Asset-bearing PSBT input ${
+        inputAssets[0]!.inputIndex
+      } is not allowed in transaction version ${transactionVersion}`
     );
   }
 
@@ -379,9 +434,9 @@ const getVerifiedInputAssets = (
     }
     if (
       actualAssets.length !== 1 ||
-      String(metadata.assetGuid) !== actualAssets[0].assetGuid ||
+      String(metadata.assetGuid) !== actualAssets[0]!.assetGuid ||
       toBigIntValue(metadata.value, `PSBT input ${inputIndex} asset`) !==
-        BigInt(actualAssets[0].value)
+        BigInt(actualAssets[0]!.value)
     ) {
       throw new Error(`Conflicting PSBT input ${inputIndex} asset metadata`);
     }

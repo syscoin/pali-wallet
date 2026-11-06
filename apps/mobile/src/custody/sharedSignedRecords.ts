@@ -27,7 +27,14 @@ export function createNativeSignedRecordView(
     ...(intent ? { intent } : {}),
   }); };
   return Object.freeze({
-    async load() { return checked(async () => { const entry=await records.readCurrent(session,network.chainId,account.address); return entry ? map(entry) : null; }); },
+    async load(hash?: string) {
+      return checked(async () => {
+        const entry = hash === undefined
+          ? await records.readCurrent(session, network.chainId, account.address)
+          : await records.readExact(session, network.chainId, account.address, hash);
+        return entry ? map(entry) : null;
+      });
+    },
     saveSigned(rawTransaction: string, intent?: Erc20TransferIntent) { return checked(async () => {
       const tx=Transaction.from(rawTransaction);
       if (tx.to === null) throw new TransferJournalError('CORRUPT');

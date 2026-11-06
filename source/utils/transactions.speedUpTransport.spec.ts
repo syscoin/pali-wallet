@@ -27,7 +27,7 @@ const rejection = {
 };
 const quote = { isSpeedUp: false, maximumFee: FEE };
 const t = (key: string) => key;
-let alert: { error: jest.Mock; warning: jest.Mock; success: jest.Mock };
+let alert: { error: jest.Mock; success: jest.Mock; warning: jest.Mock };
 let messages: any[];
 let reply: (message: any, callback: (value: unknown) => void) => void;
 
@@ -72,12 +72,28 @@ const submit = (scope: ReturnType<typeof getWalletNavigationScope>) =>
       walletScope: scope,
     },
   });
-const originalRoute = 'wallet.ethereumTransaction.sendTransactionWithEditedFee';
+const originalRoute = 'wallet.speedUpEvmTransaction';
+
+it('routes an ordinary account fee preview through the scoped wallet controller', async () => {
+  reply = (_message, callback) => callback(quote);
+  const scope = getWalletNavigationScope();
+  expect(await previewSpeedUpTransaction(ORIGINAL, false, 5700, ACCOUNT)).toBe(
+    FEE
+  );
+  expect(messages.map(route)).toEqual(['wallet.speedUpEvmTransaction']);
+  expect(messages[0].data.params).toEqual([
+    ORIGINAL,
+    false,
+    5700,
+    ACCOUNT,
+    { previewOnly: true, walletScope: scope },
+  ]);
+});
 
 it('shows amount guidance for an SDK-shaped rejection through the real emitter', async () => {
   reply = (message, callback) => {
     expect(route(message)).toBe(originalRoute);
-    callback(message.data.params[2].previewOnly ? quote : rejection);
+    callback(message.data.params[4].previewOnly ? quote : rejection);
   };
   const scope = getWalletNavigationScope();
   expect(await previewSpeedUpTransaction(ORIGINAL, false, 5700, ACCOUNT)).toBe(
@@ -85,7 +101,10 @@ it('shows amount guidance for an SDK-shaped rejection through the real emitter',
   );
   await submit(scope);
   expect(messages.map(route)).toEqual([originalRoute, originalRoute]);
-  expect(messages[1].data.params[2]).toEqual({ approvedMaximumFee: FEE });
+  expect(messages[1].data.params[4]).toEqual({
+    approvedMaximumFee: FEE,
+    walletScope: scope,
+  });
   expect(alert.error).toHaveBeenCalledWith(
     'transactions.speedUpAmountWouldChange'
   );
@@ -118,7 +137,7 @@ it('keeps a successful quote, replacement result and metadata handoff as a healt
     const method = route(message);
     if (method === originalRoute)
       return callback(
-        message.data.params[2].previewOnly
+        message.data.params[4].previewOnly
           ? quote
           : {
               isSpeedUp: true,
@@ -154,8 +173,14 @@ it('confirms the real transport preserves the structured rejection object', asyn
   };
   await expect(
     controllerEmitter(
-      ['wallet', 'ethereumTransaction', 'sendTransactionWithEditedFee'],
-      [ORIGINAL, false, { approvedMaximumFee: FEE }]
+      ['wallet', 'speedUpEvmTransaction'],
+      [
+        ORIGINAL,
+        false,
+        5700,
+        ACCOUNT,
+        { approvedMaximumFee: FEE, walletScope: getWalletNavigationScope() },
+      ]
     )
   ).rejects.toEqual(rejection);
   expect(messages.map(route)).toEqual([originalRoute]);

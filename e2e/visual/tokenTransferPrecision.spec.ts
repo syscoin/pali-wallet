@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { AbiCoder, id } from 'ethers';
 
 import en from '../../source/assets/locales/en.json';
+import { WALLET_TOKEN_REVIEW_PORT } from '../../source/shared/walletTokenReview';
 import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
@@ -171,42 +172,57 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
         `review and capture exact ${asset.symbol} transfer without signing`,
         async () => {
           await wallet!.gotoRoute('#/send/eth');
-          // Install in the ready document: hash-only navigation need not run
-          // init scripts. Next must retain this verified controller boundary
-          // so nothing reaches signing or broadcasting.
-          await page.evaluate(() => {
-            const original = chrome.runtime.sendMessage;
-            (window as any).__precisionSubmissions = [];
-            (chrome.runtime.sendMessage as any) = (...args: any[]) => {
-              const [message, callback] = args;
-              if (
-                message?.type === 'CONTROLLER_ACTION' &&
-                JSON.stringify(message.data?.methods) ===
-                  JSON.stringify(['wallet', 'sendAndSaveTokenTransaction']) &&
-                typeof callback === 'function'
-              ) {
-                (window as any).__precisionSubmissions.push(
-                  message.data.params
-                );
-                queueMicrotask(() =>
-                  callback({
-                    success: false,
-                    error:
-                      'Synthetic test stopped before signing or broadcasting',
-                  })
-                );
-                return;
-              }
-              return (original as any).apply(chrome.runtime, args);
+          // Admit the review through the real worker. Fence only the submit
+          // message so this test never reaches signing or broadcasting.
+          await page.evaluate((portName) => {
+            const original = chrome.runtime.connect;
+            const reviews: unknown[] = [];
+            let reviewed = 0;
+            let stopped = 0;
+            const connect = (...args: any[]) => {
+              const port = (original as any).apply(chrome.runtime, args);
+              if (args[0]?.name !== portName) return port;
+              const post = port.postMessage.bind(port);
+              port.onMessage.addListener((reply) => {
+                if (reply?.type === 'reviewed') reviewed++;
+              });
+              port.postMessage = (message: any) => {
+                if (message === 'submit') {
+                  stopped++;
+                  throw new Error('Synthetic test stopped before signing');
+                }
+                const tx = message?.transaction;
+                if (tx)
+                  reviews.push({
+                    chainId: message.chainId,
+                    type: message.type,
+                    tokenAddress: tx.tokenAddress,
+                    receiver: tx.receiver,
+                    tokenId: tx.tokenId,
+                    tokenAmountUnits: tx.tokenAmountUnits,
+                    hasLegacyAmount: 'tokenAmount' in tx,
+                  });
+                post(message);
+              };
+              return port;
             };
-            (window as any).__precisionSendBoundary =
-              chrome.runtime.sendMessage;
-          });
-          expect(
-            await page.evaluate(() =>
-              Array.isArray((window as any).__precisionSubmissions)
-            )
-          ).toBe(true);
+            chrome.runtime.connect = connect;
+            (window as any).__precisionReviewAudit = {
+              snapshot: () => ({
+                installed: chrome.runtime.connect === connect,
+                reviews,
+                reviewed,
+                stopped,
+              }),
+              restore: () => {
+                chrome.runtime.connect = original;
+              },
+            };
+          }, WALLET_TOKEN_REVIEW_PORT);
+          const audit = () =>
+            page.evaluate(() =>
+              (window as any).__precisionReviewAudit.snapshot()
+            );
           await page.getByRole('button', { name: 'TSYS', exact: true }).click();
           await page
             .locator('button[role="menuitem"]')
@@ -240,29 +256,32 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
             exact: true,
           });
           await expect(confirm).toBeEnabled();
-          expect(
-            await page.evaluate(
-              () =>
-                chrome.runtime.sendMessage ===
-                  (window as any).__precisionSendBoundary &&
-                Array.isArray((window as any).__precisionSubmissions) &&
-                (window as any).__precisionSubmissions.length === 0
-            )
-          ).toBe(true);
+          expect(await audit()).toEqual({
+            installed: true,
+            reviews: [],
+            reviewed: 0,
+            stopped: 0,
+          });
           await confirm.click();
-          await expect
-            .poll(() =>
-              page.evaluate(() => (window as any).__precisionSubmissions.length)
-            )
-            .toBe(1);
-          const captured = await page.evaluate(
-            () => (window as any).__precisionSubmissions[0]
-          );
-          expect(captured[0]).toBe(asset.tokenId ? 'ERC721' : 'ERC20');
-          expect(captured[1]).toMatchObject(
-            asset.tokenId
-              ? { tokenId: asset.tokenId }
-              : { tokenAmount: asset.amount, decimals: asset.decimals }
+          await expect.poll(audit).toEqual({
+            installed: true,
+            reviews: [
+              {
+                chainId: 5700,
+                type: asset.tokenId ? 'ERC721' : 'ERC20',
+                tokenAddress: asset.contract,
+                receiver: fixture.evmAddresses[1],
+                tokenId: asset.tokenId,
+                tokenAmountUnits: asset.tokenId ? undefined : asset.balance,
+                hasLegacyAmount: false,
+              },
+            ],
+            reviewed: 1,
+            stopped: 1,
+          });
+          const captured = await audit();
+          await page.evaluate(() =>
+            (window as any).__precisionReviewAudit.restore()
           );
           expect(deniedWrites).toEqual([]);
           expect(routes.deniedWrites).toEqual([]);

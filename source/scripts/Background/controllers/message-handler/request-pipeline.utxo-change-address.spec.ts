@@ -5,14 +5,17 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
+import { combineReducers, configureStore } from '@reduxjs/toolkit';
 import {
   HardwareWalletManager,
   KeyringManager,
 } from '@sidhujag/sysweb3-keyring';
-import { combineReducers, configureStore } from '@reduxjs/toolkit';
+import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
+import { createTestKeyringManager } from '../../../../../tests/fixtures/extensionKeyring';
+import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
 import DAppController from '../DAppController';
 import MainController from '../MainController';
 import dappReducer from 'state/dapp';
@@ -20,6 +23,7 @@ import spamFilterReducer from 'state/spamFilter';
 import vaultReducer, { setActiveAccount } from 'state/vault';
 import vaultGlobalReducer from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { UTXO_SIGNING_CONTEXT_CHANGED } from 'utils/utxoSigningContext';
 
 import { onMessage } from './index';
 import { popupPromise } from './popup-promise';
@@ -39,6 +43,11 @@ jest.mock('scripts/Background', () => ({
   notificationManager: { notifyAccountChange: jest.fn() },
 }));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
+jest.mock('../providers/walletHttpIdentity', () => ({
+  ...jest.requireActual('../providers/walletHttpIdentity'),
+  withWalletBackend: async (_endpoint: string, work: () => Promise<unknown>) =>
+    work(),
+}));
 
 const HOST = 'https://change-address.invalid';
 const hd = {
@@ -60,17 +69,20 @@ const imported = {
   label: 'Imported single-address account',
   isImported: true,
 };
-const HD_CHANGE = 'sys1synthetic-hd-0-change';
 let manager: KeyringManager;
 let hardwareManager: HardwareWalletManager;
-let getAddress: jest.Mock;
+const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
 const request = (method: string) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [] } }, {
     url: `${HOST}/page`,
     tab: { id: 101 },
   } as any);
 
-beforeEach(() => {
+beforeEach(async () => {
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: webcrypto,
+  });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
   const denyNetwork = () => {
@@ -134,22 +146,20 @@ beforeEach(() => {
       getDefaultMiddleware({ serializableCheck: false }),
   });
   hardwareManager = new HardwareWalletManager();
-  manager = new KeyringManager(hardwareManager);
-  manager.setVaultStateGetter(() => mockStore.getState().vault);
-  manager.isUnlocked = () => true;
-  // Keep the SDK's real account/type selection; only its eventual backend
-  // address lookup is deterministic and offline. Imported single-address
-  // accounts are returned directly by the real SDK getter without this leaf.
-  getAddress = jest.fn(async (xpub: string, isChange: boolean) => {
-    expect(xpub).toBe(hd.xpub);
-    expect(isChange).toBe(true);
-    return HD_CHANGE;
+  manager = createTestKeyringManager(undefined, {
+    hardwareManager,
+    captureEvmSubmission: createTestEvmSubmissionCapture(),
   });
-  manager.getAddress = getAddress;
+  manager.setVaultStateGetter(() => mockStore.getState().vault);
+  await manager.initializeSession(
+    'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about',
+    'Synthetic test credential'
+  );
   const wallet = Object.create(MainController.prototype);
   Object.assign(wallet, {
     getActiveKeyring: () => manager,
     walletSessionGeneration: 0,
+    networkRequestGeneration: 0,
     assetUpdateRequestId: 0,
     stopAllRapidPolling: jest.fn(),
     cancelActiveBalanceUpdate: jest.fn(),
@@ -179,6 +189,8 @@ afterEach(async () => {
   await manager.destroy();
   await hardwareManager.destroy();
   jest.restoreAllMocks();
+  if (originalCrypto)
+    Object.defineProperty(globalThis, 'crypto', originalCrypto);
 });
 
 it('keeps the wallet alias bound to the approved imported account after explicit selection', async () => {
@@ -186,7 +198,7 @@ it('keeps the wallet alias bound to the approved imported account after explicit
     imported.address
   );
   expect(popupPromise).toHaveBeenCalledTimes(1);
-  expect(getAddress).not.toHaveBeenCalled();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it('keeps the sys alias bound to the same already-selected imported account', async () => {
@@ -195,13 +207,13 @@ it('keeps the sys alias bound to the same already-selected imported account', as
   );
   await expect(request('sys_getChangeAddress')).resolves.toBe(imported.address);
   expect(popupPromise).not.toHaveBeenCalled();
-  expect(getAddress).not.toHaveBeenCalled();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it('does not return another account type change address for a matching numeric slot', async () => {
   await expect(request('sys_getChangeAddress')).resolves.toBe(imported.address);
   expect(popupPromise).toHaveBeenCalledTimes(1);
-  expect(getAddress).not.toHaveBeenCalled();
+  expect(globalThis.fetch).not.toHaveBeenCalled();
 });
 
 it.each(['wallet_getChangeAddress', 'sys_getChangeAddress'])(
@@ -212,7 +224,7 @@ it.each(['wallet_getChangeAddress', 'sys_getChangeAddress'])(
       error: { code: 4100 },
     });
     expect(popupPromise).toHaveBeenCalledTimes(1);
-    expect(getAddress).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(mockStore.getState().vault.activeAccount).toEqual({
       id: 0,
       type: KeyringAccountType.HDAccount,
@@ -245,7 +257,7 @@ it.each(['wallet_getChangeAddress', 'sys_getChangeAddress'])(
     });
     await opening;
     expect(settled).toBe(false);
-    expect(getAddress).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
     expect(mockStore.getState().vault.activeAccount).toEqual({
       id: 0,
       type: KeyringAccountType.HDAccount,
@@ -253,6 +265,32 @@ it.each(['wallet_getChangeAddress', 'sys_getChangeAddress'])(
     accept();
     await expect(result).resolves.toBe(imported.address);
     expect(popupPromise).toHaveBeenCalledTimes(1);
-    expect(getAddress).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
   }
 );
+
+it('discards a held owned address read after the network request changes and returns', async () => {
+  const wallet = mockController.wallet;
+  let started!: () => void;
+  let complete!: (address: string) => void;
+  const entered = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const held = new Promise<string>((resolve) => {
+    complete = resolve;
+  });
+  jest
+    .spyOn(manager, 'getChangeAddress')
+    .mockImplementationOnce(async (_id, read) => {
+      read.assertCurrent();
+      started();
+      return held;
+    });
+  const pending = wallet.getChangeAddress(hd.id);
+  const refused = expect(pending).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
+  await entered;
+  wallet.networkRequestGeneration += 2;
+  complete('sys1synthetic-stale-address');
+  await refused;
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});

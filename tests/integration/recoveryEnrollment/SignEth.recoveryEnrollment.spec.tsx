@@ -108,7 +108,9 @@ const sdk = new EthereumTransactions(
       activeNetwork: { chainId: mockMetadata.chainId },
     } as any),
   {} as any,
-  {} as any
+  {} as any,
+  () => () => mockApproval.assertCurrent(),
+  null
 );
 const mockEmitter = jest.fn(async (method: string[], args: any[]) => {
   if (method.at(-1) === 'hydrateSmartAccount') return mockMetadata;

@@ -12,10 +12,10 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
 import {
@@ -124,7 +124,7 @@ beforeEach(async () => {
   await persistCommittedWalletState(true);
   commits = 0;
   // Real SDK derivation, allocation and encryption; public synthetic session.
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   manager.getDecryptedMnemonic = () => PHRASE;

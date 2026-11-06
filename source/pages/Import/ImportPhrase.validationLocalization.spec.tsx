@@ -18,6 +18,7 @@ import React from 'react';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
 import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 
+import { createTestKeyringManager } from '../../../tests/fixtures/extensionKeyring';
 import de from 'assets/locales/de.json';
 import en from 'assets/locales/en.json';
 import es from 'assets/locales/es.json';
@@ -221,13 +222,13 @@ beforeEach(() => {
   chrome.storage.local.remove = jest.fn(denyStorage) as any;
   // Load SDK crypto only after aligning jsdom's byte-array realm with Node.
   // No validation implementation or result is substituted.
-  const { KeyringManager } = jest.requireActual('@sidhujag/sysweb3-keyring');
+
   const MainController = jest.requireActual(
     'scripts/Background/controllers/MainController'
   ).default;
   // Validation is stateless; reuse one read-only SDK instance rather than
   // registering an unrelated set of hardware listeners for every locale.
-  keyring = keyring || new KeyringManager();
+  keyring = keyring || createTestKeyringManager();
   wallet = Object.create(MainController.prototype);
   wallet.getActiveKeyring = () => keyring;
   seenMethods = [];

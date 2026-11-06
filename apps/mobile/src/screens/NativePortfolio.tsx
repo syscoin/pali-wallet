@@ -70,7 +70,8 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const scope = account ? scopeOf(account) : null;
   const receiving = !!scope && receiveScope === scope;
   const loading = snapshot.status === 'loading';
-  const canSend = !!registration && nativeSigningEnabled(registration.id, [registration]) && !!onSend;
+  const canSend = !!onSend && (utxo !== undefined ||
+    !!registration && nativeSigningEnabled(registration.id, [registration]));
   const faucet = registration ? getTestnetFaucet(registration) : null;
 
   const invalidateActions = useCallback(() => {

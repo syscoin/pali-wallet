@@ -209,22 +209,38 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-it('ends a failed prefetch without retrying or blocking confirmation preparation', async () => {
-  jest.spyOn(console, 'error').mockImplementation(() => undefined);
-  const held = deferred();
-  let attempts = 0;
-  setFeeReader(() =>
-    ++attempts === 1
-      ? Promise.reject(new Error('Synthetic fee service unavailable'))
-      : held.promise
-  );
-  render(<SendEth />);
-  await flush();
-  expect(next()).toBeEnabled();
-  expect(feeCalls()).toHaveLength(1);
-  expect(await preview()).toMatchObject({ cachedGasData: null, amount: '1' });
-  expect(feeCalls()).toHaveLength(1);
-});
+it.each([570, 743_211])(
+  'requires a real fixed-native fee rate on chain %i',
+  async (chainId) => {
+    mockState.vault.activeNetwork.chainId = chainId;
+    jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const held = deferred();
+    let attempts = 0;
+    setFeeReader(() =>
+      ++attempts === 1
+        ? Promise.reject(new Error('Synthetic fee service unavailable'))
+        : held.promise
+    );
+    render(<SendEth />);
+    await flush();
+    expect(next()).toBeEnabled();
+    expect(feeCalls()).toHaveLength(1);
+    fireEvent.change(screen.getByPlaceholderText('send.receiver'), {
+      target: { value: RECIPIENT },
+    });
+    fireEvent.change(screen.getByPlaceholderText('send.amount'), {
+      target: { value: '1' },
+    });
+    fireEvent.click(next());
+    await waitFor(() =>
+      expect(screen.getAllByText('send.feeUnavailable').length).toBeGreaterThan(
+        1
+      )
+    );
+    expect(mockNavigateWithContext).not.toHaveBeenCalled();
+    expect(feeCalls()).toHaveLength(1);
+  }
+);
 
 it('retries an unavailable fee quote without losing a valid fixed amount', async () => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
@@ -260,7 +276,7 @@ it('retries an unavailable fee quote without losing a valid fixed amount', async
   expect(mockNavigateWithContext.mock.calls[0][2].tx.amount).toBe('9.9995');
 });
 
-it('keeps the conservative check after a retry fails and reports a real shortfall after a high quote', async () => {
+it('keeps the fee unavailable state after a retry fails and reports a shortfall after a high quote', async () => {
   jest.spyOn(console, 'error').mockImplementation(() => undefined);
   let attempts = 0;
   setFeeReader(() =>

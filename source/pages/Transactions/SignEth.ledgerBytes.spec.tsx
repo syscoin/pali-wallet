@@ -167,7 +167,9 @@ beforeEach(() => {
       activeAccountType: 'Ledger',
     }),
     ledger,
-    undefined as any
+    undefined as any,
+    () => () => undefined,
+    null
   );
   mockEmitter.mockImplementation(async (path, args) => {
     expect(path).toEqual([

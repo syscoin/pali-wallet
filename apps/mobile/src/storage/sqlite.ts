@@ -1,6 +1,8 @@
+import type { DeviceUnlockEnrollmentSnapshot } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 import { inspectNoteDomain, NOTE_DOMAIN_MAX_BYTES } from './noteDomain.ts';
 import { ACCOUNT_RECORD_KEY, ACCOUNT_RECORD_LIMITS, encodeAccountRecord, decodeAccountRecord } from './accountRecordKey.ts';
 import { EVM_SIGNED_RECORD_LIMITS, inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { inspectUtxoSignedBundle, UTXO_SIGNED_RECORD_BYTES, UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import {
   decodeStorageValue,
   encodeStorageValue,
@@ -11,7 +13,6 @@ import { WalletStorageError } from './types.ts';
 import { readWalletIdentity } from './walletIdentity.ts';
 import { sameRecoverySnapshot } from './recoverySnapshot.ts';
 import type {
-  DeviceUnlockEnrollmentSnapshot,
   DeviceUnlockVaultPair,
   KeyringStoragePort,
   OpenWalletStorage,
@@ -27,7 +28,7 @@ import type {
   WalletRemovalResult,
 } from './types.ts';
 
-const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} ELSE 65536 END))`;
+const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE 65536 END))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
 const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
@@ -37,7 +38,7 @@ const boundedColumns = boundedValueColumns();
 // Refuse multiple profiles before any ciphertext crosses the SQL connection.
 const boundedNoteColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM private_note_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const boundedSignedColumns = `CASE WHEN (SELECT COUNT(*) FROM (SELECT 1 FROM evm_signed_records LIMIT 2)) = 1 AND typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ? THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
-const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = '${ACCOUNT_RECORD_KEY}' THEN ? ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
+const boundedRecordColumns = `CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ? WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE ? END THEN value ELSE NULL END AS value, typeof(value) AS storage_type, length(CAST(value AS BLOB)) AS storage_bytes`;
 const GET = `SELECT ${boundedColumns} FROM keyring_records WHERE key = ?`;
 const PAIR = `SELECT 'record' AS source, key, ${boundedColumns} FROM keyring_records WHERE key IN ('vault', 'vault-keys') UNION ALL SELECT 'meta' AS source, key, ${boundedColumns} FROM wallet_metadata WHERE key IN ('backup', 'auth', 'identity')`;
 const ENROLLMENT_KEY = 'device-unlock-enrollment';
@@ -50,7 +51,7 @@ const SNAPSHOT = `SELECT 'record' AS source, CASE WHEN typeof(key) = 'text' AND 
 
 const NOTE_ROWS = `SELECT 'note' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedNoteColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM private_note_records ORDER BY profile_id LIMIT 2`;
 const SIGNED_ROWS = `SELECT 'signed' AS source, CASE WHEN typeof(profile_id) = 'text' AND length(profile_id) = 66 THEN profile_id ELSE NULL END AS key, ${boundedSignedColumns}, CASE WHEN typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64 THEN wallet_binding ELSE NULL END AS wallet_binding FROM evm_signed_records ORDER BY profile_id LIMIT 2`;
-const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : STORAGE_LIMITS.valueBytes;
+const recordBytes = (key: string) => key === ACCOUNT_RECORD_KEY ? ACCOUNT_RECORD_LIMITS.valueBytes : key === UTXO_SIGNED_RECORD_KEY ? UTXO_SIGNED_RECORD_BYTES : STORAGE_LIMITS.valueBytes;
 const encodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? encodeAccountRecord(value) : encodeStorageValue(value);
 const decodeRecord = (key: string, value: unknown) => key === ACCOUNT_RECORD_KEY ? decodeAccountRecord(value) : decodeStorageValue(value);
 const failure = () => new WalletStorageError('STORAGE_CORRUPT');
@@ -180,6 +181,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
   readonly authGuard: OpenWalletStorage['authGuard'];
   readonly notes: NonNullable<OpenWalletStorage['notes']>;
   readonly signedRecords: OpenWalletStorage['signedRecords'];
+  readonly utxoSignedRecords: NonNullable<OpenWalletStorage['utxoSignedRecords']>;
   readonly recovery: NonNullable<OpenWalletStorage['recovery']>;
   readonly removal: NonNullable<OpenWalletStorage['removal']>;
   private tail: Promise<void> = Promise.resolve();
@@ -247,6 +249,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       }),
       compareAndSet: (profileId: string, expected: string | undefined, next: string, assertCurrent: () => void) =>
         this.compareAndSetSigned(profileId, expected, next, assertCurrent),
+    });
+    this.utxoSignedRecords = Object.freeze<NonNullable<OpenWalletStorage['utxoSignedRecords']>>({
+      read: (profileId) => this.queued(async () => {
+        await this.identityForProfile(profileId);
+        return this.readUtxoSignedRecord();
+      }),
+      compareAndSet: (profileId, expected, next, assertCurrent) =>
+        this.compareAndSetUtxoSigned(profileId, expected, next, assertCurrent),
     });
     this.authGuard = Object.freeze({
       checkAllowed: () => this.checkAllowed(),
@@ -359,6 +369,14 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         if (validatePair(pair) !== 'existing') throw failure();
         const identity = readWalletIdentity(await storage.fingerprint(pair), pair.identity);
         storage.inspectSignedRows(signed, identity);
+      }
+      const utxo = await storage.readUtxoSignedRecord();
+      if (utxo !== undefined) {
+        const pair = await storage.pair();
+        if (validatePair(pair) !== 'existing') throw failure();
+        const identity = readWalletIdentity(await storage.fingerprint(pair), pair.identity);
+        if (!identity.root) throw failure();
+        inspectUtxoSignedBundle(utxo, identity.root.profileId);
       }
       return storage;
     } catch (error) {
@@ -803,6 +821,43 @@ export class SqliteWalletStorage implements OpenWalletStorage {
     }));
   }
 
+  private async readUtxoSignedRecord(): Promise<string | undefined> {
+    const row = await this.db.getFirstAsync<StoredRow>(GET, [UTXO_SIGNED_RECORD_BYTES, UTXO_SIGNED_RECORD_KEY]);
+    return row === null ? undefined : admittedRow(row, UTXO_SIGNED_RECORD_BYTES);
+  }
+
+  private compareAndSetUtxoSigned(profileId: string, expected: string | undefined, next: string, assertCurrent: () => void): Promise<boolean> {
+    if (typeof assertCurrent !== 'function') return Promise.reject(new WalletStorageError('STORAGE_CHANGED'));
+    const check = storageGuard(assertCurrent);
+    check();
+    try { inspectUtxoSignedBundle(next, profileId); }
+    catch { return Promise.reject(failure()); }
+    return this.queued(async () => {
+      let binding: string | undefined;
+      const committed = await this.transaction(async () => {
+        check();
+        const identity = await this.identityForProfile(profileId); check();
+        binding = identity.walletBindingId;
+        if (await this.readUtxoSignedRecord() !== expected) return false;
+        if (expected === undefined) {
+          const count = await this.db.getFirstAsync<{ count: number }>('SELECT COUNT(*) AS count FROM keyring_records');
+          if (!Number.isSafeInteger(count?.count) || count!.count >= STORAGE_LIMITS.records) throw failure();
+        }
+        check();
+        await this.db.runAsync('INSERT INTO keyring_records (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', [UTXO_SIGNED_RECORD_KEY, next]);
+        return true;
+      }, check).catch((error) => this.requireReopenIfPoisoned(error));
+      if (!committed) return false;
+      check();
+      try {
+        const identity = await this.identityForProfile(profileId);
+        if (identity.walletBindingId !== binding || await this.readUtxoSignedRecord() !== next) throw failure();
+      } catch (error) { this.poisoned = true; this.requireReopenIfPoisoned(error); }
+      check();
+      return true;
+    });
+  }
+
   private inspectSignedRows(rows: readonly SignedRecordDomainRow[], identity: WalletIdentityRead | null): void {
     if (rows.length > 1) throw failure();
     for (const row of rows) {
@@ -941,6 +996,11 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           !metadata.some((row) => row.key === 'installation' && row.value === this.installationId)) throw failure();
       const state = await this.storedState(pair);
       const identity = state.presence === 'empty' ? null : readWalletIdentity(await this.fingerprint(pair), pair.identity);
+      const utxo = records.find(({ key }) => key === UTXO_SIGNED_RECORD_KEY);
+      if (utxo) {
+        if (!identity?.root) throw failure();
+        inspectUtxoSignedBundle(utxo.value, identity.root.profileId);
+      }
       if (notes.length && !identity) throw failure();
       if (identity) inspectNoteDomain(notes, identity.walletBindingId, identity.root?.profileId);
       this.inspectSignedRows(signedRecords, identity);

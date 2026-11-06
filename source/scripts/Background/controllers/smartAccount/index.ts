@@ -129,6 +129,7 @@ export interface ISmartAccountControllerDependencies {
     targetAccount?: { id: number; type: PaliKeyringAccountType },
     transactionMetadata?: Record<string, unknown>,
     saveOptions?: {
+      assertBeforeSign?: () => void;
       assertCurrentContext?: () => void;
       clearNavigation?: boolean;
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
@@ -158,7 +159,8 @@ export interface ISmartAccountControllerDependencies {
   signSmartAccountActionDigestInternal: (
     params: string[],
     targetAccount: { id: number; type: PaliKeyringAccountType },
-    executionContextId?: string
+    executionContextId?: string,
+    assertApprovalCurrent?: () => void
   ) => Promise<string>;
 }
 
@@ -1245,14 +1247,18 @@ class SmartAccountController {
     });
   }
 
-  public async registerSmartAccountOnChain(params: {
-    accountId: number;
-    expectedContext?: IEvmTransactionContext;
-  }) {
+  public async registerSmartAccountOnChain(
+    params: {
+      accountId: number;
+      expectedContext?: IEvmTransactionContext;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     let mayHaveSubmitted = false;
     try {
       const context = this.infrastructureContext();
       const assertCurrent = () => {
+        assertApprovalCurrent?.();
         try {
           this.assertInfrastructureContext(context);
           if (params.expectedContext) {
@@ -1328,21 +1334,26 @@ class SmartAccountController {
           const signature = await this.signActionHashWithLocalEcdsaOwners(
             metadata,
             prepared.actionHash,
-            prepared.executionContextId
+            prepared.executionContextId,
+            assertApprovalCurrent
           );
+          assertCurrent();
           mayHaveSubmitted = true;
-          response = await this.submitSmartAccountExecution({
-            accountId: params.accountId,
-            expectedContext: params.expectedContext,
-            executionContextId: prepared.executionContextId,
-            executions: prepared.executions,
-            gasPayer: prepared.gasPayer,
-            maxFeePerGas: prepared.maxFeePerGas,
-            signature,
-            skipRapidPolling: true,
-            userOperation: prepared.userOperation,
-            waitForConfirmation: true,
-          });
+          response = await this.submitSmartAccountExecution(
+            {
+              accountId: params.accountId,
+              expectedContext: params.expectedContext,
+              executionContextId: prepared.executionContextId,
+              executions: prepared.executions,
+              gasPayer: prepared.gasPayer,
+              maxFeePerGas: prepared.maxFeePerGas,
+              signature,
+              skipRapidPolling: true,
+              userOperation: prepared.userOperation,
+              waitForConfirmation: true,
+            },
+            assertApprovalCurrent
+          );
         } finally {
           this.pendingDeploymentAddresses.delete(accountAddress);
         }
@@ -2054,30 +2065,36 @@ class SmartAccountController {
     }
   }
 
-  public async submitSmartAccountExecution(params: {
-    accountId?: number;
-    executionCalldata?: string;
-    executionContextId?: string;
-    executions?: SmartAccountExecution[];
-    expectedContext?: IEvmTransactionContext;
-    gasPayer?: {
-      address: string;
-      id: number;
-      type: PaliKeyringAccountType;
-    };
-    gasPrice?: string;
-    maxFeePerGas?: string;
-    maxPriorityFeePerGas?: string;
-    mode?: string;
-    signature: string;
-    skipRapidPolling?: boolean;
-    userOperation?: SmartAccountPackedUserOperation;
-    validator?: string;
-    waitForConfirmation?: boolean;
-  }) {
+  public async submitSmartAccountExecution(
+    params: {
+      accountId?: number;
+      executionCalldata?: string;
+      executionContextId?: string;
+      executions?: SmartAccountExecution[];
+      expectedContext?: IEvmTransactionContext;
+      gasPayer?: {
+        address: string;
+        id: number;
+        type: PaliKeyringAccountType;
+      };
+      gasPrice?: string;
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+      mode?: string;
+      signature: string;
+      skipRapidPolling?: boolean;
+      userOperation?: SmartAccountPackedUserOperation;
+      validator?: string;
+      waitForConfirmation?: boolean;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     // The call may first fund a counterfactual account, then submit handleOps.
     // Only failures before either sender is entered are definitely read-only.
     let financialSubmissionAttempted = false;
+    let prefundAcknowledged = false;
+    let handleOpsStarted = false;
+    let acknowledgedHandleOpsHash: string | undefined;
     try {
       const legacyGasPrice = getExplicitSmartAccountGasPrice(params);
       const assertContext = () => {
@@ -2111,7 +2128,11 @@ class SmartAccountController {
             });
         }
       };
-      assertContext();
+      const assertCurrent = () => {
+        assertApprovalCurrent?.();
+        assertContext();
+      };
+      assertCurrent();
       const active = Number.isInteger(params.accountId)
         ? this.getSmartAccountById(params.accountId as number)
         : this.getActiveSmartAccount();
@@ -2133,7 +2154,7 @@ class SmartAccountController {
         undefined,
         { requirePreferred: Boolean(params.gasPayer) }
       );
-      assertContext();
+      assertCurrent();
       const entryPointAddress = getPaliEntryPointAddress(
         active.metadata.chainId
       );
@@ -2171,7 +2192,7 @@ class SmartAccountController {
             value: '0x0',
           },
         });
-        assertContext();
+        assertCurrent();
       }
       // Self-funded first-UserOp deployment: an op carrying initCode validates
       // before anything executes, so the counterfactual account must already
@@ -2187,12 +2208,18 @@ class SmartAccountController {
           entryPointAddress,
           gasPayer,
           active.metadata.chainId,
-          assertContext,
-          () => {
-            financialSubmissionAttempted = true;
+          {
+            assertBeforeSign: assertApprovalCurrent,
+            assertCurrentContext: assertContext,
+            onSubmissionAttempt() {
+              financialSubmissionAttempted = true;
+            },
+            onAcknowledged() {
+              prefundAcknowledged = true;
+            },
           }
         );
-        assertContext();
+        assertCurrent();
       }
       // A supplied legacy price must reach the actual handleOps preflight;
       // estimation must not validate a different fee model from publication.
@@ -2214,10 +2241,11 @@ class SmartAccountController {
             value: '0x0',
           })
         );
-        assertContext();
+        assertCurrent();
       }
-      assertContext();
+      assertCurrent();
       financialSubmissionAttempted = true;
+      handleOpsStarted = true;
       const response = await this.deps.sendAndSaveEthTransaction(
         {
           chainId: active.metadata.chainId,
@@ -2260,8 +2288,12 @@ class SmartAccountController {
           ],
         },
         {
+          assertBeforeSign: assertApprovalCurrent,
           assertCurrentContext: assertContext,
           clearNavigation: true,
+          async onBroadcast(broadcast) {
+            acknowledgedHandleOpsHash = broadcast.hash;
+          },
           persist: true,
           skipRapidPolling: params.skipRapidPolling,
           transactionAccounts: [
@@ -2273,6 +2305,7 @@ class SmartAccountController {
           ],
         }
       );
+      acknowledgedHandleOpsHash = response.hash;
       // Executions may install/uninstall modules or rotate the active
       // validator; drop the cached hydrated metadata for this account.
       this.invalidateHydratedMetadata(active.account.address);
@@ -2286,9 +2319,24 @@ class SmartAccountController {
         : hasSmartAccountSignatureFailure(error)
         ? SMART_ACCOUNT_SIGNATURE_ERROR
         : undefined;
-      const transactionNotBroadcast = financialSubmissionAttempted
-        ? error?.transactionNotBroadcast
-        : true;
+      const acknowledged =
+        typeof acknowledgedHandleOpsHash === 'string' &&
+        /^0x[0-9a-fA-F]{64}$/.test(acknowledgedHandleOpsHash);
+      const reportedHash = handleOpsStarted
+        ? error?.transactionHash
+        : undefined;
+      const transactionHash = acknowledged
+        ? acknowledgedHandleOpsHash
+        : typeof reportedHash === 'string' &&
+          /^0x[0-9a-fA-F]{64}$/.test(reportedHash)
+        ? reportedHash
+        : undefined;
+      const transactionNotBroadcast =
+        acknowledged || prefundAcknowledged
+          ? false
+          : financialSubmissionAttempted
+          ? error?.transactionNotBroadcast
+          : true;
       if (normalizedMessage) {
         const normalizedError = new Error(normalizedMessage);
         // Keep trusted submission facts when replacing provider text with a
@@ -2298,13 +2346,8 @@ class SmartAccountController {
           Object.assign(normalizedError, {
             transactionNotBroadcast,
           });
-        if (
-          typeof error?.transactionHash === 'string' &&
-          /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)
-        )
-          Object.assign(normalizedError, {
-            transactionHash: error.transactionHash,
-          });
+        if (transactionHash)
+          Object.assign(normalizedError, { transactionHash });
         throw normalizedError;
       }
       if (!financialSubmissionAttempted) {
@@ -2318,6 +2361,23 @@ class SmartAccountController {
         if (typeof error?.code === 'number')
           Object.assign(preflightError, { code: error.code });
         throw Object.assign(preflightError, { transactionNotBroadcast: true });
+      }
+      if (
+        (acknowledged && transactionHash !== error?.transactionHash) ||
+        ((acknowledged || prefundAcknowledged) &&
+          error?.transactionNotBroadcast !== false) ||
+        (!handleOpsStarted && error?.transactionHash !== undefined)
+      ) {
+        // A wait failure does not undo an acknowledged POST. The funding hash
+        // can never stand in for the separate handleOps transaction.
+        const failure = new Error(
+          error?.message || 'Smart account execution did not complete',
+          { cause: error }
+        );
+        if (typeof transactionNotBroadcast === 'boolean')
+          Object.assign(failure, { transactionNotBroadcast });
+        if (transactionHash) Object.assign(failure, { transactionHash });
+        throw failure;
       }
       throw error;
     }
@@ -2415,10 +2475,18 @@ class SmartAccountController {
     entryPointAddress: string,
     gasPayer: { address: string; id: number; type: PaliKeyringAccountType },
     chainId: number,
-    assertCurrentContext?: () => void,
-    onSubmissionAttempt?: () => void
+    options: {
+      assertBeforeSign?: () => void;
+      assertCurrentContext: () => void;
+      onAcknowledged: () => void;
+      onSubmissionAttempt: () => void;
+    }
   ): Promise<void> {
-    assertCurrentContext?.();
+    const assertCurrent = () => {
+      options.assertBeforeSign?.();
+      options.assertCurrentContext();
+    };
+    assertCurrent();
     const provider = this.ethereumTransaction?.web3Provider;
     if (!provider) {
       throw new Error(PROVIDER_UNAVAILABLE_ERROR);
@@ -2432,14 +2500,14 @@ class SmartAccountController {
       provider.getBalance(accountAddress),
       entryPoint.balanceOf(accountAddress),
     ]);
-    assertCurrentContext?.();
+    assertCurrent();
     const deposit = toCompatBigNumber(rawDeposit);
     const required = getSmartAccountUserOpRequiredPrefund(userOperation);
     const shortfall = required.sub(balance).sub(deposit);
     if (shortfall.lte(0)) {
       return;
     }
-    onSubmissionAttempt?.();
+    options.onSubmissionAttempt();
     const response = await this.deps.sendAndSaveEthTransaction(
       {
         chainId,
@@ -2454,14 +2522,16 @@ class SmartAccountController {
         smartAccountDeploymentPrefund: true,
       },
       {
-        assertCurrentContext,
+        assertBeforeSign: options.assertBeforeSign,
+        assertCurrentContext: options.assertCurrentContext,
         clearNavigation: false,
+        onBroadcast: async () => options.onAcknowledged(),
         persist: true,
         skipRapidPolling: true,
       }
     );
     await response.wait();
-    assertCurrentContext?.();
+    assertCurrent();
   }
 
   private getLocalNativeExecutionRecipients(
@@ -3063,8 +3133,10 @@ class SmartAccountController {
   private async signActionHashWithLocalEcdsaOwners(
     metadata: ISmartAccountMetadata,
     actionHash: string,
-    executionContextId?: string
+    executionContextId?: string,
+    assertApprovalCurrent?: () => void
   ): Promise<string> {
+    assertApprovalCurrent?.();
     const moduleId = metadata.auth?.module || metadata.auth?.scheme;
     if (moduleId !== 'ecdsa' || !metadata.auth?.data) {
       throw new Error(
@@ -3092,7 +3164,8 @@ class SmartAccountController {
           this.deps.signSmartAccountActionDigestInternal(
             [owner, actionHash],
             this.getLocalSigningAccount(owner),
-            executionContextId
+            executionContextId,
+            assertApprovalCurrent
           )
         )
     );

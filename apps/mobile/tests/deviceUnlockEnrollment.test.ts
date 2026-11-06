@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createDeviceUnlockEnrollment } from '../src/custody/deviceUnlockEnrollment.ts';
+import { createDeviceUnlockEnrollment } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 import { createDeviceUnlockCredentialStore } from '../src/storage/deviceUnlockCredential.ts';
-import type { DeviceUnlockEnrollmentSnapshot } from '../src/storage/types.ts';
+import type { DeviceUnlockEnrollmentSnapshot } from '../../../source/wallet/deviceUnlockEnrollment.ts';
 
 const scope = { installationId: '11'.repeat(16), walletBindingId: '22'.repeat(32), pairFingerprint: '33'.repeat(32) };
 const first = '44'.repeat(16), second = '55'.repeat(16);

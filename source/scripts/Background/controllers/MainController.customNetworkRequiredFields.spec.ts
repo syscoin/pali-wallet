@@ -5,6 +5,26 @@ jest.mock('..', () => ({
 jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+jest.mock('./providers/utxoRpcVerification', () => ({
+  withUtxoRpcVerification: async (
+    _url: string,
+    assertCurrent: () => void,
+    operation: any
+  ) => {
+    const { findUtxoCoinByRegistration } = jest.requireActual(
+      '@sidhujag/sysweb3-network'
+    );
+    const coin = findUtxoCoinByRegistration({ chainId: 2, slip44: 2 });
+    return operation({
+      assertCurrent,
+      signal: new AbortController().signal,
+      readJson: async (url: string) =>
+        url.endsWith('/api/v2/')
+          ? { blockbook: { network: 'LTC' }, backend: { chain: 'main' } }
+          : { blockHash: coin.hashGenesisBlock },
+    });
+  },
+}));
 jest.mock('utils/syscoinPsbtValues', () => ({}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   KeyringManager: jest.fn(),
@@ -77,6 +97,7 @@ beforeEach(async () => {
   wallet.walletStateGeneration = 0;
   wallet.walletSessionGeneration = 0;
   wallet.isRemovingNetwork = false;
+  wallet.isUnlocked = () => true;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
@@ -179,25 +200,25 @@ describe.each(['add', 'edit'] as const)(
       }
     );
 
-    it('preserves meaningful padded UTXO display fields', async () => {
+    it('preserves the padded UTXO label and stores the verified ticker', async () => {
       const utxo = {
         ...target,
         kind: INetworkType.Syscoin,
-        chainId: 111,
-        slip44: 111,
+        chainId: 2,
+        slip44: 2,
         label: '  Synthetic UTXO  ',
-        currency: ' sys ',
+        currency: ' LTC ',
+        utxoBackendChain: 'main',
       };
       const invoke = await prepare(mode, utxo);
       await invoke(utxo);
-      const live = store.getState().vaultGlobal.networks.syscoin[111];
+      const live = store.getState().vaultGlobal.networks.syscoin[2];
       expect(live).toEqual({
         ...utxo,
+        currency: 'ltc',
         ...(mode === 'add' ? { default: false } : {}),
       });
-      expect((await loadState()).vaultGlobal.networks.syscoin[111]).toEqual(
-        live
-      );
+      expect((await loadState()).vaultGlobal.networks.syscoin[2]).toEqual(live);
       expect(writes).toBe(1);
       expect(globalThis.fetch).not.toHaveBeenCalled();
     });

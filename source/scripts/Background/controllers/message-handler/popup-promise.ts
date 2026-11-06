@@ -1,7 +1,13 @@
 import { ethErrors } from 'helpers/errors';
 
 import { ICustomEvent } from '../../../../types/index'; // need to use this relative import [avoid terminal error]
-import { watchApprovalSubmission } from '../../handlers/approvalSubmission';
+import {
+  transactionApprovalExpired,
+  watchApprovalSubmission,
+  type DappSmartAccountMethod,
+  type DappUtxoReview,
+  type TransactionApprovalDocument,
+} from '../../handlers/approvalSubmission';
 import {
   bindPersonalSignApproval,
   capturePersonalSignApproval,
@@ -10,6 +16,7 @@ import {
 import { getController } from 'scripts/Background';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
 import cleanErrorStack from 'utils/cleanErrorStack';
+import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 
 import {
   assertRequestActive,
@@ -144,6 +151,54 @@ const openApprovalPopup = async (
 
   // URLSearchParams in createPopup escapes the payload without changing it.
   data = data || {};
+  const { psbt, assets, sentryFeeAuthorization, approvedContext } =
+    data as Partial<DappUtxoReview['psbt']> & {
+      approvedContext?: DappUtxoReview['context'];
+    };
+  const utxoMethod =
+    route === MethodRoute.SignTx
+      ? 'signSendAndSaveTransaction'
+      : route === MethodRoute.SignPsbt
+      ? 'signSyscoinPsbt'
+      : undefined;
+  const utxoReview:
+    | Omit<DappUtxoReview, 'assertCurrent' | 'checkDocument' | 'getSignal'>
+    | undefined =
+    utxoMethod &&
+    approvedContext &&
+    typeof psbt === 'string' &&
+    typeof assets === 'string'
+      ? {
+          method: utxoMethod,
+          context: approvedContext,
+          psbt: { psbt, assets, sentryFeeAuthorization },
+        }
+      : undefined;
+  const evmContext =
+    route === MethodRoute.SendEthTx || route === MethodRoute.SendCalls
+      ? (data as { approvedContext?: IEvmTransactionContext }).approvedContext
+      : undefined;
+  const { bundleId, reservationId } = data as {
+    bundleId?: string;
+    reservationId?: string;
+  };
+  const evmBatch =
+    route === MethodRoute.SendCalls &&
+    typeof bundleId === 'string' &&
+    typeof reservationId === 'string'
+      ? { host, id: bundleId, reservationId }
+      : undefined;
+  const smartMethods: readonly DappSmartAccountMethod[] | undefined =
+    route === MethodRoute.SmartAccount
+      ? ['registerSmartAccountOnChain', 'submitSmartAccountExecution']
+      : route === MethodRoute.SendEthTx ||
+        route === MethodRoute.SendCalls ||
+        route === MethodRoute.SmartAccountModules
+      ? ['submitSmartAccountExecution']
+      : undefined;
+  const tracksTransactionDocument = Boolean(
+    evmContext || utxoReview || smartMethods
+  );
 
   let popup = null;
   let approvalClientId: string | null = null;
@@ -151,7 +206,12 @@ const openApprovalPopup = async (
   let approvalTabId: number | undefined;
   let submissionStarted = false;
   let stopWatchingSubmission: (() => void) | undefined;
-  let unbindPersonalSign: (() => void) | undefined;
+  let unbindApprovalDocument: (() => void) | undefined;
+  let transactionDocumentLifetime = new AbortController();
+  let transactionDocumentRetired = false;
+  let documentCheck = 0;
+  let navigationPending = false;
+  let onAbort: (() => void) | null = null;
   let challenge: string | null = null;
   let responseHandler: ((event: any) => void) | null = null;
   const registrations: Array<{
@@ -164,7 +224,8 @@ const openApprovalPopup = async (
   ) => {
     if (
       registrationSender.tab?.windowId !== popup?.id ||
-      (personalSignApproval && registrationSender.tab?.id === undefined) ||
+      ((personalSignApproval || tracksTransactionDocument) &&
+        registrationSender.tab?.id === undefined) ||
       (approvalDocumentId &&
         registrationSender.documentId !== approvalDocumentId)
     ) {
@@ -220,18 +281,45 @@ const openApprovalPopup = async (
         return;
       const available =
         (!approvalClientId || approvalClientId === source.id) &&
+        (!tracksTransactionDocument ||
+          (!transactionDocumentRetired && !signal?.aborted)) &&
         (!personalSignApproval || personalSignApproval.isCurrent());
       if (available) {
         approvalClientId = source.id;
-        if (personalSignApproval && approvalDocumentId && !unbindPersonalSign) {
-          const clientId = source.id;
-          const approverIsLive = () =>
-            isApprovalClientLive(clientId, approvalId, route);
-          const unbind = bindPersonalSignApproval(
-            approvalDocumentId,
-            personalSignApproval,
-            approverIsLive
-          );
+        const clientId = source.id;
+        const approverIsLive = () =>
+          isApprovalClientLive(clientId, approvalId, route);
+        if (
+          (personalSignApproval || tracksTransactionDocument) &&
+          approvalDocumentId &&
+          !unbindApprovalDocument
+        ) {
+          const unbind =
+            personalSignApproval &&
+            bindPersonalSignApproval(
+              approvalDocumentId,
+              personalSignApproval,
+              approverIsLive
+            );
+          const retire = () => {
+            if (tracksTransactionDocument) {
+              transactionDocumentRetired = true;
+              transactionDocumentLifetime.abort();
+              onAbort?.();
+            }
+            personalSignApproval?.retire();
+          };
+          const checkNavigation = (complete: boolean) => {
+            const check = ++documentCheck;
+            void approverIsLive().then((live) => {
+              if (check !== documentCheck || transactionDocumentRetired) return;
+              if (!live) retire();
+              else if (complete && !signal?.aborted) {
+                transactionDocumentLifetime = new AbortController();
+                navigationPending = false;
+              }
+            });
+          };
           const onNavigation = (
             tabId: number,
             change: chrome.tabs.TabChangeInfo
@@ -239,19 +327,29 @@ const openApprovalPopup = async (
             if (tabId !== approvalTabId) return;
             if (change.url) {
               const destination = readApprovalUrl(change.url, approvalId);
-              if (!destination || !isApprovalRoute(destination, route))
-                personalSignApproval.retire();
-            } else if (change.status === 'loading') {
+              if (!destination || !isApprovalRoute(destination, route)) {
+                retire();
+                return;
+              }
+            }
+            if (
+              change.status === 'loading' &&
+              (!change.url || tracksTransactionDocument)
+            ) {
               // Chrome can report loading during a same-document transition.
               // Resolve the originally enrolled client before treating it as a reload.
-              void approverIsLive().then((live) => {
-                if (!live) personalSignApproval.retire();
-              });
+              navigationPending = tracksTransactionDocument;
+              // Retire the current attempt immediately. If the same document
+              // survives, only a fresh attempt after loading can proceed.
+              transactionDocumentLifetime.abort();
+              checkNavigation(false);
+            } else if (change.status === 'complete' && navigationPending) {
+              checkNavigation(true);
             }
           };
-          unbindPersonalSign = () => {
+          unbindApprovalDocument = () => {
             chrome.tabs.onUpdated.removeListener(onNavigation);
-            unbind();
+            unbind?.();
           };
           chrome.tabs.onUpdated.addListener(onNavigation);
         }
@@ -260,16 +358,42 @@ const openApprovalPopup = async (
             route === MethodRoute.SendCalls ||
             route === MethodRoute.SmartAccount ||
             route === MethodRoute.SmartAccountModules ||
-            route === MethodRoute.SignTx) &&
+            route === MethodRoute.SignTx ||
+            utxoReview) &&
           approvalDocumentId &&
           !stopWatchingSubmission
-        )
+        ) {
+          const document: TransactionApprovalDocument = {
+            getSignal: () => transactionDocumentLifetime.signal,
+            assertCurrent: () => {
+              if (
+                signal?.aborted ||
+                transactionDocumentRetired ||
+                navigationPending
+              )
+                throw transactionApprovalExpired();
+            },
+            async checkDocument() {
+              const [requestIsLive, approvalIsLive] = await Promise.all([
+                isRequestDocumentLive(sender),
+                approverIsLive(),
+              ]);
+              if (!requestIsLive || !approvalIsLive)
+                throw transactionApprovalExpired();
+            },
+          };
           stopWatchingSubmission = watchApprovalSubmission(
             approvalDocumentId,
             (possible) => {
               submissionStarted = possible;
-            }
+            },
+            evmContext
+              ? { ...document, context: evmContext, batch: evmBatch }
+              : undefined,
+            utxoReview ? { ...document, ...utxoReview } : undefined,
+            smartMethods ? { ...document, methods: smartMethods } : undefined
           );
+        }
         onClientBound?.();
       }
       port.postMessage({
@@ -314,7 +438,6 @@ const openApprovalPopup = async (
   return new Promise((resolve, reject) => {
     let windowRemovalHandler: any = null;
     let resolved = false;
-    let onAbort: (() => void) | null = null;
     let livenessInterval: ReturnType<typeof setInterval> | null = null;
     let checkingLiveness = false;
     let bindingDeadline: ReturnType<typeof setTimeout> | null = null;
@@ -322,7 +445,9 @@ const openApprovalPopup = async (
 
     // Clean up function to remove listeners
     const cleanup = () => {
-      unbindPersonalSign?.();
+      transactionDocumentRetired = true;
+      transactionDocumentLifetime.abort();
+      unbindApprovalDocument?.();
       stopWatchingSubmission?.();
       stopWatchingSubmission = undefined;
       if (livenessInterval) clearInterval(livenessInterval);

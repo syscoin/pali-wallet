@@ -88,18 +88,25 @@ describe('smart-account execution approval context', () => {
   };
   const prepare = () =>
     controller.prepareSmartAccountExecutions(calls, 7, { expectedContext });
-  const submit = (prepared: any, changes: any = {}) =>
-    controller.submitSmartAccountExecution({
-      accountId: 7,
-      executionContextId: prepared.executionContextId,
-      executions: prepared.executions,
-      expectedContext,
-      gasPayer: payer,
-      gasPrice: prepared.gasPrice,
-      signature: '0x1234',
-      userOperation: prepared.userOperation,
-      ...changes,
-    });
+  const submit = (
+    prepared: any,
+    changes: any = {},
+    assertCurrent?: () => void
+  ) =>
+    controller.submitSmartAccountExecution(
+      {
+        accountId: 7,
+        executionContextId: prepared.executionContextId,
+        executions: prepared.executions,
+        expectedContext,
+        gasPayer: payer,
+        gasPrice: prepared.gasPrice,
+        signature: '0x1234',
+        userOperation: prepared.userOperation,
+        ...changes,
+      },
+      assertCurrent
+    );
 
   beforeEach(() => {
     jest
@@ -293,6 +300,70 @@ describe('smart-account execution approval context', () => {
       }
     );
 
+    it('does not sign registration when only its approval document changed during the code read', async () => {
+      const gate = registration();
+      const document = new AbortController();
+      const operation = controller.registerSmartAccountOnChain(
+        { accountId: 7 },
+        () => {
+          if (document.signal.aborted)
+            throw new Error('Approval document changed');
+        }
+      );
+      const rejected = expect(operation).rejects.toMatchObject({
+        message: 'Approval document changed',
+        transactionNotBroadcast: true,
+      });
+      document.abort();
+      gate.resolve('0x');
+      await rejected;
+      expect(controller.prepareSmartAccountExecutions).not.toHaveBeenCalled();
+      expect(
+        controller.signActionHashWithLocalEcdsaOwners
+      ).not.toHaveBeenCalled();
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+    });
+
+    it('passes the document owner to the local signer and discards its stale reply before submission', async () => {
+      const gate = registration();
+      const signed = deferred<string>();
+      const started = deferred<void>();
+      const document = new AbortController();
+      const assertCurrent = () => {
+        if (document.signal.aborted)
+          throw new Error('Approval document changed');
+      };
+      controller.signActionHashWithLocalEcdsaOwners.mockImplementationOnce(
+        () => {
+          started.resolve();
+          return signed.promise;
+        }
+      );
+      const operation = controller.registerSmartAccountOnChain(
+        { accountId: 7 },
+        assertCurrent
+      );
+      const rejected = expect(operation).rejects.toMatchObject({
+        message: 'Approval document changed',
+        transactionNotBroadcast: true,
+      });
+      gate.resolve('0x');
+      await started.promise;
+      expect(
+        controller.signActionHashWithLocalEcdsaOwners
+      ).toHaveBeenCalledWith(
+        expect.any(Object),
+        HASH,
+        'registration-fixture',
+        assertCurrent
+      );
+      document.abort();
+      signed.resolve('0x1234');
+      await rejected;
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+      expect(controller.pendingDeploymentAddresses.has(ADDRESS)).toBe(false);
+    });
+
     it('registers the unchanged context and propagates its original approval', async () => {
       const gate = registration();
       const operation = controller.registerSmartAccountOnChain({
@@ -309,7 +380,8 @@ describe('smart-account execution approval context', () => {
         { expectedContext }
       );
       expect(controller.submitSmartAccountExecution).toHaveBeenCalledWith(
-        expect.objectContaining({ expectedContext })
+        expect.objectContaining({ expectedContext }),
+        undefined
       );
       expect(store.dispatch).toHaveBeenCalledTimes(1);
     });
@@ -593,6 +665,32 @@ describe('smart-account execution approval context', () => {
     }
   );
 
+  it('does not start handleOps if only the approval document changes during outer estimation', async () => {
+    const prepared = await prepare();
+    const entered = deferred<void>();
+    const estimate = deferred<string>();
+    const document = new AbortController();
+    provider.estimateGas.mockImplementationOnce(() => {
+      entered.resolve();
+      return estimate.promise;
+    });
+    const operation = submit(prepared, {}, () => {
+      if (document.signal.aborted)
+        throw Object.assign(new Error('Approval document changed'), {
+          transactionNotBroadcast: true,
+        });
+    });
+    const result = operation.catch((error: unknown) => error);
+    await entered.promise;
+    document.abort();
+    estimate.resolve('200000');
+    await expect(result).resolves.toMatchObject({
+      message: 'Approval document changed',
+      transactionNotBroadcast: true,
+    });
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it('submits an unchanged approval with an immutable outer sender and chain', async () => {
     const prepared = await prepare();
     await expect(submit(prepared)).resolves.toEqual({ hash: HASH });
@@ -640,8 +738,11 @@ describe('smart-account execution approval context', () => {
         TARGET,
         payer,
         1,
-        undefined,
-        onSubmissionAttempt
+        {
+          assertCurrentContext: () => undefined,
+          onAcknowledged: () => undefined,
+          onSubmissionAttempt,
+        }
       );
       expect(onSubmissionAttempt).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);
       expect(send).toHaveBeenCalledTimes(alreadyFunded ? 0 : 1);

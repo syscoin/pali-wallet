@@ -51,14 +51,18 @@ export function snapshotLedgerMessage(value: unknown): any {
 export function invokeLedgerHost(
   host: LedgerHost,
   method: unknown,
-  request: unknown
+  request: unknown,
+  portAuthority: Parameters<LedgerHost['utxo']['signPsbt']>[1]
 ): Promise<unknown> {
   if (typeof method !== 'string' || !methods.has(method as LedgerMethod))
     return Promise.reject(
       ledgerError('LEDGER_INVALID_REQUEST', 'Unknown Ledger operation')
     );
+  const approved = snapshotLedgerMessage(request);
+  if (method === 'utxo.signPsbt')
+    return host.utxo.signPsbt(approved, portAuthority);
   const [group, action] = method.split('.') as ['evm' | 'utxo', string];
   return (host[group][action] as (params: unknown) => Promise<unknown>)(
-    snapshotLedgerMessage(request)
+    approved
   );
 }

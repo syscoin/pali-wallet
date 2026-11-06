@@ -2,6 +2,13 @@ import type { ChainInfo } from './chainCatalogue';
 import type { INetworkType } from '../types/network';
 import type { coins } from '@sidhujag/sysweb3-network';
 
+/** Default label for a manually discovered, verified coin. */
+export function utxoRegistrationDisplayName(
+  coin: Pick<(typeof coins)[number], 'coinLabel'>
+): string {
+  return coin.coinLabel.replace(/ Mainnet$/, '');
+}
+
 /** Project public suggestions from the pinned SDK coin table. Endpoints are not verified here. */
 export function projectUtxoChainCatalogue(
   table: readonly (typeof coins)[number][]

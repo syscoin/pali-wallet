@@ -12,9 +12,15 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import {
+  formatTokenUnits,
+  parseErc20Decimals,
+  parseErc20Units,
+} from '../../shared/erc20';
+import { EVM_NATIVE_INTRINSIC_GAS } from '../../shared/evmTransferCost';
 import { TransactionType } from '../../types/transactions';
-import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { AccountExplorerAvatar } from 'components/AccountExplorerAvatar';
+import { PaliWhiteSmallIconSvg, ArrowDownSvg } from 'components/Icon/Icon';
 import { Button, Icon, Tooltip } from 'components/index';
 import { ToastActionFooter } from 'components/ToastActionFooter';
 import { useUtils } from 'hooks/index';
@@ -32,7 +38,7 @@ import {
   findEvmAddressPoisoningCollision,
   getTrustedEvmRecipients,
 } from 'utils/addressPoisoning';
-import { parseEther, parseUnits, formatUnits } from 'utils/ethersV6Compat';
+import { parseEther } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
 import {
@@ -44,11 +50,18 @@ import {
   navigateWithContext,
   getWalletNavigationScope,
 } from 'utils/index';
+import { takeHardwareSendDraft } from 'utils/navigationState';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
 
+import { parseWalletErc20SendAmount } from './erc20SendAmount';
+import {
+  getWalletBrowserTabId,
+  HARDWARE_SEND_DRAFT_QUERY,
+  openHardwareSendDraft,
+} from './hardwareSendDraft';
 import {
   getScopedSendDraft,
   useSendDraftWriter,
@@ -149,7 +162,78 @@ export const SendEth = () => {
   const scopeKey = useSelector(() =>
     JSON.stringify(getWalletNavigationScope())
   );
-  return <SendEthForm key={scopeKey} scopeKey={scopeKey} />;
+  const { search } = useLocation();
+  const draftId = new URLSearchParams(search).get(HARDWARE_SEND_DRAFT_QUERY);
+  return draftId ? (
+    <HardwareSendDraft
+      key={`${scopeKey}:${draftId}`}
+      draftId={draftId}
+      scopeKey={scopeKey}
+    />
+  ) : (
+    <SendEthForm key={scopeKey} scopeKey={scopeKey} />
+  );
+};
+
+const HardwareSendDraft = ({
+  draftId,
+  scopeKey,
+}: {
+  draftId: string;
+  scopeKey: string;
+}) => {
+  const { navigate, alert } = useUtils();
+  const { t } = useTranslation();
+  const { isUnlocked, isLoading, connectionUnavailable } = useController();
+  const isCurrentForm = useSendPreparationGuard(scopeKey, '/send/eth');
+  const pending = useRef<ReturnType<typeof takeHardwareSendDraft>>();
+  useEffect(() => {
+    if (!isUnlocked || isLoading || connectionUnavailable || !isCurrentForm())
+      return;
+    let current = true;
+    pending.current ??= getWalletBrowserTabId().then((tab) =>
+      tab === undefined
+        ? undefined
+        : takeHardwareSendDraft(draftId, isCurrentForm)
+    );
+    const unavailable = () => {
+      if (!current || !isCurrentForm()) return;
+      alert.error(t('send.internalError'));
+      navigate('/home', { replace: true });
+    };
+    void pending.current.then((saved) => {
+      if (!current || !isCurrentForm()) return;
+      if (!saved) {
+        unavailable();
+        return;
+      }
+      navigate('/send/eth', {
+        replace: true,
+        state: {
+          ...saved.state,
+          walletScope: saved.walletScope,
+          returnContext: saved.returnContext,
+        },
+      });
+    }, unavailable);
+    return () => {
+      current = false;
+    };
+  }, [
+    draftId,
+    isCurrentForm,
+    isUnlocked,
+    isLoading,
+    connectionUnavailable,
+    navigate,
+    alert,
+    t,
+  ]);
+  return (
+    <p role="status" className="text-sm text-brand-gray200">
+      {t('send.calculating')}
+    </p>
+  );
 };
 
 const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
@@ -184,6 +268,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // Lazy reverse ENS for typed addresses. Placed later to ensure dependencies are declared
   const reverseEnsTimeoutRef = useRef<NodeJS.Timeout>();
 
+  const isHardwareAccount = Boolean(
+    activeAccount?.isLedgerWallet || activeAccount?.isTrezorWallet
+  );
+  const openingHardwareDraft = useRef(false);
+  const [hardwareDraftPending, setHardwareDraftPending] = useState(false);
   const hasAccountAssets = Boolean(activeAccountAssets?.ethereum);
   const isAccountImported = activeAccount?.isImported || false;
 
@@ -227,13 +316,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
 
   // ERC-20 verification state
   const [isVerifyingERC20, setIsVerifyingERC20] = useState(false);
-  const [verifiedERC20Balance, setVerifiedERC20Balance] = useState<{
+  const [erc20Observation, setErc20Observation] = useState<{
+    asset: ITokenEthProps;
     atomic: string;
     decimals: number;
     formatted: string;
   } | null>(null);
-  const selectedTokenDecimals =
-    verifiedERC20Balance?.decimals ?? selectedAsset?.decimals ?? 18;
+  const verifiedERC20Balance =
+    erc20Observation?.asset === selectedAsset ? erc20Observation : null;
+  const selectedTokenDecimals = verifiedERC20Balance?.decimals;
 
   const [form] = Form.useForm();
   // Receiver suggestions / ENS state
@@ -644,7 +735,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         );
 
       if (getAsset) {
-        setSelectedAsset(getAsset);
+        setSelectedAsset(getAsset.isNft ? getAsset : { ...getAsset });
         // Don't clear cached fee data - gas prices don't change based on asset
         setIsMaxSend(false);
 
@@ -750,6 +841,22 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
         return;
       }
       try {
+        let erc20Review: { decimals: number; units: string } | undefined;
+        if (selectedAsset && !selectedAsset.isNft) {
+          if (!verifiedERC20Balance) {
+            alert.error(t('send.tokenVerificationFailed'));
+            return;
+          }
+          const { atomic, decimals, formatted } = verifiedERC20Balance;
+          const units = parseWalletErc20SendAmount(values.amount, decimals);
+          if (BigInt(units) > BigInt(atomic)) {
+            alert.error(
+              t('send.insufficientFundsVerified', { balance: formatted })
+            );
+            return;
+          }
+          erc20Review = { decimals, units };
+        }
         const receiver = String(values.receiver || '');
         // Only submit the result this validation admitted. A concurrent cache
         // publication must not substitute an unchecked destination at onFinish.
@@ -815,6 +922,33 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           isMaxSend: isMax, // Use the calculated isMax value
         };
 
+        if (isHardwareAccount && selectedAsset) {
+          if (openingHardwareDraft.current) return;
+          openingHardwareDraft.current = true;
+          const selection = assetSelectionRevision.current;
+          const exactValues = JSON.stringify(allFormValues);
+          const ownsDraft = () =>
+            isCurrentForm() &&
+            assetSelectionRevision.current === selection &&
+            JSON.stringify(form.getFieldsValue()) === exactValues;
+          try {
+            setHardwareDraftPending(true);
+            const tab = await getWalletBrowserTabId();
+            if (!ownsDraft()) return;
+            if (tab === undefined) {
+              await openHardwareSendDraft(
+                state,
+                location.state?.returnContext,
+                ownsDraft
+              );
+              return;
+            }
+          } finally {
+            openingHardwareDraft.current = false;
+            if (isCurrentForm()) setHardwareDraftPending(false);
+          }
+        }
+
         // Create navigation context for returning from confirm
         const returnContext = {
           ...createNavigationContext('/send/eth', undefined, state),
@@ -833,12 +967,11 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
               sender: activeAccount.address,
               receivingAddress: values.receiver,
               amount: values.amount,
+              ...(erc20Review && { tokenAmountUnits: erc20Review.units }),
               token: selectedAsset
                 ? {
                     ...selectedAsset,
-                    ...(!selectedAsset.isNft && verifiedERC20Balance
-                      ? { decimals: verifiedERC20Balance.decimals }
-                      : {}),
+                    ...(erc20Review && { decimals: erc20Review.decimals }),
                     symbol: finalSymbolToNextStep,
                     tokenId:
                       selectedAsset.tokenStandard === 'ERC-1155'
@@ -864,6 +997,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     },
     [
       navigate,
+      isHardwareAccount,
       activeAccount.address,
       activeAccount?.balances?.ethereum,
       selectedAsset,
@@ -1081,33 +1215,27 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // A verified balance belongs only to this selection and request lifetime.
   useEffect(() => {
     let current = true;
-    setVerifiedERC20Balance(null);
+    setErc20Observation(null);
     setIsVerifyingERC20(false);
     if (!selectedAsset || selectedAsset.isNft || !activeAccount.address) return;
     setVerificationError(null);
 
     const timeoutId = setTimeout(async () => {
+      if (!isCurrentForm()) return;
       setIsVerifyingERC20(true);
       try {
         const result = (await controllerEmitter(
           ['wallet', 'getERC20TokenInfo'],
           [selectedAsset.contractAddress, activeAccount.address]
         )) as { balance: string; decimals: number };
-        if (current) {
-          if (
-            !result ||
-            typeof result.balance !== 'string' ||
-            !/^\d+$/.test(result.balance) ||
-            !Number.isInteger(result.decimals) ||
-            result.decimals < 0 ||
-            result.decimals > 255
-          )
-            throw new Error('Invalid ERC-20 balance');
-          const atomic = BigNumber.from(result.balance).toString();
-          setVerifiedERC20Balance({
+        if (current && isCurrentForm()) {
+          const atomic = parseErc20Units(result?.balance);
+          const decimals = parseErc20Decimals(result?.decimals);
+          setErc20Observation({
+            asset: selectedAsset,
             atomic,
-            decimals: result.decimals,
-            formatted: formatUnits(atomic, result.decimals).replace(/\.0$/, ''),
+            decimals,
+            formatted: formatTokenUnits(atomic, decimals).replace(/\.0$/, ''),
           });
         }
       } catch (error) {
@@ -1123,7 +1251,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       current = false;
       clearTimeout(timeoutId);
     };
-  }, [selectedAsset, activeAccount.address]);
+  }, [selectedAsset, activeAccount.address, isCurrentForm]);
 
   // Sync form field with component state for NFT token ID
   useEffect(() => {
@@ -1219,7 +1347,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           feeData.maxPriorityFeePerGas
         );
         const gasPrice =
-          feeData.gasPrice == null ? null : BigNumber.from(feeData.gasPrice);
+          feeData.gasPrice === undefined || feeData.gasPrice === null
+            ? null
+            : BigNumber.from(feeData.gasPrice);
         if (
           maxFeePerGas.lt(0) ||
           maxPriorityFeePerGas.lt(0) ||
@@ -1717,15 +1847,16 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                               )
                             );
                           }
-                          let tokenValue: BigNumber;
+                          let tokenValue: string;
                           try {
-                            tokenValue = parseUnits(valueString, decimals);
+                            tokenValue = parseWalletErc20SendAmount(
+                              valueString,
+                              decimals
+                            );
                           } catch {
                             return Promise.reject(t('send.invalidAmount'));
                           }
-                          if (tokenValue.lte(0))
-                            return Promise.reject(t('send.invalidAmount'));
-                          if (tokenValue.gt(atomic)) {
+                          if (BigInt(tokenValue) > BigInt(atomic)) {
                             return Promise.reject(
                               t('send.insufficientFundsVerified', {
                                 balance: formatted,
@@ -1796,51 +1927,42 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                           // Only the current MAX amount gets confirmation-time gas
                           // deduction. A prior MAX click cannot exempt a fixed amount.
                           if (!isNativeMaxAmount(String(value), balanceEth)) {
-                            try {
-                              // Use cached fee data if available, otherwise use conservative estimate
-                              let estimatedGasCost: BigNumber;
-
-                              if (cachedFeeData && cachedFeeData.maxFeePerGas) {
-                                // Use cached fee data for estimation
-                                const gasLimit = BigNumber.from(
-                                  getDefaultGasLimit(
-                                    TransactionType.NATIVE_ETH
-                                  ).toString()
-                                );
-                                // cachedFeeData.maxFeePerGas is already a hex string
-                                const maxFeePerGas = BigNumber.from(
+                            const software =
+                              !activeAccount?.isSmartAccount &&
+                              !activeAccount?.isLedgerWallet &&
+                              !activeAccount?.isTrezorWallet;
+                            if (!cachedFeeData?.maxFeePerGas) {
+                              if (software)
+                                return Promise.reject(t('send.feeUnavailable'));
+                            } else {
+                              try {
+                                const cap = BigNumber.from(
                                   cachedFeeData.maxFeePerGas
                                 );
-                                const feeRate = maxFeePerGas.isZero()
+                                const rate = cap.isZero()
                                   ? BigNumber.from(cachedFeeData.gasPrice)
-                                  : maxFeePerGas;
-                                estimatedGasCost = gasLimit.mul(feeRate);
-                              } else {
-                                // Use conservative fallback estimate
-                                const conservativeFee =
-                                  activeNetwork.chainId === 570
-                                    ? '0.00001'
-                                    : '0.001';
-                                estimatedGasCost = parseEther(conservativeFee);
+                                  : cap;
+                                // Only reject a provable shortfall here. Confirm
+                                // measures the real gas for the exact recipient.
+                                const gas = software
+                                  ? EVM_NATIVE_INTRINSIC_GAS
+                                  : getDefaultGasLimit(
+                                      TransactionType.NATIVE_ETH
+                                    );
+                                if (
+                                  balanceBN
+                                    .sub(valueBN)
+                                    .lt(BigNumber.from(gas).mul(rate))
+                                )
+                                  return Promise.reject(
+                                    t('send.insufficientFundsForGas')
+                                  );
+                              } catch {
+                                if (software)
+                                  return Promise.reject(
+                                    t('send.feeUnavailable')
+                                  );
                               }
-
-                              // Check if balance minus amount leaves enough for gas
-                              const remainingAfterSend = balanceBN.sub(valueBN);
-
-                              if (remainingAfterSend.lt(estimatedGasCost)) {
-                                return Promise.reject(
-                                  cachedFeeData?.maxFeePerGas
-                                    ? t('send.insufficientFundsForGas')
-                                    : t('send.feeUnavailable')
-                                );
-                              }
-                            } catch (error) {
-                              console.error(
-                                'Error validating gas estimate:',
-                                error
-                              );
-                              // On error, allow the transaction to proceed
-                              // The backend will provide proper validation
                             }
                           }
                         } catch (e) {
@@ -2124,9 +2246,15 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             className="text-sm text-brand-royalblue"
             type="submit"
             fullWidth
-            loading={!selectedAsset && isCalculatingGas}
+            loading={
+              hardwareDraftPending || (!selectedAsset && isCalculatingGas)
+            }
           >
-            {t('buttons.next')}
+            {isHardwareAccount &&
+            selectedAsset &&
+            document.documentElement.dataset.paliView === 'toolbar-popup'
+              ? t('send.openWalletTab')
+              : t('buttons.next')}
           </Button>
         </ToastActionFooter>
       </Form>

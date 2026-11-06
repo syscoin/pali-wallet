@@ -28,8 +28,8 @@ async function fixture() {
   const calls = { first: 0, derive: 0, imports: 0, adds: 0 };
   const keyrings: InstanceType<typeof sdk.SoftwareKeyring>[] = [];
   class Counted extends sdk.SoftwareKeyring {
-    constructor(host: ConstructorParameters<typeof sdk.SoftwareKeyring>[0]) {
-      super(host); keyrings.push(this);
+    constructor(...options: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+      super(...options); keyrings.push(this);
       const first = this.createFirstAccount;
       this.createFirstAccount = async (...args) => {
         calls.first++;

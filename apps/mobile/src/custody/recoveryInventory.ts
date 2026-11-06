@@ -7,6 +7,7 @@ import { NATIVE_TOKEN_REGISTRY_KEY, inspectRecoveryTokens } from '../portfolio/t
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from './walletCatalogue.ts';
 import { parseNativeAccountId } from './accountIdentity.ts';
 import { inspectEvmSignedBundle } from '../../../../source/wallet/evmSignedRecords.ts';
+import { inspectUtxoSignedBundle, UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 
 export type RecoveryInventoryCounts = Readonly<{
   hdAccounts: number; importedKeys: number;
@@ -30,7 +31,7 @@ const zero = (): RecoveryInventoryCounts => ({ hdAccounts: 0, importedKeys: 0,
 /** Canonical native record domains. Runtime and recovery share this admission check. */
 export function assertNativeRecordDomains(records: RecoveryStorageSnapshot['records']): void {
   for (const { key, value } of records) {
-    if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY].includes(key))
+    if (!['vault', 'vault-keys', 'utf8Error', WALLET_CATALOGUE_KEY, NATIVE_TOKEN_REGISTRY_KEY, ACTIVITY_STORAGE_KEY, UTXO_SIGNED_RECORD_KEY].includes(key))
       throw new Error('NATIVE_STORAGE_UNSUPPORTED_RECORD');
     if (key === 'utf8Error') {
       const diagnostic = decodeStorageValue(value);
@@ -93,6 +94,9 @@ export function inspectRecoveryInventory(snapshot: RecoveryStorageSnapshot): Rec
         history.accounts.forEach((account) => accountReference(account.id, account.address));
         counts.historySummaries = history.summaries; counts.cachedTransactions = history.cachedTransactions;
         counts.activityPreferences = history.preferences;
+      } else if (key === UTXO_SIGNED_RECORD_KEY) {
+        if (!root) throw new Error();
+        counts.retainedSignedTransactions += inspectUtxoSignedBundle(value, root.profileId).entries.length;
       }
     }
     return result('needs-matching-phrase-verification', null, backup, counts, snapshot.notes.length > 0);

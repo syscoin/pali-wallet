@@ -166,7 +166,13 @@ describe('transaction cleanup preserves the public browsing caller', () => {
       { scrollPosition: 317, scrollPositions: { 'smart-account-policy': 317 } }
     );
     await expect(
-      wallet.sendAndSaveEthTransaction({ chainId: 1 }, false, account)
+      wallet.sendAndSaveEthTransaction(
+        { chainId: 1 },
+        false,
+        account,
+        undefined,
+        { assertCurrentContext: () => undefined }
+      )
     ).rejects.toThrow('Insufficient funds');
     const saved = await loadNavigationState();
     expect(saved?.currentPath).toBe('/settings/account/smart-account-policy');
@@ -187,7 +193,13 @@ describe('transaction cleanup preserves the public browsing caller', () => {
       })
     );
     await expect(
-      wallet.sendAndSaveEthTransaction({ chainId: 1 }, false, account)
+      wallet.sendAndSaveEthTransaction(
+        { chainId: 1 },
+        false,
+        account,
+        undefined,
+        { assertCurrentContext: () => undefined }
+      )
     ).rejects.toThrow('Insufficient funds');
     const saved = await loadNavigationState();
     expect(saved?.currentPath).toBe('/home?tab=assets');
@@ -205,7 +217,7 @@ describe('transaction cleanup preserves the public browsing caller', () => {
         false,
         account,
         undefined,
-        { clearNavigation: false }
+        { clearNavigation: false, assertCurrentContext: () => undefined }
       )
     ).rejects.toThrow('Insufficient funds');
     expect(clearTransactionNavigationState).not.toHaveBeenCalled();

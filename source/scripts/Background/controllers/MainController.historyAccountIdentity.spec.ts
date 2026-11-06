@@ -18,15 +18,26 @@ jest.mock(
     patchFetchWithPaliHeaders: jest.fn(),
   })
 );
+jest.mock(
+  'scripts/Background/controllers/providers/walletHttpIdentity',
+  () => ({
+    ...jest.requireActual(
+      'scripts/Background/controllers/providers/walletHttpIdentity'
+    ),
+    withWalletBackend: async (
+      _endpoint: string,
+      work: () => Promise<unknown>
+    ) => work(),
+  })
+);
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import { getController, notificationManager } from 'scripts/Background';
-import SysAccountController from 'scripts/Background/controllers/account/syscoin';
 import DAppController from 'scripts/Background/controllers/DAppController';
 import MainController from 'scripts/Background/controllers/MainController';
 import { CancellablePromises } from 'scripts/Background/controllers/promises/cancellablesPromises';
@@ -174,7 +185,7 @@ beforeEach(() => {
           .map((key) => [key, structuredClone(disk[key])])
       )
     );
-  manager = new KeyringManager();
+  manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   attachImportedRecoveryCryptoFixture(manager);
@@ -340,7 +351,7 @@ it('retains a current HD history read when receiving address rotates under the s
     network: sys.syscoinNetworks.testnet,
   }).address;
   jest.spyOn(manager, 'updateReceivingAddress').mockResolvedValue(nextAddress);
-  await SysAccountController(() => manager).setAddress();
+  await wallet.updateUtxoReceivingAddress();
   const latest = store.getState().vault.accounts.HDAccount[account.id];
   expect(latest.address).not.toBe(account.address);
   expect(latest.xpub).toBe(account.xpub);

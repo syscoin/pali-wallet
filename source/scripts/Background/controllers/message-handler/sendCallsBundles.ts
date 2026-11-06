@@ -281,6 +281,38 @@ export const releaseSendCallsBundleReservation = (
     await writeBundleStore(storeData);
   });
 
+export type EoaSendCallsReservation = Readonly<{
+  host: string;
+  id: string;
+  reservationId: string;
+}>;
+
+/** Bind the current durable EOA attempt before entering the background sender. */
+export async function captureStartedEoaSendCallsAttempt(
+  { host, id, reservationId }: EoaSendCallsReservation,
+  chainId: number,
+  submissionId: unknown
+): Promise<(() => Promise<void>) | undefined> {
+  if (typeof submissionId !== 'string' || !submissionId) return;
+  const matches = (bundle: IStoredSendCallsBundle | undefined) =>
+    bundle?.reservationId === reservationId &&
+    bundle.chainId === chainId &&
+    bundle.submissionId === submissionId &&
+    !bundle.smartAccount &&
+    !bundle.atomic &&
+    bundle.submissionStarted === true &&
+    bundle.submissionCompleted !== true;
+  if (!matches((await readBundleStore())[host]?.[id])) return;
+  return () =>
+    withStoreLock(async () => {
+      const storeData = await readBundleStore();
+      const bundle = storeData[host]?.[id];
+      if (!bundle || !matches(bundle) || bundle.txHashes.length !== 0) return;
+      delete storeData[host][id];
+      await writeBundleStore(storeData);
+    });
+}
+
 const unknownBundleError = () => {
   const error = new Error('Unknown bundle id');
   (error as any).code = 5730;

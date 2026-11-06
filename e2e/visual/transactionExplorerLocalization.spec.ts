@@ -246,6 +246,7 @@ for (const locale of locales) {
             .getByRole('button', { name: en.buttons.save, exact: true })
             .click();
           await expect(page).toHaveURL(/#\/settings\/networks\/edit$/);
+          expect(routes!.reads).toContain('/api/v2/block-index/0');
           await expect
             .poll(() =>
               page.evaluate(

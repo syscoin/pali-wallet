@@ -263,7 +263,11 @@ beforeEach(() => {
       ...mockState.vault,
       activeAccountType: 'HDAccount',
       activeAccountId: 0,
-    })
+    }),
+    undefined,
+    undefined,
+    () => () => undefined,
+    null
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);

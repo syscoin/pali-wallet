@@ -26,6 +26,7 @@ async function fixture() {
     beforeRecordsRead: (() => Promise<void>) | undefined,
     beforeSend: (() => void) | undefined,
     beforeAck: (() => Promise<void>) | undefined,
+    ordinaryPreflight: () => Promise<void> = async () => undefined,
     cancellationCheck: (() => Promise<void>) | undefined = async () => undefined;
   const port = {
     async read() {
@@ -90,7 +91,7 @@ async function fixture() {
               if (lost) throw Error('lost');
               return Transaction.from(bytes).hash!;
             })();
-          }, context.operation === 'cancel' || context.requiresPayerCheck ? cancellationCheck : undefined);
+          }, context.operation === 'cancel' || context.requiresPayerCheck ? cancellationCheck! : ordinaryPreflight);
           return afterAdmission?.(admission) ?? admission;
         },
       }),
@@ -164,6 +165,9 @@ async function fixture() {
     },
     beforeRecordsRead(callback: () => Promise<void>) {
       beforeRecordsRead = callback;
+    },
+    beforeOrdinaryReplay(callback: () => Promise<void>) {
+      ordinaryPreflight = callback;
     },
     beforeCancellation(callback: (() => Promise<void>) | undefined) {
       cancellationCheck = callback;
@@ -260,13 +264,25 @@ for (const change of ['cancel', 'revoke'] as const) {
   });
 }
 
-test('an already initiated replay does not hold the records queue for its acknowledgement', async () => {
+test('ordinary replay checks inside admission and releases the queue before acknowledgment', async () => {
   const f = await fixture(), original = await f.append(0), replay = f.create();
   const prepared = await replay.prepare(original.hash!);
   if (prepared.status !== 'review') throw Error('review');
-  const ack = hold();
+  const retainedRead = hold(), preflight = hold(), ack = hold();
+  let checked = false;
+  f.beforeAdmission(async () => f.beforeRecordsRead(retainedRead.run));
+  f.beforeOrdinaryReplay(async () => {
+    checked = true;
+    await preflight.run();
+  });
   f.beforeAck(ack.run);
   const pending = replay.confirm(prepared.review.id);
+  await retainedRead.started;
+  assert.equal(checked, false);
+  retainedRead.release();
+  await preflight.started;
+  assert.deepEqual(f.dispatched, []);
+  preflight.release();
   await ack.started;
   await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
   ack.release();

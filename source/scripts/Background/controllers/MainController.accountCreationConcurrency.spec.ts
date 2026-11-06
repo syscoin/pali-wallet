@@ -12,10 +12,10 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { AccountRecoveryRequiredError } from '../utils/assertCompleteHDAccountData';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store from 'state/store';
@@ -82,7 +82,7 @@ beforeEach(() => {
   jest
     .spyOn(chromeStorage, 'getItem')
     .mockImplementation(async (key) => structuredClone(records[key] ?? null));
-  const manager: any = new KeyringManager();
+  const manager: any = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault);
   manager.isUnlocked = () => true;
   manager.getDecryptedMnemonic = () => PHRASE;

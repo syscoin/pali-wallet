@@ -1,4 +1,5 @@
 import { createLedgerDmkHost } from '@sidhujag/sysweb3-keyring/esm/ledger-host';
+
 import { i18next } from './i18n';
 import {
   invokeLedgerHost,
@@ -6,7 +7,6 @@ import {
   snapshotLedgerMessage,
 } from './protocol';
 import './host.css';
-
 import type { LedgerBlindSigningIntent } from '@sidhujag/sysweb3-keyring/esm/ledger-host';
 
 const node = <T extends HTMLElement>(id: string) =>
@@ -70,6 +70,11 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
   setStatus('unavailable');
 } else {
   const port = chrome.runtime.connect({ name: `${LEDGER_HOST_PORT}${nonce}` });
+  const portLifetime = new AbortController();
+  const portAuthority = {
+    signal: portLifetime.signal,
+    assertCurrent: () => portLifetime.signal.throwIfAborted(),
+  };
   let lastActivity = Date.now();
   const detectDisconnect = () => {
     if (!alive || active || !connect.hidden || host.getStatus().connected)
@@ -89,6 +94,7 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
   const shutdown = () => {
     if (!alive) return;
     alive = false;
+    portLifetime.abort();
     clearInterval(statusTimer);
     clearInterval(heartbeatTimer);
     connect.disabled = true;
@@ -151,7 +157,8 @@ if (!/^[0-9a-f]{48}$/.test(nonce)) {
       const value = await invokeLedgerHost(
         host,
         message.method,
-        message.request
+        message.request,
+        portAuthority
       );
       if (alive) {
         port.postMessage({ id: message.id, ok: true, value });

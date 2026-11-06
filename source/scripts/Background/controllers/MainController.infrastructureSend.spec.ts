@@ -34,6 +34,11 @@ describe('infrastructure transaction broadcast boundary', () => {
   let wallet: any;
   let currentState: any;
   let send: jest.Mock;
+  const internalApproval = { assertCurrentContext: () => undefined };
+  const specialized = expect.objectContaining({
+    mode: 'specialized',
+    assertCurrent: expect.any(Function),
+  });
   const account = { id: 0, type: KeyringAccountType.HDAccount };
   const response = {
     hash: `0x${'12'.repeat(32)}`,
@@ -81,11 +86,60 @@ describe('infrastructure transaction broadcast boundary', () => {
 
   afterEach(() => jest.restoreAllMocks());
 
+  it.each([undefined, { expectedContext: { sessionGeneration: 1 } }])(
+    'refuses the old generic path without trusted approval before any RPC: %j',
+    async (approval) => {
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          { value: '0x1' },
+          false,
+          undefined,
+          undefined,
+          approval
+        )
+      ).rejects.toMatchObject({
+        message: 'Explicit transaction approval is required',
+        transactionNotBroadcast: true,
+      });
+      expect(
+        getBlacklistTargetsForEvmCallWithContractType
+      ).not.toHaveBeenCalled();
+      expect(send).not.toHaveBeenCalled();
+    }
+  );
+
+  it('does not let a software account choose the hardware approval lane', async () => {
+    wallet.assertAssetMutationContext = jest.fn();
+    await expect(
+      wallet.sendAndSaveEthTransaction(
+        { value: '0x1' },
+        false,
+        undefined,
+        undefined,
+        { hardwareScope: { account: 'a', network: 'b' } }
+      )
+    ).rejects.toMatchObject({
+      message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+      transactionNotBroadcast: true,
+    });
+    expect(wallet.assertAssetMutationContext).toHaveBeenCalledTimes(1);
+    expect(
+      getBlacklistTargetsForEvmCallWithContractType
+    ).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it.each([{ maxFeePerGas: '0x0', maxPriorityFeePerGas: '0x0' }])(
     'blocks zero EIP-1559 maximum fees before SDK submission: %p',
     async (fees) => {
       await expect(
-        wallet.sendAndSaveEthTransaction({ type: '0x2', ...fees }, false)
+        wallet.sendAndSaveEthTransaction(
+          { type: '0x2', ...fees },
+          false,
+          undefined,
+          undefined,
+          internalApproval
+        )
       ).rejects.toMatchObject({ code: 4200 });
       expect(send).not.toHaveBeenCalled();
       expect(
@@ -101,8 +155,14 @@ describe('infrastructure transaction broadcast boundary', () => {
   ])(
     'passes supported fees unchanged to the SDK: %p',
     async (params, legacy) => {
-      await wallet.sendAndSaveEthTransaction(params, legacy);
-      expect(send).toHaveBeenCalledWith(params, legacy, undefined);
+      await wallet.sendAndSaveEthTransaction(
+        params,
+        legacy,
+        undefined,
+        undefined,
+        internalApproval
+      );
+      expect(send).toHaveBeenCalledWith(params, legacy, specialized);
     }
   );
 
@@ -116,8 +176,14 @@ describe('infrastructure transaction broadcast boundary', () => {
           maxPriorityFeePerGas: BigNumber.from(priority),
         })
       );
-      await wallet.sendAndSaveEthTransaction(params, false);
-      expect(send).toHaveBeenCalledWith(params, false, undefined);
+      await wallet.sendAndSaveEthTransaction(
+        params,
+        false,
+        undefined,
+        undefined,
+        internalApproval
+      );
+      expect(send).toHaveBeenCalledWith(params, false, specialized);
     }
   );
   it.each([null, '-1', '', { hex: 'broken' }, '0x11'])(
@@ -126,7 +192,10 @@ describe('infrastructure transaction broadcast boundary', () => {
       await expect(
         wallet.sendAndSaveEthTransaction(
           { type: '0x2', maxFeePerGas: '0x10', maxPriorityFeePerGas: priority },
-          false
+          false,
+          undefined,
+          undefined,
+          internalApproval
         )
       ).rejects.toThrow();
       expect(send).not.toHaveBeenCalled();
@@ -193,16 +262,24 @@ describe('infrastructure transaction broadcast boundary', () => {
     expect(error).not.toHaveProperty('transactionNotBroadcast');
   });
 
-  it('leaves non-infrastructure preflight errors unchanged', async () => {
+  it('marks a specialized preflight failure as definitely not broadcast', async () => {
     const error = new Error('Preflight failed');
     (
       getBlacklistTargetsForEvmCallWithContractType as jest.Mock
     ).mockRejectedValueOnce(error);
     await expect(
-      wallet.sendAndSaveEthTransaction({ chainId: 1 }, false, account)
-    ).rejects.toBe(error);
+      wallet.sendAndSaveEthTransaction(
+        { chainId: 1 },
+        false,
+        account,
+        undefined,
+        internalApproval
+      )
+    ).rejects.toMatchObject({
+      message: error.message,
+      transactionNotBroadcast: true,
+    });
     expect(send).not.toHaveBeenCalled();
-    expect(error).not.toHaveProperty('transactionNotBroadcast');
   });
 
   it('journals the original hash and refuses to file it in a different network after broadcast', async () => {
@@ -273,7 +350,7 @@ describe('infrastructure transaction broadcast boundary', () => {
     expect(wallet.sendAndSaveTransaction).not.toHaveBeenCalled();
     releaseJournal();
     await expect(sending).resolves.toMatchObject({ ...response, ...metadata });
-    expect(assertCurrentContext).toHaveBeenCalledTimes(3);
+    expect(assertCurrentContext).toHaveBeenCalledTimes(4);
     expect(wallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1);
   });
 
@@ -302,6 +379,7 @@ describe('infrastructure transaction broadcast boundary', () => {
       account: { ...account, address: 'payer-a' },
       chainId: 1,
       rpcUrl: 'rpc-a',
+      sessionGeneration: 1,
       slip44: 60,
     };
     beforeEach(() => {
@@ -314,6 +392,7 @@ describe('infrastructure transaction broadcast boundary', () => {
       await expect(
         wallet.sendAndSaveEthTransaction({}, false, undefined, undefined, {
           expectedContext,
+          authorizeDapp: () => undefined,
         })
       ).rejects.toMatchObject({
         message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
@@ -347,7 +426,7 @@ describe('infrastructure transaction broadcast boundary', () => {
             false,
             undefined,
             undefined,
-            { expectedContext }
+            { expectedContext, authorizeDapp: () => undefined }
           )
         ).rejects.toMatchObject({
           message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
@@ -365,12 +444,12 @@ describe('infrastructure transaction broadcast boundary', () => {
         false,
         undefined,
         undefined,
-        { expectedContext }
+        { expectedContext, authorizeDapp: () => undefined }
       );
       expect(send).toHaveBeenCalledWith(
         { chainId: 1, from: 'payer-a', value: '0x1' },
         false,
-        undefined
+        specialized
       );
       expect(params).toEqual({ value: '0x1' });
     });
@@ -384,7 +463,7 @@ describe('infrastructure transaction broadcast boundary', () => {
             false,
             undefined,
             undefined,
-            { expectedContext }
+            { expectedContext, authorizeDapp: () => undefined }
           )
         ).rejects.toMatchObject({ transactionNotBroadcast: true });
         expect(send).not.toHaveBeenCalled();
@@ -402,7 +481,7 @@ describe('infrastructure transaction broadcast boundary', () => {
           false,
           undefined,
           undefined,
-          { expectedContext }
+          { expectedContext, authorizeDapp: () => undefined }
         )
       ).rejects.toMatchObject({
         message: 'PALI_TRANSACTION_CONTEXT_CHANGED',

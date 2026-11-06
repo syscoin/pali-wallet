@@ -51,7 +51,7 @@ jest.mock('utils/storageAPI', () => ({
   },
 }));
 
-const { SoftwareKeyring, createSoftwareKeyringHost } = jest.requireActual(
+const { SoftwareKeyring, createKeyringHost } = jest.requireActual(
   '@sidhujag/sysweb3-keyring/cjs/software.js'
 );
 const PHRASE =
@@ -109,7 +109,9 @@ async function fixture(phrase = PHRASE, pwd = password) {
       return true;
     },
   };
-  const keyring = new SoftwareKeyring(createSoftwareKeyringHost(storage));
+  const keyring = new SoftwareKeyring(createKeyringHost(storage), {
+    captureEvmSubmission: null,
+  });
   keyrings.push(keyring);
   keyring.setVaultStateGetter(() => ({
     activeAccount: { id: 0, type: 'HDAccount' },

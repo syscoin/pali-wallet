@@ -12,11 +12,11 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
 
-import { KeyringManager } from '@sidhujag/sysweb3-keyring';
 import http from 'http';
 import https from 'https';
 import { utils as sys } from 'syscoinjs-lib';
 
+import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, { persistCommittedWalletState } from 'state/store';
@@ -187,7 +187,7 @@ describe.each(['private', 'watch'] as const)(
       commitAttempts = 0;
       // Actual SDK derives/encrypts/allocates and reads the actual Redux vault.
       // Only the already-unlocked public synthetic session is supplied.
-      manager = new KeyringManager();
+      manager = createTestKeyringManager();
       attachImportedRecoveryCryptoFixture(manager);
       manager.setVaultStateGetter(() => store.getState().vault);
       manager.isUnlocked = () => true;

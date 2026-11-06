@@ -1,6 +1,6 @@
 jest.unmock('syscoinjs-lib');
 
-import { SyscoinTransactions } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin';
+import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core';
 import { assertPsbtAccountScope } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt-account-scope';
 import { spawnSync } from 'child_process';
 import { EventEmitter } from 'events';
@@ -22,10 +22,13 @@ const mockBlockbookLookup = jest.fn((..._args: unknown[]) => {
   void _args;
   throw new Error('Offline fixture must not request Blockbook');
 });
-jest.mock('@sidhujag/sysweb3-keyring/cjs/utils/blockbook-cache', () => ({
-  fetchBackendAccountCached: (...args: unknown[]) =>
-    mockBlockbookLookup(...args),
-}));
+jest.mock(
+  '@sidhujag/sysweb3-keyring/cjs/utils/owned-blockbook-account',
+  () => ({
+    fetchOwnedBlockbookAccount: (...args: unknown[]) =>
+      mockBlockbookLookup(...args),
+  })
+);
 
 async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
   const hd = new sys.HDSigner(UTXO_FIXTURE_SEED, '', true);
@@ -43,17 +46,26 @@ async function signWithCurrentKeyring(f: ReturnType<typeof createUtxoFixture>) {
       url: 'https://offline.invalid',
     },
   };
-  const transactions = new SyscoinTransactions(
-    () => ({ hd }),
-    () => ({ hd }),
-    () => state,
-    async () => f.userAddress,
-    {},
+  const transactions = new SyscoinTransactionsCore(
+    () => ({ hd, main: undefined }),
+    () => {
+      throw new Error('Offline signing must not create a Blockbook builder');
+    },
+    () => state as never,
     {},
     () => () => undefined
   );
   mockBlockbookLookup.mockClear();
-  const result = await transactions.signPSBT({ psbt: f.mixed });
+  const result = await transactions.signPSBT(
+    { psbt: f.mixed },
+    {
+      assertCurrent: () => undefined,
+      signal: new AbortController().signal,
+      fetch: async () => {
+        throw new Error('Offline fixture must not request Blockbook');
+      },
+    }
+  );
   expect(mockBlockbookLookup).not.toHaveBeenCalled();
   return result;
 }
@@ -365,13 +377,14 @@ describe('offline UTXO browser fixture', () => {
           });
           return server;
         };
-        const file = process.argv[1], mod = new Module(file, module);
-        mod.filename = file; mod.paths = Module._nodeModulePaths(require('node:path').dirname(file));
-        mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
-          compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
-        }).outputText, file);
+        Module._extensions['.ts'] = (mod, file) => {
+          mod._compile(ts.transpileModule(fs.readFileSync(file, 'utf8'), {
+            compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
+          }).outputText, file);
+        };
+        const { startUtxoFixtureServer } = require(process.argv[1]);
         (async () => {
-          const proxy = await mod.exports.startUtxoFixtureServer(), url = new URL(proxy.url);
+          const proxy = await startUtxoFixtureServer(), url = new URL(proxy.url);
           try {
             if (process.argv[2] === 'forced-errors') fixtureServer.on('connect', (_req, socket) => {
               for (const code of ['ECONNRESET', 'EPIPE']) socket.emit('error', Object.assign(new Error(code), { code }));
@@ -412,8 +425,8 @@ describe('offline UTXO browser fixture', () => {
         { encoding: 'utf8', timeout: 5000, maxBuffer: 16384 }
       );
       expect(run.error).toBeUndefined();
-      expect(run.status).toBe(0);
       expect(run.stderr).toBe('');
+      expect(run.status).toBe(0);
       const result = JSON.parse(run.stdout.trim());
       expect(result.status).toBe(200);
       expect(result.deniedStatus).toBe(403);

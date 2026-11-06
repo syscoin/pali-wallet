@@ -3,6 +3,7 @@
  * @jest-environment-options {"customExportConditions":["node","node-addons"]}
  */
 import '@testing-library/jest-dom';
+import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network';
 import {
   act,
   fireEvent,
@@ -29,6 +30,33 @@ jest.mock('scripts/Background', () => ({
   getController: jest.fn(),
   notificationManager: { cleanup: jest.fn() },
 }));
+jest.mock(
+  'scripts/Background/controllers/providers/utxoRpcVerification',
+  () => ({
+    withUtxoRpcVerification: async (
+      _endpoint: string,
+      assertCurrent: () => void,
+      run: any
+    ) =>
+      run({
+        signal: new AbortController().signal,
+        assertCurrent,
+        async readJson(url: string) {
+          if (url.endsWith('/api/v2/'))
+            return {
+              blockbook: { coin: 'Syscoin Testnet' },
+              backend: { chain: 'test' },
+            };
+          if (!url.endsWith('/api/v2/block-index/0'))
+            throw new Error('Unexpected synthetic UTXO read');
+          return {
+            blockHash: findUtxoCoinByRegistration({ chainId: 5700, slip44: 1 })!
+              .hashGenesisBlock,
+          };
+        },
+      }),
+  })
+);
 jest.mock(
   'scripts/Background/controllers/providers/patchFetchWithPaliHeaders',
   () => ({
@@ -181,6 +209,7 @@ beforeEach(async () => {
   wallet.walletSessionGeneration = 0;
   wallet.isRemovingNetwork = false;
   wallet.keyrings = new Map();
+  wallet.isUnlocked = () => true;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
@@ -487,22 +516,26 @@ it('rejects an edit delivered to the background after the UI check and refreshes
 describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
   '%s background edit intent',
   (family) => {
+    const isUtxo = family === INetworkType.Syscoin;
+    const chainId = isUtxo ? 5700 : 31337;
     const prepare = async () => {
       const registration = {
         ...target,
         kind: family,
-        slip44: family === INetworkType.Ethereum ? 60 : 111,
+        chainId,
+        slip44: isUtxo ? 1 : 60,
+        ...(isUtxo ? { currency: 'tsys', utxoBackendChain: 'test' } : {}),
       };
       store.dispatch(
         setNetworks({
           ethereum: {
             1: source,
             ...(family === INetworkType.Ethereum
-              ? { 31337: registration }
+              ? { [chainId]: registration }
               : {}),
           },
           syscoin:
-            family === INetworkType.Syscoin ? { 31337: registration } : {},
+            family === INetworkType.Syscoin ? { [chainId]: registration } : {},
         })
       );
       await persistCommittedWalletState(true);
@@ -516,16 +549,16 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       await expect(wallet.editCustomRpc(changed, undefined)).rejects.toThrow(
         'Network changed'
       );
-      expect((await loadState()).vaultGlobal.networks[family][31337]).toEqual(
+      expect((await loadState()).vaultGlobal.networks[family][chainId]).toEqual(
         registration
       );
       await expect(wallet.editCustomRpc(changed, expected)).resolves.toEqual(
         changed
       );
-      expect(store.getState().vaultGlobal.networks[family][31337]).toEqual(
+      expect(store.getState().vaultGlobal.networks[family][chainId]).toEqual(
         changed
       );
-      expect((await loadState()).vaultGlobal.networks[family][31337]).toEqual(
+      expect((await loadState()).vaultGlobal.networks[family][chainId]).toEqual(
         changed
       );
     });
@@ -547,10 +580,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       await wallet.editCustomRpc(newer, expected);
       deliver();
       await rejected;
-      expect(store.getState().vaultGlobal.networks[family][31337]).toEqual(
+      expect(store.getState().vaultGlobal.networks[family][chainId]).toEqual(
         newer
       );
-      expect((await loadState()).vaultGlobal.networks[family][31337]).toEqual(
+      expect((await loadState()).vaultGlobal.networks[family][chainId]).toEqual(
         newer
       );
     });

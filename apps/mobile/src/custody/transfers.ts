@@ -1,6 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
+import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -60,7 +61,7 @@ export type NativeTransferSnapshot = Readonly<{
   intent: Erc20TransferIntent | null;
 }>;
 export interface NativeTransferJournalHandle {
-  load(): Promise<TransferJournalEntry | null>;
+  load(hash?: string): Promise<TransferJournalEntry | null>;
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
@@ -72,7 +73,14 @@ export interface NativeTransferRuntime {
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
-  submit(rawTransaction: string, hash: string, assertCurrent: () => void, broadcast: () => Promise<unknown>, intent?: Erc20TransferIntent): Promise<void>;
+  submit(
+    rawTransaction: string,
+    hash: string,
+    assertCurrent: () => void,
+    broadcast: (approvedBytes: string) => Promise<unknown>,
+    intent: Erc20TransferIntent | undefined,
+    approved: PreparedEvmTransaction
+  ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
@@ -459,19 +467,19 @@ export class NativeTransfers {
     entropy.fill(0);
     const fee =
       transaction.type === 0 ? transaction.gasPrice : transaction.maxFeePerGas;
-    const maximumFeeUnits = (
-      BigInt(transaction.gasLimit) * BigInt(fee)
-    ).toString();
+    const cost = getEvmTransferCost(
+      BigInt(transaction.value),
+      BigInt(transaction.gasLimit),
+      BigInt(fee)
+    );
     const publicReview: NativeTransferReview = Object.freeze({
       id,
       context,
       from: transaction.from,
       recipient: intent?.recipient ?? transaction.to,
       amountUnits: intent?.amountUnits ?? transaction.value,
-      maximumFeeUnits,
-      totalUnits: (
-        BigInt(transaction.value) + BigInt(maximumFeeUnits)
-      ).toString(),
+      maximumFeeUnits: cost.maximumFee.toString(),
+      totalUnits: cost.total.toString(),
       gasLimit: transaction.gasLimit,
       maximumFeePerGas: fee,
       priorityFeePerGas:
@@ -625,7 +633,7 @@ export class NativeTransfers {
       const guard = () => {
         assertCurrent();
         if (!startedSubmission && this.now() >= approved.expires)
-          throw new NativeTransferError('EXPIRED');
+          throw new NativeTransferRpcError('REVIEW_REQUIRED');
       };
       const journal = await runtime.journal(guard);
       guard();
@@ -669,29 +677,49 @@ export class NativeTransfers {
         guard();
         this.verifySigned(approved.transaction!, signed);
         rawTransaction = signed.rawTransaction; transactionHash = signed.hash;
-        this.publish({ hash: transactionHash }); guard();
       }
       guard();
       this.publish({
         phase: 'submitting',
-        hash: transactionHash,
         review: approved.public,
         message: null,
       });
       try {
-        await runtime.submit(rawTransaction, transactionHash, guard,
-          () => {
-            guard();
-            startedSubmission = true;
-            return rpc.broadcast(rawTransaction, transactionHash, signal, approved.public.intent);
-          },
-          approved.public.intent);
+        await runtime.submit(
+          rawTransaction,
+          transactionHash,
+          guard,
+          (approvedBytes) =>
+            rpc.broadcast(approvedBytes, transactionHash, signal, {
+              mode: 'new-send',
+              intent: approved.public.intent,
+              beforeBroadcast: () => {
+                guard();
+                startedSubmission = true;
+              },
+            }),
+          approved.public.intent,
+          approved.transaction!
+        );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
         // storage adapter simultaneously revoked the session.
         if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
         assertCurrent();
-        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) throw error;
+        if (!startedSubmission) {
+          // A signature alone does not prove the signed record was committed.
+          // Check under the wallet owner, since the review may have expired.
+          const recovery = await runtime.journal(assertCurrent);
+          const saved = await recovery.load(transactionHash);
+          assertCurrent();
+          if (saved?.hash === transactionHash && saved.rawTransaction === rawTransaction)
+            this.publish({ hash: transactionHash });
+          throw error;
+        }
+        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) {
+          this.publish({ hash: transactionHash });
+          throw error;
+        }
         this.publish({
           phase: 'unknown',
           review: null,
@@ -704,13 +732,22 @@ export class NativeTransfers {
         return;
       }
       assertCurrent();
-      await journal.transition(transactionHash, 'submitted');
+      // An RPC acknowledgement cannot be undone by a local status write.
+      this.publish({ hash: transactionHash });
+      assertCurrent();
+      let message = 'Submitted. Waiting for network confirmation.';
+      try {
+        await journal.transition(transactionHash, 'submitted');
+      } catch (error) {
+        if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
+        message = 'Submitted. Activity may take longer to update.';
+      }
       assertCurrent();
       this.publish({
         phase: 'pending',
         review: null,
         hash: transactionHash,
-        message: 'Submitted. Waiting for network confirmation.',
+        message,
       });
     });
   }
@@ -821,7 +858,7 @@ export class NativeTransfers {
       };
       const replay = runtime.replay(current, {
         observe: ({ hash, from, to, nonce }) => rpc.observation({ hash, from, to, nonce }, abort.signal),
-        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, undefined, { replay: { admit, context } }),
+        dispatch: (raw, admit, context) => rpc.broadcast(raw, context.hash, abort.signal, { mode: 'replay', admit, context }),
       }, { now: this.now, randomBytes: this.randomBytes });
       this.replay = replay;
       const result = await replay.prepare(selected); assertCurrent();

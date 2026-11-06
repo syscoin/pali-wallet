@@ -1,6 +1,10 @@
 /** @jest-environment jsdom */
 import '@testing-library/jest-dom';
-import { clearRpcCaches, getSysRpc } from '@sidhujag/sysweb3-network';
+import {
+  clearRpcCaches,
+  findUtxoCoinByRegistration,
+  observeSysRpc,
+} from '@sidhujag/sysweb3-network';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import React from 'react';
 
@@ -103,13 +107,23 @@ beforeEach(() => {
     vout: [{ addresses: ['sys1recipient'], value: '99000', isOwn: false }],
   };
   global.fetch = jest.fn(async (url) => {
-    expect(String(url)).toBe('https://blockbook.synthetic.invalid/api/v2');
+    const base = 'https://blockbook.synthetic.invalid/api/v2/';
+    if (url === base)
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          blockbook: { coin: 'Syscoin' },
+          backend: { chain: 'main' },
+        }),
+      } as Response;
+    expect(String(url)).toBe(base + 'block-index/0');
     return {
       ok: true,
       status: 200,
       json: async () => ({
-        blockbook: { coin: 'Syscoin' },
-        backend: { chain: 'main' },
+        blockHash: findUtxoCoinByRegistration({ chainId: 57, slip44: 57 })!
+          .hashGenesisBlock,
       }),
     } as Response;
   });
@@ -121,13 +135,18 @@ afterEach(() => {
 });
 
 const admit = async (explorer: string) => {
-  const result = await getSysRpc({
-    url: 'https://blockbook.synthetic.invalid',
-    explorer,
-    label: 'Synthetic public explorer',
-    symbol: 'SYS',
-    isSyscoinRpc: true,
-  } as any);
+  const result = await observeSysRpc(
+    {
+      url: 'https://blockbook.synthetic.invalid',
+      explorer,
+      label: 'Synthetic public explorer',
+    },
+    {
+      signal: new AbortController().signal,
+      assertCurrent() {},
+      readJson: async (url, signal) => (await fetch(url, { signal })).json(),
+    }
+  );
   mockNetwork = result.rpc.formattedNetwork;
   expect(mockNetwork.explorer).toBe(explorer);
   return mockNetwork;

@@ -312,6 +312,14 @@
     "generationFailed": "No se pudo generar una nueva frase de recuperación. Selecciona Generar para volver a intentarlo."
   },
   "send": {
+    "savedUtxo": {
+      "title": "Transferencias guardadas",
+      "review": "Revisar transferencia guardada",
+      "empty": "No hay transferencias guardadas",
+      "seen": "Transferencia detectada en la red",
+      "check": "Consultar transferencia"
+    },
+    "openWalletTab": "Abrir en la pestaña de la cartera",
     "transactionFailureDetails": "La transacción falló: {{message}}",
     "transactionCreationFailureDetails": "No se pudo crear la transacción ({{code}}): {{message}}",
     "atomicMode": "atómico",

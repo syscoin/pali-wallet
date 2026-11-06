@@ -808,8 +808,8 @@ export class EvmSignedRecords {
       });
     });
   }
-  /** Admit against the authenticated append order. Cancellation preflight runs
-   * here before synchronous dispatch. Box the result to release before its ACK. */
+  /** Admit against the authenticated append order. A replay dispatch preflight
+   * runs inside the queue. Box the result to release before its ACK. */
   withReplayAdmission<T>(
     session: EvmSignedRecordSession,
     {
@@ -825,13 +825,12 @@ export class EvmSignedRecords {
     >,
     admit: (predecessors: readonly EvmSignedRecordSummary[]) => T,
     predecessorNonce?: number,
-    checkCancellation?: () => Promise<void>,
-    checkAdmission?: () => void
+    preflight?: Readonly<{ assertCurrent(): void; run(): Promise<void> }>
   ): Promise<Readonly<{ result: T }> | null> {
     const address = getAddress(from).toLowerCase();
     return this.exclusive(async () => {
-      // A queued cancellation may have expired before reaching storage.
-      if (checkCancellation) checkAdmission?.();
+      // A queued replay may have expired before reaching storage.
+      preflight?.assertCurrent();
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
       const sender = (bundle?.entries ?? []).filter(
@@ -854,13 +853,8 @@ export class EvmSignedRecords {
               sender.filter((entry) => entry.nonce === predecessorNonce)
             ).map(summary);
       guard(session);
-      if (checkCancellation) {
-        if (
-          retained.operation !== 'cancel' &&
-          retained.operation !== 'speed-up'
-        )
-          return null;
-        await checkCancellation();
+      if (preflight) {
+        await preflight.run();
         guard(session);
       }
       return { result: admit(predecessors) };

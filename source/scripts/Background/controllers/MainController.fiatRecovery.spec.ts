@@ -18,6 +18,9 @@ jest.mock('state/store', () => ({
   persistCommittedWalletState: jest.fn().mockResolvedValue(undefined),
   saveMainState: jest.fn().mockResolvedValue(undefined),
 }));
+jest.mock('./browserKeyringHost', () => ({
+  createBrowserKeyringHost: jest.fn(() => ({})),
+}));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({
   ...jest.requireActual(
     '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js'

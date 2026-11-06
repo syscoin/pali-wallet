@@ -42,6 +42,31 @@ export interface ICustomRpcParams {
   url: string;
 }
 
+export type RpcConnectionResult = {
+  chainId?: number;
+  error?: string;
+  latency?: number;
+  requiresAuth?: boolean;
+  success: boolean;
+};
+
+export type EvmRpcDraft = Omit<ICustomRpcParams, 'isSyscoinRpc'> & {
+  isSyscoinRpc?: false;
+};
+
+export type UtxoRpcDraft = Pick<
+  ICustomRpcParams,
+  'url' | 'explorer' | 'label'
+> &
+  (
+    | { purpose: 'first-use' }
+    | {
+        chainId: number;
+        expectedRegistration: string;
+        purpose: 'edit' | 'pin-existing';
+      }
+  );
+
 export interface ITxState {
   chainId: number;
   data: string;
@@ -58,6 +83,7 @@ export interface ITxState {
 
 export interface IFeeState {
   baseFee: number;
+  exactEip1559Fee?: { maxFeePerGas: string; maxPriorityFeePerGas: string };
   gasLimit: number;
   gasPrice?: number;
   maxFeePerGas: number;

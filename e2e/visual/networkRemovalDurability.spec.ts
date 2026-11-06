@@ -4,6 +4,7 @@ import path from 'path';
 import { utils as sys } from 'syscoinjs-lib';
 
 import en from '../../source/assets/locales/en.json';
+import { blockbookRegistrationProof } from '../harness/blockbookRegistrationFixture';
 import { E2E_CONFIG } from '../harness/config';
 import {
   createIsolatedVaultFixture,
@@ -66,6 +67,7 @@ const snapshot = (page: Page) =>
               label: entry.label,
               slip44: entry.slip44,
               url: entry.url,
+              utxoBackendChain: entry.utxoBackendChain,
             }
           : null;
       const vault = stored[vaultKey];
@@ -102,6 +104,7 @@ test('inactive custom UTXO network removal retains its vault after storage refus
   expect(path.isAbsolute(E2E_CONFIG.extensionPath)).toBe(true);
   const previous = { ...E2E_CONFIG };
   const fixture = litecoinFixture();
+  const proof = blockbookRegistrationProof('Litecoin');
   const server = await startUtxoFixtureServer();
   const reads: string[] = [];
   const deniedWrites: string[] = [];
@@ -137,13 +140,8 @@ test('inactive custom UTXO network removal retains its vault after storage refus
         deniedWrites.push('attempted-write');
         return route.abort('blockedbyclient');
       }
-      let body: unknown;
-      if (url.pathname === '/api/v2' || url.pathname === '/api/v2/') {
-        body = {
-          blockbook: { coin: 'Litecoin', inSync: true, bestHeight: 1 },
-          backend: { chain: 'main', blocks: 1 },
-        };
-      } else {
+      let body = url.search ? undefined : proof.get(url.pathname);
+      if (body === undefined) {
         const match = url.pathname.match(
           /^\/api\/v2\/(xpub|address|utxo)\/(.+)$/
         );
@@ -222,7 +220,11 @@ test('inactive custom UTXO network removal retains its vault after storage refus
         const rpc = page.locator('input#rpc_url');
         await rpc.fill(RPC);
         await rpc.press('Tab');
-        await expect.poll(() => reads.includes('/api/v2')).toBe(true);
+        await expect
+          .poll(() =>
+            [...proof.keys()].every((endpoint) => reads.includes(endpoint))
+          )
+          .toBe(true);
         await expect(page.locator('input#rpc_chainId')).toHaveValue(
           String(CHAIN_ID)
         );
@@ -231,11 +233,17 @@ test('inactive custom UTXO network removal retains its vault after storage refus
           exact: true,
         });
         await expect(save).toBeEnabled();
+        const readsBeforeSave = reads.length;
         await save.click();
         await expect(page).toHaveURL(/#\/home$/);
+        expect(
+          [...proof.keys()].every((endpoint) =>
+            reads.slice(readsBeforeSave).includes(endpoint)
+          )
+        ).toBe(true);
         await expect
-          .poll(async () => (await snapshot(page)).saved?.url)
-          .toBe(RPC);
+          .poll(async () => (await snapshot(page)).saved)
+          .toMatchObject({ url: RPC, utxoBackendChain: 'main' });
       }
     );
     await wallet.step(

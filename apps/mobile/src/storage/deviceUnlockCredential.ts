@@ -1,9 +1,4 @@
-export type DeviceUnlockCredentialScope = Readonly<{
-  installationId: string;
-  walletBindingId: string;
-  pairFingerprint: string;
-  enrollmentId: string;
-}>;
+import type { DeviceUnlockCredentialScope } from '../../../../source/wallet/deviceUnlockEnrollment.ts';
 
 type ProtectedItemPort = Readonly<{
   available(): Promise<boolean>;
