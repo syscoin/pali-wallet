@@ -31,7 +31,13 @@ jest.mock('react-redux', () => ({
       () => mockRevision
     );
     return selector({
-      vault: { activeNetwork: { label: 'Test network', currency: 'SYS' } },
+      vault: {
+        activeNetwork: {
+          label: 'Test network',
+          currency: 'SYS',
+          chainId: 57057,
+        },
+      },
     });
   },
 }));
@@ -121,6 +127,48 @@ beforeEach(() => {
 });
 afterEach(() => {
   jest.useRealTimers();
+});
+
+test('shows saved collectible intent without preparing or changing generic replay', async () => {
+  const amountUnits = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
+  const recipient = `0x${'22'.repeat(20)}`;
+  const contractAddress = `0x${'33'.repeat(20)}`;
+  mockEmitter.mockImplementationOnce(() =>
+    Promise.resolve({
+      hash: HASH,
+      collectibleTransfer: {
+        chainId: '57057',
+        recipient,
+        contractAddress,
+        tokenStandard: 'ERC-1155',
+        tokenId: '0',
+        amountUnits,
+      },
+    })
+  );
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  expect(screen.getByText('NFT transfer')).toBeTruthy();
+  expect(screen.getByText('ERC-1155')).toBeTruthy();
+  expect(screen.getByText('0')).toBeTruthy();
+  expect(screen.getByText(amountUnits)).toBeTruthy();
+  expect(screen.getByText(recipient)).toBeTruthy();
+  expect(screen.getByText(contractAddress)).toBeTruthy();
+  expect(mockEmitter.mock.calls.map((call) => call[0][1])).toEqual([
+    'getSavedEvmTransaction',
+  ]);
+  expect(screen.getByText('Review resend')).toBeTruthy();
+  mockEmitter.mockImplementationOnce(() =>
+    Promise.resolve({
+      hash: HASH,
+      collectibleTransfer: { chainId: '1', tokenId: '0', amountUnits },
+    })
+  );
+  changeScope('account-b');
+  expect(screen.queryByText(amountUnits)).toBeNull();
+  await flush();
+  expect(screen.queryByText(amountUnits)).toBeNull();
+  expect(screen.getByText('Review resend')).toBeTruthy();
 });
 
 test('review shows exact amount, fee, contract creation and calldata before a single nonretrying confirm', async () => {

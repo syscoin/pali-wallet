@@ -14,6 +14,7 @@ import type {
   EvmReplayPreparation,
   EvmReplayReview,
   EvmReplayCandidate,
+  EvmSavedTransaction,
 } from '../../wallet/evmSignedReplay';
 
 type View = {
@@ -41,7 +42,8 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       generation: context.current.generation + 1,
       active: true,
     };
-  const [retained, setRetained] = useContextualState(scope, false);
+  const [retained, setRetained] =
+    useContextualState<EvmSavedTransaction | null>(scope, null);
   const [view, setView] = useContextualState<View>(scope, {});
   const reviewId = useRef<string>();
   const confirming = useRef(false);
@@ -61,10 +63,10 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       context.current.active && context.current.generation === generation;
     void controllerEmitter(['wallet', 'getSavedEvmTransaction'], [hash])
       .then((result) => {
-        if (current()) setRetained(Boolean(result));
+        if (current()) setRetained(result as EvmSavedTransaction | null);
       })
       .catch(() => {
-        if (current()) setRetained(false);
+        if (current()) setRetained(null);
       });
     return () => {
       context.current.active = false;
@@ -197,6 +199,11 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
     }
   };
   if (!retained) return null;
+  const collectible =
+    retained.hash === hash.toLowerCase() &&
+    retained.collectibleTransfer?.chainId === String(network.chainId)
+      ? retained.collectibleTransfer
+      : undefined;
   const review = view.review;
   const currency = network.currency?.toUpperCase();
   const rows = review
@@ -268,6 +275,25 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
     : [];
   return (
     <div className="my-4 min-w-0">
+      {collectible && (
+        <section className="mb-4 min-w-0 text-sm">
+          <h3>{t('transactions.replay.operation.erc721')}</h3>
+          <p>{collectible.tokenStandard}</p>
+          <dl className="mt-2 space-y-2">
+            {[
+              [t('send.tokenId'), collectible.tokenId],
+              [t('transactions.replay.tokenAmount'), collectible.amountUnits],
+              [t('settings.contractAddress'), collectible.contractAddress],
+              [t('transactions.replay.tokenRecipient'), collectible.recipient],
+            ].map(([label, value]) => (
+              <div key={label}>
+                <dt>{label}</dt>
+                <dd className="break-all">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       <button
         type="button"
         onClick={() => void prepare()}

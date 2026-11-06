@@ -1,4 +1,3 @@
-import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   captureEvmSubmission,
   submitSignedEvmTransaction,
@@ -11,6 +10,11 @@ import {
   decodeErc20Transfer,
   type Erc20Metadata,
 } from '../shared/erc20.ts';
+import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
+import {
+  decodeRetainedNftTransfer,
+  type NftTransferIntent,
+} from '../shared/nftTransfer.ts';
 
 import {
   EvmSignedRecords,
@@ -31,6 +35,7 @@ export type EvmReplayCandidate = Pick<
 export type EvmSavedTransaction = EvmReplayCandidate &
   Readonly<{
     chainId: string;
+    collectibleTransfer?: NftTransferIntent;
     createdAt: number;
     dataBytes: number;
     feePerGas: string;
@@ -169,6 +174,7 @@ export function projectSavedEvmTransaction(
     fee = tx.maxFeePerGas ?? tx.gasPrice;
   if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
   const token = tokenTransfer(entry, tx);
+  const collectible = decodeRetainedNftTransfer(entry, tx);
   return Object.freeze({
     hash: entry.hash,
     nonce: entry.nonce,
@@ -187,6 +193,7 @@ export function projectSavedEvmTransaction(
     dataBytes: (tx.data.length - 2) / 2,
     selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
     ...(token ? { tokenTransfer: token } : {}),
+    ...(collectible ? { collectibleTransfer: collectible } : {}),
   });
 }
 
