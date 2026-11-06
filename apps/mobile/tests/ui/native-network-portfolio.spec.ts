@@ -59,6 +59,7 @@ test('switching away from Receive discards its scope and labels testnet funds ex
 });
 
 test('public address copy uses the selected network and OS browser clipboard', async ({ page, context }) => {
+  await page.route('https://api.coingecko.com/**', (route) => route.abort());
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.goto('/?network-portfolio');
   await page.evaluate(() => window.__nativeNetworkPortfolio.select('rollux'));
