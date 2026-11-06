@@ -235,8 +235,8 @@ window.__erc20SendFixture = {
       const tx=Transaction.from(rawTransaction);
       await signedRecords.append(session,{rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'1',nonce,type:tx.type,context});return tx.hash!;
     };
-    const first=collectible?await save(0,0,'erc721'):await save(0);
-    await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
+    const first=count > 0 ? (collectible?await save(0,0,'erc721'):await save(0)) : '';
+    if (first) await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
     for (let i = 1; i < Math.min(count, 30); i++) {
       const alternative = await save(0, i + 1);
       await signedRecords.updatePhase(session, '1', wallet.address, alternative, 'confirmed');

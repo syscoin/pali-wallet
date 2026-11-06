@@ -1161,6 +1161,13 @@ export function createKeyringRuntimeFactory(
               return { scope, locals: recent.records, assets: inventory.items,
                 saved: { ...saved, truncated: saved.truncated || recent.truncated } };
             },
+            async loadSavedPending(previousScope, beforeHash, assertCurrent) {
+              const { scope, guard, index, type } = await checkActivityContext(previousScope, assertCurrent);
+              const journal = createNativeSignedRecordView(signedRecords, { keyring, assertCurrent: guard }, scope.walletFingerprint,
+                { index, type, address: scope.address }, scope.network);
+              const page = await journal.pendingActivities(beforeHash); guard();
+              return page;
+            },
             async observeLocal(local, assertCurrent, signal) {
               const { hash, chainId, address, walletFingerprint } = local;
               const { scope, guard } = await activityContext(assertCurrent);
