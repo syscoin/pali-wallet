@@ -483,10 +483,16 @@ test('cancellation cannot be admitted without a late checker', async () => {
 
 test('Cancel bars payment replay in its own nonce scope, including historical appends after Cancel', async () => {
   const f = await fixture(), original = await f.append(0), replay = f.create();
+  const witness = (originalHash: string) => f.records.readPendingCancellation(f.session, {
+    chainId: '7654321', from: wallet.address, nonce: 0, originalHash,
+  });
   await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '44'.repeat(32), fee: 7 });
   await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '55'.repeat(32), fee: 7, chainId: 1 });
+  assert.equal(await witness(original.hash!), null);
   assert.equal((await replay.prepare(original.hash!)).status, 'review');
   const cancel = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  assert.equal(await witness(cancel.hash!), cancel.serialized);
+  await assert.rejects(witness(original.hash!), /ORIGINAL_CHANGED/);
   await assert.rejects(f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 }), /ORIGINAL_CHANGED/);
   const historical = await f.append(0, 2, recipient, '0x', {
     operation: 'speed-up', originalHash: cancel.hash!, fee: 9, historical: true,
@@ -496,6 +502,8 @@ test('Cancel bars payment replay in its own nonce scope, including historical ap
   const reprice = await f.append(0, 2, wallet.address, '0x', {
     operation: 'speed-up', originalHash: cancel.hash!, fee: 10, value: 0, gasLimit: 42000,
   });
+  assert.equal(await witness(reprice.hash!), reprice.serialized);
+  await assert.rejects(witness(cancel.hash!), /ORIGINAL_CHANGED/);
   assert.equal((await replay.prepare(reprice.hash!)).status, 'review');
   const repeatCancel = await f.append(0, 2, wallet.address, '0x', {
     operation: 'cancel', originalHash: reprice.hash!, fee: 12, gasLimit: 42000,

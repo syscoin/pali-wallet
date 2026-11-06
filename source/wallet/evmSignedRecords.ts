@@ -598,6 +598,29 @@ export class EvmSignedRecords {
     return result;
   }
 
+  /** Only the authenticated pending tip of a cancellation lineage can be repriced. */
+  readPendingCancellation(
+    session: EvmSignedRecordSession,
+    input: Omit<VerifiedPendingOriginal, 'operation'>
+  ): Promise<string | null> {
+    const scope = Object.freeze({
+      ...input,
+      from: getAddress(input.from).toLowerCase(),
+    });
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const sameNonce = (bundle?.entries ?? []).filter((entry) =>
+        matchesNonce(entry, scope)
+      );
+      if (!sameNonce.some((entry) => entry.operation === 'cancel')) return null;
+      const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
+      if (!tip || tip.hash !== scope.originalHash || !isPendingPhase(tip.phase))
+        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      return (await this.materialize(session, tip)).rawTransaction;
+    });
+  }
+
   /** A host-verified pending transaction can predate this journal. Its exact
    * nonce lineage must still match at write time, even when initially empty. */
   captureVerifiedReplacement(

@@ -6913,11 +6913,29 @@ class MainController {
     let broadcastStarted = false;
     try {
       assertCurrentContext();
+      // History hints only avoid journal reads for ordinary sends. The shared
+      // journal is the authority for the signed cancellation and its lineage.
+      const retainedCancellation =
+        original.isCancel === true ||
+        (typeof original.to === 'string' &&
+          original.to.toLowerCase() === sender)
+          ? await this.getRetainedEvmRecords().readPendingCancellation(
+              { keyring, assertCurrent: assertCurrentContext },
+              {
+                chainId: String(chainId),
+                from: sender,
+                nonce,
+                originalHash: txHash.toLowerCase(),
+              }
+            )
+          : null;
+      assertCurrentContext();
       return await transactionController.sendTransactionWithEditedFee(
         txHash,
         isLegacy,
         {
           ...feeApproval,
+          ...(retainedCancellation ? { retainedCancellation } : {}),
           targetAccount,
           assertCurrentContext,
           validateOriginal,

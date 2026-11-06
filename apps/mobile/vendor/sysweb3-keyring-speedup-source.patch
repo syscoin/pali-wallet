@@ -1,14 +1,16 @@
 diff --git a/packages/sysweb3-keyring/src/evm-fees.ts b/packages/sysweb3-keyring/src/evm-fees.ts
-index 98e118b..adee68c 100644
+index 98e118b..c9af0bc 100644
 --- a/packages/sysweb3-keyring/src/evm-fees.ts
 +++ b/packages/sysweb3-keyring/src/evm-fees.ts
 @@ -31,0 +32 @@ const MAX_FEE = (1n << 256n) - 1n;
 +const MAX_REPLACEMENT_GAS = (1n << 64n) - 1n;
-@@ -176,0 +178,85 @@ export function planEvmCancellationFees(input: EvmCancellationFeeInput) {
+@@ -176,0 +178,90 @@ export function planEvmCancellationFees(input: EvmCancellationFeeInput) {
 +export type EvmSpeedUpFeeInput = Readonly<
 +  {
 +    chainId: bigint;
 +    gasLimit: bigint;
++    /** Present only after authenticating the retained signed cancellation. */
++    retainedCancellationGasLimit?: bigint;
 +    sampledBlockGasLimit: bigint;
 +    sampledBaseFeePerGas: bigint | null;
 +  } & (
@@ -39,7 +41,10 @@ index 98e118b..adee68c 100644
 +    originalGasLimit > MAX_REPLACEMENT_GAS
 +  )
 +    throw new Error('Invalid replacement gas limit');
-+  const gasLimit = bufferedEvmGasLimit(originalGasLimit);
++  const retained = input.retainedCancellationGasLimit;
++  if (retained !== undefined && retained !== originalGasLimit)
++    throw new Error('Retained cancellation gas limit does not match original');
++  const gasLimit = retained ?? bufferedEvmGasLimit(originalGasLimit);
 +  if (gasLimit > MAX_REPLACEMENT_GAS)
 +    throw new Error('Invalid replacement gas limit');
 +  // Bounds are mandatory even on chains without a protocol-specific ceiling.
@@ -91,7 +96,7 @@ index 98e118b..adee68c 100644
 +}
 +
 diff --git a/packages/sysweb3-keyring/src/transactions/ethereum.ts b/packages/sysweb3-keyring/src/transactions/ethereum.ts
-index ab381e7..1b59aaa 100644
+index ab381e7..ae8928c 100644
 --- a/packages/sysweb3-keyring/src/transactions/ethereum.ts
 +++ b/packages/sysweb3-keyring/src/transactions/ethereum.ts
 @@ -44,0 +45,2 @@ import {
@@ -105,15 +110,16 @@ index ab381e7..1b59aaa 100644
 @@ -1043 +1046 @@ export class EthereumTransactions<
 -    provider = this.web3Provider
 +    provider: EvmFeeReader = this.web3Provider
-@@ -1064 +1067,6 @@ export class EthereumTransactions<
+@@ -1064 +1067,7 @@ export class EthereumTransactions<
 -    isLegacy: boolean
 +    isLegacy: boolean,
 +    bounds: Readonly<{
 +      chainId: bigint;
++      retainedCancellationGasLimit?: bigint;
 +      sampledBlockGasLimit: bigint;
 +      sampledBaseFeePerGas: bigint | null;
 +    }>
-@@ -1075,0 +1084,39 @@ export class EthereumTransactions<
+@@ -1075,0 +1085,39 @@ export class EthereumTransactions<
 +    if (!isForCancel) {
 +      const originalGasLimit = parseEvmFeeQuantity(
 +        gasLimit,
@@ -153,11 +159,11 @@ index ab381e7..1b59aaa 100644
 +
 +    // Keep the legacy direct cancellation helper. The guarded cancellation
 +    // transaction path already uses planEvmCancellationFees.
-@@ -1077 +1123,0 @@ export class EthereumTransactions<
+@@ -1077 +1124,0 @@ export class EthereumTransactions<
 -      // Apply multiplier for replacement transaction (cancel or speedup)
-@@ -1090 +1135,0 @@ export class EthereumTransactions<
+@@ -1090 +1136,0 @@ export class EthereumTransactions<
 -    const gasLimitToNumber = gasLimit?.toNumber();
-@@ -1111,15 +1156,6 @@ export class EthereumTransactions<
+@@ -1111,15 +1157,6 @@ export class EthereumTransactions<
 -    if (isForCancel) {
 -      const DEFAULT_GAS_LIMIT_VALUE = '42000';
 -
@@ -179,33 +185,77 @@ index ab381e7..1b59aaa 100644
 +      bounds.chainId,
 +      bounds.sampledBlockGasLimit
 +    );
-@@ -1468 +1504,2 @@ export class EthereumTransactions<
+@@ -1468 +1505,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1561 +1598,2 @@ export class EthereumTransactions<
+@@ -1561 +1599,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1777 +1815,2 @@ export class EthereumTransactions<
+@@ -1777 +1816,2 @@ export class EthereumTransactions<
 -        (raw) => provider.sendTransaction(raw),
 +        ({ rawTransaction, admit }) =>
 +          admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1971 +2010,2 @@ export class EthereumTransactions<
+@@ -1971 +2011,2 @@ export class EthereumTransactions<
 -            (raw) => provider.sendTransaction(raw),
 +            ({ rawTransaction, admit }) =>
 +              admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2106 +2146,2 @@ export class EthereumTransactions<
+@@ -2106 +2147,2 @@ export class EthereumTransactions<
 -            (raw) => provider.sendTransaction(raw),
 +            ({ rawTransaction, admit }) =>
 +              admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2294 +2334,0 @@ export class EthereumTransactions<
+@@ -2192 +2234,6 @@ export class EthereumTransactions<
+-    const { assertCurrentContext, validateOriginal, beforeBroadcast } = options;
++    const {
++      assertCurrentContext,
++      validateOriginal,
++      beforeBroadcast,
++      retainedCancellation,
++    } = options;
+@@ -2240,0 +2288,22 @@ export class EthereumTransactions<
++    let cancellation: Transaction | undefined;
++    if (retainedCancellation !== undefined) {
++      if (
++        typeof retainedCancellation !== 'string' ||
++        retainedCancellation.length > 1024
++      )
++        throw new Error('Invalid retained cancellation');
++      cancellation = Transaction.from(retainedCancellation);
++      if (
++        !cancellation.isSigned() ||
++        cancellation.serialized !== retainedCancellation ||
++        cancellation.hash !== requestedHash ||
++        cancellation.chainId !== BigInt(activeNetwork.chainId) ||
++        cancellation.from?.toLowerCase() !== expectedSender ||
++        cancellation.to?.toLowerCase() !== expectedSender ||
++        cancellation.value !== 0n ||
++        cancellation.data !== '0x' ||
++        cancellation.accessList?.length ||
++        (cancellation.type !== 0 && cancellation.type !== 2)
++      )
++        throw new Error('Invalid retained cancellation');
++    }
+@@ -2262,0 +2332,9 @@ export class EthereumTransactions<
++      if (
++        cancellation &&
++        (type !== cancellation.type ||
++          parseEvmFeeQuantity(
++            authenticated.gasLimit,
++            'retained cancellation gas limit'
++          ) !== cancellation.gasLimit)
++      )
++        throw new Error('Retained cancellation does not match original');
+@@ -2294 +2371,0 @@ export class EthereumTransactions<
 -    // Check if this might be a max send transaction by comparing total cost to balance
-@@ -2296,0 +2337,16 @@ export class EthereumTransactions<
+@@ -2296,0 +2374,19 @@ export class EthereumTransactions<
 +    const sampledBlock = await provider.getBlock('latest');
 +    assertCurrent();
 +    const bounds = Object.freeze({
 +      chainId: BigInt(activeNetwork.chainId),
++      ...(cancellation
++        ? { retainedCancellationGasLimit: cancellation.gasLimit }
++        : {}),
 +      sampledBlockGasLimit: parseEvmFeeQuantity(
 +        sampledBlock?.gasLimit,
 +        'replacement block gas limit'
@@ -218,7 +268,7 @@ index ab381e7..1b59aaa 100644
 +              'replacement base fee'
 +            ),
 +    });
-@@ -2309,9 +2364,0 @@ export class EthereumTransactions<
+@@ -2309,9 +2404,0 @@ export class EthereumTransactions<
 -    // Check if this is a contract call (has data)
 -    const isContractCall = txData && txData !== '0x' && txData.length > 2;
 -    const originalGasCost = isLegacy
@@ -228,7 +278,7 @@ index ab381e7..1b59aaa 100644
 -    // If original transaction used >95% of balance, it's likely a max send
 -    const balanceThreshold = currentBalance.mul(95).div(100);
 -    const isLikelyMaxSend = originalTotalCost.gt(balanceThreshold);
-@@ -2330,3 +2377,5 @@ export class EthereumTransactions<
+@@ -2330,3 +2417,5 @@ export class EthereumTransactions<
 -      const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas(
 -        provider
 -      );
@@ -237,16 +287,16 @@ index ab381e7..1b59aaa 100644
 +        getBlock: async () => sampledBlock,
 +        send: (method, params) => provider.send(method, params),
 +      });
-@@ -2342 +2391,2 @@ export class EthereumTransactions<
+@@ -2342 +2431,2 @@ export class EthereumTransactions<
 -      isLegacy
 +      isLegacy,
 +      bounds
-@@ -2345,0 +2396,4 @@ export class EthereumTransactions<
+@@ -2345,0 +2436,4 @@ export class EthereumTransactions<
 +    assertTransactionGasLimit({
 +      gasLimit: newGasValues.gasLimit,
 +      chainId: activeNetwork.chainId,
 +    });
-@@ -2354,5 +2408,2 @@ export class EthereumTransactions<
+@@ -2354,5 +2448,2 @@ export class EthereumTransactions<
 -    if (isLikelyMaxSend && txValue.add(maximumFee).gt(currentBalance)) {
 -      if (isContractCall) {
 -        console.error(
@@ -254,44 +304,44 @@ index ab381e7..1b59aaa 100644
 -        );
 +    if (txValue.add(maximumFee).gt(currentBalance)) {
 +      if (txData.length > 2) {
-@@ -2364 +2415 @@ export class EthereumTransactions<
+@@ -2364 +2455 @@ export class EthereumTransactions<
 -            'Cannot speed up a likely max-send contract call; value cannot be adjusted to fit new gas',
 +            'Add funds before speeding up this contract call; the original amount will not be changed',
-@@ -2446 +2497,2 @@ export class EthereumTransactions<
+@@ -2446 +2537,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2550 +2602,2 @@ export class EthereumTransactions<
+@@ -2550 +2642,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2844,2 +2897,4 @@ export class EthereumTransactions<
+@@ -2844,2 +2937,4 @@ export class EthereumTransactions<
 -              async (raw) => {
 -                const response = await provider.sendTransaction(raw);
 +              async ({ rawTransaction, admit }) => {
 +                const response = await admit(() =>
 +                  provider.sendTransaction(rawTransaction)
 +                );
-@@ -2968,2 +3023,4 @@ export class EthereumTransactions<
+@@ -2968,2 +3063,4 @@ export class EthereumTransactions<
 -              async (raw) => {
 -                const response = await provider.sendTransaction(raw);
 +              async ({ rawTransaction, admit }) => {
 +                const response = await admit(() =>
 +                  provider.sendTransaction(rawTransaction)
 +                );
-@@ -3185 +3242,2 @@ export class EthereumTransactions<
+@@ -3185 +3282,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3309 +3367,2 @@ export class EthereumTransactions<
+@@ -3309 +3407,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3528 +3587,2 @@ export class EthereumTransactions<
+@@ -3528 +3627,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3648 +3708,2 @@ export class EthereumTransactions<
+@@ -3648 +3748,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
@@ -410,3 +460,10 @@ index 8001b55..3da36a4 100644
 -    check();
 -    dispatched = true;
 -    return await broadcast(rawTransaction);
+diff --git a/packages/sysweb3-keyring/src/types.ts b/packages/sysweb3-keyring/src/types.ts
+index d29818d..343d998 100644
+--- a/packages/sysweb3-keyring/src/types.ts
++++ b/packages/sysweb3-keyring/src/types.ts
+@@ -96,0 +97,2 @@ export type IEvmReplacementOptions = EvmReplacementFeeApproval &
++    /** Exact signed original obtained from the host's protected cancellation lineage. */
++    retainedCancellation?: string;
