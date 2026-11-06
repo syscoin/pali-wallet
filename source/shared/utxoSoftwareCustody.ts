@@ -37,6 +37,7 @@ const supportsSpendScript = (
   const [opcode, length] = script;
   // A direct witness program uses OP_0 or OP_1..OP_16 and pushes 2–40 bytes.
   if (
+    opcode === undefined ||
     script.length < 4 ||
     script.length > 42 ||
     length !== script.length - 2 ||
