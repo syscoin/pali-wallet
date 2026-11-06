@@ -1,3 +1,4 @@
+import { jsonStorageEqual } from '../../shared/jsonStorageEqual';
 import {
   createSentryKeyVault,
   isEmptySentryKeyStore,
@@ -8,6 +9,9 @@ import { chromeStorage } from 'utils/storageAPI';
 import { SENTRY_NETWORKS } from './network';
 import { withSentryPersistence } from './persistence';
 
+const readSentryKeyBucket = async (key: string) =>
+  (await chromeStorage.getItems([key]))[key];
+
 export const {
   getSentryVaultId,
   listSentryKeys,
@@ -16,11 +20,15 @@ export const {
   saveSentryKeys,
 } = createSentryKeyVault({
   crypto: () => crypto,
-  read: (key) => chromeStorage.getItem(key),
-  write: (key, value, assertCurrent) =>
-    withSentryPersistence(assertCurrent, () =>
-      chromeStorage.setItem(key, value)
-    ),
+  read: readSentryKeyBucket,
+  write: (key, expected, value, assertCurrent) =>
+    withSentryPersistence(assertCurrent, async () => {
+      const current = await readSentryKeyBucket(key);
+      assertCurrent();
+      if (!jsonStorageEqual(current ?? undefined, expected))
+        throw new Error('Sentry key storage changed. Start again.');
+      await chromeStorage.setItem(key, value);
+    }),
 });
 
 /** Called with walletPersistenceMutex held through the network removal commit. */

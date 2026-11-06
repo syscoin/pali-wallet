@@ -1,11 +1,10 @@
 import type { SentryCollateralReservation } from './collateral';
 import type { SentryNetwork } from '../../shared/sentryNetworks';
 import type { SentryLinkedNode } from '../../shared/sentryNodeLookup';
+import type { SentryKeySummary } from '../../wallet/sentryKeyVault';
 import type {
   SentryOperationRequest,
   SentryOperationReview,
-  SentryAuthorityScheme,
-  SentryAuthorityRole,
   SentryManagementRequest,
   SentryManagementReview,
   SentryRequiredAuthorization,
@@ -15,14 +14,7 @@ import type {
 export type { SentryLinkedNode } from '../../shared/sentryNodeLookup';
 export type { SentryNetwork } from '../../shared/sentryNetworks';
 
-export interface SentryKeySummary {
-  id: string;
-  label: string;
-  network: SentryNetwork;
-  publicKey: string;
-  role: SentryAuthorityRole;
-  scheme: SentryAuthorityScheme;
-}
+export type { SentryKeySummary } from '../../wallet/sentryKeyVault';
 
 export interface SentrySettings {
   collateral: SentryCollateralReservation[];
