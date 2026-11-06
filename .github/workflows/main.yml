@@ -181,7 +181,8 @@ jobs:
   conformance:
     name: test dapp conformance
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # A cold Chromium and wallet build can take eleven minutes before tests start.
+    timeout-minutes: 30
     permissions:
       contents: read
     concurrency:
