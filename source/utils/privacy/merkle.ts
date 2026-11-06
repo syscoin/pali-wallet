@@ -1,5 +1,5 @@
 import { keccak256 } from 'ethers/crypto';
-import { toUtf8Bytes } from 'ethers/utils';
+import { getBytes, hexlify, toUtf8Bytes } from 'ethers/utils';
 
 export const FIELD_SIZE = BigInt(
   '21888242871839275222246405745257275088548364400416034343698204186575808495617'
@@ -141,23 +141,78 @@ const validateWork = (work: MerkleWork, leafCount: number): void => {
   }
 };
 
-const foldRoot = (work: MerkleWork): string => {
+type MerkleCursor<Node> = { frontier: (Node | null)[]; nextIndex: number };
+type Pair<Node> = (left: Node, right: Node) => Node;
+type Literal<Node> = (value: string) => Node;
+const normalizeField = (value: string) => toHex(fieldElement(value));
+
+function foldRoot<Node>(
+  work: MerkleCursor<Node>,
+  literal: Literal<Node>,
+  pair: Pair<Node>
+): Node {
   // The deployed constructor fills zero0..zero19, then hashes zero19 once
   // more for roots[0]. There is no inclusion proof for an empty pool.
   if (work.nextIndex === 0)
-    return hashPair(ZEROES[TREE_DEPTH - 1]!, ZEROES[TREE_DEPTH - 1]!);
+    return pair(
+      literal(ZEROES[TREE_DEPTH - 1]!),
+      literal(ZEROES[TREE_DEPTH - 1]!)
+    );
   if (work.nextIndex === TREE_CAPACITY) {
-    return toHex(fieldElement(work.frontier[TREE_DEPTH] as string));
+    return work.frontier[TREE_DEPTH]!;
   }
-  let root: string = ZERO_VALUE;
+  let root = literal(ZERO_VALUE);
   for (let level = 0; level < TREE_DEPTH; level += 1) {
     root =
       Math.floor(work.nextIndex / 2 ** level) % 2 === 1
-        ? hashPair(work.frontier[level] as string, root)
-        : hashPair(root, ZEROES[level]!);
+        ? pair(work.frontier[level]!, root)
+        : pair(root, literal(ZEROES[level]!));
   }
   return root;
-};
+}
+
+function merkleBatchEnd(
+  work: MerkleWork,
+  leaves: string[],
+  maxLeaves: number
+): number {
+  if (!Array.isArray(leaves) || leaves.length > TREE_CAPACITY) {
+    throw new Error('Invalid Merkle leaf count');
+  }
+  if (
+    !Number.isInteger(maxLeaves) ||
+    maxLeaves < 1 ||
+    maxLeaves > MAX_LEAVES_PER_BATCH
+  ) {
+    throw new Error('Invalid Merkle batch size');
+  }
+  validateWork(work, leaves.length);
+  return Math.min(work.nextIndex + maxLeaves, leaves.length);
+}
+
+function appendLeaves<Node>(
+  work: MerkleCursor<Node>,
+  leaves: string[],
+  end: number,
+  literal: Literal<Node>,
+  pair: Pair<Node>,
+  onSubtree?: (level: number, index: number, root: Node) => void
+): void {
+  while (work.nextIndex < end) {
+    let carry = literal(leaves[work.nextIndex]!);
+    let index = work.nextIndex;
+    let level = 0;
+    while (index % 2 === 1) {
+      carry = pair(work.frontier[level]!, carry);
+      work.frontier[level] = null;
+      index = Math.floor(index / 2);
+      level += 1;
+      onSubtree?.(level, index, carry);
+    }
+    work.frontier[level] = carry;
+    work.nextIndex += 1;
+  }
+}
 
 /**
  * Consume at most maxLeaves from an unchanged, complete ordered leaf array.
@@ -171,38 +226,153 @@ export const advanceMerkleWork = (
   maxLeaves = 128,
   onSubtree?: MerkleSubtreeListener
 ): MerkleWork => {
-  if (!Array.isArray(leaves) || leaves.length > TREE_CAPACITY) {
-    throw new Error('Invalid Merkle leaf count');
-  }
-  if (
-    !Number.isInteger(maxLeaves) ||
-    maxLeaves < 1 ||
-    maxLeaves > MAX_LEAVES_PER_BATCH
-  ) {
-    throw new Error('Invalid Merkle batch size');
-  }
-  validateWork(work, leaves.length);
+  const end = merkleBatchEnd(work, leaves, maxLeaves);
   work.complete = false;
   delete work.root;
-  const end = Math.min(work.nextIndex + maxLeaves, leaves.length);
-  while (work.nextIndex < end) {
-    let carry = toHex(fieldElement(leaves[work.nextIndex]!));
-    let index = work.nextIndex;
-    let level = 0;
-    while (index % 2 === 1) {
-      carry = hashPair(work.frontier[level] as string, carry);
-      work.frontier[level] = null;
-      index = Math.floor(index / 2);
-      level += 1;
-      onSubtree?.(level, index, carry);
-    }
-    work.frontier[level] = carry;
-    work.nextIndex += 1;
-  }
+  appendLeaves(work, leaves, end, normalizeField, hashPair, onSubtree);
   if (work.nextIndex === leaves.length) {
     // Never accept a supplied complete flag or root as the computed result.
-    work.root = foldRoot(work);
+    work.root = normalizeField(foldRoot(work, (zero) => zero, hashPair));
     work.complete = true;
   }
   return work;
 };
+
+type BatchNode = string | number;
+type Subtree<Node> = { level: number; index: number; root: Node };
+type PublicMerkleBatchExecutor = Readonly<{
+  signal: AbortSignal;
+  assertCurrent(): void;
+  execute(program: Uint8Array, signal: AbortSignal): Promise<Uint8Array>;
+}>;
+const MAX_PAIR_OPERATIONS = MAX_LEAVES_PER_BATCH + 2 * TREE_DEPTH;
+const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype);
+const intrinsicBuffer = Object.getOwnPropertyDescriptor(
+  typedArrayPrototype,
+  'buffer'
+)!.get!;
+const intrinsicOffset = Object.getOwnPropertyDescriptor(
+  typedArrayPrototype,
+  'byteOffset'
+)!.get!;
+const intrinsicLength = Object.getOwnPropertyDescriptor(
+  typedArrayPrototype,
+  'byteLength'
+)!.get!;
+
+function ownPairOutput(value: unknown, expected: number): Uint8Array {
+  if (!(value instanceof Uint8Array))
+    throw new Error('Invalid Merkle batch output');
+  const buffer = intrinsicBuffer.call(value);
+  const offset = intrinsicOffset.call(value);
+  const length = intrinsicLength.call(value);
+  if (!(buffer instanceof ArrayBuffer) || length !== expected)
+    throw new Error('Invalid Merkle batch output');
+  return new Uint8Array(new Uint8Array(buffer, offset, length));
+}
+
+function encodePairOperations(
+  operations: readonly [BatchNode, BatchNode][]
+): Uint8Array {
+  const wordSize = 32;
+  const operandSize = 1 + wordSize;
+  const headerSize = 3;
+  if (!operations.length || operations.length > MAX_PAIR_OPERATIONS)
+    throw new Error('Invalid Merkle pair count');
+  const program = new Uint8Array(
+    headerSize + operations.length * 2 * operandSize
+  );
+  const view = new DataView(program.buffer);
+  program[0] = 1;
+  view.setUint16(1, operations.length);
+  let offset = headerSize;
+  for (const pair of operations) {
+    for (const operand of pair) {
+      if (typeof operand === 'number') {
+        program[offset] = 1;
+        view.setUint16(offset + 1, operand);
+      } else {
+        program.set(getBytes(normalizeField(operand)), offset + 1);
+      }
+      offset += operandSize;
+    }
+  }
+  return program;
+}
+
+/** Plans exactly the shared frontier traversal, with no checkpoint mutation or
+ * subtree publication until the owned executor returns canonical field words. */
+export async function advanceMerkleWorkWithBatch(
+  work: MerkleWork,
+  leaves: string[],
+  maxLeaves: number,
+  executor: PublicMerkleBatchExecutor
+): Promise<{ work: MerkleWork; subtrees: Subtree<string>[] }> {
+  const { signal } = executor;
+  const check = () => {
+    if (signal.aborted) throw new Error('privacy_sync_cancelled');
+    const result: unknown = executor.assertCurrent();
+    if (result !== undefined) {
+      if (
+        result &&
+        (typeof result === 'object' || typeof result === 'function')
+      )
+        void Promise.resolve(result).catch(() => undefined);
+      throw new Error('privacy_sync_cancelled');
+    }
+    if (signal.aborted) throw new Error('privacy_sync_cancelled');
+  };
+  check();
+  const end = merkleBatchEnd(work, leaves, maxLeaves);
+  const cursor: MerkleCursor<BatchNode> = {
+    nextIndex: work.nextIndex,
+    frontier: [...work.frontier],
+  };
+  const operations: [BatchNode, BatchNode][] = [];
+  const subtrees: Subtree<BatchNode>[] = [];
+  const pair: Pair<BatchNode> = (left, right) =>
+    operations.push([left, right]) - 1;
+  appendLeaves(
+    cursor,
+    leaves,
+    end,
+    normalizeField,
+    pair,
+    (level, index, root) => subtrees.push({ level, index, root })
+  );
+  const complete = cursor.nextIndex === leaves.length;
+  const root = complete ? foldRoot(cursor, (zero) => zero, pair) : undefined;
+  const values: string[] = [];
+  if (operations.length) {
+    const program = encodePairOperations(operations);
+    check();
+    const result = await executor.execute(program, signal);
+    check();
+    const output = ownPairOutput(result, 32 * operations.length);
+    for (let i = 0; i < output.length; i += 32)
+      values.push(normalizeField(hexlify(output.subarray(i, i + 32))));
+  }
+  const resolve = (node: BatchNode) => {
+    if (typeof node === 'string') return node;
+    const value = values[node];
+    if (typeof value !== 'string')
+      throw new Error('Invalid Merkle pair result');
+    return value;
+  };
+  check();
+  return {
+    work: {
+      complete,
+      frontier: cursor.frontier.map((node) =>
+        node === null ? null : resolve(node)
+      ),
+      nextIndex: cursor.nextIndex,
+      ...(root === undefined ? {} : { root: normalizeField(resolve(root)) }),
+    },
+    subtrees: subtrees.map(({ level, index, root }) => ({
+      level,
+      index,
+      root: resolve(root),
+    })),
+  };
+}

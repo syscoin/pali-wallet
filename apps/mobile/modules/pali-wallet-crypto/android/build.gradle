@@ -8,7 +8,17 @@ version = '0.1.0'
 
 android {
   namespace 'expo.modules.paliwalletcrypto'
-  defaultConfig { versionCode 1; versionName '0.1.0' }
+  defaultConfig {
+    versionCode 1
+    versionName '0.1.0'
+    consumerProguardFiles 'consumer-rules.pro'
+  }
+  externalNativeBuild {
+    cmake {
+      path 'src/main/cpp/CMakeLists.txt'
+      version System.getenv('CMAKE_VERSION') ?: '3.30.5'
+    }
+  }
 }
 
 def verifiedKdf = configurations.create('paliVerifiedKdf') {

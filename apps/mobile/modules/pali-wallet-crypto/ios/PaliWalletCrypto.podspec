@@ -15,6 +15,8 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
   s.frameworks = 'CryptoKit', 'Security'
-  s.source_files = '*.{swift,h,m}'
+  s.source_files = '*.{swift,h,m}', '../shared/mimc_batch.{h,c}'
+  s.public_header_files = '../shared/mimc_batch.h'
+  s.preserve_paths = '../shared/*.inc', '../shared/FIAT-*', '../shared/PROVENANCE.md'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
 end

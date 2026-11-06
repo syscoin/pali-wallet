@@ -50,12 +50,12 @@ final class PaliCryptoContext: SharedObject {
   }
 
   func importKey(_ kind: String, _ usages: [String], _ data: Data) throws -> PaliCryptoKey {
-    let allowed: Set<String> = kind == "AES-GCM" ? ["encrypt", "decrypt"] : ["deriveBits", "deriveKey"]
-    guard ["AES-GCM", "PBKDF2", "HKDF"].contains(kind), !usages.isEmpty,
+    let allowed: Set<String> = kind == "AES-GCM" ? ["encrypt", "decrypt"] : kind == "HMAC-SHA512" ? ["sign"] : ["deriveBits", "deriveKey"]
+    guard ["AES-GCM", "PBKDF2", "HKDF", "HMAC-SHA512"].contains(kind), !usages.isEmpty,
           usages.count <= 2, Set(usages).count == usages.count,
           Set(usages).isSubset(of: allowed), data.count <= 4_096,
           kind != "AES-GCM" || data.count == 32,
-          kind != "HKDF" || !data.isEmpty else { throw PaliCryptoFailure.invalidInput }
+          (kind != "HKDF" && kind != "HMAC-SHA512") || !data.isEmpty else { throw PaliCryptoFailure.invalidInput }
     mutex.lock(); defer { mutex.unlock() }
     if closed { throw PaliCryptoFailure.closed }
     keys.removeAll { $0.key == nil }
@@ -90,6 +90,7 @@ private struct PaliDecryptResponse: Record {
 
 public final class PaliWalletCryptoModule: Module {
   private let queue = DispatchQueue(label: "org.paliwallet.crypto", qos: .userInitiated)
+  private let publicMerkleOwner = PaliPublicMerkleBatchOwner()
 
   private func operation<T>(_ body: () throws -> T) throws -> T {
     do { return try body() } catch { throw PaliCryptoOperationException() }
@@ -99,6 +100,15 @@ public final class PaliWalletCryptoModule: Module {
     Name("PaliWalletCrypto")
     Function("info") { ["apiVersion": 1, "implementation": "apple-cryptokit-commoncrypto"] as [String: Any] }
     Function("createContext") { PaliCryptoContext() }
+    OnDestroy { self.publicMerkleOwner.retire() }
+    AsyncFunction("publicMerkleBatch") { (program: Data, promise: Promise) in
+      PaliPublicMerkleBatch.shared.execute(program, owner: self.publicMerkleOwner) { result in
+        switch result {
+        case .success(let bytes): promise.resolve(bytes)
+        case .failure: promise.reject(PaliCryptoOperationException())
+        }
+      }
+    }
     Class("Key", PaliCryptoKey.self) {}
     Class("Context", PaliCryptoContext.self) {
       Function("close") { (context: PaliCryptoContext) in context.close() }
@@ -108,6 +118,11 @@ public final class PaliWalletCryptoModule: Module {
       Function("randomBytes") { (context: PaliCryptoContext, count: Int) in
         try self.operation { try context.ensureOpen(); return try PaliCryptoPrimitives.random(count) }
       }
+      AsyncFunction("signHmacSha512") { (context: PaliCryptoContext, key: PaliCryptoKey, data: Data) in
+        try self.operation { try context.usingKey(key, kind: "HMAC-SHA512", usage: "sign") {
+          try PaliCryptoPrimitives.signHmacSha512($0, data)
+        } }
+      }.runOnQueue(queue)
       AsyncFunction("digestSha256") { (context: PaliCryptoContext, data: Data) in
         try self.operation { try context.ensureOpen(); let result = try PaliCryptoPrimitives.digest(data); try context.ensureOpen(); return result }
       }.runOnQueue(queue)

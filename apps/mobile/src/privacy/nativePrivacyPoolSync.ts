@@ -33,7 +33,7 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const MAX_RUN_BYTES = 4 * 1024 * 1024;
 const MAX_PULL_BYTES = 64 * 1024;
 const RUN_TIMEOUT_MS = 45_000;
-const BATCH_LEAVES = 8;
+const BATCH_LEAVES = 128;
 const cancelled = () => new Error('privacy_cancelled');
 const unavailable = () => new Error('privacy_verification_pending');
 
@@ -157,13 +157,20 @@ export function createNativePrivacyPoolSync(
     poolId: PrivacyPoolId;
     lifetime: AbortSignal;
     transport: OwnedPrivacyPullTransport;
+    /** One owned native operation. It must drain before this promise settles. */
+    executeMerkleBatch(
+      program: Uint8Array,
+      signal: AbortSignal,
+      assertCurrent: () => void
+    ): Promise<Uint8Array>;
   }>
 ) {
   const { lifetime, poolId, transport } = options;
   if (
     lifetime.aborted ||
     typeof transport?.prepareSnapshot !== 'function' ||
-    typeof transport.prepareAnchor !== 'function'
+    typeof transport.prepareAnchor !== 'function' ||
+    typeof options.executeMerkleBatch !== 'function'
   )
     throw cancelled();
   const network = snapshotNativeNetwork(options.network);
@@ -173,6 +180,7 @@ export function createNativePrivacyPoolSync(
   if (!rpcUrl.startsWith('https:')) throw unavailable();
   const prepareSnapshot = transport.prepareSnapshot.bind(transport);
   const prepareAnchor = transport.prepareAnchor.bind(transport);
+  const executeMerkleBatch = options.executeMerkleBatch;
   const storage = createSessionCache(poolId, checkRun);
   let closed = false;
   let continuation = false;
@@ -409,7 +417,22 @@ export function createNativePrivacyPoolSync(
         const timer = setTimeout(callback, delay);
         return () => clearTimeout(timer);
       },
-      merkleWork: { batchSize: BATCH_LEAVES, yieldBetweenBatches: yieldBatch },
+      merkleWork: {
+        batchSize: BATCH_LEAVES,
+        yieldBetweenBatches: yieldBatch,
+        async execute(program, signal, assertCurrent) {
+          const active = checkRun();
+          const check = () => {
+            checkRun(active);
+            assertCurrent();
+            if (signal.aborted) throw cancelled();
+          };
+          check();
+          const output = await executeMerkleBatch(program, signal, check);
+          check();
+          return output;
+        },
+      },
     },
     (reader) => {
       readVerifiedNote = reader;

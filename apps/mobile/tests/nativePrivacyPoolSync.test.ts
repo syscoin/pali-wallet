@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseEther, toQuantity } from 'ethers/utils';
+import { getBytes, hexlify, parseEther, toQuantity } from 'ethers/utils';
 import {
   advanceMerkleWork,
   createMerkleWork,
+  hashPair,
 } from '../../../source/utils/privacy/merkle.ts';
 import { PRIVACY_POOL_ABI } from '../../../source/utils/privacy/publicSyncProtocol.ts';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
@@ -156,7 +157,8 @@ function fixture(
 }
 function create(
   transport: OwnedPrivacyPullTransport,
-  owner = new AbortController()
+  owner = new AbortController(),
+  executeMerkleBatch = evaluateMerkleBatch
 ) {
   return {
     owner,
@@ -165,9 +167,69 @@ function create(
       poolId,
       lifetime: owner.signal,
       transport,
+      executeMerkleBatch,
     }),
   };
 }
+
+async function evaluateMerkleBatch(program: Uint8Array, signal: AbortSignal, check: () => void): Promise<Uint8Array> {
+  check();
+  assert.equal(signal.aborted, false);
+  const view = new DataView(program.buffer, program.byteOffset, program.byteLength);
+  const count = view.getUint16(1);
+  assert.equal(program[0], 1);
+  assert.equal(program.length, 3 + 66 * count);
+  assert(count > 0 && count <= 296);
+  const output = new Uint8Array(32 * count);
+  for (let index = 0; index < count; index++) {
+    const operands = [3 + 66 * index, 36 + 66 * index].map(offset => {
+      if (program[offset] === 0) return hexlify(program.subarray(offset + 1, offset + 33));
+      assert.equal(program[offset], 1);
+      const reference = view.getUint16(offset + 1);
+      assert(reference < index);
+      assert.deepEqual(program.subarray(offset + 3, offset + 33), new Uint8Array(30));
+      return hexlify(output.subarray(reference * 32, (reference + 1) * 32));
+    });
+    output.set(getBytes(hashPair(operands[0]!, operands[1]!)), 32 * index);
+  }
+  check();
+  return output;
+}
+
+test('a retired native batch drains without publishing its checkpoint, paths or second anchor', async () => {
+  const provider = fixture();
+  let entered!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const { sync, owner } = create(provider.transport, new AbortController(), async (program, signal, check) => {
+    const bytes = await evaluateMerkleBatch(program, signal, check);
+    entered();
+    await held;
+    return bytes;
+  });
+  const pending = sync.refresh();
+  await started;
+  owner.abort();
+  release();
+  await assert.rejects(pending, { message: 'privacy_cancelled' });
+  assert.equal(provider.requests.filter(kind => kind === 'chainId').length, 1);
+  await assert.rejects(sync.readSnapshot(poolId));
+  await sync.dispose();
+});
+
+test('invalid native batch output cannot produce a verified snapshot or run its second anchor', async () => {
+  const provider = fixture();
+  const { sync } = create(provider.transport, new AbortController(), async (program, signal, check) => {
+    const bytes = await evaluateMerkleBatch(program, signal, check);
+    return bytes.subarray(0, bytes.length - 1);
+  });
+  assert.equal((await sync.refresh()).phase, 'error');
+  assert.equal(provider.requests.filter(kind => kind === 'chainId').length, 1);
+  assert.deepEqual(await sync.readNote(note), { phase: 'waiting' });
+  await assert.rejects(sync.readSnapshot(poolId));
+  await sync.dispose();
+});
 
 test('explicit native sync verifies the same root and two anchors and reads note/path status locally', async () => {
   const data = snapshot();
@@ -295,6 +357,7 @@ test('refuses wrong registrations and wrong pool payloads before any anchor rese
           testnet: false,
         }),
         transport: provider.transport,
+        executeMerkleBatch: evaluateMerkleBatch,
       }),
     { message: 'privacy_wrong_chain' }
   );
@@ -423,7 +486,8 @@ test('owner replacement releases a held native pull and rejects its late bytes',
 });
 
 test('Merkle processing yields to owner cancellation before a final anchor request', async () => {
-  const provider = fixture(snapshot(64));
+  const leafCount = 256;
+  const provider = fixture(snapshot(leafCount));
   const { owner, sync } = create(provider.transport);
   let partial = 0;
   const watcher = setInterval(() => {
@@ -431,7 +495,7 @@ test('Merkle processing yields to owner cancellation before a final anchor reque
     if (
       status.phase === 'verifying' &&
       (status.completed ?? 0) > 0 &&
-      status.completed! < 64
+      status.completed! < leafCount
     ) {
       partial = status.completed!;
       clearInterval(watcher);
@@ -440,7 +504,7 @@ test('Merkle processing yields to owner cancellation before a final anchor reque
   }, 0);
   try {
     await assert.rejects(sync.refresh(), { message: 'privacy_cancelled' });
-    assert.ok(partial > 0 && partial < 64);
+    assert.ok(partial > 0 && partial < leafCount);
     assert.equal(provider.requests.length, 9);
   } finally {
     clearInterval(watcher);

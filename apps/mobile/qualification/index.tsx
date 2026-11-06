@@ -247,6 +247,13 @@ function QualificationApp() {
           const { requireNativeModule } = await import('expo-modules-core');
           qualifyNativeHandleContract(requireNativeModule('PaliWalletCrypto'));
         });
+        await check('native public Merkle and HMAC vectors', async () => {
+          const { createNativePublicMerkleExecutor } = await import('../src/crypto/native');
+          const { qualifyNativePublicMerkle } = await import('../src/crypto/qualificationPublicMerkle.ts');
+          const { qualifyWalletHmac } = await import('../src/crypto/qualificationHmac.ts');
+          await qualifyNativePublicMerkle(createNativePublicMerkleExecutor());
+          await qualifyWalletHmac(nativeCrypto);
+        });
         // The observer delegates every request to the qualified native CSPRNG.
         // Install it before importing any wallet/ethers/BIP39 graph, because
         // noble retains the global crypto object from module evaluation.
