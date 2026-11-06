@@ -56,6 +56,10 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import {
+  boundUtxoActivityParticipants,
+  type UtxoActivityParticipants,
+} from '../../../shared/utxoActivityParticipants';
 import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
 import { createUtxoRegistrationPin } from '../../../shared/utxoRegistration';
 import {
@@ -402,7 +406,9 @@ import {
   IEvmTransactionResponse,
   ISysTransaction,
   ITransactionsManager,
+  type UtxoActivityDetailsReply,
 } from './transactions/types';
+import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
@@ -12380,11 +12386,56 @@ class MainController {
   /**
    * Fetch individual UTXO transaction details from Blockbook by txid.
    */
-  public async getSysTransactionFromBlockbook(txid: string, url: string) {
-    return this.transactionsManager.sys.fetchTransactionDetailsFromBlockbook(
-      txid,
-      url
+  public async getSysTransactionFromBlockbook(
+    txid: string,
+    url: string,
+    request: Readonly<{
+      compact: (UtxoActivityParticipants & { txid: string }) | null;
+      scope: IWalletNavigationScope;
+    }>
+  ): Promise<UtxoActivityDetailsReply> {
+    if (typeof txid !== 'string' || !/^[a-f0-9]{64}$/i.test(txid))
+      throw new Error('Invalid transaction ID');
+    const { activeNetwork } = store.getState().vault;
+    const walletGeneration = this.walletSessionGeneration;
+    const networkGeneration = this.networkRequestGeneration;
+    const assertCurrent = () => {
+      const current = getWalletNavigationScope();
+      if (
+        !this.isUnlocked() ||
+        !store.getState().vault.isBitcoinBased ||
+        activeNetwork.url !== url ||
+        request?.scope?.account !== current.account ||
+        request?.scope?.network !== current.network ||
+        walletGeneration !== this.walletSessionGeneration ||
+        networkGeneration !== this.networkRequestGeneration
+      )
+        throw new Error('Transaction details changed');
+    };
+    assertCurrent();
+    const hash = txid.toLowerCase();
+    const projection = createUtxoActivityParticipantProjection(activeNetwork);
+    const compact = projection.compact(
+      request.compact?.txid === hash
+        ? boundUtxoActivityParticipants({
+            from: request.compact.from,
+            to: request.compact.to,
+          })
+        : null
     );
+    const transaction = await this.transactionsManager.sys
+      .fetchTransactionDetailsFromBlockbook(txid, url)
+      .catch(() => null);
+    assertCurrent();
+    return {
+      txid: hash,
+      compact,
+      transaction:
+        typeof transaction?.txid === 'string' &&
+        transaction.txid.toLowerCase() === hash
+          ? projection.full(transaction)
+          : null,
+    };
   }
 
   /**

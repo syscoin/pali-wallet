@@ -7,6 +7,8 @@ import { ISyscoinVIn, ISyscoinVOut } from '@sidhujag/sysweb3-utils';
 import { IAccountTransactions } from 'state/vault/types';
 import { BigNumber } from 'utils/ethersV6Compat';
 
+import type { UtxoActivityParticipants } from '../../../../shared/utxoActivityParticipants';
+
 //------------------------- EVM TYPES / INTERFACES -------------------------//
 type AccessList = Array<{ address: string; storageKeys: Array<string> }>;
 
@@ -243,6 +245,12 @@ export interface ISysTransactionsController {
     isRapidPolling?: boolean
   ) => Promise<ISysTransaction[]>;
 }
+
+export type UtxoActivityDetailsReply = Readonly<{
+  compact: UtxoActivityParticipants | null;
+  transaction: ISysTransaction | null;
+  txid: string;
+}>;
 
 //------------------------- END SYS TYPES / INTERFACES -------------------------//
 

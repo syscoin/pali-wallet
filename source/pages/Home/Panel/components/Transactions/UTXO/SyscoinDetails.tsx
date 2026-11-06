@@ -1,7 +1,20 @@
-import React, { Fragment, useEffect, useRef, useState, memo } from 'react';
+import React, {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  memo,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import { shallowEqual, useSelector } from 'react-redux';
 
+import { readHistoryCount } from '../../../../../../shared/blockbookAccountHistory';
+import { parseSyscoinAssetGuid } from '../../../../../../shared/syscoinAssetIds';
+import {
+  boundUtxoActivityParticipants,
+  type UtxoActivityParticipants,
+} from '../../../../../../shared/utxoActivityParticipants';
 import {
   bindUtxoDetailObservation,
   isSerializedUtxoObservation,
@@ -13,20 +26,23 @@ import {
   getReceivingAddresses,
   mergeAccountSummaryWithFullTransaction,
 } from '../../../../../../shared/utxoTransactionDetails';
-import { UtxoTxDetailsLabelsToKeep } from '../utils/txLabelsDetail';
 import { Icon } from 'components/Icon';
 import { IconButton } from 'components/IconButton';
 import { TokenIcon } from 'components/TokenIcon';
 import { Tooltip } from 'components/Tooltip';
 import { useTransactionsListConfig, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
+import type {
+  ISysTransaction,
+  UtxoActivityDetailsReply,
+} from 'scripts/Background/controllers/transactions/types';
 import { RootState } from 'state/store';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
-import { camelCaseToText, ellipsis } from 'utils/index';
+import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
+  getSyscoinActivityAssetLabel,
   getSyscoinTransactionTypeLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinOperationAmount,
@@ -47,6 +63,7 @@ import { isTransactionInBlock } from 'utils/transactionUtils';
 import {
   getUtxoSummaryObservation,
   watchUtxoTransactionDetails,
+  type UtxoActivityDetailRead,
 } from './utxoTransactionDetails';
 
 // Memoize copy icon to prevent unnecessary re-renders
@@ -88,6 +105,22 @@ export const SyscoinTransactionDetails = ({
     data: ISysTransaction;
     scope: string;
   } | null>(null);
+  const [compactParticipants, setCompactParticipants] = useState<{
+    data: UtxoActivityParticipants;
+    key: string;
+    scope: string;
+  } | null>(null);
+  const compact = useMemo(() => {
+    const candidates =
+      accountTransaction &&
+      boundUtxoActivityParticipants({
+        from: getSendingAddresses(accountTransaction),
+        to: getReceivingAddresses(accountTransaction),
+      });
+    return candidates ? { candidates, key: JSON.stringify(candidates) } : null;
+  }, [accountTransaction]);
+  const compactRef = useRef(compact);
+  compactRef.current = compact;
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const copyContextRef = useRef({ active: true, sequence: 0 });
@@ -120,13 +153,18 @@ export const SyscoinTransactionDetails = ({
   const tokenIntent = getSyscoinOperationAmount(rawTransaction);
   // Resolve presentation metadata from this account and chain by immutable GUID,
   // never by an issuer-controlled symbol or an unrelated transaction asset.
-  const tokenAsset = tokenIntent?.assetGuid
+  const intentGuid = parseSyscoinAssetGuid(tokenIntent?.assetGuid);
+  const tokenAsset = intentGuid
     ? activeAssets.syscoin.find(
         (asset) =>
-          String(asset.assetGuid) === String(tokenIntent.assetGuid) &&
+          parseSyscoinAssetGuid(asset.assetGuid) === intentGuid &&
           asset.chainId === activeNetwork.chainId
       )
     : undefined;
+  const tokenSymbol = getSyscoinActivityAssetLabel(
+    intentGuid,
+    tokenAsset?.symbol
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -139,34 +177,56 @@ export const SyscoinTransactionDetails = ({
       hash,
       async () => {
         const summaryAtRead = observationRef.current;
-        const data = await controllerEmitter(
+        const candidate = compactRef.current;
+        const result = (await controllerEmitter(
           ['wallet', 'getSysTransactionFromBlockbook'],
-          [hash, networkUrl]
-        );
+          [
+            hash,
+            networkUrl,
+            {
+              scope: walletScope,
+              compact: candidate
+                ? { ...candidate.candidates, txid: normalizedHash }
+                : null,
+            },
+          ]
+        )) as UtxoActivityDetailsReply | null;
+        if (result?.txid !== normalizedHash) return null;
+        const data = result.transaction;
         if (!data || typeof data !== 'object' || Array.isArray(data))
-          return data;
+          return {
+            txid: normalizedHash,
+            transaction: null,
+            compact:
+              candidate && result.compact
+                ? { key: candidate.key, data: result.compact }
+                : null,
+          };
         const { [UTXO_DETAIL_OBSERVATION]: dispatch, ...body } =
           data as ISysTransaction & {
             [UTXO_DETAIL_OBSERVATION]?: unknown;
           };
-        return bindUtxoDetailObservation(body, {
-          ...summaryAtRead,
-          dispatch: isSerializedUtxoObservation(dispatch)
-            ? dispatch
-            : undefined,
-        });
+        return {
+          txid: body.txid,
+          transaction: bindUtxoDetailObservation(body, {
+            ...summaryAtRead,
+            dispatch: isSerializedUtxoObservation(dispatch)
+              ? dispatch
+              : undefined,
+          }),
+          compact: null,
+        };
       },
       isCurrent,
-      (fullTransaction: ISysTransaction | null) => {
-        if (
-          isCurrent() &&
-          fullTransaction?.txid?.toLowerCase() === normalizedHash
-        ) {
-          setEnhancedTransaction({
-            scope,
-            data: fullTransaction,
-          });
-        }
+      (detail: UtxoActivityDetailRead | null) => {
+        if (!isCurrent() || !detail) return;
+        if (detail.transaction)
+          setEnhancedTransaction({ scope, data: detail.transaction });
+        else if (
+          detail.compact &&
+          detail.compact.key === compactRef.current?.key
+        )
+          setCompactParticipants({ scope, ...detail.compact });
       },
       (error) => {
         if (isCurrent())
@@ -178,7 +238,7 @@ export const SyscoinTransactionDetails = ({
       cancelled = true;
       stop();
     };
-  }, [hash, networkUrl, scope]);
+  }, [hash, networkUrl, normalizedHash, scope, walletScope]);
 
   // Helper function to get appropriate copy message based on field label
   const getCopyMessage = (label: string) => {
@@ -222,58 +282,34 @@ export const SyscoinTransactionDetails = ({
     }
   };
 
-  const recipients: any = {};
-  const senders: any = {};
-  let isTxCanceled: boolean;
-  let isConfirmed: boolean;
-  let isTxSent: boolean;
+  const isTxCanceled = rawTransaction?.isCanceled === true;
+  const isConfirmed = isTransactionInBlock(rawTransaction);
+  const isTxSent = rawTransaction?.direction === 'sent';
+  const etaSeconds = readHistoryCount(rawTransaction?.confirmationETASeconds);
+  const confirmationETA =
+    !isConfirmed && etaSeconds !== null
+      ? formatSyscoinConfirmationETA({ confirmationETASeconds: etaSeconds })
+      : null;
   const nativeIntent = getSyscoinNativeTransferAmount(
     accountTransaction,
     rawTransaction
   );
   const nativeAccountChange = getSyscoinAccountChange(accountTransaction);
 
-  useEffect(() => {
-    if (rawTransaction) {
-      const { vin, vout } = rawTransaction;
-
-      // Process vins and vouts (with array checks)
-      if (Array.isArray(vout)) {
-        for (const voutItem of vout) {
-          if (!voutItem.addresses) continue;
-          for (const address of voutItem.addresses) {
-            if (!recipients[address]) {
-              recipients[address] = 0;
-            }
-            recipients[address] += voutItem.value;
-          }
-        }
-      }
-
-      if (Array.isArray(vin)) {
-        for (const vinItem of vin) {
-          if (!vinItem.addresses) continue;
-          for (const address of vinItem.addresses) {
-            if (!senders[address]) {
-              senders[address] = 0;
-            }
-            senders[address] += vinItem.value;
-          }
-        }
-      }
-    }
-  }, [rawTransaction]);
-
-  // Build formatted details from the active raw transaction (prefer passed tx)
-
-  const formattedTransaction: {
+  const formattedTransactionDetails: {
     canCopy: boolean;
     label: string;
     value: string;
   }[] = [];
 
   // Extract SPT information from raw transaction
-  const tokenTransfers = rawTransaction?.tokenTransfers || [];
+  const tokenTransfers = Array.isArray(rawTransaction?.tokenTransfers)
+    ? rawTransaction.tokenTransfers
+    : [];
+  const tokenGuids = tokenTransfers.flatMap((transfer) => {
+    const guid = parseSyscoinAssetGuid(transfer?.token);
+    return guid ? [guid] : [];
+  });
   const tokenType = rawTransaction?.tokenType;
 
   // Simple extraction of first asset from vout for single clear intent
@@ -284,120 +320,86 @@ export const SyscoinTransactionDetails = ({
 
   const hasTokenInfo = tokenTransfers.length > 0 || tokenType || hasAssetInfo;
 
-  const txSource =
-    rawTransaction && (rawTransaction as any).txid ? rawTransaction : null;
-  if (txSource) {
-    isTxCanceled = Boolean((txSource as any)?.isCanceled);
-    isConfirmed = isTransactionInBlock(txSource as any);
-    isTxSent = (txSource as any)?.direction === 'sent';
-    const confirmationETA = !isConfirmed
-      ? formatSyscoinConfirmationETA(txSource as any)
-      : null;
-    const vinAddresses = getSendingAddresses(txSource);
-    const vinFormattedValue = {
-      value: vinAddresses.join(', '),
-      label: 'From',
-      canCopy: vinAddresses.length > 0,
-    };
-    formattedTransaction.push(vinFormattedValue);
-
-    const voutAddress = getReceivingAddresses(txSource);
-    const voutFormattedValue = {
-      value: voutAddress.length
-        ? voutAddress.join(', ')
-        : t('settings.unavailable'),
-      label: 'To',
-      canCopy: voutAddress.length > 0,
-    };
-    formattedTransaction.push(voutFormattedValue);
-
-    if (confirmationETA) {
-      formattedTransaction.push({
-        value: confirmationETA,
+  if (rawTransaction) {
+    const vettedCompact =
+      compactParticipants?.scope === scope &&
+      compactParticipants.key === compact?.key
+        ? compactParticipants.data
+        : null;
+    const from = matchingEnhancedTransaction
+      ? getSendingAddresses(rawTransaction)
+      : vettedCompact?.from ?? [];
+    const to = matchingEnhancedTransaction
+      ? getReceivingAddresses(rawTransaction)
+      : vettedCompact?.to ?? [];
+    const txid =
+      typeof rawTransaction.txid === 'string' &&
+      /^[a-f0-9]{64}$/i.test(rawTransaction.txid)
+        ? rawTransaction.txid
+        : null;
+    const blockHash =
+      isConfirmed &&
+      typeof rawTransaction.blockHash === 'string' &&
+      /^[a-f0-9]{64}$/i.test(rawTransaction.blockHash)
+        ? rawTransaction.blockHash
+        : null;
+    const confirmations = readHistoryCount(rawTransaction.confirmations);
+    const blockTime = readHistoryCount(rawTransaction.blockTime);
+    const blockDate = blockTime && new Date(blockTime * 1000);
+    const fee =
+      typeof rawTransaction.fees === 'string' ||
+      Number.isSafeInteger(rawTransaction.fees)
+        ? String(rawTransaction.fees)
+        : '';
+    const unavailable = t('settings.unavailable');
+    formattedTransactionDetails.push(
+      { label: 'Txid', value: txid ?? unavailable, canCopy: txid !== null },
+      {
+        label: 'From',
+        value: from.length ? from.join(', ') : unavailable,
+        canCopy: from.length > 0,
+      },
+      {
+        label: 'To',
+        value: to.length ? to.join(', ') : unavailable,
+        canCopy: to.length > 0,
+      },
+      {
+        label: 'Block Hash',
+        value: isConfirmed ? blockHash ?? unavailable : t('send.pending'),
+        canCopy: blockHash !== null,
+      },
+      {
+        label: 'Confirmations',
+        value: confirmations === null ? unavailable : String(confirmations),
+        canCopy: false,
+      }
+    );
+    if (confirmationETA)
+      formattedTransactionDetails.push({
         label: 'Estimated Confirmation',
+        value: confirmationETA,
         canCopy: false,
       });
-    }
-
-    for (const [key, value] of Object.entries(txSource as any)) {
-      const formattedKey = camelCaseToText(key);
-      if (key === 'blockHash') {
-        const blockHash = typeof value === 'string' ? value : '';
-        formattedTransaction.push({
-          value: isConfirmed
-            ? blockHash || t('settings.unavailable')
-            : t('send.pending'),
-          label: formattedKey,
-          canCopy: isConfirmed && blockHash.length > 0,
-        });
-        continue;
-      }
-      if (key === 'blockTime') {
-        const blockDate = new Date(Number(value) * 1000);
-        formattedTransaction.push({
-          value: !isConfirmed
-            ? t('send.pending')
-            : Number(value) > 0 && Number.isFinite(blockDate.getTime())
-            ? blockDate.toLocaleString(i18n?.resolvedLanguage || i18n?.language)
-            : t('settings.unavailable'),
-          label: formattedKey,
-          canCopy: false,
-        });
-        continue;
-      }
-      if (key === 'fees') {
-        const rawFee = String(value ?? '');
-        formattedTransaction.push({
-          value: /^\d+$/.test(rawFee)
-            ? `${formatSyscoinValue(rawFee)} ${
-                currency?.toUpperCase() || 'SYS'
-              }`
-            : t('settings.unavailable'),
-          label: formattedKey,
-          canCopy: false,
-        });
-        continue;
-      }
-      if (value === undefined || value === null || typeof value === 'object') {
-        continue;
-      }
-      const formattedBoolean = Boolean(value) ? t('send.yes') : t('send.no');
-
-      const formattedValue = {
-        value: typeof value === 'boolean' ? formattedBoolean : String(value),
-        label: formattedKey,
+    formattedTransactionDetails.push(
+      {
+        label: 'Block Time',
+        value: !isConfirmed
+          ? t('send.pending')
+          : blockDate && Number.isFinite(blockDate.getTime())
+          ? blockDate.toLocaleString(i18n?.resolvedLanguage || i18n?.language)
+          : unavailable,
         canCopy: false,
-      };
-
-      if (String(value).length >= 20) {
-        formattedValue.value = String(value);
-        formattedValue.canCopy = true;
+      },
+      {
+        label: 'Fees',
+        value: /^\d{1,78}$/.test(fee)
+          ? `${formatSyscoinValue(fee)} ${currency?.toUpperCase() || 'SYS'}`
+          : unavailable,
+        canCopy: false,
       }
-
-      formattedTransaction.push(formattedValue);
-    }
-    // Blockbook omits block fields for some pending rows instead of returning
-    // null. Keep that normal REST shape as readable as an explicit empty field.
-    if (!isConfirmed) {
-      for (const key of ['blockHash', 'blockTime']) {
-        if (!Object.prototype.hasOwnProperty.call(txSource, key)) {
-          formattedTransaction.push({
-            value: t('send.pending'),
-            label: camelCaseToText(key),
-            canCopy: false,
-          });
-        }
-      }
-    }
-  }
-
-  const formattedTransactionDetails = formattedTransaction
-    .filter(({ label }) => UtxoTxDetailsLabelsToKeep.includes(label))
-    .sort(
-      (a, b) =>
-        UtxoTxDetailsLabelsToKeep.indexOf(a.label) -
-        UtxoTxDetailsLabelsToKeep.indexOf(b.label)
     );
+  }
 
   // Handle case where transaction doesn't exist (e.g., pending tx not in blockchain)
   if (!rawTransaction) {
@@ -442,11 +444,9 @@ export const SyscoinTransactionDetails = ({
 
             if (intent) {
               const decimals = intent.decimals ?? 8;
-              const symbol =
-                intent.symbol ?? `SPT (${intent.assetGuid || '?'})`;
               const logo =
                 tokenAsset?.image ||
-                getTokenLogo(symbol, true, intent.assetGuid);
+                getTokenLogo(tokenSymbol, true, intentGuid);
 
               return (
                 <div className="flex items-center justify-center gap-2 max-w-full">
@@ -455,10 +455,10 @@ export const SyscoinTransactionDetails = ({
                     aria-hidden="true"
                   >
                     <TokenIcon
-                      key={`${activeNetwork.chainId}:${intent.assetGuid}:${logo}`}
-                      assetGuid={intent.assetGuid}
+                      key={`${activeNetwork.chainId}:${intentGuid}:${logo}`}
+                      assetGuid={intentGuid}
                       logo={logo || undefined}
-                      symbol={symbol}
+                      symbol={tokenSymbol}
                       size={24}
                       className="shadow-md group-hover:shadow-xl motion-safe:group-hover:scale-110 transition-all duration-200 ease-out motion-reduce:transition-none"
                     />
@@ -467,7 +467,7 @@ export const SyscoinTransactionDetails = ({
                   <p className="text-white text-base min-w-0 break-words">
                     {formatSyscoinTokenAmount(intent.amount, decimals) ??
                       t('settings.unavailable')}{' '}
-                    {symbol}
+                    {tokenSymbol}
                   </p>
                 </div>
               );
@@ -521,9 +521,6 @@ export const SyscoinTransactionDetails = ({
             !rbfEnabled &&
             !isTxCanceled &&
             !isConfirmed;
-          const confirmationETA = !isConfirmed
-            ? formatSyscoinConfirmationETA(rawTransaction)
-            : null;
 
           if (showZdagConfirmed) {
             return (
@@ -582,38 +579,29 @@ export const SyscoinTransactionDetails = ({
         </div>
       )}
 
-      {/* Add token info as details if present */}
-      {tokenTransfers.length > 0 &&
-        tokenTransfers.map((transfer: any, index: number) => (
-          <Fragment key={`token-${index}`}>
-            {transfer.token && (
-              <div className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300">
-                <p className="text-xs font-normal text-white">
-                  {t('send.assetGuid')}
-                </p>
-                <span className="flex items-center">
-                  <Tooltip content={transfer.token} childrenClassName="flex">
-                    <p className="text-xs font-normal text-white">
-                      {transfer.token.length > 12
-                        ? ellipsis(transfer.token, 6, 6)
-                        : transfer.token}
-                    </p>
-                    <IconButton
-                      aria-label={`${t('buttons.copy')}: ${t(
-                        'send.assetGuid'
-                      )}`}
-                      onClick={() =>
-                        handleCopyWithMessage(transfer.token, 'Asset Guid')
-                      }
-                    >
-                      <CopyIcon />
-                    </IconButton>
-                  </Tooltip>
-                </span>
-              </div>
-            )}
-          </Fragment>
-        ))}
+      {tokenGuids.map((guid: string, index: number) => (
+        <div
+          key={`token-${index}`}
+          className="flex items-center justify-between my-1 pl-0 pr-3 py-2 w-full text-xs border-b border-dashed border-[#FFFFFF29] cursor-default transition-all duration-300"
+        >
+          <p className="text-xs font-normal text-white">
+            {t('send.assetGuid')}
+          </p>
+          <span className="flex items-center">
+            <Tooltip content={guid} childrenClassName="flex">
+              <p className="text-xs font-normal text-white">
+                {guid.length > 12 ? ellipsis(guid, 6, 6) : guid}
+              </p>
+              <IconButton
+                aria-label={`${t('buttons.copy')}: ${t('send.assetGuid')}`}
+                onClick={() => handleCopyWithMessage(guid, 'Asset Guid')}
+              >
+                <CopyIcon />
+              </IconButton>
+            </Tooltip>
+          </span>
+        </div>
+      ))}
 
       {formattedTransactionDetails.map(
         ({ label, value, canCopy }: any, index: number) => (

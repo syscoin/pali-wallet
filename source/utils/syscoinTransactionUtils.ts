@@ -4,6 +4,8 @@ export {
   getSyscoinActivityOperationAmount,
   formatSyscoinTokenAmount,
 } from '../shared/utxoTokenAmounts';
+import { parseErc20Text } from '../shared/erc20';
+import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds';
 import {
   getSyscoinAccountDelta,
   getSyscoinAccountChange,
@@ -48,6 +50,22 @@ export const formatSyscoinConfirmationETA = (transaction: {
   const days = Math.ceil(hours / 24);
   return `${days} day${days === 1 ? '' : 's'}`;
 };
+
+/** Render canonical SYSX or a bounded label from the matched local asset. */
+export function getSyscoinActivityAssetLabel(
+  guid: string | undefined,
+  localSymbol: unknown
+): string {
+  if (guid === SYSX_ASSET_GUID) return 'SYSX';
+  if (guid !== undefined && localSymbol !== undefined) {
+    try {
+      return parseErc20Text(localSymbol, 'symbol');
+    } catch {
+      // Missing or unsafe metadata uses the generic label.
+    }
+  }
+  return 'SPT';
+}
 
 /**
  * Gets a human-readable label for a normalized transaction type

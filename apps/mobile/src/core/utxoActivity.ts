@@ -10,7 +10,9 @@ import { readSentryNode, SENTRY_REGISTRATION_TX_VERSION, type SentryNodeObservat
 import { SENTRY_NETWORKS } from '../../../../source/shared/sentryNetworks.ts';
 import { getSyscoinAccountChange, getSyscoinNativeTransferAmount, isSyscoinTokenOperation } from '../../../../source/shared/utxoNativeAmounts.ts';
 import { parseErc20Text } from '../../../../source/shared/erc20.ts';
+import { parseSyscoinAssetGuid } from '../../../../source/shared/syscoinAssetIds.ts';
 import { getSyscoinActivityOperationAmount } from '../../../../source/shared/utxoTokenAmounts.ts';
+import { normalizeUtxoActivityParticipants } from '../../../../source/shared/utxoActivityParticipants.ts';
 import { assertJsonWorkBudget, measureJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { isNativeAccountId } from '../custody/accountIdentity.ts';
@@ -66,14 +68,6 @@ function context(value: UtxoActivityContext, network: UtxoNetwork): UtxoActivity
   if (network.id !== value.networkId) return fail('CHANGED');
   return Object.freeze({ accountId: value.accountId, networkId: network.id, address: normalizeUtxoAddress(value.address, network), generation: value.generation });
 }
-function networkParticipantAddresses(values: readonly string[], network: UtxoNetwork): string[] {
-  const addresses = new Set<string>();
-  for (const value of values) {
-    try { addresses.add(normalizeUtxoAddress(value, network)); }
-    catch { /* Unrecognized provider text is not a participant address. */ }
-  }
-  return [...addresses];
-}
 function units(value: unknown): string | null {
   // Same bounded native amount domain used by the public balance surface.
   if (typeof value === 'string' && value.length > UTXO_ACTIVITY_LIMITS.nativeIntegerDigits) return null;
@@ -106,9 +100,7 @@ function projectAssetAmount(tx: Record<string, any>): UtxoActivityAssetAmount | 
   if (amount === null) return null;
   let symbol: string | undefined;
   try { symbol = parseErc20Text(amount.symbol, 'symbol'); } catch { /* Neutral asset label for unavailable display text. */ }
-  // Blockbook's SPT asset GUID is serialized from uint64, including NFT IDs.
-  const assetGuid = typeof amount.assetGuid === 'string' && /^(0|[1-9][0-9]{0,19})$/.test(amount.assetGuid) &&
-    (amount.assetGuid.length < 20 || amount.assetGuid <= '18446744073709551615') ? amount.assetGuid : undefined;
+  const assetGuid = parseSyscoinAssetGuid(amount.assetGuid);
   return Object.freeze({ amount: amount.amount, scope: amount.scope,
     ...(assetGuid === undefined ? {} : { assetGuid }),
     ...(amount.decimals === undefined ? {} : { decimals: amount.decimals }),
@@ -276,8 +268,9 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       const raw = { from: getSendingAddresses(merged), to: getReceivingAddresses(merged) };
       assertJsonWorkBudget(raw, 32768, 4, 2048);
       if (isAccount && (raw.from.includes(identifier) || raw.to.includes(identifier))) return fail('INVALID');
-      const from = networkParticipantAddresses(raw.from, network);
-      const to = networkParticipantAddresses(raw.to, network);
+      const normalize = (value: string) => normalizeUtxoAddress(value, network);
+      const from = normalizeUtxoActivityParticipants(raw.from, normalize);
+      const to = normalizeUtxoActivityParticipants(raw.to, normalize);
       check();
       const proTxHash = readSentry ? publicSentryRegistration(network, row, full) : undefined;
       const readPublicNode: UtxoActivityDetail['readSentryNode'] = proTxHash === undefined ? undefined

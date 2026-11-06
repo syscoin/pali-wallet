@@ -22,7 +22,9 @@ export const mergeAccountOwnershipFlags = (
 };
 
 /** One queue/cache implementation; each native authority owns its lifetime. */
-export const createUtxoTransactionDetailsCache = () => {
+export const createUtxoTransactionDetailsCache = (
+  shouldRetain: (data: any) => boolean = () => true
+) => {
   // Details fetches full transactions; list rows only reuse this bounded memory
   // cache. Never fetch a full body just to fill a compact history row.
   const cache = new Map<
@@ -161,12 +163,13 @@ export const createUtxoTransactionDetailsCache = () => {
             // Uncacheable full bodies still reach the selected Details consumer.
             let bytes: number | undefined;
             try {
-              bytes = measureJsonWorkBudget(
-                data,
-                UTXO_DETAIL_CACHE_BYTES,
-                32,
-                200_000
-              );
+              if (shouldRetain(data))
+                bytes = measureJsonWorkBudget(
+                  data,
+                  UTXO_DETAIL_CACHE_BYTES,
+                  32,
+                  200_000
+                );
             } catch {
               /* Display without retention. */
             }
@@ -286,11 +289,3 @@ export const createUtxoTransactionDetailsCache = () => {
     dispose,
   });
 };
-
-// Existing extension callers keep their process-owned singleton.
-export const {
-  getCachedUtxoTransactionDetails,
-  readUtxoTransactionDetails,
-  subscribeUtxoTransactionDetails,
-  watchUtxoTransactionDetails,
-} = createUtxoTransactionDetailsCache();

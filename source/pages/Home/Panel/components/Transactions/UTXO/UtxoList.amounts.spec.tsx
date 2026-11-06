@@ -106,8 +106,13 @@ const fullBridge = (amount = '100000000') => ({
 
 const cacheScope = (tx: { txid: string }) =>
   `${mockScope.account}:${mockScope.network}:${tx.txid.toLowerCase()}`;
+const fullDetailRead = (transaction: { txid: string }) => ({
+  txid: transaction.txid,
+  transaction,
+  compact: null,
+});
 const visitDetails = async (full: any, key = cacheScope(full)) => {
-  const read = jest.fn().mockResolvedValue(full);
+  const read = jest.fn().mockResolvedValue(fullDetailRead(full));
   await act(async () => {
     await readUtxoTransactionDetails(key, full.txid, read, () => true);
   });
@@ -230,7 +235,7 @@ it.each(['account', 'network'] as const)(
       <UtxoTransactionsListComponent tx={{ ...compactBridgeNativeOffset }} />
     );
     await act(async () => {
-      finishOld(fullBridge());
+      finishOld(fullDetailRead(fullBridge()));
       await oldRead;
     });
     expect(screen.queryByText('1.0000 SYSX')).toBeNull();
@@ -270,6 +275,32 @@ it('keeps ordinary compact SPT transfer value without hydration', () => {
   expect(mockEmitter).not.toHaveBeenCalled();
 });
 
+it.each([undefined, 'source:zpub-decorated-symbol'])(
+  'does not display provider GUID or symbol in compact SPT amount (%s)',
+  (symbol) => {
+    const reflectedGuid = 'source:zpub-decorated-account-key';
+    render(
+      <UtxoTransactionsListComponent
+        tx={{
+          ...compactBridgeWithAccountAsset,
+          tokenType: 'SPTAssetAllocationSend',
+          accountAssetTransfers: [
+            {
+              assetGuid: reflectedGuid,
+              value: '10000000',
+              decimals: 8,
+              symbol,
+            },
+          ],
+        }}
+      />
+    );
+    expect(screen.getByText('0.100000 SPT')).toBeTruthy();
+    expect(screen.queryByText(/source:zpub/)).toBeNull();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
 it.each(['unscoped-only', 'wrong-chain-only', 'exact-chain-after-legacy'])(
   'selects only exact-chain Activity icon metadata: %s',
   (scenario) => {
@@ -305,14 +336,15 @@ it.each(['unscoped-only', 'wrong-chain-only', 'exact-chain-after-legacy'])(
               assetGuid: '900001',
               value: '10000000',
               decimals: 8,
-              symbol: 'CUSTOM',
+              symbol: 'UNTRUSTED',
             },
           ],
         }}
       />
     );
 
-    expect(screen.getByText('0.100000 CUSTOM')).toBeTruthy();
+    const ticker = scenario === 'exact-chain-after-legacy' ? 'CUSTOM' : 'SPT';
+    expect(screen.getByText(`0.100000 ${ticker}`)).toBeTruthy();
     if (scenario === 'exact-chain-after-legacy') {
       expect(mockTokenIcon).toHaveBeenCalledWith(
         expect.objectContaining({ assetGuid: '900001', logo: exact.image })
@@ -361,6 +393,10 @@ it('keeps an SPT receipt compact without the native funding breakdown', () => {
 });
 
 it('uses Details-cached SPT metadata while preserving account ownership, not the first asset output', async () => {
+  const ownedGuid = '900004';
+  mockActiveAssets.syscoin = [
+    { assetGuid: ownedGuid, chainId: 5700, symbol: 'OWNED' },
+  ];
   const tx = {
     ...compactBridgeNativeOffset,
     tokenType: 'SPTAssetAllocationSend',
@@ -371,12 +407,12 @@ it('uses Details-cached SPT metadata while preserving account ownership, not the
   expectNoUnknownAmountLabel();
   await visitDetails({
     ...tx,
-    vin: [{ assetInfo: { assetGuid: 'owned', value: '100000000' } }],
+    vin: [{ assetInfo: { assetGuid: ownedGuid, value: '100000000' } }],
     vout: [
-      { assetInfo: { assetGuid: 'unrelated', value: '99900000000' } },
-      { assetInfo: { assetGuid: 'owned', value: '60000000' } },
+      { assetInfo: { assetGuid: '900005', value: '99900000000' } },
+      { assetInfo: { assetGuid: ownedGuid, value: '60000000' } },
     ],
-    tokenTransfers: [{ token: 'owned', decimals: 8, symbol: 'OWNED' }],
+    tokenTransfers: [{ token: ownedGuid, decimals: 8, symbol: 'UNTRUSTED' }],
   });
   const amount = screen.getByText('0.400000 OWNED');
   expect(within(amount.parentElement!).getByText('−')).toBeTruthy();
