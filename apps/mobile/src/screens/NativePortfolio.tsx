@@ -1,5 +1,5 @@
 import React, { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, Linking, Share, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
@@ -15,6 +15,7 @@ import { NativePortfolioController } from '../portfolio/nativePortfolio';
 import type { NativeTokenView } from '../portfolio/nativeTokens';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { NativeTokens } from './NativeTokens';
+import { PortfolioQuote } from './PortfolioQuote';
 import { TestnetFaucetCard } from './TestnetFaucetCard';
 import type { ShellLeafNavigation } from './RealAppShell';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
@@ -60,6 +61,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const [tokenTitle, setTokenTitle] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [pendingAction, setPendingAction] = useState<'copy' | 'share' | 'faucet' | null>(null);
+  const { width, fontScale } = useWindowDimensions();
+  const stackActions = fontScale >= 1.6 && width < 240 * fontScale;
+  const actionStyle = [s.flex, width <= 340 && s.compactAction, stackActions && s.stackedAction];
   const lifecycle = useRef({ alive: false, epoch: 0, busy: false });
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
@@ -163,7 +167,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
           <Text style={s.label}>{networkName.toUpperCase()} {utxo ? 'CONFIRMED BALANCE' : 'BALANCE'}</Text>
           <Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? statusText : `${networkName} balance ${amount} ${symbol}`} testID="native-portfolio-balance">{amount ?? '—'}</Text>
           <Text style={s.unit}>{amount === null ? statusText : symbol}</Text>
-          {quote && <Text style={styles.muted} testID="native-portfolio-quote">{quote}</Text>}
+          <PortfolioQuote {...quote} testID="native-portfolio-quote" />
           {pending !== undefined && pending !== '0' &&
             <Text style={s.unit}>Pending {formatBalanceDelta(pending, network.decimals)} {symbol}</Text>}
           {loading && <ActivityIndicator color={colors.pink} accessibilityLabel={`Loading ${networkName} balance`} />}
@@ -171,10 +175,10 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
         </View>
         {snapshot.status === 'error' && <Notice title="Could not load your balance" body={canReceive ? `Your ${networkName} address is still available. Refresh to try again.` : 'Refresh to try again.'} tone="amber" />}
         {!canSend && <Notice title={canReceive ? network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only' : 'Balance only'} body="Sending is not available on this network yet." />}
-        <View style={s.actions}>
-          {canSend && <Button title="Send" icon="arrow-up-right" style={s.flex} onPress={() => { if (account && model.isCurrent(account)) onSend?.(); }} />}
-          {canReceive && <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={s.flex} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
-          {!canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="secondary" style={s.flex} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
+        <View style={[s.actions, stackActions && s.stackedActions]}>
+          {canSend && <Button title="Send" icon="arrow-up-right" style={actionStyle} onPress={() => { if (account && model.isCurrent(account)) onSend?.(); }} />}
+          {canReceive && <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={actionStyle} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
+          {!canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="secondary" style={actionStyle} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         </View>
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         {canReceive && <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
@@ -203,6 +207,9 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 }, actions: { flexDirection: 'row', gap: 11 },
+  compactAction: { paddingHorizontal: 8 },
+  stackedActions: { flexDirection: 'column' },
+  stackedAction: { flex: 0 },
   hero: { alignItems: 'center', gap: 9, paddingTop: 8, paddingBottom: 12 },
   label: { color: colors.muted, fontSize: 11, lineHeight: 17, fontWeight: '600', letterSpacing: 1 },
   amount: { fontSize: 36, lineHeight: 46, fontWeight: '600', textAlign: 'center', letterSpacing: -1.1, alignSelf: 'stretch', flexShrink: 1 },

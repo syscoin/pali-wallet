@@ -96,3 +96,65 @@ test('Bitcoin selection renders the scoped Receive address, exact balance and Se
   await page.screenshot({ path: testInfo.outputPath('native-bitcoin-receive.png'), fullPage: true });
   expect(await page.evaluate(() => window.__nativeNetworkPortfolio.reads())).toEqual(['ethereum', 'bitcoin']);
 });
+
+test('a quote arriving during a press keeps the selected Receive button in place', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  const started = Promise.withResolvers<void>();
+  const quoteReady = Promise.withResolvers<void>();
+  await page.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === 'http://127.0.0.1:4179') return route.continue();
+    if (url.origin !== 'https://api.coingecko.com' || url.pathname !== '/api/v3/simple/price')
+      return route.abort();
+    if (url.searchParams.get('ids') === 'ethereum')
+      return route.fulfill({ json: { ethereum: { usd: 100 } } });
+    if (url.searchParams.get('ids') !== 'syscoin') return route.abort();
+    started.resolve();
+    await quoteReady.promise;
+    return route.fulfill({ json: { syscoin: { usd: 2 } } });
+  });
+  try {
+    await page.goto('/?network-portfolio');
+    await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.4 !important; }' });
+    await page.evaluate(() => window.__nativeNetworkPortfolio.select('rollux'));
+    await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Rollux balance 1.234 SYS');
+    await started.promise;
+    const quote = page.getByTestId('native-portfolio-quote');
+    await expect(quote).toHaveCount(0);
+    const receive = page.getByTestId('native-portfolio-receive');
+    await receive.scrollIntoViewIfNeeded();
+    const button = await receive.boundingBox();
+    expect(button).not.toBeNull();
+    expect(button!.width).toBeGreaterThanOrEqual(44);
+    expect(button!.height).toBeGreaterThanOrEqual(44);
+    const send = await page.getByRole('button', { name: 'Send', exact: true }).boundingBox();
+    expect(send).not.toBeNull();
+    expect(send!.width).toBeGreaterThanOrEqual(44);
+    expect(send!.height).toBeGreaterThanOrEqual(44);
+    expect(send!.y).toBeCloseTo(button!.y, 1);
+    expect(await receive.getByText('Receive', { exact: true }).evaluate((label) =>
+      label.getBoundingClientRect().height <= Number.parseFloat(getComputedStyle(label).lineHeight) + 1
+    )).toBe(true);
+    await page.mouse.move(button!.x + button!.width / 2, button!.y + button!.height / 2);
+    await page.mouse.down();
+    try {
+      const before = await receive.boundingBox();
+      quoteReady.resolve();
+      await expect(quote).toHaveText('≈ 2.468 USD');
+      const after = await receive.boundingBox();
+      expect(before).not.toBeNull();
+      expect(after).not.toBeNull();
+      expect(after!.y).toBeCloseTo(before!.y, 1);
+      await expect(quote).toHaveAttribute('aria-label', '≈ 2.468 USD');
+      expect(await quote.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.screenshot({ path: testInfo.outputPath('portfolio-quote-320-large-type.png') });
+    } finally {
+      await page.mouse.up();
+    }
+    await expect(page.getByTestId('native-receive-copy')).toBeVisible();
+    await expect(page.getByTestId('native-receive-qr')).toHaveAttribute('aria-label', /QR code for Rollux address/);
+  } finally {
+    quoteReady.resolve();
+  }
+});

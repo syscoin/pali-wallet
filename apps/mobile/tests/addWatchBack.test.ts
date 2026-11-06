@@ -110,6 +110,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
         AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
         StyleSheet: { create: (value: unknown) => value }, Share: {}, Linking: {},
+        useWindowDimensions: () => ({ width: 390, fontScale: 1 }),
         ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
       };
       const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
@@ -122,8 +123,9 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
+        './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
-        '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => null },
+        '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
         '../../../../source/shared/erc20': {},
         '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
       };
