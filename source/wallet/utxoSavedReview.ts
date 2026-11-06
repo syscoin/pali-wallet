@@ -1,12 +1,13 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
-import { supportsSptUtxoChain } from '../shared/sptInventory';
+import { supportsSptUtxoChain } from '../shared/sptInventory.ts';
 import {
   ALLOCATION_SEND_VERSION,
   getExactAssetAllocations,
-} from '../utils/syscoinPsbtValues';
+} from '../utils/syscoinPsbtValues.ts';
 
-import type { UtxoDurableSubmission } from './utxoSignedRecords';
+import type { UtxoDurableSubmission } from './utxoSignedRecords.ts';
+import type { Transaction } from 'bitcoinjs-lib';
 
 type AssetOutput = Readonly<{ assetGuid: string; rawAmount: string }>;
 export type SavedUtxoReviewOutput = Readonly<{
@@ -29,7 +30,9 @@ export function reviewSavedUtxoOutputs(
   >
 ): SavedUtxoReviewOutput[] {
   const { bitcoinjs } = syscoinUtils;
-  const transaction = bitcoinjs.Transaction.fromHex(record.rawTransaction);
+  const transaction: Transaction = bitcoinjs.Transaction.fromHex(
+    record.rawTransaction
+  );
   const allocationSend =
     record.operation === 'wallet' &&
     supportsSptUtxoChain(record.owner.chainId) &&
