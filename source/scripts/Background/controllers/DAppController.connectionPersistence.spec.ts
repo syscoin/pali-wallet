@@ -970,7 +970,7 @@ describe('connected personal-sign approval authority', () => {
       keyId,
       secretKeyHex: `0x${'66'.repeat(64)}`,
     });
-    await saveEncryptedSLHDSAState(provisioned, stateCrypto);
+    await saveEncryptedSLHDSAState(provisioned, stateCrypto, () => undefined);
     if (!cold) putRuntimeSLHDSAState(provisioned);
 
     const metadata = {
@@ -1073,8 +1073,13 @@ describe('connected personal-sign approval authority', () => {
         clearRuntimeSLHDSAStates();
       },
       readCount: async () =>
-        (await loadEncryptedSLHDSAState({ crypto: stateCrypto, keyId }))
-          ?.signatureCount,
+        (
+          await loadEncryptedSLHDSAState({
+            crypto: stateCrypto,
+            keyId,
+            assertOwner: () => undefined,
+          })
+        )?.signatureCount,
     };
   };
 
