@@ -82,7 +82,7 @@ export const useSavedEvmTransactions = (enabled: boolean, scope: string) => {
     try {
       const page = (await controllerEmitter(
         ['wallet', 'getSavedEvmTransactions'],
-        [beforeHash, 30]
+        beforeHash === undefined ? [] : [beforeHash, 30]
       )) as Page;
       if (!current() || !Array.isArray(page?.transactions)) return;
       setState((previous) => {
