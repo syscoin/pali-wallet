@@ -1,0 +1,9 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.syscoin.pali.watchnoticeprobe" android:versionCode="1" android:versionName="1">
+    <uses-sdk android:minSdkVersion="35" android:targetSdkVersion="35" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application android:allowBackup="false" android:label="Pali Watch Notice Test"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity android:name="org.syscoin.pali.storage.WatchNoticeProbe" android:exported="true" />
+    </application>
+</manifest>
