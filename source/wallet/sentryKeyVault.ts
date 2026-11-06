@@ -1,10 +1,82 @@
-import type { SentryKeySummary, SentryNetwork } from '../utils/sentry/types';
-import type { SentryAuthorityKey } from '@sidhujag/sysweb3-sentry';
+import { sentryPrivateLabelParts } from '../shared/sentryKeyLabel.ts';
+
+import type { SentryNetwork } from '../shared/sentryNetworks.ts';
+
+const roles = ['owner', 'operator', 'voting', 'collateral'] as const;
+const schemes = ['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'] as const;
+
+/** The stored key representation produced by the Sentry SDK. */
+export type SentryAuthorityKey = {
+  publicKey: string;
+  role: (typeof roles)[number];
+  scheme: (typeof schemes)[number];
+  secretKey: string;
+};
+export type SentryAuthorityScheme = SentryAuthorityKey['scheme'];
+export function isAllowedSentryKeyRoleScheme(
+  role: SentryAuthorityKey['role'],
+  scheme: SentryAuthorityKey['scheme']
+): boolean {
+  return (
+    roles.includes(role) &&
+    schemes.includes(scheme) &&
+    (role !== 'collateral' || scheme === 'secp256k1') &&
+    (role !== 'operator' || scheme !== 'secp256k1') &&
+    (role === 'operator' || scheme !== 'bls-basic')
+  );
+}
+export type SentryKeySummary = Omit<SentryAuthorityKey, 'secretKey'> & {
+  id: string;
+  label: string;
+  network: SentryNetwork;
+};
+
+const publicKeyPatterns = {
+  'bls-basic': /^[0-9a-f]{96}$/,
+  secp256k1: /^[0-9a-f]{66}$/,
+  'slh-dsa-shake-128s': /^[0-9a-f]{64}$/,
+} satisfies Record<SentryAuthorityScheme, RegExp>;
+export function isSentryAuthorityPublicKey(
+  scheme: SentryAuthorityScheme,
+  value: unknown
+): value is string {
+  return (
+    typeof value === 'string' &&
+    Object.hasOwn(publicKeyPatterns, scheme) &&
+    publicKeyPatterns[scheme].test(value)
+  );
+}
+
+export function isSentryAuthorityKey(
+  value: unknown
+): value is SentryAuthorityKey {
+  const key = value as SentryAuthorityKey | null;
+  return (
+    !!key &&
+    isAllowedSentryKeyRoleScheme(key.role, key.scheme) &&
+    isSentryAuthorityPublicKey(key.scheme, key.publicKey) &&
+    typeof key.secretKey === 'string' &&
+    new RegExp(
+      `^[0-9a-f]{${key.scheme === 'slh-dsa-shake-128s' ? 128 : 64}}$`
+    ).test(key.secretKey)
+  );
+}
 
 const DOMAIN = 'Pali/Sentry/operator-vault/v1';
 const utf8 = new TextEncoder();
 const hex = (bytes: Uint8Array) =>
   Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+export async function deriveSentryVaultId(
+  rootPublicIdentity: string,
+  sha256: (value: Uint8Array<ArrayBuffer>) => Promise<Uint8Array>
+): Promise<string> {
+  if (!rootPublicIdentity)
+    throw new Error('Wallet public identity is unavailable');
+  const digest = await sha256(utf8.encode(rootPublicIdentity));
+  if (!(digest instanceof Uint8Array) || digest.byteLength !== 32)
+    throw new Error('Invalid wallet public identity digest');
+  return hex(digest);
+}
 const unhex = (value: string) => {
   if (!/^(?:[0-9a-f]{2})+$/.test(value))
     throw new Error('Invalid encrypted Sentry key');
@@ -24,7 +96,7 @@ interface ISentryKeyEnvelope {
   iv: string;
   summary: SentryKeySummary;
 }
-interface ISentryKeyStore {
+export interface ISentryKeyStore {
   keys: ISentryKeyEnvelope[];
   network: SentryNetwork;
   vaultId: string;
@@ -108,75 +180,85 @@ type SentryKeyCrypto = Pick<
   'subtle' | 'randomUUID' | 'getRandomValues'
 >;
 
-interface ISentryKeyVaultHost {
+export interface ISentryKeyVaultHost {
   crypto(): SentryKeyCrypto;
   read(key: string): Promise<unknown>;
-  // Callers serialize the full read/modify/write, or the host write must compare the exact prior store.
+  // Replace only the exact prior store under the supplied live owner guard.
   write(
     key: string,
+    expected: ISentryKeyStore | undefined,
     value: ISentryKeyStore,
     assertCurrent: () => void
   ): Promise<void>;
 }
 
+export function assertSentryKeyStore(
+  value: unknown,
+  vaultId: string,
+  network: SentryNetwork
+): asserts value is ISentryKeyStore {
+  const store = value as ISentryKeyStore;
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    !hasSentryStoreHeader(store, vaultId, network) ||
+    store.keys.length > 100 ||
+    store.keys.some(
+      (entry: ISentryKeyEnvelope) =>
+        !entry?.summary ||
+        entry.summary.network !== network ||
+        !roles.includes(entry.summary.role) ||
+        !schemes.includes(entry.summary.scheme) ||
+        typeof entry.summary.id !== 'string' ||
+        !/^[a-f0-9-]{36}$/.test(entry.summary.id) ||
+        typeof entry.summary.label !== 'string' ||
+        entry.summary.label.length > 80 ||
+        typeof entry.summary.publicKey !== 'string' ||
+        !new RegExp(
+          `^[0-9a-f]{${
+            entry.summary.scheme === 'bls-basic'
+              ? 96
+              : entry.summary.scheme === 'secp256k1'
+              ? 66
+              : 64
+          }}$`
+        ).test(entry.summary.publicKey) ||
+        typeof entry.iv !== 'string' ||
+        typeof entry.ciphertext !== 'string'
+    )
+  )
+    throw new Error('Invalid Sentry key storage');
+}
+
 /** Shared Sentry envelope operations; wallet authorization belongs to the caller. */
 export function createSentryKeyVault(host: ISentryKeyVaultHost) {
-  const getSentryVaultId = async (rootPublicIdentity: string) => {
-    if (!rootPublicIdentity)
-      throw new Error('Wallet public identity is unavailable');
-    return hex(
-      new Uint8Array(
-        await host
-          .crypto()
-          .subtle.digest('SHA-256', utf8.encode(rootPublicIdentity))
-      )
+  const getSentryVaultId = (rootPublicIdentity: string) =>
+    deriveSentryVaultId(
+      rootPublicIdentity,
+      async (bytes) =>
+        new Uint8Array(await host.crypto().subtle.digest('SHA-256', bytes))
     );
-  };
 
-  const getStore = async (
-    vaultId: string,
-    network: SentryNetwork
-  ): Promise<ISentryKeyStore> => {
-    const value = (await host.read(
+  const getStore = async (vaultId: string, network: SentryNetwork) => {
+    const expected = await host.read(
       sentryKeyVaultStorageKey(vaultId, network)
-    )) as ISentryKeyStore | null;
-    if (!value) return { version: 1, vaultId, network, keys: [] };
-    if (
-      !hasSentryStoreHeader(value, vaultId, network) ||
-      value.keys.length > 100 ||
-      value.keys.some(
-        (entry: ISentryKeyEnvelope) =>
-          !entry?.summary ||
-          entry.summary.network !== network ||
-          !['operator', 'owner', 'voting', 'collateral'].includes(
-            entry.summary.role
-          ) ||
-          !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(
-            entry.summary.scheme
-          ) ||
-          !/^[a-f0-9-]{36}$/.test(entry.summary.id) ||
-          typeof entry.summary.label !== 'string' ||
-          entry.summary.label.length > 80 ||
-          !new RegExp(
-            `^[0-9a-f]{${
-              entry.summary.scheme === 'bls-basic'
-                ? 96
-                : entry.summary.scheme === 'secp256k1'
-                ? 66
-                : 64
-            }}$`
-          ).test(entry.summary.publicKey) ||
-          typeof entry.iv !== 'string' ||
-          typeof entry.ciphertext !== 'string'
-      )
-    )
-      throw new Error('Invalid Sentry key storage');
-    return value;
+    );
+    if (expected === undefined || expected === null) {
+      const store: ISentryKeyStore = { version: 1, vaultId, network, keys: [] };
+      return { expected: undefined, store };
+    }
+    assertSentryKeyStore(expected, vaultId, network);
+    return { expected, store: expected };
   };
 
   const listSentryKeys = async (vaultId: string, network: SentryNetwork) =>
-    (await getStore(vaultId, network)).keys.map(({ summary }) => ({
-      ...summary,
+    (await getStore(vaultId, network)).store.keys.map(({ summary }) => ({
+      id: summary.id,
+      label: summary.label,
+      network: summary.network,
+      role: summary.role,
+      scheme: summary.scheme,
+      publicKey: summary.publicKey,
     }));
 
   /** All entries are validated and encrypted before the one atomic storage write. */
@@ -203,39 +285,21 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
         throw new Error(
           `Key ${index + 1}: enter a label of 1 to 80 characters`
         );
-      if (
-        !key ||
-        !['owner', 'operator', 'voting', 'collateral'].includes(key.role) ||
-        !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(
-          key.scheme
-        ) ||
-        (key.role === 'operator' && key.scheme === 'secp256k1') ||
-        (key.role !== 'operator' && key.scheme === 'bls-basic') ||
-        (key.role === 'collateral' && key.scheme !== 'secp256k1') ||
-        !new RegExp(
-          `^[0-9a-f]{${
-            key.scheme === 'bls-basic'
-              ? 96
-              : key.scheme === 'secp256k1'
-              ? 66
-              : 64
-          }}$`
-        ).test(key.publicKey) ||
-        !new RegExp(
-          `^[0-9a-f]{${key.scheme === 'slh-dsa-shake-128s' ? 128 : 64}}$`
-        ).test(key.secretKey)
-      )
+      if (!isSentryAuthorityKey(key))
         throw new Error(`Key ${index + 1}: invalid key metadata`);
       return { label: label.trim(), key };
     });
+    const privateParts = entries.flatMap(({ key }) =>
+      sentryPrivateLabelParts(key.secretKey)
+    );
     if (
       entries.some(({ label }) =>
-        entries.some(({ key }) => label.toLowerCase().includes(key.secretKey))
+        privateParts.some((part) => label.toLowerCase().includes(part))
       )
     )
       throw new Error('Key labels must not contain private keys');
     assertCurrent();
-    const store = await getStore(vaultId, network);
+    const { expected, store } = await getStore(vaultId, network);
     assertCurrent();
     if (store.keys.length + entries.length > 100)
       throw new Error('Sentry key limit reached');
@@ -269,7 +333,14 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
         publicKey: key.publicKey,
       };
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      const plaintext = utf8.encode(JSON.stringify(key));
+      const plaintext = utf8.encode(
+        JSON.stringify({
+          role: key.role,
+          scheme: key.scheme,
+          publicKey: key.publicKey,
+          secretKey: key.secretKey,
+        })
+      );
       try {
         const ciphertext = await crypto.subtle.encrypt(
           { name: 'AES-GCM', iv, additionalData: aad(vaultId, summary) },
@@ -289,6 +360,7 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
     assertCurrent();
     await host.write(
       sentryKeyVaultStorageKey(vaultId, network),
+      expected,
       {
         ...store,
         keys: [...store.keys, ...encrypted],
@@ -308,7 +380,7 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
   }): Promise<SentryAuthorityKey> => {
     const { vaultId, network, id, seed, assertCurrent } = args;
     assertCurrent();
-    const envelope = (await getStore(vaultId, network)).keys.find(
+    const envelope = (await getStore(vaultId, network)).store.keys.find(
       ({ summary }) => summary.id === id
     );
     if (!envelope) throw new Error('Sentry operator key not found');
@@ -351,12 +423,13 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
     id: string,
     assertCurrent: () => void
   ) => {
-    const store = await getStore(vaultId, network);
+    const { expected, store } = await getStore(vaultId, network);
     assertCurrent();
     if (!store.keys.some(({ summary }) => summary.id === id))
       throw new Error('Sentry operator key not found');
     await host.write(
       sentryKeyVaultStorageKey(vaultId, network),
+      expected,
       { ...store, keys: store.keys.filter(({ summary }) => summary.id !== id) },
       assertCurrent
     );
