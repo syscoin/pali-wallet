@@ -96,7 +96,14 @@ beforeEach(() => {
   jest.mocked(chromeStorage.setItems).mockReset().mockResolvedValue(undefined);
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
-  wallet.keyrings = new Map([[1, { test: 'synthetic keyring' }]]);
+  const unlocked = {
+    isUnlocked: () => true,
+    getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+  };
+  wallet.keyrings = new Map([
+    [1, { ...unlocked }],
+    [57, unlocked],
+  ]);
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
   };
@@ -110,7 +117,7 @@ afterEach(() => jest.restoreAllMocks());
 it('allows distinct UTXO vaults and edits to the same registration', async () => {
   await wallet.addCustomRpc(network);
   await wallet.addCustomRpc({ ...other, slip44: 2 });
-  const edited = { ...network, url: 'https://edited.invalid' };
+  const edited = { ...network, label: 'Updated test network' };
   await expect(
     wallet.editCustomRpc(
       edited,

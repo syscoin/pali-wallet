@@ -145,8 +145,15 @@ const ManageNetworkView = () => {
           networkToRemove.key,
         ]
       );
-    } catch {
-      alert.error(t('settings.networkRemovalIncomplete'));
+    } catch (error) {
+      const code = (error as { code?: string } | null)?.code;
+      if (code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER')
+        alert.error(t('settings.networkRemovalHasSavedTransfer'));
+      else if (code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS')
+        alert.error(t('settings.networkRemovalHasImportedAccounts'));
+      else if (code === 'UTXO_NETWORK_HAS_SENTRY_KEYS')
+        alert.error(t('settings.networkRemovalHasSentryKeys'));
+      else alert.error(t('settings.networkRemovalIncomplete'));
     } finally {
       // A later selection must not be cleared by this request finishing.
       setNetworkToRemove((current) =>

@@ -152,6 +152,18 @@ function guard(session: UtxoRecordSession) {
   }
 }
 
+function isUtxoSubmissionUrl(url: string): boolean {
+  const endpoint = new URL(url);
+  return (
+    ['http:', 'https:'].includes(endpoint.protocol) &&
+    !endpoint.username &&
+    !endpoint.password &&
+    !/[?#]/.test(endpoint.href) &&
+    endpoint.href === url &&
+    endpoint.pathname.endsWith('/api/v2/sendtx/')
+  );
+}
+
 function checkRecord(record: UtxoDurableSubmission): string {
   const owner = ownerId(record.owner);
   const {
@@ -162,14 +174,8 @@ function checkRecord(record: UtxoDurableSubmission): string {
     feeSatoshis,
     virtualSize,
   } = record;
-  const endpoint = new URL(url);
   if (
-    !['http:', 'https:'].includes(endpoint.protocol) ||
-    endpoint.username ||
-    endpoint.password ||
-    /[?#]/.test(endpoint.href) ||
-    endpoint.href !== url ||
-    !endpoint.pathname.endsWith('/api/v2/sendtx/') ||
+    !isUtxoSubmissionUrl(url) ||
     !HASH.test(txid) ||
     !['wallet', 'external'].includes(operation) ||
     !validOutpoints(record.outpoints) ||
@@ -604,6 +610,68 @@ export class UtxoSignedRecords {
     return entries
       .filter((entry) => entry.owner === identity)
       .map(({ txid, phase }) => ({ txid, accepted: phase !== 'pending' }));
+  }
+
+  /** Keep the original endpoint reachable until its pending transfers resolve. */
+  replaceEndpoint<T>(
+    session: UtxoRecordSession,
+    chain: UtxoRecordChain,
+    retiringSubmissionUrl: string,
+    commit: () => Promise<T>
+  ): Promise<T> {
+    if (!isUtxoSubmissionUrl(retiringSubmissionUrl))
+      throw new Error('Invalid UTXO submission endpoint');
+    const identity = chainKey(chain);
+    return this.exclusive(async () => {
+      const { entries } = await this.load(session);
+      for (const entry of entries) {
+        if (entry.chain !== identity || entry.phase === 'confirmed') continue;
+        const retained = await this.readEntry(session, entry);
+        if (retained.url === retiringSubmissionUrl)
+          throw Object.assign(
+            new Error(
+              'Check your saved transfers before changing this endpoint.'
+            ),
+            { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' }
+          );
+      }
+      guard(session);
+      return commit();
+    });
+  }
+
+  /** A registration can own retained bytes from more than one endpoint. */
+  removeRegistration<T>(
+    session: UtxoRecordSession,
+    registration: Readonly<Pick<UtxoRecordChain, 'chainId' | 'slip44'>>,
+    commit: () => Promise<T>
+  ): Promise<T> {
+    const { chainId, slip44 } = registration;
+    if (
+      !Number.isSafeInteger(chainId) ||
+      chainId < 0 ||
+      !Number.isSafeInteger(slip44) ||
+      slip44 < 0
+    )
+      return corrupt();
+    return this.exclusive(async () => {
+      const { entries } = await this.load(session);
+      const checked = new Set<string>();
+      for (const entry of entries) {
+        if (entry.phase === 'confirmed' || checked.has(entry.chain)) continue;
+        const { owner } = await this.readEntry(session, entry);
+        if (owner.chainId === chainId && owner.slip44 === slip44)
+          throw Object.assign(
+            new Error(
+              'Check your saved transfers before removing this network.'
+            ),
+            { code: 'UTXO_NETWORK_HAS_SAVED_TRANSFER' }
+          );
+        checked.add(entry.chain);
+      }
+      guard(session);
+      return commit();
+    });
   }
 
   /** Wait for admission already in progress across the account group's networks. */
