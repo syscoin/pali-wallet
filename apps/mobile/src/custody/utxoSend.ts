@@ -15,7 +15,11 @@ import {
   utxoSubmissionUrl,
 } from '../../../../source/wallet/utxoSignedBinding.ts';
 import { reviewSavedUtxoOutputs } from '../../../../source/wallet/utxoSavedReview.ts';
-import { submitReviewedUtxo } from '../../../../source/wallet/utxoSubmission.ts';
+import {
+  observeRetainedUtxo,
+  submitRetainedUtxo,
+  submitReviewedUtxo,
+} from '../../../../source/wallet/utxoSubmission.ts';
 import { formatBaseUnits, parseDecimalAmount } from '../core/amounts.ts';
 import {
   canUseUtxoCustodyAddress,
@@ -62,6 +66,7 @@ export type NativeUtxoReview = Readonly<{
   assetDisplay?: NativeUtxoAsset;
   feeSatoshis: string;
   outputs: readonly ReviewedUtxoOutput[];
+  retryProviderOrigin?: string;
   retryTxid?: string;
 }>;
 
@@ -117,22 +122,29 @@ export function createNativeUtxoSend(
   if (custom && scope.network.url !== network.endpoint)
     throw new CustodyRuntimeError('NOT_READY');
   const verifyEndpoint = (signal: AbortSignal, assertCurrent: () => void) =>
-    verifySavedUtxoEndpoint(network, { fetch, timeoutMs: 10_000 }, signal, assertCurrent);
+    verifySavedUtxoEndpoint(
+      network,
+      { fetch, timeoutMs: 10_000 },
+      signal,
+      assertCurrent
+    );
 
   // SDK prepare runs inside the shared journal's dispatch admission. Check
   // the saved endpoint after the bytes are durable and before SDK POST.
-  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = custom ? {
-    sendTransaction(raw, authority) {
-      return sdk.sendTransaction(raw, {
-        ...authority,
-        async prepare(candidate) {
-          await authority.prepare(candidate);
-          await verifyEndpoint(authority.signal, authority.assertCurrent);
-          authority.assertCurrent();
+  const sender: Pick<ISyscoinTransactions, 'sendTransaction'> = custom
+    ? {
+        sendTransaction(raw, authority) {
+          return sdk.sendTransaction(raw, {
+            ...authority,
+            async prepare(candidate) {
+              await authority.prepare(candidate);
+              await verifyEndpoint(authority.signal, authority.assertCurrent);
+              authority.assertCurrent();
+            },
+          });
         },
-      });
-    },
-  } : sdk;
+      }
+    : sdk;
   const ownedRead = async (
     assertCurrent: () => void,
     reuseAddressDiscovery = false
@@ -299,17 +311,20 @@ export function createNativeUtxoSend(
       return run(async () => {
         const check = capture(revision, now() + REVIEW_MS);
         check();
+        const controller = new AbortController();
+        readController = controller;
         try {
-          const read = await ownedRead(check);
-          return await records.observe(
-            { ...session, assertCurrent: check },
+          return await observeRetainedUtxo({
+            backendChain: network.backendChain,
+            fetch,
             owner,
+            records,
+            session: { ...session, assertCurrent: check },
+            signal: controller.signal,
             txid,
-            utxoSubmissionUrl(scope.network.url),
-            () => syscoinUtils.fetchBackendRawTx(scope.network.url, txid, read)
-          );
+          });
         } finally {
-          readController?.abort();
+          controller.abort();
           readController = undefined;
         }
       });
@@ -325,8 +340,7 @@ export function createNativeUtxoSend(
           txid
         );
         check();
-        if (!retained || retained.url !== utxoSubmissionUrl(scope.network.url))
-          throw new CustodyRuntimeError('NOT_READY');
+        if (!retained) throw new CustodyRuntimeError('NOT_READY');
         const transaction = syscoinUtils.bitcoinjs.Transaction.fromHex(
           retained.rawTransaction
         );
@@ -365,6 +379,9 @@ export function createNativeUtxoSend(
         const view = Object.freeze({
           feeSatoshis: retained.feeSatoshis,
           outputs: Object.freeze(outputs),
+          ...(retained.url !== utxoSubmissionUrl(scope.network.url)
+            ? { retryProviderOrigin: new URL(retained.url).origin }
+            : {}),
           retryTxid: txid,
         });
         review = { view, expires, retained };
@@ -381,13 +398,12 @@ export function createNativeUtxoSend(
         check();
         const currentSession = { ...session, assertCurrent: check };
         if ('retained' in selected)
-          return submitReviewedUtxo({
+          return submitRetainedUtxo({
             record: selected.retained,
-            sender,
+            sender: sdk,
             records,
             session: currentSession,
             fetch,
-            intent: 'replay',
           });
         try {
           const read = await ownedRead(check);
@@ -412,7 +428,6 @@ export function createNativeUtxoSend(
             records,
             session: currentSession,
             fetch,
-            intent: 'initial',
           });
         } finally {
           readController?.abort();

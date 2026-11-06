@@ -1241,6 +1241,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
   let account!: NativeAccountRecord['groups'][number]['accounts']['HDAccount'][number];
   let posted: { raw: string; txid: string } | undefined;
   let confirmed = false;
+  const observationPaths: string[] = [];
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     const url = String(input);
     assert(url.startsWith(network.endpoint));
@@ -1250,6 +1251,12 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
       Object.defineProperty(response, 'url', { value: url });
       return response;
     };
+    if (path === '/api/v2/' || path === '/api/v2/block-index/0') {
+      assert.equal(init?.method, 'GET');
+      observationPaths.push(path);
+      return reply(path === '/api/v2/'
+        ? utxoMetadata(network.id) : { blockHash: network.genesisHash });
+    }
     if (path === '/api/v2/estimatefee/1') return reply({ result: '0.00001024' });
     if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`) return reply({ tokens: [] });
     if (path === `/api/v2/utxo/${account.xpub}`) return reply([{
@@ -1263,9 +1270,12 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
       posted = { raw, txid: bitcoin.Transaction.fromHex(raw).getId() };
       return reply({ result: posted.txid });
     }
-    if (posted && path === `/api/v2/tx/${posted.txid}`)
+    if (posted && path === `/api/v2/tx/${posted.txid}`) {
+      assert.equal(init?.method, 'GET');
+      observationPaths.push(path);
       return reply({ txid: posted.txid, hex: posted.raw, confirmations: confirmed ? 1 : 0,
         ...(confirmed && { blockHash: 'a'.repeat(64) }) });
+    }
     throw Error(`Unexpected fixture route ${path}`);
   };
   const f = await fixture(undefined, true, undefined, undefined, fetcher);
@@ -1284,7 +1294,9 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     let send = await f.runtime.openUtxoSend!(current);
     const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }));
     assert.equal(txid, posted?.txid);
+    const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
     assert.equal(await send.check(txid), 'seen');
+    assert.deepEqual(observationPaths, observation);
 
     await manage({ kind: 'select', id: primary });
     await assert.rejects(manage(remove), { code: 'PENDING_TRANSFER' });
@@ -1297,6 +1309,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
     confirmed = true;
     assert.equal(await send.check(txid), 'confirmed');
+    assert.deepEqual(observationPaths, [...observation, ...observation]);
     await manage({ kind: 'select', id: primary });
     await manage(remove);
     assert.equal(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending), false);

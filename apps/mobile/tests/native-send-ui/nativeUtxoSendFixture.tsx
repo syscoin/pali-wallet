@@ -19,9 +19,8 @@ const request = {
 };
 
 async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
-  const expireAfterSave = new URLSearchParams(window.location.search).has(
-    'saved-before-expiry'
-  );
+  const options = new URLSearchParams(window.location.search);
+  const expireAfterSave = options.has('saved-before-expiry');
   let saved = !expireAfterSave;
   let seen = false;
   return {
@@ -49,7 +48,13 @@ async function open(assertCurrent: () => void): Promise<NativeUtxoSend> {
       }
     },
     async prepareRetry() {
-      return { ...request, retryTxid: txid };
+      return {
+        ...request,
+        ...(options.has('alternate-provider')
+          ? { retryProviderOrigin: 'https://previous-provider.example:8443' }
+          : {}),
+        retryTxid: txid,
+      };
     },
     async confirm() {
       assertCurrent();

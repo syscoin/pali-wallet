@@ -25,7 +25,7 @@ import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
 import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../source/shared/syscoinAssetIds.ts';
 import { ALLOCATION_SEND_VERSION, getExactAssetAllocations } from '../../../source/utils/syscoinPsbtValues.ts';
 import { createNativeUtxoSend } from '../src/custody/utxoSend.ts';
-import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, utxoRegistrationData, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -155,6 +155,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     const calls: string[] = [];
     let published: string | undefined;
     let ackId: string | undefined;
+    let showSavedTransfer = true;
     let failAck = !!asset;
     const posted: string[] = [];
     const reply = (url: string, data: unknown) => {
@@ -164,8 +165,9 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     };
     const fetcher: typeof globalThis.fetch = async (input, init) => {
       assert.equal(typeof input, 'string');
-      const url = String(input),
-        path = url.slice(network.endpoint.length);
+      const url = String(input);
+      assert(url.startsWith(network.endpoint + '/'), 'Only the original endpoint should receive a retained request');
+      const path = url.slice(network.endpoint.length);
       calls.push(`${init?.method} ${path}`);
       if (path === '/api/v2/') return reply(url, metadata(network));
       if (path === '/api/v2/block-index/0') return reply(url, { blockHash: network.genesisHash });
@@ -218,7 +220,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         return reply(url, { result: ackId });
       }
       if (ackId && path === `/api/v2/tx/${ackId}`)
-        return reply(url, {
+        return reply(url, !showSavedTransfer ? {} : {
           txid: ackId,
           hex: published,
           confirmations: 1,
@@ -226,8 +228,8 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
         });
       throw new Error(`Unexpected offline fixture route ${path}`);
     };
-    const openSend = (assertOwner: () => void) => createNativeUtxoSend(
-      network,
+    const openSend = (assertOwner: () => void, currentNetwork = network) => createNativeUtxoSend(
+      currentNetwork,
       {
         profileId,
         account: {
@@ -242,7 +244,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
           slip44: network.slip44,
           currency: sdkNetwork.currency,
           genesisHash: network.genesisHash,
-          url: network.endpoint,
+          url: currentNetwork.endpoint,
         },
       },
       { keyring: ring, assertCurrent: assertOwner },
@@ -378,7 +380,7 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
       await reopened.confirm(retry);
       assert.equal(sign.mock.callCount(), 1);
       assert.equal(freshSign.mock.callCount(), 0);
-      assert.deepEqual(calls.slice(afterRestart), ['POST /api/v2/sendtx/']);
+      assert.deepEqual(calls.slice(afterRestart), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
       assert.deepEqual(posted, [posted[0], posted[0]]);
       return;
     }
@@ -423,16 +425,39 @@ test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${ut
     assert.equal(txid, ackId);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
     assert.equal(await send.check(txid), 'confirmed');
+    if (network === litecoinRegistration) {
+      const replacement = projectUtxoRegistration({
+        ...utxoRegistrationData(network),
+        endpoint: 'https://new-ltc.invalid/other-wallet',
+      });
+      state.activeNetwork = getUtxoSdkNetwork(replacement);
+      const reopened = openSend(assertCurrent, replacement);
+      const beforeCheck = calls.length;
+      showSavedTransfer = false;
+      assert.equal(await reopened.check(txid), 'unknown');
+      assert.deepEqual(calls.slice(beforeCheck), ['GET /api/v2/', 'GET /api/v2/block-index/0', `GET /api/v2/tx/${txid}`]);
+      const beforeReview = calls.length;
+      const retry = await reopened.prepareRetry(txid);
+      assert.equal(retry.retryProviderOrigin, 'https://offline-ltc.invalid');
+      assert.deepEqual(retry.outputs, review.outputs);
+      assert.equal(calls.length, beforeReview);
+      const exactRaw = published;
+      assert.equal((await reopened.confirm(retry)).txid, txid);
+      assert.deepEqual(calls.slice(beforeReview), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'POST /api/v2/sendtx/']);
+      assert.deepEqual(posted, [exactRaw, exactRaw]);
+      assert.equal(state.activeNetwork.url, replacement.endpoint);
+    }
     const persisted = (await storage.recovery!.readSnapshot()).records.find(
       (entry) => entry.key === UTXO_SIGNED_RECORD_KEY
     );
     assert(persisted && !persisted.value.includes(published!));
+    const beforeCancel = calls.length;
     active = false;
     await assert.rejects(
       send.prepare({ amount: '0.0004', recipient }),
       /CANCELLED/
     );
-    assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 1);
+    assert.equal(calls.length, beforeCancel);
   } finally {
     await ring.destroy();
     await storage.close();
