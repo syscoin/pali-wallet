@@ -1,5 +1,6 @@
-import { IdleTextInput } from './IdleActivityBoundary';
+import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -23,6 +24,10 @@ import {
   parseErc20Units,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20';
+import {
+  findLocalEvmRecipientChoices,
+  type EvmRecipientChoice,
+} from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
 import type { NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
@@ -85,6 +90,52 @@ const failure = (
     : 'This request could not be completed. Try again or check Activity for an existing transaction.';
 };
 
+export type NativeRecipientPicker = Readonly<{
+  accounts(): readonly EvmRecipientChoice[];
+  current(): boolean;
+}>;
+
+type RecipientPickerSession = Readonly<{
+  owner: NativeRecipientPicker;
+  accounts: readonly EvmRecipientChoice[];
+}>;
+
+function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024 }: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  onEdit?(): void;
+  busy: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  max?: number;
+}) {
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <IdleTextInput
+        accessibilityLabel={label}
+        value={value}
+        onChangeText={(next) => {
+          onChange(next);
+          onEdit?.();
+        }}
+        editable={!busy}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="off"
+        importantForAutofill="noExcludeDescendants"
+        textContentType="none"
+        keyboardType={keyboardType}
+        maxLength={max}
+        placeholderTextColor={colors.muted}
+        selectionColor={colors.pink}
+        style={s.input}
+      />
+    </View>
+  );
+}
+
 export function NativeSend({
   controller,
   onBack,
@@ -94,6 +145,7 @@ export function NativeSend({
   context,
   savedHash,
   replacement,
+  recipientPicker,
 }: {
   controller: NativeTransferView;
   onBack(): void;
@@ -102,6 +154,7 @@ export function NativeSend({
   collectible?: SavedCollectible;
   context: NativeSendContext;
   savedHash?: string;
+  recipientPicker?: NativeRecipientPicker;
   replacement?: Readonly<{ hash: string; mode: NativeReplacementMode | 'cancel-saved' }>;
 }) {
   const snapshot = useSyncExternalStore(
@@ -111,11 +164,32 @@ export function NativeSend({
   );
   const draftCollectible = savedHash || token ? undefined : collectible;
   const initialAmount = draftCollectible?.tokenStandard === 'ERC-1155' ? '1' : '';
-  const [recipient, setRecipient] = useState('');
+  const [recipientDraft, setRecipientDraft] = useState<{
+    value: string;
+    owner?: NativeRecipientPicker;
+  }>({ value: '' });
+  const recipient = recipientDraft.owner && recipientDraft.owner !== recipientPicker
+    ? '' : recipientDraft.value;
+  const setRecipient = (value: string) => setRecipientDraft({ value });
+  const activePicker = useRef<RecipientPickerSession | null>(null);
+  const [openPicker, setOpenPicker] = useState<Readonly<{
+    session: RecipientPickerSession;
+    query: string;
+  }> | null>(null);
+  const picker = openPicker?.session.owner === recipientPicker ? openPicker : null;
+  const recipientChoices = picker
+    ? findLocalEvmRecipientChoices(picker.session.accounts, picker.query)
+    : [];
+  const retirePicker = useCallback(() => {
+    activePicker.current = null;
+    setOpenPicker(null);
+  }, []);
   const [amount, setAmount] = useState(initialAmount);
   const [tokenId, setTokenId] = useState('');
   const [error, setError] = useState('');
   const lifetime = useRef({ alive: true, epoch: 0 });
+  const pickerIsCurrent = (session: RecipientPickerSession) =>
+    lifetime.current.alive && activePicker.current === session && session.owner.current();
   const latestBack = useRef(onBack);
   useLayoutEffect(() => {
     latestBack.current = onBack;
@@ -192,6 +266,7 @@ export function NativeSend({
     </Card>
   );
   const close = () => {
+    retirePicker();
     lifetime.current.epoch++;
     controller.cancel();
     Keyboard.dismiss();
@@ -201,18 +276,20 @@ export function NativeSend({
     const current = lifetime.current;
     current.alive = true;
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      retirePicker();
       controller.cancel();
       Keyboard.dismiss();
       latestBack.current();
       return true;
     });
     return () => {
+      activePicker.current = null;
       current.alive = false;
       current.epoch++;
       controller.cancel();
       back.remove();
     };
-  }, [controller]);
+  }, [controller, retirePicker]);
   const run = async (operation: () => Promise<void>) => {
     if (busy) return;
     const captured = lifetime.current.epoch;
@@ -250,6 +327,13 @@ export function NativeSend({
     void run(() => controller.confirm(review.id));
   };
   const prepare = () => {
+    retirePicker();
+    const chosenOwner = recipientDraft.owner;
+    if (chosenOwner && (chosenOwner !== recipientPicker || !chosenOwner.current())) {
+      setRecipient('');
+      setError('Choose an account again or enter a recipient address.');
+      return;
+    }
     if (!draftCollectible) {
       void run(() => token
         ? controller.prepareToken(token.contractAddress, recipient.trim(), amount)
@@ -278,36 +362,9 @@ export function NativeSend({
     Keyboard.dismiss();
     void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity));
   };
-  const input = (
-    label: string,
-    value: string,
-    change: (value: string) => void,
-    options: { keyboardType?: TextInputProps['keyboardType']; max?: number } = {}
-  ) => (
-    <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      <IdleTextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={(next) => {
-          change(next);
-          if (draftCollectible && error) setError('');
-        }}
-        editable={!busy}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        autoComplete="off"
-        importantForAutofill="noExcludeDescendants"
-        textContentType="none"
-        keyboardType={options.keyboardType ?? 'default'}
-        maxLength={options.max ?? 1024}
-        placeholderTextColor={colors.muted}
-        selectionColor={colors.pink}
-        style={s.input}
-      />
-    </View>
-  );
+  const clearCollectibleError = () => {
+    if (draftCollectible && error) setError('');
+  };
   const terminal = ['confirmed', 'reverted', 'nonce-consumed'].includes(
     snapshot.phase
   );
@@ -554,24 +611,82 @@ export function NativeSend({
             !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              {input(
-                draftCollectible ? 'Recipient address' : `${capturedContext.name} address`,
-                recipient,
-                setRecipient,
-                { max: 128 }
+              <SendInput
+                label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
+                value={recipient}
+                onChange={setRecipient}
+                onEdit={clearCollectibleError}
+                busy={busy}
+                max={128}
+              />
+              {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
+                <>
+                  <Button
+                    title={picker ? 'Hide accounts' : 'Choose account'}
+                    variant="quiet"
+                    disabled={busy}
+                    onPress={() => {
+                      if (picker) {
+                        if (activePicker.current === picker.session) retirePicker();
+                        return;
+                      }
+                      if (!lifetime.current.alive || !recipientPicker.current() ||
+                          activePicker.current?.owner === recipientPicker) return;
+                      const session = { owner: recipientPicker, accounts: recipientPicker.accounts() };
+                      activePicker.current = session;
+                      setOpenPicker({ session, query: '' });
+                    }}
+                  />
+                  {picker && (
+                    <Card style={s.summary}>
+                      <SendInput
+                        label="Find account"
+                        value={picker.query}
+                        onChange={(query) => {
+                          const { session } = picker;
+                          if (pickerIsCurrent(session))
+                            setOpenPicker((current) => current?.session === session ? { session, query } : current);
+                        }}
+                        busy={busy}
+                        max={128}
+                      />
+                      {recipientChoices.length ? recipientChoices.map(({ address, label }) => (
+                        <IdlePressable
+                          key={address}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${label}, ${address}`}
+                          disabled={busy}
+                          style={s.recipientChoice}
+                          onPress={() => {
+                            if (!pickerIsCurrent(picker.session)) return;
+                            retirePicker();
+                            setRecipientDraft({ value: address, owner: picker.session.owner });
+                            setError('');
+                            Keyboard.dismiss();
+                          }}
+                        >
+                          <Text>{label}</Text>
+                          <Text style={styles.muted}>{address.slice(0, 10)}…{address.slice(-8)}</Text>
+                        </IdlePressable>
+                      )) : <Text style={styles.muted}>No matching accounts.</Text>}
+                    </Card>
+                  )}
+                </>
               )}
               {draftCollectible ? (
                 <>
                   {collectibleIdentity(draftCollectible)}
                   {draftCollectible.tokenStandard === 'ERC-721'
-                    ? input('Token ID', tokenId, setTokenId, { keyboardType: 'number-pad', max: 257 })
-                    : input('Quantity', amount, setAmount, { keyboardType: 'number-pad', max: 79 })}
+                    ? <SendInput label="Token ID" value={tokenId} onChange={setTokenId}
+                        onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={257} />
+                    : <SendInput label="Quantity" value={amount} onChange={setAmount}
+                        onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={79} />}
                 </>
               ) : (
                 <>
                   {token && tokenIdentity(token)}
-                  {input(`Amount in ${token?.symbol ?? capturedContext.symbol}`, amount, setAmount,
-                    { keyboardType: 'decimal-pad', max: token ? 334 : 100 })}
+                  <SendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
+                    onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
                 </>
               )}
 
@@ -612,6 +727,7 @@ export function NativeSend({
   );
 }
 const s = StyleSheet.create({
+  recipientChoice: { minHeight: 48, justifyContent: 'center', gap: 2, paddingVertical: 6 },
   safeArea: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   field: { gap: 10 },
