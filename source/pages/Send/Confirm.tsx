@@ -84,21 +84,28 @@ import { openWalletTokenReview } from './walletTokenReviewPort';
 import type { WalletTokenReviewPayload } from '../../shared/walletTokenReview';
 
 const SMART_ACCOUNT_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
-const NATIVE_EVM_MAX_SEND_BUFFER_WEI = parseUnits('0.000001', 'ether');
+const NON_SOFTWARE_MAX_SEND_RESERVE_WEI = parseUnits(
+  '0.000001',
+  'ether'
+).toBigInt();
 const NATIVE_EVM_MAX_SEND_INITIAL_GAS_RESERVE = BigNumber.from(500_000);
 const nativeMaxSendValue = (
   balance: string | number,
   gasLimit: BigNumber,
-  feeRate: BigNumber
+  feeRate: BigNumber,
+  reserveWei: bigint
 ) => {
   const [whole, fraction] = String(balance).split('.');
   const balanceWei = parseUnits(
     fraction ? `${whole}.${fraction.slice(0, 18)}` : whole,
     'ether'
   );
-  return balanceWei
-    .sub(gasLimit.mul(feeRate))
-    .sub(NATIVE_EVM_MAX_SEND_BUFFER_WEI);
+  const { maximumFee } = getEvmTransferCost(
+    BigInt(0),
+    gasLimit.toBigInt(),
+    feeRate.toBigInt()
+  );
+  return balanceWei.sub(maximumFee + reserveWei);
 };
 const transactionReviewDivider = (
   <div className="border-dashed border-alpha-whiteAlpha300 border my-3  w-full h-full" />
@@ -480,18 +487,14 @@ export const SendConfirm = () => {
     ].includes(basicTxValues?.transactionType);
   const exactWalletFeeReview = (() => {
     if (
-      (!isFixedNativeSoftwareSend && !isOrdinaryTokenSend) ||
+      (!isNativeSoftwareSend && !isOrdinaryTokenSend) ||
       isEIP1559Compatible === undefined
     )
       return;
     try {
-      const value = isFixedNativeSoftwareSend
-        ? parseUnits(String(basicTxValues.amount), 'ether').toBigInt()
-        : BigInt(0);
       const gasLimit = BigInt(
         validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
       );
-      if (isFixedNativeSoftwareSend && value <= BigInt(0)) return;
       const fees = isEIP1559Compatible
         ? {
             maxFeePerGas:
@@ -519,6 +522,18 @@ export const SendConfirm = () => {
       )
         return;
       assertSupportedEvmFees(fees, !isEIP1559Compatible);
+      const net = isFixedNativeSoftwareSend
+        ? parseUnits(String(basicTxValues.amount), 'ether').toBigInt()
+        : isNativeSoftwareSend
+        ? nativeMaxSendValue(
+            activeAccount.balances.ethereum,
+            BigNumber.from(gasLimit),
+            BigNumber.from(feeCap),
+            BigInt(0)
+          ).toBigInt()
+        : BigInt(0);
+      if (isFixedNativeSoftwareSend && net <= BigInt(0)) return;
+      const value = net > BigInt(0) ? net : BigInt(0);
       return {
         value,
         gasLimit,
@@ -530,9 +545,6 @@ export const SendConfirm = () => {
     }
   })();
 
-  const fixedNativeReview = isFixedNativeSoftwareSend
-    ? exactWalletFeeReview
-    : undefined;
   const tokenFeeReview = isOrdinaryTokenSend ? exactWalletFeeReview : undefined;
 
   const smartAccountFeeOverrides = useMemo(() => {
@@ -594,7 +606,7 @@ export const SendConfirm = () => {
     (!isCalculatingFees &&
       !feeCalculationError &&
       isEIP1559Compatible !== undefined &&
-      (!(isFixedNativeSoftwareSend || isOrdinaryTokenSend) ||
+      (!(isNativeSoftwareSend || isOrdinaryTokenSend) ||
         Boolean(exactWalletFeeReview)) &&
       (isSmartAccountSend
         ? smartAccountQuoteReady
@@ -610,6 +622,10 @@ export const SendConfirm = () => {
     try {
       if (!isBitcoinBased) {
         if (!feeEstimateReady) return t('send.calculating');
+        if (isNativeSoftwareSend && exactWalletFeeReview)
+          return exactWalletFeeReview.value > BigInt(0)
+            ? formatEther(exactWalletFeeReview.value.toString()).replace(/\.0$/, '')
+            : t('send.calculating');
         const gasLimit = BigNumber.from(
           validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
         );
@@ -629,7 +645,8 @@ export const SendConfirm = () => {
         const net = nativeMaxSendValue(
           activeAccount.balances.ethereum,
           gasLimit,
-          feeRate
+          feeRate,
+          NON_SOFTWARE_MAX_SEND_RESERVE_WEI
         );
         return net.gt(0)
           ? formatEther(net).replace(/\.0$/, '')
@@ -655,6 +672,8 @@ export const SendConfirm = () => {
   }, [
     basicTxValues,
     isBitcoinBased,
+    isNativeSoftwareSend,
+    exactWalletFeeReview,
     isSmartAccountSend,
     smartAccountQuote,
     t,
@@ -668,70 +687,26 @@ export const SendConfirm = () => {
   ]);
 
   const nativeReviewRequest = (() => {
-    if (!isNativeSoftwareSend || !feeEstimateReady) return null;
-    try {
-      const legacy = isEIP1559Compatible === false;
-      const value =
-        fixedNativeReview?.value ??
-        parseUnits(String(displayedAmount), 'ether').toBigInt();
-      const gasLimit =
-        fixedNativeReview?.gasLimit ??
-        BigInt(validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit);
-      const fixedRate =
-        fixedNativeReview?.fees.gasPrice ??
-        fixedNativeReview?.fees.maxFeePerGas;
-      const rate =
-        fixedRate !== undefined
-          ? BigInt(fixedRate)
-          : legacy
-          ? BigInt(gasPrice)
-          : parseUnits(
-              safeToFixed(
-                customFee.isCustom && customFee.maxFeePerGas > 0
-                  ? customFee.maxFeePerGas
-                  : fee.maxFeePerGas
-              ),
-              9
-            ).toBigInt();
-      const fees =
-        fixedNativeReview?.fees ??
-        (legacy
-          ? { gasPrice: rate.toString() }
-          : {
-              maxFeePerGas: rate.toString(),
-              maxPriorityFeePerGas: parseUnits(
-                safeToFixed(
-                  customFee.isCustom && customFee.maxPriorityFeePerGas >= 0
-                    ? customFee.maxPriorityFeePerGas
-                    : fee.maxPriorityFeePerGas
-                ),
-                9
-              ).toString(),
-            });
-      const params = {
-        from: basicTxValues.sender,
-        to: resolvedToAddress || basicTxValues.receivingAddress,
-        data: '0x',
-        chainId: activeNetwork.chainId,
-        value: value.toString(),
-        gasLimit: gasLimit.toString(),
-        ...fees,
-      };
-      const maximumFee = getEvmTransferCost(
-        value,
-        gasLimit,
-        rate
-      ).maximumFee.toString();
-      return {
-        params,
-        legacy,
-        maximumFee,
-        scope: state.walletScope,
-        key: JSON.stringify([params, state.walletScope, renderedFeeSelection]),
-      };
-    } catch {
+    if (!isNativeSoftwareSend || !feeEstimateReady || !exactWalletFeeReview)
       return null;
-    }
+    const { value, gasLimit, fees, maximumFee } = exactWalletFeeReview;
+    if (value <= BigInt(0)) return null;
+    const params = {
+      from: basicTxValues.sender,
+      to: resolvedToAddress || basicTxValues.receivingAddress,
+      data: '0x',
+      chainId: activeNetwork.chainId,
+      value: value.toString(),
+      gasLimit: gasLimit.toString(),
+      ...fees,
+    };
+    return {
+      params,
+      legacy: isEIP1559Compatible === false,
+      maximumFee: maximumFee.toString(),
+      scope: state.walletScope,
+      key: JSON.stringify([params, state.walletScope, renderedFeeSelection]),
+    };
   })();
   const nativeReviewKey = nativeReviewRequest?.key;
   const [nativeFeeApproval, setNativeFeeApproval] = useState<{
@@ -983,11 +958,18 @@ export const SendConfirm = () => {
           return null;
         }
 
-        const reserve = gasLimit
-          .mul(maxSendFeeRateWei)
-          .add(NATIVE_EVM_MAX_SEND_BUFFER_WEI);
+        const { maximumFee } = getEvmTransferCost(
+          BigInt(0),
+          gasLimit.toBigInt(),
+          maxSendFeeRateWei.toBigInt()
+        );
 
-        return value.gt(reserve) ? value.sub(reserve) : null;
+        const reserved =
+          maximumFee +
+          (isNativeSoftwareSend
+            ? BigInt(0)
+            : NON_SOFTWARE_MAX_SEND_RESERVE_WEI);
+        return value.gt(reserved) ? value.sub(reserved) : null;
       };
 
       let estimateValue = value;
@@ -1042,6 +1024,7 @@ export const SendConfirm = () => {
       controllerEmitter,
       resolvedToAddress,
       isSmartAccountSend,
+      isNativeSoftwareSend,
       state?.walletScope,
     ]
   );
@@ -1173,8 +1156,10 @@ export const SendConfirm = () => {
       return;
     }
     const submitEmitter = submission.controllerEmitter;
-    // Capture the exact amount the user reviewed before any asynchronous reads.
+    // The reviewed software envelope is already fixed. Capture the other MAX
+    // amount before the foreground refresh used by that submission path.
     const nativeMax =
+      !isNativeSoftwareSend &&
       !isBitcoinBased &&
       !isSmartAccountSend &&
       !basicTxValues?.token &&
@@ -1219,7 +1204,9 @@ export const SendConfirm = () => {
       ? activeAccount.balances[INetworkType.Syscoin]
       : activeAccount.balances[INetworkType.Ethereum];
 
-    if (!isFixedNativeSoftwareSend) {
+    // The software submission owns a fresh pending balance check and must use
+    // the review ID and amount displayed at the click, without rewriting Redux.
+    if (!isNativeSoftwareSend) {
       try {
         const refreshedBalance = (await submitEmitter(
           ['wallet', 'refreshActiveAccountBalances'],
@@ -1235,12 +1222,12 @@ export const SendConfirm = () => {
         }
       }
     }
-    if (nativeMax || isFixedNativeSoftwareSend || isOrdinaryTokenSend) {
+    if (nativeMax || isNativeSoftwareSend || isOrdinaryTokenSend) {
       if (!submission.isActive()) return;
       if (feeSelectionRef.current !== approvedFeeSelection) return;
     }
 
-    if (activeAccount && (isFixedNativeSoftwareSend || Number(balance) >= 0)) {
+    if (activeAccount && (isNativeSoftwareSend || Number(balance) >= 0)) {
       setLoading(true);
 
       // Enforce ENS resolution: if user provided an ENS name and it couldn't be resolved, block
@@ -1465,55 +1452,15 @@ export const SendConfirm = () => {
           // can overshoot once the tx is bumped at send time.
           let maxSendGasLimit: BigNumber | null = null;
           try {
-            if (isFixedNativeSoftwareSend) {
-              if (!fixedNativeReview) {
-                setLoading(false);
-                return;
-              }
-              retireNativeFeeApproval();
-              await submitEmitter(
-                ['wallet', 'sendAndSaveEthTransaction'],
-                [
-                  {
-                    ...restTx,
-                    from: basicTxValues.sender,
-                    to: destinationTo,
-                    data: '0x',
-                    chainId: activeNetwork.chainId,
-                    value: fixedNativeReview.value.toString(),
-                    gasLimit: fixedNativeReview.gasLimit.toString(),
-                    ...fixedNativeReview.fees,
-                  },
-                  !isEIP1559Compatible,
-                  undefined,
-                  undefined,
-                  {
-                    nativeReview: {
-                      id: approvedNativeFeeId!,
-                      scope: state.walletScope,
-                    },
-                  },
-                ],
-                10000
-              );
-              setConfirmed(true);
-              setLoading(false);
-              return;
-            }
             // For MAX sends, use the actual balance instead of parsed amount to avoid rounding errors
             // The amount from basicTxValues might be rounded for display, causing precision issues
-            if (basicTxValues.isMax) {
+            if (nativeMax) {
               // Use the already-fetched EVM balance (ETH units)
               const gasLimitCandidate = BigNumber.from(
                 validateCustomGasLimit ? customFee.gasLimit : fee.gasLimit
               );
               maxSendGasLimit = gasLimitCandidate;
 
-              // Add a conservative fixed buffer for MAX sends.
-              // Some networks can require additional intrinsic costs or see small fee variance
-              // between estimation and execution. We intentionally send slightly less than MAX.
-              // Keep this as a small *absolute* reserve (not a %), since these extra costs are
-              // typically additive rather than proportional to L2 execution gas.
               const feeRate = isEIP1559Compatible
                 ? parseUnits(
                     Boolean(customFee.isCustom && customFee.maxFeePerGas > 0)
@@ -1527,7 +1474,8 @@ export const SendConfirm = () => {
               const affordableMax = nativeMaxSendValue(
                 balance,
                 maxSendGasLimit,
-                feeRate
+                feeRate,
+                NON_SOFTWARE_MAX_SEND_RESERVE_WEI
               );
               if (
                 !submission.isActive() ||
@@ -1542,6 +1490,33 @@ export const SendConfirm = () => {
                 return;
               }
               value = approvedNativeMax;
+            }
+
+            if (isNativeSoftwareSend) {
+              if (!nativeReviewRequest) {
+                setLoading(false);
+                return;
+              }
+              retireNativeFeeApproval();
+              await submitEmitter(
+                ['wallet', 'sendAndSaveEthTransaction'],
+                [
+                  { ...restTx, ...nativeReviewRequest.params },
+                  nativeReviewRequest.legacy,
+                  undefined,
+                  undefined,
+                  {
+                    nativeReview: {
+                      id: approvedNativeFeeId!,
+                      scope: nativeReviewRequest.scope,
+                    },
+                  },
+                ],
+                10000
+              );
+              setConfirmed(true);
+              setLoading(false);
+              return;
             }
 
             const isLegacy = isEIP1559Compatible === false;
@@ -1578,7 +1553,6 @@ export const SendConfirm = () => {
             const hardware =
               activeAccountMeta.type === KeyringAccountType.Ledger ||
               activeAccountMeta.type === KeyringAccountType.Trezor;
-            if (isNativeSoftwareSend) retireNativeFeeApproval();
             await submitEmitter(
               ['wallet', 'sendAndSaveEthTransaction'],
               [
@@ -2100,10 +2074,14 @@ export const SendConfirm = () => {
 
   const getCalculatedFee = useMemo(() => {
     if (isBitcoinBased) return 0;
-    if (isFixedNativeSoftwareSend || isOrdinaryTokenSend)
-      return confirmationFeeReady && exactWalletFeeReview
+    if (isNativeSoftwareSend || isOrdinaryTokenSend) {
+      const canShowFee = isNativeSoftwareSend && basicTxValues.isMax
+        ? feeEstimateReady
+        : confirmationFeeReady;
+      return canShowFee && exactWalletFeeReview
         ? formatEther(exactWalletFeeReview.maximumFee.toString())
         : undefined;
+    }
     if (isSmartAccountSend)
       return smartAccountQuoteReady
         ? formatEther(smartAccountQuote.maximumFeeWei)
@@ -2162,9 +2140,10 @@ export const SendConfirm = () => {
     fee?.maxFeePerGas,
     customFee,
     isBitcoinBased,
-    isFixedNativeSoftwareSend,
+    isNativeSoftwareSend,
     isOrdinaryTokenSend,
     exactWalletFeeReview,
+    feeEstimateReady,
     confirmationFeeReady,
     isEIP1559Compatible,
     gasPrice,
@@ -2551,7 +2530,7 @@ export const SendConfirm = () => {
                         );
 
                       let feeAmount;
-                      if (isFixedNativeSoftwareSend || isOrdinaryTokenSend) {
+                      if (isNativeSoftwareSend || isOrdinaryTokenSend) {
                         feeAmount = getCalculatedFee;
                       } else if (
                         !isSmartAccountSend &&
@@ -2688,12 +2667,12 @@ export const SendConfirm = () => {
                         totalAmount = formatEther(totalWei);
                         totalCrypto = totalAmount;
                       } else if (
-                        isFixedNativeSoftwareSend &&
-                        fixedNativeReview &&
+                        isNativeSoftwareSend &&
+                        exactWalletFeeReview &&
                         confirmationFeeReady
                       ) {
                         totalAmount = formatEther(
-                          fixedNativeReview.total.toString()
+                          exactWalletFeeReview.total.toString()
                         );
                         totalCrypto = totalAmount;
                       } else if (
