@@ -267,6 +267,7 @@ export const TransactionDetailsComponent = (
             type="number"
             aria-label={t('send.customNonce')}
             inputMode="numeric"
+            style={{ scrollMarginBottom: 'var(--pali-toast-footer-clearance)' }}
             disabled={editingDisabled}
             min={0}
             step={1}
