@@ -80,6 +80,7 @@ beforeEach(() => {
 });
 
 const rawQuantity = '9007199254740993';
+const assetGuid = '123457';
 const utilities = jest.requireActual('utils/syscoinTransactionUtils');
 const baseTx = () => ({
   txid: 'ab'.repeat(32),
@@ -104,7 +105,7 @@ it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
       tokenType,
       accountAssetTransfers: [
         {
-          assetGuid: '123456',
+          assetGuid,
           value: rawQuantity,
           decimals: 0,
           symbol: 'BIG',
@@ -116,26 +117,27 @@ it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
       amount: rawQuantity,
     });
     render(<UtxoTransactionsListComponent tx={tx as any} />);
-    expect(screen.getByText(`${rawQuantity} BIG`)).toBeTruthy();
-    expect(screen.queryByText('9007199254740992 BIG')).toBeNull();
+    expect(screen.getByText(`${rawQuantity} SPT`)).toBeTruthy();
+    expect(screen.queryByText('9007199254740992 SPT')).toBeNull();
+    expect(screen.queryByText(/\bBIG\b/)).toBeNull();
     expect(mockEmitter).not.toHaveBeenCalled();
   }
 );
 it('keeps a one-atom net received between adjacent large owned values', () => {
   const tx = {
     ...baseTx(),
-    tokenTransfers: [{ token: '123456', decimals: 0, symbol: 'BIG' }],
+    tokenTransfers: [{ token: assetGuid, decimals: 0, symbol: 'BIG' }],
     vin: [
       {
         isOwn: true,
-        assetInfo: { assetGuid: '123456', value: '9007199254740992' },
+        assetInfo: { assetGuid, value: '9007199254740992' },
       },
     ],
     vout: [
       {
         isOwn: true,
         addresses: ['owned'],
-        assetInfo: { assetGuid: '123456', value: rawQuantity },
+        assetInfo: { assetGuid, value: rawQuantity },
       },
     ],
   };
@@ -144,6 +146,29 @@ it('keeps a one-atom net received between adjacent large owned values', () => {
     direction: 'received',
   });
   render(<UtxoTransactionsListComponent tx={tx as any} />);
-  expect(screen.getByText('1 BIG')).toBeTruthy();
+  expect(screen.getByText('1 SPT')).toBeTruthy();
+  expect(screen.queryByText(/\bBIG\b/)).toBeNull();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('uses the matching imported asset symbol instead of the Blockbook symbol', () => {
+  mockActiveAssets = {
+    syscoin: [{ assetGuid, chainId: 5700, symbol: 'SAVED' }],
+  };
+  const tx = {
+    ...baseTx(),
+    accountAssetTransfers: [
+      {
+        assetGuid,
+        value: rawQuantity,
+        decimals: 0,
+        symbol: 'BIG',
+        direction: 'received',
+      },
+    ],
+  };
+  render(<UtxoTransactionsListComponent tx={tx as any} />);
+  expect(screen.getByText(`${rawQuantity} SAVED`)).toBeTruthy();
+  expect(screen.queryByText(/\bBIG\b/)).toBeNull();
   expect(mockEmitter).not.toHaveBeenCalled();
 });
