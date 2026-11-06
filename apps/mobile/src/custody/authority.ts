@@ -127,8 +127,30 @@ export class NativeCustodyAuthority {
 
   async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
     expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    const { networks, check, checkRoute } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
+    if (!networks.prepareUtxo) throw new CustodyOperationError('NOT_READY');
+    const proof = await networks.prepareUtxo(draft, expectedCatalogueRevision, signal, check);
+    check();
+    return this.manageContext(() => {
+      const admitted = networks.reserve(proof, expectedCatalogueRevision);
+      return {
+        cancel: admitted.cancel,
+        execute: (assertCurrent) => admitted.execute(() => { checkRoute(); assertCurrent(); }),
+      };
+    }, expectedRevision);
+  }
+
+  async verifyUtxoEndpoint(id: string, endpoint: string, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    const { networks, check } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
+    if (!networks.verifyUtxoEndpoint) throw new CustodyOperationError('NOT_READY');
+    await networks.verifyUtxoEndpoint(id, endpoint, expectedCatalogueRevision, signal, check);
+    check();
+  }
+
+  private ownedUtxoNetworkSettings(expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal) {
     const runtime = this.runtime, networks = runtime?.networks;
-    if (!networks?.prepareUtxo) throw new CustodyOperationError('NOT_READY');
+    if (!networks) throw new CustodyOperationError('NOT_READY');
     const checkRoute = () => {
       if (signal.aborted) throw new CustodyOperationError('CANCELLED');
     };
@@ -140,15 +162,7 @@ export class NativeCustodyAuthority {
         throw new CustodyOperationError('CANCELLED');
     };
     check();
-    const proof = await networks.prepareUtxo(draft, expectedCatalogueRevision, signal, check);
-    check();
-    return this.manageContext(() => {
-      const admitted = networks.reserve(proof, expectedCatalogueRevision);
-      return {
-        cancel: admitted.cancel,
-        execute: (assertCurrent) => admitted.execute(() => { checkRoute(); assertCurrent(); }),
-      };
-    }, expectedRevision);
+    return { networks, check, checkRoute };
   }
 
   manageNetwork(request: import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {

@@ -33,11 +33,15 @@ export type NativeNetworkRequest =
   | Readonly<{ kind: 'save-network'; registration: import('./networkContext.ts').NativeNetworkRegistration;
     }>
   | NativeUtxoNetworkApproval
+  | Readonly<{ kind: 'rename-utxo-network'; id: string; name: string }>
   | Readonly<{ kind: 'remove-network'; id: string }>;
 
 /** Durable network selection consumed by the native network picker. */
 export interface NativeNetworkRuntime {
-  prepareUtxo?(draft: NativeUtxoNetworkDraft, expectedCatalogueRevision: number, signal: AbortSignal, assertCurrent: () => void): Promise<NativeUtxoNetworkApproval>;
+  prepareUtxo?(draft: NativeUtxoNetworkDraft, expectedCatalogueRevision: number, signal: AbortSignal,
+    assertCurrent: () => void): Promise<NativeUtxoNetworkApproval>;
+  verifyUtxoEndpoint?(id: string, endpoint: string, expectedCatalogueRevision: number,
+    signal: AbortSignal, assertCurrent: () => void): Promise<void>;
   reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;

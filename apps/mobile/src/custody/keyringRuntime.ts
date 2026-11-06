@@ -10,7 +10,7 @@ import type { EvmSubmissionContext } from '@sidhujag/sysweb3-keyring';
 import { isNativeNewPassword, isNativePasswordInput } from './password.ts';
 import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { normalizePublicAddress } from '../core/addresses.ts';
-import { findUtxoNetwork, getUtxoSdkNetwork, supportsUtxoSoftwareCustody, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
 import type { UtxoActivityContext, UtxoActivitySource } from '../core/utxoActivity.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
@@ -702,44 +702,64 @@ export function createKeyringRuntimeFactory(
         const registrationApprovals = new WeakMap<UtxoNetworkApproval, Readonly<{
           network: UtxoNetwork; generation: number; snapshot: NativeWalletCatalogueSnapshot; signal: AbortSignal;
         }>>();
-        const prepareUtxo = async (
-          input: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number, signal: AbortSignal,
-          assertOwner: () => void,
-        ): Promise<UtxoNetworkApproval> => {
+        const utxoSettingsContext = (expectedRevision: number, signal: AbortSignal, assertOwner: () => void) => {
           const captured = generation, snapshot = catalogueSnapshot;
           const fetch = dependencies.utxoFetch;
           if (!fetch || !dependencies.readUtxoAccount || !dependencies.readUtxoBalance || !utxoRecords ||
               !snapshot || snapshot.revision !== expectedRevision || !keyring.isUnlocked())
             throw new KeyringRuntimeError('NOT_READY');
           if (pendingRegistration || active || reserved) throw new KeyringRuntimeError('BUSY');
+          const check = () => {
+            current(captured); checkGuard(assertOwner);
+            if (signal.aborted || snapshot !== catalogueSnapshot ||
+                !keyring.isUnlocked() || active || reserved) throw new KeyringRuntimeError('CANCELLED');
+          };
+          check();
+          return { captured, snapshot, fetch, check };
+        };
+        const verifyUtxoSettings = async (
+          draft: import('./accounts.ts').NativeUtxoNetworkDraft, previous: UtxoNetwork | undefined,
+          owner: ReturnType<typeof utxoSettingsContext>, signal: AbortSignal
+        ): Promise<UtxoNetwork> => {
+          const controller = new AbortController();
+          const abort = () => controller.abort();
+          owner.check();
+          pendingRegistration = controller;
+          signal.addEventListener('abort', abort, { once: true });
+          try {
+            return await verifyUtxoRegistration(draft, previous, { fetch: exactUtxoResponseFetch(owner.fetch), timeoutMs: 10_000 }, controller.signal, owner.check);
+          } finally {
+            if (pendingRegistration === controller) pendingRegistration = null;
+            signal.removeEventListener('abort', abort);
+            controller.abort();
+          }
+        };
+        const prepareUtxo: NonNullable<NativeNetworkRuntime['prepareUtxo']> = async (
+          input, expectedRevision, signal, assertOwner
+        ) => {
+          const owner = utxoSettingsContext(expectedRevision, signal, assertOwner);
           const draft = decodeStorageValue(encodeStorageValue(input)) as typeof input;
           if (!draft || Object.keys(draft).sort().join(',') !== 'endpoint,explorer,name' ||
               typeof draft.endpoint !== 'string' || typeof draft.explorer !== 'string' || typeof draft.name !== 'string')
             throw new KeyringRuntimeError('INVALID_INPUT');
-          const controller = new AbortController();
-          const abort = () => controller.abort();
-          const check = () => {
-            current(captured); checkGuard(assertOwner);
-            if (signal.aborted || controller.signal.aborted || snapshot !== catalogueSnapshot ||
-                !keyring.isUnlocked() || active || reserved) throw new KeyringRuntimeError('CANCELLED');
-          };
-          check();
-          pendingRegistration = controller;
-          signal.addEventListener('abort', abort, { once: true });
-          try {
-            const network = await verifyUtxoRegistration(draft, undefined, { fetch: exactUtxoResponseFetch(fetch), timeoutMs: 10_000 }, controller.signal, check);
-            check();
-            if (!supportsUtxoSoftwareCustody(network) ||
-                snapshot.utxoNetworks.some(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44))
-              throw new KeyringRuntimeError('INVALID_INPUT');
-            const proof = Object.freeze({ kind: 'add-utxo-network' } as const);
-            registrationApprovals.set(proof, { network, generation: captured, snapshot, signal });
-            return proof;
-          } finally {
-            pendingRegistration = null;
-            signal.removeEventListener('abort', abort);
-            controller.abort();
-          }
+          const network = await verifyUtxoSettings(draft, undefined, owner, signal);
+          owner.check();
+          if (!supportsUtxoSoftwareCustody(network) ||
+              owner.snapshot.utxoNetworks.some(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44))
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          const proof = Object.freeze({ kind: 'add-utxo-network' } as const);
+          registrationApprovals.set(proof, { network, generation: owner.captured, snapshot: owner.snapshot, signal });
+          return proof;
+        };
+        const verifyUtxoEndpoint: NonNullable<NativeNetworkRuntime['verifyUtxoEndpoint']> = async (
+          id, endpoint, expectedRevision, signal, assertOwner
+        ) => {
+          const owner = utxoSettingsContext(expectedRevision, signal, assertOwner);
+          const previous = findUtxoNetwork(id, owner.snapshot.utxoNetworks);
+          if (!previous || !isCustomUtxoNetworkId(previous.id))
+            throw new KeyringRuntimeError('INVALID_INPUT');
+          await verifyUtxoSettings({ endpoint, name: previous.name, explorer: previous.explorer }, previous, owner, signal);
+          owner.check();
         };
         const reserveContext = (input:
             | NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, networkSelection = false) => {
@@ -747,11 +767,12 @@ export function createKeyringRuntimeFactory(
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
             if (catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
             const request = decodeStorageValue(encodeStorageValue(input)) as NativeAccountRequest | import('./accounts.ts').NativeNetworkRequest;
-            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && ['select-network', 'save-network', 'add-utxo-network', 'remove-network'].includes(request.kind))) throw new KeyringRuntimeError('INVALID_INPUT');
+            if (!request || typeof request !== 'object' || Array.isArray(request) || (!networkSelection && ['select-network', 'save-network', 'add-utxo-network', 'rename-utxo-network', 'remove-network'].includes(request.kind))) throw new KeyringRuntimeError('INVALID_INPUT');
+            const accountTarget = 'id' in request && !['select-network', 'remove-network', 'rename-utxo-network'].includes(request.kind);
             const fields = request.kind === 'create' ? ['kind', 'label', 'password'] : request.kind === 'rename' ? ['kind', 'id', 'label']
-              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : request.kind === 'add-utxo-network' ? ['kind'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
+              : request.kind === 'remove' ? ['kind', 'id', 'password'] : request.kind === 'save-network' ? ['kind', 'registration'] : request.kind === 'add-utxo-network' ? ['kind'] : request.kind === 'rename-utxo-network' ? ['kind', 'id', 'name'] : request.kind === 'select' || request.kind === 'select-network' || request.kind === 'remove-network' ? ['kind', 'id'] : [];
             if (!fields.length || Object.keys(request).sort().join(',') !== fields.sort().join(',') ||
-                ('id' in request && !['select-network', 'remove-network'].includes(request.kind) && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
+                (accountTarget && (typeof request.id !== 'string' || (() => { try { parseNativeAccountId(request.id); return false; } catch { return true; } })())) ||
                 ('label' in request && (typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label || request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label))))
               throw new KeyringRuntimeError('INVALID_INPUT');
             if ('password' in request) validPassword(request.password, false);
@@ -760,13 +781,18 @@ export function createKeyringRuntimeFactory(
                 (request.kind === 'select-network' && !findUtxoNetwork(request.id, catalogueSnapshot.utxoNetworks)))
               getNativeNetwork(request.id, catalogueSnapshot.networks);
             if (request.kind === 'save-network') snapshotNativeNetwork(request.registration);
+            if (request.kind === 'rename-utxo-network') {
+              const network = findUtxoNetwork(request.id, catalogueSnapshot.utxoNetworks);
+              if (!network || !isCustomUtxoNetworkId(network.id)) throw new KeyringRuntimeError('INVALID_INPUT');
+              projectUtxoRegistration({ ...utxoRegistrationData(network), name: request.name });
+            }
             const approval = request.kind === 'add-utxo-network' ? registrationApprovals.get(input as UtxoNetworkApproval) : undefined;
             if (request.kind === 'add-utxo-network') {
               registrationApprovals.delete(input as UtxoNetworkApproval);
               if (!approval || approval.signal.aborted || approval.generation !== generation || approval.snapshot !== catalogueSnapshot)
                 throw new KeyringRuntimeError('CANCELLED');
             }
-            if ('id' in request && !['select-network', 'remove-network'].includes(request.kind)) {
+            if (accountTarget) {
               const target = catalogueSnapshot.accounts.find((account) => account.id === request.id);
               if (!target) throw new KeyringRuntimeError('INVALID_INPUT');
               if (request.kind === 'remove' && ((target.type === 'HDAccount' && target.index === 0) || target.id === catalogueSnapshot.active.accountId || catalogueSnapshot.accounts.length <= 1))
@@ -957,6 +983,7 @@ export function createKeyringRuntimeFactory(
         };
         const networks: NativeNetworkRuntime = {
           prepareUtxo,
+          verifyUtxoEndpoint,
           getSelectedId: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot?.active.networkId ?? null,
           reserve: (input, expectedRevision) => {
             const request = typeof input === 'string' ? { kind: 'select-network' as const, id: input } : input;
