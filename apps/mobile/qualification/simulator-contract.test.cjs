@@ -118,11 +118,11 @@ async function runFixture({ limited = true, report = refusal(), target = 'iphone
         begin: async () => `&httpPort=45454&httpToken=${'a'.repeat(32)}`,
         verify: async () => { if (httpFailure) throw Error('HTTP_QUALIFICATION_REPORT_INVALID'); httpVerifications++; return { nativeHttpQualified: true }; },
         assertComplete: (count) => assert.equal(httpVerifications, count),
-        diagnostic: async () => {
+        diagnostics: async () => {
           httpEvents.push('diagnostic');
           if (diagnosticFailure) throw Error('HTTP_DIAGNOSTIC_FAILED');
-          return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
-            failedCase: 'abort-stream', server: { counts: { body: 1 }, closed: { body: false } } };
+          return { http: { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
+            failedCase: 'abort-stream', server: { counts: { body: 1 }, closed: { body: false } } } };
         },
         close: async () => { httpEvents.push('close'); httpClosed = true; if (cleanupFailure) throw Error('HTTP_CLEANUP_FAILED'); },
       }) };

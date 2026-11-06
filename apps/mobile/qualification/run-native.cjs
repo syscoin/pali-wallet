@@ -72,14 +72,16 @@ const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 async function captureHttpDiagnostic() {
   if (!httpCompanion || httpDiagnosticSaved) return;
   try {
-    for (const [kind, method] of [['http', 'diagnostic'], ['post', 'postDiagnostic']]) {
-      const diagnostic = await httpCompanion[method]?.(httpRead);
-      if (!diagnostic) continue;
-      const text = JSON.stringify(diagnostic, null, 2);
-      if (Buffer.byteLength(text) > 8192) continue;
-      fs.writeFileSync(path.join(output, `${platform}-${kind}-diagnostic.json`), `${text}\n`);
-    }
+    const diagnostics = await httpCompanion.diagnostics(httpRead);
     httpDiagnosticSaved = true;
+    for (const kind of ['http', 'post']) {
+      const diagnostic = diagnostics?.[kind];
+      if (!diagnostic) continue;
+      const text = `${JSON.stringify(diagnostic, null, 2)}\n`;
+      if (Buffer.byteLength(text) > 8192) continue;
+      try { fs.writeFileSync(path.join(output, `${platform}-${kind}-diagnostic.json`), text); }
+      catch { /* Keep the other diagnostic and the original failure. */ }
+    }
   } catch { /* Partial diagnostics never replace the original failure. */ }
 }
 const validateReport = (text, phase, scenario) => {
@@ -272,12 +274,17 @@ async function ios() {
           throw error;
         }
       });
-      const created = await stage('report-create', () => waitReport(
-        () => read('create'),
-        'create',
-        scenario,
-        () => read('startup')
-      ));
+      const created = await stage('report-create', async () => {
+        try {
+          return await waitReport(() => read('create'), 'create', scenario, () => read('startup'));
+        } catch (error) {
+          try {
+            captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
+              path.join(output, `ios-${scenario}-create-failure-reports.json`), `${JSON.stringify(evidence, null, 2)}\n`), 'report-create');
+          } catch { /* Report collection cannot replace the qualification error. */ }
+          throw error;
+        }
+      });
       if (httpCompanion) {
         const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
         fs.writeFileSync(path.join(output, `ios-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
