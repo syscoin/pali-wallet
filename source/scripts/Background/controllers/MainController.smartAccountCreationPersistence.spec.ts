@@ -31,7 +31,10 @@ import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { EVM_TRANSACTION_CONTEXT_CHANGED } from 'utils/evmTransactionContext';
-import { paliSmartAccountFactoryInterface } from 'utils/smartAccount';
+import {
+  getPaliSmartAccountFactoryAddress,
+  paliSmartAccountFactoryInterface,
+} from 'utils/smartAccount';
 
 import MainController from './MainController';
 import SmartAccountController from './smartAccount';
@@ -268,6 +271,9 @@ it('persists the ordinary derived smart account with the SDK-allocated ID and de
   const account = await wallet.createSmartAccount({ label: 'Smart savings' });
   expect(account.id).toBe(0);
   expect(account.smartAccount.descriptor.accountIndex).toBe(0);
+  expect(account.smartAccount.factoryAddress).toBe(
+    getPaliSmartAccountFactoryAddress(1)
+  );
   expect(factorySalts).toEqual([account.smartAccount.deploymentSalt]);
   expect(factoryReads).toEqual(['getInitData', 'getAddress']);
   expect(infrastructureReads).toEqual(['chain', 'journal', 'journal', 'batch']);
