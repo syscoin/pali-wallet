@@ -14,13 +14,17 @@ function readBounded(file, limit) {
   return content;
 }
 
+function readFixtureBuild(receiptFile) {
+  const receipt = JSON.parse(readBounded(receiptFile, 8192));
+  if (receipt.identifier !== 'com.paliwallet.qualification' || receipt.qualificationEntry !== 'qualification/index.tsx' ||
+      receipt.http || receipt.physical) throw Error('PUBLIC_POOL_FIXTURE_BUILD_INVALID');
+  return publicPoolBuild(receipt.publicPool);
+}
+
 async function run([platform, receiptFile, caFile, certFile, keyFile, reportFile]) {
   if (!['ios', 'android'].includes(platform) || ![receiptFile, caFile, certFile, keyFile, reportFile].every(Boolean))
     throw Error('PUBLIC_POOL_FIXTURE_ARGUMENTS_INVALID');
-  const receipt = JSON.parse(readBounded(receiptFile, 8192));
-  const { build, caSha256 } = publicPoolBuild(receipt.publicPool);
-  if (receipt.identifier !== 'com.paliwallet.qualification' || receipt.qualificationEntry !== 'qualification/index.tsx' ||
-      receipt.http || receipt.physical) throw Error('PUBLIC_POOL_FIXTURE_BUILD_INVALID');
+  const { build, caSha256 } = readFixtureBuild(receiptFile);
   const ca = readPublicPoolCa(caFile);
   const cert = readBounded(certFile, 8192);
   if (ca.sha256 !== caSha256 || !new X509Certificate(cert).verify(new X509Certificate(ca.pem).publicKey))
@@ -68,3 +72,5 @@ if (require.main === module) {
     throw Error('PUBLIC_POOL_FIXTURE_REQUIRES_ISOLATED_CI');
   run(process.argv.slice(2)).catch((error) => { console.error(error.message); process.exitCode = 1; });
 }
+
+module.exports = { readFixtureBuild };

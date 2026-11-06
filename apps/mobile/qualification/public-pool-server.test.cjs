@@ -1,17 +1,16 @@
 const assert = require('node:assert/strict');
 const { Buffer } = require('node:buffer');
-const { execFileSync, spawn } = require('node:child_process');
-const { once } = require('node:events');
-const { mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } = require('node:fs');
+const { execFileSync } = require('node:child_process');
+const { mkdtempSync, readFileSync, rmSync, writeFileSync } = require('node:fs');
 const http = require('node:http');
 const https = require('node:https');
 const { tmpdir } = require('node:os');
 const { join } = require('node:path');
 const process = require('node:process');
-const { createInterface } = require('node:readline');
 const { after, before, test } = require('node:test');
 const { createPublicPoolFixture } = require('./public-pool-server.cjs');
 const { readPublicPoolCa } = require('./public-pool-ca.cjs');
+const { readPublicPoolCiBuild, runHostedPublicPool } = require('./public-pool-ci.cjs');
 const { parseQualificationLaunch } = require('./launch-parameters.ts');
 const { qualifyNativePublicPool } = require('./public-pool-native.ts');
 const { PUBLIC_POOL_ID, PUBLIC_POOL_PATH, PUBLIC_POOL_ROOT, publicPoolAnchorPath } = require('./public-pool-contract.ts');
@@ -112,35 +111,31 @@ test('public pool launch accepts only separate loopback fixture ports with an ex
   ]) assert.throws(() => parseQualificationLaunch(launch));
 });
 
-test('offline runner accepts a matching report after shared verification and both strict HTTPS passes', { timeout: 15_000 }, async () => {
+test('hosted runner accepts a matching report after shared verification and both strict HTTPS passes', { timeout: 15_000 }, async () => {
   const build = { version: 1, sourceRevision: 'a'.repeat(40), lockfileSha256: 'b'.repeat(64) };
   const caSha256 = readPublicPoolCa(certPath).sha256;
-  const receiptPath = join(dir, 'build.json'), reportPath = join(dir, 'report.json');
+  const receiptPath = join(dir, 'build.json');
   writeFileSync(receiptPath, JSON.stringify({ identifier: 'com.paliwallet.qualification',
     qualificationEntry: 'qualification/index.tsx', publicPool: { build, caSha256 } }));
-  const child = spawn(process.execPath, [require.resolve('./run-public-pool-fixture.cjs'),
-    'android', receiptPath, certPath, certPath, keyPath, reportPath], {
-    env: { CI: 'true', PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1' }, stdio: ['ignore', 'pipe', 'pipe'],
+  const config = readPublicPoolCiBuild({ CI: 'true', GITHUB_ACTIONS: 'true', PALI_NATIVE_QUALIFICATION: '1',
+    PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0',
+    PALI_PUBLIC_POOL_FIXTURE_CA: certPath, PALI_PUBLIC_POOL_FIXTURE_CERT: certPath,
+    PALI_PUBLIC_POOL_FIXTURE_KEY: keyPath, GITHUB_SHA: build.sourceRevision }, receiptPath);
+  let result;
+  const verified = await runHostedPublicPool({
+    platform: 'android', output: dir, config,
+    execute: async ({ uri, report, ports }) => {
+      const { publicPool: launch } = parseQualificationLaunch(uri);
+      assert.equal(report, `pali-native-public-pool-${launch.token}.json`);
+      assert.deepEqual(ports, [launch.snapshotPort, launch.anchorPort]);
+      result = await qualifyNativePublicPool({ launch, transport: snapshotBridge(),
+        executeMerkleBatch: evaluateMerkleBatch, lifetime: new AbortController().signal });
+      assert.equal(result.root, PUBLIC_POOL_ROOT);
+      return JSON.stringify({ ...build, caSha256, platform: 'android', kind: 'native-public-pool',
+        status: 'passed', token: launch.token, networkCalls: 0, sessionId: '00000000-0000-4000-8000-000000000000', result });
+    },
   });
-  let stderr = '';
-  child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
-  const output = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
-  const closed = once(child, 'close');
-  try {
-    const first = await output.next();
-    assert.equal(first.done, false, stderr);
-    const { publicPool: launch } = parseQualificationLaunch(JSON.parse(first.value).uri);
-    const result = await qualifyNativePublicPool({ launch, transport: snapshotBridge(),
-      executeMerkleBatch: evaluateMerkleBatch, lifetime: new AbortController().signal });
-    assert.equal(result.root, PUBLIC_POOL_ROOT);
-    writeFileSync(reportPath + '.tmp', JSON.stringify({ ...build, caSha256, platform: 'android',
-      kind: 'native-public-pool', status: 'passed', token: launch.token, networkCalls: 0,
-      sessionId: '00000000-0000-4000-8000-000000000000', result }));
-    renameSync(reportPath + '.tmp', reportPath);
-    const [code] = await closed;
-    assert.equal(code, 0, stderr);
-    assert.deepEqual(JSON.parse((await output.next()).value), { passed: true, ...build, platform: 'android', caSha256, result });
-  } finally { child.kill(); await closed; }
+  assert.deepEqual(verified, { passed: true, ...build, platform: 'android', caSha256, result });
 });
 
 test('fixture refuses a forged anchor call and records it even if it later receives correct calls', async () => {

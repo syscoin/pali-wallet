@@ -6,7 +6,9 @@ The loopback indexer and HTTPS anchor are separate listeners. RPC replies come f
 
 ## Hosted execution
 
-Use the iOS Simulator and Android emulator Release paths in `.github/workflows/mobile-native-qualification.yml` in a dedicated build. This mode has separate launch and evidence from the normal custody, HTTP and POST fixtures. It is not yet a default hosted check.
+Manually dispatch `Mobile native qualification` with `public_pool=true` for the exact candidate revision. The workflow builds one dedicated Release variant per platform with the existing iOS Simulator and Android emulator toolchains. The checkout, fixture CA, simulator/emulator and listeners are disposable. Only that variant runs the offline public pool smoke. Normal PR and default dispatch runs keep the existing custody, HTTP and POST fixtures and their check names. The opt-in checks have separate names. Their evidence artifacts end in `-public-pool` and contain separate platform reports.
+
+The dedicated runner follows these steps.
 
 1. Provision a disposable, short-lived test CA and an HTTPS server certificate signed by that CA with an IP SAN of `127.0.0.1`. Never reuse trust from a physical device or workstation. Run `configure-native-qualification.cjs` in the existing isolated checkout with `CI=true`, `PALI_NATIVE_QUALIFICATION=1`, `PALI_NATIVE_PUBLIC_POOL_QUALIFICATION=1`, `PALI_PUBLIC_POOL_FIXTURE_CA` set to the PEM path, `PALI_NATIVE_HTTP_QUALIFICATION=0`, and the exact source revision in `GITHUB_SHA`. Keep the CA path available to prebuild. The Android plugin trusts the exact CA only for the fixture loopback domain. For iOS, install that CA with `simctl keychain add-root-cert` into the dedicated disposable simulator. The native downloader continues to use ordinary server trust on both platforms.
 2. Run `node qualification/run-public-pool-fixture.cjs <ios|android> .native-qualification.json <ca.pem> <server.pem> <server.key> <fresh-host-report-path>` with the same CI and public-pool flags. The host prints the owned launch URI, ports and expected report basename. Both listeners bind only to loopback.

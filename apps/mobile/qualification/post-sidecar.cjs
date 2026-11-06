@@ -3,7 +3,7 @@ const { Buffer } = require('node:buffer');
 const path = require('node:path');
 const MAX_SIDECAR_BYTES = 8192;
 function sidecarName(name) {
-  if (typeof name !== 'string' || !/^pali-native-(?:http|post)-[0-9a-f]{32}\.json$/.test(name)) throw Error('HTTP_SIDECAR_INVALID');
+  if (typeof name !== 'string' || !/^pali-native-(?:http|post|public-pool)-[0-9a-f]{32}\.json$/.test(name)) throw Error('HTTP_SIDECAR_INVALID');
   return name;
 }
 /** Bound the actual read and reject symlinks/FIFOs before consuming a sidecar. */

@@ -207,4 +207,4 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     close,
   };
 }
-module.exports = { startHttpCompanion, assertAudit };
+module.exports = { startHttpCompanion, assertAudit, reverseMappings };

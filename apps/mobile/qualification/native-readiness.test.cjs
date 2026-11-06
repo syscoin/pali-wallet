@@ -32,6 +32,21 @@ test('Android exact closed transport recovers with uid0 without a second root re
   assert.equal(f.evidence[0].rootFailure.stderrTail, closed.stderr);
 });
 
+test('Android serial-bound root recovery requires the exact owned emulator', () => {
+  const serial = 'emulator-5554', calls = [], evidence = [];
+  const run = createCommandRunner((_command, args) => {
+    calls.push(args);
+    return args[2] === 'root' ? closed : args[2] === 'shell' ? ok('0') : ok();
+  });
+  const ownedRun = (command, args, ...options) => run(command, ['-s', serial, ...args], ...options);
+  prepareAndroidRoot(ownedRun, (value) => evidence.push(value), serial);
+  assert.deepEqual(calls.map((args) => args[2]), ['wait-for-device', 'root', 'wait-for-device', 'shell']);
+  assert(calls.every((args) => args[0] === '-s' && args[1] === serial));
+  assert.equal(evidence[0].rootTransportRecovered, true);
+  assert.throws(() => prepareAndroidRoot(ownedRun, () => undefined, 'emulator-5556'),
+    (error) => describeQualificationFailure(error).args[1] === serial);
+});
+
 for (const rootResult of [ok('already running as root'), closed]) {
   for (const uid of ['2000', '', '0\n2000', 'uid=0(root)']) test(`Android ${rootResult.status ? 'closed' : 'ACK'} rejects uid ${JSON.stringify(uid)}`, () => {
     const f = rootFixture(rootResult, uid);
