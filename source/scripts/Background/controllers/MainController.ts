@@ -29,7 +29,11 @@ import isNil from 'lodash/isNil';
 import * as syscoinjs from 'syscoinjs-lib';
 
 import { getController, notificationManager } from '..';
-import { assertEvmCancellationPayerReady } from '../../../shared/evmCancellationPayer.ts';
+import {
+  assertEvmCancellationPayerReady,
+  isEvmEmptySelfCall,
+  isEvmProtectedEmptySelfCall,
+} from '../../../shared/evmCancellationPayer.ts';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -292,7 +296,10 @@ import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
 } from './evmSignedRecords';
-import { createExtensionEvmReplay } from './evmSignedReplay';
+import {
+  assertLiveEvmReplacementChain,
+  createExtensionEvmReplay,
+} from './evmSignedReplay';
 import {
   freshSdkGasEstimate,
   getSdkGasOverrides,
@@ -1041,8 +1048,8 @@ class MainController {
     const networkRequest = this.networkRequestGeneration;
     const navigation = getWalletNavigationScope();
     const selected = { ...store.getState().vault.activeAccount };
-    const cancellationProvider =
-      context.operation === 'cancel'
+    const replacementProvider =
+      context.operation === 'cancel' || context.operation === 'speed-up'
         ? keyring.ethereumTransaction.web3Provider
         : null;
     const assertCurrent = () => {
@@ -1056,8 +1063,8 @@ class MainController {
         ];
       if (
         networkRequest !== this.networkRequestGeneration ||
-        (cancellationProvider !== null &&
-          keyring.ethereumTransaction.web3Provider !== cancellationProvider) ||
+        (replacementProvider !== null &&
+          keyring.ethereumTransaction.web3Provider !== replacementProvider) ||
         currentNavigation.account !== navigation.account ||
         currentNavigation.network !== navigation.network ||
         vault.activeAccount.id !== selected.id ||
@@ -1076,8 +1083,8 @@ class MainController {
       this.getRetainedEvmRecords(),
       { keyring, assertCurrent }
     );
-    if (cancellationProvider === null) return lifecycle;
-    const send = cancellationProvider.send.bind(cancellationProvider);
+    if (replacementProvider === null) return lifecycle;
+    const send = replacementProvider.send.bind(replacementProvider);
     const payer = context.account.address;
     return Object.freeze({
       ...lifecycle,
@@ -1085,7 +1092,18 @@ class MainController {
         record: Parameters<typeof lifecycle.persistSigned>[0]
       ) => {
         await lifecycle.persistSigned(record);
+        if (context.operation === 'speed-up') {
+          const transaction = Transaction.from(record.rawTransaction);
+          if (!isEvmEmptySelfCall(transaction)) return;
+          if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        }
         // The SDK awaits this acknowledgement before its final synchronous send guard.
+        await assertLiveEvmReplacementChain(
+          replacementProvider,
+          context.network.chainId,
+          lifecycle.assertCurrent
+        );
         await assertEvmCancellationPayerReady(
           payer,
           record.nonce,

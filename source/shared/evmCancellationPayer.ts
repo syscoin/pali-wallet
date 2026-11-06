@@ -95,3 +95,35 @@ export async function assertEvmCancellationPayerReady(
   );
   checkCurrent(assertCurrent);
 }
+
+type EmptySelfEnvelope = Readonly<{
+  from: string | null;
+  to: string | null;
+  value: bigint;
+  data: string;
+}>;
+
+/** Fee-only replacements of an empty self-call can also invoke delegation. */
+export function isEvmEmptySelfCall(transaction: EmptySelfEnvelope): boolean {
+  const { from, to, value, data } = transaction;
+  return (
+    from !== null &&
+    to !== null &&
+    from.toLowerCase() === to.toLowerCase() &&
+    value === BigInt(0) &&
+    data === '0x'
+  );
+}
+
+/** Keep cancellation's fixed shape and the already-supported fee replacement types. */
+export function isEvmProtectedEmptySelfCall(
+  transaction: EmptySelfEnvelope &
+    Readonly<{ type: number | null; accessList?: readonly unknown[] | null }>,
+  operation: string
+): boolean {
+  if (!isEvmEmptySelfCall(transaction)) return false;
+  const { type, accessList } = transaction;
+  if (operation === 'cancel')
+    return (type === 0 || type === 2) && !accessList?.length;
+  return operation === 'speed-up' && (type === 0 || type === 1 || type === 2);
+}

@@ -224,6 +224,26 @@ test('native cancellation checks a changed chain inside the final journal admiss
   assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId']);
 });
 
+test('a ready retained type-1 self fee replacement preserves its exact access list and bytes', async () => {
+  const raw = await sender.signTransaction({
+    type: 1, chainId: 1, nonce: 1, to: sender.address, value: 0,
+    gasLimit: 42000, gasPrice: 2,
+    accessList: [{ address: sender.address, storageKeys: ['0x' + '01'.repeat(32)] }],
+  });
+  const hash = keccak256(raw), context = {
+    chainId: '1', from: sender.address, hash, nonce: 1, operation: 'speed-up' as const,
+    requiresPayerCheck: true as const,
+  };
+  const f = fixture({ eth_getTransactionCount: '0x1', eth_getCode: '0x', eth_sendRawTransaction: hash });
+  const admit: EvmReplayDispatchAdmission = async (send, checkCancellation) => {
+    assert.equal(f.calls.length, 0);
+    await checkCancellation!();
+    return send();
+  };
+  assert.equal(await f.rpc.broadcast(raw, hash, signal(), undefined, { replay: { admit, context } }), hash);
+  assert.deepEqual(f.calls.at(-1)?.params, [raw]);
+});
+
 test('ordinary native replay preserves shared admission failures with no cancellation reads or POST', async () => {
   const raw = await sender.signTransaction({
     type: 2, chainId: 1, nonce: 0, to: recipient, value: 1,

@@ -831,7 +831,7 @@ export class EvmSignedRecords {
     const address = getAddress(from).toLowerCase();
     return this.exclusive(async () => {
       // A queued cancellation may have expired before reaching storage.
-      if (operation === 'cancel') checkAdmission?.();
+      if (checkCancellation) checkAdmission?.();
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
       const sender = (bundle?.entries ?? []).filter(
@@ -855,7 +855,11 @@ export class EvmSignedRecords {
             ).map(summary);
       guard(session);
       if (checkCancellation) {
-        if (retained.operation !== 'cancel') return null;
+        if (
+          retained.operation !== 'cancel' &&
+          retained.operation !== 'speed-up'
+        )
+          return null;
         await checkCancellation();
         guard(session);
       }

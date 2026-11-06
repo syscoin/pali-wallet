@@ -1,3 +1,4 @@
+import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   captureEvmSubmission,
   submitSignedEvmTransaction,
@@ -86,7 +87,8 @@ export type EvmReplayDispatchAdmission = (
 export type EvmReplayDispatchContext = Pick<
   EvmSignedRecordSummary,
   'operation' | 'originalHash' | 'chainId' | 'from' | 'nonce' | 'hash'
->;
+> &
+  Readonly<{ requiresPayerCheck?: true }>;
 export type EvmReplaySession = Readonly<{
   assertCurrent(): void;
   context: Pick<EvmSubmissionContext, 'account' | 'network'>;
@@ -509,8 +511,13 @@ export class EvmSignedReplay {
       nonce,
       hash: retainedHash,
     } = entry;
-    const dispatchContext = Object.freeze({
+    const zeroSelfReplacement =
+      operation === 'speed-up' &&
+      isEvmEmptySelfCall(Transaction.from(entry.rawTransaction));
+    const requiresPayerCheck = operation === 'cancel' || zeroSelfReplacement;
+    const dispatchContext: EvmReplayDispatchContext = Object.freeze({
       operation,
+      ...(zeroSelfReplacement ? { requiresPayerCheck: true as const } : {}),
       ...(originalHash ? { originalHash } : {}),
       chainId,
       from,
@@ -532,7 +539,7 @@ export class EvmSignedReplay {
                 if (
                   !open ||
                   requested ||
-                  (operation === 'cancel'
+                  (requiresPayerCheck
                     ? typeof checkCancellation !== 'function'
                     : checkCancellation !== undefined)
                 )
