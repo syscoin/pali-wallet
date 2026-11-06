@@ -283,3 +283,37 @@ test('custom UTXO settings save a verified URL only on explicit action', async (
   await page.getByRole('button', { name: 'Edit Personal Litecoin', exact: true }).click();
   await expect(url).toHaveValue('https://replacement.example/blockbook');
 });
+
+test('removes an unused custom UTXO network only from its settings', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?networks=1&utxo=1');
+  const edit = page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true });
+  await edit.click();
+  const remove = page.getByRole('button', { name: 'Remove network', exact: true });
+  await expect(remove).toBeEnabled();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('native-utxo-remove-settings.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(edit).toBeVisible();
+  await edit.click();
+  await remove.focus();
+  await page.keyboard.press('Enter');
+  await expect(edit).toHaveCount(0);
+  await expect(page.getByRole('radio', { checked: true })).toHaveAccessibleName('Ethereum, ETH, Chain ID 1');
+});
+
+test('keeps a custom UTXO network when it has saved accounts', async ({ page }) => {
+  await page.goto('/?networks=1&utxo=1&usedUtxo=1');
+  await page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove network', exact: true }).click();
+  await expect(page.getByRole('alert')).toHaveText('Keep this network while it has saved accounts.');
+  await expect(page.getByLabel('Blockbook URL', { exact: true })).toHaveValue('https://litecoin.example/blockbook');
+  await expect(page.getByRole('button', { name: 'Save changes', exact: true })).toBeEnabled();
+});
+
+test('explains why a selected custom UTXO network cannot be removed', async ({ page }) => {
+  await page.goto('/?networks=1&utxo=1&activeUtxo=1');
+  await page.getByRole('button', { name: 'Edit Custom Litecoin', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Remove network', exact: true })).toBeDisabled();
+  await expect(page.getByText('Only unused custom UTXO networks can be removed.', { exact: true })).toBeVisible();
+});

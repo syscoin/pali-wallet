@@ -7,7 +7,7 @@ import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalog
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
-function fixture(utxoSendAvailable = false) {
+function fixture(utxoSendAvailable = false, removeUtxoNetwork?: (id: string, context: number, revision: number, signal: AbortSignal) => Promise<void>) {
   let state: CustodySnapshot = { phase: 'ready', revision: 12, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
   let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
   const listeners = new Set<(value: CustodySnapshot) => void>();
@@ -19,6 +19,7 @@ function fixture(utxoSendAvailable = false) {
     subscribe(listener: (value: CustodySnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async selectNetwork(...args: [string, number, number]) { requests.push(args); },
     cancelAccountOperation() { cancels++; },
+    ...(removeUtxoNetwork && { removeUtxoNetwork }),
   };
   const view = createNativeNetworkView(authority, { utxoSendAvailable });
   return { view, requests, listeners, cancels: () => cancels,
@@ -60,6 +61,26 @@ test('network selection forwards both captured revisions and teardown removes ob
   assert.equal(f.view.getSnapshot(), null);
   f.view.cancel(); assert.equal(f.cancels(), 1);
   stop(); assert.equal(f.listeners.size, 0);
+});
+
+test('custom UTXO removal is capability-gated and owned by the Settings lifetime', async () => {
+  const request = Promise.withResolvers<readonly [string, number, number, AbortSignal]>();
+  const finish = Promise.withResolvers<void>();
+  const remove = async (id: string, context: number, revision: number, signal: AbortSignal) => {
+    request.resolve([id, context, revision, signal]);
+    await finish.promise;
+  };
+  assert.equal(fixture(false, remove).view.removeUtxo, undefined);
+  assert.equal(fixture(true).view.removeUtxo, undefined);
+  const f = fixture(true, remove);
+  const pending = f.view.removeUtxo!('custom:test', 12, 3);
+  const [id, context, revision, signal] = await request.promise;
+  assert.deepEqual([id, context, revision], ['custom:test', 12, 3]);
+  assert.equal(signal.aborted, false);
+  f.view.cancel();
+  assert.equal(signal.aborted, true);
+  finish.resolve();
+  await pending;
 });
 
 test('network verification and persistence share one detached registration snapshot', async () => {

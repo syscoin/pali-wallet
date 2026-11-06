@@ -89,6 +89,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
   | Readonly<{ kind: 'add-utxo-network'; registration: UtxoRegistration }>
   | Readonly<{ kind: 'edit-utxo-network'; registration: UtxoRegistration }>
+  | Readonly<{ kind: 'remove-utxo-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string }>;
@@ -576,6 +577,12 @@ export class NativeWalletCatalogue {
             saved.backendChain !== network.backendChain || saved.explorer !== network.explorer)
           return invalid();
         networks[index] = Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) });
+      } else if (mutation.kind === 'remove-utxo-network') {
+        const saved = networks.find(({ id }) => id === mutation.id);
+        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(saved.id) ||
+            active.networkId === saved.id || catalogueAccountGroup(record, saved.id))
+          return invalid();
+        networks = networks.filter(({ id }) => id !== saved.id);
       } else if (mutation.kind === 'remove-network') {
         if (mutation.id === active.networkId || catalogueEvmNetworks(next).length <= 1)
           return invalid();

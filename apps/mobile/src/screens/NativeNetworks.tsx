@@ -218,7 +218,10 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   }, [controller, snapshot]);
 
   const save = async (remove = false) => {
-    if (!form || !snapshot || working.current || (form.utxo ? (form.id ? !controller.editUtxo : !controller.addUtxo) : !controller.save)) return;
+    if (!form || !snapshot || working.current) return;
+    const remover = form.utxo ? controller.removeUtxo : controller.remove;
+    const saver = form.utxo ? (form.id ? controller.editUtxo : controller.addUtxo) : controller.save;
+    if (remove ? !form.id || !remover : !saver) return;
     if (form.utxo && form.id && !isCurrentUtxoEdit()) {
       setUi({ owner: controller, busy: false, error: 'This network changed. Reopen it to edit the current settings.' });
       return;
@@ -230,8 +233,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setUi({ owner: controller, busy: true, error: '' }); Keyboard.dismiss();
     try {
       if (remove) {
-        if (form.utxo || !form.id || !controller.remove) return;
-        await controller.remove(form.id as Id, contextRevision, catalogueRevision);
+        await remover!(form.id as Id, contextRevision, catalogueRevision);
       } else if (form.utxo) {
         const draft = { endpoint: form.rpcUrl.trim(), name: form.name.trim() };
         if (form.id) await controller.editUtxo!(form.id as Id, draft, contextRevision, catalogueRevision);
@@ -248,13 +250,19 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     } catch (cause) {
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
           controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision) {
-        const blocked = cause && typeof cause === 'object' && 'code' in cause &&
-          cause.code === 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER';
-        const message = form.utxo ? form.id ? blocked
+        const code = cause && typeof cause === 'object' && 'code' in cause ? cause.code : undefined;
+        let message = form.utxo ? form.id ? code === 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER'
           ? 'Check your saved transfers before changing this endpoint.'
           : 'Check the network name and use a Blockbook URL for this network.'
           : 'Check the Blockbook URL and make sure this coin type is not already saved.'
           : 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.';
+        if (form.utxo && remove) {
+          message = code === 'ACCOUNT_NOT_REMOVABLE'
+            ? 'Keep this network while it has saved accounts.'
+            : code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER'
+            ? 'Check your saved transfers before removing this network.'
+            : 'Could not remove this network. Reopen its settings and try again.';
+        }
         setUi({ owner: controller, busy: false, error: message });
       }
     } finally {
@@ -302,8 +310,10 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           </IdlePressable>
           <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text></>}
           <Button title={form.utxo && form.id ? busy ? 'Saving…' : 'Save changes' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
-          {!form.utxo && form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
-          {!form.utxo && form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
+          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
+          {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
+            {form.utxo ? 'Only unused custom UTXO networks can be removed.' : 'Switch to another network before removing this one.'}
+          </Text>}
           <Button title="Cancel" variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
         <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
