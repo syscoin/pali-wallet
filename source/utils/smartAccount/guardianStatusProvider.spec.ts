@@ -129,7 +129,8 @@ test('rejects a write before dispatch and does not retry a failed batch', async 
   });
   const provider = guardianStatusProvider({ _send });
   await expect(
-    provider.send('eth_sendRawTransaction', ['0x00'])
+    // Simulate an untyped caller without widening the read-only provider type.
+    Reflect.apply(provider.send, provider, ['eth_sendRawTransaction', ['0x00']])
   ).rejects.toThrow('Unsupported');
   expect(_send).not.toHaveBeenCalled();
   await expect(provider.send('eth_chainId', [])).rejects.toThrow(

@@ -18,11 +18,12 @@ import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApprov
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
 import type { EvmReplacementRates } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
-type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_gasPrice' |
+type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call' | 'eth_getStorageAt' | 'eth_gasPrice' |
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount';
-const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_gasPrice',
+const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount']);
 type NftCall = Readonly<{ to: string; data: string; from?: string; value?: string }>;
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
@@ -51,6 +52,9 @@ export type EvmNftPreparedQuote = Readonly<{
 export type EvmCancellationQuote = EvmPreparedQuote & Readonly<{
   feePlan: ReturnType<typeof planEvmCancellationFees>;
 }>;
+export type NativeGuardianRecoveryStatus =
+  | Readonly<{ status: 'unsupported' | 'no-compatible-policy' }>
+  | Readonly<{ status: 'observed'; observation: GuardianRecoveryObservation }>;
 function quantity(value: unknown): bigint {
   try { return parseRpcQuantity(value); } catch { return rejectRead('INVALID_RESPONSE'); }
 }
@@ -176,6 +180,29 @@ export class EvmTransferReadRpc {
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');
+  }
+  readGuardianRecoveryStatus(account: string, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.operation(signal, guard, async (read) => {
+      const [{ readGuardianRecoveryObservation, GuardianRecoveryUnsupportedError, GuardianRecoveryNoAccountCodeError }, { getPaliModuleAddress }] = await Promise.all([
+        import('../../../../source/utils/smartAccount/guardianStatus.ts'),
+        import('../../../../source/utils/smartAccount/contracts.ts'),
+      ]);
+      const chainId = Number(this.network.chainId);
+      try {
+        const observation = await readGuardianRecoveryObservation({
+          account,
+          chainId,
+          moduleAddress: getPaliModuleAddress(chainId, 'guardian-recovery'),
+          provider: { send: read },
+          assertCurrent: read.assertCurrent,
+        });
+        return { status: 'observed', observation };
+      } catch (error) {
+        if (error instanceof GuardianRecoveryUnsupportedError) return { status: 'unsupported' };
+        if (error instanceof GuardianRecoveryNoAccountCodeError) return { status: 'no-compatible-policy' };
+        throw error;
+      }
+    }, 'endpoint');
   }
   private feeData(read: Reader, sampled: ReadBlock, signal: AbortSignal) {
     return getEvmFeeData({
