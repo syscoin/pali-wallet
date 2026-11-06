@@ -488,7 +488,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   assert.equal(btg.segwit, true);
   assert.equal(btg.forkId, 79);
   const registration = litecoinRegistration;
-  let candidateMismatch: 'backend' | 'genesis' | undefined;
+  let candidateMismatch: 'coin' | 'backend' | 'genesis' | undefined;
   let holdCandidateStatus: (() => Promise<void>) | undefined;
   let address = '';
   let lookup = '';
@@ -497,7 +497,9 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   let holdCatalogueUpdate: (() => Promise<void>) | undefined;
   let previous = new bitcoin.Transaction();
   let confirmed = false;
+  let missingSavedTransfer = false;
   const calls: string[] = [];
+  const routes: string[] = [];
   const posts: string[] = [];
   const reply = (url: string, data: unknown) => {
     const response = Response.json(data);
@@ -507,6 +509,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     assert.equal(typeof input, 'string');
     const url = String(input);
+    routes.push(`${init?.method} ${url}`);
     if (url.startsWith(candidateEndpoint + '/')) {
       const path = url.slice(candidateEndpoint.length);
       calls.push(`${init?.method} ${path}`);
@@ -515,8 +518,11 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         await holdCandidateStatus?.();
         const status = metadata(registration);
         if (candidateMismatch === 'backend') status.backend.chain = 'wrong-backend';
+        if (candidateMismatch === 'coin') Object.assign(status.blockbook, { coin: 'Bitcoin', network: 'BTC' });
         return reply(url, status);
       }
+      if (path === `/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`)
+        return reply(url, { address, balance: '100000', unconfirmedBalance: '0', unconfirmedTxs: 0 });
       assert.equal(path, '/api/v2/block-index/0');
       return reply(url, { blockHash: candidateMismatch === 'genesis' ? 'c'.repeat(64) : registration.genesisHash });
     }
@@ -569,7 +575,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     }
     const latest = posts.at(-1);
     if (latest && path === `/api/v2/tx/${bitcoin.Transaction.fromHex(latest).getId()}`)
-      return reply(url, { txid: bitcoin.Transaction.fromHex(latest).getId(), hex: latest,
+      return reply(url, missingSavedTransfer ? {} : { txid: bitcoin.Transaction.fromHex(latest).getId(), hex: latest,
         confirmations: confirmed ? 1 : 0, ...(confirmed && { blockHash: 'a'.repeat(64) }) });
     throw new Error(`Unexpected fixture route ${path}`);
   };
@@ -669,45 +675,41 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     assert.deepEqual(calls.slice(beforeAdd), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
     const custom = owner.getCatalogue()!.utxoNetworks.find((candidate) => candidate.endpoint === endpoint)!;
     assert.equal(custom.backendChain, registration.backendChain);
-    const beforePreview = owner.getCatalogue()!;
+    const beforeEdit = owner.getCatalogue()!;
     const contextRevision = owner.getSnapshot().revision;
-    const verifyCandidate = (id = custom.id, signal = new AbortController().signal) =>
-      owner.verifyUtxoEndpoint(id, candidateEndpoint, contextRevision, beforePreview.revision, signal);
-    const requestsBeforePreview = calls.length;
-    await verifyCandidate();
-    assert.equal(owner.getCatalogue(), beforePreview);
-    assert.equal(owner.getSnapshot().revision, contextRevision);
-    assert.deepEqual(calls.slice(requestsBeforePreview), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
-    for (const mismatch of ['backend', 'genesis'] as const) {
+    const editCandidate = (id = custom.id, signal = new AbortController().signal) =>
+      owner.editUtxoNetwork(id, { endpoint: candidateEndpoint, name: custom.name },
+        contextRevision, beforeEdit.revision, signal);
+    for (const mismatch of ['coin', 'backend', 'genesis'] as const) {
       candidateMismatch = mismatch;
-      await assert.rejects(verifyCandidate(), /UTXO registration does not match the selected coin/);
-      assert.equal(owner.getCatalogue(), beforePreview);
+      await assert.rejects(editCandidate(), /UTXO registration does not match the selected coin/);
+      assert.equal(owner.getCatalogue(), beforeEdit);
+      assert.equal(owner.getSnapshot().revision, contextRevision);
     }
     candidateMismatch = undefined;
     const candidateEntered = Promise.withResolvers<void>(), releaseCandidate = Promise.withResolvers<void>();
-    const previewLifetime = new AbortController();
-    const beforeCancelledPreview = calls.length;
+    const editLifetime = new AbortController();
+    const beforeCancelledEdit = calls.length;
     holdCandidateStatus = () => { candidateEntered.resolve(); return releaseCandidate.promise; };
-    const cancelledPreview = verifyCandidate(custom.id, previewLifetime.signal);
-    const failedPreview = assert.rejects(cancelledPreview);
+    const cancelledEdit = editCandidate(custom.id, editLifetime.signal);
+    const failedEdit = assert.rejects(cancelledEdit);
     try {
-      await Promise.race([candidateEntered.promise, cancelledPreview]);
-      previewLifetime.abort();
+      await Promise.race([candidateEntered.promise, cancelledEdit]);
+      editLifetime.abort();
     } finally {
       releaseCandidate.resolve();
       holdCandidateStatus = undefined;
     }
-    await failedPreview;
-    assert.deepEqual(calls.slice(beforeCancelledPreview), ['GET /api/v2/']);
-    assert.equal(owner.getCatalogue(), beforePreview);
+    await failedEdit;
+    assert.deepEqual(calls.slice(beforeCancelledEdit), ['GET /api/v2/']);
+    assert.equal(owner.getCatalogue(), beforeEdit);
     const beforeForbiddenEdit = calls.length;
-    await assert.rejects(verifyCandidate('bitcoin'), { code: 'INVALID_INPUT' });
-    const unauthorizedEdit = { kind: 'rename-utxo-network', id: custom.id, name: custom.name, endpoint: candidateEndpoint } as const;
-    await assert.rejects(owner.manageNetwork(unauthorizedEdit, contextRevision, beforePreview.revision), { code: 'INVALID_INPUT' });
-    await assert.rejects(owner.manageNetwork({ kind: 'rename-utxo-network', id: 'bitcoin', name: 'Other' },
-      contextRevision, beforePreview.revision), { code: 'INVALID_INPUT' });
+    await assert.rejects(editCandidate('bitcoin'), { code: 'INVALID_INPUT' });
+    const unauthorizedEdit = { kind: 'edit-utxo-network', id: custom.id, name: custom.name, endpoint: candidateEndpoint } as const;
+    await assert.rejects(owner.manageNetwork(unauthorizedEdit, contextRevision, beforeEdit.revision), { code: 'INVALID_INPUT' });
+    await assert.rejects(owner.manageNetwork({ kind: 'edit-utxo-network' }, contextRevision, beforeEdit.revision), { code: 'CANCELLED' });
     assert.equal(calls.length, beforeForbiddenEdit);
-    assert.equal(owner.getCatalogue(), beforePreview);
+    assert.equal(owner.getCatalogue(), beforeEdit);
     const beforeDuplicate = owner.getCatalogue()!;
     await assert.rejects(owner.addUtxoNetwork({ endpoint, name: 'Duplicate', explorer: '' },
       owner.getSnapshot().revision, beforeDuplicate.revision, new AbortController().signal));
@@ -919,8 +921,8 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
               .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
             const beforeRename = owner.getCatalogue()!;
             const beforeRequests = calls.length;
-            await owner.manageNetwork({ kind: 'rename-utxo-network', id: custom.id, name: 'Renamed Litecoin' },
-              owner.getSnapshot().revision, beforeRename.revision);
+            await owner.editUtxoNetwork(custom.id, { name: 'Renamed Litecoin', endpoint: custom.endpoint + '/' },
+              owner.getSnapshot().revision, beforeRename.revision, new AbortController().signal);
             const afterRename = owner.getCatalogue()!;
             assert.deepEqual(afterRename.active, beforeRename.active);
             assert.deepEqual(afterRename.accounts, beforeRename.accounts);
@@ -931,6 +933,17 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
             assert.equal(calls.length, beforeRequests);
             assert.equal((await storage.recovery.readSnapshot()).records
               .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, savedJournal);
+            const ready = owner.getSnapshot();
+            await assert.rejects(owner.editUtxoNetwork(custom.id, { name: renamed.name, endpoint: candidateEndpoint },
+              ready.revision, afterRename.revision, new AbortController().signal),
+              { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' });
+            assert.equal(owner.getSnapshot(), ready);
+            assert.equal(owner.getCatalogue(), afterRename);
+            assert.equal((await storage.recovery.readSnapshot()).records
+              .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, savedJournal);
+            assert.deepEqual(routes.slice(beforeRequests), [
+              `GET ${candidateEndpoint}/api/v2/`, `GET ${candidateEndpoint}/api/v2/block-index/0`,
+            ]);
           }
         } else {
           ({ txid } = await send.confirm(review));
@@ -958,14 +971,75 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
         confirmed = true;
         assert.equal(await send.check(txid), 'confirmed');
         confirmed = false;
+        if (target === custom && index === scripts.length - 1) {
+          const beforeSwap = owner.getCatalogue()!;
+          const catalogueBytes = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+          const journalBytes = (await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
+          const replaceEndpoint = (signal: AbortSignal) => owner.editUtxoNetwork(custom.id,
+            { name: 'Renamed Litecoin', endpoint: candidateEndpoint }, owner.getSnapshot().revision,
+            owner.getCatalogue()!.revision, signal);
+          const swapStarted = Promise.withResolvers<void>(), continueSwap = Promise.withResolvers<void>();
+          const swapLifetime = new AbortController();
+          holdCatalogueUpdate = () => { swapStarted.resolve(); return continueSwap.promise; };
+          const aborted = assert.rejects(replaceEndpoint(swapLifetime.signal));
+          try {
+            await Promise.race([swapStarted.promise, aborted.then(() => { throw new Error('Swap did not reach SQLite'); })]);
+            swapLifetime.abort();
+          } finally {
+            continueSwap.resolve();
+          }
+          await aborted;
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), catalogueBytes);
+          await owner.unlock(password);
+
+          const beforeSave = routes.length;
+          await replaceEndpoint(new AbortController().signal);
+          assert.deepEqual(routes.slice(beforeSave), [
+            `GET ${candidateEndpoint}/api/v2/`, `GET ${candidateEndpoint}/api/v2/block-index/0`,
+          ]);
+          await owner.dispose();
+          owner = newOwner();
+          await owner.initialize();
+          await owner.unlock(password);
+          const afterSwap = owner.getCatalogue()!;
+          assert.deepEqual(afterSwap.active, beforeSwap.active);
+          assert.deepEqual(afterSwap.accounts, beforeSwap.accounts);
+          const replacement = afterSwap.utxoNetworks.find(({ id }) => id === custom.id)!;
+          assert.equal(replacement.endpoint, candidateEndpoint);
+          assert.equal(replacement.genesisHash, custom.genesisHash);
+          assert.equal(replacement.backendChain, custom.backendChain);
+          assert.equal(replacement.explorer, custom.explorer);
+          assert.equal((await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, journalBytes);
+          const beforeBalance = routes.length;
+          assert.equal((await runtime.readUtxoBalance!(custom.id, address, new AbortController().signal)).confirmedUnits, '100000');
+          assert(routes.slice(beforeBalance).every((request) => request.startsWith(`GET ${candidateEndpoint}/`)));
+          assert(routes.length > beforeBalance);
+
+          const exact = posts.at(-1);
+          const reopened = await runtime.openUtxoSend!(current);
+          const beforeReorg = routes.length;
+          missingSavedTransfer = true;
+          assert.equal(await reopened.check(txid), 'unknown');
+          const retry = await reopened.prepareRetry(txid);
+          assert.equal(retry.retryProviderOrigin, new URL(endpoint).origin);
+          assert.equal((await reopened.confirm(retry)).txid, txid);
+          missingSavedTransfer = false;
+          assert.equal(posts.at(-1), exact);
+          assert.deepEqual(routes.slice(beforeReorg), [
+            `GET ${endpoint}/api/v2/`, `GET ${endpoint}/api/v2/block-index/0`, `GET ${endpoint}/api/v2/tx/${txid}`,
+            `GET ${endpoint}/api/v2/`, `GET ${endpoint}/api/v2/block-index/0`, `POST ${endpoint}/api/v2/sendtx/`,
+          ]);
+        }
         const laneRequests = calls.slice(callsBefore);
         assert.equal(laneRequests.some((entry) => entry.includes('/xpub/')), !script);
         assert.equal(laneRequests.some((entry) => entry.includes(secret)), false);
       }
     }
-    // Default lanes post initially and again after restart. Each custom WIF
-    // lane posts only on retry because its first dispatch is blocked.
-    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 2);
+    // Default lanes post twice, custom lanes post on retry, and the replaced
+    // provider lane replays the original bytes once more after a reorg.
+    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 3);
     await selectAccount(`hd:${network.slip44}:0`);
     await removeAccount(`imported:${network.slip44}:0`);
     assert.equal(owner.getCatalogue()!.accounts.some((account) => account.id === `imported:${network.slip44}:0`), false);

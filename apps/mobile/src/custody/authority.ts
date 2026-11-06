@@ -131,6 +131,22 @@ export class NativeCustodyAuthority {
     if (!networks.prepareUtxo) throw new CustodyOperationError('NOT_READY');
     const proof = await networks.prepareUtxo(draft, expectedCatalogueRevision, signal, check);
     check();
+    return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
+  }
+
+  async editUtxoNetwork(id: string, draft: import('./accounts.ts').NativeUtxoNetworkEditDraft, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    const { networks, check, checkRoute } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
+    if (!networks.withUtxoEditApproval) throw new CustodyOperationError('NOT_READY');
+    return networks.withUtxoEditApproval(id, draft, expectedCatalogueRevision, signal, check, (proof) => {
+      check();
+      return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
+    });
+  }
+
+  private commitUtxoNetwork(networks: import('./accounts.ts').NativeNetworkRuntime,
+    proof: import('./accounts.ts').NativeUtxoNetworkApproval, expectedRevision: number,
+    expectedCatalogueRevision: number, checkRoute: () => void) {
     return this.manageContext(() => {
       const admitted = networks.reserve(proof, expectedCatalogueRevision);
       return {
@@ -138,14 +154,6 @@ export class NativeCustodyAuthority {
         execute: (assertCurrent) => admitted.execute(() => { checkRoute(); assertCurrent(); }),
       };
     }, expectedRevision);
-  }
-
-  async verifyUtxoEndpoint(id: string, endpoint: string, expectedRevision: number,
-    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
-    const { networks, check } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
-    if (!networks.verifyUtxoEndpoint) throw new CustodyOperationError('NOT_READY');
-    await networks.verifyUtxoEndpoint(id, endpoint, expectedCatalogueRevision, signal, check);
-    check();
   }
 
   private ownedUtxoNetworkSettings(expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal) {

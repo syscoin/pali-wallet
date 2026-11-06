@@ -88,7 +88,7 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'select-network'; id: EvmNetworkId; initialGroup?: RecoveryAccountGroup }>
   | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
   | Readonly<{ kind: 'add-utxo-network'; registration: UtxoRegistration }>
-  | Readonly<{ kind: 'rename-utxo-network'; id: string; name: string }>
+  | Readonly<{ kind: 'edit-utxo-network'; registration: UtxoRegistration }>
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string }>;
@@ -567,13 +567,15 @@ export class NativeWalletCatalogue {
             existing.some(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44))
           return invalid();
         networks.push(Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) }));
-      } else if (mutation.kind === 'rename-utxo-network') {
-        const index = networks.findIndex(({ id }) => id === mutation.id);
+      } else if (mutation.kind === 'edit-utxo-network') {
+        const network = projectUtxoRegistration(mutation.registration);
+        const index = networks.findIndex(({ id }) => id === network.id);
         const saved = networks[index];
-        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(saved.id)) return invalid();
-        const { kind, ...registration } = saved;
-        const network = projectUtxoRegistration({ ...registration, name: mutation.name });
-        networks[index] = Object.freeze({ kind, ...utxoRegistrationData(network) });
+        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(network.id) ||
+            saved.chainId !== network.chainId || saved.slip44 !== network.slip44 ||
+            saved.backendChain !== network.backendChain || saved.explorer !== network.explorer)
+          return invalid();
+        networks[index] = Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) });
       } else if (mutation.kind === 'remove-network') {
         if (mutation.id === active.networkId || catalogueEvmNetworks(next).length <= 1)
           return invalid();

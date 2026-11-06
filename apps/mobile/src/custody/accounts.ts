@@ -26,22 +26,24 @@ export interface NativeAccountView {
 }
 
 export type NativeUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;
-export type NativeUtxoNetworkApproval = Readonly<{ kind: 'add-utxo-network' }>;
+export type NativeUtxoNetworkEditDraft = Readonly<Pick<NativeUtxoNetworkDraft, 'endpoint' | 'name'>>;
+export type NativeUtxoNetworkApproval =
+  | Readonly<{ kind: 'add-utxo-network' }>
+  | Readonly<{ kind: 'edit-utxo-network' }>;
 
 export type NativeNetworkRequest =
   | Readonly<{ kind: 'select-network'; id: string }>
   | Readonly<{ kind: 'save-network'; registration: import('./networkContext.ts').NativeNetworkRegistration;
     }>
   | NativeUtxoNetworkApproval
-  | Readonly<{ kind: 'rename-utxo-network'; id: string; name: string }>
   | Readonly<{ kind: 'remove-network'; id: string }>;
 
 /** Durable network selection consumed by the native network picker. */
 export interface NativeNetworkRuntime {
   prepareUtxo?(draft: NativeUtxoNetworkDraft, expectedCatalogueRevision: number, signal: AbortSignal,
     assertCurrent: () => void): Promise<NativeUtxoNetworkApproval>;
-  verifyUtxoEndpoint?(id: string, endpoint: string, expectedCatalogueRevision: number,
-    signal: AbortSignal, assertCurrent: () => void): Promise<void>;
+  withUtxoEditApproval?(id: string, draft: NativeUtxoNetworkEditDraft, expectedCatalogueRevision: number,
+    signal: AbortSignal, assertCurrent: () => void, commit: (proof: NativeUtxoNetworkApproval) => Promise<void>): Promise<void>;
   reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;
