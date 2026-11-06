@@ -56,6 +56,7 @@ import {
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
 import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
+import { createUtxoRegistrationPin } from '../../../shared/utxoRegistration';
 import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
@@ -5593,7 +5594,10 @@ class MainController {
       const draft = { url, explorer, label };
       const result =
         registration && backendChain !== undefined
-          ? await getSysRpc(draft, { ...owner, registration, backendChain })
+          ? await getSysRpc(draft, {
+              ...owner,
+              ...createUtxoRegistrationPin({ ...registration, backendChain }),
+            })
           : await observeSysRpc(draft, { ...owner, registration });
       assertCurrent();
       const network = result.rpc.formattedNetwork;
@@ -5923,8 +5927,11 @@ class MainController {
             { url, explorer, label },
             {
               ...owner,
-              registration: { chainId, slip44 },
-              backendChain: utxoBackendChain,
+              ...createUtxoRegistrationPin({
+                chainId,
+                slip44,
+                backendChain: utxoBackendChain,
+              }),
             }
           )
       );

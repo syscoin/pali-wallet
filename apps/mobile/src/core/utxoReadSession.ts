@@ -1,5 +1,6 @@
 import { observeFirstUseUtxoRpc, verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
 import { utxoRegistrationDisplayName } from '../../../../source/shared/utxoChainCatalogue.ts';
+import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
 import { boundedResponseText, cancelResponseBody, ResponseSizeLimitError } from '../platformRpc.ts';
 import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
@@ -138,10 +139,11 @@ export async function verifyUtxoRegistration(
   };
   try {
     if (selected) {
-      const { chainId, slip44, backendChain } = selected;
-      await verifyOwnedUtxoRpc(endpoint, { ...owner, registration: { chainId, slip44 }, backendChain });
+      const pin = createUtxoRegistrationPin(selected);
+      await verifyOwnedUtxoRpc(endpoint, { ...owner, ...pin });
       transport.check();
-      return projectUtxoRegistration({ id: selected.id, chainId, slip44, backendChain, endpoint, name: name || selected.name, explorer });
+      return projectUtxoRegistration({ id: selected.id, ...pin.registration, backendChain: pin.backendChain,
+        endpoint, name: name || selected.name, explorer });
     }
     const observed = await observeFirstUseUtxoRpc(endpoint, owner);
     observed.assertCurrent();
@@ -162,8 +164,7 @@ export async function openUtxoReadSession(scope: UtxoNetworkId | UtxoNetwork, op
     let validationFailure: UtxoBalanceError | undefined;
     try {
       await verifyOwnedUtxoRpc(network.endpoint, {
-        registration: { chainId: network.chainId, slip44: network.slip44 },
-        backendChain: network.backendChain,
+        ...createUtxoRegistrationPin(network),
         assertCurrent: check,
         signal,
         async readJson(url, ownerSignal) {
