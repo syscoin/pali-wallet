@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from '../native-watch-ui/utxoImportVectors';
 
 const KEY = `0x${'1'.padStart(64, '0')}`;
 const ADDRESS = '0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf';
@@ -85,8 +86,8 @@ test('private-key import reviews full address, then selects the account with rec
 });
 
 test('Bitcoin WIF import and password-confirmed key backup stay readable at 320px', async ({ page }, info) => {
-  const fixtureKey = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
-  const fixtureAddress = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
+  const fixtureKey = BITCOIN_WIF_KEY;
+  const fixtureAddress = BITCOIN_WIF_ADDRESS;
   await page.setViewportSize({ width: 320, height: 740 });
   await openWallet(page, '?wif-fixture=1');
   await page.getByRole('button', { name: 'Security & backups', exact: false }).click();
@@ -159,6 +160,59 @@ test('Bitcoin WIF import and password-confirmed key backup stay readable at 320p
   await expect(page.getByRole('button', { name: 'Import account', exact: true })).toHaveCount(0);
   await expect(keyField).toHaveAttribute('type', 'password');
   expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(1);
+});
+
+test('Bitcoin BIP84 import clears stale WIF script choices at 320px', async ({ page }, info) => {
+  const name = 'BIP84 savings';
+  await page.setViewportSize({ width: 320, height: 740 });
+  await openWallet(page, '?wif-fixture=1');
+  await openImport(page);
+  const keyField = page.getByRole('textbox', { name: 'UTXO private key', exact: true });
+  const nameField = page.getByRole('textbox', { name: 'Account name', exact: true });
+  const review = page.getByRole('button', { name: 'Review address', exact: true });
+  await nameField.fill(name);
+  await keyField.fill(BITCOIN_WIF_KEY);
+  await page.getByRole('radio', { name: 'Legacy', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Legacy', exact: true })).toHaveAttribute('aria-checked', 'true');
+
+  await keyField.fill(BITCOIN_BIP84_KEY);
+  await expect(keyField).toHaveAttribute('type', 'password');
+  await expect(keyField).toHaveValue(BITCOIN_BIP84_KEY);
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  await review.press('Enter');
+  await expect(page.getByText('Bitcoin', { exact: true })).toBeVisible();
+  await expect(page.getByText(BITCOIN_BIP84_ADDRESS, { exact: true })).toBeVisible();
+  await expect(page.getByText('Check the complete SegWit address for Bitcoin.', { exact: true })).toBeVisible();
+  await expect(keyField).toHaveCount(0);
+  expect(await page.content()).not.toContain(BITCOIN_BIP84_KEY);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: info.outputPath('bip84-review-320.png'), fullPage: true });
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(0);
+  await page.getByRole('button', { name: 'Import private key', exact: true }).click();
+  await expect(keyField).toHaveValue('');
+  await expect(page.getByRole('radio', { name: 'SegWit', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await nameField.fill(name);
+  await keyField.fill(BITCOIN_BIP84_KEY);
+  await review.click();
+  await expect(page.getByText(BITCOIN_BIP84_ADDRESS, { exact: true })).toBeVisible();
+
+  const confirm = page.getByRole('button', { name: 'Import account', exact: true });
+  await expect(confirm).toBeDisabled();
+  await page.getByRole('textbox', { name: 'Confirm wallet password', exact: true }).fill('public-password');
+  await expect(confirm).toBeDisabled();
+  await page.getByRole('checkbox', { name: 'I have a separate backup of this private key', exact: true }).check();
+  await expect(confirm).toBeEnabled();
+  await confirm.click();
+  await expect(page.getByText(`${name} · Bitcoin`, { exact: true })).toBeVisible();
+  const catalogue = await page.evaluate(() => window.__watchFixture.catalogue());
+  expect(catalogue.active.accountId).toBe('imported:0:0');
+  expect(catalogue.accounts.find(({ id }) => id === catalogue.active.accountId)).toMatchObject({
+    address: BITCOIN_BIP84_ADDRESS, utxoExtended: true,
+  });
+  expect((await page.evaluate(() => window.__watchFixture.audit())).imports).toBe(1);
+  expect((await page.evaluate(() => window.__watchFixture.audit())).broadcasts).toBe(0);
 });
 
 test('malformed keys and oversized valid prefixes never reach import', async ({ page }) => {
