@@ -1242,7 +1242,7 @@ class SmartAccountController {
       config: { owners: [managementOwner], threshold: 1 },
       id: 'ecdsa',
     });
-    const factoryAddress = descriptor.factoryAddress;
+    const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
     const smartAccount = await toPaliSmartAccount({
       auth: authenticator.auth,
       chainId,
