@@ -1,18 +1,30 @@
-import { defaultAbiCoder, getAddress, keccak256 } from 'utils/ethersV6Compat';
+import { defaultAbiCoder, getAddress, keccak256 } from '../ethersV6Compat.ts';
 
 import {
   paliGuardianRecoveryModuleInterface,
   paliSmartAccountInterface,
-} from './contracts';
-import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from './deploymentMetadata';
+} from './contracts.ts';
+import { PALI_INFRASTRUCTURE_METADATA_BY_ID } from './deploymentMetadata.ts';
 
 const ZERO = `0x${'00'.repeat(32)}`;
 const MAX_BLOCK_AGE_MS = 420000;
 
 export type GuardianRpcRequest = {
-  method: string;
+  method:
+    | 'eth_chainId'
+    | 'eth_getBlockByNumber'
+    | 'eth_getCode'
+    | 'eth_call'
+    | 'eth_getStorageAt';
   params: unknown[];
 };
+
+export class GuardianRecoveryUnsupportedError extends Error {
+  constructor() {
+    super('Guardian recovery module runtime is unsupported');
+    this.name = 'GuardianRecoveryUnsupportedError';
+  }
+}
 
 export type GuardianOperationObservation = {
   executableAt: number;
@@ -108,7 +120,10 @@ export async function readGuardianRecoveryObservation({
   now?: () => number;
   provider: {
     batch?: (requests: GuardianRpcRequest[]) => Promise<unknown[]>;
-    send: (method: string, params: unknown[]) => Promise<unknown>;
+    send: (
+      method: GuardianRpcRequest['method'],
+      params: unknown[]
+    ) => Promise<unknown>;
   };
 }): Promise<GuardianRecoveryObservation> {
   account = getAddress(account);
@@ -205,7 +220,7 @@ export async function readGuardianRecoveryObservation({
     keccak256(code) !==
       PALI_INFRASTRUCTURE_METADATA_BY_ID.guardianRecoveryModule.runtimeCodeHash
   )
-    throw new Error('Guardian recovery module runtime is unsupported');
+    throw new GuardianRecoveryUnsupportedError();
   const decode = (iface: any, fn: string, data: unknown) => {
     if (typeof data !== 'string')
       throw new Error('Invalid guardian recovery response');

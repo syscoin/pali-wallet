@@ -4,7 +4,8 @@ import { toUtf8Bytes } from 'ethers/utils';
 import { createActivityReadScope, type EvmActivityReadScope } from '../activity/types.ts';
 import type { EvmActivityReaders } from '../activity/nativeActivity.ts';
 import type { ActivityFeed } from '../activity/explorerReader.ts';
-import { getNativeNetwork } from '../custody/networkContext.ts';
+import { getNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
+import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc.ts';
 import { createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
 import type { UtxoActivityReader, UtxoActivityPage, UtxoActivityDetail, UtxoActivityRow } from './utxoActivity.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
@@ -76,6 +77,9 @@ export interface BalanceReader {
   readUtxoBalance?(scope: UtxoNetworkId | UtxoNetwork, address: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
   readUtxoAccount?(scope: UtxoNetworkId | UtxoNetwork, identifier: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
 }
+
+export type GuardianRecoveryReader = (network: NativeNetworkRegistration, address: string,
+  signal: AbortSignal, assertCurrent: () => void) => Promise<NativeGuardianRecoveryStatus>;
 
 /** Untrusted persisted public data must not import private keyring records. */
 export function validatePublicAccounts(
@@ -465,8 +469,8 @@ export class WatchOnlyAuthority implements WalletAuthority {
     }
   }
 
-  /** One ownership boundary for public history; each async read rechecks saved records. */
-  private async withActivityRead<T>(kind: 'utxo' | 'evm', external: AbortSignal | undefined,
+  /** One ownership boundary for public reads, including saved-record rechecks. */
+  private async withPublicRead<T>(kind: 'utxo' | 'evm', external: AbortSignal | undefined,
     assertCurrent: () => void, action: (owner: { accountId: string; address: string; networkId: NetworkId; generation: number;
       source: AccountSource | undefined; recordIdentity: string; registration?: UtxoNetwork; assertNetworkCurrent?: () => void }, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
     const snapshot = this.getSnapshot();
@@ -528,7 +532,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
       this.forgetUtxoRow(this.utxoRows.keys().next().value!);
       checkAdmission();
     }
-    const result = await this.withActivityRead('utxo', external, () => undefined, async (owner, signal, check) => {
+    const result = await this.withPublicRead('utxo', external, () => undefined, async (owner, signal, check) => {
       const { accountId, address, networkId, generation, source, registration } = owner;
       const result = await reader.readPage({
         context: Object.freeze({ accountId, networkId: networkId as UtxoNetworkId, address, generation }),
@@ -584,7 +588,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
     const requests = this.utxoDetailRequests.get(row) ?? new Set<AbortController>();
     requests.add(operation); this.utxoDetailRequests.set(row, requests);
     try {
-      const result = await this.withActivityRead('utxo', operation.signal, () => undefined, async (owner, signal, check) => {
+      const result = await this.withPublicRead('utxo', operation.signal, () => undefined, async (owner, signal, check) => {
         const current = () => { check(); if (this.utxoDetails !== cache || !this.utxoRows.has(row)) throw new Error('Account activity context changed'); };
         current();
         const { accountId, address, networkId, source, generation, registration } = owner;
@@ -612,7 +616,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private async withEvmActivity<T>(expected: EvmActivityReadScope | undefined, signal: AbortSignal | undefined,
     guard: () => void, action: (scope: EvmActivityReadScope, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
     const expectedKey = expected?.key, expectedSource = expected?.sourceId, expectedRegistration = expected?.network.registrationHash;
-    return this.withActivityRead('evm', signal, guard, async (owner, currentSignal, check) => {
+    return this.withPublicRead('evm', signal, guard, async (owner, currentSignal, check) => {
       const scope = this.evmScope(owner);
       if (expected && (scope.key !== expectedKey || scope.sourceId !== expectedSource || scope.network.registrationHash !== expectedRegistration))
         throw new Error('Account activity context changed');
@@ -630,6 +634,17 @@ export class WatchOnlyAuthority implements WalletAuthority {
   readEvmActivityTransaction(scope: EvmActivityReadScope, hash: string, signal: AbortSignal, guard: () => void) {
     if (!this.evmActivityReaders) return Promise.reject(new Error('Account activity unavailable'));
     return this.withEvmActivity(scope, signal, guard, (current, currentSignal, check) => this.evmActivityReaders!.receipts.read(hash, current.address, currentSignal, check, current.network));
+  }
+
+  readGuardianRecovery(read: GuardianRecoveryReader, signal: AbortSignal, guard: () => void): Promise<NativeGuardianRecoveryStatus> {
+    return this.withPublicRead('evm', signal, guard, async ({ networkId, address }, ownedSignal, check) => {
+      const network = getNativeNetwork(networkId);
+      const status = await read(network, address, ownedSignal, check);
+      check();
+      if (status.status === 'observed' && (status.observation.account !== address ||
+          status.observation.chainId !== Number(network.chainId))) throw new Error('Recovery status context changed');
+      return status;
+    });
   }
 
   async prepareTransfer(_intent: TransferIntent): Promise<TransferReview> {

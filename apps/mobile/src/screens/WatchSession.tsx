@@ -11,6 +11,13 @@ import { useRealShell } from './useRealShell';
 import { WatchActivity } from './WatchActivity';
 import { createWatchEvmActivity } from '../activity/watchActivity';
 import { NativeActivityScreen } from './NativeActivity';
+import { walletFetch } from '../platform/http';
+
+const readGuardianStatus: import('../core/watchOnlyAuthority').GuardianRecoveryReader = async (network, address, signal, check) => {
+  const { EvmTransferReadRpc } = await import('../custody/evmTransferReadRpc');
+  check();
+  return new EvmTransferReadRpc(network, { fetch: walletFetch }).readGuardianRecoveryStatus(address, signal, check);
+};
 
 /** Owns public navigation only; the existing App-owned authority remains authoritative. */
 export function WatchSession({ authority, onAccounts, onExit }: {
@@ -47,7 +54,17 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   else if (shell.tab === 'activity') content = network.kind === 'utxo'
     ? <WatchActivity authority={authority} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
     : <NativeActivityScreen controller={evmActivity} accountLabel={label} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
-  else if (shell.tab === 'tools') content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
+  else if (shell.tab === 'tools') {
+    const address = network.kind === 'evm' && account?.addresses[network.id];
+    content = <RealTools accountLabel={label} networkLabel={network.name} watchOnly onAccounts={openAccounts}
+      onBack={() => shell.select('wallet')} navigation={shell.navigation} guardianRecovery={liveScope && address ? {
+        scope: liveScope, address,
+        read: (signal, check) => authority.readGuardianRecovery(readGuardianStatus, signal, () => {
+          if (AppState.currentState !== 'active' || currentScope() !== liveScope) throw new Error('CANCELLED');
+          check();
+        }),
+      } : undefined} />;
+  }
   else content = <RealSettings navigation={shell.navigation} accountLabel={label} watchOnly onAutoLock={() => setAutoLockScope(currentScope())} onLock={onExit} onBack={() => shell.select('wallet')} />;
   return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive || snapshot.status !== 'ready'}>{content}</RealAppShell>;
 }
