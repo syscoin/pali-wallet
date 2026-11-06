@@ -178,6 +178,14 @@ test('cancellation shows the original and maximum fee before one explicit approv
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
+test('queued cancellation directs the user to earlier activity', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/?cancel-transfer&cancel-queued');
+  await expect(page.getByRole('alert')).toHaveText('This cancellation must wait for earlier transactions. Check Activity before trying again.');
+  await expect(page.getByRole('button', { name: 'Submit cancellation' })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+});
+
 test('Speed Up shows the original and reviewed fee before one explicit approval', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/?speed-up-transfer');

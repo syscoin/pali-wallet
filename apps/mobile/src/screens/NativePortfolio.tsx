@@ -144,13 +144,13 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const statusText = loading ? `Loading ${networkName} balance…` : snapshot.status === 'error' ? 'Balance unavailable' : 'Balance not loaded';
   const currentFeedback = feedback?.scope === scope ? feedback : null;
   const faucetCard = faucet && account && <TestnetFaucetCard registration={registration!} busy={!!pendingAction} opening={pendingAction === 'faucet'} onCopy={receiving ? undefined : () => void publicAction('copy')} onOpen={() => void publicAction('faucet')} />;
-  const actions = receiving ? <View style={s.actions}>
-    <Button title="Copy address" icon="copy" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
-    <Button title="Share address" icon="share" variant="secondary" style={s.flex} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
+  const actions = receiving ? <View style={[s.actions, stackActions && s.stackedActions]}>
+    <Button title="Copy address" icon="copy" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('copy')} testID="native-receive-copy" />
+    <Button title="Share address" icon="share" variant="secondary" style={actionStyle} disabled={!account || !!pendingAction} onPress={() => publicAction('share')} testID="native-receive-share" />
   </View> : undefined;
 
   return <SafeAreaView edges={navigation && !receiving && !tokenTitle ? ['top'] : ['top', 'bottom']} style={s.safeArea}>
-    <Screen footer={actions}>
+    <Screen key={receiving ? 'receive' : 'portfolio'} footer={actions}>
       <Header title={receiving ? `Receive ${symbol}` : tokenTitle ?? 'Wallet'} subtitle={`${accountLabel} · ${networkName}${network.testnet ? ' · Test network' : ''}`} onBack={back} right={!receiving && !tokenTitle && onManageAccounts ? <Button title="Accounts" variant="quiet" onPress={onManageAccounts} /> : undefined} />
       {!account ? <Notice title="Wallet locked" body="Unlock your wallet to view its account." /> : receiving ? <>
         <View style={s.identity}><Coin id={network.networkId} size={48} /><Text style={s.network}>{networkName}</Text><Text style={styles.muted}>{accountLabel}</Text></View>

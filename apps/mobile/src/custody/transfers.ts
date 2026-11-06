@@ -132,6 +132,7 @@ export class NativeTransferError extends Error {
     | 'INVALID_INPUT'
     | 'INVALID_NONCE'
     | 'NONCE_UNAVAILABLE'
+    | 'CANCELLATION_QUEUED'
     | 'NONCE_RETAINED'
     | 'EXPIRED'
     | 'PENDING_TRANSFER'
@@ -522,6 +523,15 @@ export class NativeTransfers {
               : error.code === 'INSUFFICIENT_NFT_BALANCE' ? 'This account does not own enough of this collectible.'
                 : 'The collectible contract did not accept this transfer.' });
           throw new NativeTransferError(error.code);
+        }
+        if (error instanceof NativeTransferRpcError && error.code === 'CANCELLATION_QUEUED') {
+          this.publish({
+            phase: this.snapshot.hash ? 'unknown' : 'idle', review: null,
+            message: this.snapshot.hash
+              ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
+              : 'This cancellation must wait for earlier transactions. Check Activity before trying again.',
+          });
+          throw new NativeTransferError('CANCELLATION_QUEUED');
         }
         if (error instanceof NativeTransferRpcError && error.code === 'NONCE_UNAVAILABLE') {
           this.publish({

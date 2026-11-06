@@ -3,7 +3,7 @@ import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
 import { registerRootComponent } from 'expo';
-import { AppState, BackHandler, Linking, Platform, Share } from 'react-native';
+import { AppState, BackHandler, Dimensions, Linking, Platform, Share } from 'react-native';
 import { activityFetch, activityFixture } from './utxoActivityFixture';
 import { evmActivityFetch, evmActivityFixture } from './evmActivityFixture';
 import { createGuardianRecoveryFixture } from './guardianRecoveryFixture';
@@ -16,6 +16,11 @@ import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
 
 Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
+// RN Web fixes fontScale at 1 and rejects Dimensions.set in a browser. Change
+// the fixture's current dimensions before the actual watch component mounts.
+const fixtureFontScale = new URLSearchParams(window.location.search).get('font-scale');
+if (fixtureFontScale === '1.3' || fixtureFontScale === '1.6')
+  Dimensions.get('window').fontScale = Number(fixtureFontScale);
 let appState = 'active';
 const listeners = new Map<string, Set<(state: string) => void>>();
 Object.defineProperty(AppState, 'currentState', { configurable: true, get: () => appState });
@@ -64,6 +69,7 @@ WatchOnlyAuthority.openRecords = async (options) => {
 declare global {
   interface Window {
     __watchFixture: {
+      fontScale(): number;
       activity: typeof activityFixture;
       sysx: typeof sysxSendFixture;
       selectNativeNetwork(id: string): Promise<void>;
@@ -109,6 +115,7 @@ declare global {
   }
 }
 window.__watchFixture = {
+  fontScale: () => Dimensions.get('window').fontScale,
   guardian: guardianFixture,
   sysx: sysxSendFixture,
   async selectNativeNetwork(id) {
