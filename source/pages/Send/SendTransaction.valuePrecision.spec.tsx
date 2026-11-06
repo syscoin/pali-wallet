@@ -389,6 +389,45 @@ it('recommends and displays a fresh automatic nonce before retrying a definite f
   }
 });
 
+it('keeps a failed nonce refresh explicit and separates Retry from the confirmation row', async () => {
+  const previous = mockEmitter.getMockImplementation()!;
+  let quotes = 0;
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
+    if (path.join('.') === 'wallet.getRecommendedEvmNonce') {
+      quotes += 1;
+      if (quotes === 2) throw new Error('temporary read outage');
+      return quotes === 1 ? 0 : 1;
+    }
+    if (path.join('.') === 'wallet.sendAndSaveEthTransaction') {
+      throw Object.assign(new Error('conflict'), {
+        code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        transactionNotBroadcast: true,
+      });
+    }
+    return previous(path, args);
+  });
+  try {
+    await prepare('1', '0x', TO, true);
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    fireEvent.click(confirm);
+    const retry = await screen.findByRole('button', { name: 'receive.retry' });
+    expect(retry.parentElement).toHaveClass('mb-3', 'flex', 'justify-center');
+    expect(confirm).toBeDisabled();
+    expect(screen.getByRole('spinbutton')).toBeDisabled();
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.getByRole('spinbutton')).toHaveValue(1));
+    expect(confirm).toBeEnabled();
+    expect(
+      mockEmitter.mock.calls.filter(
+        ([path]) => path.join('.') === 'wallet.sendAndSaveEthTransaction'
+      )
+    ).toHaveLength(1);
+    expect(quotes).toBe(3);
+  } finally {
+    mockEmitter.mockImplementation(previous);
+  }
+});
+
 it.each([
   ['EVM_LEGACY_PENDING', 'send.legacyPendingNonce'],
   [
