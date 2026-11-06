@@ -25,11 +25,11 @@ const txid = 'a'.repeat(64);
 const summary = { txid, blockHeight: 100, blockHash: 'b'.repeat(64), blockTime: 1700000000, confirmations: 2,
   fees: '10', addressValueIn: '0', addressValueOut: '100', vin: [], vout: [] };
 
-function fixture() {
+function fixture(initialBackendChain = 'main') {
   const raw = new Map<string, string>();
   const calls: string[] = [];
   let metadataGate: { endpoint: string; entered(): void; release: Promise<void> } | undefined;
-  let badGenesis = false, backendChain = 'main';
+  let badGenesis = false, backendChain = initialBackendChain;
   let details: { entered(): void; release: Promise<void>; subscribe(): void } | undefined;
   const fetch = async (url: string, init: RequestInit) => {
     calls.push(url);
@@ -265,6 +265,20 @@ test('canceling one custom Activity detail viewer preserves its live shared foll
   await cancelled;
   assert.equal((await second).txid, txid);
   assert.equal(f.calls.filter((url) => url.endsWith('/api/v2/tx/' + txid)).length, 1);
+});
+
+test('watch registration retains an observed backend token exactly and rejects a malformed saved pin offline', async () => {
+  const backendChain = 'Provider-Main_2';
+  const f = fixture(backendChain);
+  const { registry, id } = await addWatchAccount(f);
+  assert.equal(getUtxoNetwork(id, (await registry.load()).networks).backendChain, backendChain);
+  const before = f.raw.get(WATCH_UTXO_NETWORKS_KEY)!;
+  const tampered = JSON.parse(before);
+  tampered[0].backendChain = backendChain + '\n';
+  f.raw.set(WATCH_UTXO_NETWORKS_KEY, JSON.stringify(tampered));
+  const requests = [...f.calls];
+  await assert.rejects(registry.load(), /Invalid UTXO registration/);
+  assert.deepEqual(f.calls, requests);
 });
 
 test('an edit keeps the original backend token and rejects a backend swap', async () => {

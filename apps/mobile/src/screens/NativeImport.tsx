@@ -12,6 +12,7 @@ type Props = {
   catalogueRevision: number;
   networkLabel: string;
   utxo: boolean;
+  utxoAddressTypes?: readonly UtxoImportAddressType[];
   onImported(): void;
   onBack(): void;
   onSubmitStart(): void;
@@ -32,7 +33,7 @@ function failure(cause: unknown, invalidInput = 'Check the private key and accou
 }
 
 /** Secrets remain inside this protected form and its private submit call. */
-export function NativeImport({ imports, contextRevision, catalogueRevision, networkLabel, utxo, onImported, onBack, onSubmitStart, onSubmitEnd }: Props) {
+export function NativeImport({ imports, contextRevision, catalogueRevision, networkLabel, utxo, utxoAddressTypes = UTXO_IMPORT_TYPES, onImported, onBack, onSubmitStart, onSubmitEnd }: Props) {
   const [privateKey, setPrivateKey] = useState('');
   const [utxoAddressType, setUtxoAddressType] = useState<UtxoImportAddressType>('p2wpkh');
   const [name, setName] = useState('');
@@ -157,7 +158,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
             textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} /></View>
           {utxo && !extended && <View style={s.field}>
             <Text style={s.label}>Address type</Text>
-            <View style={s.addressTypes}>{UTXO_IMPORT_TYPES.map((type) => (
+            <View style={s.addressTypes}>{utxoAddressTypes.map((type) => (
               <IdlePressable key={type} accessibilityRole="radio" accessibilityState={{ checked: type === utxoAddressType, disabled: busy }}
                 aria-checked={type === utxoAddressType} disabled={busy} onPress={() => setUtxoAddressType(type)}
                 style={[s.addressOption, type === utxoAddressType && s.selectedAddressOption]}>

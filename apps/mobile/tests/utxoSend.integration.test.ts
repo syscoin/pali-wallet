@@ -13,6 +13,7 @@ import { convertExtendedKeyVersion } from '@sidhujag/sysweb3-keyring/cjs/utils/d
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { HDNodeWallet } from 'ethers/wallet';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 
 import {
@@ -20,7 +21,7 @@ import {
   UtxoSignedRecords,
 } from '../../../source/wallet/utxoSignedRecords.ts';
 import { createNativeUtxoSend } from '../src/custody/utxoSend.ts';
-import { getUtxoNetwork, getUtxoSdkNetwork, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
+import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
@@ -28,6 +29,7 @@ import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKey
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
+import { verifyUtxoRegistration } from '../src/core/utxoReadSession.ts';
 import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/core/utxoAddresses.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { metadata } from './publicWatchFixtures.ts';
@@ -36,7 +38,13 @@ const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const bitcoin = syscoinUtils.bitcoinjs;
 
-test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use the same scoped route', async (t) => {
+const litecoinEndpoint = 'https://offline-ltc.invalid/blockbook';
+const litecoinRegistration = projectUtxoRegistration({
+  id: 'utxo:custom:0123456789abcdef0123456789abcdef', chainId: 2, slip44: 2,
+  backendChain: 'Provider-main_2', endpoint: litecoinEndpoint, name: 'Litecoin fixture', explorer: litecoinEndpoint,
+});
+for (const network of [getUtxoNetwork('bitcoin'), litecoinRegistration])
+test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-signed-'));
   const file = join(directory, 'wallet.sqlite');
   const db = nodeConnection(file);
@@ -50,8 +58,7 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
     captureEvmSubmission: null,
   });
   try {
-    const network = getUtxoNetwork('bitcoin');
-    const sdkNetwork = getUtxoSdkNetwork(network.id);
+    const sdkNetwork = getUtxoSdkNetwork(network);
     const state = {
       activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
       activeNetwork: sdkNetwork,
@@ -112,6 +119,8 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
       const url = String(input),
         path = url.slice(network.endpoint.length);
       calls.push(`${init?.method} ${path}`);
+      if (path === '/api/v2/') return reply(url, metadata(network));
+      if (path === '/api/v2/block-index/0') return reply(url, { blockHash: network.genesisHash });
       if (path === '/api/v2/estimatefee/1')
         return reply(url, { result: '0.00001024' });
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
@@ -124,7 +133,7 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
             value: '100000',
             address: account.address,
             confirmations: 10,
-            path: "m/84'/0'/0'/0/0",
+            path: `m/84'/${network.slip44}'/0'/0/0`,
           },
         ]);
       if (path === `/api/v2/tx/${previousId}`)
@@ -180,9 +189,18 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
       records,
       fetcher
     );
+    const unsupportedVersions = network === litecoinRegistration ? [1, 2, 16] : [2, 16];
+    for (const version of unsupportedVersions) {
+      const unsupported = bitcoin.address.toBech32(Buffer.alloc(32, 9), version, network.addressNetwork.bech32);
+      await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
+      assert.deepEqual(calls, []);
+    }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.equal(review.outputs[0]?.address, recipient);
     assert.equal(review.outputs[0]?.amountSatoshis, '40000');
+    const change = review.outputs[1];
+    assert(change && change.address !== account.address && change.address !== recipient);
+    assert.equal(bitcoin.address.fromOutputScript(bitcoin.address.toOutputScript(change.address, network.addressNetwork), network.addressNetwork), change.address);
     assert(BigInt(review.feeSatoshis) > 0n);
     assert.equal(calls.filter((entry) => entry.startsWith('POST')).length, 0);
     await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
@@ -224,7 +242,7 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
   }
 });
 
-test('native custody imports, reveals, receives, balances, sends and replays WIF and BIP84 accounts on the shared defaults', async (t) => {
+test('native custody combines shared-default WIF and BIP84 accounts with verified custom UTXO registration', async (t) => {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient network forbidden'); });
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-wif-'));
   const file = join(directory, 'wallet.sqlite');
@@ -233,6 +251,19 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
   let network = getUtxoNetwork('bitcoin');
+  let hdXpub = '';
+  let backendDrift = false;
+  let blockBroadcast = false;
+  let beforeSigningJournal: string | undefined;
+  const endpoint = litecoinEndpoint;
+  const unsupportedEndpoint = 'https://offline-zec.invalid/blockbook';
+  const zec = findUtxoCoinByRegistration({ chainId: 133, slip44: 133 })!;
+  const btgEndpoint = 'https://offline-btg.invalid/blockbook';
+  const btg = findUtxoCoinByRegistration({ chainId: 156, slip44: 156 })!;
+  assert.equal(zec.segwit, false);
+  assert.equal(btg.segwit, true);
+  assert.equal(btg.forkId, 79);
+  const registration = litecoinRegistration;
   let address = '';
   let lookup = '';
   let fundingAddress = '';
@@ -249,10 +280,33 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
   };
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     assert.equal(typeof input, 'string');
-    const url = String(input), path = url.slice(network.endpoint.length);
+    const url = String(input);
+    const unsupported = url.startsWith(btgEndpoint + '/') ? [btgEndpoint, btg] as const
+      : url.startsWith(unsupportedEndpoint + '/') ? [unsupportedEndpoint, zec] as const : undefined;
+    if (unsupported) {
+      const [base, coin] = unsupported;
+      const path = url.slice(base.length);
+      calls.push(`${init?.method} ${path}`);
+      assert.equal(init?.method, 'GET');
+      if (path === '/api/v2/') return reply(url, {
+        blockbook: { coin: coin.coinLabel, network: coin.coinShortcut, decimals: coin.decimals },
+        backend: { chain: 'main' },
+      });
+      assert.equal(path, '/api/v2/block-index/0');
+      return reply(url, { blockHash: coin.hashGenesisBlock });
+    }
+    const path = url.slice(network.endpoint.length);
     calls.push(`${init?.method} ${path}`);
     assert(url.startsWith(network.endpoint));
-    if (path === '/api/v2/') return reply(url, metadata(network.id));
+    if (path === '/api/v2/') {
+      const status = metadata(network);
+      if (backendDrift || (blockBroadcast && (await storage.recovery.readSnapshot()).records
+        .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value !== beforeSigningJournal))
+        status.backend.chain = 'mismatched-backend';
+      return reply(url, status);
+    }
+    if (path === `/api/v2/xpub/${hdXpub}?details=tokenBalances&tokens=nonzero`)
+      return reply(url, { address: hdXpub, balance: '100000', unconfirmedBalance: '0', unconfirmedTxs: 0 });
     if (path === '/api/v2/block-index/0') return reply(url, { blockHash: network.genesisHash });
     if (path === `/api/v2/address/${address}?details=tokenBalances&tokens=nonzero`)
       return reply(url, { address, balance: '100000', unconfirmedBalance: '0', unconfirmedTxs: 0 });
@@ -339,12 +393,66 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
     await owner.refreshAuthenticatedMetadata();
     assert.equal(owner.getCatalogue()!.active.accountId, 'hd:60:0');
 
-    for (const target of UTXO_NETWORKS) {
+    const beforeUnsupported = owner.getCatalogue()!;
+    const priorUnsupportedRequests = calls.length;
+    for (const endpoint of [unsupportedEndpoint, btgEndpoint]) {
+      const add = owner.addUtxoNetwork({ endpoint, name: '', explorer: '' },
+        owner.getSnapshot().revision, beforeUnsupported.revision, new AbortController().signal);
+      if (endpoint === btgEndpoint) await assert.rejects(add, { code: 'INVALID_INPUT' });
+      else await assert.rejects(add);
+      assert.equal(owner.getCatalogue(), beforeUnsupported);
+    }
+    assert.deepEqual(calls.slice(priorUnsupportedRequests), ['GET /api/v2/', 'GET /api/v2/block-index/0', 'GET /api/v2/', 'GET /api/v2/block-index/0']);
+    assert.equal(owner.getCatalogue(), beforeUnsupported);
+    const publicRegistration = await verifyUtxoRegistration({ endpoint: btgEndpoint, name: '', explorer: '' }, undefined,
+      { fetch: fetcher, timeoutMs: 1000 }, new AbortController().signal, current);
+    assert.equal(publicRegistration.symbol, 'BTG');
+    assert.equal(owner.getCatalogue(), beforeUnsupported);
+    await assert.rejects(owner.manageNetwork({ kind: 'add-utxo-network' }, owner.getSnapshot().revision,
+      beforeUnsupported.revision), { code: 'CANCELLED' });
+    assert.equal(owner.getCatalogue(), beforeUnsupported);
+    network = registration;
+    const oldCatalogue = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+    const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+    const lifetime = new AbortController();
+    holdCatalogueUpdate = () => { entered.resolve(); return release.promise; };
+    const rejected = assert.rejects(owner.addUtxoNetwork({ endpoint, name: '', explorer: '' },
+      owner.getSnapshot().revision, beforeUnsupported.revision, lifetime.signal));
+    await Promise.race([entered.promise, rejected.then(() => { throw new Error('Registration did not reach SQLite'); })]);
+    lifetime.abort();
+    release.resolve();
+    await rejected;
+    assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), oldCatalogue);
+    await owner.unlock(password);
+    const beforeAdd = calls.length;
+    await owner.addUtxoNetwork({ endpoint, name: registration.name, explorer: '' },
+      owner.getSnapshot().revision, owner.getCatalogue()!.revision, new AbortController().signal);
+    assert.deepEqual(calls.slice(beforeAdd), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+    const custom = owner.getCatalogue()!.utxoNetworks.find((candidate) => candidate.endpoint === endpoint)!;
+    assert.equal(custom.backendChain, registration.backendChain);
+    const beforeDuplicate = owner.getCatalogue()!;
+    await assert.rejects(owner.addUtxoNetwork({ endpoint, name: 'Duplicate', explorer: '' },
+      owner.getSnapshot().revision, beforeDuplicate.revision, new AbortController().signal));
+    assert.equal(owner.getCatalogue(), beforeDuplicate);
+    for (const target of [custom, ...UTXO_NETWORKS]) {
       network = target;
       await selectNetwork();
+      if (target === custom) {
+        const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as NativeAccountRecord;
+        const hd = saved.groups.find((entry) => entry.key === '2')!.accounts.HDAccount[0]!;
+        assert.match(hd.address, /^ltc1/);
+        hdXpub = hd.xpub;
+        const beforeBalance = calls.length;
+        backendDrift = true;
+        await assert.rejects(runtime.readUtxoBalance!(custom.id, hd.address, new AbortController().signal));
+        backendDrift = false;
+        assert.deepEqual(calls.slice(beforeBalance), ['GET /api/v2/']);
+        assert.equal((await runtime.readUtxoBalance!(custom.id, hd.address, new AbortController().signal)).confirmedUnits, '100000');
+        assert.match(calls.at(-1)!, /^GET \/api\/v2\/xpub\/zpub/);
+      }
       const key = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13), { network: network.addressNetwork });
       const wif = key.toWIF();
-      const cfg = getNetworkConfig(network.slip44, getUtxoSdkNetwork(network.id).currency);
+      const cfg = getNetworkConfig(network.slip44, getUtxoSdkNetwork(network).currency);
       const versions = cfg.types.zPubType as (NonNullable<typeof cfg.types.zPubType> & {
         testnet: { vprv: string };
       }) | undefined;
@@ -357,7 +465,17 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
         pubkey: accountNode.derive(change).derive(index).publicKey,
         network: network.addressNetwork,
       }).address!;
-      for (const [index, script] of [...UTXO_IMPORT_TYPES, undefined].entries()) {
+      if (target === custom) {
+        const taproot = bitcoin.payments.p2tr({ network: network.addressNetwork, internalPubkey: key.publicKey.slice(1) }).address!;
+        const stored = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
+        const beforeCalls = calls.length;
+        await assert.rejects(preview(wif, 'p2tr'), { code: 'INVALID_INPUT' });
+        await assert.rejects(submit(wif, 'p2tr', taproot), { code: 'INVALID_INPUT' });
+        assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), stored);
+        assert.equal(calls.length, beforeCalls);
+      }
+      const scripts = target === custom ? ['p2wpkh', 'p2pkh'] as const : [...UTXO_IMPORT_TYPES, undefined];
+      for (const [index, script] of scripts.entries()) {
         const options = { network: network.addressNetwork };
         const secret = script ? wif : zPrivate;
         address = !script ? accountAddress(0, 0) : (script === 'p2tr'
@@ -365,7 +483,7 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
           : bitcoin.payments[script]({ ...options, pubkey: key.publicKey })).address!;
         lookup = script ? address : convertExtendedKeyVersion(accountNode.neutered().toBase58(), network.publicKeyVersion);
         fundingAddress = script ? address : accountAddress(0, 4);
-        if (script) assert.equal(findWifAddressType(address, network.id), script);
+        if (script) assert.equal(findWifAddressType(address, network), script);
         const before = JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY));
         const callsBefore = calls.length;
         assert.equal(await preview(secret, script), address);
@@ -442,7 +560,7 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
             const catalogue = owner.getCatalogue()!;
             const scope = { authorityRevision: owner.getSnapshot().revision, catalogueRevision: catalogue.revision,
               accountId, index, address, networkId: network.id,
-              registrationHash: keyExportRegistrationHash(network.id, catalogue.networks) };
+              registrationHash: keyExportRegistrationHash(network.id, catalogue) };
             await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, password, current), /CANCELLED/);
             assert.equal(exports, beforeExport);
             owner.lock(); await owner.unlock(password);
@@ -505,8 +623,23 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
         assert.deepEqual(review.outputs[0], { address: recipient, amountSatoshis: '40000' });
         assert.equal(review.outputs[1]?.address, script ? address : accountAddress(1, 0));
         assert(BigInt(review.feeSatoshis) > 0n);
-        const { txid } = await send.confirm(review);
-        const raw = posts.at(-1)!;
+        let txid: string, raw: string | undefined;
+        if (target === custom) {
+          beforeSigningJournal = (await storage.recovery.readSnapshot()).records
+            .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
+          blockBroadcast = true;
+          const beforePosts = posts.length;
+          await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_NOT_DISPATCHED', transactionNotBroadcast: true });
+          assert.equal(posts.length, beforePosts);
+          const [retained] = await send.list();
+          assert(retained);
+          assert.equal(retained.accepted, false);
+          txid = retained.txid;
+          blockBroadcast = false;
+        } else {
+          ({ txid } = await send.confirm(review));
+          raw = posts.at(-1)!;
+        }
 
         if (target === UTXO_NETWORKS[0] && index === 0) {
           await selectAccount(`hd:${network.slip44}:0`);
@@ -524,7 +657,8 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
         send = await runtime.openUtxoSend!(current);
         assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
         assert.equal((await send.confirm(await send.prepareRetry(txid))).txid, txid);
-        assert.equal(posts.at(-1), raw);
+        if (raw) assert.equal(posts.at(-1), raw);
+        else assert.equal(bitcoin.Transaction.fromHex(posts.at(-1)!).getId(), txid);
         confirmed = true;
         assert.equal(await send.check(txid), 'confirmed');
         confirmed = false;
@@ -533,7 +667,9 @@ test('native custody imports, reveals, receives, balances, sends and replays WIF
         assert.equal(laneRequests.some((entry) => entry.includes(secret)), false);
       }
     }
-    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2);
+    // Default lanes post initially and again after restart. Each custom WIF
+    // lane posts only on retry because its first dispatch is blocked.
+    assert.equal(posts.length, UTXO_NETWORKS.length * (UTXO_IMPORT_TYPES.length + 1) * 2 + 2);
     await selectAccount(`hd:${network.slip44}:0`);
     await removeAccount(`imported:${network.slip44}:0`);
     assert.equal(owner.getCatalogue()!.accounts.some((account) => account.id === `imported:${network.slip44}:0`), false);

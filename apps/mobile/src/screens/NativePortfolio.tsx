@@ -5,8 +5,8 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { getNativeSendContext, nativeSigningEnabled } from '../custody/networkContext';
 import { getTestnetFaucet, openTestnetFaucet } from '../custody/testnetFaucet';
-import { findUtxoNetwork } from '../core/utxoNetworks';
 import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
+import { canUseUtxoCustodyAddress } from '../core/utxoAddresses';
 import type { BalanceReader } from '../core/watchOnlyAuthority';
 import { createBalanceReader } from '../platformRpc';
 import { walletFetch } from '../platform/http';
@@ -63,14 +63,15 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   const tokenBack = useRef<(() => boolean) | null>(null);
   const setTokenBack = useCallback((handler: (() => boolean) | null) => { tokenBack.current = handler; }, []);
   const account = snapshot.account;
-  const utxo = findUtxoNetwork(account?.network);
+  const utxo = model.getUtxoNetwork(account?.network);
   const registration = account && !utxo ? model.getNetworkRegistration(account.network) : null;
   const network = utxo ? { ...utxo, networkId: utxo.symbol } : registration ? getNativeSendContext(registration)
     : { networkId: '', name: 'Network', symbol: '', decimals: 18, testnet: false };
   const networkName = network.name;
   const symbol = network.symbol;
   const scope = account ? scopeOf(account) : null;
-  const receiving = !!scope && receiveScope === scope;
+  const canReceive = !!account && (!utxo || canUseUtxoCustodyAddress(account.address, utxo));
+  const receiving = canReceive && receiveScope === scope;
   const loading = snapshot.status === 'loading';
   const canSend = !!onSend && (utxo !== undefined ||
     !!registration && nativeSigningEnabled(registration.id, [registration]));
@@ -100,7 +101,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
   useLayoutEffect(() => { navigation?.setImmersive(receiving || !!tokenTitle); return () => navigation?.setImmersive(false); }, [navigation, receiving, tokenTitle]);
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
     const current = account;
-    if (!current || !model.isCurrent(current) || lifecycle.current.busy) return;
+    if (!canReceive || !current || !model.isCurrent(current) || lifecycle.current.busy) return;
     if (kind === 'faucet' && AppState.currentState !== 'active') return;
     lifecycle.current.busy = true;
     const request = ++lifecycle.current.epoch;
@@ -167,15 +168,15 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
           {loading && <ActivityIndicator color={colors.pink} accessibilityLabel={`Loading ${networkName} balance`} />}
           {snapshot.status === 'available' && snapshot.updatedAt !== null && <Text style={s.freshness}>Updated {new Date(snapshot.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>}
         </View>
-        {snapshot.status === 'error' && <Notice title="Could not load your balance" body={`Your ${networkName} address is still available. Refresh to try again.`} tone="amber" />}
-        {!canSend && <Notice title={network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only'} body="Sending is not available on this network yet." />}
+        {snapshot.status === 'error' && <Notice title="Could not load your balance" body={canReceive ? `Your ${networkName} address is still available. Refresh to try again.` : 'Refresh to try again.'} tone="amber" />}
+        {!canSend && <Notice title={canReceive ? network.testnet ? 'Test network · Balance and receive only' : 'Balance and receive only' : 'Balance only'} body="Sending is not available on this network yet." />}
         <View style={s.actions}>
           {canSend && <Button title="Send" icon="arrow-up-right" style={s.flex} onPress={() => { if (account && model.isCurrent(account)) onSend?.(); }} />}
-          <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={s.flex} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />
+          {canReceive && <Button title="Receive" variant={canSend ? 'secondary' : 'primary'} icon="arrow-down-left" style={s.flex} testID="native-portfolio-receive" onPress={() => { if (account && model.isCurrent(account)) { invalidateActions(); setReceiveScope(scopeOf(account)); } }} />}
           {!canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="secondary" style={s.flex} disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
         </View>
         {canSend && <Button title={loading ? 'Refreshing…' : 'Refresh'} icon="refresh" variant="quiet" disabled={loading} onPress={() => model.refresh()} testID="native-portfolio-refresh" />}
-        <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>
+        {canReceive && <Card style={s.accountCard}><Text style={s.label}>{accountLabel.toUpperCase()} · {networkName.toUpperCase()}</Text><Text selectable style={s.address}>{account.address}</Text></Card>}
         {sysx && <Card style={s.accountCard}>
           <Text accessibilityRole="header" style={s.label}>SYSX</Text>
           {sysx.status === 'available' ? <>

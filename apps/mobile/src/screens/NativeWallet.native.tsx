@@ -1,5 +1,5 @@
-import { findUtxoNetwork } from '../core/utxoNetworks';
-import { findWifAddressType, UTXO_IMPORT_LABELS } from '../core/utxoAddresses';
+import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetworks';
+import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
@@ -117,7 +117,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
-  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; token: number; imports: NativeImportView } | null>(null);
+  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendDraft, setSendDraft] = useState<Readonly<{ context: string; target: SendTarget }> | null>(null);
@@ -170,9 +170,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
   }, []);
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
-  const utxo = findUtxoNetwork(snapshot.account?.network);
+  const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
-  const canSendUtxo = !!openUtxoSend && !!catalogue && utxo?.decimals === 8;
+  const canSendUtxo = !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
@@ -441,8 +441,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
-    const network = findUtxoNetwork(context.account.network);
+    const network = findUtxoNetwork(context.account.network, current.utxoNetworks);
     setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision, utxo: !!network,
+      utxoAddressTypes: network && UTXO_IMPORT_TYPES.filter((type) => supportsUtxoSoftwareCustody(network, type === 'p2tr' ? 1 : 0)),
       networkLabel: network?.name ?? getNativeSendContext(context.account.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
   };
@@ -480,7 +481,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
-      networkLabel={importScope.networkLabel} utxo={importScope.utxo}
+      networkLabel={importScope.networkLabel} utxo={importScope.utxo} utxoAddressTypes={importScope.utxoAddressTypes}
       onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
       onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}
@@ -518,7 +519,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
     const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
     const extended = selected.type === 'HDAccount' || selected.utxoExtended;
-    const script = utxo && !extended ? findWifAddressType(selected.address, utxo.id) : undefined;
+    const script = utxo && !extended ? findWifAddressType(selected.address, utxo) : undefined;
     const keyFormat = canSign ? 'evm' : utxo && extended
       ? { kind: 'extended' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS.p2wpkh }
       : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;

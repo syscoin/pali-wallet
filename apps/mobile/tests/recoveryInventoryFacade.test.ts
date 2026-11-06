@@ -5,6 +5,8 @@ import { runInNewContext } from 'node:vm';
 import test from 'node:test';
 import ts from 'typescript';
 import { createSecurityTestFixture } from './idleComponentFixture.ts';
+import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { CustodyOperationError, NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { readRecoveryInventory } from '../src/custody/recoveryInventory.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
@@ -93,6 +95,8 @@ async function fixture(existing = true) {
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => () => assert.fail('inventory must not discover tokens') },
     '../portfolio/nftOwnershipReadRpc.ts': { createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles') },
     '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
+    '../core/utxoNetworks.ts': { isCustomUtxoNetworkId },
+    '../core/utxoReadSession.ts': { exactUtxoResponseFetch },
     '../platformRpc.ts': { createBalanceReader: () => ({}) },
     './http': { walletFetch() { assert.fail('inventory must not fetch'); } },
     '../storage/native': { async openNativeWalletStorage() { counts.opens++; return storage; } },

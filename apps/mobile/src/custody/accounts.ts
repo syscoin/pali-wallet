@@ -25,14 +25,19 @@ export interface NativeAccountView {
   cancel(): void;
 }
 
+export type NativeUtxoNetworkDraft = Readonly<{ endpoint: string; name: string; explorer: string }>;
+export type NativeUtxoNetworkApproval = Readonly<{ kind: 'add-utxo-network' }>;
+
 export type NativeNetworkRequest =
   | Readonly<{ kind: 'select-network'; id: string }>
   | Readonly<{ kind: 'save-network'; registration: import('./networkContext.ts').NativeNetworkRegistration;
     }>
+  | NativeUtxoNetworkApproval
   | Readonly<{ kind: 'remove-network'; id: string }>;
 
 /** Durable network selection consumed by the native network picker. */
 export interface NativeNetworkRuntime {
+  prepareUtxo?(draft: NativeUtxoNetworkDraft, expectedCatalogueRevision: number, signal: AbortSignal, assertCurrent: () => void): Promise<NativeUtxoNetworkApproval>;
   reserve(id: string | NativeNetworkRequest, expectedCatalogueRevision: number): {
     execute(assertCurrent: () => void): Promise<void>;
     cancel(): void;

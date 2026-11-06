@@ -1,7 +1,9 @@
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import { getNetworkConfigFromCoin } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { isNonBlankNetworkText } from '../../../../source/shared/networkText.ts';
+import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
 import { getDefaultUTXONetworks } from '../../../../source/utils/defaultNetworks.ts';
+import type { INetwork, INetworkType } from '../../../../source/types/network.ts';
 
 export type CustomUtxoNetworkId = `utxo:custom:${string}`;
 export type UtxoNetworkId = 'syscoin' | 'bitcoin' | `utxo:${number}` | CustomUtxoNetworkId;
@@ -66,16 +68,17 @@ export function projectUtxoRegistration(input: unknown): UtxoNetwork {
     if (!descriptor?.enumerable || !('value' in descriptor)) return invalid();
     record[field] = descriptor.value;
   }
-  const { id, chainId, slip44, backendChain, endpoint, name, explorer } = record;
-  if (typeof chainId !== 'number' || !Number.isSafeInteger(chainId) || chainId < 0 ||
-      typeof slip44 !== 'number' || !Number.isSafeInteger(slip44) || slip44 < 0 ||
-      (!isCustomUtxoNetworkId(id) && (!sdkDefaults[chainId] || id !== presetId(chainId))) ||
-      typeof backendChain !== 'string' || !/^[a-z0-9_-]{1,32}$/i.test(backendChain) ||
+  const { id, endpoint, name, explorer } = record;
+  const { registration, backendChain } = createUtxoRegistrationPin({
+    chainId: record.chainId, slip44: record.slip44, backendChain: record.backendChain,
+  });
+  const { chainId, slip44 } = registration;
+  if ((!isCustomUtxoNetworkId(id) && (!sdkDefaults[chainId] || id !== presetId(chainId))) ||
       typeof endpoint !== 'string' || canonicalUtxoEndpoint(endpoint) !== endpoint ||
       !isNonBlankNetworkText(name) || !name.isWellFormed() || name.length > 128 || typeof explorer !== 'string')
     return invalid();
   canonicalUtxoEndpoint(explorer);
-  const coin = findUtxoCoinByRegistration({ chainId, slip44 });
+  const coin = findUtxoCoinByRegistration(registration);
   if (!coin || !/^[0-9a-f]{64}$/.test(coin.hashGenesisBlock)) return invalid();
   const testnet = coin.slip44 === 1;
   const { networks, types } = getNetworkConfigFromCoin(coin);
@@ -127,7 +130,23 @@ export function resolveUtxoNetwork(scope: UtxoNetwork | UtxoNetworkId): UtxoNetw
   return scope;
 }
 
-/** Custody remains limited to the shared shipped defaults in this slice. */
-export function getUtxoSdkNetwork(id: UtxoNetworkId): ReturnType<typeof getDefaultUTXONetworks>[number] {
-  return { ...sdkDefaults[getUtxoNetwork(id).chainId]! };
+export { supportsUtxoSoftwareCustody } from '../../../../source/shared/utxoSoftwareCustody.ts';
+
+export function getUtxoSdkNetwork(scope: UtxoNetworkId | UtxoNetwork): INetwork & {
+  kind: INetworkType.Syscoin;
+  utxoBackendChain: string;
+} {
+  const network = resolveUtxoNetwork(scope);
+  if (!isCustomUtxoNetworkId(network.id)) return { ...sdkDefaults[network.chainId]! };
+  return {
+    kind: 'syscoin' as INetworkType.Syscoin,
+    chainId: network.chainId,
+    slip44: network.slip44,
+    utxoBackendChain: network.backendChain,
+    currency: network.symbol.toLowerCase(),
+    url: network.endpoint,
+    explorer: network.explorer,
+    label: network.name,
+    default: false,
+  };
 }

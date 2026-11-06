@@ -2,6 +2,7 @@ import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { assertUtxoSoftwareSpend } from '../shared/utxoSoftwareCustody.ts';
 import { assertPsbtWorkBudget } from '../utils/psbtWorkBudget.ts';
 import {
   createUtxoFeeReview,
@@ -242,6 +243,10 @@ export async function prepareUtxoSignedBinding(
     }
   );
   check();
+  assertUtxoSoftwareSpend(scope.network, [
+    ...summary.inputScripts,
+    ...outputs.map(({ script: outputScript }) => outputScript),
+  ]);
   if (summary.inputAssets.length || summary.assetAllocations.length)
     throw new Error('Asset-assisted UTXO send requires a separate review');
   const transactionBinding = createUtxoTransactionBinding(

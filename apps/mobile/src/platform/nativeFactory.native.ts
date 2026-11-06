@@ -13,6 +13,8 @@ import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
 import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
+import { isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
+import { exactUtxoResponseFetch } from '../core/utxoReadSession.ts';
 import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
 import { createBalanceReader } from '../platformRpc.ts';
@@ -41,20 +43,19 @@ function custodyGuard() {
   return () => { if (securityPreferences.getSnapshot().status !== 'ready') throw new Error('CANCELLED'); guard(); };
 }
 function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertActive = custodyGuard()) {
-  const scopedUtxoReader = (guard: () => void) => createUtxoBalanceReader({ fetch: (url, init) => {
-    guard();
-    return walletFetch(url, init);
-  } });
+  const scopedUtxoReader = (network: UtxoNetwork) => createUtxoBalanceReader({
+    fetch: isCustomUtxoNetworkId(network.id) ? exactUtxoResponseFetch(walletFetch) : walletFetch,
+  });
   return createKeyringRuntimeFactory({
     assertActive,
     observeActivity(network, expected, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
     },
     readUtxoAccount(id, xpub, signal, guard) {
-      return scopedUtxoReader(guard).readAccount(id, xpub, signal);
+      return scopedUtxoReader(id).readAccount(id, xpub, signal, guard);
     },
     readUtxoBalance(id, address, signal, guard) {
-      return scopedUtxoReader(guard).readBalance(id, address, signal);
+      return scopedUtxoReader(id).readBalance(id, address, signal, guard);
     },
     utxoFetch(input, init) {
       if (typeof input !== 'string' || !init) throw new Error('Invalid native Blockbook request');
