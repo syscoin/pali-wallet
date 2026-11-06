@@ -125,7 +125,10 @@ afterEach(() => {
 const mountFromBlockbook = async (
   inputs: Array<string[] | { addresses?: unknown; isAddress?: boolean }>,
   options: {
+    deepRaw?: boolean;
     invalidScalars?: string;
+    malformedRawEntries?: boolean;
+    malformedScript?: boolean;
     participantAlias?: string;
     rawFields?: Record<string, unknown>;
     rawUnavailable?: boolean;
@@ -188,6 +191,32 @@ const mountFromBlockbook = async (
     ...accountRow,
     vin: accountRow.vin.map(withoutOwnership),
     vout: accountRow.vout.map(withoutOwnership),
+    ...(options.malformedRawEntries && {
+      confirmations: 0,
+      blockHeight: 0,
+      blockHash: undefined,
+      blockNumber: { valueOf: null, toString: null },
+      tokenType: 'assetAllocationSend',
+      vin: [...accountRow.vin.map(withoutOwnership), null],
+      vout: [...accountRow.vout.map(withoutOwnership), null],
+    }),
+    ...(options.deepRaw && {
+      unknown: Array.from({ length: 33 }).reduce<object>(
+        (child) => ({ child }),
+        {}
+      ),
+    }),
+    ...(options.malformedScript && {
+      vout: [
+        ...accountRow.vout.map(withoutOwnership),
+        {
+          addresses: [FROM_B],
+          hex: { valueOf: null, toString: null },
+          isAddress: true,
+          value: '1',
+        },
+      ],
+    }),
     ...options.rawFields,
   };
   const controller = SysTransactionController();
@@ -244,6 +273,31 @@ const copyFrom = () => {
   );
   return mockCopy.mock.calls.at(-1)?.[0];
 };
+
+it('keeps vetted detail visible without showing Z-DAG for malformed inputs', async () => {
+  await mountFromBlockbook([[FROM_A]], { malformedRawEntries: true });
+  await waitFor(() => expect(copyFrom()).toBe(FROM_A));
+  expect(screen.queryByText('transactions.zdagConfirmed')).toBeNull();
+});
+
+it('ignores an output with malformed script data without hiding valid destinations', async () => {
+  await mountFromBlockbook([[FROM_A]], { malformedScript: true });
+  await waitFor(() => {
+    fireEvent.click(
+      within(screen.getByText('To').parentElement!).getByRole('button')
+    );
+    expect(mockCopy).toHaveBeenLastCalledWith(`${TO}, ${CHANGE}`);
+  });
+});
+
+it('keeps vetted compact participants when the raw reply exceeds the shared JSON work budget', async () => {
+  await mountFromBlockbook([[FROM_A]], { deepRaw: true });
+  await waitFor(() => expect(copyFrom()).toBe(FROM_A));
+  await expect(mockEmitter.mock.results[0]?.value).resolves.toMatchObject({
+    transaction: null,
+    compact: { from: [FROM_A] },
+  });
+});
 
 it('healthy one-input transaction preserves its sender and exact atomic fee', async () => {
   await mountFromBlockbook([[FROM_A]]);

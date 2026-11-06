@@ -4,6 +4,7 @@ import {
   cancelResponseBody,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
+import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
 
 export type UtxoBlockbookReadScope =
   | Readonly<{ kind: 'fee'; url: string }>
@@ -94,7 +95,7 @@ export function createOwnedUtxoBlockbookRead(
       const body = await boundedResponseText(
         response,
         controller.signal,
-        RESPONSE_BYTES,
+        scope.kind === 'detail' ? UTXO_DETAIL_RESPONSE_BYTES : RESPONSE_BYTES,
         (bytes) => {
           consumed += bytes;
           if (consumed > OPERATION_BYTES) throw new ResponseSizeLimitError();

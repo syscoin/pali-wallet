@@ -123,6 +123,18 @@ const expectNoUnknownAmountLabel = () => {
   expect(screen.queryByText('settings.unavailable')).toBeNull();
 };
 
+it('keeps Details available without showing Z-DAG for malformed compact inputs', () => {
+  const tx = {
+    ...compactBridgeNativeOffset,
+    confirmations: 0,
+    blockHeight: 0,
+    vin: [null, { sequence: 0xffffffff }],
+  };
+  render(<UtxoTransactionsListComponent tx={tx as any} />);
+  expect(screen.getByRole('button', { name: 'Details' })).toBeTruthy();
+  expect(screen.queryByText('Z-DAG')).toBeNull();
+});
+
 it('leaves an incomplete bridge amount absent and navigates to Details without a list RPC', async () => {
   render(<UtxoTransactionsListComponent tx={compactBridgeNativeOffset} />);
 

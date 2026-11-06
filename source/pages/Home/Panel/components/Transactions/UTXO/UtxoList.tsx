@@ -40,6 +40,7 @@ import {
   isSyscoinTokenOperation,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
+  hasNonReplaceableUtxoSequences,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import {
@@ -106,20 +107,9 @@ const UtxoTransactionsListComponentBase = ({
 
   const isConfirmed = isTransactionInBlock(tx);
 
-  // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
-  const MAX_SEQ_MINUS_ONE = 0xfffffffe;
-  const hasSequenceData =
-    Array.isArray(tx?.vin) &&
-    tx.vin.some((v: any) => typeof v.sequence === 'number');
-  const rbfEnabled = Array.isArray(tx?.vin)
-    ? tx.vin.some(
-        (v: any) =>
-          typeof v.sequence === 'number' && v.sequence < MAX_SEQ_MINUS_ONE
-      )
-    : false;
   const isSptTx = Boolean(displayTransaction.tokenType);
   const isZdagConfirmed =
-    isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
+    isSptTx && hasNonReplaceableUtxoSequences(tx?.vin) && !isConfirmed;
   const confirmationETA = !isConfirmed
     ? formatSyscoinConfirmationETA(tx)
     : null;

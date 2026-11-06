@@ -7,6 +7,7 @@ import {
   UTXO_DETAIL_OBSERVATION,
   UTXO_SUMMARY_OBSERVATION,
 } from '../../../../shared/utxoDetailFreshness';
+import { assertUtxoDetailPayloadBudget } from '../../../../shared/utxoTransactionDetailCache';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -116,6 +117,7 @@ const SysTransactionController = (): ISysTransactionsController => {
         Array.isArray(transaction)
       )
         return null;
+      assertUtxoDetailPayloadBudget(transaction);
       return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
     };
 

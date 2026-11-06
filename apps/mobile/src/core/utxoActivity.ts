@@ -1,5 +1,5 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
+import { assertUtxoDetailPayloadBudget, createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES, UTXO_DETAIL_RESPONSE_BYTES, UTXO_DETAIL_RESPONSE_NODES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
 import { getSendingAddresses, getReceivingAddresses, mergeAccountSummaryWithFullTransaction, type UtxoDetailTransaction } from '../../../../source/shared/utxoTransactionDetails.ts';
 import { bindUtxoDetailObservation } from '../../../../source/shared/utxoDetailFreshness.ts';
 import { createBlockbookAccountHistory, readHistoryCount } from '../../../../source/shared/blockbookAccountHistory.ts';
@@ -21,7 +21,7 @@ import { normalizeUtxoAddress } from './utxoAddresses.ts';
 import { isCustomUtxoNetworkId, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { openUtxoReadSession, utxoFetchOptions, utxoObject, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
 
-export const UTXO_ACTIVITY_LIMITS = Object.freeze({ pageSize: 20, nativeIntegerDigits: 78, displayRows: 100, windowPages: 5, bytes: 1024 * 1024, nodes: 20000, timeoutMs: 30000 });
+export const UTXO_ACTIVITY_LIMITS = Object.freeze({ pageSize: 20, nativeIntegerDigits: 78, displayRows: 100, windowPages: 5, bytes: UTXO_DETAIL_RESPONSE_BYTES, nodes: UTXO_DETAIL_RESPONSE_NODES, timeoutMs: 30000 });
 export type UtxoActivityContext = Readonly<{ accountId: string; networkId: UtxoNetworkId; address: string; generation: number }>;
 export type UtxoActivityAssetAmount = Readonly<NonNullable<ReturnType<typeof getSyscoinActivityOperationAmount>>>;
 export type UtxoActivityRow = Readonly<{
@@ -131,11 +131,10 @@ function projectTransaction(value: unknown): UtxoActivityRow {
   const tx = utxoObject(value), txid = hash(tx.txid);
   const confirmations = tx.confirmations === undefined ? 0 : readHistoryCount(tx.confirmations);
   if (confirmations === null) return fail();
-  const observedHeight = getTransactionBlockInfo(tx);
-  const height = observedHeight === null ? null : readHistoryCount(observedHeight);
+  const height = getTransactionBlockInfo(tx);
   const blockHash = tx.blockHash === undefined || tx.blockHash === null || tx.blockHash === '' ? null : hash(tx.blockHash);
   const timestamp = tx.blockTime === undefined || tx.blockTime === null ? null : readHistoryCount(tx.blockTime);
-  if (height !== null && (!Number.isSafeInteger(height) || height < 1) || timestamp !== null && timestamp > 8640000000000) return fail();
+  if (timestamp !== null && timestamp > 8640000000000) return fail();
   const receivedUnits = units(tx.addressValueOut), spentUnits = units(tx.addressValueIn);
   const netUnits = receivedUnits === null || spentUnits === null ? null : getSyscoinAccountChange({ addressValueIn: spentUnits, addressValueOut: receivedUnits });
   const hasAssetData = isSyscoinTokenOperation(tx);
@@ -243,7 +242,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
         const result = await sjsRaw(prefix, txid, { signal: physicalSignal, fetch: async (target: string, init: RequestInit) => {
           if (init.method !== 'GET' || init.signal !== physicalSignal || target !== prefix + '/api/v2/tx/' + txid) return fail();
           const value = await active.read('/api/v2/tx/' + txid);
-          assertJsonWorkBudget(value, UTXO_ACTIVITY_LIMITS.bytes, 16, UTXO_ACTIVITY_LIMITS.nodes);
+          assertUtxoDetailPayloadBudget(value);
           assertNativeHistoryWork({ transactions: [value] });
           return { ok: true, json: async () => value };
         } });

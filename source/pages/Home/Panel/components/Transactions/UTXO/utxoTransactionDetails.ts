@@ -1,3 +1,4 @@
+import { getTransactionBlockInfo } from '../../../../../../shared/transactionBlockStatus';
 import {
   isSerializedUtxoObservation,
   type UtxoSummaryStatus,
@@ -17,7 +18,7 @@ export function getUtxoSummaryObservation(
   // revision, without retaining the original account summary.
   const fields = [
     tx.blockHash,
-    tx.blockHeight,
+    getTransactionBlockInfo(tx),
     tx.blockTime,
     tx.confirmations,
     tx.confirmationETABlocks,

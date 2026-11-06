@@ -139,14 +139,20 @@ it('cancels an in-flight detail body when its wallet operation is retired', asyn
         cancel,
         pull() {
           started();
-          return new Promise<void>(() => {});
+          return new Promise<void>((resolve) => {
+            controller.signal.addEventListener('abort', () => resolve(), {
+              once: true,
+            });
+          });
         },
       },
       { highWaterMark: 0 }
     )
   );
   Object.defineProperty(response, 'url', { value: raw('a') });
-  const fetch = jest.fn(async (_url: string, _init: RequestInit) => response);
+  const fetch = jest.fn<Promise<Response>, [string, RequestInit]>(
+    async () => response
+  );
   const read = createOwnedUtxoBlockbookRead(
     { kind: 'detail', txid: 'a'.repeat(64), url },
     controller.signal,
