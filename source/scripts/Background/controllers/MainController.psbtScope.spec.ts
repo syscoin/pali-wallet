@@ -26,6 +26,10 @@ import { getNetworkConfig } from '@sidhujag/sysweb3-network';
 import { webcrypto } from 'crypto';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import {
+  captureDappUtxoSubmission,
+  watchApprovalSubmission,
+} from '../handlers/approvalSubmission';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import {
@@ -107,6 +111,45 @@ describe('PSBT approval context', () => {
   const authorize = {
     assertCurrent: () => undefined,
     signal: new AbortController().signal,
+  };
+  const approveExternalPsbt = async (
+    method: 'signSyscoinPsbt' | 'signSendAndSaveTransaction',
+    psbt: ReturnType<typeof syntheticPsbt>
+  ) => {
+    const reviewed = { psbt: psbt.toBase64(), assets: '[]' };
+    const context = wallet.captureUtxoSigningContext().context;
+    const documentId = 'approved-document';
+    const signal = new AbortController().signal;
+    const release = watchApprovalSubmission(documentId, jest.fn(), undefined, {
+      method,
+      psbt: reviewed,
+      context,
+      assertCurrent: () => undefined,
+      checkDocument: async () => undefined,
+      getSignal: () => signal,
+    });
+    const { id, getURL } = chrome.runtime;
+    Object.assign(chrome.runtime, {
+      id: 'pali',
+      getURL: (path: string) => `chrome-extension://pali/${path}`,
+    });
+    try {
+      const approval = captureDappUtxoSubmission(
+        {
+          id: 'pali',
+          documentId,
+          url: 'chrome-extension://pali/external.html',
+        },
+        method,
+        { psbt: reviewed }
+      );
+      if (!approval) throw new Error('Fixture approval is unavailable');
+      await approval.checkDocument();
+      return await wallet[method](approval.input, approval.authority);
+    } finally {
+      Object.assign(chrome.runtime, { id, getURL });
+      release();
+    }
   };
   const defaultTxid = syntheticPsbt(BigInt(1000)).extractTransaction().getId();
   const dispatch = async (raw: string, port: any) => {
@@ -242,12 +285,30 @@ describe('PSBT approval context', () => {
     }
   );
 
+  it.each(['signSyscoinPsbt', 'signSendAndSaveTransaction'] as const)(
+    'refuses a Bitcoin Gold software PSBT before owned reads through %s',
+    async (method) => {
+      selectUtxoNetwork(156, 156, 'btg');
+      await expect(
+        approveExternalPsbt(method, syntheticPsbt(BigInt(1000)))
+      ).rejects.toMatchObject({ code: 'UTXO_SOFTWARE_SPEND_UNSUPPORTED' });
+      expect(wallet.verifySyscoinPsbt).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+  );
+
   it.each([
     ['recipient', 'quote'],
     ['recipient', 'submit'],
     ['prevout', 'quote'],
     ['prevout', 'submit'],
-  ])(
+    ['recipient', 'signSyscoinPsbt'],
+    ['prevout', 'signSyscoinPsbt'],
+    ['recipient', 'signSendAndSaveTransaction'],
+    ['prevout', 'signSendAndSaveTransaction'],
+  ] as const)(
     'refuses an unqualified custom witness-v1 %s during %s',
     async (location, operation) => {
       selectUtxoNetwork(2, 2, 'ltc');
@@ -278,15 +339,21 @@ describe('PSBT approval context', () => {
         summary: await getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn()),
       }));
       (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
-      await expect(
-        operation === 'quote'
-          ? wallet.getEstimateSysTransactionFee({ amount: '0.00099' })
-          : wallet.signSendAndSaveTransaction({
-              psbt: 'fixture',
-              ordinaryWalletSend: true,
-              utxoFeeReview: await reviewedFee(psbt, '1000'),
-            })
-      ).rejects.toMatchObject({ code: 'UTXO_SOFTWARE_SPEND_UNSUPPORTED' });
+      let result: Promise<unknown>;
+      if (operation === 'quote') {
+        result = wallet.getEstimateSysTransactionFee({ amount: '0.00099' });
+      } else if (operation === 'submit') {
+        result = wallet.signSendAndSaveTransaction({
+          psbt: 'fixture',
+          ordinaryWalletSend: true,
+          utxoFeeReview: await reviewedFee(psbt, '1000'),
+        });
+      } else {
+        result = approveExternalPsbt(operation, psbt);
+      }
+      await expect(result).rejects.toMatchObject({
+        code: 'UTXO_SOFTWARE_SPEND_UNSUPPORTED',
+      });
       expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
       expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
       expect(globalThis.fetch).not.toHaveBeenCalled();
@@ -307,6 +374,10 @@ describe('PSBT approval context', () => {
     ).resolves.toEqual({ txid: defaultTxid });
     expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
     expect(keyring.syscoinTransaction.sendTransaction).toHaveBeenCalledTimes(1);
+    await expect(
+      approveExternalPsbt('signSyscoinPsbt', syntheticPsbt(BigInt(1000)))
+    ).resolves.toBe('signed');
+    expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(2);
   });
 
   it('retries an already signed transfer without entering ordinary software admission', async () => {
@@ -561,7 +632,10 @@ describe('PSBT approval context', () => {
         reviewFeePsbt: review,
         beginFeeSigning: () => finish,
       }));
-      wallet.verifySyscoinPsbt.mockResolvedValue({ psbt });
+      wallet.verifySyscoinPsbt.mockResolvedValue({
+        psbt,
+        summary: syntheticSummary(psbt),
+      });
       const changed = syntheticPsbt(BigInt(1000), false);
       changed.setVersion(81);
       if (failure === 'returned transaction') changed.setLocktime(99);
@@ -596,7 +670,10 @@ describe('PSBT approval context', () => {
       reviewFeePsbt: review,
       beginFeeSigning: () => finish,
     }));
-    wallet.verifySyscoinPsbt.mockResolvedValue({ psbt });
+    wallet.verifySyscoinPsbt.mockResolvedValue({
+      psbt,
+      summary: syntheticSummary(psbt),
+    });
     (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
     await expect(
       wallet.signSyscoinPsbt({
@@ -1391,7 +1468,7 @@ describe('PSBT approval context', () => {
     psbt.setVersion(137);
     wallet.verifySyscoinPsbt.mockResolvedValue({
       psbt,
-      summary: { feeSatoshis: '1000' },
+      summary: syntheticSummary(psbt),
     });
     (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
     await expect(

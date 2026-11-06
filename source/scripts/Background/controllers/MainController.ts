@@ -8050,7 +8050,7 @@ class MainController {
             : undefined;
         if (ordinary) {
           await this.assertUtxoWalletReview(signing.walletReviewScope, review);
-          signing.assertSoftwareSpend([]);
+          assertCurrent();
         }
         const approvedPsbt = PsbtUtils.fromPali(params.psbt, activeNetwork);
         // Reject a different unsigned envelope before resolving its inputs.
@@ -8084,8 +8084,7 @@ class MainController {
             isLedger: params.isLedger,
             ...(review && { utxoFeeReview: review }),
           },
-          signing,
-          ordinary
+          signing
         );
         assertCurrent();
 
@@ -11640,7 +11639,7 @@ class MainController {
       params.expectedContext,
       dappAuthority
     );
-    return this.signReviewedSyscoinPsbt(params, signing, false);
+    return this.signReviewedSyscoinPsbt(params, signing);
   }
 
   private async signReviewedSyscoinPsbt(
@@ -11648,11 +11647,11 @@ class MainController {
       Parameters<MainController['signSyscoinPsbt']>[0],
       'expectedContext'
     >,
-    signing: ReturnType<MainController['captureUtxoSigningContext']>,
-    ordinary: boolean
+    signing: ReturnType<MainController['captureUtxoSigningContext']>
   ) {
     const { utxoFeeReview, ...signingParams } = params;
     const assertCurrent = signing.assertWalletReviewCurrent;
+    signing.assertSoftwareSpend([]);
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
       assertCurrent();
@@ -11679,11 +11678,10 @@ class MainController {
           )
         : undefined;
       try {
-        if (ordinary)
-          signing.assertSoftwareSpend(
-            verified.summary.inputScripts,
-            verified.psbt.txOutputs
-          );
+        signing.assertSoftwareSpend(
+          verified.summary.inputScripts,
+          verified.psbt.txOutputs
+        );
         const signed = await signing.transactions.signPSBT(
           {
             ...signingParams,
