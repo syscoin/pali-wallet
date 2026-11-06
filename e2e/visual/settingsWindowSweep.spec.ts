@@ -322,8 +322,12 @@ test('settings, navigation menus and token search fit small localized windows', 
             .getByRole('button', { name, exact: true })
             .first();
           await expect(tab).toBeVisible();
-          expect
-            .soft(await exposed(tab), `EVM ${locale} ${width}: token tab fits`)
+          await expect
+            .configure({ soft: true })
+            .poll(() => exposed(tab), {
+              message: `EVM ${locale} ${width}: token tab fits`,
+              timeout: 2000,
+            })
             .toBe(true);
           expect
             .soft(
