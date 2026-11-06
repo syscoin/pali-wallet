@@ -245,6 +245,7 @@ import {
   type SLHDSAPreparedSmartAccountSigner,
   type SLHDSASignActionHashParams,
 } from 'utils/slhDsa';
+import type { SLHDSADispatchApproval } from 'utils/slhDsa/types';
 import type {
   PaliRecoveryTarget,
   PaliSmartAccountAuthenticatorSetup,
@@ -8133,7 +8134,8 @@ class MainController {
   }
 
   public async signSLHDSAActionHash(
-    params: SLHDSASignActionHashParams & { executionContextId?: string }
+    params: SLHDSASignActionHashParams & { executionContextId?: string },
+    approval?: SLHDSADispatchApproval
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertContext = () => {
@@ -8144,6 +8146,7 @@ class MainController {
           params.executionContextId,
           params.actionHash
         );
+      approval?.assertCurrent();
     };
     assertContext();
     this.configureSLHDSASessionStateCrypto();
@@ -8151,7 +8154,8 @@ class MainController {
     try {
       const signature = await signSLHDSAActionHashLocal(
         params,
-        sessionGeneration
+        sessionGeneration,
+        approval
       );
       assertContext();
       return signature;
@@ -8165,7 +8169,8 @@ class MainController {
       try {
         const signature = await signSLHDSAActionHashLocal(
           params,
-          sessionGeneration
+          sessionGeneration,
+          approval
         );
         assertContext();
         return signature;
