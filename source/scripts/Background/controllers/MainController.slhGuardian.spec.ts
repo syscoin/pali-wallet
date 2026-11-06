@@ -39,6 +39,7 @@ import {
   SLH_DSA_PARAMETER_SET,
   SLH_DSA_SIGNATURE_LENGTH,
   clearRuntimeSLHDSAStates,
+  getSLHDSASessionGeneration,
   createSLHDSAProvisionedState,
   getSLHDSAKeyId,
   getSLHDSAStateStorageKey,
@@ -177,7 +178,10 @@ describe('non-active SLH smart guardian signer hydration', () => {
     'signs the explicit guardian rather than the selected account (%s)',
     async (cacheStatus) => {
       if (cacheStatus === 'warm') {
-        putRuntimeSLHDSAState(provisioned(GUARDIAN_KEY, GUARDIAN_ID, 7));
+        putRuntimeSLHDSAState(
+          provisioned(GUARDIAN_KEY, GUARDIAN_ID, 7),
+          getSLHDSASessionGeneration()
+        );
       } else {
         // Lock clears runtime state, but must retain encrypted durable state.
         clearRuntimeSLHDSAStates();

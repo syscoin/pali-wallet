@@ -36,6 +36,7 @@ import {
   SLH_DSA_PARAMETER_SET,
   SLH_DSA_SIGNATURE_LENGTH,
   clearRuntimeSLHDSAStates,
+  getSLHDSASessionGeneration,
   configureSLHDSASessionStateCrypto,
   createSLHDSAProvisionedState,
   getSLHDSAKeyId,
@@ -971,7 +972,7 @@ describe('connected personal-sign approval authority', () => {
       secretKeyHex: `0x${'66'.repeat(64)}`,
     });
     await saveEncryptedSLHDSAState(provisioned, stateCrypto, () => undefined);
-    if (!cold) putRuntimeSLHDSAState(provisioned);
+    if (!cold) putRuntimeSLHDSAState(provisioned, getSLHDSASessionGeneration());
 
     const metadata = {
       auth: {

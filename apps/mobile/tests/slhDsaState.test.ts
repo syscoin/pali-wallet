@@ -6,6 +6,7 @@ import {
   createSlhDsaStateStore,
   type SlhDsaStateStorage,
 } from '../../../source/wallet/slhDsaState.ts';
+import { createSlhDsaSigner } from '../../../source/wallet/slhDsaSigner.ts';
 
 test('shared SLH state round trips directly without browser globals or a module resolver', async () => {
   assert.equal(typeof (globalThis as { chrome?: unknown }).chrome, 'undefined');
@@ -76,5 +77,18 @@ test('shared SLH state round trips directly without browser globals or a module 
   assert.equal(
     await store.load({ crypto, keyId: state.keyId, assertOwner }),
     null
+  );
+});
+
+test('shared SLH signer factory imports directly and requires explicit host ports', () => {
+  assert.equal(typeof (globalThis as { chrome?: unknown }).chrome, 'undefined');
+  assert.throws(
+    () =>
+      createSlhDsaSigner({
+        stateStore: undefined as never,
+        execution: undefined as never,
+        now: () => 0,
+      }),
+    /signer host is unavailable/
   );
 });

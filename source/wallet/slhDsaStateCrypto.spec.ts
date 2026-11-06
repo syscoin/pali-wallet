@@ -11,6 +11,7 @@ import {
 import { signSLHDSAInOffscreen } from 'utils/slhDsa/offscreenClient';
 import {
   clearRuntimeSLHDSAStates,
+  getSLHDSASessionGeneration,
   configureSLHDSASessionStateCrypto,
   registerRuntimeSLHDSAState,
   signSLHDSAActionHashLocal,
@@ -291,8 +292,10 @@ it('clears owned plaintext buffers when a session ends during encryption or decr
 it('the registered signer preserves and advances its count through same-phrase password replacement', async () => {
   const old = await fixture();
   configureSLHDSASessionStateCrypto(old.crypto);
-  await registerRuntimeSLHDSAState(state(7));
-  await expect(signSLHDSAActionHashLocal(signParams)).resolves.toBe(signResult);
+  await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
+  await expect(
+    signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+  ).resolves.toBe(signResult);
   const retained = structuredClone(mockStorage.get(storageKey));
   clearRuntimeSLHDSAStates();
   const replacement = await fixture(PHRASE, `${password} new`);
@@ -307,8 +310,11 @@ it('the registered signer preserves and advances its count through same-phrase p
     )?.signatureCount
   ).toBe(8);
   expect(mockStorage.get(storageKey)).toEqual(retained);
-  expect((await registerRuntimeSLHDSAState(state(0))).signatureCount).toBe(8);
-  await signSLHDSAActionHashLocal(signParams);
+  expect(
+    (await registerRuntimeSLHDSAState(state(0), getSLHDSASessionGeneration()))
+      .signatureCount
+  ).toBe(8);
+  await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
   expect(
     (
       await loadEncryptedSLHDSAState({
@@ -326,14 +332,14 @@ it.each([false, 0, '', null, undefined, []])(
     const f = await fixture();
     configureSLHDSASessionStateCrypto(f.crypto);
     mockStorage.set(storageKey, value);
-    await expect(registerRuntimeSLHDSAState(state(0))).rejects.toThrow(
-      'usage history is unsafe'
-    );
+    await expect(
+      registerRuntimeSLHDSAState(state(0), getSLHDSASessionGeneration())
+    ).rejects.toThrow('usage history is unsafe');
     expect(mockStorage.get(storageKey)).toBe(value);
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-      'not available'
-    );
+    await expect(
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow('not available');
   }
 );
 
@@ -342,7 +348,7 @@ it.each(['malformed', 'password-bound'])(
   async (kind) => {
     const f = await fixture();
     configureSLHDSASessionStateCrypto(f.crypto);
-    await registerRuntimeSLHDSAState(state(7));
+    await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
     const row =
       kind === 'malformed'
         ? false
@@ -357,7 +363,9 @@ it.each(['malformed', 'password-bound'])(
     mockStorage.set(storageKey, row);
     jest.mocked(chromeStorage.setItem).mockClear();
     jest.mocked(signSLHDSAInOffscreen).mockClear();
-    await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow();
+    await expect(
+      signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+    ).rejects.toThrow();
     expect(mockStorage.get(storageKey)).toBe(row);
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
     expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
@@ -367,13 +375,13 @@ it.each(['malformed', 'password-bound'])(
 it('an already registered signer refuses a missing persisted row before signing', async () => {
   const f = await fixture();
   configureSLHDSASessionStateCrypto(f.crypto);
-  await registerRuntimeSLHDSAState(state(7));
+  await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
   mockStorage.delete(storageKey);
   jest.mocked(chromeStorage.setItem).mockClear();
   jest.mocked(signSLHDSAInOffscreen).mockClear();
-  await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-    'usage history is unsafe'
-  );
+  await expect(
+    signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+  ).rejects.toThrow('usage history is unsafe');
   expect(mockStorage.has(storageKey)).toBe(false);
   expect(chromeStorage.setItem).not.toHaveBeenCalled();
   expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
@@ -382,9 +390,9 @@ it('an already registered signer refuses a missing persisted row before signing'
 it('merges a higher authenticated persisted count before signing and applying the existing limit', async () => {
   const f = await fixture();
   configureSLHDSASessionStateCrypto(f.crypto);
-  await registerRuntimeSLHDSAState(state(7));
+  await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
   await saveEncryptedSLHDSAState(state(11), f.crypto, f.guard);
-  await signSLHDSAActionHashLocal(signParams);
+  await signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration());
   expect(
     (
       await loadEncryptedSLHDSAState({
@@ -401,9 +409,9 @@ it('merges a higher authenticated persisted count before signing and applying th
   );
   jest.mocked(chromeStorage.setItem).mockClear();
   jest.mocked(signSLHDSAInOffscreen).mockClear();
-  await expect(signSLHDSAActionHashLocal(signParams)).rejects.toThrow(
-    'signature limit reached'
-  );
+  await expect(
+    signSLHDSAActionHashLocal(signParams, getSLHDSASessionGeneration())
+  ).rejects.toThrow('signature limit reached');
   expect(chromeStorage.setItem).not.toHaveBeenCalled();
   expect(signSLHDSAInOffscreen).not.toHaveBeenCalled();
 });
@@ -418,7 +426,9 @@ it('registered signer refuses a password-bound row without overwriting it or res
     cipherText: f.keyring.encryptSLHDSASessionState(JSON.stringify(state(11))),
   };
   mockStorage.set(storageKey, row);
-  await expect(registerRuntimeSLHDSAState(state(0))).rejects.toThrow();
+  await expect(
+    registerRuntimeSLHDSAState(state(0), getSLHDSASessionGeneration())
+  ).rejects.toThrow();
   expect(mockStorage.get(storageKey)).toBe(row);
   expect(chromeStorage.setItem).not.toHaveBeenCalled();
 });
@@ -426,7 +436,7 @@ it('registered signer refuses a password-bound row without overwriting it or res
 it('keeps the admitted signing request while persisted state is read', async () => {
   const f = await fixture();
   configureSLHDSASessionStateCrypto(f.crypto);
-  await registerRuntimeSLHDSAState(state(7));
+  await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
   const entered = deferred<void>(),
     release = deferred<void>();
   configureSLHDSASessionStateCrypto(
@@ -443,7 +453,10 @@ it('keeps the admitted signing request while persisted state is read', async () 
     )
   );
   const request = { ...signParams, allowReservedSignature: false };
-  const pending = signSLHDSAActionHashLocal(request);
+  const pending = signSLHDSAActionHashLocal(
+    request,
+    getSLHDSASessionGeneration()
+  );
   await entered.promise;
   request.actionHash = `0x${'aa'.repeat(32)}`;
   request.allowReservedSignature = true;
@@ -461,7 +474,7 @@ it('keeps the admitted signing request while persisted state is read', async () 
 it('does not sign or write when the session ends during the new persisted-state read', async () => {
   const f = await fixture();
   configureSLHDSASessionStateCrypto(f.crypto);
-  await registerRuntimeSLHDSAState(state(7));
+  await registerRuntimeSLHDSAState(state(7), getSLHDSASessionGeneration());
   const original = mockStorage.get(storageKey);
   const entered = deferred<void>(),
     release = deferred<void>();
@@ -480,7 +493,10 @@ it('does not sign or write when the session ends during the new persisted-state 
   );
   jest.mocked(chromeStorage.setItem).mockClear();
   jest.mocked(signSLHDSAInOffscreen).mockClear();
-  const pending = signSLHDSAActionHashLocal(signParams);
+  const pending = signSLHDSAActionHashLocal(
+    signParams,
+    getSLHDSASessionGeneration()
+  );
   const rejected = expect(pending).rejects.toThrow('wallet session changed');
   await entered.promise;
   clearRuntimeSLHDSAStates();
