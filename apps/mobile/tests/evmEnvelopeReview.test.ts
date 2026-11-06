@@ -44,8 +44,12 @@ test('requote preserves approved cap and zero tip rather than silently adopting 
  const next=fixture({update:(c,r)=>c.method==='eth_maxPriorityFeePerGas'?'0x32':c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x6e'}:r});
  const quote=await next.rpc.requote(approved,signal());assert.deepEqual(quote.transaction,approved);
  const estimate=next.calls.find(c=>c.method==='eth_estimateGas')!;assert.equal(estimate.params[0].maxFeePerGas,'0xfa');assert.equal(estimate.params[0].maxPriorityFeePerGas,'0x0');
- const increasedGas=fixture({update:(c,r)=>c.method==='eth_estimateGas'?'0x11170':r});
- await assert.rejects(increasedGas.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});
+ const estimateAtLimit=`0x${BigInt(approved.gasLimit).toString(16)}`;
+ const atLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAtLimit:r});
+ assert.deepEqual((await atLimit.rpc.requote(approved,signal())).transaction,approved);
+ const estimateAboveLimit=`0x${(BigInt(approved.gasLimit)+1n).toString(16)}`;
+ const aboveLimit=fixture({update:(c,r)=>c.method==='eth_estimateGas'?estimateAboveLimit:r});
+ await assert.rejects(aboveLimit.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});
  const baseExceedsCap=fixture({update:(c,r)=>c.method==='eth_getBlockByNumber'?{...(r as object),baseFeePerGas:'0x100'}:r});
  await assert.rejects(baseExceedsCap.rpc.requote(approved,signal()),{code:'REVIEW_REQUIRED'});assert.equal(baseExceedsCap.calls.some(c=>c.method==='eth_estimateGas'),false);
 });
