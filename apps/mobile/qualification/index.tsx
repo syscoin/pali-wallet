@@ -247,16 +247,9 @@ function QualificationApp() {
           const { requireNativeModule } = await import('expo-modules-core');
           qualifyNativeHandleContract(requireNativeModule('PaliWalletCrypto'));
         });
-        await check('native public Merkle and HMAC vectors', async () => {
-          const { createNativePublicMerkleExecutor } = await import('../src/crypto/native');
-          const { qualifyNativePublicMerkle } = await import('../src/crypto/qualificationPublicMerkle.ts');
-          const { qualifyWalletHmac } = await import('../src/crypto/qualificationHmac.ts');
-          await qualifyNativePublicMerkle(createNativePublicMerkleExecutor());
-          await qualifyWalletHmac(nativeCrypto);
-        });
         // The observer delegates every request to the qualified native CSPRNG.
-        // Install it before importing any wallet/ethers/BIP39 graph, because
-        // noble retains the global crypto object from module evaluation.
+        // Noble captures the global crypto object during module evaluation.
+        // Install before loading ethers through the public Merkle check or SDK.
         const observedCrypto: Crypto = Object.freeze({
           subtle: nativeCrypto.subtle,
           getRandomValues<T extends ArrayBufferView>(array: T): T {
@@ -281,6 +274,13 @@ function QualificationApp() {
           configurable: true,
           enumerable: true,
           writable: false,
+        });
+        await check('native public Merkle and HMAC vectors', async () => {
+          const { createNativePublicMerkleExecutor } = await import('../src/crypto/native');
+          const { qualifyNativePublicMerkle } = await import('../src/crypto/qualificationPublicMerkle.ts');
+          const { qualifyWalletHmac } = await import('../src/crypto/qualificationHmac.ts');
+          await qualifyNativePublicMerkle(createNativePublicMerkleExecutor());
+          await qualifyWalletHmac(nativeCrypto);
         });
         const httpConfiguration = Constants.expoConfig?.extra?.paliHttpQualification;
         if (httpConfiguration !== undefined || (!parameters.physical && parameters.http)) {
