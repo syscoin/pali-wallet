@@ -26,6 +26,9 @@ import store, { persistMainStateStrict } from 'state/store';
 import { restoreVaultSnapshot, setActiveAccount } from 'state/vault';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { APPROVAL_CLIENT_READY, APPROVAL_REGISTER } from 'utils/approvalClient';
+import { hashMessage } from 'utils/ethersV6Compat';
+import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount/erc7739';
+import { getSmartAccountLocalOwnerContexts } from 'utils/smartAccount/execution';
 
 import DAppController from './DAppController';
 import { EthMethodHandler } from './message-handler/method-handlers';
@@ -350,7 +353,11 @@ describe('connected personal-sign approval authority', () => {
   const message = 'Read this message';
   const createPopup = jest.fn();
   const signPersonalMessage = jest.fn(async () => 'synthetic-signature');
+  const signSmartAccountActionDigestInternal = jest.fn(
+    async () => 'synthetic-owner-signature'
+  );
   const wallet = {
+    signSmartAccountActionDigestInternal,
     getWalletSessionGeneration: () => sessionGeneration,
     ethereumTransaction: { signPersonalMessage },
   };
@@ -478,28 +485,29 @@ describe('connected personal-sign approval authority', () => {
     expect(port.postMessage).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'ready' })
     );
+    const invoke = (
+      methods: string[],
+      args: unknown[],
+      documentId = sender.documentId
+    ) =>
+      new Promise((resolve) => {
+        actionListener(
+          { type: 'CONTROLLER_ACTION', data: { methods, params: args } },
+          { ...sender, documentId },
+          resolve
+        );
+      });
     return {
       data,
       source,
       outcome,
+      invoke,
       approve: (payload = message, documentId = sender.documentId) =>
-        new Promise((resolve) => {
-          actionListener(
-            {
-              type: 'CONTROLLER_ACTION',
-              data: {
-                methods: [
-                  'wallet',
-                  'ethereumTransaction',
-                  'signPersonalMessage',
-                ],
-                params: [{ ...data, 0: address, 1: payload }],
-              },
-            },
-            { ...sender, documentId },
-            resolve
-          );
-        }),
+        invoke(
+          ['wallet', 'ethereumTransaction', 'signPersonalMessage'],
+          [{ ...data, 0: address, 1: payload }],
+          documentId
+        ),
       reply: (value: unknown) =>
         workerMessage({
           source,
@@ -632,6 +640,260 @@ describe('connected personal-sign approval authority', () => {
       calls: 0,
       result: { code: 4001 },
     });
+  });
+
+  type SmartAccountEcdsaTestParams = {
+    actionHash: string;
+    owner: { address: string; id: number; type: KeyringAccountType };
+    validator: string;
+  };
+
+  const openSmartApproval = async (composite = false) => {
+    const smartType = KeyringAccountType.SmartAccount;
+    const smartAddress = `0x${'33'.repeat(20)}`;
+    const validator = `0x${'44'.repeat(20)}`;
+    const activeValidator = composite ? `0x${'55'.repeat(20)}` : validator;
+    const owner = { address, id: 0, type };
+    const vault = store.getState().vault;
+    store.dispatch(
+      restoreVaultSnapshot({
+        ...vault,
+        activeAccount: { id: 0, type: smartType },
+        accounts: {
+          ...vault.accounts,
+          [smartType]: {
+            0: {
+              address: smartAddress,
+              id: 0,
+              isSmartAccount: true,
+              smartAccount: {
+                auth: {
+                  module: composite ? 'composite' : 'ecdsa',
+                  validator: activeValidator,
+                },
+                chainId: 1,
+                installedModules: [
+                  {
+                    address: validator,
+                    config: { owners: [address], threshold: 1 },
+                    id: 'ecdsa',
+                    type: 'validator',
+                  },
+                  ...(composite
+                    ? [
+                        {
+                          address: activeValidator,
+                          config: {
+                            childValidators: [validator],
+                            threshold: 1,
+                          },
+                          id: 'composite',
+                          type: 'validator',
+                        },
+                      ]
+                    : []),
+                ],
+              },
+              type: smartType,
+            },
+          },
+        },
+      } as any)
+    );
+    await controller.connect(
+      { ...details(), accountType: smartType },
+      {
+        address: smartAddress,
+        network: { ...vault.activeNetwork },
+      }
+    );
+    const approval = await openApproval(undefined, 'personal_sign', [
+      message,
+      smartAddress,
+    ]);
+    const runtime = getSmartAccountLocalOwnerContexts({
+      accounts: store.getState().vault.accounts,
+      controllerEmitter: (methods: string[], params?: unknown[]) =>
+        approval.invoke(methods, params ?? []),
+      personalSignValidator: activeValidator,
+    }).ecdsa as {
+      signActionHash: (params: SmartAccountEcdsaTestParams) => Promise<string>;
+    };
+    const actionHash = getPaliErc7739PersonalSignHash({
+      accountAddress: smartAddress,
+      chainId: 1,
+      hash: hashMessage(message),
+    });
+    return { approval, runtime, args: { actionHash, owner, validator } };
+  };
+
+  it.each([true, false])(
+    'admits a connected smart-account local ECDSA signer only while its grant is current, revoked=%s',
+    async (revoked) => {
+      const { approval, runtime, args } = await openSmartApproval();
+      if (revoked) {
+        await controller.disconnect(host, true, { propagateErrors: true });
+        expect(disk.dapp.dapps[host]).toBeUndefined();
+      }
+      const result = await runtime.signActionHash(args);
+      approval.reply(result);
+      if (revoked) {
+        expect(await approval.outcome).toEqual({ code: 4001 });
+        expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ success: false });
+      } else {
+        expect(await approval.outcome).toEqual({
+          value: 'synthetic-owner-signature',
+        });
+        expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+      }
+    }
+  );
+
+  it.each(['active validator', 'owner slot', 'validator', 'document'])(
+    'rejects a smart-account ECDSA bridge request for the wrong %s before calling the signer',
+    async (target) => {
+      const { approval, runtime, args } = await openSmartApproval();
+      let result: unknown;
+      switch (target) {
+        case 'active validator':
+          result = await approval.invoke(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [args.owner, `0x${'ab'.repeat(20)}`, args.validator]
+          );
+          break;
+        case 'owner slot':
+          result = await runtime.signActionHash({
+            ...args,
+            owner: { ...args.owner, id: 1 },
+          });
+          break;
+        case 'validator':
+          result = await runtime.signActionHash({
+            ...args,
+            validator: `0x${'ab'.repeat(20)}`,
+          });
+          break;
+        default:
+          result = await approval.invoke(
+            ['wallet', 'signSmartAccountPersonalDigest'],
+            [args.owner, args.validator, args.validator],
+            'different-document'
+          );
+      }
+      expect(result).toMatchObject({ success: false });
+      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      const fresh = await runtime.signActionHash(args);
+      expect(fresh).toBe('synthetic-owner-signature');
+      approval.reply(fresh);
+      expect(await approval.outcome).toEqual({ value: fresh });
+    }
+  );
+
+  it('derives the exact approved ERC-7739 digest without accepting a renderer digest', async () => {
+    const { approval, runtime, args } = await openSmartApproval();
+    const result = await runtime.signActionHash({
+      ...args,
+      actionHash: `0x${'ab'.repeat(32)}`,
+    });
+    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledWith(
+      [args.owner.address, args.actionHash],
+      { id: args.owner.id, type: args.owner.type },
+      undefined,
+      expect.any(Function)
+    );
+    approval.reply(result);
+    expect(await approval.outcome).toEqual({ value: result });
+  });
+
+  it('admits the exact selected ECDSA child of the active composite validator', async () => {
+    const { approval, runtime, args } = await openSmartApproval(true);
+    const result = await runtime.signActionHash(args);
+    expect(result).toBe('synthetic-owner-signature');
+    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
+    approval.reply(result);
+    expect(await approval.outcome).toEqual({ value: result });
+  });
+
+  it.each(['owner', 'validator'])(
+    'permanently retires local ECDSA approval when the %s changes during the real site check',
+    async (target) => {
+      const { approval, runtime, args } = await openSmartApproval();
+      let startCheck!: () => void;
+      let finishCheck!: () => void;
+      const started = new Promise<void>((resolve) => (startCheck = resolve));
+      const held = new Promise<void>((resolve) => (finishCheck = resolve));
+      sendMessage.mockImplementationOnce(async () => {
+        startCheck();
+        await held;
+        return { documentActive: true };
+      });
+      const response = runtime.signActionHash(args);
+      await started;
+      const vault = store.getState().vault;
+      const accountType =
+        target === 'owner' ? type : KeyringAccountType.SmartAccount;
+      const account = vault.accounts[accountType][0];
+      store.dispatch(
+        restoreVaultSnapshot({
+          ...vault,
+          accounts: {
+            ...vault.accounts,
+            [accountType]: {
+              ...vault.accounts[accountType],
+              0:
+                target === 'owner'
+                  ? { ...account, xpub: 'replacement-owner-identity' }
+                  : { ...account, smartAccount: { ...account.smartAccount } },
+            },
+          },
+        } as any)
+      );
+      store.dispatch(restoreVaultSnapshot(vault));
+      finishCheck();
+      const result = await response;
+      expect(result).toMatchObject({ success: false });
+      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      approval.reply(result);
+      expect(await approval.outcome).toEqual({ code: 4001 });
+    }
+  );
+
+  it('allows a live local owner retry without relaxing retirement', async () => {
+    const { approval, runtime, args } = await openSmartApproval();
+    await expect(runtime.signActionHash(args)).resolves.toBe(
+      'synthetic-owner-signature'
+    );
+    await expect(runtime.signActionHash(args)).resolves.toBe(
+      'synthetic-owner-signature'
+    );
+    await controller.disconnect(host, true, { propagateErrors: true });
+    await expect(runtime.signActionHash(args)).resolves.toMatchObject({
+      success: false,
+    });
+    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(2);
+    expect(await approval.outcome).toEqual({ code: 4001 });
+  });
+
+  it('discards a local ECDSA result after the bound grant is revoked', async () => {
+    const { approval, runtime, args } = await openSmartApproval();
+    let signerStarted!: () => void;
+    let finishSigner!: () => void;
+    const signing = new Promise<void>((resolve) => (signerStarted = resolve));
+    const held = new Promise<void>((resolve) => (finishSigner = resolve));
+    signSmartAccountActionDigestInternal.mockImplementationOnce(async () => {
+      signerStarted();
+      await held;
+      return 'signature completed after revocation';
+    });
+    const response = runtime.signActionHash(args);
+    await signing;
+    await controller.disconnect(host, true, { propagateErrors: true });
+    finishSigner();
+    const result = await response;
+    expect(result).toMatchObject({ success: false });
+    expect(await approval.outcome).toEqual({ code: 4001 });
+    expect(signSmartAccountActionDigestInternal).toHaveBeenCalledTimes(1);
   });
 
   it('binds the registered popup and original payload without affecting another origin', async () => {

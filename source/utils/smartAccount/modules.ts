@@ -39,6 +39,8 @@ export const getInstalledValidatorModuleByAddress = (
   metadata: ISmartAccountMetadata,
   address: string
 ): SmartAccountValidatorModule | undefined =>
-  listInstalledValidatorModules(metadata).find(
-    (module) => module.address.toLowerCase() === address.toLowerCase()
+  metadata.installedModules?.find(
+    (module): module is SmartAccountValidatorModule =>
+      module.type === 'validator' &&
+      module.address.toLowerCase() === address.toLowerCase()
   );

@@ -9,8 +9,14 @@ import EthSign from './SignEth';
 const ADDRESS = '0x1111111111111111111111111111111111111111';
 const mockEmitter = jest.fn();
 const mockSign = jest.fn();
+const mockLocalOwnerContexts = jest.fn<unknown, [unknown]>(() => ({}));
 const mockAlert = { info: jest.fn(), success: jest.fn(), error: jest.fn() };
-const metadata = { chainId: 57057, isDeployed: true, installedModules: [] };
+const metadata = {
+  auth: { module: 'ecdsa', validator: '0x' + '22'.repeat(20) },
+  chainId: 57057,
+  isDeployed: true,
+  installedModules: [],
+};
 const mockQuery = {
   host: 'https://sysnode.info',
   eventName: 'personal_sign',
@@ -63,7 +69,9 @@ jest.mock('utils/browser', () => ({ dispatchBackgroundEvent: jest.fn() }));
 jest.mock('utils/index', () => ({ truncate: (v: string) => v }));
 jest.mock('utils/network', () => ({ getNetworkChain: () => 'ethereum' }));
 jest.mock('utils/smartAccount', () => ({
-  getSmartAccountLocalOwnerContexts: () => ({}),
+  getSmartAccountLocalOwnerContexts: (context: unknown) =>
+    mockLocalOwnerContexts(context),
+  hashPersonalSignMessage: () => '0x' + 'ab'.repeat(32),
   getPaliErc7739PersonalSignHash: () => '0x' + 'ab'.repeat(32),
   signSmartAccountActionHash: (...args: any[]) => mockSign(...args),
   encodeSmartAccountAuthenticatorSignature: () => '0x' + 'cd'.repeat(85),
@@ -142,6 +150,9 @@ it('a settled metadata read takes the same request through one signing and succe
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
   expect(mockSign).toHaveBeenCalledTimes(1);
+  expect(mockLocalOwnerContexts).toHaveBeenCalledWith(
+    expect.objectContaining({ personalSignValidator: metadata.auth.validator })
+  );
   expect(screen.queryByRole('alert')).toBeNull();
   expect(dispatchBackgroundEvent).toHaveBeenCalledTimes(1);
   expect(window.close).toHaveBeenCalledTimes(1);

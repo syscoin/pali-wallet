@@ -3,10 +3,18 @@ import { ethErrors } from 'helpers/errors';
 import { isRequestDocumentLive } from '../controllers/message-handler/request-lifetime';
 import type { IDApp } from 'state/dapp/types';
 import store from 'state/store';
-import { INetworkType } from 'types/network';
+import { INetworkType, KeyringAccountType } from 'types/network';
 import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { getDappOrigin } from 'utils/dappOrigin';
-import { getPersonalSignParams } from 'utils/personalSignReview';
+import {
+  getPersonalSignParams,
+  isValidPersonalSignMessage,
+} from 'utils/personalSignReview';
+import {
+  getPaliErc7739PersonalSignHash,
+  hashPersonalSignMessage,
+} from 'utils/smartAccount/erc7739';
+import { getInstalledValidatorModuleByAddress } from 'utils/smartAccount/modules';
 
 import type { IEnhancedRequestContext } from '../controllers/message-handler/types';
 
@@ -103,12 +111,22 @@ export const capturePersonalSignApproval = ({
     throw personalSignApprovalExpired();
 
   const generation = getWalletSessionGeneration();
-  const request = getPersonalSignParams(params);
+  const parsed = getPersonalSignParams(params);
+  const request =
+    parsed?.address.toLowerCase() === address.toLowerCase()
+      ? parsed
+      : undefined;
+  const signerChecks = new Map<
+    string,
+    (currentAccounts: typeof accounts) => boolean
+  >();
   const lifetime = createDappApprovalLifetime(() => {
     const state = store.getState();
     const current = state.vault;
     const account = current.accounts[type]?.[id];
     const network = current.activeNetwork;
+    for (const isCurrent of signerChecks.values())
+      if (!isCurrent(current.accounts)) return false;
     return (
       state.dapp.dapps[host] === grant &&
       current.activeAccount.id === id &&
@@ -148,12 +166,86 @@ export const capturePersonalSignApproval = ({
     matches(args: unknown) {
       return (
         request !== undefined &&
-        request.address.toLowerCase() === address.toLowerCase() &&
         Array.isArray(args) &&
         args.length === 1 &&
         args[0]?.[0] === request.address &&
         args[0]?.[1] === request.message
       );
+    },
+    bindSmartAccountSigner(args: unknown) {
+      if (
+        type !== KeyringAccountType.SmartAccount ||
+        !request ||
+        !isValidPersonalSignMessage(request.message) ||
+        !Array.isArray(args) ||
+        args.length !== 3
+      )
+        return;
+
+      const [owner, activeValidator, signerValidator] = args;
+      if (
+        typeof owner?.address !== 'string' ||
+        typeof activeValidator !== 'string' ||
+        typeof signerValidator !== 'string' ||
+        !Number.isSafeInteger(owner.id) ||
+        owner.id < 0 ||
+        (owner.type !== KeyringAccountType.HDAccount &&
+          owner.type !== KeyringAccountType.Imported)
+      )
+        return;
+
+      const { id: ownerId, type: ownerType } = owner;
+      const ownerAddress = owner.address.toLowerCase();
+      const currentAccounts = store.getState().vault.accounts;
+      const metadata = currentAccounts[type]?.[id]?.smartAccount;
+      const currentOwner = currentAccounts[ownerType]?.[ownerId];
+      // Require the exact hydrated active address, including for a composite.
+      if (
+        metadata?.chainId !== chainId ||
+        metadata.auth?.validator?.toLowerCase() !==
+          activeValidator.toLowerCase() ||
+        currentOwner?.address?.toLowerCase() !== ownerAddress
+      )
+        return;
+
+      const active = getInstalledValidatorModuleByAddress(
+        metadata,
+        activeValidator
+      );
+      const signer = signerValidator.toLowerCase();
+      const validator =
+        signer === active?.address.toLowerCase()
+          ? active
+          : active?.id === 'composite' &&
+            active.config.childValidators.some(
+              (child) => child.toLowerCase() === signer
+            ) &&
+            getInstalledValidatorModuleByAddress(metadata, signer);
+      if (
+        !validator ||
+        validator.id !== 'ecdsa' ||
+        !validator.config.owners.some(
+          (configured) => configured.toLowerCase() === ownerAddress
+        )
+      )
+        return;
+
+      const digest = getPaliErc7739PersonalSignHash({
+        accountAddress: address,
+        chainId,
+        hash: hashPersonalSignMessage(request.message),
+      });
+      // A change to this hydrated validator or owner retires the whole
+      // approval, including composite siblings already in flight.
+      signerChecks.set(`${ownerType}:${ownerId}`, (next) => {
+        const current = next[ownerType]?.[ownerId];
+        return (
+          next[type]?.[id]?.smartAccount === metadata &&
+          current?.address === currentOwner.address &&
+          current.xpub === currentOwner.xpub
+        );
+      });
+      return [[currentOwner.address, digest], { id: ownerId, type: ownerType }];
     },
     dispose() {
       unsubscribe();
@@ -186,20 +278,27 @@ export const requirePersonalSignApproval = (
   methods: unknown,
   args: unknown
 ) => {
+  if (!Array.isArray(methods) || methods[0] !== 'wallet') return undefined;
+  const smartAccount =
+    methods.length === 2 && methods[1] === 'signSmartAccountPersonalDigest';
   if (
-    !Array.isArray(methods) ||
-    methods.length !== 3 ||
-    methods[0] !== 'wallet' ||
-    methods[1] !== 'ethereumTransaction' ||
-    methods[2] !== 'signPersonalMessage'
+    !smartAccount &&
+    (methods.length !== 3 ||
+      methods[1] !== 'ethereumTransaction' ||
+      methods[2] !== 'signPersonalMessage')
   )
     return undefined;
   const binding = sender.documentId && approvals.get(sender.documentId);
-  if (!binding || !binding.approval.matches(args))
-    throw personalSignApprovalExpired();
+  if (!binding) throw personalSignApprovalExpired();
   const { approval, approverIsLive } = binding;
   approval.assertCurrent();
+  const signerArgs = smartAccount
+    ? approval.bindSmartAccountSigner(args)
+    : undefined;
+  if (smartAccount ? !signerArgs : !approval.matches(args))
+    throw personalSignApprovalExpired();
   return {
+    signerArgs,
     assertCurrent: approval.assertCurrent,
     checkDocument: () => approval.checkDocument(approverIsLive),
   };

@@ -23,7 +23,6 @@ jest.mock('components/Icon/Icon', () => ({
   ImWarning: () => <svg aria-hidden="true" />,
   MdBugReport: () => <svg aria-hidden="true" />,
   WhiteSuccessIconSvg: () => <svg aria-hidden="true" />,
-  ErrorIconSvg: () => <svg aria-hidden="true" />,
   WarnIconSvg: () => <svg aria-hidden="true" />,
 }));
 jest.mock('components/index', () => ({

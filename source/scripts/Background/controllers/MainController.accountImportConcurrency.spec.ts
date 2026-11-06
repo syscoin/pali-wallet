@@ -587,6 +587,7 @@ const invokeSdk = (method: string, sendResponse: (value: unknown) => void) => {
             assertCurrent: () => undefined,
             checkDocument: async () => undefined,
             matches: () => true,
+            bindSmartAccountSigner: () => undefined,
             retire: () => undefined,
             dispose: () => undefined,
           },

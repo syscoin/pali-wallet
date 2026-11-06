@@ -198,7 +198,10 @@ export const handleMasterControllerResponses = (
 
       let targetMethod = MasterControllerInstance;
 
-      for (const method of methods) {
+      const route = personalSignApproval?.signerArgs
+        ? ['wallet', 'signSmartAccountActionDigestInternal']
+        : methods;
+      for (const method of route) {
         if (targetMethod && method in targetMethod) {
           targetMethod = targetMethod[method];
         } else {
@@ -215,7 +218,15 @@ export const handleMasterControllerResponses = (
             assertSetupAdmission();
             personalSignApproval?.assertCurrent();
             // Always execute the method; never attempt to send functions over messaging
-            const response = await (targetMethod as any)(...params);
+            const response = await (targetMethod as any)(
+              ...(personalSignApproval?.signerArgs
+                ? [
+                    ...personalSignApproval.signerArgs,
+                    undefined,
+                    personalSignApproval.assertCurrent,
+                  ]
+                : params)
+            );
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the
             // existing admission gate closes. Transaction submissions retain
