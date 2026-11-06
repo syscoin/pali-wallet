@@ -23,6 +23,12 @@ jest.mock('utils/smartAccount/deployment', () => ({
     },
   ],
 }));
+jest.mock('utils/smartAccount/deploymentMetadata', () => ({
+  ...jest.requireActual('utils/smartAccount/deploymentMetadata'),
+  PALI_INFRASTRUCTURE_METADATA: jest
+    .requireMock('utils/smartAccount/deployment')
+    .getPaliInfrastructureContracts(),
+}));
 
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -182,14 +188,22 @@ describe('smart-account infrastructure deployment lifecycle', () => {
 
   it('keeps genuinely different chain deployments and late rejection cleanup independent', async () => {
     let rejectFirst!: (error: Error) => void;
+    let entered!: () => void;
+    const firstSubmitted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     deps.sendAndSaveEthTransaction.mockImplementationOnce(
-      () => new Promise((_resolve, reject) => (rejectFirst = reject))
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectFirst = reject;
+          entered();
+        })
     );
     const first = controller.deploySmartAccountInfrastructure();
     const firstRejected = expect(first).rejects.toThrow(
       'Wallet context changed'
     );
-    await flush();
+    await firstSubmitted;
     const firstReservation = journalStorage[journalKey];
     state.vault.activeNetwork = {
       ...state.vault.activeNetwork,
@@ -968,6 +982,10 @@ describe('smart-account infrastructure deployment lifecycle', () => {
         })
       );
       let finishClear!: () => void;
+      let entered!: () => void;
+      const clearStarted = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
       let delayed = false;
       (chromeStorage.setItem as jest.Mock).mockImplementation((key, value) => {
         if (value === null && !delayed) {
@@ -977,6 +995,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
               journalStorage[key] = null;
               resolve();
             };
+            entered();
           });
         }
         journalStorage[key] = value;
@@ -986,7 +1005,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       const rejected = expect(deploying).rejects.toThrow(
         'Infrastructure RPC timed out'
       );
-      await flush();
+      await clearStarted;
       expect(deps.sendAndSaveEthTransaction).toHaveBeenCalledTimes(1);
       await jest.advanceTimersByTimeAsync(8001);
       await rejected;
@@ -1021,10 +1040,15 @@ describe('smart-account infrastructure deployment lifecycle', () => {
       })
     );
     let rejectClear!: () => void;
+    let entered!: () => void;
+    const clearStarted = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
     (chromeStorage.setItem as jest.Mock).mockImplementation((key, value) => {
       if (value === null)
         return new Promise<void>((_resolve, reject) => {
           rejectClear = () => reject(Error('Storage unavailable'));
+          entered();
         });
       journalStorage[key] = value;
       return Promise.resolve();
@@ -1033,7 +1057,7 @@ describe('smart-account infrastructure deployment lifecycle', () => {
     const rejected = expect(deploying).rejects.toThrow(
       'Infrastructure RPC timed out'
     );
-    await flush();
+    await clearStarted;
     await jest.advanceTimersByTimeAsync(8001);
     await rejected;
     const reservation = controller.pendingInfrastructure.get(networkKey);

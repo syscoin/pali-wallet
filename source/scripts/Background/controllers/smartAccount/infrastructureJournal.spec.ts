@@ -12,6 +12,7 @@ import {
   infrastructureJournalStorageKey,
 } from './infrastructureJournal';
 
+const assertCurrent = () => undefined;
 const network = { chainId: 1, url: 'https://rpc-a.example' };
 const otherChain = { chainId: 2, url: 'https://rpc-a.example' };
 const otherFork = { chainId: 1, url: 'https://rpc-b.example' };
@@ -49,14 +50,14 @@ describe('durable infrastructure deployment journal', () => {
 
   it('persists a no-hash attempt and upgrades that same attempt after acknowledgement', async () => {
     await writeInfrastructureJournal(network, reservation);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
     const acknowledged = { ...reservation, transactionHash: hex32('33') };
     await writeInfrastructureJournal(network, acknowledged);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      acknowledged
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(acknowledged);
   });
 
   it('refuses to overwrite a different unresolved attempt', async () => {
@@ -64,7 +65,39 @@ describe('durable infrastructure deployment journal', () => {
     await expect(writeInfrastructureJournal(network, newer)).rejects.toThrow(
       'Another infrastructure deployment is pending'
     );
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
+  });
+
+  it('retains the exact pending attempt when its observation retires inside the journal lock', async () => {
+    await writeInfrastructureJournal(network, reservation);
+    let entered!: () => void;
+    let release!: (entry: InfrastructureJournalEntry) => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<InfrastructureJournalEntry>((resolve) => {
+      release = resolve;
+    });
+    jest
+      .mocked(chromeStorage.getItem)
+      .mockResolvedValueOnce(null)
+      .mockImplementationOnce(() => {
+        entered();
+        return held;
+      });
+    let current = true;
+    const clearing = clearInfrastructureJournal(network, reservation, () => {
+      if (!current) throw new Error('Observation retired');
+    });
+    const rejected = expect(clearing).rejects.toThrow('Observation retired');
+    await started;
+    current = false;
+    release(reservation);
+    await rejected;
+    expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+    expect(persisted.get(infrastructureJournalStorageKey(network))).toEqual(
       reservation
     );
   });
@@ -72,25 +105,29 @@ describe('durable infrastructure deployment journal', () => {
   it('shares one chain reservation across RPC aliases but permits only the owning RPC to update or clear it', async () => {
     const otherReservation = { ...newer, rpcUrl: otherFork.url };
     await writeInfrastructureJournal(network, reservation);
-    await expect(readInfrastructureJournal(otherFork)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(otherFork, assertCurrent)
+    ).resolves.toEqual(reservation);
     await expect(
       writeInfrastructureJournal(otherFork, otherReservation)
     ).rejects.toThrow('Another infrastructure deployment is pending');
-    await clearInfrastructureJournal(otherFork, reservation);
-    await clearInfrastructureJournal(otherFork, {
-      ...reservation,
-      rpcUrl: otherFork.url,
-    });
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      reservation
+    await clearInfrastructureJournal(otherFork, reservation, null);
+    await clearInfrastructureJournal(
+      otherFork,
+      {
+        ...reservation,
+        rpcUrl: otherFork.url,
+      },
+      null
     );
-    await clearInfrastructureJournal(network, reservation);
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
+    await clearInfrastructureJournal(network, reservation, null);
     await writeInfrastructureJournal(otherFork, otherReservation);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      otherReservation
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(otherReservation);
   });
 
   it('serializes same-chain RPC reservation writes before the first storage write settles', async () => {
@@ -120,9 +157,9 @@ describe('durable infrastructure deployment journal', () => {
     await first;
     await rejected;
     expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
-    await expect(readInfrastructureJournal(otherFork)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(otherFork, assertCurrent)
+    ).resolves.toEqual(reservation);
   });
 
   it('retains legacy chain-only entries without inferring or rewriting their RPC', async () => {
@@ -130,17 +167,23 @@ describe('durable infrastructure deployment journal', () => {
     delete legacy.rpcUrl;
     persisted.set('pali.infrastructure.pending.v1.1', legacy);
     for (const context of [network, otherFork]) {
-      await expect(readInfrastructureJournal(context)).resolves.toEqual(legacy);
+      await expect(
+        readInfrastructureJournal(context, assertCurrent)
+      ).resolves.toEqual(legacy);
       await expect(
         writeInfrastructureJournal(context, {
           ...legacy,
           rpcUrl: context.url,
         })
       ).rejects.toThrow('Another infrastructure deployment is pending');
-      await clearInfrastructureJournal(context, {
-        ...legacy,
-        rpcUrl: context.url,
-      });
+      await clearInfrastructureJournal(
+        context,
+        {
+          ...legacy,
+          rpcUrl: context.url,
+        },
+        null
+      );
     }
     expect(persisted.get('pali.infrastructure.pending.v1.1')).toEqual(legacy);
     expect(chromeStorage.setItem).not.toHaveBeenCalled();
@@ -153,11 +196,11 @@ describe('durable infrastructure deployment journal', () => {
         ...reservation,
         rpcUrl,
       });
-      await expect(readInfrastructureJournal(network)).rejects.toThrow(
-        'Deployment journal is unreadable'
-      );
       await expect(
-        clearInfrastructureJournal(network, reservation)
+        readInfrastructureJournal(network, assertCurrent)
+      ).rejects.toThrow('Deployment journal is unreadable');
+      await expect(
+        clearInfrastructureJournal(network, reservation, null)
       ).rejects.toThrow('Deployment journal is unreadable');
       expect(chromeStorage.setItem).not.toHaveBeenCalled();
     }
@@ -165,12 +208,16 @@ describe('durable infrastructure deployment journal', () => {
 
   it('does not let a stale completion erase a newer attempt', async () => {
     await writeInfrastructureJournal(network, reservation);
-    await clearInfrastructureJournal(network, reservation);
+    await clearInfrastructureJournal(network, reservation, null);
     await writeInfrastructureJournal(network, newer);
-    await clearInfrastructureJournal(network, reservation);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(newer);
-    await clearInfrastructureJournal(network, newer);
-    await expect(readInfrastructureJournal(network)).resolves.toBeUndefined();
+    await clearInfrastructureJournal(network, reservation, null);
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(newer);
+    await clearInfrastructureJournal(network, newer, null);
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toBeUndefined();
   });
 
   it('keeps different chains independent while one storage write is delayed', async () => {
@@ -192,12 +239,14 @@ describe('durable infrastructure deployment journal', () => {
     const chainOne = writeInfrastructureJournal(network, reservation);
     await firstWriteStarted;
     await writeInfrastructureJournal(otherChain, newer);
-    await expect(readInfrastructureJournal(otherChain)).resolves.toEqual(newer);
+    await expect(
+      readInfrastructureJournal(otherChain, assertCurrent)
+    ).resolves.toEqual(newer);
     release();
     await chainOne;
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
   });
 
   it.each(['read', 'write', 'clear'])(
@@ -210,15 +259,15 @@ describe('durable infrastructure deployment journal', () => {
         .mockRejectedValueOnce(new Error('Storage read failed'));
       const result =
         operation === 'read'
-          ? readInfrastructureJournal(network)
+          ? readInfrastructureJournal(network, assertCurrent)
           : operation === 'write'
           ? writeInfrastructureJournal(network, newer)
-          : clearInfrastructureJournal(network, reservation);
+          : clearInfrastructureJournal(network, reservation, null);
       await expect(result).rejects.toThrow('Storage read failed');
       expect(chromeStorage.setItem).toHaveBeenCalledTimes(writesBefore);
-      await expect(readInfrastructureJournal(network)).resolves.toEqual(
-        reservation
-      );
+      await expect(
+        readInfrastructureJournal(network, assertCurrent)
+      ).resolves.toEqual(reservation);
     }
   );
 
@@ -229,11 +278,13 @@ describe('durable infrastructure deployment journal', () => {
     await expect(
       writeInfrastructureJournal(network, reservation)
     ).rejects.toThrow('Storage write failed');
-    await expect(readInfrastructureJournal(network)).resolves.toBeUndefined();
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toBeUndefined();
     await writeInfrastructureJournal(network, reservation);
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
   });
 
   it('retains pending state when clearing storage fails', async () => {
@@ -242,11 +293,11 @@ describe('durable infrastructure deployment journal', () => {
       .mocked(chromeStorage.setItem)
       .mockRejectedValueOnce(new Error('Storage clear failed'));
     await expect(
-      clearInfrastructureJournal(network, reservation)
+      clearInfrastructureJournal(network, reservation, null)
     ).rejects.toThrow('Storage clear failed');
-    await expect(readInfrastructureJournal(network)).resolves.toEqual(
-      reservation
-    );
+    await expect(
+      readInfrastructureJournal(network, assertCurrent)
+    ).resolves.toEqual(reservation);
     await expect(writeInfrastructureJournal(network, newer)).rejects.toThrow(
       'Another infrastructure deployment is pending'
     );

@@ -15,6 +15,7 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts';
+import type { TransactionRequest } from 'ethers/providers';
 
 type PaliSmartAccountFactoryLike = {
   'getAddress(bytes32,bytes)': (
@@ -27,6 +28,23 @@ type PaliSmartAccountFactoryLike = {
   ) => Promise<string>;
   interface: Pick<Interface, 'encodeFunctionData'>;
 };
+
+/** Bind both view calls to the owner's captured provider and request lifetime. */
+export function createOwnedPaliSmartAccountFactory(
+  chainId: number,
+  provider: { call(transaction: TransactionRequest): Promise<string> },
+  assertCurrent: () => void
+): PaliSmartAccountFactoryLike {
+  return getPaliSmartAccountFactory(chainId, {
+    provider: null,
+    async call(transaction: TransactionRequest) {
+      assertCurrent();
+      const value = await provider.call(transaction);
+      assertCurrent();
+      return value;
+    },
+  });
+}
 
 export type PaliSmartAccountCall = {
   data?: string;

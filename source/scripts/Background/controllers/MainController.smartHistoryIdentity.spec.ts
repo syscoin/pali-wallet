@@ -18,6 +18,7 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 }));
 
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
+import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
@@ -43,6 +44,7 @@ const ANCHOR = `0x${'33'.repeat(20)}`;
 const CHAIN_ID = 10;
 const SMART = KeyringAccountType.SmartAccount;
 const originalChrome = global.chrome;
+const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto')!;
 let wallet: any;
 let manager: KeyringManager;
 let records: Record<string, any>;
@@ -68,6 +70,10 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 beforeEach(async () => {
   jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+  Object.defineProperty(globalThis, 'crypto', {
+    ...originalCrypto,
+    value: webcrypto,
+  });
   const deny = () => {
     throw new Error('History identity probe must remain offline');
   };
@@ -135,6 +141,10 @@ beforeEach(async () => {
   store.dispatch(setActiveSlip44(60));
   manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault as any);
+  await manager.initializeSession(
+    'test test test test test test test test test test test junk',
+    'synthetic-smart-history-password'
+  );
   provider = {
     getBlockNumber: jest.fn(async () => 100),
     getLogs: jest.fn(async (filter: any) => {
@@ -178,6 +188,7 @@ afterEach(async () => {
   vaultCache.clearCache();
   jest.restoreAllMocks();
   global.chrome = originalChrome;
+  Object.defineProperty(globalThis, 'crypto', originalCrypto);
 });
 
 it('advances and durably saves an unchanged smart account scan cursor', async () => {
