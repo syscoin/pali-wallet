@@ -33,8 +33,18 @@ export const PRIVACY_POOL_ABI = new Interface([
   'function isSpent(bytes32 nullifierHash) view returns (bool)',
 ]);
 
+export type PrivacyJsonResponse = Readonly<{
+  body: {
+    getReader(): {
+      cancel(): Promise<void>;
+      read(): Promise<ReadableStreamReadResult<Uint8Array>>;
+    };
+  } | null;
+  headers: Pick<Headers, 'get'>;
+}>;
+
 export async function readPrivacyJson(
-  response: Response,
+  response: PrivacyJsonResponse,
   limit: number
 ): Promise<unknown> {
   const declared = response.headers.get('content-length');
@@ -91,7 +101,7 @@ export async function readPrivacyPoolSnapshot(
   return data;
 }
 
-function privacyRpcResponseLimit(block: boolean): number {
+export function privacyRpcResponseLimit(block: boolean): number {
   return block ? MAX_BLOCK_RPC_BYTES : MAX_SCALAR_RPC_BYTES;
 }
 
@@ -109,7 +119,7 @@ function privacyRpcResult(data: unknown, id: number) {
 }
 
 export async function readPrivacyRpcResponse(
-  response: Response,
+  response: PrivacyJsonResponse & Pick<Response, 'ok'>,
   id: number,
   block: boolean
 ) {

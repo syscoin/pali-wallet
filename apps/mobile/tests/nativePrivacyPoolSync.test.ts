@@ -5,19 +5,17 @@ import {
   advanceMerkleWork,
   createMerkleWork,
 } from '../../../source/utils/privacy/merkle.ts';
-import {
-  PRIVACY_POOL_ABI,
-  PRIVACY_SERVICE_URL,
-} from '../../../source/utils/privacy/publicSyncProtocol.ts';
+import { PRIVACY_POOL_ABI } from '../../../source/utils/privacy/publicSyncProtocol.ts';
 import { getPrivacyPool } from '../../../source/utils/privacy/registry.ts';
 import type { PrivacySnapshot } from '../../../source/utils/privacy/types.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
-import { createNativePrivacyPoolSync } from '../src/privacy/nativePrivacyPoolSync.ts';
-import type { WalletHttpFetch } from '../src/platform/httpPolicy.ts';
+import {
+  createNativePrivacyPoolSync,
+  type OwnedPrivacyPullTransport,
+} from '../src/privacy/nativePrivacyPoolSync.ts';
 
 const poolId = 'eth-0.1';
 const pool = getPrivacyPool(poolId);
-const indexUrl = `${PRIVACY_SERVICE_URL}/pools/${poolId}/snapshot`;
 const rpcUrl = 'https://registered-ethereum.example/rpc';
 const network = createNativeNetwork({
   id: 'saved-ethereum',
@@ -54,91 +52,112 @@ function snapshot(count = 24): PrivacySnapshot {
     withdrawnNullifiers: [note.nullifierHash],
   };
 }
-function response(
-  url: string,
-  body: BodyInit | null,
-  status = 200,
-  headers?: HeadersInit
-): Response {
-  const value = new Response(body, { status, headers });
-  Object.defineProperty(value, 'url', { value: url });
-  return value;
+type Handle = ReturnType<OwnedPrivacyPullTransport['prepareSnapshot']>;
+function json(value: unknown, status = 200): Handle {
+  const body = new TextEncoder().encode(JSON.stringify(value));
+  let offset = 0;
+  return {
+    async start(check) {
+      check();
+      return { status, byteCount: body.length };
+    },
+    async pull(check) {
+      check();
+      if (offset === body.length) return null;
+      const end = Math.min(body.length, offset + 64 * 1024);
+      const chunk = body.slice(offset, end);
+      offset = end;
+      return chunk;
+    },
+    async release() {},
+  };
 }
-function json(url: string, value: unknown, status = 200) {
-  return response(url, JSON.stringify(value), status);
+function snapshots(
+  prepareSnapshot: OwnedPrivacyPullTransport['prepareSnapshot']
+): OwnedPrivacyPullTransport {
+  return {
+    prepareSnapshot,
+    prepareAnchor() {
+      throw new Error('Unexpected anchor read');
+    },
+  };
 }
 function fixture(
   data = snapshot(),
   options: {
     alterBlock?: (count: number) => object;
-    index?: (count: number) => Response;
+    index?: (count: number) => Handle;
+    release?: (kind: string, count: number) => Promise<void>;
   } = {}
 ) {
   let indexes = 0,
-    blocks = 0;
-  const requests: { url: string; method: string; args: unknown[] }[] = [];
-  const transport: WalletHttpFetch = async (url, init) => {
-    assert.equal(init.credentials, 'omit');
-    assert.equal(init.redirect, 'error');
-    const headers = new Headers(init.headers);
-    assert.equal(headers.get('Cache-Control'), 'no-store, no-cache');
-    assert.equal(headers.get('Cookie'), null);
-    assert.equal(headers.get('Referer'), null);
-    assert.equal(init.signal?.aborted, false);
-    if (url === indexUrl) {
-      assert.equal(init.body, undefined);
-      requests.push({ url, method: 'GET', args: [] });
-      return options.index?.(++indexes) ?? json(url, data);
-    }
-    assert.equal(url, rpcUrl);
-    assert.equal(init.method, 'POST');
-    const rpc = JSON.parse(String(init.body));
-    assert.deepEqual(Object.keys(rpc).sort(), [
-      'id',
-      'jsonrpc',
-      'method',
-      'params',
-    ]);
-    assert.equal(rpc.jsonrpc, '2.0');
-    const { id, method, params } = rpc;
-    requests.push({ url, method, args: params });
-    const result = (() => {
-      if (method === 'eth_chainId') {
-        assert.deepEqual(params, []);
-        return '0x1';
-      }
-      if (method === 'eth_getBlockByNumber') {
-        assert.deepEqual(params, [block.number, false]);
-        return options.alterBlock?.(++blocks) ?? block;
-      }
-      assert.equal(method, 'eth_call');
-      assert.equal(params.length, 2);
-      assert.deepEqual(Object.keys(params[0]).sort(), ['data', 'to']);
-      assert.equal(params[0].to, pool.address);
-      const call = PRIVACY_POOL_ABI.parseTransaction({ data: params[0].data })!;
-      if (call.name === 'isKnownRoot') {
-        assert.equal(params[1], 'latest');
-        assert.deepEqual(Array.from(call.args), [data.root]);
-        return PRIVACY_POOL_ABI.encodeFunctionResult(call.name, [true]);
-      }
-      assert.equal(params[1], block.number);
-      assert.deepEqual(Array.from(call.args), []);
-      const values: Record<string, string | number | bigint> = {
+    blocks = 0,
+    occupied = false;
+  const requests: string[] = [],
+    released: string[] = [];
+  const ids = new Set<number>();
+  const wrap = (kind: string, handle: Handle, signal: AbortSignal): Handle => {
+    assert.equal(occupied, false, 'one native slot');
+    assert.equal(signal.aborted, false);
+    occupied = true;
+    let started = false;
+    return {
+      async start(check) {
+        check();
+        assert.equal(started, false);
+        started = true;
+        requests.push(kind);
+        return handle.start(check);
+      },
+      async pull(check) {
+        check();
+        return handle.pull(check);
+      },
+      async release() {
+        assert.equal(occupied, true);
+        await options.release?.(kind, requests.length);
+        await handle.release();
+        released.push(kind);
+        occupied = false;
+      },
+    };
+  };
+  const transport: OwnedPrivacyPullTransport = {
+    prepareSnapshot(selected, signal) {
+      assert.equal(selected, poolId);
+      return wrap('snapshot', options.index?.(++indexes) ?? json(data), signal);
+    },
+    prepareAnchor(binding, read, id, signal) {
+      assert.deepEqual(binding, {
+        rpcUrl,
+        poolAddress: pool.address,
+        blockNumber: data.asOfBlockNumber,
+        root: data.root,
+      });
+      assert.equal(ids.has(id), false);
+      ids.add(id);
+      const values = {
         nextIndex: data.leafCount,
         getLastRoot: data.root,
         levels: 20,
         denomination: parseEther(pool.amount),
+        isKnownRoot: true,
       };
-      assert.ok(Object.hasOwn(values, call.name));
-      return PRIVACY_POOL_ABI.encodeFunctionResult(call.name, [
-        values[call.name],
-      ]);
-    })();
-    return json(url, { jsonrpc: '2.0', id, result });
+      const result =
+        read === 'chainId'
+          ? '0x1'
+          : read === 'block'
+          ? options.alterBlock?.(++blocks) ?? block
+          : PRIVACY_POOL_ABI.encodeFunctionResult(read, [values[read]]);
+      return wrap(read, json({ jsonrpc: '2.0', id, result }), signal);
+    },
   };
-  return { requests, transport };
+  return { requests, released, transport };
 }
-function create(transport: WalletHttpFetch, owner = new AbortController()) {
+function create(
+  transport: OwnedPrivacyPullTransport,
+  owner = new AbortController()
+) {
   return {
     owner,
     sync: createNativePrivacyPoolSync({
@@ -164,12 +183,9 @@ test('explicit native sync verifies the same root and two anchors and reads note
   assert.equal(sync.refresh(), refresh);
   assert.equal((await refresh).phase, 'ready');
   assert.equal(provider.requests.length, 17);
+  assert.equal(provider.requests.filter((kind) => kind === 'block').length, 4);
   assert.equal(
-    provider.requests.filter((r) => r.method === 'eth_getBlockByNumber').length,
-    4
-  );
-  assert.equal(
-    provider.requests.filter((r) => r.method === 'eth_chainId').length,
+    provider.requests.filter((kind) => kind === 'chainId').length,
     2
   );
   assert.deepEqual(await sync.readNote(note), {
@@ -194,6 +210,7 @@ test('explicit native sync verifies the same root and two anchors and reads note
   assert.equal(path.pathElements.length, 20);
   assert.equal(path.pathElements[0], data.leaves[1]);
   assert.equal(provider.requests.length, 17);
+  assert.deepEqual(provider.released, provider.requests);
   owner.abort();
   assert.throws(() => lease.assertSnapshotCurrent(lease.snapshot), {
     message: 'privacy_verification_pending',
@@ -211,7 +228,6 @@ test('index progress never auto-polls and only an explicit second refresh reads 
     index: (count) =>
       count === 1
         ? json(
-            indexUrl,
             {
               phase: 'syncing',
               startBlock: pool.deploymentBlock,
@@ -220,7 +236,7 @@ test('index progress never auto-polls and only an explicit second refresh reads 
             },
             202
           )
-        : json(indexUrl, data),
+        : json(data),
   });
   const { sync } = create(provider.transport);
   assert.deepEqual(await sync.refresh(), {
@@ -260,7 +276,7 @@ test('second anchor disagreement and locally wrong roots never become ready', as
   await forgedRoot.dispose();
 });
 
-test('refuses wrong registrations, wrong pool payloads, and response URL substitutions', async () => {
+test('refuses wrong registrations and wrong pool payloads before any anchor reservation', async () => {
   const provider = fixture();
   assert.throws(
     () =>
@@ -289,45 +305,73 @@ test('refuses wrong registrations, wrong pool payloads, and response URL substit
   ).sync;
   assert.equal((await wrong.refresh()).errorCode, 'privacy_data_invalid');
   await wrong.dispose();
-  const redirected = create(async () =>
-    json('https://other.example/', snapshot())
-  ).sync;
-  assert.equal(
-    (await redirected.refresh()).errorCode,
-    'privacy_service_unavailable'
-  );
-  await redirected.dispose();
 });
 
-test('requires a stream and stops on length, chunk and aggregate budgets', async () => {
-  let fallbackCalled = false;
-  const noStream = response(indexUrl, null);
-  noStream.text = async () => {
-    fallbackCalled = true;
-    return '{}';
-  };
-  const missing = create(async () => noStream).sync;
-  assert.equal((await missing.refresh()).phase, 'error');
-  assert.equal(fallbackCalled, false);
-  await missing.dispose();
-  let cancelledStream = false;
-  const oversized = new ReadableStream<Uint8Array>({
-    pull(controller) {
-      controller.enqueue(new Uint8Array(2 * 1024 * 1024 + 1));
-    },
-    cancel() {
-      cancelledStream = true;
+test('the snapshot handle fully releases before the first sequential anchor can reserve', async () => {
+  const reached = Promise.withResolvers<void>(),
+    drain = Promise.withResolvers<void>();
+  const provider = fixture(snapshot(), {
+    async release(kind) {
+      if (kind === 'snapshot') {
+        reached.resolve();
+        await drain.promise;
+      }
     },
   });
-  const chunk = create(async () => response(indexUrl, oversized)).sync;
-  assert.equal((await chunk.refresh()).errorCode, 'privacy_data_too_large');
-  assert.equal(cancelledStream, true);
-  await chunk.dispose();
-  const declared = create(async () =>
-    response(indexUrl, '{}', 200, { 'content-length': '2097153' })
-  ).sync;
-  assert.equal((await declared.refresh()).errorCode, 'privacy_data_too_large');
-  await declared.dispose();
+  const { sync } = create(provider.transport);
+  const pending = sync.refresh();
+  await reached.promise;
+  assert.deepEqual(provider.requests, ['snapshot']);
+  drain.resolve();
+  assert.equal((await pending).phase, 'ready');
+  const anchorOrder = [
+    'chainId',
+    'block',
+    'nextIndex',
+    'getLastRoot',
+    'levels',
+    'denomination',
+    'block',
+    'isKnownRoot',
+  ];
+  assert.deepEqual(provider.requests, [
+    'snapshot',
+    ...anchorOrder,
+    ...anchorOrder,
+  ]);
+  assert.deepEqual(provider.released, provider.requests);
+  await sync.dispose();
+});
+
+test('requires exact EOF and enforces retained byte count, 64 KiB pulls and aggregate budgets', async () => {
+  for (const [size, chunk, errorCode] of [
+    [4, new Uint8Array(3), 'privacy_data_invalid'],
+    [4, new Uint8Array(5), 'privacy_data_invalid'],
+    [64 * 1024 + 1, new Uint8Array(64 * 1024 + 1), 'privacy_data_invalid'],
+    [2 * 1024 * 1024 + 1, new Uint8Array(4), 'privacy_data_too_large'],
+  ] as const) {
+    let pulls = 0,
+      releases = 0;
+    const { sync } = create(
+      snapshots(() => ({
+        async start(check) {
+          check();
+          return { status: 200, byteCount: size };
+        },
+        async pull(check) {
+          check();
+          return pulls++ ? null : chunk;
+        },
+        async release() {
+          releases++;
+        },
+      }))
+    );
+    assert.equal((await sync.refresh()).errorCode, errorCode);
+    assert.equal(releases, 1);
+    if (size > 2 * 1024 * 1024) assert.equal(pulls, 0);
+    await sync.dispose();
+  }
   const padded = create(
     fixture(snapshot(), {
       alterBlock: () => ({ ...block, padding: 'a'.repeat(1024 * 1024) }),
@@ -337,41 +381,43 @@ test('requires a stream and stops on length, chunk and aggregate budgets', async
   await padded.dispose();
 });
 
-test('owner replacement aborts held headers and a late response cannot publish into a fresh owner', async () => {
+test('owner replacement releases a held native pull and rejects its late bytes', async () => {
+  const pulled = Promise.withResolvers<void>(),
+    late = Promise.withResolvers<Uint8Array | null>();
+  let releases = 0,
+    pulls = 0;
   let signal!: AbortSignal;
-  let release!: (result: Response) => void;
-  let dispatched!: () => void;
-  const entered = new Promise<void>((resolve) => {
-    dispatched = resolve;
-  });
   const first = create(
-    async (_url, init) =>
-      new Promise<Response>((resolve) => {
-        signal = init.signal!;
-        release = resolve;
-        dispatched();
-      })
+    snapshots((_pool, ownerSignal) => {
+      signal = ownerSignal;
+      return {
+        async start(check) {
+          check();
+          return { status: 200, byteCount: 4 };
+        },
+        async pull(check) {
+          check();
+          pulls++;
+          pulled.resolve();
+          return late.promise;
+        },
+        async release() {
+          releases++;
+        },
+      };
+    })
   );
   const stale = first.sync.refresh();
-  await entered;
+  await pulled.promise;
   first.owner.abort();
-  assert.equal(signal.aborted, true);
   await assert.rejects(stale, { message: 'privacy_cancelled' });
   await first.sync.dispose();
+  assert.equal(signal.aborted, true);
+  assert.equal(releases, 1);
   const second = create(fixture().transport).sync;
-  let discarded = false;
-  release(
-    response(
-      indexUrl,
-      new ReadableStream({
-        cancel() {
-          discarded = true;
-        },
-      })
-    )
-  );
+  late.resolve(new Uint8Array(4));
   assert.equal((await second.refresh()).phase, 'ready');
-  assert.equal(discarded, true);
+  assert.equal(pulls, 1);
   await assert.rejects(first.sync.refresh(), { message: 'privacy_cancelled' });
   await second.dispose();
 });
@@ -402,110 +448,132 @@ test('Merkle processing yields to owner cancellation before a final anchor reque
   }
 });
 
-test('a monotonic elapsed deadline rejects even before its delayed timer callback runs', async (context) => {
-  let now = 0;
+test('a monotonic elapsed deadline rejects native admission before pulls', async (context) => {
+  let now = 0,
+    pulls = 0,
+    releases = 0;
   context.mock.method(performance, 'now', () => now);
-  let read = false;
-  const { sync } = create(async () => {
-    now = 45001;
-    return response(
-      indexUrl,
-      new ReadableStream(
-        {
-          pull() {
-            read = true;
-          },
-        },
-        { highWaterMark: 0 }
-      )
-    );
-  });
+  const { sync } = create(
+    snapshots(() => ({
+      async start(check) {
+        check();
+        now = 45001;
+        return { status: 200, byteCount: 4 };
+      },
+      async pull() {
+        pulls++;
+        return null;
+      },
+      async release() {
+        releases++;
+      },
+    }))
+  );
   await assert.rejects(sync.refresh(), { message: 'privacy_cancelled' });
-  assert.equal(read, false);
+  assert.equal(pulls, 0);
+  assert.equal(releases, 1);
   assert.equal(sync.getStatus().phase, 'idle');
   await sync.dispose();
 });
 
-test('a transport ignoring its request deadline cannot accumulate another dispatch on the same owner', async (context) => {
+test('deadline retires held start without letting a replacement reserve before release ACK', async (context) => {
   context.mock.timers.enable({ apis: ['setTimeout'] });
-  let release!: (result: Response) => void;
-  let entered!: () => void;
-  const admitted = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  let requests = 0;
-  const { sync } = create(async (_url, init) => {
-    requests++;
-    if (requests !== 1)
-      return json(
-        indexUrl,
-        {
-          phase: 'syncing',
-          startBlock: pool.deploymentBlock,
-          scannedBlock: pool.deploymentBlock,
-          targetBlock: pool.deploymentBlock,
+  const admitted = Promise.withResolvers<void>(),
+    started = Promise.withResolvers<{ status: number; byteCount: number }>();
+  const releasing = Promise.withResolvers<void>(),
+    released = Promise.withResolvers<void>();
+  let reservations = 0,
+    pulls = 0,
+    releases = 0;
+  const { sync } = create(
+    snapshots((_pool, signal) => {
+      if (++reservations !== 1)
+        return json(
+          {
+            phase: 'syncing',
+            startBlock: pool.deploymentBlock,
+            scannedBlock: pool.deploymentBlock,
+            targetBlock: pool.deploymentBlock,
+          },
+          202
+        );
+      return {
+        async start(check) {
+          check();
+          admitted.resolve();
+          return started.promise;
         },
-        202
-      );
-    return new Promise<Response>((resolve) => {
-      release = resolve;
-      assert.equal(init.signal?.aborted, false);
-      entered();
-    });
-  });
+        async pull() {
+          pulls++;
+          return null;
+        },
+        async release() {
+          assert.equal(signal.aborted, true);
+          releases++;
+          releasing.resolve();
+          await released.promise;
+        },
+      };
+    })
+  );
   const refresh = sync.refresh();
-  await admitted;
+  await admitted.promise;
   context.mock.timers.tick(25_000);
   assert.equal((await refresh).phase, 'error');
+  await releasing.promise;
   await assert.rejects(sync.refresh(), {
     message: 'privacy_verification_pending',
   });
-  assert.equal(requests, 1);
-  let discarded!: () => void;
-  const cancelled = new Promise<void>((resolve) => {
-    discarded = resolve;
-  });
-  release(response(indexUrl, new ReadableStream({ cancel: discarded })));
-  await cancelled;
-  await new Promise<void>((resolve) => queueMicrotask(resolve));
+  assert.equal(reservations, 1);
+  started.resolve({ status: 200, byteCount: 4 });
+  released.resolve();
+  await new Promise<void>((resolve) => setImmediate(resolve));
   assert.equal((await sync.refresh()).phase, 'syncing');
-  assert.equal(requests, 2);
+  assert.equal(reservations, 2);
+  assert.equal(pulls, 0);
+  assert.equal(releases, 1);
+  await sync.dispose();
+});
+
+test('a failed exact release does not admit another snapshot or any anchor', async () => {
+  let reservations = 0;
+  const { sync } = create(
+    snapshots(() => {
+      reservations++;
+      return {
+        ...json(snapshot()),
+        async release() {
+          throw new Error('Release unconfirmed');
+        },
+      };
+    })
+  );
+  assert.equal((await sync.refresh()).phase, 'error');
+  await assert.rejects(sync.refresh(), {
+    message: 'privacy_verification_pending',
+  });
+  assert.equal(reservations, 1);
   await sync.dispose();
 });
 
 test('an elapsed owner cannot publish the verified cache after the final RPC decoded', async (context) => {
   let clock = 0;
   context.mock.method(performance, 'now', () => clock);
-  const provider = fixture();
-  let knownRootReads = 0;
-  let expiryReached = false;
   let readAtDeadline: unknown;
-  const { sync } = create(async (url, init) => {
-    const result = await provider.transport(url, init);
-    if (
-      url === rpcUrl &&
-      JSON.parse(String(init.body)).params[1] === 'latest' &&
-      ++knownRootReads === 2
-    ) {
-      Object.defineProperty(result, 'status', {
-        get() {
-          clock = 45_001;
-          expiryReached = true;
-          queueMicrotask(() => {
-            try {
-              readAtDeadline = sync.getStatus();
-            } catch (error) {
-              readAtDeadline = error instanceof Error ? error.message : error;
-            }
-          });
-          return 200;
-        },
-      });
-    }
-    return result;
+  const provider = fixture(snapshot(), {
+    async release(kind, count) {
+      if (kind === 'isKnownRoot' && count === 17) {
+        clock = 45_001;
+        try {
+          sync.getStatus();
+        } catch (error) {
+          readAtDeadline = error instanceof Error ? error.message : error;
+        }
+      }
+    },
   });
+  const { sync } = create(provider.transport);
   await assert.rejects(sync.refresh(), { message: 'privacy_cancelled' });
-  assert.equal(expiryReached, true);
   assert.equal(readAtDeadline, 'privacy_cancelled');
   assert.equal(provider.requests.length, 17);
   assert.equal(sync.getStatus().phase, 'idle');

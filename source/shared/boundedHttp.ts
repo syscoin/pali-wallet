@@ -66,23 +66,6 @@ export function boundedResponseText(
   );
 }
 
-/** Require incremental UTF-8 reads within the ordinary RPC response ceiling. */
-export function boundedStreamingResponseText(
-  response: Response,
-  signal: AbortSignal,
-  maxBytes: number,
-  consumeBytes?: (bytes: number) => void
-): Promise<string> {
-  return readResponseText(
-    response,
-    signal,
-    maxBytes,
-    ABSOLUTE_MAX_RESPONSE_BYTES,
-    consumeBytes,
-    'Response requires a readable UTF-8 stream'
-  );
-}
-
 /** Bound decoded public metadata admission without changing the RPC fallback. */
 export function boundedCatalogueResponseText(
   response: Response,
@@ -94,7 +77,7 @@ export function boundedCatalogueResponseText(
     CATALOGUE_RESPONSE_BYTES,
     CATALOGUE_RESPONSE_BYTES,
     undefined,
-    'Catalogue response requires a readable UTF-8 stream'
+    true
   );
 }
 
@@ -104,7 +87,7 @@ async function readResponseText(
   maxBytes: number,
   limit: number,
   consumeBytes?: (bytes: number) => void,
-  requiredStreamError?: string
+  requireStream = false
 ): Promise<string> {
   checkAborted(signal);
   if (consumeBytes !== undefined && typeof consumeBytes !== 'function')
@@ -163,9 +146,9 @@ async function readResponseText(
       }
     }
   }
-  if (requiredStreamError) {
+  if (requireStream) {
     cancelResponseBody(response);
-    throw new Error(requiredStreamError);
+    throw new Error('Catalogue response requires a readable UTF-8 stream');
   }
   const text = await abortable(response.text(), signal);
   if (text.length > maxBytes || utf8ByteLength(text) > maxBytes) {

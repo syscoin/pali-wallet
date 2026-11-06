@@ -1,5 +1,6 @@
 import {
   type PrivacyAnchorRead,
+  type PrivacyJsonResponse,
   readPrivacyRpcResponse,
   verifyPrivacySnapshotAnchor,
 } from './publicSyncProtocol.ts';
@@ -7,7 +8,7 @@ import { getPrivacyPool, PRIVACY_CHAIN_ID } from './registry.ts';
 import { validatePrivacyRpcUrl } from './snapshotValidation.ts';
 import type { PrivacyPoolId, PrivacySnapshot } from './types.ts';
 
-type AnchorBinding = Readonly<{
+export type AnchorBinding = Readonly<{
   blockNumber: number;
   poolAddress: string;
   root: string;
@@ -19,7 +20,9 @@ type AnchorOperation = Readonly<{
   release(): Promise<void>;
   // The trusted port rechecks at native start and around pulls, including
   // after any bridge turn. The response belongs to this exact handle.
-  start(assertCurrent: () => void): Promise<Response>;
+  start(
+    assertCurrent: () => void
+  ): Promise<PrivacyJsonResponse & Pick<Response, 'ok' | 'redirected' | 'url'>>;
 }>;
 
 type AnchorOwner = Readonly<{
