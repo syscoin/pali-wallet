@@ -165,23 +165,24 @@ test('offline SPT history preserves large quantities, one-atom direction and una
         await wallet!.ensureOnHome();
         await page.locator('#activity-btn').click();
         await expect(
-          row(compact.txid).locator('[title="' + large + ' BIG"]')
+          row(compact.txid).locator('[title="' + large + ' SPT"]')
         ).toBeVisible();
         await expect(
-          row(compact.txid).locator('[title="' + large + ' BIG"]')
-        ).toContainText('+' + large + ' BIG');
-        await expect(row(near.txid).locator('[title="1 BIG"]')).toContainText(
-          '+1 BIG'
+          row(compact.txid).locator('[title="' + large + ' SPT"]')
+        ).toContainText('+' + large + ' SPT');
+        await expect(row(near.txid).locator('[title="1 SPT"]')).toContainText(
+          '+1 SPT'
         );
         await expect(
           row(bridge.txid).getByText('Bridge to NEVM', { exact: true })
         ).toBeVisible();
         for (const id of [bridge.txid, invalid.txid]) {
-          await expect(row(id).getByText(/\b(?:BIG|TSYS)\b/)).toHaveCount(0);
+          await expect(row(id).getByText(/\d\s+(?:SPT|TSYS)\b/)).toHaveCount(0);
         }
         await expect(
-          page.getByText('9007199254740992 BIG', { exact: true })
+          page.getByText('9007199254740992 SPT', { exact: true })
         ).toHaveCount(0);
+        await expect(page.getByText(/\bBIG\b/)).toHaveCount(0);
         expect(fullReads()).toEqual([]);
         expect(routes.deniedWrites).toEqual([]);
         await screenshot('spt-exact-activity-400.png');
@@ -192,7 +193,7 @@ test('offline SPT history preserves large quantities, one-atom direction and una
       async () => {
         await openDetails(bridge.txid);
         await expect(
-          page.getByText(`${large} BIG`, { exact: true })
+          page.getByText(`${large} SPT`, { exact: true })
         ).toBeVisible();
         await expect(
           page.getByText('Native account balance change: -0.1 TSYS', {
@@ -200,12 +201,13 @@ test('offline SPT history preserves large quantities, one-atom direction and una
           })
         ).toBeVisible();
         await expect(
-          page.getByText('9007199254740992 BIG', { exact: true })
+          page.getByText('9007199254740992 SPT', { exact: true })
         ).toHaveCount(0);
+        await expect(page.getByText(/\bBIG\b/)).toHaveCount(0);
         await screenshot('spt-exact-bridge-details-400.png');
         await page.setViewportSize({ width: 320, height: 620 });
         await expect(
-          page.getByText(`${large} BIG`, { exact: true })
+          page.getByText(`${large} SPT`, { exact: true })
         ).toBeVisible();
         expect(
           await page.evaluate(
@@ -215,13 +217,13 @@ test('offline SPT history preserves large quantities, one-atom direction and una
         await screenshot('spt-exact-bridge-details-320.png');
         await back();
         await expect(
-          row(bridge.txid).getByText(`${large} BIG`, { exact: true })
+          row(bridge.txid).getByText(`${large} SPT`, { exact: true })
         ).toBeVisible();
-        await expect(row(near.txid).locator('[title="1 BIG"]')).toContainText(
-          '+1 BIG'
+        await expect(row(near.txid).locator('[title="1 SPT"]')).toContainText(
+          '+1 SPT'
         );
         await expect(
-          row(invalid.txid).getByText(/\b(?:BIG|TSYS)\b/)
+          row(invalid.txid).getByText(/\d\s+(?:SPT|TSYS)\b/)
         ).toHaveCount(0);
         await screenshot('spt-exact-activity-320.png');
         expect(fullReads()).toEqual(['/api/v2/tx/' + bridge.txid]);
@@ -233,7 +235,7 @@ test('offline SPT history preserves large quantities, one-atom direction and una
       async () => {
         await openDetails(compact.txid);
         await expect(
-          page.getByText(`${large} BIG`, { exact: true })
+          page.getByText(`${large} SPT`, { exact: true })
         ).toBeVisible();
         await expect(
           page.getByText('Native account balance change: -0.1 TSYS', {
