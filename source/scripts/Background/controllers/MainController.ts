@@ -5015,13 +5015,27 @@ class MainController {
     label?: string;
     metadata?: ISmartAccountMetadata;
   }): Promise<IKeyringAccountState> {
-    const { keyring, assertCurrent } = this.accountMutationContext();
+    const { keyring, assertCurrent: assertWallet } =
+      this.accountMutationContext();
+    const networkRequest = this.networkRequestGeneration;
+    const assertWalletCurrent = () => {
+      assertWallet();
+      if (
+        !keyring.isUnlocked() ||
+        this.isNetworkSwitching ||
+        this.isAccountSwitching ||
+        this.networkRequestGeneration !== networkRequest
+      )
+        throw new Error(WALLET_SESSION_CHANGED_ERROR);
+    };
+    const bootstrap = params.address
+      ? null
+      : this.smartAccount.captureSmartAccountBootstrap(assertWalletCurrent);
+    const assertCurrent = bootstrap?.assertCurrent ?? assertWalletCurrent;
+    assertCurrent();
     const account = await keyring.createSmartAccount({
       address: params.address,
-      deriveAccount: params.address
-        ? undefined
-        : (accountIndex: number) =>
-            this.smartAccount.deriveSmartAccountRecord(accountIndex),
+      deriveAccount: bootstrap?.deriveAccount,
       label: params.label,
       metadata: params.metadata,
     });

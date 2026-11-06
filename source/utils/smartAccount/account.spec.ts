@@ -27,7 +27,10 @@ import {
   encodeSmartAccountGasLimits,
   SMART_ACCOUNT_ZERO_GAS_FEES,
 } from './account';
-import { toPaliSmartAccount } from './adapter';
+import {
+  createOwnedPaliSmartAccountFactory,
+  toPaliSmartAccount,
+} from './adapter';
 import { buildHydratedSLHDSAAuthenticator } from './authenticators';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
@@ -444,6 +447,21 @@ describe('ERC-7579 smart account helpers', () => {
     expect(userOperation.initCode).toBe(deploymentInitCode);
     expect(userOperation.initCode.slice(0, 42)).toBe(factory);
     expect(`0x${userOperation.initCode.slice(42)}`).toBe(createAccountCalldata);
+  });
+
+  it('checks the factory owner at provider admission after ethers populates the call', async () => {
+    let current = true;
+    const provider = { call: jest.fn() };
+    const factory = createOwnedPaliSmartAccountFactory(1, provider, () => {
+      if (!current) throw new Error('Factory context retired');
+    });
+    const reading = factory['getInitData(address,bytes)'](
+      auth.validator,
+      auth.data
+    );
+    current = false;
+    await expect(reading).rejects.toThrow('Factory context retired');
+    expect(provider.call).not.toHaveBeenCalled();
   });
 
   it('builds a generic Pali smart account adapter over ERC-7579 factory and execute calls', async () => {

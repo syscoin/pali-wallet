@@ -109,6 +109,7 @@ describe('account mutation wallet setup reservation', () => {
       importWatchOnly: jest.fn(async () => account),
       importTrezorAccount: jest.fn(async () => account),
       importLedgerAccount: jest.fn(async () => account),
+      isUnlocked: jest.fn(() => true),
     };
     attachImportedRecoveryCryptoFixture(keyring);
     wallet = Object.create(MainController.prototype);
@@ -119,7 +120,12 @@ describe('account mutation wallet setup reservation', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.saveWalletState = jest.fn(async () => undefined);
     wallet.getLatestUpdateForCurrentAccount = jest.fn(async () => undefined);
-    wallet.smartAccount = { deriveSmartAccountRecord: jest.fn() };
+    wallet.smartAccount = {
+      captureSmartAccountBootstrap: (assertCurrent: () => void) => ({
+        assertCurrent,
+        deriveAccount: jest.fn(),
+      }),
+    };
   });
 
   afterEach(() => jest.useRealTimers());

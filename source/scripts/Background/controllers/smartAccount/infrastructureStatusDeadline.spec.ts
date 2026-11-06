@@ -14,6 +14,12 @@ jest.mock('utils/smartAccount/deployment', () => ({
     },
   ],
 }));
+jest.mock('utils/smartAccount/deploymentMetadata', () => ({
+  ...jest.requireActual('utils/smartAccount/deploymentMetadata'),
+  PALI_INFRASTRUCTURE_METADATA: jest
+    .requireMock('utils/smartAccount/deployment')
+    .getPaliInfrastructureContracts(),
+}));
 jest.mock('./infrastructureJournal', () => ({
   ...jest.requireActual('./infrastructureJournal'),
   readInfrastructureJournal: jest.fn(),
@@ -85,8 +91,9 @@ describe('infrastructure status aggregate deadline', () => {
         status: 0,
       })),
     };
+    const transaction = { web3Provider: provider };
     controller = new SmartAccountController({
-      getEthereumTransaction: () => ({ web3Provider: provider }),
+      getEthereumTransaction: () => transaction,
     } as any);
   });
   afterEach(() => {
@@ -112,6 +119,19 @@ describe('infrastructure status aggregate deadline', () => {
     });
     expect(Date.now() - started).toBe(5800);
     expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not reuse the previous selected account status at the same endpoint', async () => {
+    await controller.getSmartAccountInfrastructureStatus();
+    await controller.getSmartAccountInfrastructureStatus();
+    expect(provider.sendBatch).toHaveBeenCalledTimes(1);
+    state.vault.accounts.HDAccount[1] = {
+      id: 1,
+      address: '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    };
+    state.vault.activeAccount = { id: 1, type: KeyringAccountType.HDAccount };
+    await controller.getSmartAccountInfrastructureStatus();
+    expect(provider.sendBatch).toHaveBeenCalledTimes(2);
   });
 
   it('shares one eighteen-second budget across storage, fallback, receipt and journal clearing', async () => {
@@ -203,7 +223,8 @@ describe('infrastructure status aggregate deadline', () => {
     expect(clearInfrastructureJournal).toHaveBeenCalledTimes(1);
     expect(clearInfrastructureJournal).toHaveBeenCalledWith(
       expect.objectContaining({ chainId: 1, url: 'https://rpc.example' }),
-      journal
+      journal,
+      expect.any(Function)
     );
   });
 });
