@@ -166,6 +166,7 @@ jobs:
           path: |
             e2e/visual/__screenshots__/
             e2e/artifacts/
+            !e2e/artifacts/**/profiles/**
             http-identity-wire.json
           retention-days: 14
   visual-result:
@@ -332,7 +333,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: conformance-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: e2e/artifacts/
+          path: |
+            e2e/artifacts/
+            !e2e/artifacts/**/profiles/**
           retention-days: 14
   secrets:
     name: Create env file with gh secrets
