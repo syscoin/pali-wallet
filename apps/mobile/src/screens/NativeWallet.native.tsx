@@ -109,7 +109,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
   const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
-  const [savedTransferHash, setSavedTransferHash] = useState<string | undefined>();
+  const [savedTransfer, setSavedTransfer] = useState<Readonly<{ hash: string; action: 'replay' | 'cancel' }>>();
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -579,7 +579,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransferHash} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransferHash(undefined); closeStage(); }} />;
+  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransfer?.action === 'replay' ? savedTransfer.hash : undefined} cancellationHash={savedTransfer?.action === 'cancel' ? savedTransfer.hash : undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransfer(undefined); closeStage(); }} />;
   else if (snapshot.phase === 'ready' && stage === 'send' && utxo && canSendUtxo && openUtxoSend) return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
@@ -588,15 +588,18 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={canSign || canSendUtxo ? () => { setSendToken(null); setSavedTransferHash(undefined); openStage('send'); } : undefined}
-    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransferHash(undefined); openStage('send'); } : undefined}
+    onSend={canSign || canSendUtxo ? () => { setSendToken(null); setSavedTransfer(undefined); openStage('send'); } : undefined}
+    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransfer(undefined); openStage('send'); } : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
     onActivity={utxo ? undefined : () => shell.select('activity')}
     navigation={shell.navigation}
   />;
     else if (shell.tab === 'activity') content = activityView && !utxo
-      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel} onReplay={(hash) => { setSendToken(null); setSavedTransferHash(hash); openStage('send'); }} onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
+          onReplay={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'replay' }); openStage('send'); } : undefined}
+          onCancelPending={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'cancel' }); openStage('send'); } : undefined}
+          onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
       networkLabel={utxo?.name ?? EVM_NETWORK_DEFINITIONS.find((network) => network.id === snapshot.account?.network)?.name ?? 'Network unavailable'} watchOnly={false}

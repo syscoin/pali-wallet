@@ -13,6 +13,21 @@ async function prepare(page: Page) {
   await expect(passwordInput(page)).toHaveCount(0);
 }
 
+test('cancellation shows the original and maximum fee before one explicit approval at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/?cancel-transfer');
+  await expect(page.getByText('Review cancellation', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-send-recipient')).toHaveText('0x' + '2'.repeat(40));
+  await expect(page.getByTestId('native-send-fee')).toHaveText('0.000000000000126 ETH');
+  await expect(page.getByText('0x' + '3'.repeat(64))).toBeVisible();
+  await expect(page.getByText(/original can still confirm first/)).toBeVisible();
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+  await page.getByRole('button', { name: 'Submit cancellation' }).click();
+  await expect(page.getByText('Cancellation submitted', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
+});
+
 test('expired review cannot confirm and a replacement requires explicit consent', async ({
   page,
 }) => {

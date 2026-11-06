@@ -30,6 +30,8 @@ import type {
 } from '../../src/custody/transfers';
 
 const recipient = '0x1111111111111111111111111111111111111111';
+const sender = '0x2222222222222222222222222222222222222222';
+const cancellationHash = new URLSearchParams(window.location.search).has('cancel-transfer') ? '0x' + '3'.repeat(64) : undefined;
 let sendContext = getNativeSendContext(
   new URLSearchParams(window.location.search).has('zksys-send')
     ? 'zksys-testnet'
@@ -69,31 +71,11 @@ const controller: NativeTransferView = {
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
+  async prepareCancellation(hash) {
+    publishReview(sender, '0', hash);
+  },
   async prepare(to, amount) {
-    clearTimeout(expiry);
-    const amountUnits = parseDecimalAmount(amount, 18).toString();
-    publish({
-      context: sendContext,
-      phase: 'review',
-      hash: null,
-      message: null,
-      intent: null,
-      review: Object.freeze({
-        context: sendContext,
-        id: `fixture-review-${++sequence}`,
-        from: '0x2222222222222222222222222222222222222222',
-        recipient: to,
-        amountUnits,
-        maximumFeeUnits: '63000',
-        totalUnits: (BigInt(amountUnits) + 63000n).toString(),
-        gasLimit: '21000',
-        maximumFeePerGas: '3',
-        priorityFeePerGas: '1',
-        nonce: '0',
-        retry: false,
-      }),
-    });
-    expiry = setTimeout(() => publish(idle()), 90000);
+    publishReview(to, parseDecimalAmount(amount, 18).toString());
   },
   async confirm(id) {
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
@@ -127,6 +109,32 @@ const controller: NativeTransferView = {
     });
   },
 };
+
+function publishReview(to: string, amountUnits: string, originalHash?: string) {
+  clearTimeout(expiry);
+  const gas = originalHash ? 42000n : 21000n;
+  const maximumFee = gas * 3n;
+  publish({
+    ...idle(),
+    phase: 'review',
+    review: Object.freeze({
+      context: sendContext,
+      id: `fixture-review-${++sequence}`,
+      from: sender,
+      recipient: to,
+      amountUnits,
+      maximumFeeUnits: maximumFee.toString(),
+      totalUnits: (BigInt(amountUnits) + maximumFee).toString(),
+      gasLimit: gas.toString(),
+      maximumFeePerGas: '3',
+      priorityFeePerGas: '1',
+      nonce: '0',
+      retry: false,
+      ...(originalHash ? { cancellation: { originalHash } } : {}),
+    }),
+  });
+  expiry = setTimeout(() => publish(idle()), 90000);
+}
 
 declare global {
   interface Window {
@@ -305,6 +313,7 @@ function Fixture() {
         <NativeSend
           controller={controller}
           context={sendContext}
+          cancellationHash={cancellationHash}
           onBack={() => undefined}
         />
       )}

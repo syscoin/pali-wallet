@@ -179,11 +179,11 @@ async function cancellationFixture() {
     release: Promise<void>;
   } | null = null;
   let gate: {
-    stage: 'storage-read' | 'requote';
+    stage: 'storage-read' | 'requote' | 'cancellation-dispatch' | 'cancellation-original';
     entered(): void;
     release: Promise<void>;
   } | null = null;
-  const pause = async (stage: 'storage-read' | 'requote') => {
+  const pause = async (stage: NonNullable<typeof gate>['stage']) => {
     const current = gate;
     if (current?.stage === stage) {
       current.entered();
@@ -285,6 +285,7 @@ async function cancellationFixture() {
   let authority = createAuthority();
   const broadcasts: string[] = [];
   let loseResponse = false;
+  const replacement = { pending: false, delegated: false, baseFee: '0x1', substituteHash: undefined as string | undefined };
   const largeReceipt = {
     oversized: false,
     repeated: false,
@@ -306,6 +307,17 @@ async function cancellationFixture() {
       requests.push(request);
       let result: unknown;
       if (request.method === 'eth_chainId') result = '0x1';
+      else if (request.method === 'eth_getTransactionByHash') {
+        if (signatures > 1) await pause('cancellation-original');
+        const tx = broadcasts[0] && Transaction.from(broadcasts[0]);
+        result = replacement.pending && tx && tx.hash === request.params[0]
+          ? { hash: replacement.substituteHash ?? tx.hash, from: tx.from, to: tx.to, value: `0x${tx.value.toString(16)}`,
+              nonce: `0x${tx.nonce.toString(16)}`, blockNumber: null, blockHash: null, transactionIndex: null }
+          : null;
+      } else if (request.method === 'eth_getCode') {
+        if (signatures > 1 && request.params[1] === 'pending') await pause('cancellation-dispatch');
+        result = replacement.delegated ? `0xef0100${'33'.repeat(20)}` : '0x';
+      }
       else if (request.method === 'eth_getTransactionCount') {
         result = largeReceipt.oversized
           ? request.params[1] === 'pending' ||
@@ -358,7 +370,7 @@ async function cancellationFixture() {
           result = {
             number: number === 'latest' ? '0x20' : number,
             hash: '0x' + (number === '0xa' ? '8' : '9').repeat(64),
-            baseFeePerGas: '0x1',
+            baseFeePerGas: replacement.baseFee,
             gasLimit: '0x1c9c380',
           };
         } else {
@@ -374,7 +386,7 @@ async function cancellationFixture() {
               current && number === current.receipt?.blockNumber
                 ? current.canonicalHash
                 : '0x' + 'f'.repeat(64),
-            baseFeePerGas: '0x1',
+            baseFeePerGas: replacement.baseFee,
             gasLimit: '0x1c9c380',
           };
         }
@@ -414,6 +426,7 @@ async function cancellationFixture() {
     broadcasts,
     recovery: largeReceipt,
     requests,
+    replacement,
     get transfers() {
       return transfers;
     },
@@ -468,7 +481,7 @@ async function cancellationFixture() {
     setRecovery(value: NonNullable<typeof recovery>) {
       recovery = structuredClone(value);
     },
-    hold(stage: 'storage-read' | 'requote') {
+    hold(stage: NonNullable<typeof gate>['stage']) {
       let entered!: () => void;
       let resume!: () => void;
       const started = new Promise<void>((resolve) => {
@@ -525,6 +538,202 @@ async function cancellationFixture() {
     },
   };
 }
+
+async function prepareSavedCancellation(f: Awaited<ReturnType<typeof cancellationFixture>>) {
+  await f.transfers.prepare(RECIPIENT, '0.001');
+  await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+  const originalHash = f.transfers.getSnapshot().hash!;
+  f.replacement.pending = true;
+  await f.transfers.prepareCancellation(originalHash);
+  return { originalHash, review: f.transfers.getSnapshot().review! };
+}
+
+test('new cancellation signs the saved nonce once and persists both linked exact envelopes before POST', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { originalHash, review } = await prepareSavedCancellation(f);
+    assert.equal(review.cancellation?.originalHash, originalHash);
+    assert.equal(review.recipient, review.from);
+    assert.equal(review.amountUnits, '0');
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    const gate = f.hold('cancellation-dispatch');
+    const submit = f.transfers.confirm(review.id);
+    try {
+      await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
+      assert.equal(f.broadcasts.length, 1);
+      const stored = JSON.parse((await f.readDurableJournal())!);
+      assert.equal(stored.entries.length, 2);
+      assert.equal(stored.entries[0].hash, originalHash);
+      assert.equal(stored.entries[1].operation, 'cancel');
+      assert.equal(stored.entries[1].originalHash, originalHash);
+      await assert.rejects(f.transfers.confirm(review.id), { code: 'BUSY' });
+    } finally {
+      gate.finish();
+      await submit;
+    }
+    assert.equal(f.broadcasts.length, 2);
+    const [old, replacement] = f.broadcasts.map((raw) => Transaction.from(raw));
+    assert.equal(replacement!.nonce, old!.nonce);
+    assert.equal(replacement!.from, old!.from);
+    assert.equal(replacement!.to, old!.from);
+    assert.equal(replacement!.data, '0x');
+    assert.equal(replacement!.value, 0n);
+    assert.equal(replacement!.gasLimit * replacement!.maxFeePerGas!, BigInt(review.maximumFeeUnits));
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    await f.reopen();
+    const journal = await f.runtime.transfers!.journal(() => undefined);
+    assert.equal((await journal.load(originalHash))?.rawTransaction, f.broadcasts[0]);
+    assert.equal((await journal.load(replacement!.hash!))?.rawTransaction, f.broadcasts[1]);
+    await assert.rejects(f.transfers.prepareCancellation(originalHash), { code: 'EXPIRED' });
+  } finally {
+    await f.close();
+  }
+});
+
+test('new cancellation refuses a missing original or increased fee without creating another signature', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { originalHash, review } = await prepareSavedCancellation(f);
+    f.replacement.baseFee = '0x100';
+    await assert.rejects(f.transfers.confirm(review.id), { code: 'EXPIRED' });
+    f.replacement.pending = false;
+    await assert.rejects(f.transfers.prepareCancellation(originalHash), { code: 'EXPIRED' });
+    assert.equal(f.signatures, 1);
+    assert.equal(f.broadcasts.length, 1);
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+  } finally {
+    await f.close();
+  }
+});
+
+test('new cancellation keeps signed evidence and sends nothing when payer delegation appears after persistence', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { originalHash, review } = await prepareSavedCancellation(f);
+    const gate = f.hold('cancellation-dispatch');
+    const submit = f.transfers.confirm(review.id);
+    const refused = assert.rejects(submit, { code: 'EXPIRED' });
+    try {
+      await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
+      f.replacement.delegated = true;
+    } finally {
+      gate.finish();
+      await refused;
+    }
+    assert.equal(f.broadcasts.length, 1);
+    const saved = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(saved[1].operation, 'cancel');
+    assert.equal(saved[1].originalHash, originalHash);
+    assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+    assert.equal(f.authority.getSnapshot().phase, 'ready');
+  } finally {
+    await f.close();
+  }
+});
+
+for (const change of ['dropped', 'replaced'] as const) {
+  test(`new cancellation refuses a ${change} exact original during final preflight with the payer nonce unchanged`, async () => {
+    const f = await cancellationFixture();
+    try {
+      const { originalHash, review } = await prepareSavedCancellation(f);
+      const gate = f.hold('cancellation-dispatch');
+      const submit = f.transfers.confirm(review.id);
+      try {
+        await Promise.race([gate.started, submit.then(() => assert.fail('POST preflight was not held'))]);
+        if (change === 'dropped') f.replacement.pending = false;
+        else f.replacement.substituteHash = '0x' + '9'.repeat(64);
+      } finally {
+        gate.finish();
+      }
+      await assert.rejects(submit, { code: 'EXPIRED' });
+      assert.equal(f.broadcasts.length, 1);
+      const saved = JSON.parse((await f.readDurableJournal())!).entries;
+      assert.equal(saved.length, 2);
+      assert.equal(saved[0].hash, originalHash);
+      assert.equal(saved[1].originalHash, originalHash);
+      assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+    } finally {
+      await f.close();
+    }
+  });
+}
+
+test('new cancellation rechecks payer delegation after the final original observation', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { originalHash, review } = await prepareSavedCancellation(f);
+    const gate = f.hold('cancellation-original');
+    const submit = f.transfers.confirm(review.id);
+    try {
+      await Promise.race([gate.started, submit.then(() => assert.fail('Original observation was not held'))]);
+      f.replacement.delegated = true;
+    } finally {
+      gate.finish();
+    }
+    await assert.rejects(submit, { code: 'EXPIRED' });
+    assert.equal(f.broadcasts.length, 1);
+    const saved = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(saved.length, 2);
+    assert.equal(saved[0].hash, originalHash);
+    assert.equal(saved[1].originalHash, originalHash);
+    assert.equal(f.transfers.getSnapshot().hash, saved[1].hash);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a previously confirmed saved transaction can be canceled after a fresh reorg observation', async () => {
+  const f = await cancellationFixture();
+  try {
+    await f.transfers.prepare(RECIPIENT, '0.001');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    const original = Transaction.from(f.broadcasts[0]!);
+    const blockHash = '0x' + '8'.repeat(64);
+    f.setRecovery({
+      receipt: { transactionHash: original.hash, from: original.from, to: original.to,
+        status: '0x1', blockNumber: '0xa', blockHash },
+      nonce: '0x1', canonicalHash: blockHash,
+    });
+    await f.transfers.recover(false, original.hash!);
+    assert.equal((await f.readJournal())?.phase, 'confirmed');
+
+    f.setRecovery({ receipt: null, nonce: '0x0', canonicalHash: blockHash });
+    f.replacement.pending = true;
+    await f.transfers.prepareCancellation(original.hash!);
+    assert.equal((await f.readJournal())?.phase, 'submitted');
+    const review = f.transfers.getSnapshot().review!;
+    assert.equal(review.cancellation?.originalHash, original.hash);
+    await f.transfers.confirm(review.id);
+    assert.equal(f.broadcasts.length, 2);
+    assert.equal(Transaction.from(f.broadcasts[1]!).nonce, original.nonce);
+  } finally {
+    await f.close();
+  }
+});
+
+test('locking during the final cancellation preflight prevents POST and keeps both signed records', async () => {
+  const f = await cancellationFixture();
+  try {
+    const { review } = await prepareSavedCancellation(f);
+    const gate = f.hold('cancellation-dispatch');
+    const refused = assert.rejects(f.transfers.confirm(review.id), { code: 'CANCELLED' });
+    try {
+      await Promise.race([gate.started, refused.then(() => assert.fail('POST preflight was not held'))]);
+      f.authority.lock();
+    } finally {
+      gate.finish();
+      await refused;
+    }
+    assert.equal(f.broadcasts.length, 1);
+    const saved = JSON.parse((await f.readDurableJournal())!).entries;
+    assert.equal(saved.length, 2);
+    assert.equal(saved[1].operation, 'cancel');
+    assert.equal(f.authority.getSnapshot().phase, 'locked');
+  } finally {
+    await f.close();
+  }
+});
 
 test('wall-clock rollback cannot hide an unresolved signed transfer after a cold reopen', async () => {
   const originalNow = Date.now;

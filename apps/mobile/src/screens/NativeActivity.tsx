@@ -150,12 +150,14 @@ export function NativeActivityScreen({
   onBack,
   navigation,
   onReplay,
+  onCancelPending,
 }: {
   controller: NativeActivity;
   accountLabel: string;
   onBack(): void;
   navigation?: ShellLeafNavigation;
   onReplay?(hash: string): void;
+  onCancelPending?(hash: string): void;
 }) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -172,6 +174,7 @@ export function NativeActivityScreen({
       onBack={onBack}
       navigation={navigation}
       onReplay={onReplay}
+      onCancelPending={onCancelPending}
     />
   );
 }
@@ -182,6 +185,7 @@ function NativeActivityContent({
   onBack,
   navigation,
   onReplay,
+  onCancelPending,
 }: {
   controller: NativeActivity;
   snapshot: NativeActivitySnapshot;
@@ -189,6 +193,7 @@ function NativeActivityContent({
   onBack(): void;
   navigation?: ShellLeafNavigation;
   onReplay?(hash: string): void;
+  onCancelPending?(hash: string): void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [copyAddress, setCopyAddress] = useState<string | null>(null);
@@ -229,6 +234,8 @@ function NativeActivityContent({
   const chosen = snapshot.rows.find((row) => row.hash === selected);
   const collectible = chosen?.local?.collectibleTransfer;
   const chosenObservation = chosen ? currentObservation(chosen) : undefined;
+  const cancellation = snapshot.rows.find((row) => row.local?.operation === 'cancel' && row.local.originalHash === chosen?.hash);
+  const original = chosen?.local?.originalHash && snapshot.rows.find((row) => row.hash === chosen.local!.originalHash);
   const chosenBlock = chosenObservation
     ? chosenObservation.block?.number
     : chosen?.indexed?.blockNumber || chosen?.observation?.block?.number;
@@ -677,6 +684,14 @@ function NativeActivityContent({
             variant="secondary"
             onPress={() => controller.inspect(chosen.hash)}
           />
+          {original && <Button title="View original transaction" variant="quiet" onPress={() => { setSelected(original.hash); controller.inspect(original.hash); }} />}
+          {cancellation && <Button title="View cancellation attempt" variant="secondary" onPress={() => { setSelected(cancellation.hash); controller.inspect(cancellation.hash); }} />}
+          {chosen.local && chosen.local.operation !== 'cancel' && !cancellation &&
+            (chosen.local.transactionType === 0 || chosen.local.transactionType === 2) &&
+            chosenObservation?.status === 'pending' && chosenObservation.from.toLowerCase() === owner.toLowerCase() &&
+            chosenObservation.nonce === String(chosen.local.nonce) && onCancelPending && (
+            <Button title="Cancel pending transaction" variant="secondary" onPress={() => void afterPositionSaved(() => onCancelPending(chosen.hash))} />
+          )}
           {chosen.local && !chosen.local.inspectionOnly && onReplay && (
             <Button
               title="Review resend"

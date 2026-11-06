@@ -44,7 +44,7 @@ export function freshStatusFixture(mode: string | null, scope: ActivityScope) {
   const initial = retained ? parts[2] : parts[1];
   if (
     !(retained
-      ? ['confirmed', 'missing'].includes(retained)
+      ? ['confirmed', 'missing', 'terminal'].includes(retained)
       : ['pending', 'confirmed'].includes(indexed ?? '')) ||
     ![
       'confirmed',
@@ -197,7 +197,9 @@ export function freshStatusFixture(mode: string | null, scope: ActivityScope) {
           registrationHash: scope.network.registrationHash,
           chainId: scope.network.chainId,
           hash: HASH,
-          phase: 'submitted',
+          phase: retained === 'terminal' ? 'confirmed' : 'submitted',
+          operation: 'send',
+          transactionType: 2,
           nonce: 1,
           createdAt: 1700000000000,
           recipient: OTHER,
