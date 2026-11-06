@@ -8,7 +8,7 @@ import { RealTools } from './RealTools';
 import { RealSettings } from './RealSettings';
 import { WatchAccountPortfolio } from './WatchAccountPortfolio';
 import { useRealShell } from './useRealShell';
-import { WatchActivity } from './WatchActivity';
+import { UtxoActivityScreen } from './UtxoActivityScreen';
 import { createWatchEvmActivity } from '../activity/watchActivity';
 import { NativeActivityScreen } from './NativeActivity';
 import { walletFetch } from '../platform/http';
@@ -52,7 +52,7 @@ export function WatchSession({ authority, onAccounts, onExit }: {
   let content: React.ReactNode;
   if (shell.tab === 'wallet') content = <WatchAccountPortfolio authority={authority} onAccounts={openAccounts} onExit={onExit} onLock={onExit} navigation={shell.navigation} />;
   else if (shell.tab === 'activity') content = network.kind === 'utxo'
-    ? <WatchActivity authority={authority} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
+    ? <UtxoActivityScreen authority={authority} selectedNetwork={network} accountLabel={label} navigation={shell.navigation} onBack={() => shell.select('wallet')} />
     : <NativeActivityScreen controller={evmActivity} accountLabel={label} onBack={() => shell.select('wallet')} navigation={shell.navigation} />;
   else if (shell.tab === 'tools') {
     const address = network.kind === 'evm' && account?.addresses[network.id];

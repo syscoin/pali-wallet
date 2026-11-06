@@ -6,8 +6,8 @@ import type { EvmActivityReaders } from '../activity/nativeActivity.ts';
 import type { ActivityFeed } from '../activity/explorerReader.ts';
 import { getNativeNetwork, type NativeNetworkRegistration } from '../custody/networkContext.ts';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc.ts';
-import { createUtxoTransactionDetailsCache, UTXO_DETAIL_CACHE_BYTES } from '../../../../source/shared/utxoTransactionDetailCache.ts';
-import type { UtxoActivityReader, UtxoActivityPage, UtxoActivityDetail, UtxoActivityRow } from './utxoActivity.ts';
+import type { UtxoActivityOwner, UtxoActivityReader } from './utxoActivity.ts';
+import { UtxoActivityRows } from './utxoActivityRows.ts';
 import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBudget.ts';
 import { normalizePublicAddress } from './addresses.ts';
 import { loadedBalance } from './amounts.ts';
@@ -167,11 +167,11 @@ export function getWatchNetworks(account: PublicAccount | undefined, registratio
   return Object.freeze(networks.filter((network) => network.canWatch && !!account?.addresses[network.id]));
 }
 
-export class WatchOnlyAuthority implements WalletAuthority {
+export class WatchOnlyAuthority implements WalletAuthority, UtxoActivityOwner {
   private readonly accounts: readonly PublicAccount[];
   private readonly utxoNetworks: readonly UtxoNetwork[];
   private readonly reader: BalanceReader;
-  private readonly historyReader?: UtxoActivityReader;
+  private readonly utxoActivity?: UtxoActivityRows;
   private readonly evmActivityReaders?: EvmActivityReaders;
   private readonly now: () => number;
   private listeners = new Set<(snapshot: PublicSnapshot) => void>();
@@ -182,11 +182,6 @@ export class WatchOnlyAuthority implements WalletAuthority {
   private balance: PublicBalance = Object.freeze({ status: 'unknown' });
   private pending: AbortController | null = null;
   private historyRequests = new Set<AbortController>();
-  private utxoRequests = new Set<AbortController>();
-  private utxoRows = new Map<UtxoActivityRow, number>();
-  private utxoDetailRequests = new Map<UtxoActivityRow, Set<AbortController>>();
-  private utxoSummaryBytes = 0;
-  private utxoDetails = createUtxoTransactionDetailsCache();
   private cachedSnapshot: PublicSnapshot | null = null;
   private recordSession: RecordSession | null = null;
 
@@ -239,7 +234,14 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.utxoNetworks = registrations;
     this.accounts = validatePublicAccounts(accounts, registrations);
     this.reader = reader;
-    this.historyReader = historyReader ? Object.freeze({ readPage: historyReader.readPage.bind(historyReader), readDetail: historyReader.readDetail.bind(historyReader), summaryBytes: historyReader.summaryBytes.bind(historyReader), forgetDetails: historyReader.forgetDetails.bind(historyReader) }) : undefined;
+    this.utxoActivity = historyReader ? new UtxoActivityRows(historyReader, () => this.getUtxoActivityContext(),
+      (external, guard, read) => this.withPublicRead('utxo', external, guard, ({
+        accountId, address, networkId, generation, source, registration, assertNetworkCurrent,
+      }, signal, check) => read(Object.freeze({
+        context: Object.freeze({ accountId, address, networkId: networkId as UtxoNetworkId, generation }),
+        identifier: source?.identifier ?? address, isAccount: !!source, readSentry: true,
+        ...(registration ? { registration, assertCurrent: assertNetworkCurrent } : {}),
+      }), signal, check))) : undefined;
     this.evmActivityReaders = evmActivityReaders ? Object.freeze({
       explorer: Object.freeze({ page: evmActivityReaders.explorer.page.bind(evmActivityReaders.explorer) }),
       receipts: Object.freeze({ read: evmActivityReaders.receipts.read.bind(evmActivityReaders.receipts) }),
@@ -311,25 +313,18 @@ export class WatchOnlyAuthority implements WalletAuthority {
     }
   }
 
-  private forgetUtxoRow(row: UtxoActivityRow): void {
-    const charge = this.utxoRows.get(row); if (charge === undefined) return;
-    this.utxoRows.delete(row); this.utxoSummaryBytes -= charge;
-    this.historyReader?.forgetDetails([row]);
-    const requests = this.utxoDetailRequests.get(row); this.utxoDetailRequests.delete(row);
-    for (const request of requests ?? []) request.abort();
-  }
-  releaseUtxoActivity(): void {
-    for (const request of this.utxoRequests) request.abort();
-    this.utxoRequests.clear();
-    for (const key of this.utxoRows.keys()) this.forgetUtxoRow(key);
-    this.utxoDetails.dispose(); this.utxoDetails = createUtxoTransactionDetailsCache();
-  }
-  /** Drop-only admission follows the exact rows selected by the shared model. */
-  retainUtxoActivityRows(rows: readonly UtxoActivityRow[]): void {
-    if (rows.length > 100) throw new Error('Invalid activity window');
-    const keep = new Set(rows);
-    for (const row of this.utxoRows.keys()) if (!keep.has(row)) this.forgetUtxoRow(row);
-  }
+  getUtxoActivityContext = () => {
+    const value = this.getSnapshot(), account = this.accounts.find((row) => row.id === value.selectedAccountId);
+    if (value.status !== 'ready' || !account) return null;
+    try {
+      const network = this.getNetwork(value.selectedNetworkId);
+      if (network.kind !== 'utxo') return null;
+      const address = account.addresses[network.id];
+      return address ? Object.freeze({ accountId: account.id, networkId: network.id, address, generation: value.generation }) : null;
+    } catch { return null; }
+  };
+  releaseUtxoActivity = () => this.utxoActivity?.releaseUtxoActivity();
+  retainUtxoActivityRows: UtxoActivityOwner['retainUtxoActivityRows'] = (rows) => this.utxoActivity?.retainUtxoActivityRows(rows);
 
   private invalidate(): void {
     this.generation++;
@@ -481,7 +476,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
     const generation = this.generation, session = this.recordSession, source = this.currentSource();
     const registration = kind === 'utxo' && isCustomUtxoNetworkId(networkId) ? getUtxoNetwork(networkId, this.utxoNetworks) : undefined;
     if (registration && !session) throw new Error('Missing UTXO registration owner');
-    const request = new AbortController(); this.historyRequests.add(request); if (kind === 'utxo') this.utxoRequests.add(request);
+    const request = new AbortController(); this.historyRequests.add(request);
     const abort = () => request.abort(); external?.addEventListener('abort', abort, { once: true });
     let stopped!: (reason: Error) => void;
     const cancelled = new Promise<never>((_resolve, reject) => { stopped = reject; });
@@ -515,108 +510,14 @@ export class WatchOnlyAuthority implements WalletAuthority {
       const result = await Promise.race([action(owner, request.signal, check), cancelled]);
       check(); await verifyRecords(); check(); return result;
     } catch { throw new Error(request.signal.aborted ? 'Account activity cancelled' : 'Account activity unavailable'); }
-    finally { external?.removeEventListener('abort', abort); request.signal.removeEventListener('abort', onAbort); this.historyRequests.delete(request); this.utxoRequests.delete(request); request.abort(); }
+    finally { external?.removeEventListener('abort', abort); request.signal.removeEventListener('abort', onAbort); this.historyRequests.delete(request); request.abort(); }
   }
 
   /** Read operation only: the canonical identifier never enters a public snapshot. */
-  async readUtxoActivityPage(input: Readonly<{ page: number }>, external: AbortSignal): Promise<UtxoActivityPage> {
-    const page = input.page, generation = this.generation, cache = this.utxoDetails;
-    const reader = this.historyReader;
-    if (!reader || !Number.isSafeInteger(page) || page < 1) throw new Error('Account activity unavailable');
-    const checkAdmission = () => {
-      if (external.aborted || this.generation !== generation || this.utxoDetails !== cache) throw new Error('Account activity cancelled');
-    };
-    checkAdmission();
-    // Reserve at most twenty incoming row capabilities without dropping display rows.
-    while (this.utxoRows.size > 100) {
-      this.forgetUtxoRow(this.utxoRows.keys().next().value!);
-      checkAdmission();
-    }
-    const result = await this.withPublicRead('utxo', external, () => undefined, async (owner, signal, check) => {
-      const { accountId, address, networkId, generation, source, registration } = owner;
-      const result = await reader.readPage({
-        context: Object.freeze({ accountId, networkId: networkId as UtxoNetworkId, address, generation }),
-        identifier: source?.identifier ?? address, isAccount: !!source,
-        ...(registration ? { registration, assertCurrent: check } : {}),
-      }, { page }, signal);
-      check();
-      if (result.context.accountId !== accountId || result.context.networkId !== networkId || result.context.address !== address || result.context.generation !== generation || result.page !== page)
-        throw new Error('Account activity context changed');
-      return result;
-    });
-    const admitted: UtxoActivityRow[] = [];
-    try {
-      if (this.getSnapshot().status !== 'ready') throw new Error('Account activity cancelled');
-      checkAdmission();
-      for (const row of result.rows) {
-        if (this.utxoRows.has(row)) continue;
-        const charge = reader.summaryBytes(row);
-        checkAdmission();
-        if (charge === null || charge > UTXO_DETAIL_CACHE_BYTES) { reader.forgetDetails([row]); continue; }
-        while (this.utxoRows.size && (this.utxoRows.size >= 120 || this.utxoSummaryBytes + charge > UTXO_DETAIL_CACHE_BYTES)) {
-          this.forgetUtxoRow(this.utxoRows.keys().next().value!);
-          // Aborting an evicted detail can synchronously revoke this context.
-          checkAdmission();
-        }
-        // Duplicate txids can carry different facts. The shared model chooses
-        // the actual representative before drop-only capability pruning.
-        this.utxoRows.set(row, charge); this.utxoSummaryBytes += charge;
-        admitted.push(row);
-      }
-      checkAdmission();
-      return result;
-    } catch (error) {
-      for (const row of admitted) {
-        if (this.generation !== generation || this.utxoDetails !== cache) break;
-        this.forgetUtxoRow(row);
-      }
-      reader.forgetDetails(result.rows);
-      throw error;
-    }
-  }
-
-  async readUtxoActivityDetail(input: Readonly<{ txid: string }>, external: AbortSignal): Promise<UtxoActivityDetail> {
-    const txid = input.txid;
-    if (!this.historyReader || typeof txid !== 'string' || !/^[0-9a-f]{64}$/i.test(txid)) throw new Error('Account activity unavailable');
-    const key = txid.toLowerCase(), cache = this.utxoDetails;
-    const row = [...this.utxoRows.keys()].find(row => row.txid === key);
-    if (!row) throw new Error('Account activity unavailable');
-    const generation = this.generation, operation = new AbortController();
-    const abort = () => operation.abort();
-    external.addEventListener('abort', abort, { once: true });
-    if (external.aborted) abort();
-    const requests = this.utxoDetailRequests.get(row) ?? new Set<AbortController>();
-    requests.add(operation); this.utxoDetailRequests.set(row, requests);
-    try {
-      const result = await this.withPublicRead('utxo', operation.signal, () => undefined, async (owner, signal, check) => {
-        const current = () => { check(); if (this.utxoDetails !== cache || !this.utxoRows.has(row)) throw new Error('Account activity context changed'); };
-        current();
-        const { accountId, address, networkId, source, generation, registration } = owner;
-        const value = await this.historyReader!.readDetail({ context: Object.freeze({ accountId, address, networkId: networkId as UtxoNetworkId, generation }),
-          identifier: source?.identifier ?? address, isAccount: !!source,
-          // The physical cached fetch can have multiple viewers. Its owner is
-          // the saved registration; the separate callback below owns this viewer.
-          ...(registration ? { registration, assertCurrent: owner.assertNetworkCurrent } : {}) }, { row, txid: key }, signal, cache, current);
-        current(); return value;
-      });
-      const assertDetailCurrent = () => {
-        if (this.getSnapshot().status !== 'ready' || this.generation !== generation || this.utxoDetails !== cache || !this.utxoRows.has(row))
-          throw new Error('Account activity cancelled');
-      };
-      if (operation.signal.aborted) throw new Error('Account activity cancelled');
-      assertDetailCurrent();
-      const readNode = result.readSentryNode;
-      return readNode ? Object.freeze({ ...result,
-        readSentryNode: (signal: AbortSignal, guard: () => void) =>
-          this.withPublicRead('utxo', signal, () => { assertDetailCurrent(); return guard(); },
-            (_owner, ownedSignal, check) => readNode(ownedSignal, check)),
-      }) : result;
-    } finally {
-      external.removeEventListener('abort', abort); requests.delete(operation);
-      if (!requests.size && this.utxoDetailRequests.get(row) === requests) this.utxoDetailRequests.delete(row);
-      operation.abort();
-    }
-  }
+  readUtxoActivityPage: UtxoActivityOwner['readUtxoActivityPage'] = (input, signal) =>
+    this.utxoActivity?.readUtxoActivityPage(input, signal) ?? Promise.reject(new Error('Account activity unavailable'));
+  readUtxoActivityDetail: UtxoActivityOwner['readUtxoActivityDetail'] = (input, signal) =>
+    this.utxoActivity?.readUtxoActivityDetail(input, signal) ?? Promise.reject(new Error('Account activity unavailable'));
 
   private evmScope(owner: { accountId: string; address: string; networkId: NetworkId; recordIdentity: string }): EvmActivityReadScope {
     const network = getNativeNetwork(owner.networkId);

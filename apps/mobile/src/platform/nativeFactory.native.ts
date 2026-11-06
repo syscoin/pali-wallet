@@ -15,6 +15,8 @@ import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
 import { isCustomUtxoNetworkId, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch } from '../core/utxoReadSession.ts';
+import { createNativeUtxoActivity } from '../custody/utxoActivity.ts';
+import { createUtxoActivityReader } from '../core/utxoActivity.ts';
 import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
 import { createBalanceReader } from '../platformRpc.ts';
@@ -120,6 +122,8 @@ export function createNativeWalletControllers() {
   );
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
+  const utxoActivity = createNativeUtxoActivity(authority, () => runtime,
+    createUtxoActivityReader({ fetch: exactUtxoResponseFetch(walletFetch) }));
   const accounts: NativeAccountView = Object.freeze({
     getSnapshot: () => authority.getCatalogue(),
     getContextRevision: () => authority.getSnapshot().revision,
@@ -234,6 +238,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, backup, keyExport, imports, accounts, activity, balanceReader, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readRecoveryInventory, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
