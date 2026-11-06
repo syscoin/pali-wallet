@@ -603,8 +603,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
               const expectedNet = (gasLimit: string, maximum: string) =>
                 formatEther(
                   BigInt(INITIAL_WEI) -
-                    BigInt(gasLimit) * parseUnits(maximum, 'gwei') -
-                    parseEther('0.000001')
+                    BigInt(gasLimit) * parseUnits(maximum, 'gwei')
                 ).replace(/\.0$/, '');
               for (const viewport of [
                 { width: 400, height: 620 },
@@ -644,15 +643,16 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
                 await wallet!.step(
                   `native-max-fee-${viewport.width}-save-and-cancel`,
                   async (capture) => {
+                    const savedNet = expectedNet('30000', '3');
                     await openFee();
                     await fillFee('3', '30000');
                     await closeFee(true);
-                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await expect(headline).toHaveText(savedNet + ' TSYS');
                     await exposeTarget(page, headline);
                     await openFee();
                     await fillFee('4', '40000');
                     await closeFee(false);
-                    await expect(headline).toHaveText('9.999909 TSYS');
+                    await expect(headline).toHaveText(savedNet + ' TSYS');
                     await openFee();
                     await expect(cap).toHaveValue('3');
                     await expect(gas).toHaveValue('30000');
@@ -665,7 +665,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
                       gasLimit: '30000',
                       maximumGwei: '3',
                       priorityGwei: '1',
-                      net: '9.999909',
+                      net: savedNet,
                       box,
                     });
                     await capture(page);
@@ -674,10 +674,11 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
                 await wallet!.step(
                   `native-max-fee-${viewport.width}-save-new-gas-and-cap`,
                   async (capture) => {
+                    const savedNet = expectedNet('40000', '4');
                     await openFee();
                     await fillFee('4', '40000');
                     await closeFee(true);
-                    await expect(headline).toHaveText('9.999839 TSYS');
+                    await expect(headline).toHaveText(savedNet + ' TSYS');
                     const box = await exposeTarget(page, headline);
                     feeReviewObservations.push({
                       viewport,
@@ -686,7 +687,7 @@ test('native MAX revalidates a live balance change without rewriting the reviewe
                       gasLimit: '40000',
                       maximumGwei: '4',
                       priorityGwei: '1',
-                      net: '9.999839',
+                      net: savedNet,
                       box,
                     });
                     await capture(page);
@@ -824,7 +825,7 @@ test('native MAX preserves a small exact decimal balance through unsigned review
       { initialBalanceWei, feeWei: '1', baseFeeWei: '0' }
     );
     const page = wallet.page;
-    await wallet.step('native-max-small-balance-open-and-review', async () => {
+    await wallet.step('native-max-small-balance-open-and-review', async (capture) => {
       await wallet!.importSeedAndCreatePassword();
       await wallet!.switchNetwork('Syscoin NEVM Testnet', 'EVM');
       await expect
@@ -871,6 +872,13 @@ test('native MAX preserves a small exact decimal balance through unsigned review
       await expect(
         page.getByRole('button', { name: en.buttons.confirm, exact: true })
       ).toBeEnabled();
+      const headline = page
+        .getByText(en.buttons.send, { exact: true })
+        .locator('..')
+        .locator('p')
+        .nth(1);
+      await expect(headline).toHaveText('0.0000000999999748 TSYS');
+      await capture(page);
       // Never confirm: the real SDK fee/preview path is exercised without signing.
       await page
         .getByRole('button', { name: en.buttons.cancel, exact: true })
@@ -972,7 +980,7 @@ test('native MAX keeps high precision unsigned review inside the popup', async (
   const server = await startUtxoFixtureServer();
   const initialBalanceWei = '1123456789123456789';
   const exactAmount = '1.123456789123456789';
-  const expectedNet = '1.123455789123431589';
+  const expectedNet = '1.123456789123431589';
   const geometry: Record<string, unknown>[] = [];
   expect(info.config.workers).toBe(1);
   Object.assign(E2E_CONFIG, {
@@ -1078,11 +1086,7 @@ test('native MAX keeps high precision unsigned review inside the popup', async (
             const observedGasLimit = quotedFeeWei / gasPriceWei;
             expect(observedGasLimit.toString()).toBe('25200');
             expect(
-              formatEther(
-                BigInt(initialBalanceWei) -
-                  quotedFeeWei -
-                  parseEther('0.000001')
-              )
+              formatEther(BigInt(initialBalanceWei) - quotedFeeWei)
             ).toBe(expectedNet);
             await expect(
               page.getByRole('button', { name: en.send.editFee, exact: true })
@@ -1097,7 +1101,6 @@ test('native MAX keeps high precision unsigned review inside the popup', async (
               gasPriceWei: gasPriceWei.toString(),
               baseFeeWei: '0',
               expectedNet,
-              reserveWei: '1000000000000',
             });
           }
         );
