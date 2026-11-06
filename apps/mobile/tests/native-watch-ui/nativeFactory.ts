@@ -7,7 +7,7 @@ import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyr
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
-import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
+import { importedKeyIdentity, normalizeImportedKey, type NativeImportView, type NativeUtxoImportDraft } from '../../src/custody/importedAccounts';
 import { NativeActivity } from '../../src/activity/nativeActivity';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeAccountView } from '../../src/custody/accounts';
@@ -19,6 +19,7 @@ import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
 import { createWalletRemovalFixture, fixtureWalletPresent, recreateFixtureWallet, removalFixtureEnabled } from './walletRemovalFixture';
+import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from './utxoImportVectors';
 
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
 const recorded = Date.UTC(2024, 5, 15);
@@ -89,9 +90,6 @@ async function readFixtureNoteInventory(check: () => void): Promise<NativeNoteIn
 }
 
 const wifFixtureEnabled = new URLSearchParams(window.location.search).has('wif-fixture');
-// Public test vector for private scalar 1, never used by the native host.
-const fixtureWif = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
-const fixtureWifAddress = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
 const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
@@ -110,6 +108,15 @@ let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalog
     })) : []),
   ],
 });
+function fixtureUtxoImport(input: NativeUtxoImportDraft) {
+  if (!wifFixtureEnabled || catalogue.active.networkId !== 'bitcoin')
+    throw new KeyringRuntimeError('INVALID_INPUT');
+  if (input.privateKey === BITCOIN_WIF_KEY && input.utxoAddressType === 'p2pkh')
+    return { address: BITCOIN_WIF_ADDRESS };
+  if (input.privateKey === BITCOIN_BIP84_KEY && !Object.hasOwn(input, 'utxoAddressType'))
+    return { address: BITCOIN_BIP84_ADDRESS, utxoExtended: true as const };
+  throw new KeyringRuntimeError('INVALID_INPUT');
+}
 export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
@@ -189,21 +196,19 @@ export function createNativeWalletControllers() {
     imports: {
       async previewUtxo(input, expectedRevision, check) {
         check();
-        if (!wifFixtureEnabled || expectedRevision !== catalogue.revision ||
-            input.privateKey !== fixtureWif || input.utxoAddressType !== 'p2pkh')
-          throw new KeyringRuntimeError('INVALID_INPUT');
-        if (catalogue.accounts.some(({ address }) => address === fixtureWifAddress))
+        if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
+        const fixture = fixtureUtxoImport(input);
+        if (catalogue.accounts.some(({ address }) => address === fixture.address))
           throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-        return fixtureWifAddress;
+        return fixture.address;
       },
       reserve(input, password, expectedRevision) {
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
         const index = nextAccountIndex('Imported');
-        const key = wifFixtureEnabled ? fixtureWif : normalizeImportedKey(input.privateKey);
-        if (wifFixtureEnabled && (input.privateKey !== fixtureWif || input.utxoAddressType !== 'p2pkh'))
-          throw new KeyringRuntimeError('INVALID_INPUT');
-        const identity = wifFixtureEnabled
-          ? { id: `imported:0:${index}`, index, address: fixtureWifAddress }
+        const fixture = wifFixtureEnabled ? fixtureUtxoImport(input) : undefined;
+        const key = fixture ? input.privateKey : normalizeImportedKey(input.privateKey);
+        const identity = fixture
+          ? { id: `imported:0:${index}`, index, ...fixture }
           : importedKeyIdentity(key, index);
         if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
         if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
@@ -214,7 +219,8 @@ export function createNativeWalletControllers() {
           if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           guard();
           importedKeys.set(identity.id, key);
-          const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: wifFixtureEnabled ? 0 : 60, label: input.label, address: identity.address };
+          const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: fixture ? 0 : 60, label: input.label, address: identity.address,
+            ...(fixture?.utxoExtended && { utxoExtended: true as const }) };
           catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account], revision: catalogue.revision + 1,
             active: { ...catalogue.active, accountId: account.id } });
           audit.imports++; events.push('import:committed'); guard();

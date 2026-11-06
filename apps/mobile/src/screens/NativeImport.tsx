@@ -2,7 +2,7 @@ import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport, type NativeImportView } from '../custody/importedAccounts';
+import { importedKeyIdentity, isUtxoAccountPrivateKey, normalizeImportedKey, normalizeUtxoImport, type NativeImportView } from '../custody/importedAccounts';
 import { UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
@@ -41,6 +41,8 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
   const [acknowledged, setAcknowledged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const extended = utxo && isUtxoAccountPrivateKey(privateKey.trim());
+  const wifOptions = utxo && !extended ? { utxoAddressType } : {};
   const scope = useRef(Object.freeze({ contextRevision, catalogueRevision }));
   const lifetime = useRef({ mounted: false, request: 0, working: false });
   const latestBack = useRef(onBack);
@@ -82,7 +84,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     state.working = true;
     setBusy(true);
     try {
-      const draft = utxo ? normalizeUtxoImport({ privateKey, utxoAddressType }) : undefined;
+      const draft = utxo ? normalizeUtxoImport({ privateKey, ...wifOptions }) : undefined;
       const key = draft?.privateKey ?? normalizeImportedKey(privateKey);
       const reviewed = draft
         ? await imports.previewUtxo(draft, scope.current.contextRevision, scope.current.catalogueRevision, check)
@@ -92,7 +94,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
       Keyboard.dismiss();
     } catch (cause) {
       if (state.mounted && state.request === request)
-        setError(utxo ? failure(cause, 'Check the WIF key and address type for this network.') :
+        setError(utxo ? failure(cause, 'Check the private key and selected network. Use WIF or a BIP84 account key.') :
           'Enter a valid 32-byte EVM private key. Recovery phrases, WIF and extended keys are not supported here.');
     } finally {
       state.working = false;
@@ -104,7 +106,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     if (!state.mounted || state.working || !privateKey || !address || !password || !acknowledged || AppState.currentState !== 'active') return;
     state.working = true; setBusy(true); setError('');
     const request = ++state.request;
-    const input = { privateKey, label: name.trim(), expectedAddress: address, ...(utxo && { utxoAddressType }) };
+    const input = { privateKey, label: name.trim(), expectedAddress: address, ...wifOptions };
     const entered = password;
     setPrivateKey(''); setPassword(''); Keyboard.dismiss();
     try {
@@ -133,7 +135,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         {address ? <>
           <Card style={s.identity}><Text style={s.label}>{name.trim()}</Text><Text style={s.address}>{address}</Text></Card>
           <Text style={styles.muted}>{utxo
-            ? `Check the complete ${UTXO_IMPORT_LABELS[utxoAddressType]} address for ${networkLabel}.`
+            ? `Check the complete ${UTXO_IMPORT_LABELS[extended ? 'p2wpkh' : utxoAddressType]} address for ${networkLabel}.`
             : 'Check the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.'}</Text>
           {utxo && <Notice title="Back up this key" body="Your recovery phrase cannot restore this account." tone="amber" />}
           <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: acknowledged, disabled: busy }} aria-checked={acknowledged} accessibilityLabel="I have a separate backup of this private key"
@@ -150,10 +152,10 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         </> : <>
           <View style={s.field}><Text style={s.label}>Account name</Text><IdleTextInput accessibilityLabel="Account name" value={name} onChangeText={setName}
             editable={!busy} maxLength={64} autoCorrect={false} autoComplete="off" style={s.input} /></View>
-          <View style={s.field}><Text style={s.label}>{utxo ? 'WIF private key' : 'EVM private key'}</Text><IdleTextInput accessibilityLabel={utxo ? 'WIF private key' : 'EVM private key'} value={privateKey} onChangeText={setPrivateKey}
-            editable={!busy} secureTextEntry maxLength={utxo ? 65 : 1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
+          <View style={s.field}><Text style={s.label}>{utxo ? 'UTXO private key' : 'EVM private key'}</Text><IdleTextInput accessibilityLabel={utxo ? 'UTXO private key' : 'EVM private key'} value={privateKey} onChangeText={setPrivateKey}
+            editable={!busy} secureTextEntry maxLength={utxo ? 128 : 1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
             textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} /></View>
-          {utxo ? <View style={s.field}>
+          {utxo && !extended && <View style={s.field}>
             <Text style={s.label}>Address type</Text>
             <View style={s.addressTypes}>{UTXO_IMPORT_TYPES.map((type) => (
               <IdlePressable key={type} accessibilityRole="radio" accessibilityState={{ checked: type === utxoAddressType, disabled: busy }}
@@ -162,7 +164,10 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
                 <Text style={[s.label, type === utxoAddressType && s.selectedAddressLabel]}>{UTXO_IMPORT_LABELS[type]}</Text>
               </IdlePressable>
             ))}</View>
-          </View> : <Text style={styles.muted}>Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.</Text>}
+          </View>}
+          <Text style={styles.muted}>{utxo
+            ? 'Use a WIF key or a BIP84 account key (zprv or vprv).'
+            : 'Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.'}</Text>
         </>}
         {busy && <ActivityIndicator accessibilityLabel={address ? 'Importing account' : 'Checking address'} color={colors.pink} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
