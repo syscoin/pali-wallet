@@ -6,6 +6,7 @@ import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { HDNodeWallet, Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
+import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
@@ -551,7 +552,7 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
     const transfers = f.runtime.transfers!;
     const before = f.read().signedRecords;
     let broadcasts = 0;
-    const broadcast = async (approvedBytes: string) => {
+    const broadcast: EvmSignedBroadcast<string> = ({ rawTransaction: approvedBytes, admit }) => admit(async () => {
       broadcasts++;
       assert.equal(approvedBytes, raw);
       assert.equal(f.read().signedRecords.length, before.length + 1);
@@ -559,7 +560,8 @@ test('mobile dispatch rejects missing or changed approval before retaining or br
         { keyring: f.keyring, assertCurrent: guard }, approval.chainId, approval.from, hash
       );
       assert.equal(record?.rawTransaction, raw);
-    };
+      return hash;
+    });
     const guard = () => undefined;
     await assert.rejects(transfers.submit(raw, hash, guard, broadcast, undefined, undefined as never));
     await assert.rejects(
@@ -607,7 +609,7 @@ test('retired imported signed bytes survive recovery without resurrecting an acc
     assert.equal(restored?.rawTransaction, raw);
     let broadcasts = 0;
     await assert.rejects(f.runtime.transfers!.submit(raw, transaction.hash!, () => undefined,
-      async () => { broadcasts++; }, undefined, {
+      ({ admit }) => admit(async () => { broadcasts++; return transaction.hash!; }), undefined, {
         type: 2, chainId: '1', nonce: '0', from: importedWallet.address, to: sourceWallet.address,
         value: '1', gasLimit: '21000', data: '0x', maxFeePerGas: '2', maxPriorityFeePerGas: '1',
       }));

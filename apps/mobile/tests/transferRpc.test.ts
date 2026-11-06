@@ -52,7 +52,8 @@ test('new cancellation preserves a saved legacy nonce and rejects unsupported or
     },
     eth_getCode: '0x',
   });
-  const quote = await f.rpc.prepareCancellation(hash, legacy, sender.address, signal(), () => undefined);
+  const rates = { type: 0 as const, gasPrice: 150n };
+  const quote = await f.rpc.prepareCancellation(hash, legacy, sender.address, signal(), () => undefined, rates);
   assert.equal(quote.transaction.type, 0);
   assert.equal(quote.transaction.nonce, '1');
   assert.equal(quote.maximumFeeUnits, '7560000');
@@ -63,8 +64,60 @@ test('new cancellation preserves a saved legacy nonce and rejects unsupported or
     gasLimit: 21000, gasPrice: 150,
   });
   f.calls.length = 0;
-  await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined), { code: 'REVIEW_REQUIRED' });
+  await assert.rejects(f.rpc.prepareCancellation(keccak256(unsupported), unsupported, sender.address, signal(), () => undefined, rates), { code: 'REVIEW_REQUIRED' });
   assert.equal(f.calls.length, 0);
+});
+test('saved cancellation cannot POST after its queued admission loses receipt, nonce or code authority', async () => {
+  const raw = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 21000, gasPrice: 150,
+  });
+  const hash = keccak256(raw);
+  let nonce = '0x1', code = '0x', chain = '0x1';
+  let receipt: object | null = null;
+  const f = fixture({
+    eth_chainId: () => chain,
+    eth_getTransactionCount: () => nonce,
+    eth_getCode: () => code,
+    eth_getTransactionReceipt: ({ params }: { params: string[] }) => {
+      assert.deepEqual(params, [hash]);
+      return receipt;
+    },
+  });
+  const quote = await f.rpc.prepareSavedCancellation(hash, raw, sender.address, signal(), () => undefined,
+    { type: 0, gasPrice: 150n });
+  const transaction = quote.transaction;
+  assert.equal(transaction.type, 0);
+  const cancel = await sender.signTransaction({
+    type: 0, chainId: 1, nonce: 1, to: sender.address, value: 0,
+    gasLimit: BigInt(transaction.gasLimit), gasPrice: BigInt(transaction.gasPrice),
+  });
+  const dispatch = (skipPreflight = false) => f.rpc.broadcast(cancel, keccak256(cancel), signal(), {
+    mode: 'cancel-saved', original: quote.original,
+    async admit(send, preflight) {
+      if (!skipPreflight) {
+        assert.ok(preflight);
+        await preflight();
+      }
+      return send();
+    },
+  });
+  await assert.rejects(dispatch(true), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x0';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x2';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  nonce = '0x1';
+  code = '0x6000';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  code = '0x';
+  chain = '0x2';
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  chain = '0x1';
+  receipt = { transactionHash: hash, from: sender.address, to: recipient, status: '0x1',
+    blockNumber: '0x20', blockHash: '0x' + '2'.repeat(64) };
+  await assert.rejects(dispatch(), { code: 'REVIEW_REQUIRED' });
+  assert(!f.calls.some(({ method }) => method === 'eth_sendRawTransaction'));
 });
 test('prepares an exact integer EIP1559 quote without broadcasting', async () => {
   const f = fixture();
@@ -176,7 +229,7 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
   });
   const hash = keccak256(raw);
   const f = fixture({ eth_sendRawTransaction: hash });
-  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', beforeBroadcast: () => undefined }), hash);
+  assert.equal(await f.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
   assert.deepEqual(
     f.calls.find((c) => c.method === 'eth_sendRawTransaction')?.params,
     [raw]
@@ -186,19 +239,19 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
       throw Error('Response lost');
     },
   });
-  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', beforeBroadcast: () => undefined }));
+  await assert.rejects(lost.rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }));
   assert.equal(
     lost.calls.filter((c) => c.method === 'eth_sendRawTransaction').length,
     1
   );
   const invalid = fixture();
   await assert.rejects(
-    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', beforeBroadcast: () => undefined })
+    invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } })
   );
   assert.equal(invalid.calls.length, 0);
 });
 
-test('requires current synchronous broadcast admission at the actual POST boundary', async () => {
+test('requires broadcast admission after preflight and never posts if admission refuses', async () => {
   const raw = await sender.signTransaction({
     type: 2, chainId: 1, nonce: 0, to: recipient, value: 1,
     gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1,
@@ -210,17 +263,23 @@ test('requires current synchronous broadcast admission at the actual POST bounda
     { code: 'REVIEW_REQUIRED' }
   );
   assert.equal(f.calls.length, 0);
+  let methodsAtAdmission: string[] | undefined;
   await assert.rejects(
     f.rpc.broadcast(raw, hash, signal(), {
       mode: 'new-send',
-      beforeBroadcast: (async () => { throw new Error('late review'); }) as never,
+      admit: async (_send, preflight) => {
+        await preflight?.();
+        methodsAtAdmission = f.calls.map((call) => call.method);
+        throw new Error('late review');
+      },
     }),
-    { code: 'REVIEW_REQUIRED' }
+    /late review/
   );
+  assert.deepEqual(methodsAtAdmission, ['eth_chainId']);
   assert.deepEqual(f.calls.map((call) => call.method), ['eth_chainId']);
   const revoked = {
     mode: 'new-send' as const,
-    beforeBroadcast: () => { throw new Error('review revoked'); },
+    admit: async (_send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); throw new Error('review revoked'); },
   };
   const pending = f.rpc.broadcast(raw, hash, signal(), revoked);
   Object.assign(revoked, { mode: 'replay' });
@@ -320,6 +379,31 @@ test('ordinary native replay preserves shared admission failures with no cancell
   const mislabeled = fixture();
   await assert.rejects(mislabeled.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context: { ...context, operation: 'cancel' } }), { code: 'INVALID_RESPONSE' });
   assert.equal(mislabeled.calls.length, 0);
+});
+
+test('Speed Up exact replay rechecks executable fees, gas and nonce without requiring the original in the mempool', async () => {
+  const raw = await sender.signTransaction({
+    type: 2, chainId: 1, nonce: 1, to: recipient, value: 1,
+    gasLimit: 25_200, maxFeePerGas: 110, maxPriorityFeePerGas: 2,
+  });
+  const hash = keccak256(raw);
+  const context = { chainId: '1', from: sender.address, hash, nonce: 1, operation: 'speed-up' as const };
+  for (const sample of [
+    { baseFeePerGas: '0x6f', gasLimit: '0x1c9c380', nonce: '0x1' },
+    { baseFeePerGas: '0x64', gasLimit: '0x61ff', nonce: '0x1' },
+    { baseFeePerGas: '0x64', gasLimit: '0x1c9c380', nonce: '0x2' },
+    { baseFeePerGas: '0x64', gasLimit: '0x1c9c380', nonce: '0x1', valid: true },
+  ]) {
+    const f = fixture({ eth_getBlockByNumber: { baseFeePerGas: sample.baseFeePerGas, gasLimit: sample.gasLimit },
+      eth_getTransactionCount: sample.nonce, eth_sendRawTransaction: hash });
+    const admit: EvmReplayDispatchAdmission = async (send, preflight) => { await preflight(); return send(); };
+    const replay = f.rpc.broadcast(raw, hash, signal(), { mode: 'replay', admit, context });
+    if (sample.valid) assert.equal(await replay, hash);
+    else await assert.rejects(replay, { code: 'REVIEW_REQUIRED' });
+    assert.equal(f.calls.some(({ method }) => method === 'eth_getTransactionByHash'), false);
+    assert.deepEqual(f.calls.filter(({ method }) => method === 'eth_sendRawTransaction').map(({ params }) => params),
+      sample.valid ? [[raw]] : []);
+  }
 });
 
 test('ordinary native replay checks the chain once inside final admission before POST', async () => {

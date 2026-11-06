@@ -1,7 +1,7 @@
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmSignedRecordSummary } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -31,9 +31,10 @@ import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from '.
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
-import { NativeTransferError, type NativeTransferRuntime } from './transfers.ts';
-import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
-import { snapshotCancellationTransfer, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
+import { NativeTransferError, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
+import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
+import { assertSpeedUpEnvelope } from './transferRpc.ts';
+import { snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
 import { normalizeErc20Address } from '../portfolio/erc20Metadata.ts';
 import { NativeTokenRegistry, snapshotSavedCollectible } from '../portfolio/tokenRegistry.ts';
 import type { NativeTokenInventory, NativeTokenScope, SavedCollectible } from '../portfolio/tokenRegistry.ts';
@@ -123,11 +124,6 @@ function checkGuard(assertCurrent: () => void): void {
   }
 }
 
-function pendingCancellationOriginal(record: EvmSignedRecordSummary | undefined, hash: string): boolean {
-  return record?.hash === hash && record.operation !== 'cancel' &&
-    ['signed', 'attempted', 'submitted'].includes(record.phase);
-}
-
 /**
  * Adapt the published software keyring without exposing it, account secrets or
  * storage to a screen. The factory cannot load SDK code before native crypto
@@ -175,6 +171,12 @@ export function createKeyringRuntimeFactory(
         );
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
+        let collectibleLifetime: AbortController | undefined;
+        const retireCollectibleLifetime = () => {
+          const previous = collectibleLifetime;
+          collectibleLifetime = undefined;
+          previous?.abort();
+        };
         let pendingBalance: AbortController | null = null;
         let pendingRegistration: AbortController | null = null;
         let utxoSend: NativeUtxoSend | undefined;
@@ -185,6 +187,7 @@ export function createKeyringRuntimeFactory(
         const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
+          retireCollectibleLifetime();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -221,6 +224,7 @@ export function createKeyringRuntimeFactory(
           state.accounts = initialState().accounts;
           catalogueSnapshot = null;
           authenticatedPair = null; verifiedIdentity = null;
+          retireCollectibleLifetime();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -339,8 +343,10 @@ export function createKeyringRuntimeFactory(
           return next;
         };
         const publishAccounts = (next: NativeWalletCatalogueSnapshot) => {
+          const changed = catalogueSnapshot !== next;
           Object.assign(state, stateFor(catalogue.privateRecords));
           catalogueSnapshot = next;
+          if (changed) retireCollectibleLifetime();
         };
         // Transfer only inside an admitted mutation. No await separates the
         // ownership move from publishing the private instance used by lock().
@@ -369,7 +375,8 @@ export function createKeyringRuntimeFactory(
             await (keyring === target ? source : target).destroy();
           }
         };
-        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>) {
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void,
+          metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -381,8 +388,33 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('CANCELLED');
           };
           check();
-          if (!metadata) return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check });
-          return Object.freeze({ assertCurrent: check, persistSigned: async (record: Parameters<typeof signedRecords.append>[1]) => { await signedRecords.append({ keyring, assertCurrent: check },record,metadata); check(); } });
+          const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
+          if (requiresReplacement !== (replacement !== undefined)) throw new NativeTransferError('EXPIRED');
+          return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check }, { metadata, replacement });
+        }
+        function snapshotReviewedTransfer(transaction: Parameters<NativeTransferRuntime['sign']>[0],
+          intent: NativeAssetTransferIntent | undefined, replacement?: NativeReplacementApproval) {
+          const selected = selectedAccount();
+          const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
+          if (intent?.kind === 'nft-transfer' && replacement) throw new KeyringRuntimeError('INVALID_INPUT');
+          const prepared = replacement?.mode === 'cancel'
+            ? snapshotCancellationTransfer(transaction, network, selected.address, replacement.feePlan)
+            : intent?.kind === 'nft-transfer'
+              ? snapshotNftQuoteEnvelope(transaction, network, intent)
+              : snapshotUnsignedTransfer(transaction, network);
+          assertTransferIntentEnvelope(prepared, intent);
+          if (prepared.from.toLowerCase() !== selected.address.toLowerCase()) throw new KeyringRuntimeError('INVALID_INPUT');
+          if (replacement) {
+            const { original, mode } = replacement;
+            if ((mode === 'cancel' && intent) || !/^0x[0-9a-f]{64}$/.test(original.hash) ||
+                replacement.binding.originalHash !== original.hash ||
+                original.from.toLowerCase() !== selected.address.toLowerCase() ||
+                String(original.nonce) !== prepared.nonce || original.type !== prepared.type ||
+                original.registrationHash !== network.registrationHash)
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            if (mode === 'speed-up') assertSpeedUpEnvelope(original, prepared);
+          }
+          return prepared;
         }
         const signedView = (captured: number, externalGuard: () => void, walletBindingId: string, account = selectedAccount()) => {
           const check = () => { current(captured); checkGuard(externalGuard); };
@@ -937,15 +969,30 @@ export function createKeyringRuntimeFactory(
           if (context.scope.key !== scope.key || context.scope.sourceId !== scope.sourceId) throw new KeyringRuntimeError('CANCELLED');
           return context;
         };
-        const tokenOperation = <T>(assertCurrent: () => void, action: (scope: NativeTokenScope, guard: () => void) => Promise<T>): Promise<T> => {
+        const tokenOperation = <T>(
+          assertCurrent: () => void,
+          action: (scope: NativeTokenScope, guard: () => void) => Promise<T>,
+          kind?: 'registry-write'
+        ): Promise<T> => {
           if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(assertCurrent);
+            if (closed || captured !== generation) throw new KeyringRuntimeError('CANCELLED');
             if (!keyring.isUnlocked() || !catalogueSnapshot) throw new KeyringRuntimeError('NOT_READY');
           };
-          try { check(); } catch (error) { return Promise.reject(error); }
-          // Reserve before any await so account/network/authentication cannot race admission.
+          // Reserve through the synchronous caller guard. Nothing can enter
+          // between successful admission, epoch retirement and task installation.
+          reserved = {};
+          try {
+            check();
+            // A write that later fails still retires earlier inventory proofs.
+            if (kind === 'registry-write') retireCollectibleLifetime();
+          } catch (error) {
+            return Promise.reject(error);
+          } finally {
+            reserved = null;
+          }
           const task = Promise.resolve().then(async () => {
             check();
             const selected = catalogueSnapshot!.accounts.find((account) => account.id === catalogueSnapshot!.active.accountId)!;
@@ -986,15 +1033,19 @@ export function createKeyringRuntimeFactory(
               while (active) { await active.catch(() => undefined); checkGuard(guard); }
               return tokenOperation(guard, (scope, check) => tokens.load(scope, check));
             },
-            add: (revision, metadata, guard) => tokenOperation(guard, (scope, check) => tokens.add(scope, revision, metadata, check)),
-            remove: (revision, contract, guard) => tokenOperation(guard, (scope, check) => tokens.remove(scope, revision, contract, check)),
+            add: (revision, metadata, guard) => tokenOperation(guard,
+              (scope, check) => tokens.add(scope, revision, metadata, check), 'registry-write'),
+            remove: (revision, contract, guard) => tokenOperation(guard,
+              (scope, check) => tokens.remove(scope, revision, contract, check), 'registry-write'),
             async addCollectible(revision, collectible, guard) {
               const target = snapshotSavedCollectible(collectible);
-              return tokenOperation(guard, (scope, check) => tokens.addCollectible(scope, revision, target, check));
+              return tokenOperation(guard,
+                (scope, check) => tokens.addCollectible(scope, revision, target, check), 'registry-write');
             },
             async removeCollectible(revision, collectible, guard) {
               const target = snapshotSavedCollectible(collectible);
-              return tokenOperation(guard, (scope, check) => tokens.removeCollectible(scope, revision, target, check));
+              return tokenOperation(guard,
+                (scope, check) => tokens.removeCollectible(scope, revision, target, check), 'registry-write');
             },
           },
           catalogue: { getSnapshot: () => closed || requiresReopen() || !keyring.isUnlocked() ? null : catalogueSnapshot },
@@ -1222,40 +1273,40 @@ export function createKeyringRuntimeFactory(
             },
           },
           transfers: {
-            async cancellationOriginal(hash, assertCurrent, signal) {
+            async replacementOriginal(hash, mode, assertCurrent, signal) {
               if (active || reserved || closed || !canSign()) return null;
               const captured = generation, selected = selectedAccount();
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               const check = () => { current(captured); checkGuard(assertCurrent); };
               const session = { keyring, assertCurrent: check };
-              const original = await signedRecords.readExact(session, network.chainId, selected.address, hash);
+              const load = () => signedRecords.readReplacement(session, network.chainId, selected.address, hash, mode);
+              let retained = await load();
               check();
-              if (!original || original.operation === 'cancel') return null;
-              const newest = async () => {
-                const records = await signedRecords.listSender(session, network.chainId, selected.address);
-                check();
-                return records.findLast((record) => record.nonce === original.nonce);
-              };
-              const latest = await newest();
-              if (!latest || latest.hash !== hash) return null;
-              if (pendingCancellationOriginal(latest, hash)) return original.rawTransaction;
-              const observe = dependencies.observeActivity;
-              if (!observe) return null;
-              // A terminal journal phase is an earlier observation. Reconcile it
-              // only when the user opens cancellation after a fresh pending detail.
-              try {
-                const result = await observeRetainedEvmTransaction(
-                  signedRecords, session, network.chainId, selected.address, hash,
-                  (expected) => observe(network, expected, signal, check), check
-                );
-                if (result.terminalPhase || !pendingCancellationOriginal(await newest(), hash)) return null;
-                return result.entry.rawTransaction;
-              } catch (error) {
-                if (signedRecords.requiresReopen) throw new TransferJournalError('REOPEN_REQUIRED');
-                check();
-                if (signal.aborted) throw error;
-                return null;
+              if (!retained) return null;
+              if (!retained.binding) {
+                const observe = dependencies.observeActivity;
+                if (!observe) return null;
+                try {
+                  const result = await observeRetainedEvmTransaction(
+                    signedRecords, session, network.chainId, selected.address, hash,
+                    (expected) => observe(network, expected, signal, check), check
+                  );
+                  if (result.terminalPhase) return null;
+                  retained = await load();
+                  check();
+                  if (!retained) return null;
+                } catch (error) {
+                  if (signedRecords.requiresReopen) throw new TransferJournalError('REOPEN_REQUIRED');
+                  check();
+                  if (signal.aborted) throw error;
+                  return null;
+                }
               }
+              const { original, binding, rates } = retained;
+              if (!binding) return null;
+              const intent = mode === 'speed-up' && original.metadata?.intent !== undefined
+                ? snapshotErc20TransferIntent(original.metadata.intent) : undefined;
+              return Object.freeze({ rawTransaction: original.rawTransaction, binding, rates, ...(intent ? { intent } : {}) });
             },
             replay(assertCurrent, transport, options) {
               if (active || reserved || closed || !canSign()) throw new KeyringRuntimeError('NOT_READY');
@@ -1283,6 +1334,37 @@ export function createKeyringRuntimeFactory(
                 return token;
               });
             },
+            async collectible(input, assertCurrent) {
+              let target: SavedCollectible;
+              try { target = snapshotSavedCollectible(input); }
+              catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
+              if (pendingSubmissions.size) throw new KeyringRuntimeError('BUSY');
+              if (!canSign()) throw new KeyringRuntimeError('NOT_READY');
+              return tokenOperation(assertCurrent, async (scope, check) => {
+                const captured = generation;
+                const catalogue = catalogueSnapshot;
+                const signal = (collectibleLifetime ??= new AbortController()).signal;
+                // This proof outlives the lookup. The invocation guard is
+                // used only for I/O and returning the result below.
+                const assertSavedCurrent = () => {
+                  current(captured);
+                  if (collectibleLifetime?.signal !== signal || signal.aborted ||
+                      catalogueSnapshot !== catalogue || !keyring.isUnlocked())
+                    throw new KeyringRuntimeError('CANCELLED');
+                };
+                const checkRead = () => { check(); assertSavedCurrent(); };
+                const inventory = await tokens.load(scope, checkRead);
+                checkRead();
+                const collectible = inventory.collectibles?.find((item) =>
+                  item.contractAddress === target.contractAddress &&
+                  item.tokenStandard === target.tokenStandard &&
+                  (item.tokenStandard === 'ERC-721' ||
+                    (target.tokenStandard === 'ERC-1155' && item.tokenId === target.tokenId))
+                );
+                if (!collectible) throw new KeyringRuntimeError('NOT_READY');
+                return Object.freeze({ collectible, assertCurrent: assertSavedCurrent, signal });
+              });
+            },
             async journal(assertCurrent) {
               if (closed || !keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
               if (!canSign()) throw new KeyringRuntimeError('NOT_READY');
@@ -1296,12 +1378,12 @@ export function createKeyringRuntimeFactory(
               void address;
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, cancellation) => {
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;
               let review: {
                 context: EvmSubmissionContext;
-                intent: Erc20TransferIntent | undefined;
+                intent: NativeAssetTransferIntent | undefined;
                 expectedUnsigned: string;
               };
               const check = () => {
@@ -1314,27 +1396,16 @@ export function createKeyringRuntimeFactory(
                 check();
                 const selected = selectedAccount();
                 const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-                const intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-                const approved = cancellation
-                  ? snapshotCancellationTransfer(inputApproval, network, selected.address, cancellation.feePlan)
-                  : snapshotUnsignedTransfer(inputApproval, network);
-                assertTransferIntentEnvelope(approved, intent);
-                if (approved.from.toLowerCase() !== selected.address.toLowerCase())
-                  throw new KeyringRuntimeError('INVALID_INPUT');
+                const intent = inputIntent === undefined ? undefined : snapshotNativeAssetTransferIntent(inputIntent);
+                const approved = snapshotReviewedTransfer(inputApproval, intent, replacement);
                 const expectedUnsigned = unsignedTransferBytes(approved);
-                if (cancellation) {
-                  const { original } = cancellation;
-                  if (intent || !/^0x[0-9a-f]{64}$/.test(original.hash) ||
-                      original.from.toLowerCase() !== selected.address.toLowerCase() ||
-                      String(original.nonce) !== approved.nonce || original.type !== approved.type ||
-                      original.registrationHash !== network.registrationHash)
-                    throw new KeyringRuntimeError('INVALID_INPUT');
-                }
                 const context: EvmSubmissionContext = {
                   account: { id: selected.index, type: selected.type, address: selected.address },
                   network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
-                  operation: cancellation ? 'cancel' : intent ? 'erc20' : 'send',
-                  ...(cancellation ? { originalHash: cancellation.original.hash } : {}),
+                  operation: replacement?.mode ?? (intent?.kind === 'nft-transfer'
+                    ? intent.tokenStandard === 'ERC-721' ? 'erc721' : 'erc1155'
+                    : intent ? 'erc20' : 'send'),
+                  ...(replacement ? { originalHash: replacement.original.hash } : {}),
                 };
                 review = { context, intent, expectedUnsigned };
               } catch (error) {
@@ -1346,25 +1417,34 @@ export function createKeyringRuntimeFactory(
                 const boundary = sdk.captureEvmSubmission(
                   context,
                   check,
-                  () => captureSignedSubmission(context, check, intent ? { intent } : undefined)
+                  () => captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined, replacement?.binding)
                 );
                 const tx = Transaction.from(rawTransaction);
                 if (tx.to === null || tx.hash !== hash)
                   throw new KeyringRuntimeError('INVALID_INPUT');
                 assertTransferIntentEnvelope({
-                  chainId: tx.chainId.toString(), to: tx.to,
+                  chainId: tx.chainId.toString(), from: tx.from ?? '', to: tx.to,
                   value: tx.value.toString(), data: tx.data,
                 }, intent);
                 try {
-                  if (context.operation === 'cancel') {
-                    const records = await signedRecords.listSender({ keyring, assertCurrent: check }, tx.chainId.toString(), context.account.address);
-                    if (!pendingCancellationOriginal(records.findLast((record) => record.nonce === tx.nonce), context.originalHash!))
+                  if (replacement?.mode === 'speed-up') {
+                    const retained = await signedRecords.readExact({ keyring, assertCurrent: check }, tx.chainId.toString(), context.account.address, replacement.original.hash);
+                    if (!retained) throw new NativeTransferError('EXPIRED');
+                    const original = Transaction.from(retained.rawTransaction);
+                    const savedIntent = retained.metadata?.intent === undefined ? undefined : snapshotErc20TransferIntent(retained.metadata.intent);
+                    if (intent?.kind === 'nft-transfer' || !equalTransferIntent(savedIntent, intent) || original.accessList?.length || !tx.from || !tx.to)
                       throw new NativeTransferError('EXPIRED');
+                    assertSpeedUpEnvelope({ ...replacement.original, from: original.from!, to: original.to,
+                      valueUnits: original.value.toString(), data: original.data, nonce: original.nonce, type: original.type as 0 | 2 }, {
+                      from: tx.from, to: tx.to, value: tx.value.toString(), data: tx.data, nonce: String(tx.nonce), type: tx.type!,
+                    });
                   }
                   await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
                 } catch (error) {
                   if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
                     throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                  if (error instanceof Error && error.message === 'EVM_SIGNED_RECORD_ORIGINAL_CHANGED')
+                    throw new NativeTransferError('EXPIRED');
                   throw error;
                 }
               });
@@ -1378,19 +1458,14 @@ export function createKeyringRuntimeFactory(
               if (active || reserved) throw new KeyringRuntimeError('BUSY');
               if (!keyring.isUnlocked() || !canSign()) throw new KeyringRuntimeError('NOT_READY');
             },
-            sign: (transaction, assertCurrent, inputIntent, cancellation) => {
+            sign: (transaction, assertCurrent, inputIntent, replacement) => {
               if (closed || !keyring.isUnlocked()) return Promise.reject(new KeyringRuntimeError('CANCELLED'));
               if (!canSign()) return Promise.reject(new KeyringRuntimeError('NOT_READY'));
               let intent;
               let prepared: typeof transaction;
               try {
-                intent = inputIntent === undefined ? undefined : snapshotErc20TransferIntent(inputIntent);
-                const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-                if (cancellation && intent) throw new KeyringRuntimeError('INVALID_INPUT');
-                prepared = cancellation
-                  ? snapshotCancellationTransfer(transaction, network, selectedAccount().address, cancellation.feePlan)
-                  : snapshotUnsignedTransfer(transaction, network);
-                assertTransferIntentEnvelope(prepared, intent);
+                intent = inputIntent === undefined ? undefined : snapshotNativeAssetTransferIntent(inputIntent);
+                prepared = snapshotReviewedTransfer(transaction, intent, replacement);
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
               if (!keyring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
@@ -1400,8 +1475,7 @@ export function createKeyringRuntimeFactory(
               const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
               if (!nativeSigningEnabled(network.id, catalogueSnapshot!.networks) || prepared.chainId !== network.chainId)
                 throw new KeyringRuntimeError('INVALID_INPUT');
-              if (cancellation) snapshotCancellationTransfer(prepared, network, selectedAccount().address, cancellation.feePlan);
-              else snapshotUnsignedTransfer(prepared, network);
+              snapshotReviewedTransfer(prepared, intent, replacement);
               const signed = keyring.signPreparedEvmTransaction({
                 account: { id: selectedAccount().index, type: selectedAccount().type, expectedAddress: prepared.from },
                 network: { kind: 'ethereum', chainId: network.chainId, slip44: 60, url: network.rpcUrl },

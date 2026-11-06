@@ -50,6 +50,7 @@ import {
   assertEvmFeeApprovalCurrent,
   assertEvmFeeRefreshApproved,
 } from '../../../shared/evmFeeApproval';
+import { getEvmTransferCost } from '../../../shared/evmTransferCost';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -357,8 +358,11 @@ import {
   createChromeUtxoSignedRecords,
 } from './evmSignedRecords';
 import {
+  assertExtensionRetainedCancellationFunds,
+  assertExtensionRetainedCancellationReady,
   assertLiveEvmReplacementChain,
   createExtensionEvmReplay,
+  createExtensionRetainedCancellation,
 } from './evmSignedReplay';
 import {
   captureReviewedNativeEvmTransfer,
@@ -456,6 +460,10 @@ const fiatNetworkKey = (network: INetwork) =>
   ]);
 
 const UTXO_RETRY_REVIEW_MS = 90_000;
+const retainedCancellationReviewsByWallet = new WeakMap<
+  MainController,
+  ReturnType<typeof createExtensionRetainedCancellation>
+>();
 const utxoRecordsByWallet = new WeakMap<MainController, UtxoSignedRecords>();
 const utxoReviewsByWallet = new WeakMap<
   MainController,
@@ -1262,6 +1270,76 @@ class MainController {
     });
   }
 
+  public prepareRetainedEvmCancellation(hash: string) {
+    let reviews = retainedCancellationReviewsByWallet.get(this);
+    if (!reviews) {
+      reviews = createExtensionRetainedCancellation(() => {
+        this.assertWalletReadyForSigning();
+        const keyring = this.getActiveKeyring();
+        const { vault } = store.getState();
+        const { activeAccount, activeNetwork, accounts } = vault;
+        const { id: accountId, type } = activeAccount;
+        const account = accounts[type]?.[accountId];
+        if (
+          !account?.address ||
+          vault.isBitcoinBased ||
+          activeNetwork.kind !== INetworkType.Ethereum ||
+          (type !== KeyringAccountType.HDAccount &&
+            !(type === KeyringAccountType.Imported && account.xprv)) ||
+          !isAccountCompatibleWithNetwork(account, type, activeNetwork)
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+
+        const from = account.address;
+        const { chainId } = activeNetwork;
+        const transactions = keyring.ethereumTransaction;
+        const provider = transactions.web3Provider;
+        const records = this.getRetainedEvmRecords();
+        const owned = this.captureEvmSignedSubmission(keyring, {
+          account: { id: accountId, type, address: from },
+          network: {
+            kind: activeNetwork.kind,
+            chainId,
+            slip44: activeNetwork.slip44,
+            url: activeNetwork.url,
+          },
+          operation: 'send',
+        });
+        const assertCurrent = () => {
+          owned.assertCurrent();
+          if (
+            keyring.ethereumTransaction !== transactions ||
+            transactions.web3Provider !== provider ||
+            (type === KeyringAccountType.Imported &&
+              !store.getState().vault.accounts[type]?.[accountId]?.xprv)
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        };
+        return {
+          account: { id: accountId, type, address: from },
+          chainId,
+          provider,
+          records,
+          recordSession: { keyring, assertCurrent },
+          cancelTransaction: transactions.cancelSentTransaction,
+        };
+      });
+      retainedCancellationReviewsByWallet.set(this, reviews);
+    }
+    return reviews.prepare(hash);
+  }
+
+  public confirmRetainedEvmCancellation(id: string) {
+    const reviews = retainedCancellationReviewsByWallet.get(this);
+    if (!reviews) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    return reviews.confirm(id);
+  }
+
+  public cancelRetainedEvmCancellationReview(id: string): void {
+    if (typeof id === 'string')
+      retainedCancellationReviewsByWallet.get(this)?.cancel(id);
+  }
+
   private captureEvmSignedSubmission(
     keyring: KeyringManager,
     context: EvmSubmissionContext
@@ -1302,36 +1380,119 @@ class MainController {
       }
     };
     assertCurrent();
-    const lifecycle = createEvmSignedRecordLifecycle(
-      this.getRetainedEvmRecords(),
-      { keyring, assertCurrent }
-    );
-    if (replacementProvider === null) return lifecycle;
-    const send = replacementProvider.send.bind(replacementProvider);
+    const records = this.getRetainedEvmRecords();
+    const session = { keyring, assertCurrent };
+    if (
+      replacementProvider === null ||
+      (context.operation !== 'cancel' && context.operation !== 'speed-up')
+    )
+      return createEvmSignedRecordLifecycle(records, session);
     const payer = context.account.address;
-    return Object.freeze({
-      ...lifecycle,
-      persistSigned: async (
-        record: Parameters<typeof lifecycle.persistSigned>[0]
-      ) => {
-        await lifecycle.persistSigned(record);
+    const originalHash = context.originalHash?.toLowerCase();
+    if (context.origin?.kind === 'retained') {
+      if (context.operation !== 'cancel' || !originalHash)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const origin = context.origin;
+      const assertApproval = retainedCancellationReviewsByWallet
+        .get(this)
+        ?.captureApproval(origin);
+      if (!assertApproval) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const retainedSession = {
+        keyring,
+        assertCurrent: () => {
+          assertCurrent();
+          assertApproval();
+        },
+      };
+      const replacement = records
+        .readReplacement(
+          retainedSession,
+          String(context.network.chainId),
+          payer,
+          originalHash,
+          'cancel'
+        )
+        .then((retained) => {
+          retainedSession.assertCurrent();
+          if (
+            !retained?.binding ||
+            retained.binding.expectedTipHash !== origin.tipHash ||
+            retained.original.rawTransaction !== origin.rawTransaction ||
+            retained.original.nonce !== origin.nonce ||
+            retained.original.signer.type !== context.account.type ||
+            retained.original.signer.id !== context.account.id ||
+            !isEqual(retained.rates, origin.feeFloor)
+          )
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          return retained.binding;
+        });
+      void replacement.catch(() => undefined);
+      return createEvmSignedRecordLifecycle(records, retainedSession, {
+        replacement,
+        preflight: async (record, assertDispatchCurrent) => {
+          const signed = Transaction.from(record.rawTransaction);
+          const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
+          if (feePerGas === null)
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          const { maximumFee } = getEvmTransferCost(
+            signed.value,
+            signed.gasLimit,
+            feePerGas
+          );
+          await assertExtensionRetainedCancellationFunds(
+            replacementProvider,
+            payer,
+            maximumFee,
+            assertDispatchCurrent
+          );
+          await assertExtensionRetainedCancellationReady(
+            replacementProvider,
+            origin.rawTransaction,
+            assertDispatchCurrent
+          );
+        },
+      });
+    }
+    const original = store
+      .getState()
+      .vault.accountTransactions[selected.type]?.[selected.id]?.ethereum?.[
+        context.network.chainId
+      ]?.find((row) => row.hash?.toLowerCase() === originalHash);
+    const nonce = getEoaNonceFromHistoryTransaction(
+      { ...original, smartAccountExecutionFrom: undefined },
+      payer
+    );
+    if (!originalHash || nonce === undefined)
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    const replacement = records.captureVerifiedReplacement(session, {
+      chainId: String(context.network.chainId),
+      from: payer,
+      nonce,
+      originalHash,
+      operation: context.operation,
+    });
+    // The capture starts before SDK RPC/signing; persistence observes any rejection.
+    void replacement.catch(() => undefined);
+    const send = replacementProvider.send.bind(replacementProvider);
+    return createEvmSignedRecordLifecycle(records, session, {
+      replacement,
+      preflight: async (record, assertDispatchCurrent) => {
         if (context.operation === 'speed-up') {
           const transaction = Transaction.from(record.rawTransaction);
           if (!isEvmEmptySelfCall(transaction)) return;
           if (!isEvmProtectedEmptySelfCall(transaction, context.operation))
             throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         }
-        // The SDK awaits this acknowledgement before its final synchronous send guard.
         await assertLiveEvmReplacementChain(
           replacementProvider,
           context.network.chainId,
-          lifecycle.assertCurrent
+          assertDispatchCurrent
         );
         await assertEvmCancellationPayerReady(
           payer,
           record.nonce,
           (method, address, tag) => send(method, [address, tag]),
-          lifecycle.assertCurrent
+          assertDispatchCurrent
         );
       },
     });
@@ -2479,6 +2640,8 @@ class MainController {
     // A new authenticated session must re-read and authenticate retained bytes.
     this.retainedEvmReplay?.cancel();
     this.retainedEvmReplay = undefined;
+    retainedCancellationReviewsByWallet.get(this)?.cancel();
+    retainedCancellationReviewsByWallet.delete(this);
     this.retainedEvmRecords = undefined;
     utxoRecordsByWallet.delete(this);
     const utxoReview = utxoReviewsByWallet.get(this);
@@ -6917,11 +7080,29 @@ class MainController {
     let broadcastStarted = false;
     try {
       assertCurrentContext();
+      // History hints only avoid journal reads for ordinary sends. The shared
+      // journal is the authority for the signed cancellation and its lineage.
+      const retainedCancellation =
+        original.isCancel === true ||
+        (typeof original.to === 'string' &&
+          original.to.toLowerCase() === sender)
+          ? await this.getRetainedEvmRecords().readPendingCancellation(
+              { keyring, assertCurrent: assertCurrentContext },
+              {
+                chainId: String(chainId),
+                from: sender,
+                nonce,
+                originalHash: txHash.toLowerCase(),
+              }
+            )
+          : null;
+      assertCurrentContext();
       return await transactionController.sendTransactionWithEditedFee(
         txHash,
         isLegacy,
         {
           ...feeApproval,
+          ...(retainedCancellation ? { retainedCancellation } : {}),
           targetAccount,
           assertCurrentContext,
           validateOriginal,

@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "Añade fondos a esta cuenta antes de acelerar la transacción. El importe original no cambiará.",
     "speedUpFeeUnavailable": "No se pudo comprobar la comisión. Inténtalo de nuevo.",
     "replay": {
+      "reviewCancellation": "Revisar cancelación",
+      "cancellationDescription": "¿Cancelar esta transacción con una comisión de red máxima de {{fee}} {{currency}}? La transacción original aún puede confirmarse primero.",
+      "cancellationExpired": "La revisión de la cancelación ha caducado. Comprueba de nuevo la comisión.",
       "review": "Revisar reenvío",
       "title": "Reenviar transacción",
       "description": "Reenvía la misma transacción firmada con su importe y comisiones originales.",

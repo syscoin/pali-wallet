@@ -1,3 +1,9 @@
+import {
+  observeEvmTransaction,
+  type EvmObservationMethod,
+  type EvmObservationRequest,
+} from './evmTransactionObservation.ts';
+
 export class EvmCancellationPayerCodeError extends Error {
   readonly code = 'EVM_CANCELLATION_PAYER_CODE';
 
@@ -96,11 +102,46 @@ export async function assertEvmCancellationPayerReady(
   checkCurrent(assertCurrent);
 }
 
+/** The caller has already authenticated the exact retained original and owns its journal admission. */
+export async function assertRetainedEvmCancellationReady(
+  original: EvmObservationRequest,
+  read: (
+    method: EvmObservationMethod | 'eth_getCode',
+    params: readonly unknown[]
+  ) => Promise<unknown>,
+  assertCurrent: () => void
+): Promise<void> {
+  checkCurrent(assertCurrent);
+  const expected = Object.freeze({ ...original });
+  const observed = await observeEvmTransaction(expected, read, () =>
+    checkCurrent(assertCurrent)
+  );
+  checkCurrent(assertCurrent);
+  // Receipt absence permits an unobserved or pending original. Only the
+  // currently executable nonce can be cancelled through this recovery path.
+  if (observed.status !== 'missing' || observed.latestNonce !== expected.nonce)
+    throw new EvmCancellationNonceError();
+  await assertEvmCancellationPayerHasNoCode(
+    expected.from,
+    (address, tag) => read('eth_getCode', [address, tag]),
+    assertCurrent
+  );
+  checkCurrent(assertCurrent);
+  const chainId = await read('eth_chainId', []);
+  checkCurrent(assertCurrent);
+  if (
+    typeof chainId !== 'string' ||
+    !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(chainId) ||
+    BigInt(chainId) !== BigInt(expected.chainId)
+  )
+    throw new EvmCancellationNonceError();
+}
+
 type EmptySelfEnvelope = Readonly<{
+  data: string;
   from: string | null;
   to: string | null;
   value: bigint;
-  data: string;
 }>;
 
 /** Fee-only replacements of an empty self-call can also invoke delegation. */
@@ -118,7 +159,7 @@ export function isEvmEmptySelfCall(transaction: EmptySelfEnvelope): boolean {
 /** Keep cancellation's fixed shape and the already-supported fee replacement types. */
 export function isEvmProtectedEmptySelfCall(
   transaction: EmptySelfEnvelope &
-    Readonly<{ type: number | null; accessList?: readonly unknown[] | null }>,
+    Readonly<{ accessList?: readonly unknown[] | null; type: number | null }>,
   operation: string
 ): boolean {
   if (!isEvmEmptySelfCall(transaction)) return false;

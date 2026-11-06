@@ -498,7 +498,8 @@ describe('transaction approval submission lifetime', () => {
           await held;
         }
       });
-      const post = jest.fn(async () => {
+      const post = jest.fn(async (signed: string) => {
+        expect(signed).toBe(raw);
         if (alreadyDispatched) {
           enter();
           await held;
@@ -527,11 +528,18 @@ describe('transaction approval submission lifetime', () => {
               operation: 'send',
             },
             assertCurrent,
-            () => ({ assertCurrent, persistSigned })
+            () => ({
+              assertCurrent,
+              persistSigned,
+              dispatchSigned: async (_record, initiate, preflight) => {
+                await preflight();
+                return initiate();
+              },
+            })
           );
           return submitSignedEvmTransaction(
             raw,
-            post,
+            ({ rawTransaction, admit }) => admit(() => post(rawTransaction)),
             boundary,
             assertCurrent,
             unsigned.unsignedSerialized

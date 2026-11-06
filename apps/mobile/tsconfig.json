@@ -40,7 +40,8 @@
       "ethers/transaction": [
         "./node_modules/ethers/lib.esm/transaction/index.d.ts"
       ],
-      "ethers/utils": ["./node_modules/ethers/lib.esm/utils/index.d.ts"]
+      "ethers/utils": ["./node_modules/ethers/lib.esm/utils/index.d.ts"],
+      "utils/ethersV6Compat": ["../../source/utils/ethersV6Compat.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],

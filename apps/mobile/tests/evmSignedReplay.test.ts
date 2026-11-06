@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Wallet, Transaction } from 'ethers';
+import { Wallet, Transaction, sha256 } from 'ethers';
+import type { EvmSignedSubmission } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import {
   EvmSignedReplay,
   observeRetainedEvmTransaction,
 } from '../../../source/wallet/evmSignedReplay.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
-import { signedRecordTestSession } from './signedRecordTestSession.ts';
+import { historicalSignedBundle, signedRecordTestSession } from './signedRecordTestSession.ts';
 const wallet = new Wallet('0x' + '11'.repeat(32));
 const recipient = '0x' + '22'.repeat(20),
   blockHash = '0x' + '33'.repeat(32);
@@ -109,6 +110,8 @@ async function fixture() {
       fee?: number;
       value?: number;
       chainId?: number;
+      gasLimit?: number;
+      historical?: true;
     } = {}
   ) {
     const { operation = 'send', originalHash, fee = 3, chainId = 7654321 } = options;
@@ -118,7 +121,7 @@ async function fixture() {
       nonce: n,
       to: operation === 'cancel' ? wallet.address : to,
       value: options.value ?? (operation === 'cancel' ? 0 : 1),
-      gasLimit: operation === 'cancel' ? 42000 : 100000,
+      gasLimit: options.gasLimit ?? (operation === 'cancel' ? 42000 : 100000),
       ...(type === 2
         ? { maxFeePerGas: fee, maxPriorityFeePerGas: 1 }
         : { gasPrice: fee }),
@@ -132,7 +135,7 @@ async function fixture() {
         : {}),
     });
     const tx = Transaction.from(bytes);
-    await records.append(session, {
+    const signed: EvmSignedSubmission = {
       rawTransaction: bytes,
       hash: tx.hash!,
       from: wallet.address,
@@ -140,7 +143,29 @@ async function fixture() {
       nonce: n,
       type,
       context: { ...context, network: { ...context.network, chainId }, operation, ...(originalHash ? { originalHash } : {}) },
-    });
+    };
+    if (options.historical) {
+      assert(raw);
+      const bundle = JSON.parse(raw);
+      const { entries: [historical] } = JSON.parse(await historicalSignedBundle(session, bytes, 'signed'));
+      const { chunks, ...summary } = historical;
+      const entries = [...bundle.entries, { ...summary, operation, ...(originalHash ? { originalHash } : {}), chunks }];
+      const revision = bundle.revision + 1;
+      const root = await session.keyring.encryptPrivateRecord({
+        domain: bundle.root.domain,
+        recordId: bundle.root.recordId,
+        plaintext: new TextEncoder().encode(JSON.stringify({
+          version: 1, revision, transactions: entries.length,
+          entriesHash: sha256(new TextEncoder().encode(JSON.stringify(entries))),
+        })),
+      });
+      raw = JSON.stringify({ ...bundle, revision, root, entries });
+    } else {
+      const binding = operation === 'send' ? undefined : await records.captureVerifiedReplacement(session, {
+        chainId: String(chainId), from: wallet.address, nonce: n, operation, originalHash: originalHash!,
+      });
+      await records.append(session, signed, undefined, binding);
+    }
     return tx;
   }
   return {
@@ -456,14 +481,43 @@ test('cancellation cannot be admitted without a late checker', async () => {
   assert.deepEqual(f.dispatched, []);
 });
 
-test('only older payment variants on the same chain and nonce are suppressed', async () => {
+test('Cancel bars payment replay in its own nonce scope, including historical appends after Cancel', async () => {
   const f = await fixture(), original = await f.append(0), replay = f.create();
-  await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
-  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7, chainId: 1 });
+  const witness = (originalHash: string) => f.records.readPendingCancellation(f.session, {
+    chainId: '7654321', from: wallet.address, nonce: 0, originalHash,
+  });
+  await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '44'.repeat(32), fee: 7 });
+  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '55'.repeat(32), fee: 7, chainId: 1 });
+  assert.equal(await witness(original.hash!), null);
   assert.equal((await replay.prepare(original.hash!)).status, 'review');
-  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
-  const later = await f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 });
-  assert.equal((await replay.prepare(later.hash!)).status, 'review');
+  const cancel = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  assert.equal(await witness(cancel.hash!), cancel.serialized);
+  await assert.rejects(witness(original.hash!), /ORIGINAL_CHANGED/);
+  const fenced = f.bytes();
+  await assert.rejects(f.append(0, 2, recipient, '0x', { fee: 8 }), {
+    name: 'EvmSignedRecordCancellationFence', recoveryHash: cancel.hash,
+  });
+  assert.equal(f.bytes(), fenced);
+  await assert.rejects(f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 }), /ORIGINAL_CHANGED/);
+  const historical = await f.append(0, 2, recipient, '0x', {
+    operation: 'speed-up', originalHash: cancel.hash!, fee: 9, historical: true,
+  });
+  assert.equal((await f.records.readExact(f.session, '7654321', wallet.address, historical.hash!))?.rawTransaction, historical.serialized);
+  await assert.rejects(replay.prepare(historical.hash!), { code: 'CONTEXT_CHANGED' });
+  const reprice = await f.append(0, 2, wallet.address, '0x', {
+    operation: 'speed-up', originalHash: cancel.hash!, fee: 10, value: 0, gasLimit: 42000,
+  });
+  assert.equal(await witness(reprice.hash!), reprice.serialized);
+  await assert.rejects(witness(cancel.hash!), /ORIGINAL_CHANGED/);
+  assert.equal((await replay.prepare(reprice.hash!)).status, 'review');
+  const repeatCancel = await f.append(0, 2, wallet.address, '0x', {
+    operation: 'cancel', originalHash: reprice.hash!, fee: 12, gasLimit: 42000,
+  });
+  await assert.rejects(f.records.assertSpendingNonce(f.session, '7654321', wallet.address, 0), {
+    name: 'EvmSignedRecordCancellationFence', recoveryHash: repeatCancel.hash,
+  });
+  await f.records.assertSpendingNonce(f.session, '7654321', wallet.address, 2);
+  assert.equal((await replay.prepare(repeatCancel.hash!)).status, 'review');
   await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
 });
 
@@ -765,6 +819,67 @@ for (const phase of ['confirmed', 'reverted', 'nonce-consumed'] as const)
     assert.equal(f.dispatched.length, 0);
     assert.equal((await f.create().get(tx.hash!))!.phase, phase);
   });
+
+test('overlapping terminal observations of distinct nonces both persist', async () => {
+  const f = await fixture();
+  const first = await f.append(0);
+  const second = await f.append(1);
+  f.nonce(2);
+  const held = hold();
+  let reads = 0;
+  f.beforeObservation(async () => {
+    if (++reads === 1) await held.run();
+  });
+  const pending = f.create().prepare(first.hash!);
+  await held.started;
+  try {
+    const observed = await f.create().prepare(second.hash!);
+    assert.equal(observed.status, 'nonce-consumed');
+  } finally {
+    held.release();
+  }
+  assert.equal((await pending).status, 'nonce-consumed');
+  for (const tx of [first, second])
+    assert.equal((await f.create().get(tx.hash!))!.phase, 'nonce-consumed');
+});
+
+for (const conflict of ['changed target phase', 'new same-nonce sibling'] as const)
+  test(`terminal observation rejects a ${conflict}`, async () => {
+    const f = await fixture();
+    const tx = await f.append(0);
+    f.nonce(1);
+    const held = hold();
+    f.beforeObservation(held.run);
+    const pending = assert.rejects(f.create().prepare(tx.hash!), {
+      code: 'CONTEXT_CHANGED',
+    });
+    await held.started;
+    try {
+      if (conflict === 'changed target phase') {
+        await f.records.updatePhase(
+          f.session,
+          '7654321',
+          wallet.address,
+          tx.hash!,
+          'attempted'
+        );
+      } else {
+        await f.append(0, 2, recipient, '0x', {
+          operation: 'cancel',
+          originalHash: tx.hash!,
+          fee: 7,
+        });
+      }
+    } finally {
+      held.release();
+    }
+    await pending;
+    assert.equal(
+      (await f.create().get(tx.hash!))!.phase,
+      conflict === 'changed target phase' ? 'attempted' : 'signed'
+    );
+  });
+
 test('shared observation captures original stored tuple and refuses revocation before phase commit', async () => {
   const f = await fixture(),
     tx = await f.append(0),
@@ -801,9 +916,9 @@ test('shared observation captures original stored tuple and refuses revocation b
 test('queued revocation after retained helper resolves is checked again by replay prepare', async () => {
   const f = await fixture(), tx = await f.append(0);
   f.receipts.set(tx.hash!, {transactionHash:tx.hash,from:wallet.address,to:recipient,status:'0x1',blockNumber:'0xa',blockHash});
-  const update = f.records.updatePhase.bind(f.records);
+  const update = f.records.updateObservedPhase.bind(f.records);
   let armed=false, queued=false;
-  f.records.updatePhase=async (...args) => { const result=await update(...args);armed=true;return result; };
+  f.records.updateObservedPhase=async (...args) => { const result=await update(...args);armed=true;return result; };
   const check=f.session.assertCurrent;
   f.session.assertCurrent=()=>{check();if(armed&&!queued){queued=true;queueMicrotask(()=>f.revoke());}};
   await assert.rejects(f.create().prepare(tx.hash!), /revoked/);

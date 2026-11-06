@@ -9,6 +9,7 @@ import {
 import { isEvmEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import {
   decodeRetainedNftTransfer,
+  isRetainedNftReplayEnvelope,
   type NftTransferIntent,
 } from '../shared/nftTransfer.ts';
 
@@ -53,6 +54,7 @@ export type EvmSavedTransaction = EvmReplayCandidate &
 export type EvmReplayReview = Readonly<{
   accessListEntries: number;
   chainId: string;
+  collectibleTransfer?: NftTransferIntent;
   dataBytes: number;
   feePerGas: string;
   from: string;
@@ -142,7 +144,12 @@ function tokenTransfer(
   entry: EvmRetainedSignedRecord,
   tx: Transaction
 ): EvmSavedTransaction['tokenTransfer'] {
-  if (entry.operation !== 'erc20' || !tx.to || tx.value !== BigInt(0))
+  if (
+    (entry.operation !== 'erc20' &&
+      (entry.operation !== 'speed-up' || !entry.metadata?.intent)) ||
+    !tx.to ||
+    tx.value !== BigInt(0)
+  )
     return undefined;
   try {
     const decoded = decodeErc20Transfer(tx.data);
@@ -218,9 +225,10 @@ export async function observeRetainedEvmTransaction(
   const current = assertCurrent,
     read = observe;
   current();
-  const entry = await records.readExact(session, chainId, from, hash);
+  const saved = await records.readForObservation(session, chainId, from, hash);
   current();
-  if (!entry) throw new EvmReplayError('NOT_FOUND');
+  if (!saved) throw new EvmReplayError('NOT_FOUND');
+  const { entry, revision } = saved;
   const observation = await read(request(entry));
   current();
   const terminalPhase =
@@ -234,16 +242,30 @@ export async function observeRetainedEvmTransaction(
     (['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)
       ? 'submitted'
       : entry.phase);
-  if (terminalPhase || phase !== entry.phase) {
-    await records.updatePhase(
-      session,
-      entry.chainId,
-      entry.from,
-      entry.hash,
-      phase
-    );
-    current();
+  try {
+    if (entry.operation === 'cancel' && observation.status === 'mined') {
+      await records.reconcileMinedCancellation(
+        session,
+        entry,
+        revision,
+        observation,
+        () => {
+          current();
+          return read(request(entry));
+        }
+      );
+    } else if (terminalPhase || phase !== entry.phase) {
+      await records.updateObservedPhase(session, entry, revision, phase);
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'EVM_SIGNED_RECORD_OBSERVATION_CHANGED'
+    )
+      throw new EvmReplayError('CONTEXT_CHANGED');
+    throw error;
   }
+  current();
   return Object.freeze({
     entry: Object.freeze({ ...entry, phase }),
     observation,
@@ -436,6 +458,9 @@ export class EvmSignedReplay {
     const tx = Transaction.from(entry.rawTransaction),
       fee = tx.maxFeePerGas ?? tx.gasPrice;
     if (fee === null) throw new EvmReplayError('INVALID_RESPONSE');
+    const collectible = isRetainedNftReplayEnvelope(tx)
+      ? decodeRetainedNftTransfer(entry, tx)
+      : undefined;
     const entropy = this.randomBytes(16);
     if (!(entropy instanceof Uint8Array) || entropy.length !== 16)
       throw new EvmReplayError('INVALID_RESPONSE');
@@ -459,6 +484,7 @@ export class EvmSignedReplay {
       selector: tx.data.length >= 10 ? tx.data.slice(0, 10) : null,
       accessListEntries: tx.accessList?.length ?? 0,
       operation: entry.operation,
+      ...(collectible ? { collectibleTransfer: collectible } : {}),
       ...(entry.originalHash ? { originalHash: entry.originalHash } : {}),
       ...(missingNonce === undefined ? {} : { missingNonce }),
       predecessors: Object.freeze(predecessors),

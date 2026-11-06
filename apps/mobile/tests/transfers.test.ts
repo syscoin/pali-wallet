@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
@@ -77,11 +78,11 @@ function fixture() {
       return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
-    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: (approvedBytes: string) => Promise<unknown>, intent?: Erc20TransferIntent) {
+    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: EvmSignedBroadcast<string>, intent?: Erc20TransferIntent) {
       const journal = await runtime.journal(guard);
       try { await journal.saveSigned(rawTransaction,intent); guard(); }
       catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
-      await broadcast(rawTransaction);
+      await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
     },
     async token(contractAddress: string, guard: () => void) {
       guard();
@@ -475,6 +476,29 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     f.close();
   }
 });
+test('a reentrant lock cannot bring back a cancelled saved-transaction review', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.loseAcknowledgment();
+    await f.transfers.confirm(approved.id);
+    const hash = f.transfers.getSnapshot().hash;
+    assert(hash);
+    f.transfers.cancel();
+    f.transfers.subscribe((state) => {
+      if (state.hash === hash) f.source.lock();
+    });
+
+    await assert.rejects(f.transfers.recover(true, hash), { code: 'CANCELLED' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.equal(f.transfers.getSnapshot().hash, null);
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+  } finally {
+    f.close();
+  }
+});
 test('finalized receipt releases the journal and records the result', async () => {
   const f = fixture();
   try {
@@ -663,10 +687,10 @@ test('unexpected recovery journal failure does not claim an existing submitted t
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     f.finalize();
-    const transition = f.signedRecords.updatePhase.bind(f.signedRecords);
-    f.signedRecords.updatePhase = async (...args) => {
-      if (args[4] === 'confirmed') throw Error('Unexpected storage failure during recovery');
-      return transition(...args);
+    const updateObservedPhase = f.signedRecords.updateObservedPhase.bind(f.signedRecords);
+    f.signedRecords.updateObservedPhase = async (session, entry, revision, phase) => {
+      if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
+      return updateObservedPhase(session, entry, revision, phase);
     };
     await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -715,7 +739,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.match(outcome.message ?? '', /saved before the review expired/i);
+    assert.equal(outcome.message, 'Your signed transaction is saved. Check it before sending again.');
   } finally {
     release();
     f.close();

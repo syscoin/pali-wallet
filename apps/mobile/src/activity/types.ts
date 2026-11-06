@@ -52,6 +52,7 @@ export type LocalActivityRecord = Omit<
     recipient: string | null;
     collectibleTransfer?: NftTransferIntent;
     inspectionOnly?: true;
+    speedUpEligible?: true;
     operation?: import('../../../../source/wallet/evmSignedRecords.ts').EvmSignedRecordSummary['operation'];
     originalHash?: string;
     transactionType?: number | null;

@@ -49,6 +49,61 @@ test('retries an exact CAS miss, while exhausting conflicts never acknowledges a
  await f.store.append(f.session(),input);assert.equal(f.writes(),1);
  f.port.compareAndSet=async()=>false;await assert.rejects(f.store.append(f.session(),await signed(1)),/CONFLICT/);assert.equal(f.writes(),1);
 });
+test('a replacement rechecks its pending predecessor after a concurrent journal change', async () => {
+  const f = fixture();
+  const original = await signed(0, 2, '0x01');
+  const candidate = await signed(0, 2, '0x02');
+  await f.store.append(f.session(), original);
+  const binding = (await f.store.readReplacement(f.session(), original.chainId, signer.address, original.hash, 'speed-up'))!.binding!;
+  const concurrent = fixture();
+  concurrent.replace(f.value());
+  await concurrent.store.updatePhase(concurrent.session(), '7654321', signer.address, original.hash, 'confirmed');
+  f.port.compareAndSet = async () => {
+    f.replace(concurrent.value());
+    return false;
+  };
+  await assert.rejects(f.store.append(f.session(), {
+    ...candidate,
+    context: { ...candidate.context, operation: 'speed-up', originalHash: original.hash },
+  }, undefined, binding), /EVM_SIGNED_RECORD_ORIGINAL_CHANGED/);
+  assert.equal(await f.store.readExact(f.session(), '7654321', signer.address, candidate.hash), null);
+  assert.equal((await f.store.readExact(f.session(), '7654321', signer.address, original.hash))?.phase, 'confirmed');
+});
+test('a copied binding, changed tip or intervening cancellation blocks a retained replacement', async () => {
+  const f = fixture(), original = await signed();
+  const session = f.session();
+  const read = (operation: 'speed-up' | 'cancel' = 'speed-up') =>
+    f.store.readReplacement(session, original.chainId, signer.address, original.hash, operation);
+  const attempt = async (fee: number, data = '0x') => {
+    const rawTransaction = await signer.signTransaction({
+      type: 2, chainId: 7654321, nonce: 0, to: signer.address, value: 123,
+      gasLimit: 50_400, maxFeePerGas: fee, maxPriorityFeePerGas: 2, data,
+    });
+    return { ...original, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
+      context: { ...original.context, operation: 'speed-up' as const, originalHash: original.hash } };
+  };
+  await f.store.append(session, original);
+  const initial = (await read())!.binding!;
+  const first = await attempt(5);
+  await assert.rejects(f.store.append(session, first, undefined, { ...initial }), /ORIGINAL_CHANGED/);
+  await f.store.append(session, first, undefined, initial);
+  await assert.rejects(f.store.append(session, await attempt(6), undefined, initial), /ORIGINAL_CHANGED/);
+  assert.equal((await read())!.binding!.expectedTipHash, first.hash);
+  assert.deepEqual((await read())!.rates, { type: 2, maxFeePerGas: 5n, maxPriorityFeePerGas: 2n });
+  await assert.rejects(f.store.append(session, await attempt(7, '0x01')), /ORIGINAL_CHANGED/);
+  assert.equal((await read())!.binding!.expectedTipHash, first.hash);
+  const rawTransaction = await signer.signTransaction({
+    type: 2, chainId: 7654321, nonce: 0, to: signer.address, value: 0,
+    gasLimit: 21_000, maxFeePerGas: 7, maxPriorityFeePerGas: 3,
+  });
+  const cancelHash = Transaction.from(rawTransaction).hash!;
+  const cancel = { ...original, rawTransaction, hash: cancelHash,
+    context: { ...original.context, operation: 'cancel' as const, originalHash: original.hash } };
+  await assert.rejects(f.store.append(session, cancel, undefined, (await read())!.binding!), /ORIGINAL_CHANGED/);
+  await f.store.append(session, cancel, undefined, (await read('cancel'))!.binding!);
+  assert.equal(await read(), null);
+  assert.equal((await f.store.readExact(session, original.chainId, signer.address, original.hash))!.rawTransaction, original.rawTransaction);
+});
 test('revocation after encryption prevents persistence and metadata accessors never execute',async()=>{
  const f=fixture(),session=f.session(),input=await signed();let getterCalls=0;
  const metadata=Object.defineProperty({},'secret',{enumerable:true,get(){getterCalls++;return 'no';}});
@@ -68,7 +123,13 @@ test('generic contract creation, access lists and replacement records keep every
   const rawTransaction = await signer.signTransaction({type:2,chainId:7654321,nonce:4,value:0,data:'0x60006000',gasLimit:100000,maxFeePerGas:5,maxPriorityFeePerGas:2});
   const replacement = {...initial,rawTransaction,hash:Transaction.from(rawTransaction).hash!,type:2,
     context:{...initial.context,operation:'speed-up' as const,originalHash:initial.hash}};
-  await f.store.append(f.session(),replacement);
+  const session = f.session();
+  await assert.rejects(f.store.append(session, replacement), /ORIGINAL_CHANGED/);
+  const binding = await f.store.captureVerifiedReplacement(session, {
+    chainId: initial.chainId, from: initial.from, nonce: initial.nonce,
+    operation: 'speed-up', originalHash: initial.hash,
+  });
+  await f.store.append(session, replacement, undefined, binding);
   const all=await f.store.listSender(f.session(),'7654321',signer.address);
   assert.equal(all.length,2);assert.equal(all[1]!.originalHash,initial.hash);
   assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,replacement.hash))!.rawTransaction,rawTransaction);

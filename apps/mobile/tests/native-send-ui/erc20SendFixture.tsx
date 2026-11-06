@@ -3,6 +3,7 @@ import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networ
 import React, { useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
+import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../../src/custody/types';
@@ -117,7 +118,9 @@ const rpc = new NativeTransferRpc({
           : request.params[0]
       );
     else if (request.method === 'eth_getTransactionReceipt') {
-      const entry = await (await runtime.journal(() => undefined)).load();
+      const entry = finalized
+        ? await signedRecords.readExact(signedRecordTestSession(), '1', wallet.address, request.params[0])
+        : null;
       const tx = entry ? Transaction.from(entry.rawTransaction) : undefined;
       result =
         finalized && entry && tx
@@ -154,7 +157,9 @@ const runtime: NativeTransferRuntime = {
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
   async submit(rawTransaction, _hash, guard, broadcast, intent) {
-    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard(); await broadcast(rawTransaction);
+    if (intent?.kind === 'nft-transfer') throw Error('Unexpected NFT fixture intent');
+    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard();
+    await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
   },
   async token(contract, guard) {
     guard();
@@ -210,21 +215,28 @@ declare global {
       holdQuote(): void;
       releaseQuote(): void;
       networkRoundTrip(): void;
-      seedPredecessor(count?: number): Promise<{ first: string; second: string }>;
+      seedPredecessor(count?: number, collectible?: boolean): Promise<{ first: string; second: string }>;
     };
   }
 }
 window.__erc20SendFixture = {
-  async seedPredecessor(count = 1) {
+  async seedPredecessor(count = 1, collectible = false) {
     const session = signedRecordTestSession();
-    const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation:'send' as const};
-    const save = async (nonce: number, value = 1) => {
-      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,to:nonce===0?wallet.address:null,value,gasLimit:100000,
-        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data:nonce===0?'0x':'0x6000'});
+    const nftAbi = new Interface(['function transferFrom(address,address,uint256)']);
+    const save = async (nonce: number, value = 1, operation: 'send' | 'erc721' = 'send') => {
+      const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation};
+      const nft = operation === 'erc721';
+      const data = nft
+        ? nftAbi.encodeFunctionData('transferFrom', [wallet.address, wallet.address, 0])
+        : nonce === 0 ? '0x' : '0x6000';
+      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,
+        to:nft?token.contractAddress:nonce===0?wallet.address:null,value,gasLimit:100000,
+        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data});
       const tx=Transaction.from(rawTransaction);
       await signedRecords.append(session,{rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'1',nonce,type:tx.type,context});return tx.hash!;
     };
-    const first=await save(0);await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
+    const first=collectible?await save(0,0,'erc721'):await save(0);
+    await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
     for (let i = 1; i < Math.min(count, 30); i++) {
       const alternative = await save(0, i + 1);
       await signedRecords.updatePhase(session, '1', wallet.address, alternative, 'confirmed');

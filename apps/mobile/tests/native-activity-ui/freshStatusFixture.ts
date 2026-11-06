@@ -18,6 +18,7 @@ type Observation =
   | 'error';
 type Call = { method: string; cancelled: boolean };
 const HASH = `0x${'1'.padStart(64, '0')}`;
+const SAVED_SPEED_UP = `0x${'2'.padStart(64, '0')}`;
 const BLOCK_HASH = `0x${'b'.repeat(64)}`;
 const OTHER = `0x${'22'.repeat(20)}`;
 const json = (value: unknown) =>
@@ -42,6 +43,7 @@ export function freshStatusFixture(mode: string | null, scope: ActivityScope) {
   const retained = parts[0] === 'retained' ? parts[1] : null;
   const indexed = retained ? 'none' : parts[0];
   const initial = retained ? parts[2] : parts[1];
+  const hasSavedSpeedUp = retained === 'missing' && initial === 'pending' && parts[3] === 'speedup';
   if (
     !(retained
       ? ['confirmed', 'missing', 'terminal'].includes(retained)
@@ -133,7 +135,7 @@ export function freshStatusFixture(mode: string | null, scope: ActivityScope) {
         break;
       case 'eth_getTransactionByHash':
         result =
-          captured === 'missing'
+          captured === 'missing' || (hasSavedSpeedUp && request.params[0] === SAVED_SPEED_UP)
             ? null
             : {
                 hash: HASH,
@@ -240,7 +242,12 @@ export function freshStatusFixture(mode: string | null, scope: ActivityScope) {
         )
     : undefined;
   return {
-    locals,
+    locals: hasSavedSpeedUp ? [
+      { ...locals[0]!, speedUpEligible: true as const },
+      { ...locals[0]!, hash: SAVED_SPEED_UP, originalHash: HASH, operation: 'speed-up' as const,
+        phase: 'signed' as const, speedUpEligible: true as const, createdAt: locals[0]!.createdAt + 1 },
+    ] : locals,
+    hasSavedSpeedUp,
     observeLocal,
     explorer: new ActivityExplorerReader(fetcher),
     receipts: new ActivityReceiptReader({ fetch: fetcher }),

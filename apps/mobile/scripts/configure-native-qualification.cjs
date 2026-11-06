@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { readQualificationSdkPin, verifyInstalledQualificationSdk } = require('./qualification-sdk.cjs');
 
 // This mutates an isolated CI checkout only. Never use the fixture identifier or
 // entrypoint for production builds, upgrades, or a user's installed wallet.
@@ -22,14 +23,8 @@ if (
   app.expo.android.allowBackup !== false
 )
   throw Error('Qualification must preserve backup/update restrictions');
-const keyringVersion = pkg.dependencies['@sidhujag/sysweb3-keyring'];
-const installedKeyring = JSON.parse(fs.readFileSync(
-  path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), 'utf8'
-));
-if (typeof keyringVersion !== 'string' ||
-    !/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/.test(keyringVersion) ||
-    installedKeyring.name !== '@sidhujag/sysweb3-keyring' || installedKeyring.version !== keyringVersion)
-  throw Error('Installed shared keyring must match the exact manifest version');
+const sdk = readQualificationSdkPin(root);
+verifyInstalledQualificationSdk(root, sdk);
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
@@ -72,12 +67,17 @@ const receipt = {
   originalMain: pkg.main,
   identifier: 'com.paliwallet.qualification',
   qualificationEntry: 'qualification/index.tsx',
-  keyringVersion,
+  keyringVersion: sdk.version,
+  ...(sdk.archive ? { keyringIdentity: sdk.identity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
 };
 pkg.main = receipt.qualificationEntry;
-app.expo.extra = { ...app.expo.extra, paliQualificationSdkVersion: keyringVersion };
+app.expo.extra = {
+  ...app.expo.extra,
+  paliQualificationSdkVersion: sdk.version,
+  paliQualificationSdkIdentity: sdk.identity,
+};
 app.expo.name = 'PaliQualification';
 app.expo.slug = 'pali-native-qualification';
 app.expo.scheme = 'pali-wallet-qualification';
