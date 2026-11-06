@@ -1,0 +1,295 @@
+diff --git a/README.md b/README.md
+index 91de0760e4c6726dffb3c8424cb3c11546aade3e..cb28af37c910ca2407b98188672f2ccd121d161e 100644
+--- a/README.md
++++ b/README.md
+@@ -150 +150,2 @@ const feeRate = new BN(10)
+-const result = syscointx.createTransaction(txOpts, utxos, changeAddress, outputsArr, feeRate)
++const network = syscointx.utils.bitcoinNetworks.mainnet
++const result = syscointx.createTransaction(txOpts, utxos, changeAddress, outputsArr, feeRate, network)
+diff --git a/index.js b/index.js
+index 0d0d5d025d0f6846909bb9dd9b0c1d0fad569963..c0dae239044130aa2f18f082042fe91f9a429878 100644
+--- a/index.js
++++ b/index.js
+@@ -9,5 +9,3 @@ const bitcoinops = require('bitcoin-ops')
+-function addressScript (address) {
+-  for (const network of [...Object.values(utils.syscoinNetworks), ...Object.values(utils.bitcoinNetworks)]) {
+-    try {
+-      return Buffer.from(bitcoin.address.toOutputScript(address, network))
+-    } catch (_) {}
++function outputAddressEncoder (network) {
++  if (!network || typeof network.bech32 !== 'string' || !Number.isInteger(network.pubKeyHash) || !Number.isInteger(network.scriptHash)) {
++    throw new Error('A transaction output network is required')
+@@ -15 +13 @@ function addressScript (address) {
+-  throw new Error('Unsupported output address or script')
++  return (address) => Buffer.from(bitcoin.address.toOutputScript(address, network))
+@@ -18 +16 @@ function addressScript (address) {
+-function outputScript (output, changeAddress) {
++function outputScript (output, changeAddress, encodeAddress) {
+@@ -24 +22 @@ function outputScript (output, changeAddress) {
+-        !script.equals(addressScript(output.address))) {
++        !script.equals(encodeAddress(output.address))) {
+@@ -29 +27 @@ function outputScript (output, changeAddress) {
+-  return addressScript(output.address || changeAddress)
++  return encodeAddress(output.address || changeAddress)
+@@ -40,2 +38,2 @@ function dustError (index, value, minimum) {
+-function selectionOptions (changeAddress) {
+-  return { changeOutput: { scriptPubKey: outputScript({}, changeAddress) } }
++function selectionOptions (changeAddress, encodeAddress) {
++  return { changeOutput: { scriptPubKey: outputScript({}, changeAddress, encodeAddress) } }
+@@ -44 +42 @@ function selectionOptions (changeAddress) {
+-function outputDustThreshold (output, changeAddress, options) {
++function outputDustThreshold (output, changeAddress, options, encodeAddress) {
+@@ -47 +45 @@ function outputDustThreshold (output, changeAddress, options) {
+-  output.scriptPubKey = outputScript(output, changeAddress)
++  output.scriptPubKey = outputScript(output, changeAddress, encodeAddress)
+@@ -51 +49 @@ function outputDustThreshold (output, changeAddress, options) {
+-function prepareAssetMap (assetMap, changeAddress) {
++function prepareAssetMap (assetMap, changeAddress, encodeAddress) {
+@@ -56 +54 @@ function prepareAssetMap (assetMap, changeAddress) {
+-      changeScript: outputScript({}, destination),
++      changeScript: outputScript({}, destination, encodeAddress),
+@@ -60 +58 @@ function prepareAssetMap (assetMap, changeAddress) {
+-        scriptPubKey: outputScript({ address: output.address }, destination)
++        scriptPubKey: outputScript({ address: output.address }, destination, encodeAddress)
+@@ -66 +64,2 @@ function prepareAssetMap (assetMap, changeAddress) {
+-function createTransaction (txOpts, utxos, changeAddress, outputsArr, feeRate, inputsArr) {
++function createTransaction (txOpts, utxos, changeAddress, outputsArr, feeRate, network, inputsArr) {
++  let encodeAddress
+@@ -70,2 +69,3 @@ function createTransaction (txOpts, utxos, changeAddress, outputsArr, feeRate, i
+-    options = selectionOptions(changeAddress)
+-    outputsArr = outputsArr.map(output => ({ ...output, scriptPubKey: outputScript(output, changeAddress) }))
++    encodeAddress = outputAddressEncoder(network)
++    options = selectionOptions(changeAddress, encodeAddress)
++    outputsArr = outputsArr.map(output => ({ ...output, scriptPubKey: outputScript(output, changeAddress, encodeAddress) }))
+@@ -181 +181 @@ function createTransaction (txOpts, utxos, changeAddress, outputsArr, feeRate, i
+-      if (!actual || !expected.script.equals(outputScript(actual, changeAddress)) ||
++      if (!actual || !expected.script.equals(outputScript(actual, changeAddress, encodeAddress)) ||
+@@ -189 +189 @@ function createTransaction (txOpts, utxos, changeAddress, outputsArr, feeRate, i
+-      const minimum = outputDustThreshold(output, changeAddress, options)
++      const minimum = outputDustThreshold(output, changeAddress, options, encodeAddress)
+@@ -417 +417,2 @@ function getAssetsFromTx (tx) {
+-function createAssetTransaction (txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate) {
++function createAssetTransaction (txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate, network) {
++  let encodeAddress
+@@ -421,2 +422,3 @@ function createAssetTransaction (txVersion, txOpts, utxos, dataBuffer, dataAmoun
+-    options = selectionOptions(sysChangeAddress)
+-    assetMap = prepareAssetMap(assetMap, sysChangeAddress)
++    encodeAddress = outputAddressEncoder(network)
++    options = selectionOptions(sysChangeAddress, encodeAddress)
++    assetMap = prepareAssetMap(assetMap, sysChangeAddress, encodeAddress)
+@@ -575 +577 @@ function createAssetTransaction (txVersion, txOpts, utxos, dataBuffer, dataAmoun
+-      const minimum = outputDustThreshold(outputs[i], sysChangeAddress, options)
++      const minimum = outputDustThreshold(outputs[i], sysChangeAddress, options, encodeAddress)
+@@ -601 +603 @@ function createAssetTransaction (txVersion, txOpts, utxos, dataBuffer, dataAmoun
+-function assetAllocationSend (txOpts, utxos, assetMap, sysChangeAddress, feeRate) {
++function assetAllocationSend (txOpts, utxos, assetMap, sysChangeAddress, feeRate, network) {
+@@ -630 +632 @@ function assetAllocationSend (txOpts, utxos, assetMap, sysChangeAddress, feeRate
+-  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate)
++  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate, network)
+@@ -633 +635 @@ function assetAllocationSend (txOpts, utxos, assetMap, sysChangeAddress, feeRate
+-function assetAllocationBurn (assetOpts, txOpts, utxos, assetMap, sysChangeAddress, feeRate) {
++function assetAllocationBurn (assetOpts, txOpts, utxos, assetMap, sysChangeAddress, feeRate, network) {
+@@ -642 +644 @@ function assetAllocationBurn (assetOpts, txOpts, utxos, assetMap, sysChangeAddre
+-  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate)
++  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate, network)
+@@ -645 +647 @@ function assetAllocationBurn (assetOpts, txOpts, utxos, assetMap, sysChangeAddre
+-function assetAllocationMint (assetOpts, txOpts, utxos, assetMap, sysChangeAddress, feeRate) {
++function assetAllocationMint (assetOpts, txOpts, utxos, assetMap, sysChangeAddress, feeRate, network) {
+@@ -681 +683 @@ function assetAllocationMint (assetOpts, txOpts, utxos, assetMap, sysChangeAddre
+-  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate)
++  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate, network)
+@@ -684 +686 @@ function assetAllocationMint (assetOpts, txOpts, utxos, assetMap, sysChangeAddre
+-function syscoinBurnToAssetAllocation (txOpts, utxos, assetMap, sysChangeAddress, feeRate) {
++function syscoinBurnToAssetAllocation (txOpts, utxos, assetMap, sysChangeAddress, feeRate, network) {
+@@ -692 +694 @@ function syscoinBurnToAssetAllocation (txOpts, utxos, assetMap, sysChangeAddress
+-  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate)
++  return createAssetTransaction(txVersion, txOpts, utxos, dataBuffer, dataAmount, assetMap, sysChangeAddress, feeRate, network)
+@@ -694 +696 @@ function syscoinBurnToAssetAllocation (txOpts, utxos, assetMap, sysChangeAddress
+-function createPoDA (txOpts, utxos, sysChangeAddress, feeRate) {
++function createPoDA (txOpts, utxos, sysChangeAddress, feeRate, network) {
+@@ -702 +704 @@ function createPoDA (txOpts, utxos, sysChangeAddress, feeRate) {
+-  return createTransaction(txOpts, utxos, sysChangeAddress, [], feeRate)
++  return createTransaction(txOpts, utxos, sysChangeAddress, [], feeRate, network)
+diff --git a/test/exact-asset-burn.test.js b/test/exact-asset-burn.test.js
+index 7ae717507014a217beabe4e716165c13ca6feb63..8366f3a6e98ca60e84fee7c4d2547df220957973 100644
+--- a/test/exact-asset-burn.test.js
++++ b/test/exact-asset-burn.test.js
+@@ -74 +74,2 @@ tape('exact SYSX burn to NEVM does not leave stale asset output metadata', t =>
+-    new BN(10)
++    new BN(10),
++    syscointx.utils.syscoinNetworks.testnet
+@@ -104 +105,2 @@ tape('exact SYSX burn to Syscoin converts the destination to native SYS metadata
+-    new BN(10)
++    new BN(10),
++    syscointx.utils.syscoinNetworks.testnet
+diff --git a/test/fixtures/index.js b/test/fixtures/index.js
+index 1ba3a2cc2af72f368e8714b18a596c93747cab59..8cf658ad505f351aa9a403ae9ebde0b240fb4831 100644
+--- a/test/fixtures/index.js
++++ b/test/fixtures/index.js
+@@ -432 +432 @@ module.exports = [
+-      ['123456', { changeAddress: 'tsys1qayjjfphgsf960jlu0amqvnl5kudv53wapvng0p', outputs: [{ value: new BN(300000000) }] }]
++      ['123456', { changeAddress: 'bc1qayjjfphgsf960jlu0amqvnl5kudv53wa7wpmre', outputs: [{ value: new BN(300000000) }] }]
+@@ -595 +595 @@ module.exports = [
+-      ['2615707979', { changeAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', outputs: [{ value: new BN(10000000000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
++      ['2615707979', { changeAddress: 'tsys1qar0srrr7xfkvy5l643lydnw9re59gtzz3txgpc', outputs: [{ value: new BN(10000000000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
+@@ -679 +679 @@ module.exports = [
+-      ['2615707979', { changeAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', outputs: [{ value: new BN(900000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
++      ['2615707979', { changeAddress: 'tsys1qar0srrr7xfkvy5l643lydnw9re59gtzz3txgpc', outputs: [{ value: new BN(900000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
+@@ -722 +722 @@ module.exports = [
+-      ['2615707979', { changeAddress: 'bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq', outputs: [{ value: new BN(900000000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
++      ['2615707979', { changeAddress: 'tsys1qar0srrr7xfkvy5l643lydnw9re59gtzz3txgpc', outputs: [{ value: new BN(900000000), address: 'tsys1qdflre2yd37qtpqe2ykuhwandlhq04r2td2t9ae' }] }]
+diff --git a/test/index.js b/test/index.js
+index 9f89e2220e44e763a1fd90c42b4af6e8fcc04210..6762094947b692cbed8d39f82632ffdad08cdda3 100644
+--- a/test/index.js
++++ b/test/index.js
+@@ -169,0 +170 @@ fixtures.forEach(function (f) {
++    const outputNetwork = f.sysChangeAddress.startsWith('tsys') ? syscoinNetworks.testnet : syscoinNetworks.mainnet
+@@ -177 +178 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.syscoinBurnToAssetAllocation(txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate)
++      const res = syscointx.syscoinBurnToAssetAllocation(txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate, outputNetwork)
+@@ -197 +198 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.assetAllocationMint(f.assetOpts, txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate)
++      const res = syscointx.assetAllocationMint(f.assetOpts, txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate, outputNetwork)
+@@ -218 +219 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.assetAllocationBurn(f.assetOpts, txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate)
++      const res = syscointx.assetAllocationBurn(f.assetOpts, txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate, outputNetwork)
+@@ -246 +247 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.assetAllocationSend(txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate)
++      const res = syscointx.assetAllocationSend(txOpts, utxos, f.assetMap, f.sysChangeAddress, f.feeRate, outputNetwork)
+@@ -272 +273 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.createPoDA(txOpts, utxos, f.sysChangeAddress, f.feeRate)
++      const res = syscointx.createPoDA(txOpts, utxos, f.sysChangeAddress, f.feeRate, outputNetwork)
+@@ -289 +290 @@ fixtures.forEach(function (f) {
+-      const res = syscointx.createTransaction(txOpts, utxos, f.sysChangeAddress, f.outputs, f.feeRate)
++      const res = syscointx.createTransaction(txOpts, utxos, f.sysChangeAddress, f.outputs, f.feeRate, outputNetwork)
+diff --git a/test/native-dust-policy.js b/test/native-dust-policy.js
+index c2ac7cbfa6a7aabca5ae4a570c75bb220d5a59df..dd9a9cc73fa6321c2cae63012da348d206e362f4 100644
+--- a/test/native-dust-policy.js
++++ b/test/native-dust-policy.js
+@@ -12,0 +13,5 @@ const network = candidate.utils.syscoinNetworks.testnet
++// Retain the optional comparison with a package built before this API changed.
++const callBuilder = (lib, method, network, ...args) => lib === baseline
++  ? lib[method](...args)
++  : lib[method](...args, network)
++const buildNative = (lib, ...args) => callBuilder(lib, 'createTransaction', network, ...args)
+@@ -25 +30 @@ function build (amount, destination = destinations[0][1], options = {}) {
+-  return candidate.createTransaction(options.tx || { rbf: true }, coins(options.input), owner,
++  return buildNative(candidate, options.tx || { rbf: true }, coins(options.input), owner,
+@@ -138 +143 @@ test('caller scriptPubKey cannot lower the floor of the serialized address', ()
+-  assert.equal(candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1)).error, 'DUST_OUTPUT')
++  assert.equal(buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1)).error, 'DUST_OUTPUT')
+@@ -140 +145 @@ test('caller scriptPubKey cannot lower the floor of the serialized address', ()
+-  const result = candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1))
++  const result = buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1))
+@@ -149 +154 @@ test('conflicting native address and raw spending script are rejected', () => {
+-  assert.equal(candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1)).error, 'INVALID_OUTPUT_SCRIPT')
++  assert.equal(buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1)).error, 'INVALID_OUTPUT_SCRIPT')
+@@ -151 +156 @@ test('conflicting native address and raw spending script are rejected', () => {
+-  assert.equal(candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1)).error, 'INVALID_OUTPUT_SCRIPT')
++  assert.equal(buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1)).error, 'INVALID_OUTPUT_SCRIPT')
+@@ -155 +160 @@ test('script-only native output does not acquire a conflicting change address',
+-  const result = candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1))
++  const result = buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1))
+@@ -165 +170 @@ test('matching native address and raw spending script remain consistent', () =>
+-  const result = candidate.createTransaction({ rbf: true }, coins(), owner, [output], new BN(1))
++  const result = buildNative(candidate, { rbf: true }, coins(), owner, [output], new BN(1))
+@@ -201 +206 @@ test('a MAX dust failure never consumes additional asset carrier inputs', () =>
+-  const result = candidate.createTransaction({ rbf: true }, input, owner,
++  const result = buildNative(candidate, { rbf: true }, input, owner,
+@@ -208 +213 @@ test('multiple MAX recipients keep duplicate identity, order and count', () => {
+-  const result = candidate.createTransaction({ rbf: true }, coins(1000), owner,
++  const result = buildNative(candidate, { rbf: true }, coins(1000), owner,
+@@ -236 +241 @@ test('an invalid change address returns a structured failure', () => {
+-  const result = candidate.createTransaction({ rbf: true }, coins(), 'invalid-change', [{ address: owner, value: new BN(50000) }], new BN(1))
++  const result = buildNative(candidate, { rbf: true }, coins(), 'invalid-change', [{ address: owner, value: new BN(50000) }], new BN(1))
+@@ -248,2 +253,2 @@ for (const method of ['assetAllocationSend', 'assetAllocationBurn']) {
+-      ? lib[method]({ rbf: true }, assetInputs(), assetMap(), owner, new BN(10))
+-      : lib[method]({ ethaddress: Buffer.alloc(20, 1) }, { rbf: true }, assetInputs(), assetMap(), owner, new BN(10))
++      ? callBuilder(lib, method, network, { rbf: true }, assetInputs(), assetMap(), owner, new BN(10))
++      : callBuilder(lib, method, network, { ethaddress: Buffer.alloc(20, 1) }, { rbf: true }, assetInputs(), assetMap(), owner, new BN(10))
+@@ -260 +265 @@ test('native asset-gas fallback retains allocation values and indexes', () => {
+-    return lib.createTransaction({ rbf: true }, input, owner, [{ address: owner, value: new BN(50000) }], new BN(10))
++    return buildNative(lib, { rbf: true }, input, owner, [{ address: owner, value: new BN(50000) }], new BN(10))
+@@ -311,4 +316,5 @@ for (const fixture of require('./fixtures').filter(f => [138, 139, 140, 141, 142
+-      if (f.version === 142) return lib.assetAllocationSend(options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
+-      if (f.version === 139) return lib.syscoinBurnToAssetAllocation(options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
+-      if (f.version === 140) return lib.assetAllocationMint(f.assetOpts, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
+-      return lib.assetAllocationBurn(f.assetOpts, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
++      const outputNetwork = f.sysChangeAddress.startsWith('tsys') ? network : candidate.utils.bitcoinNetworks.mainnet
++      if (f.version === 142) return callBuilder(lib, 'assetAllocationSend', outputNetwork, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
++      if (f.version === 139) return callBuilder(lib, 'syscoinBurnToAssetAllocation', outputNetwork, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
++      if (f.version === 140) return callBuilder(lib, 'assetAllocationMint', outputNetwork, f.assetOpts, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
++      return callBuilder(lib, 'assetAllocationBurn', outputNetwork, f.assetOpts, options, inputs, f.assetMap, f.sysChangeAddress, f.feeRate)
+@@ -356 +362 @@ for (const rate of [1, 100]) {
+-      const result = candidate.assetAllocationSend({ rbf: true }, assetInputs(), map, nativeChange.address, new BN(rate))
++      const result = candidate.assetAllocationSend({ rbf: true }, assetInputs(), map, nativeChange.address, new BN(rate), network)
+@@ -372 +378 @@ for (const rate of [1, 100]) {
+-      const result = candidate.createTransaction({ rbf: true }, coins(), nativeChange.address,
++      const result = buildNative(candidate, { rbf: true }, coins(), nativeChange.address,
+@@ -382 +388 @@ for (const rate of [1, 100]) {
+-      const result = candidate.createTransaction({ rbf: true }, input, nativeChange.address,
++      const result = buildNative(candidate, { rbf: true }, input, nativeChange.address,
+@@ -393 +399 @@ for (const rate of [1, 100]) {
+-      const result = candidate.assetAllocationBurn({ ethaddress }, { rbf: true }, assetInputs(), assetMap(), destinations[1][1].address, new BN(rate))
++      const result = candidate.assetAllocationBurn({ ethaddress }, { rbf: true }, assetInputs(), assetMap(), destinations[1][1].address, new BN(rate), network)
+@@ -403 +409 @@ for (const rate of [1, 100]) {
+-    const result = candidate.syscoinBurnToAssetAllocation({ rbf: true }, coins(), map, destinations[2][1].address, new BN(rate))
++    const result = candidate.syscoinBurnToAssetAllocation({ rbf: true }, coins(), map, destinations[2][1].address, new BN(rate), network)
+@@ -411 +417 @@ for (const rate of [1, 100]) {
+-    const result = candidate.assetAllocationMint(clone(fixture.assetOpts), { rbf: true }, coins(1000000), map, destinations[1][1].address, new BN(rate))
++    const result = candidate.assetAllocationMint(clone(fixture.assetOpts), { rbf: true }, coins(1000000), map, destinations[1][1].address, new BN(rate), network)
+diff --git a/test/utxo-output-network.js b/test/utxo-output-network.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..ef81f9d52126b18a2349c94c3a9e56503770398d
+--- /dev/null
++++ b/test/utxo-output-network.js
+@@ -0,0 +1,49 @@
++const test = require('tape')
++const BN = require('bn.js')
++const bitcoin = require('bitcoinjs-lib')
++const { createTransaction, utils } = require('..')
++
++const litecoin = { ...utils.bitcoinNetworks.mainnet, bech32: 'ltc', pubKeyHash: 48, scriptHash: 50 }
++function payment (network, byte) {
++  return bitcoin.payments.p2wpkh({ hash: Buffer.alloc(20, byte), network })
++}
++
++test('native payment binds recipient and change to the selected output network', t => {
++  const { address: change, output: changeScript } = payment(litecoin, 1)
++  const { address: recipient, output: recipientScript } = payment(litecoin, 2)
++  const send = (network, address = recipient, script) => createTransaction(
++    { rbf: true },
++    {
++      assets: new Map(),
++      utxos: [{
++        type: 'BECH32', address: change, txId: 'a1'.repeat(32), vout: 0, value: new BN(100000)
++      }]
++    },
++    change, [{ address, value: new BN(40000), ...(script ? { script } : {}) }], new BN(1), network
++  )
++  const result = send(litecoin)
++  t.notOk(result.error)
++  t.equal(result.outputs.length, 2)
++  t.deepEqual(result.outputs.map(({ address }) => Buffer.from(bitcoin.address.toOutputScript(address, litecoin))),
++    [Buffer.from(recipientScript), Buffer.from(changeScript)])
++  t.equal(send().error, 'INVALID_OUTPUT_SCRIPT', 'requires the selected network')
++  t.equal(send(utils.bitcoinNetworks.mainnet).error, 'INVALID_OUTPUT_SCRIPT')
++  t.equal(send(litecoin, payment(utils.bitcoinNetworks.mainnet, 2).address, recipientScript).error, 'INVALID_OUTPUT_SCRIPT',
++    'same script with another chain encoding cannot bypass the destination check')
++  t.end()
++})
++
++test('asset outputs and their change cannot fall back to another address network', t => {
++  const testnet = utils.syscoinNetworks.testnet
++  const { address: change } = payment(testnet, 1)
++  const { address: foreign } = payment(utils.bitcoinNetworks.mainnet, 2)
++  const map = new Map([['123456', {
++    changeAddress: change,
++    outputs: [{ address: foreign, value: new BN(1) }]
++  }]])
++  const utxos = { utxos: [], assets: new Map() }
++  const send = network => require('..').assetAllocationSend({ rbf: true }, utxos, map, change, new BN(1), network)
++  t.equal(send().error, 'INVALID_OUTPUT_SCRIPT')
++  t.equal(send(testnet).error, 'INVALID_OUTPUT_SCRIPT')
++  t.end()
++})
