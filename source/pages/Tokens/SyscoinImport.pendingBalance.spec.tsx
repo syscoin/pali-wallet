@@ -146,7 +146,14 @@ beforeEach(() => {
       'details=tokenBalances&tokens=nonzero',
       'details=tokenBalances&tokens=used',
     ]).toContain(options);
-    return { tokensAsset: mockRows };
+    return {
+      address: identifier,
+      balance: '0',
+      unconfirmedBalance: '0',
+      txs: 0,
+      unconfirmedTxs: 0,
+      tokensAsset: mockRows,
+    };
   });
   mockMetadata.mockImplementation(async (url, guid) => {
     expect(url).toBe(NETWORK.url);

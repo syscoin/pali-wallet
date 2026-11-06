@@ -104,7 +104,7 @@ const tree = () => (
 const mount = async (count: number, duplicateLast = false) => {
   const tokens = Array.from({ length: count }, (_, index) => token(index + 1));
   if (duplicateLast) tokens[tokens.length - 1] = token(count - 1);
-  mockFetch.mockResolvedValue({ tokensAsset: tokens });
+  mockFetch.mockResolvedValue({ address: 'public-xpub', tokensAsset: tokens });
   const view = render(tree());
   await act(async () => undefined);
   expect(mockFetch).toHaveBeenCalledWith(

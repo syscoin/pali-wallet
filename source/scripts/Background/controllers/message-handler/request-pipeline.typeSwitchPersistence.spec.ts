@@ -241,10 +241,10 @@ describe.each([true, false])(
       // Blockbook response is synthetic, including a complete empty inventory.
       jest
         .spyOn(sys.utils, 'fetchBackendAccount')
-        .mockImplementation(async (url: string) => {
+        .mockImplementation(async (url: string, identifier: string) => {
           expect(url).toMatch(/^https:\/\/utxo\.synthetic\.invalid\/?$/);
           return {
-            address: 'sys1synthetic',
+            address: identifier,
             balance: '0',
             unconfirmedBalance: '0',
             txs: 0,
