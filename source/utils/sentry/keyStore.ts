@@ -1,7 +1,7 @@
 import {
   createSentryKeyVault,
   isEmptySentryKeyStore,
-  sentryKeyVaultStorageKey,
+  sentryKeyVaultStoragePrefix,
 } from '../../wallet/sentryKeyVault';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -30,20 +30,20 @@ export async function readSentryKeyStoresForRetirement(
 ): Promise<Record<string, unknown>> {
   const vaultId = await getSentryVaultId(rootPublicIdentity);
   assertCurrent();
-  const networks = Object.keys(
-    SENTRY_NETWORKS
-  ) as (keyof typeof SENTRY_NETWORKS)[];
-  const stores = networks.map((network) => ({
-    network,
-    key: sentryKeyVaultStorageKey(vaultId, network),
-  }));
-  const saved = await chromeStorage.getItems(stores.map(({ key }) => key));
+  // The wallet's recovery reader examines every record in this namespace,
+  // so retirement must also account for an unknown domain before deleting its owner.
+  const prefix = sentryKeyVaultStoragePrefix(vaultId);
+  const saved = await chromeStorage.getItems(null);
   assertCurrent();
   const empty: Record<string, unknown> = {};
-  for (const { network, key } of stores) {
-    const record = saved[key];
-    if (record === undefined || record === null) continue;
-    if (!isEmptySentryKeyStore(record, vaultId, network))
+  for (const [key, record] of Object.entries(saved)) {
+    if (!key.startsWith(prefix) || record === undefined || record === null)
+      continue;
+    const network = key.slice(prefix.length) as keyof typeof SENTRY_NETWORKS;
+    if (
+      !Object.hasOwn(SENTRY_NETWORKS, network) ||
+      !isEmptySentryKeyStore(record, vaultId, network)
+    )
       throw Object.assign(
         new Error('Keep this network while it has saved Sentry keys.'),
         {

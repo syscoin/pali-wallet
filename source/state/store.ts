@@ -421,12 +421,14 @@ export function persistNetworkRemoval(
           code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
         }
       );
-    const rootPublicIdentity = retiredVault?.accounts?.HDAccount?.[0]?.xpub;
-    if (
-      retiringVault &&
-      typeof rootPublicIdentity === 'string' &&
-      rootPublicIdentity
-    ) {
+    if (retiringVault && retiredVault != null) {
+      const rootPublicIdentity = retiredVault.accounts?.HDAccount?.[0]?.xpub;
+      if (
+        typeof rootPublicIdentity !== 'string' ||
+        !rootPublicIdentity ||
+        rootPublicIdentity !== rootPublicIdentity.trim()
+      )
+        throw new Error('Could not verify saved accounts for this network.');
       const emptySentryStores = await retiringVault.readSentryStores(
         rootPublicIdentity,
         assertAdmitted

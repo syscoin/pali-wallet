@@ -20,6 +20,8 @@ jest.mock('utils/storageAPI', () => ({
   },
 }));
 
+import { webcrypto } from 'crypto';
+
 import store from 'state/store';
 import vaultCache from 'state/vaultCache';
 import vaultGlobalReducer from 'state/vaultGlobal';
@@ -62,6 +64,19 @@ describe('network removal cannot delete a switching or active vault', () => {
   let persisted: Map<string, unknown>;
   let sourceKeyring: object;
   let targetKeyring: object;
+  const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+
+  beforeAll(() => {
+    Object.defineProperty(globalThis, 'crypto', {
+      configurable: true,
+      value: webcrypto,
+    });
+  });
+  afterAll(() => {
+    if (originalCrypto)
+      Object.defineProperty(globalThis, 'crypto', originalCrypto);
+    else Reflect.deleteProperty(globalThis, 'crypto');
+  });
 
   beforeEach(() => {
     jest.spyOn(console, 'log').mockImplementation();
@@ -93,7 +108,10 @@ describe('network removal cannot delete a switching or active vault', () => {
       ],
       [
         'state-vault-1',
-        { accounts: 'target-accounts', history: 'target-history' },
+        {
+          accounts: { HDAccount: { 0: { xpub: 'public fixture root' } } },
+          history: 'target-history',
+        },
       ],
       ['state-vault-1-passkey-profile', { profile: 'target-profile' }],
     ]);
@@ -108,9 +126,11 @@ describe('network removal cannot delete a switching or active vault', () => {
       .mockReset()
       .mockImplementation(async (keys) =>
         Object.fromEntries(
-          keys
-            .filter((key) => persisted.has(key))
-            .map((key) => [key, persisted.get(key)])
+          keys === null
+            ? persisted
+            : keys
+                .filter((key) => persisted.has(key))
+                .map((key) => [key, persisted.get(key)])
         )
       );
     jest

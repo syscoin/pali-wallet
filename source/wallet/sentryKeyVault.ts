@@ -11,10 +11,13 @@ const unhex = (value: string) => {
   return Uint8Array.from(value.match(/../g)!, (byte) => parseInt(byte, 16));
 };
 
+export const sentryKeyVaultStoragePrefix = (vaultId: string) =>
+  `sentry-operator-v1:${vaultId}:`;
+
 export const sentryKeyVaultStorageKey = (
   vaultId: string,
   network: SentryNetwork
-) => `sentry-operator-v1:${vaultId}:${network}`;
+) => `${sentryKeyVaultStoragePrefix(vaultId)}${network}`;
 
 interface ISentryKeyEnvelope {
   ciphertext: string;

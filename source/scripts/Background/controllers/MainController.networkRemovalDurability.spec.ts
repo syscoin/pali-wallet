@@ -139,7 +139,7 @@ beforeEach(async () => {
     runtime: { id: 'synthetic-network-removal' },
     storage: {
       local: {
-        get: (keys: string[], callback: (values: any) => void) => {
+        get: (keys: string[] | null, callback: (values: any) => void) => {
           if (failReads) {
             (chrome.runtime as any).lastError = {
               message: 'Synthetic storage read failure',
@@ -149,11 +149,13 @@ beforeEach(async () => {
             return;
           }
           callback(
-            Object.fromEntries(
-              keys
-                .filter((key) => key in records)
-                .map((key) => [key, structuredClone(records[key])])
-            )
+            keys === null
+              ? structuredClone(records)
+              : Object.fromEntries(
+                  keys
+                    .filter((key) => key in records)
+                    .map((key) => [key, structuredClone(records[key])])
+                )
           );
         },
         set: (items: Record<string, any>, callback: () => void) => {
@@ -344,6 +346,36 @@ it.each([false, 'extra'])(
     expect(commits).toEqual([]);
   }
 );
+
+it('holds removal if the persisted vault lacks its Sentry recovery identity', async () => {
+  const { key } = await sentryRecordForInactiveVault();
+  const before = structuredClone(records[key]);
+  const incomplete = structuredClone(inactiveVault);
+  incomplete.accounts.HDAccount[0].xpub = ' ';
+  await chromeStorage.setItem('state-vault-111', incomplete);
+  commits = [];
+  await expect(remove()).rejects.toThrow('Could not verify saved accounts');
+  expect(records['state-vault-111']).toEqual(incomplete);
+  expect(records[key]).toEqual(before);
+  expect(commits).toEqual([]);
+});
+
+it('preserves an unknown Sentry domain under the exact retiring vault identity', async () => {
+  const vaultId = await getSentryVaultId(
+    inactiveVault.accounts.HDAccount[0].xpub
+  );
+  const network = 'future-domain';
+  const key = `sentry-operator-v1:${vaultId}:${network}`;
+  const record = { version: 1, vaultId, network, keys: [] };
+  await chromeStorage.setItem(key, record);
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+  });
+  expect(records[key]).toEqual(record);
+  expect(records['state-vault-111']).toEqual(inactiveVault);
+  expect(commits).toEqual([]);
+});
 
 it('tombstones only an exact empty Sentry store in the same removal commit', async () => {
   const { key, network, vaultId, summary, assertCurrent } =
