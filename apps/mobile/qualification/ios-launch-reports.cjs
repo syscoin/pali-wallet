@@ -7,7 +7,7 @@ const INPUT_LIMIT = 100000;
 const OUTPUT_LIMIT = 8192;
 const STAGES = new Set(['parameters', 'Hermes text and string capabilities', 'native crypto bridge and full vectors',
   'native factory handles reject direct construction', 'native public Merkle and HMAC vectors', 'native SLH leaf setup vector',
-  'open SQLCipher and device key', 'load software SDK',
+  'native HTTP transport', 'native POST transport', 'open SQLCipher and device key', 'load software SDK',
   'initialize native custody', 'create or import real SDK wallet', 'fresh password-backed seed confirmation',
   'unlock wallet after process restart', 'synchronous lock and wrong password refusal',
   'seed reauthentication after cold restart', 'lock and drain native database close']);
@@ -50,16 +50,18 @@ function readReport(fs, file) {
   finally { if (descriptor !== undefined) { try { fs.closeSync(descriptor); } catch { /* diagnostic only */ } } }
 }
 
-/** Only called after a failed first launch, before the owned container is removed. */
-function captureIosLaunchReports(fs, container, scenario, record) {
-  if (!['import', 'generate'].includes(scenario)) throw Error('Invalid diagnostic scenario');
+/** Only called after a failed first launch or its report rejection, before teardown. */
+function captureIosLaunchReports(fs, container, scenario, record, stage = 'launch-create') {
+  if (!['import', 'generate'].includes(scenario) || !['launch-create', 'report-create'].includes(stage))
+    throw Error('Invalid diagnostic scope');
   const reports = ['startup', 'create'].map((filePhase) => {
     const value = readReport(fs, path.join(container, 'Documents', `pali-native-qualification-${filePhase}.json`));
     if (value.availability) return { filePhase, availability: value.availability };
     try { return summarizeReport(value.text, filePhase, scenario); }
     catch { return { filePhase, availability: 'invalid' }; }
   });
-  const evidence = { version: 1, kind: 'ios-launch-failure-reports', diagnosticOnly: true, reports };
+  const kind = stage === 'report-create' ? 'ios-create-failure-reports' : 'ios-launch-failure-reports';
+  const evidence = { version: 1, kind, diagnosticOnly: true, reports };
   if (Buffer.byteLength(`${JSON.stringify(evidence, null, 2)}\n`) > OUTPUT_LIMIT) throw Error('Diagnostic output bound exceeded');
   record(evidence);
 }

@@ -207,7 +207,7 @@ test('final snapshot is authoritative when traffic changes after a clean inspect
     await assert.rejects(companion.verify(readBoth(value), value.sessionId), /AUDIT_FAILED/);
     assert.equal(child.lastSnapshot.counts.target, 1);
     assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
-    assert.equal((await companion.diagnostic()).server.counts.target, 1);
+    assert.equal((await companion.diagnostics()).http.server.counts.target, 1);
   } finally { await companion.close(); }
 });
 test('a valid final snapshot is the exact audit recorded for qualification', async () => {
@@ -334,12 +334,45 @@ test('real child partial diagnostics are bounded, source-bound and never pass ev
     const failed = { ...build, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex'),
       kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: 'abort-stream',
       token: launch.token, phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId };
-    const diagnostic = await companion.diagnostic(() => JSON.stringify(failed));
+    const { http: diagnostic } = await companion.diagnostics(() => JSON.stringify(failed));
     assert.equal(diagnostic.failedCase, 'abort-stream'); assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true);
     assert.equal(diagnostic.server.counts.exact, 1); assert.equal(diagnostic.server.counts.target, 0); assert.equal(diagnostic.server.closed.body, false);
     assert(Buffer.byteLength(JSON.stringify(diagnostic)) < 8192);
     assert.throws(() => companion.assertComplete(1)); assert.throws(() => assertHttpReport(failed, expected));
     assert.equal(httpDiagnosticCase({ ...failed, failedCase: 'untrusted arbitrary text' }, { ...expected, token: launch.token }), undefined);
+  } finally { await companion.close(); }
+});
+test('one owned inspection distinguishes unavailable counters from confirmed zero requests', async () => {
+  const child = childControl();
+  const send = child.send;
+  let inspectCalls = 0, failInspect = false;
+  child.send = (message, callback) => {
+    if (message.kind !== 'inspectAll') { send(message, callback); return; }
+    inspectCalls++;
+    callback();
+    const value = { get: { ...audit(), token: message.token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])) },
+      post: { ...postAudit(message.token), counts: Object.fromEntries(POST_ROUTES.map((route) => [route, { started: 0, completed: 0 }])),
+        closed: { declared: false, stream: false, abort: false }, lostResponses: 0, requests: [] } };
+    queueMicrotask(() => child.emit('message', { id: message.id, ok: !failInspect, value }));
+  };
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); }, spawn: () => child });
+  try {
+    await companion.begin('create', 'import');
+    const zero = await companion.diagnostics();
+    assert.equal(inspectCalls, 1);
+    assert.equal(zero.http.serverStatus, 'available'); assert.equal(zero.http.server.counts.exact, 0);
+    assert.equal(zero.post.serverStatus, 'available'); assert.equal(zero.post.server.counts[POST_ROUTES[0]].started, 0);
+    failInspect = true;
+    const missing = await companion.diagnostics(() => { throw Error('private read failure'); });
+    assert.equal(inspectCalls, 2);
+    for (const diagnostic of [missing.http, missing.post]) {
+      assert.equal(diagnostic.diagnosticOnly, true);
+      assert.equal(diagnostic.serverStatus, 'unavailable');
+      assert.equal(diagnostic.server, null);
+      assert(!JSON.stringify(diagnostic).includes('private read failure'));
+    }
+    assert.throws(() => companion.assertComplete(1));
   } finally { await companion.close(); }
 });
 test('late or wrong-token server evidence cannot satisfy a new native phase', () => {
