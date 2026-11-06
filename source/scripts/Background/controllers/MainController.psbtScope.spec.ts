@@ -32,6 +32,7 @@ import {
 } from '../handlers/approvalSubmission';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
+import { networkSwitchMutex } from 'utils/asyncMutex';
 import {
   captureSentryCollateralAdmission,
   reserveSentryCollateral,
@@ -492,6 +493,90 @@ describe('PSBT approval context', () => {
     expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
+
+  it.each(['preparing', 'ready'] as const)(
+    'retires a %s saved retry when queued switch requests return to the same route',
+    async (phase) => {
+      const transaction = syntheticPsbt(BigInt(1000)).extractTransaction();
+      const record = {
+        rawTransaction: transaction.toHex(),
+        txid: transaction.getId(),
+        url: 'https://rpc-a.invalid/api/v2/sendtx/',
+        feeSatoshis: '1000',
+        operation: 'wallet',
+        owner: wallet.utxoRecordOwner(
+          state.vault.activeNetwork,
+          wallet.captureUtxoSigningContext().context.account
+        ),
+        outpoints: [`${'01'.repeat(32)}:0`],
+        virtualSize: transaction.virtualSize(),
+      };
+      const read = Promise.withResolvers<typeof record>();
+      const journal = wallet.getRetainedUtxoRecords();
+      wallet.getRetainedUtxoRecords.mockReturnValue({
+        ...journal,
+        readExact: jest.fn().mockReturnValue(read.promise),
+      });
+      wallet.getSentryCollateralScope = jest.fn().mockReturnValue(undefined);
+      const reviewPromise = wallet.prepareRetainedUtxoRetry(defaultTxid);
+      void reviewPromise.catch(() => undefined);
+      if (phase === 'ready') read.resolve(record);
+      const existing = phase === 'ready' ? await reviewPromise : undefined;
+
+      // Keep the real signer switch admission queued before it can advance
+      // walletSessionGeneration. Request generations still advance at entry.
+      const held = Promise.withResolvers<void>();
+      const gate = networkSwitchMutex.runExclusive(() => held.promise);
+      wallet.cancellablePromises = {};
+      wallet.stopAllRapidPolling = jest.fn();
+      wallet.cancelActiveBalanceUpdate = jest.fn();
+      wallet.handleNetworkChangeError = jest.fn();
+      wallet.setFiat = jest.fn().mockResolvedValue(undefined);
+      wallet.switchActiveKeyring = jest
+        .fn()
+        .mockRejectedValue(new Error('End fixture switch'));
+      wallet.setActiveNetworkLogic = (
+        network: unknown,
+        resolve: () => void,
+        reject: (reason: unknown) => void,
+        current: () => boolean
+      ) => {
+        void wallet.setSignerNetwork(network, current).then(resolve, reject);
+      };
+      const active = state.vault.activeNetwork;
+      const switchedAway = wallet
+        .setActiveNetwork({ ...active, url: 'https://rpc-b.invalid' })
+        .catch(() => undefined);
+      const switchedBack = wallet
+        .setActiveNetwork(active)
+        .catch(() => undefined);
+      try {
+        expect(wallet.networkRequestGeneration).toBe(2);
+        expect(wallet.walletSessionGeneration).toBe(0);
+        expect(state.vault.activeNetwork).toBe(active);
+        if (existing) {
+          await expect(
+            wallet.confirmRetainedUtxoRetry(existing.id)
+          ).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
+        } else {
+          read.resolve(record);
+          await expect(reviewPromise).rejects.toThrow(
+            UTXO_SIGNING_CONTEXT_CHANGED
+          );
+        }
+        expect(
+          keyring.syscoinTransaction.sendTransaction
+        ).not.toHaveBeenCalled();
+        expect(globalThis.fetch).not.toHaveBeenCalled();
+      } finally {
+        held.resolve();
+        read.resolve(record);
+        const stale = await reviewPromise.catch(() => undefined);
+        if (stale) wallet.cancelRetainedUtxoRetry(stale.id);
+        await Promise.all([gate, switchedAway, switchedBack]);
+      }
+    }
+  );
 
   const verifyOwnedLegacyWif = async (
     chainId: number,
