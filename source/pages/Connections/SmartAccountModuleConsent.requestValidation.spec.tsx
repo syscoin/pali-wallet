@@ -215,6 +215,7 @@ afterEach(() => {
 const request = (method: string, module: unknown) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [module] } }, {
     url: `${HOST}/app`,
+    origin: HOST,
     tab: { id: 50 },
   } as chrome.runtime.MessageSender);
 
