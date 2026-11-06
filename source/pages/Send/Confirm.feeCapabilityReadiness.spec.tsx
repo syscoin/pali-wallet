@@ -4,6 +4,7 @@
  */
 import '@testing-library/jest-dom';
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { randomUUID } from 'crypto';
 import React from 'react';
 
 import MainController from 'scripts/Background/controllers/MainController';
@@ -196,7 +197,15 @@ const advance = (ms = 600) =>
     await jest.advanceTimersByTimeAsync(ms);
   });
 
+const originalRandomUUID = Object.getOwnPropertyDescriptor(
+  globalThis.crypto,
+  'randomUUID'
+);
 beforeAll(() => {
+  Object.defineProperty(globalThis.crypto, 'randomUUID', {
+    configurable: true,
+    value: randomUUID,
+  });
   globalThis.ResizeObserver = class {
     observe() {
       return undefined;
@@ -224,6 +233,9 @@ beforeAll(() => {
   })) as any;
 });
 afterAll(() => {
+  if (originalRandomUUID)
+    Object.defineProperty(globalThis.crypto, 'randomUUID', originalRandomUUID);
+  else delete (globalThis.crypto as Partial<Crypto>).randomUUID;
   globalThis.ResizeObserver = previousGlobals.ResizeObserver;
   globalThis.MessageChannel = previousGlobals.MessageChannel;
   window.matchMedia = previousGlobals.matchMedia;
@@ -276,7 +288,7 @@ beforeEach(() => {
   wallet.isUnlocked = () => true;
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
-  mockEmitter.mockImplementation((path: string[], args: any[] = []) => {
+  mockEmitter.mockImplementation(async (path: string[], args: any[] = []) => {
     let target: any = { wallet };
     for (const key of path.slice(0, -1)) target = target[key];
     return target[path[path.length - 1]](...args);
