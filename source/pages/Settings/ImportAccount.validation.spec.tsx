@@ -169,6 +169,31 @@ it('validates and imports the same key after trimming surrounding whitespace', a
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
+it.each(['zprv', 'vprv'])(
+  'does not reuse a WIF address type when importing a %s',
+  async (prefix) => {
+    render(<ImportAccount />);
+    fireEvent.change(input(), { target: { value: 'synthetic-wif' } });
+    const taproot = await screen.findByRole('radio', {
+      name: 'Taproot (P2TR)',
+    });
+    fireEvent.click(taproot);
+    expect((taproot as HTMLInputElement).checked).toBe(true);
+
+    const key = `${prefix}-fixture`;
+    fireEvent.change(input(), { target: { value: key } });
+    await waitFor(() =>
+      expect(importButton().hasAttribute('disabled')).toBe(false)
+    );
+    expect(screen.queryByRole('radio')).toBeNull();
+    await act(async () => submitForm());
+    expect(mockEmitter).toHaveBeenCalledWith(
+      ['wallet', 'importAccountFromPrivateKey'],
+      [key, undefined, undefined]
+    );
+  }
+);
+
 it('keeps whitespace inside a private key invalid', async () => {
   (validatePrivateKeyValue as jest.Mock).mockResolvedValue(false);
   render(<ImportAccount />);
