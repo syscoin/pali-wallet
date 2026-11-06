@@ -2,7 +2,9 @@ import type { RootState } from 'state/store';
 
 // A registry edit may change explorer metadata without switching the live
 // network. Use it only when the live chain and RPC identity still match.
-export function selectExplorerNetwork(state: RootState) {
+export function selectExplorerNetwork(
+  state: Pick<RootState, 'vault' | 'vaultGlobal'>
+) {
   const active = state.vault.activeNetwork;
   if (
     active.kind !== 'ethereum' ||
@@ -20,15 +22,17 @@ export function selectExplorerNetwork(state: RootState) {
 }
 
 export function hasExplorer(network: {
-  kind?: string;
   explorerExplicitlyAbsent?: boolean;
+  kind?: string;
 }) {
   return (
     network.kind === 'syscoin' || network.explorerExplicitlyAbsent !== true
   );
 }
 
-export function selectExplorerUrl(state: RootState) {
+export function selectExplorerUrl(
+  state: Pick<RootState, 'vault' | 'vaultGlobal'>
+) {
   const network = selectExplorerNetwork(state);
   return hasExplorer(network) ? network.explorer || network.url : undefined;
 }

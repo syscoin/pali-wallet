@@ -15,6 +15,7 @@ import {
   faucetTxSyscoinNEVMTestnetInfo,
 } from 'utils/constants';
 import { claimFaucet, getExternalFaucetUrl } from 'utils/faucet';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 const faucetDetails = {
   [FaucetChainIds.RolluxMainnet]: faucetTxRolluxInfo,
@@ -33,7 +34,13 @@ const getFaucetContext = ({
   vaultGlobal,
 }: Pick<RootState, 'vault' | 'vaultGlobal'>) => {
   const { activeAccount, activeNetwork, accounts, isBitcoinBased } = vault;
-  const address = accounts[activeAccount.type]?.[activeAccount.id]?.address;
+  const account = accounts[activeAccount.type]?.[activeAccount.id];
+  const address = account?.address;
+  const publishable = canPublishAccountAddress(
+    account,
+    activeAccount.type,
+    activeNetwork.chainId
+  );
   const changing =
     vaultGlobal.isSwitchingAccount ||
     ['switching', 'connecting'].includes(vaultGlobal.networkStatus);
@@ -47,10 +54,12 @@ const getFaucetContext = ({
       activeNetwork.chainId,
       activeNetwork.url,
       activeNetwork.slip44,
+      publishable,
       changing,
     ]),
     eligible:
       !isBitcoinBased &&
+      publishable &&
       activeNetwork.kind === INetworkType.Ethereum &&
       Boolean(address && faucetDetails[activeNetwork.chainId]),
     ready: !changing,

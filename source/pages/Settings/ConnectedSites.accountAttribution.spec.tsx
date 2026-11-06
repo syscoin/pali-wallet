@@ -4,6 +4,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import en from 'assets/locales/en.json';
 import { INetworkType, KeyringAccountType } from 'types/network';
@@ -88,7 +89,7 @@ beforeEach(() => {
   mockNavigate.mockReset();
   mockState = {
     vault: {
-      activeNetwork: { kind: INetworkType.Ethereum },
+      activeNetwork: { kind: INetworkType.Ethereum, chainId: 5700 },
       activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
       accounts: {
         [KeyringAccountType.HDAccount]: {
@@ -109,7 +110,12 @@ beforeEach(() => {
           0: { id: 0, label: 'Trezor signer', address: 'trezor-address' },
         },
         [KeyringAccountType.SmartAccount]: {
-          0: { id: 0, label: 'Smart account signer', address: 'smart-address' },
+          0: {
+            ...smartAccountAddressFixture(5700).account,
+            id: 0,
+            label: 'Smart account signer',
+            isSmartAccount: true,
+          },
         },
       },
     },
@@ -156,6 +162,42 @@ it.each([
     expect(screen.queryByText('Connected to: Active HD account')).toBeNull();
   }
 );
+
+it.each([false, true])(
+  'shows the verified smart-account identity when deployed=%s',
+  async (isDeployed) => {
+    connection().accountType = KeyringAccountType.SmartAccount;
+    const account =
+      mockState.vault.accounts[KeyringAccountType.SmartAccount][0];
+    account.smartAccount = { ...account.smartAccount, isDeployed };
+    mount();
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: editName() }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByText('Smart account signer')).toBeVisible();
+    expect(within(dialog).getByText(account.address)).toBeVisible();
+    expect(within(dialog).queryByText('Unavailable')).toBeNull();
+  }
+);
+
+it('keeps a connection removable without publishing its invalid smart-account address', async () => {
+  connection().accountType = KeyringAccountType.SmartAccount;
+  const account = mockState.vault.accounts[KeyringAccountType.SmartAccount][0];
+  account.address = '0x2222222222222222222222222222222222222222';
+  account.xpub = account.address;
+  mount();
+  expect(screen.getByText('Connected to: Account 1')).toBeVisible();
+  await userEvent
+    .setup()
+    .click(screen.getByRole('button', { name: editName() }));
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).getByText('Unavailable')).toBeVisible();
+  expect(within(dialog).queryByText(account.address)).toBeNull();
+  expect(
+    within(dialog).getByRole('button', { name: 'Delete connected site' })
+  ).toBeEnabled();
+});
 
 it('omits the extra attribution only when both account type and ID match', () => {
   connection().accountType = KeyringAccountType.HDAccount;
