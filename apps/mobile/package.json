@@ -21,7 +21,7 @@
   "dependencies": {
     "@craftzdog/react-native-buffer": "6.1.2",
     "@noble/curves": "1.9.7",
-    "@sidhujag/sysweb3-keyring": "2.1.4",
+    "@sidhujag/sysweb3-keyring": "2.1.5",
     "@sidhujag/sysweb3-network": "2.0.0",
     "assert": "2.1.0",
     "bech32": "2.0.0",
@@ -45,7 +45,7 @@
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
     "readable-stream": "3.6.2",
-    "syscoinjs-lib": "1.0.279"
+    "syscoinjs-lib": "1.0.280"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
