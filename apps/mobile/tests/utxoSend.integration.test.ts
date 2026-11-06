@@ -21,10 +21,11 @@ import { getUtxoNetwork, getUtxoSdkNetwork, UTXO_NETWORKS } from '../src/core/ut
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { HdKeyExportFlow, keyExportRegistrationHash } from '../src/custody/hdKeyExport.ts';
 import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
-import { UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/custody/importedAccounts.ts';
+import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/core/utxoAddresses.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { metadata } from './publicWatchFixtures.ts';
 
@@ -203,7 +204,7 @@ test('real native SDK HD quote, signed bytes, SQLite admission and exact ACK use
   }
 });
 
-test('native custody imports, receives, balances, sends and replays WIF accounts on the shared defaults', async (t) => {
+test('native custody imports, reveals, receives, balances, sends and replays WIF accounts on the shared defaults', async (t) => {
   t.mock.method(globalThis, 'fetch', () => { throw new Error('Ambient network forbidden'); });
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-wif-'));
   const file = join(directory, 'wallet.sqlite');
@@ -256,9 +257,23 @@ test('native custody imports, receives, balances, sends and replays WIF accounts
     return storage;
   };
   const reader = createUtxoBalanceReader({ fetch: fetcher });
+  const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
+  let interceptExport: ((key: string) => Promise<string>) | undefined;
+  let exports = 0;
   const factory = createKeyringRuntimeFactory({
     ensureCryptoReady: async () => undefined,
     openStorage,
+    loadSdk: async () => ({ ...sdk, SoftwareKeyring: class extends sdk.SoftwareKeyring {
+      constructor(...args: ConstructorParameters<typeof sdk.SoftwareKeyring>) {
+        super(...args);
+        const unwrap = this.getPrivateKeyByAccountId;
+        this.getPrivateKeyByAccountId = async (...input) => {
+          exports++;
+          const key = await unwrap(...input);
+          return interceptExport ? interceptExport(key) : key;
+        };
+      }
+    } }),
     utxoFetch: fetcher,
     readUtxoAccount: reader.readAccount,
     readUtxoBalance: reader.readBalance,
@@ -296,6 +311,7 @@ test('native custody imports, receives, balances, sends and replays WIF accounts
         address = (script === 'p2tr'
           ? bitcoin.payments.p2tr({ ...options, internalPubkey: key.publicKey.slice(1) })
           : bitcoin.payments[script]({ ...options, pubkey: key.publicKey })).address!;
+        assert.equal(findWifAddressType(address, network.id), script);
         const before = JSON.stringify(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY));
         const callsBefore = calls.length;
         assert.equal(await preview(wif, script), address);
@@ -328,13 +344,67 @@ test('native custody imports, receives, balances, sends and replays WIF accounts
         assert.equal(saved.recovery.find((entry) => entry.identity.address === address)?.identity.slip44, network.slip44);
         assert.equal(JSON.stringify(saved).includes(wif), false);
         assert.equal(JSON.stringify(owner.getCatalogue()).includes('xprv'), false);
+        const keyFlow = new HdKeyExportFlow(owner, () => runtime.keyExport);
+        try {
+          const callsBeforeReveal = calls.length;
+          const shown = await keyFlow.begin(password);
+          assert.equal(shown.privateKey, wif);
+          assert.equal(shown.address, address);
+          assert.equal(shown.accountId, accountId);
+          assert.equal(keyFlow.isCurrent(shown.id), true);
+          assert.equal(calls.length, callsBeforeReveal);
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), saved);
+          assert.equal(JSON.stringify(owner.getSnapshot()).includes(wif), false);
+          keyFlow.cancel();
+          assert.equal(keyFlow.isCurrent(shown.id), false);
+          if (target === UTXO_NETWORKS[0] && index === 0) {
+            const beforeExport = exports;
+            const catalogue = owner.getCatalogue()!;
+            const scope = { authorityRevision: owner.getSnapshot().revision, catalogueRevision: catalogue.revision,
+              accountId, index, address, networkId: network.id,
+              registrationHash: keyExportRegistrationHash(network.id, catalogue.networks) };
+            await assert.rejects(runtime.keyExport!.readSelected({ ...scope, registrationHash: `0x${'f'.repeat(64)}` }, password, current), /CANCELLED/);
+            assert.equal(exports, beforeExport);
+            owner.lock(); await owner.unlock(password);
+            await assert.rejects(keyFlow.begin('wrong password'), /INVALID_CREDENTIAL/);
+            assert.equal(exports, beforeExport);
+            await owner.unlock(password);
+
+            const anotherNetwork = UTXO_NETWORKS.find((candidate) => candidate.addressNetwork.wif !== network.addressNetwork.wif)!;
+            for (const forged of [
+              `${wif.slice(0, -1)}${wif.endsWith('1') ? '2' : '1'}`,
+              bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 14), { network: network.addressNetwork }).toWIF(),
+              bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13), { network: anotherNetwork.addressNetwork }).toWIF(),
+            ]) {
+              interceptExport = async () => forged;
+              await assert.rejects(keyFlow.begin(password), { message: 'KEY_EXPORT_UNAVAILABLE' });
+              await owner.unlock(password);
+            }
+            const entered = Promise.withResolvers<void>(), release = Promise.withResolvers<void>();
+            interceptExport = async (raw) => { entered.resolve(); await release.promise; return raw; };
+            const pending = keyFlow.begin(password);
+            const rejection = assert.rejects(pending, { message: 'CANCELLED' });
+            await entered.promise;
+            owner.lock(); release.resolve();
+            await rejection;
+            interceptExport = undefined;
+            await owner.unlock(password);
+            await selectAccount(`hd:${network.slip44}:0`);
+            const beforeHd = exports;
+            await assert.rejects(keyFlow.begin(password), { message: 'KEY_EXPORT_UNAVAILABLE' });
+            assert.equal(exports, beforeHd);
+            await selectAccount(accountId);
+            assert.equal(calls.length, callsBeforeReveal);
+          }
+        } finally { keyFlow.dispose(); }
         if (index === 0) {
+          const beforeDuplicate = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY);
           const revision = owner.getSnapshot().revision;
           await assert.rejects(preview(wif, script), { code: 'DUPLICATE_ACCOUNT' });
           assert.equal(owner.getSnapshot().revision, revision);
           assert.equal(owner.getSnapshot().phase, 'ready');
           assert.equal(owner.getCatalogue()!.active.accountId, accountId);
-          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), saved);
+          assert.deepEqual(await storage.keyringStorage.get(WALLET_CATALOGUE_KEY), beforeDuplicate);
           await assert.rejects(submit(wif, script, address), { code: 'DUPLICATE_ACCOUNT' });
         }
         assert.equal((await runtime.readUtxoBalance!(network.id, address, new AbortController().signal)).confirmedUnits, '100000');

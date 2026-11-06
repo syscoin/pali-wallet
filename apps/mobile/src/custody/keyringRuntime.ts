@@ -12,7 +12,7 @@ import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sys
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
-import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
+import { findWifAddressType, normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type WalletIdentityRead } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
@@ -37,9 +37,10 @@ import { NativeActivityHistory } from '../activity/historyStore.ts';
 import { createActivityScope, type ActivityScope, type EvmActivityReadScope } from '../activity/types.ts';
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress, Transaction } from 'ethers/transaction';
-import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
-import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport } from './importedAccounts.ts';
+import { importedKeyIdentity, isUtxoWifText, normalizeImportedKey, normalizeUtxoImport } from './importedAccounts.ts';
 import { importAccountWithRecovery } from '../../../../source/wallet/importedAccountRecovery.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
@@ -72,8 +73,8 @@ export type KeyringRuntimeDependencies = Readonly<{
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
-  /** Selected HD key only, consumed by the context-bound secret presentation flow. */
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
+  /** Selected software key only, consumed by the context-bound secret presentation flow. */
   readonly keyExport?: NativeHdKeyExportRuntime;
   readonly activity?: NativeActivityRuntime;
   /** Local public token descriptors only; never exposes the underlying store. */
@@ -930,18 +931,32 @@ export function createKeyringRuntimeFactory(
                 if (typeof assertCurrent !== 'function') throw new KeyringRuntimeError('INVALID_INPUT');
               } catch { return Promise.reject(new KeyringRuntimeError('INVALID_INPUT')); }
               return run(async (captured) => {
+                const ring = keyring;
+                const utxo = findUtxoNetwork(scope.networkId);
+                const sdkNetwork = utxo && getUtxoSdkNetwork(utxo.id);
+                const script = utxo && findWifAddressType(scope.address, utxo.id);
+                const type = parseNativeAccountId(scope.accountId).type;
                 const check = () => {
                   current(captured); checkGuard(assertCurrent);
                   current(captured);
                   const catalogue = catalogueSnapshot;
                   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
-                  if (!keyring.isUnlocked() || !catalogue || !selected) throw new KeyringRuntimeError('NOT_READY');
-                  if (catalogue.revision !== scope.catalogueRevision || selected.type !== parseNativeAccountId(scope.accountId).type ||
-                      selected.slip44 !== 60 || selected.id !== scope.accountId || selected.index !== scope.index ||
+                  if (ring !== keyring || !ring.isUnlocked() || !catalogue || !selected) throw new KeyringRuntimeError('NOT_READY');
+                  if (catalogue.revision !== scope.catalogueRevision || selected.type !== type ||
+                      selected.slip44 !== (utxo?.slip44 ?? 60) || selected.id !== scope.accountId || selected.index !== scope.index ||
                       selected.address !== scope.address || catalogue.active.networkId !== scope.networkId ||
-                      getNativeNetwork(catalogue.active.networkId, catalogue.networks).registrationHash !== scope.registrationHash ||
+                      keyExportRegistrationHash(catalogue.active.networkId, catalogue.networks) !== scope.registrationHash ||
                       state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
+                  if (utxo && sdkNetwork) {
+                    const actual = state.activeNetwork, account = state.accounts.Imported[selected.index];
+                    if (!script || selected.type !== 'Imported' || !account || account.id !== selected.index || account.address !== selected.address ||
+                        actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
+                        actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
+                        actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
+                      throw new KeyringRuntimeError('CANCELLED');
+                    checkedWifAccount(account, utxo.id);
+                  }
                 };
                 check();
                 const stored = await storage.readState(); check();
@@ -950,8 +965,21 @@ export function createKeyringRuntimeFactory(
                 check();
                 await hydrate(captured); check();
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
-                const privateKey = await keyring.getPrivateKeyByAccountId(scope.index, parseNativeAccountId(scope.accountId).type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
+                const privateKey = await ring.getPrivateKeyByAccountId(scope.index, type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
                 check();
+                if (utxo) {
+                  if (!script || !isUtxoWifText(privateKey)) throw new KeyringRuntimeError('OPERATION_FAILED');
+                  const { ECPair, payments } = syscoinUtils.bitcoinjs;
+                  const network = utxo.addressNetwork;
+                  const pair = ECPair.fromWIF(privateKey, network);
+                  const pubkey = pair.publicKey;
+                  if (script !== 'p2pkh' && !pair.compressed) throw new KeyringRuntimeError('OPERATION_FAILED');
+                  const payment = script === 'p2tr' ? payments.p2tr({ internalPubkey: pubkey.slice(1), network })
+                    : payments[script]({ pubkey, network });
+                  if (payment.address !== scope.address) throw new KeyringRuntimeError('OPERATION_FAILED');
+                  check();
+                  return privateKey;
+                }
                 if (typeof privateKey !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(privateKey) ||
                     BigInt(privateKey) === 0n || BigInt(privateKey) >= 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n ||
                     computeAddress(privateKey) !== scope.address) throw new KeyringRuntimeError('OPERATION_FAILED');
