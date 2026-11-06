@@ -1,4 +1,4 @@
-import { SLH_DSA_PUBLIC_KEY_FIELD_LENGTH } from './constants';
+import { SLH_DSA_PUBLIC_KEY_FIELD_LENGTH } from './constants.ts';
 
 export const stripHexPrefix = (value: string) =>
   value.startsWith('0x') ? value.slice(2) : value;

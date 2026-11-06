@@ -2,6 +2,11 @@ name: Mobile native qualification
 
 on:
   workflow_dispatch:
+    inputs:
+      public_pool:
+        description: Run the dedicated offline Release public pool fixture
+        type: boolean
+        default: false
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
@@ -53,6 +58,8 @@ on:
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/utils/psbtWorkBudget.ts'
+      - 'source/utils/slhDsa/constants.ts'
+      - 'source/utils/slhDsa/hex.ts'
       - 'source/utils/syscoinAssetAmount.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
@@ -66,18 +73,19 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-native-qualification-${{ github.ref }}
+  group: mobile-native-qualification-${{ github.ref }}${{ inputs.public_pool && '-public-pool' || '' }}
   cancel-in-progress: true
 
 env:
   EXPO_NO_TELEMETRY: '1'
   EXPO_NO_DOTENV: '1'
   PALI_NATIVE_QUALIFICATION: '1'
-  PALI_NATIVE_HTTP_QUALIFICATION: '1'
+  PALI_NATIVE_HTTP_QUALIFICATION: ${{ inputs.public_pool && '0' || '1' }}
+  PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: ${{ inputs.public_pool && '1' || '0' }}
 
 jobs:
   ios:
-    name: iOS Simulator HTTP, crypto and protected-storage refusal
+    name: ${{ inputs.public_pool && 'iOS Simulator offline public pool Release fixture' || 'iOS Simulator HTTP, crypto and protected-storage refusal' }}
     runs-on: macos-26
     timeout-minutes: 90
     defaults:
@@ -99,6 +107,7 @@ jobs:
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - run: xcodebuild -version
       - name: Run Swift public snapshot loopback
+        if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pali-native-ios" "$RUNNER_TEMP/pali-snapshot-swift-cache"
@@ -108,10 +117,14 @@ jobs:
             -module-cache-path "$RUNNER_TEMP/pali-snapshot-swift-cache" \
             -D PALI_SNAPSHOT_LOOPBACK -parse-as-library \
             "$snapshot_module/ios/PaliPublicSnapshotDownload.swift" \
+            "$snapshot_module/ios/PaliPublicSnapshotBridge.swift" \
             "$snapshot_module/tests/PublicSnapshotDownloadChecks.swift" \
             -o "$snapshot_binary" 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
           SWIFT_BACKTRACE=enable=no python3 "$snapshot_module/tests/public_snapshot_loopback.py" \
             "$snapshot_binary" 2>&1 | tee -a "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
+      - name: Create disposable loopback fixture CA
+        if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION == '1'
+        run: bash qualification/create-public-pool-ci-ca.sh
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform ios --no-install
       - run: pod install --project-directory=ios
@@ -127,7 +140,7 @@ jobs:
           node qualification/source-map-evidence.cjs preserve ios \
             "$RUNNER_TEMP/pali-native-ios-build/Build/Products/Release-iphonesimulator/PaliQualification.app/main.jsbundle" \
             "$SOURCEMAP_FILE" "$RUNNER_TEMP/pali-native-ios"
-      - name: Verify native HTTP, crypto and expected protected-storage refusal
+      - name: ${{ inputs.public_pool && 'Verify offline public pool Release fixture' || 'Verify native HTTP, crypto and expected protected-storage refusal' }}
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-ios
         run: >-
@@ -137,13 +150,13 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: native-ios-simulator-limited-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-ios-simulator-limited-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || '' }}
           path: ${{ runner.temp }}/pali-native-ios/
           if-no-files-found: warn
           retention-days: 14
 
   android:
-    name: Android native custody and cold restart
+    name: ${{ inputs.public_pool && 'Android emulator offline public pool Release fixture' || 'Android native custody and cold restart' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -185,9 +198,13 @@ jobs:
       - run: node --import ./scripts/register-shared-test-dependencies.mjs --test qualification/*.test.cjs
       - name: Install pinned native toolchain
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
+      - name: Create disposable loopback fixture CA
+        if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION == '1'
+        run: bash qualification/create-public-pool-ci-ca.sh
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
-      - name: Run Android JVM public snapshot loopback
+      - name: Run Android JVM public snapshot and SLH ownership checks
+        if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1'
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pali-native-android"
@@ -195,6 +212,10 @@ jobs:
             --tests org.syscoin.pali.storage.PaliPublicSnapshotDownloadTest \
             --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
             2>&1 | tee "$RUNNER_TEMP/pali-native-android/public-snapshot-loopback.log"
+          (cd android && ./gradlew :pali-wallet-crypto:testDebugUnitTest \
+            --tests expo.modules.paliwalletcrypto.PaliSlhLeafOperationTest \
+            --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
+            2>&1 | tee "$RUNNER_TEMP/pali-native-android/slh-leaf-ownership.log"
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)
@@ -244,11 +265,12 @@ jobs:
             sleep 3
           done
           exit 1
-      - name: Exercise native bridge and two-process persistence
+      - name: ${{ inputs.public_pool && 'Verify offline public pool Release fixture' || 'Exercise native bridge and two-process persistence' }}
         env:
           QUALIFICATION_ARTIFACTS: ${{ runner.temp }}/pali-native-android
         run: node --import ./scripts/register-shared-test-dependencies.mjs qualification/run-native.cjs android android/app/build/outputs/apk/release/app-release.apk
       - name: Exercise isolated Android watch notice permission and delivery
+        if: env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION != '1'
         timeout-minutes: 8
         shell: bash
         run: |
@@ -270,7 +292,7 @@ jobs:
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         if: always()
         with:
-          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}
+          name: native-android-${{ github.run_id }}-${{ github.run_attempt }}${{ inputs.public_pool && '-public-pool' || '' }}
           path: ${{ runner.temp }}/pali-native-android/
           if-no-files-found: warn
           retention-days: 14

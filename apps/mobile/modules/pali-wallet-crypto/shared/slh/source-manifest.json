@@ -1,0 +1,232 @@
+{
+  "sourceRepo": "nconsigny/SPHINCS-",
+  "sourceCommit": "9fee891871252e20b87c4874dbb2024b4d74dd9c",
+  "sourceDirectory": "signers/sphincsplus-128-24",
+  "paliSourceCommit": "8dc68ece",
+  "licenseTextRepo": "sphincs/sphincsplus",
+  "licenseTextCommit": "7ec789ace6874d875f4bb84cb61b81155398167e",
+  "files": [
+    {
+      "path": "upstream/LICENSE.upstream",
+      "gitBlob": "ca88ec4789718671ca4068cbead4d05f0cfdfb67",
+      "sha256": "5797220e196e5b833db8435b188db410c3828739580c42cf615d765b9cdec5d2",
+      "bytes": 102
+    },
+    {
+      "path": "upstream/Makefile",
+      "gitBlob": "12f3cf68ae05bc1af07db70f65e2ee3ee1590724",
+      "sha256": "5229508891b7190c49198e8b2bef183385a04e6ade325e5a592ab9fd0e8cc94d",
+      "bytes": 650
+    },
+    {
+      "path": "upstream/address.c",
+      "gitBlob": "b136af80805a00db07174590a27f32a01a661286",
+      "sha256": "e07ecc87e564db0f2055b761d9b9a56edec7cb7508e3410117e857f4e4e5a5aa",
+      "bytes": 2957
+    },
+    {
+      "path": "upstream/address.h",
+      "gitBlob": "49f8d66e01d93e3a3263097c19278e1831cf762f",
+      "sha256": "86b33648b11e72d09c21e4b478881f5e6aaf6770ef47a29df6fd7d424aaa4a88",
+      "bytes": 1683
+    },
+    {
+      "path": "upstream/api.h",
+      "gitBlob": "d57a148f7f862c893b0f338ff862beca6fa4f6f0",
+      "sha256": "a0c7abd648a4a695ff031f034a68e431559338c37890b428f21ce3fd91314636",
+      "bytes": 2116
+    },
+    {
+      "path": "upstream/context.h",
+      "gitBlob": "aded564303d5e55fe34fe7484fbe47d0b31ae715",
+      "sha256": "6953afd8e8d45fab9f47bf8beeac549fdb45aeb02c2d2e263c1304b3d11ccc85",
+      "bytes": 479
+    },
+    {
+      "path": "upstream/crosscheck.py",
+      "gitBlob": "82b80db7be10a7a395310ac3bdcb3fd58ac2a890",
+      "sha256": "61a563d0a699c2953aa5d3f8b31ea6e5175c4d399b9952f14383df653c058c4b",
+      "bytes": 5529
+    },
+    {
+      "path": "upstream/fors.c",
+      "gitBlob": "e5f3f4daa24dd69be713a24ee61f155af8f9b531",
+      "sha256": "28db85181bcb8624b363470dc98e86d3af94ca7f06448d311cd3eb7aa5230015",
+      "bytes": 5943
+    },
+    {
+      "path": "upstream/fors.h",
+      "gitBlob": "8d98017a0532b6bc4a0c777e40ccad0700bf1b86",
+      "sha256": "349cbe538ae0c6510b8ceeb9685e40b226a7386ce2e2454c3269c354cb42f2a5",
+      "bytes": 1104
+    },
+    {
+      "path": "upstream/hash.h",
+      "gitBlob": "b141f099c4e392cb2f9e537a030479058eb19c14",
+      "sha256": "2b09886addb6b9628e645d0054bc06ff1eb418f59a778c8a4b741b7184a6b1bd",
+      "bytes": 967
+    },
+    {
+      "path": "upstream/hash_sha2.c",
+      "gitBlob": "c4408a14774fcbd144ca525d80117439601ad8b9",
+      "sha256": "d07cfd09c78954c82bf2c0ebf0303411170afa209965d20e87da4815c3f1a02d",
+      "bytes": 6772
+    },
+    {
+      "path": "upstream/main.c",
+      "gitBlob": "ca4d6ef55df6fe1fc149c0446e6046d7826810e6",
+      "sha256": "4f69f6dd82d3b7bcb20ebf2704dba350a1e2592e8b7d2ad0de8ade6362703f99",
+      "bytes": 7296
+    },
+    {
+      "path": "upstream/merkle.c",
+      "gitBlob": "414f46862e055a34210112e870572138b6a9795e",
+      "sha256": "822c402a9dbe43274d2dad92ff215e80b20a5464c16ac59ee57d2d5079aedea6",
+      "bytes": 1973
+    },
+    {
+      "path": "upstream/merkle.h",
+      "gitBlob": "9ac2759ad28dad34faa24e88f324684597228553",
+      "sha256": "2f704262633f56514218bb79798079102e50393879520c9d05b2bf77005ce23f",
+      "bytes": 571
+    },
+    {
+      "path": "upstream/params.h",
+      "gitBlob": "431a68d70d2b1e35f7f0a56d8578a691ef54b841",
+      "sha256": "35e262c1f61043e65a6376ac5e34635bc98a9a30413335e137b7138f8f9c3f9c",
+      "bytes": 3417
+    },
+    {
+      "path": "upstream/randombytes.c",
+      "gitBlob": "3c3af51bebb8c4904a7284dcf8163e2deb97f3ee",
+      "sha256": "1a90ce693874fb9d7f43e26c6a3c16514db45ab2eba534809e4caa2ee72f54dc",
+      "bytes": 1005
+    },
+    {
+      "path": "upstream/randombytes.h",
+      "gitBlob": "671c1b1500aec56d8b1e5ca092ae9aa5ac1d8dbc",
+      "sha256": "cb0022583e425fcf2cbb9227519893e336d194b04e7d8083c4ed6c60dbbfd7e4",
+      "bytes": 129
+    },
+    {
+      "path": "upstream/sha2.c",
+      "gitBlob": "ef73047065ed7500cc956bce4975c3adace752d3",
+      "sha256": "cbe87248a6a794cf92df33759cbad5ac5f1a2df390edcbb292f07d44baa2de09",
+      "bytes": 21257
+    },
+    {
+      "path": "upstream/sha2.h",
+      "gitBlob": "732ab4bfcf63f89c1b18ea4a6d6fa40d0d5f95b9",
+      "sha256": "c5b7768e75d52c68111b3cdf3e1b192d52bccb85e0ba9fa0ac2437bc3f427f83",
+      "bytes": 1368
+    },
+    {
+      "path": "upstream/sha2_offsets.h",
+      "gitBlob": "49f7e851cc51485c917ce3958ff47a48fca788f3",
+      "sha256": "fbbece33219c2fcc4c76616ea779fbec1a977715a9fc0ac2c9c1b61c2e902f76",
+      "bytes": 1042
+    },
+    {
+      "path": "upstream/sign.c",
+      "gitBlob": "a8e0c3c3d79f16e20e898ab598f9cee4ec6ca1be",
+      "sha256": "4015a353fa2b0433de4c1d0496a847cede14ffd7f9e60c92a25c8c2dffbce2a0",
+      "bytes": 8147
+    },
+    {
+      "path": "upstream/thash.h",
+      "gitBlob": "8687ccfb4db86603bf21f7ab519180b79dada148",
+      "sha256": "9a81d94591cb7d97606b0927525e59994b70b0043301f47861f98570d9e3cec2",
+      "bytes": 276
+    },
+    {
+      "path": "upstream/thash_sha2_simple.c",
+      "gitBlob": "da588964d89ba8685c07361b674fe66af6ada036",
+      "sha256": "a6da924ab60437c37466a1fd2afe65cf9d7ae8edaba8458d345209cbb901c688",
+      "bytes": 1793
+    },
+    {
+      "path": "upstream/utils.c",
+      "gitBlob": "63d52eefe4918619ae407cc10a615157b574af77",
+      "sha256": "9c3d1b5929997d3986d66c826a73c0f2cd39b36c68122c8823719ac52f719887",
+      "bytes": 5332
+    },
+    {
+      "path": "upstream/utils.h",
+      "gitBlob": "b13502ced2383ab5b8322c2a282f5cc006f3c508",
+      "sha256": "06d3eaf20944104873d9e143dce2c049719d4aff4a5073c70551bed79c5fa314",
+      "bytes": 2378
+    },
+    {
+      "path": "upstream/utilsx1.c",
+      "gitBlob": "f6a6700a0d4dca43757d737fa2d4adc5eaf0f864",
+      "sha256": "c66cb53481cc2a02c44e53e5ec428d9565b51ee3554e1445d29ae5b731486773",
+      "bytes": 3787
+    },
+    {
+      "path": "upstream/utilsx1.h",
+      "gitBlob": "a7fcf15e571986c9c90bd1e27b90c00f8b57e28e",
+      "sha256": "1df02869660b96a0e79205bfa6bf09b999392c42aeb5469f64b565cd5cdef752",
+      "bytes": 1009
+    },
+    {
+      "path": "upstream/wots.c",
+      "gitBlob": "df83278ce184ce801f4b3cdbafd313704c3f728d",
+      "sha256": "e0624601c3bfa0c2878ed7be1efb75a490a10453d3e2ca70910883fe46258c7e",
+      "bytes": 3225
+    },
+    {
+      "path": "upstream/wots.h",
+      "gitBlob": "7e7705625825ae8fc9341a70eb723428f501d5ba",
+      "sha256": "18a7c81e8006bef01e33e2894f51f3d54583f43c29a631691cbb1e1c46674655",
+      "bytes": 663
+    },
+    {
+      "path": "upstream/wotsx1.c",
+      "gitBlob": "dfb3780644efc7acac94467d9ffdb3dfefb9a2a2",
+      "sha256": "37159c12b101033de2a53fe4125f9c5d8f254115e9e19f6b34d3b715c03f759b",
+      "bytes": 2269
+    },
+    {
+      "path": "upstream/wotsx1.h",
+      "gitBlob": "1257f81686a475883db577154d34a0582786bcc2",
+      "sha256": "fdf5431c896cba8814fb5a682df259ba5267d0643e726469801ee9f33810a024",
+      "bytes": 1190
+    },
+    {
+      "path": "slhdsa_emscripten_wrapper.c",
+      "gitBlob": "cb2b7c3ef197a9ed7f77401260a732a8f566796f",
+      "sha256": "1c2f827926b45aaf9262f60fbca7d8ba017d5dde30928035d551837d97ddcde5",
+      "bytes": 12747
+    },
+    {
+      "path": "upstream-license-texts/0BSD.txt",
+      "gitBlob": "c19ef1c6770f9abce1849fbb5c6c9b6fc529e1ca",
+      "sha256": "43eeebba968f23e6a1d7db3b35c3e96efdf40b21b7ccdd36c24a320794291aaa",
+      "bytes": 632
+    },
+    {
+      "path": "upstream-license-texts/CC0-1.0.txt",
+      "gitBlob": "6ca207ef004cb69d03041e7e5c288a2be4968045",
+      "sha256": "7179683e8000e6bdc9bbc60d85edf0a4ac8e76f951857f54fcb775d5886f1309",
+      "bytes": 7049
+    },
+    {
+      "path": "upstream-license-texts/LicenseRef-SPHINCS-PLUS-Public-Domain.txt",
+      "gitBlob": "8c93d5a74d46ccfb69df407f80963dba299fdb28",
+      "sha256": "5ae512514ba59a03f602a7f7e746bcd5b91509d19f10a99f7a5c6aec0de2bfe6",
+      "bytes": 52
+    },
+    {
+      "path": "upstream-license-texts/MIT-0.txt",
+      "gitBlob": "11f98088c66fb615ac6ee0c0bfc687306eabf9eb",
+      "sha256": "b989d4f1eaf6094c133dc61a33fff638a63f64fdd4ba881adaf245b9bad3a22c",
+      "bytes": 879
+    },
+    {
+      "path": "upstream-license-texts/MIT.txt",
+      "gitBlob": "66cb02b59204defd733a025f0d347409df8393f7",
+      "sha256": "00fb7d2b5ab968254b5b80dbb8a28f229a282fda6a0902b86545f505eec410b1",
+      "bytes": 1068
+    }
+  ]
+}

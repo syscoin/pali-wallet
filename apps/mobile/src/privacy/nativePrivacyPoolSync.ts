@@ -6,12 +6,14 @@ import {
 } from '../../../../source/utils/privacy/ownedAnchor.ts';
 import {
   privacyRpcResponseLimit,
-  readPrivacyJson,
   readPrivacyPoolSnapshot,
   type PrivacyAnchorRead,
   type PrivacyJsonResponse,
 } from '../../../../source/utils/privacy/publicSyncProtocol.ts';
-import { getPrivacyPool } from '../../../../source/utils/privacy/registry.ts';
+import {
+  getPrivacyPool,
+  PRIVACY_CHAIN_ID,
+} from '../../../../source/utils/privacy/registry.ts';
 import { validatePrivacyRpcUrl } from '../../../../source/utils/privacy/snapshotValidation.ts';
 import type { IPrivacyNoteReader } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type { IPrivacySnapshotReader } from '../../../../source/utils/privacy/trustedSnapshot.ts';
@@ -48,7 +50,8 @@ function waitForHandle<T>(
 }
 
 type Handle = Readonly<{
-  // The host rechecks at the actual native start and around every bridge turn.
+  // The host checks owner authority around bridge turns and gates native start
+  // on the live reservation and foreground state.
   start(
     assertCurrent: () => void
   ): Promise<Readonly<{ status: number; byteCount: number }>>;
@@ -186,7 +189,8 @@ export function createNativePrivacyPoolSync(
   const assertServiceCurrent = options.service.assertCurrent.bind(
     options.service
   );
-  if (network.chainId !== '1') throw new Error('privacy_wrong_chain');
+  if (network.chainId !== String(PRIVACY_CHAIN_ID))
+    throw new Error('privacy_wrong_chain');
   getPrivacyPool(poolId);
   const rpcUrl = validatePrivacyRpcUrl(network.rpcUrl);
   if (!rpcUrl.startsWith('https:')) throw unavailable();
@@ -358,7 +362,7 @@ export function createNativePrivacyPoolSync(
       return await readPrivacyPoolSnapshot(
         id,
         local.signal,
-        async (_url, _init, responseLimit) => {
+        async (_url, _init, responseLimit, readResponse) => {
           const limit = (status: number) =>
             responseLimit({ status, ok: status === 200 });
           const operation = reserve(
@@ -368,10 +372,7 @@ export function createNativePrivacyPoolSync(
           );
           try {
             const response = await operation.start(() => checkRun(active));
-            const data = await readPrivacyJson(
-              response,
-              limit(response.status)
-            );
+            const data = await readResponse(response, limit(response.status));
             checkRun(active);
             return { data, status: response.status };
           } finally {

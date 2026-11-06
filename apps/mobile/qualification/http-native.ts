@@ -1,7 +1,10 @@
 import { boundedResponseText, ResponseSizeLimitError } from '../src/platformRpc.ts';
 import { createNativeCoinQuoteReader } from '../src/portfolio/nativeCoinQuote.ts';
 import { BLOCKBOOK_TICKER_PATH } from '../../../source/shared/nativeCoinQuotes.ts';
-import { HTTP_CASES, QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport } from './http-contract.ts';
+import { abortable } from '../../../source/shared/boundedHttp.ts';
+import type { OwnedPrivacyPullTransport } from '../src/privacy/nativePrivacyPoolSync.ts';
+import { HTTP_CASES, QUOTE_EARLY_REJECTIONS, STALLED_QUOTE_ROUTE, PUBLIC_SNAPSHOT_FIXTURE_BODY,
+  type HttpBuild, type HttpCase, type HttpLaunch, type HttpReport } from './http-contract.ts';
 
 type FetchPort = (url: string, init: RequestInit) => Promise<Response>;
 function assert(condition: unknown): asserts condition { if (!condition) throw Error('HTTP_QUALIFICATION_FAILED'); }
@@ -26,6 +29,7 @@ async function readStart(reader: ReadableStreamDefaultReader<Uint8Array>, signal
 /** Uses the production adapter and real Expo cookie jar, never global fetch. */
 export async function qualifyNativeHttp(options: Readonly<{
   launch: HttpLaunch; build: HttpBuild; walletFetch: FetchPort; cookieFetch: FetchPort;
+  snapshotTransport: Pick<OwnedPrivacyPullTransport, 'prepareSnapshot'>;
   phase: HttpReport['phase']; scenario: HttpReport['scenario']; platform: HttpReport['platform'];
   sessionId: string; networkCalls: () => number;
 }>): Promise<HttpReport> {
@@ -136,6 +140,24 @@ export async function qualifyNativeHttp(options: Readonly<{
     assert(quoteSignal?.aborted && !owner.aborted && performance.now() - started >= 7_500);
     await query(`${STALLED_QUOTE_ROUTE}-closed`);
   }, 11_000);
+  currentCase = 'public-snapshot-bridge';
+  await owned(async (signal) => {
+    const handle = options.snapshotTransport.prepareSnapshot('eth-1', `http://127.0.0.1:${launch.port}`, signal);
+    const check = () => assert(!signal.aborted);
+    const expected = new TextEncoder().encode(PUBLIC_SNAPSHOT_FIXTURE_BODY);
+    let offset = 0;
+    try {
+      const info = await abortable(handle.start(check), signal);
+      assert(info.status === 200 && info.byteCount === expected.byteLength);
+      for (const size of [64 * 1024, expected.byteLength - 64 * 1024]) {
+        const chunk = await abortable(handle.pull(check), signal);
+        assert(chunk instanceof Uint8Array && chunk.byteLength === size &&
+          chunk.every((byte, index) => byte === expected[offset + index]));
+        offset += size;
+      }
+      assert(await abortable(handle.pull(check), signal) === null);
+    } finally { await handle.release(); }
+  });
   currentCase = 'healthy-after-cancel';
   await query('healthy');
   assert(options.networkCalls() === 0);

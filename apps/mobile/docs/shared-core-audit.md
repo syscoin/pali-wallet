@@ -1,6 +1,6 @@
 # Shared-core audit
 
-Source basis is the combined candidate through #1275 at `d27a816f92ac120647ab04aebfc8b28248c66a72` plus the shared fee-approval and ordinary UTXO-binding integration in this branch. Validation of that integration is pending. This records implementation and remaining work. Native qualification is tracked separately in the [parity matrix](../design/PARITY_MATRIX.md).
+Source basis is the combined candidate through #1275 at `d27a816f92ac120647ab04aebfc8b28248c66a72` plus the shared fee approvals, ordinary UTXO binding and SLH-DSA state/runtime integration in this branch. Hosted validation of that integration is pending. This records implementation and remaining work. Native qualification is tracked separately in the [parity matrix](../design/PARITY_MATRIX.md).
 
 | Area | Implementation and boundary |
 | --- | --- |
@@ -15,6 +15,7 @@ Source basis is the combined candidate through #1275 at `d27a816f92ac120647ab04a
 | Secret reveal | Mobile EVM key and imported UTXO WIF reveal require backup confirmation and fresh password authentication. WIF reveal verifies the selected address and shows the canonical network/script label. Screens clear on hide, navigation and authority loss. UTXO HD key reveal remains unavailable. |
 | Network text | Extension and mobile forms use `source/shared/networkText.ts`. Full stored values and identity survive display ellipsis. Custom endpoint registration uses owned identity checks before saving. |
 | Device unlock | Shared enrollment/revocation and protected mobile credential adapters exist. Mobile production composition and extension quick-unlock activation remain unwired. The native adapter requests authenticated, passcode-bound device-only storage, while password fallback and real-device invalidation/lifecycle gates remain required. |
+| SLH-DSA | Shared encrypted-state and runtime factories preserve the extension's per-key queues, session binding and usage accounting. The extension supplies its existing offscreen execution adapter. Mutation and signing callers must pass a captured generation. Native execution, setup and signing UI remain open. |
 
 Native adapters own SQLCipher/SecureStore, protected files, HTTP, application lifecycle and native presentation. Shared wallet policy owns derivation, fee and nonce semantics, signed-byte validation, recovery and durable submission. A host-specific transport or screen does not justify a second wallet-policy implementation.
 
@@ -24,4 +25,4 @@ The extension manifest/Yarn lock and mobile manifest/npm lock pin official Keyri
 
 At `d27a816f`, Android custody/cold-restart CI passed. iOS Simulator CI passed HTTP, crypto and expected protected-storage refusal. Earlier physical-iPhone evidence at `f1316c50f66004772946e28aa94a9e4d0b3db54b` with SDK 2.1.2 covered offline import/create/restart and a normal-app password/lock flow with backup incomplete. Those historical checks do not qualify the current candidate, completed backup, WIF reveal, cancellation, biometrics or live transfers. [Exact native run](https://github.com/syscoin/pali-wallet/actions/runs/42154521873)
 
-Native dapp sessions/approvals, hardware, smart/private-pool and Sentry operations remain open. The #1246 snapshot and #1265 notification transports are separate dormant drafts. They do not activate wallet features. Follow the [parity matrix](../design/PARITY_MATRIX.md) for their source and native-qualification boundaries.
+Native dapp sessions/approvals, hardware, smart/private-pool and Sentry operations remain open. The #1246 snapshot and #1265 notification transports are separate dormant work. They do not activate wallet features. Follow the [parity matrix](../design/PARITY_MATRIX.md) for their source and native-qualification boundaries.

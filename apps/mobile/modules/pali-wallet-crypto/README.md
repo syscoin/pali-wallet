@@ -40,4 +40,8 @@ The shared JavaScript controller remains responsible for topology, immutable sna
 
 The standalone `tests/run-public-merkle.sh` harness builds both generated limb widths with ASan/UBSan against small deterministic vectors from the actual shared JavaScript planner. It covers dependent carries/folds, malformed references, canonical field bounds, exact sizes, buffer overlap and unchanged output on rejection. Its explicit test-only limb selector cannot change a normal production build. These arithmetic tests do not qualify native Promise/lifetime behavior or Android/iOS device execution.
 
-The separate `src/crypto/qualificationHmac.ts` helper exercises public RFC 4231 SHA512 vectors through the actual provider when explicitly called by a native qualification harness. Primitive Swift/JVM tests use the same RFC vectors. Adding this primitive does not implement native SLH-DSA setup, its signer, cache or smart-account flows. [RFC 4231](https://www.rfc-editor.org/rfc/rfc4231.html)
+The separate `src/crypto/qualificationHmac.ts` helper exercises public RFC 4231 SHA512 vectors through the actual provider when explicitly called by a native qualification harness. Primitive Swift/JVM tests use the same RFC vectors. [RFC 4231](https://www.rfc-editor.org/rfc/rfc4231.html)
+
+## SLH leaf qualification
+
+The native bridge computes bounded SHA2-128-24 public WOTS leaf ranges for the isolated qualification fixture. Its no-argument factory checks the native app identifier and uses a fixed public seed compiled into the shared C source. The generic key import rejects SLH seeds. The worker owns its seed copy through C return and clears it before releasing the worker slot. Wallet seed use requires a native derivation and ingress path with separately reviewed ownership before activation. The pinned Expo typed-array converters derive offsets and lengths from JavaScript properties and cannot serve as that boundary.

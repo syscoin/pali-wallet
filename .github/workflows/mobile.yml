@@ -39,6 +39,8 @@ on:
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/utils/psbtWorkBudget.ts'
+      - 'source/utils/slhDsa/constants.ts'
+      - 'source/utils/slhDsa/hex.ts'
       - 'source/utils/syscoinAssetAmount.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'

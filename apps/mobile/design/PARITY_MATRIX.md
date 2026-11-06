@@ -34,7 +34,7 @@ Primary implementation references are `src/custody/{keyringRuntime,walletCatalog
 
 - At candidate `d27a816f`, native CI passed Android custody and cold restart. Its iOS Simulator job covers HTTP, crypto and expected protected-storage refusal. It does not establish successful iOS custody or biometric unlock. [Exact native run](https://github.com/syscoin/pali-wallet/actions/runs/42154521873)
 - #1274 cancellation and #1275 WIF reveal are implemented in that candidate. Their controller and browser evidence does not establish current physical-device acceptance.
-- #1246 private-pool snapshot transport and #1265 system watch notifications are separate dormant drafts. Neither is activated by the main candidate. Private-pool operations and notification lifecycle/privacy qualification remain open.
+- #1246 private-pool snapshot transport and #1265 system watch notifications are separate dormant work. Neither is activated by the main candidate. Private-pool operations and notification lifecycle/privacy qualification remain open.
 
 - Prior [PR #1176](https://github.com/syscoin/pali-wallet/pull/1176) evidence verified offline Android HD-key reveal and custody/cold-restart behavior at that tested revision. It does not qualify later changes or live transfers.
 - iOS Simulator native-crypto execution and the expected protected-storage refusal are limited evidence, with `custodyQualified: false`; they are not successful iOS custody or physical-iPhone qualification.

@@ -135,6 +135,7 @@ export async function prepareExtensionAccountRecovery(
             const state = await loadEncryptedSLHDSAState({
               keyId: value.keyId,
               crypto: createSlhDsaProfileStateCrypto(keyring, assertCurrent),
+              assertOwner: assertCurrent,
             });
             if (!state) return invalid();
           }

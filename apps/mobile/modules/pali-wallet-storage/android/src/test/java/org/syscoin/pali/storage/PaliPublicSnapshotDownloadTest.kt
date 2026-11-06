@@ -88,13 +88,26 @@ class PaliPublicSnapshotDownloadTest {
       }
     }
     SnapshotLoopback().use { server ->
-      val selectedResult = CompletableFuture<Result<Unit>>()
-      val selected = PaliPublicSnapshotDownloader.prepare("eth-1", server.url("/").toString()) {
-        check(selectedResult.complete(it))
+      val bridge = PaliPublicSnapshotBridge()
+      val old = bridge.prepare { completion ->
+        PaliPublicSnapshotDownloader.prepare("eth-1", server.url("/").toString(), completion)
       }
-      selected.start()
-      selectedResult.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS).getOrThrow()
-      checkSmall(selected)
+      val oldReleased = CountDownLatch(1)
+      bridge.release(old) { oldReleased.countDown() }
+      assertTrue(oldReleased.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+      val selectedResult = CompletableFuture<Result<PaliPublicSnapshotInfo>>()
+      val selected = bridge.prepare { completion ->
+        PaliPublicSnapshotDownloader.prepare("eth-1", server.url("/").toString(), completion)
+      }
+      bridge.release(old) {} // Exact stale release cannot retire the next handle.
+      bridge.start(selected) { check(selectedResult.complete(it)) }
+      assertEquals(PaliPublicSnapshotInfo(200, 5),
+        selectedResult.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS).getOrThrow())
+      assertEquals("aaaaa", bridge.pull(selected)?.decodeToString())
+      assertEquals(null, bridge.pull(selected))
+      val selectedReleased = CountDownLatch(1)
+      bridge.release(selected) { selectedReleased.countDown() }
+      assertTrue(selectedReleased.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
       expectThrow(PaliPublicSnapshotError.TIMEOUT) { reserve(server, "/must-not-hit", 0) }
       val (beforeStart, notDispatched) = reserve(server, "/must-not-hit")
       expectThrow(PaliPublicSnapshotError.UNAVAILABLE) { beforeStart.info() }
@@ -127,17 +140,35 @@ class PaliPublicSnapshotDownloadTest {
       expectFailure(server, "/partial", PaliPublicSnapshotError.UNAVAILABLE)
       expectFailure(server, "/truncated", PaliPublicSnapshotError.UNAVAILABLE)
 
-      val (handle, pending) = begin(server, "/held")
-      handle.start()
+      val pending = CompletableFuture<Result<Unit>>()
+      val completionEntered = CountDownLatch(1)
+      val resumeCompletion = CountDownLatch(1)
+      val handle = bridge.prepare { completion ->
+        reserve(server, "/held", beforeCompletion = {
+          completionEntered.countDown()
+          check(resumeCompletion.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        }, onCompletion = completion).first
+      }
+      bridge.start(handle) { result -> check(pending.complete(result.map { Unit })) }
       assertTrue(server.heldBody.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
       expectThrow(PaliPublicSnapshotError.BUSY) { begin(server, "/must-not-hit") }
-      handle.cancel()
-      handle.cancel()
+      val heldReleased = CountDownLatch(1)
+      bridge.release(handle) { heldReleased.countDown() }
+      bridge.cancelActive()
+      try {
+        assertTrue(completionEntered.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
+        assertEquals(1L, heldReleased.count)
+        expectThrow(PaliPublicSnapshotError.BUSY) {
+          bridge.prepare { reserve(server, "/must-not-hit", onCompletion = it).first }
+        }
+      } finally { resumeCompletion.countDown() }
       assertEquals(PaliPublicSnapshotError.CANCELLED, errorCode(pending.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
+      assertTrue(heldReleased.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
       checkSmall(run(server, "/reopened"))
       val (_, deadline) = begin(server, "/deadline", 1500)
       assertTrue(server.deadlineBody.await(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS))
-      handle.cancel()
+      bridge.release(handle) {}
+      bridge.close()
       assertEquals(PaliPublicSnapshotError.TIMEOUT, errorCode(deadline.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS)))
       checkSmall(run(server, "/after-deadline"))
 
@@ -336,7 +367,8 @@ class PaliPublicSnapshotDownloadTest {
   // Only tests substitute a loopback URL and larger candidate ceiling.
   private fun reserve(
     server: SnapshotLoopback, path: String, timeoutMs: Long = FIXTURE_TIMEOUT_MS,
-    snapshotLimit: Int = SNAPSHOT_BYTES, beforeCompletion: () -> Unit = {}
+    snapshotLimit: Int = SNAPSHOT_BYTES, beforeCompletion: () -> Unit = {},
+    onCompletion: (Result<Unit>) -> Unit = {}
   ): Pair<PaliPublicSnapshotOperation, CompletableFuture<Result<Unit>>> {
     val method = PaliPublicSnapshotDownloader::class.java.getDeclaredMethod(
       "reserve", HttpUrl::class.java, java.lang.Long.TYPE, java.lang.Integer.TYPE,
@@ -346,6 +378,7 @@ class PaliPublicSnapshotDownloadTest {
     val complete: (Result<Unit>) -> Unit = {
       beforeCompletion()
       check(pending.complete(it))
+      onCompletion(it)
     }
     val observer = object : EventListener() {
       override fun responseBodyStart(call: Call) {

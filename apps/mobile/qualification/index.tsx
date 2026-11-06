@@ -282,6 +282,11 @@ function QualificationApp() {
           await qualifyNativePublicMerkle(createNativePublicMerkleExecutor());
           await qualifyWalletHmac(nativeCrypto);
         });
+        await check('native SLH leaf setup vector', async () => {
+          const { requireNativeModule } = await import('expo-modules-core');
+          const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
+          await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
+        });
         const httpConfiguration = Constants.expoConfig?.extra?.paliHttpQualification;
         if (httpConfiguration !== undefined || (!parameters.physical && parameters.http)) {
           if (parameters.physical || !parameters.http || !['ios', 'android'].includes(Platform.OS))
@@ -290,6 +295,7 @@ function QualificationApp() {
           // Run before protected-storage admission, in a separate report: an
           // iOS Simulator storage refusal must never become custody success.
           stage = 'native HTTP transport';
+          const { createNativePublicSnapshotTransport } = await import('../src/privacy/publicSnapshotNative.native.ts');
           const [{ walletFetch }, { fetch: cookieFetch }, { qualifyNativeHttp, HttpQualificationError }, { qualifyNativePost, PostQualificationError }] = await Promise.all([
             import('../src/platform/http'), import('expo/fetch'), import('./http-native.ts'), import('./post-native.ts'),
           ]);
@@ -298,6 +304,7 @@ function QualificationApp() {
           try {
             const evidence = await qualifyNativeHttp({ launch: parameters.http, build,
               walletFetch, cookieFetch: cookieFetch as typeof walletFetch,
+              snapshotTransport: createNativePublicSnapshotTransport(),
               phase: parameters.phase, scenario: parameters.scenario, platform: Platform.OS as 'ios' | 'android',
               sessionId: Constants.sessionId, networkCalls: () => networkCalls });
             await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify(evidence));
