@@ -5,8 +5,8 @@ import {
   SLH_DSA_SIGNATURE_LIMIT,
   SLH_DSA_STATE_VERSION,
   getSLHDSAStateStorageKey,
-} from '../utils/slhDsa/constants';
-import { normalizeSLHDSAPublicKeyField } from '../utils/slhDsa/hex';
+} from '../utils/slhDsa/constants.ts';
+import { normalizeSLHDSAPublicKeyField } from '../utils/slhDsa/hex.ts';
 
 import type { SlhDsaStateCrypto } from './slhDsaStateCrypto';
 import type { SLHDSAProvisionedState } from '../utils/slhDsa/types';
