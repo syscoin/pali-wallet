@@ -28,6 +28,22 @@ test('cancellation shows the original and maximum fee before one explicit approv
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
 });
 
+test('Speed Up shows the original and reviewed fee before one explicit approval', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/?speed-up-transfer');
+  await expect(page.getByText('Review Speed Up', { exact: true })).toBeVisible();
+  await expect(page.getByText(/same payment with updated gas and fee limits/)).toBeVisible();
+  await expect(page.getByTestId('native-send-recipient')).toHaveText(recipient);
+  await expect(page.getByTestId('native-send-fee')).toHaveText('0.000000000000126 ETH');
+  await expect(page.getByText('0x' + '3'.repeat(64))).toBeVisible();
+  await expect(page.getByText(/Original execution fee limit/)).toBeVisible();
+  await expect(page.getByRole('textbox')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+  await page.getByRole('button', { name: 'Submit Speed Up' }).click();
+  await expect(page.getByText('Replacement submitted', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
+});
+
 test('expired review cannot confirm and a replacement requires explicit consent', async ({
   page,
 }) => {

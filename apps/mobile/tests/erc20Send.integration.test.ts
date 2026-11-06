@@ -118,11 +118,17 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               : b.params[0].data.startsWith('0x70a08231')
               ? word(values.tokens)
               : word(1);
+        else if (b.method === 'eth_getTransactionByHash') {
+          const raw = sent.find((candidate) => keccak256(candidate) === b.params[0]);
+          const tx = raw && Transaction.from(raw);
+          result = tx ? { hash: tx.hash, from: tx.from, to: tx.to, value: '0x0', nonce: '0x0',
+            blockNumber: null, blockHash: null, transactionIndex: null } : null;
+        }
         else if (b.method === 'eth_getTransactionReceipt')
           result = values.finalized
             ? {
-                transactionHash: keccak256(sent[0]!),
-                from: Transaction.from(sent[0]!).from,
+                transactionHash: keccak256(sent.at(-1)!),
+                from: Transaction.from(sent.at(-1)!).from,
                 to: CONTRACT,
                 blockNumber: '0x100',
                 blockHash: '0x' + 'a'.repeat(64),
@@ -250,6 +256,27 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     assert.equal(sent[1], raw);
     assert.equal(transfers!.getSnapshot().hash, hash);
     assert.equal(transfers!.getSnapshot().phase, 'pending');
+    await transfers!.prepareSpeedUp(hash);
+    let replacement = transfers!.getSnapshot().review!;
+    assert.equal(replacement.replacement?.mode, 'speed-up');
+    assert.equal(replacement.intent!.amountUnits, '123');
+    assert.equal(replacement.intent!.token.decimals, 2);
+    values.tokens = 122n;
+    await assert.rejects(transfers!.confirm(replacement.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+    assert.equal(sent.length, 2);
+    values.tokens = 10000n;
+    await transfers!.prepareSpeedUp(hash);
+    replacement = transfers!.getSnapshot().review!;
+    await transfers!.confirm(replacement.id);
+    assert.equal(sent.length, 3);
+    const bumped = Transaction.from(sent[2]!);
+    assert.equal(bumped.data, Transaction.from(raw).data);
+    assert.equal(bumped.nonce, Transaction.from(raw).nonce);
+    assert.equal(bumped.to, CONTRACT);
+    assert.equal(bumped.value, 0n);
+    const records = JSON.parse((await storage!.signedRecords.read(profile))!).entries;
+    assert.equal(records[1].originalHash, hash);
+    assert.equal(records[1].operation, 'speed-up');
     values.finalized = true;
     await transfers!.recover();
     assert.equal(transfers!.getSnapshot().phase, 'confirmed');

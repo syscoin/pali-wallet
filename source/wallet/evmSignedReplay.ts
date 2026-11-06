@@ -142,7 +142,12 @@ function tokenTransfer(
   entry: EvmRetainedSignedRecord,
   tx: Transaction
 ): EvmSavedTransaction['tokenTransfer'] {
-  if (entry.operation !== 'erc20' || !tx.to || tx.value !== BigInt(0))
+  if (
+    (entry.operation !== 'erc20' &&
+      (entry.operation !== 'speed-up' || !entry.metadata?.intent)) ||
+    !tx.to ||
+    tx.value !== BigInt(0)
+  )
     return undefined;
   try {
     const decoded = decodeErc20Transfer(tx.data);

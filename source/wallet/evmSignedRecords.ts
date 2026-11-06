@@ -89,6 +89,21 @@ export type EvmVerifiedReplacementBinding = VerifiedPendingOriginal &
   }>;
 const verifiedReplacementBindings =
   new WeakSet<EvmVerifiedReplacementBinding>();
+export type EvmReplacementRates = Readonly<
+  | { gasPrice: bigint; type: 0 }
+  | { maxFeePerGas: bigint; maxPriorityFeePerGas: bigint; type: 2 }
+>;
+
+function bindVerifiedReplacement(
+  original: VerifiedPendingOriginal,
+  profileId: string,
+  expectedTipHash: string | null
+): EvmVerifiedReplacementBinding {
+  const binding = Object.freeze({ ...original, profileId, expectedTipHash });
+  verifiedReplacementBindings.add(binding);
+  return binding;
+}
+
 function isPendingPhase(phase: EvmSignedPhase): boolean {
   return phase === 'signed' || phase === 'attempted' || phase === 'submitted';
 }
@@ -120,6 +135,26 @@ function repricesCancellation(tx: Transaction, original: Transaction): boolean {
 
 type Entry = EvmSignedRecordSummary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
+
+function retainedReplacementLineage(
+  sameNonce: readonly Entry[],
+  retainedIndex: number
+): readonly Entry[] | null {
+  const lineage = sameNonce.slice(retainedIndex);
+  const known = new Set([lineage[0]!.hash]);
+  for (const entry of lineage.slice(1)) {
+    if (
+      entry.operation !== 'speed-up' ||
+      !entry.originalHash ||
+      !known.has(entry.originalHash) ||
+      (entry.phase !== 'signed' && entry.phase !== 'attempted')
+    )
+      return null;
+    known.add(entry.hash);
+  }
+  return lineage;
+}
+
 type Bundle = Readonly<{
   entries: readonly Entry[];
   profileId: string;
@@ -640,17 +675,15 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
-      const binding = Object.freeze({
-        ...original,
-        profileId: id,
-        expectedTipHash: await this.verifiedReplacementTip(
+      return bindVerifiedReplacement(
+        original,
+        id,
+        await this.verifiedReplacementTip(
           session,
           bundle?.entries ?? [],
           original
-        ),
-      });
-      verifiedReplacementBindings.add(binding);
-      return binding;
+        )
+      );
     });
   }
 
@@ -688,19 +721,11 @@ export class EvmSignedRecords {
       (entry) => entry.hash === original.originalHash
     );
     if (retainedIndex < 0) return sameNonce.at(-1)?.hash ?? null;
-    if (!isPendingPhase(sameNonce[retainedIndex]!.phase))
+    if (
+      !isPendingPhase(sameNonce[retainedIndex]!.phase) ||
+      !retainedReplacementLineage(sameNonce, retainedIndex)
+    )
       throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
-    const lineage = new Set([original.originalHash]);
-    for (const entry of sameNonce.slice(retainedIndex + 1)) {
-      if (
-        entry.operation !== 'speed-up' ||
-        !entry.originalHash ||
-        !lineage.has(entry.originalHash) ||
-        (entry.phase !== 'signed' && entry.phase !== 'attempted')
-      )
-        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
-      lineage.add(entry.hash);
-    }
     return sameNonce.at(-1)?.hash ?? null;
   }
 
@@ -862,6 +887,92 @@ export class EvmSignedRecords {
           return Object.freeze({ ...summary(entry), rawTransaction: raw });
       }
       throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+    });
+  }
+  readReplacement(
+    session: EvmSignedRecordSession,
+    chainId: string,
+    address: string,
+    hash: string,
+    operation: VerifiedPendingOriginal['operation']
+  ): Promise<Readonly<{
+    binding: EvmVerifiedReplacementBinding | null;
+    original: EvmRetainedSignedRecord;
+    rates: EvmReplacementRates;
+  }> | null> {
+    const from = getAddress(address).toLowerCase();
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const entries = bundle?.entries ?? [];
+      const selected = entries.find(
+        (entry) =>
+          entry.chainId === chainId &&
+          entry.from === from &&
+          entry.hash === hash
+      );
+      if (!selected) return null;
+      const sameNonce = entries.filter((entry) =>
+        matchesNonce(entry, selected)
+      );
+      if (sameNonce.some((entry) => entry.operation === 'cancel')) return null;
+      const lineage = retainedReplacementLineage(
+        sameNonce,
+        sameNonce.indexOf(selected)
+      );
+      const tip = lineage?.at(-1);
+      if (!lineage || !tip) return null;
+
+      const original = await this.materialize(session, selected);
+      const base = Transaction.from(original.rawTransaction);
+      if (base.type !== 0 && base.type !== 2) return null;
+      let cap = base.maxFeePerGas ?? base.gasPrice ?? BigInt(0);
+      let tipRate = base.maxPriorityFeePerGas ?? BigInt(0);
+      for (const entry of lineage.slice(1)) {
+        const variant = Transaction.from(
+          (await this.materialize(session, entry)).rawTransaction
+        );
+        if (
+          variant.type !== base.type ||
+          variant.to !== base.to ||
+          variant.value !== base.value ||
+          variant.data !== base.data ||
+          variant.accessList?.length ||
+          base.accessList?.length
+        )
+          return null;
+        const variantCap =
+          variant.maxFeePerGas ?? variant.gasPrice ?? BigInt(0);
+        const variantTip = variant.maxPriorityFeePerGas ?? BigInt(0);
+        if (variantCap > cap) cap = variantCap;
+        if (variantTip > tipRate) tipRate = variantTip;
+      }
+      const rates: EvmReplacementRates =
+        base.type === 0
+          ? Object.freeze({ type: 0, gasPrice: cap })
+          : Object.freeze({
+              type: 2,
+              maxFeePerGas: cap,
+              maxPriorityFeePerGas: tipRate,
+            });
+      guard(session);
+      return Object.freeze({
+        original,
+        rates,
+        binding: isPendingPhase(selected.phase)
+          ? bindVerifiedReplacement(
+              {
+                chainId,
+                from,
+                nonce: selected.nonce,
+                originalHash: hash,
+                operation,
+              },
+              id,
+              tip.hash
+            )
+          : null,
+      });
     });
   }
   validate(session: EvmSignedRecordSession): Promise<number> {

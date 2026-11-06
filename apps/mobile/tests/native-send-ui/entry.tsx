@@ -31,7 +31,9 @@ import type {
 
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
-const cancellationHash = new URLSearchParams(window.location.search).has('cancel-transfer') ? '0x' + '3'.repeat(64) : undefined;
+const route = new URLSearchParams(window.location.search);
+const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
+const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
 let sendContext = getNativeSendContext(
   new URLSearchParams(window.location.search).has('zksys-send')
     ? 'zksys-testnet'
@@ -72,7 +74,12 @@ const controller: NativeTransferView = {
     throw Error('Token path uses its dedicated fixture');
   },
   async prepareCancellation(hash) {
-    publishReview(sender, '0', hash);
+    publishReview(sender, '0', { mode: 'cancel', originalHash: hash, originalMaximumFeeUnits: '63000' });
+  },
+  async prepareSpeedUp(hash) {
+    publishReview('0x1111111111111111111111111111111111111111', '1000000000000000000', {
+      mode: 'speed-up', originalHash: hash, originalMaximumFeeUnits: '63000',
+    });
   },
   async prepare(to, amount) {
     publishReview(to, parseDecimalAmount(amount, 18).toString());
@@ -110,9 +117,9 @@ const controller: NativeTransferView = {
   },
 };
 
-function publishReview(to: string, amountUnits: string, originalHash?: string) {
+function publishReview(to: string, amountUnits: string, replacement?: NonNullable<NativeTransferSnapshot['review']>['replacement']) {
   clearTimeout(expiry);
-  const gas = originalHash ? 42000n : 21000n;
+  const gas = replacement ? 42000n : 21000n;
   const maximumFee = gas * 3n;
   publish({
     ...idle(),
@@ -130,7 +137,7 @@ function publishReview(to: string, amountUnits: string, originalHash?: string) {
       priorityFeePerGas: '1',
       nonce: '0',
       retry: false,
-      ...(originalHash ? { cancellation: { originalHash } } : {}),
+      ...(replacement ? { replacement } : {}),
     }),
   });
   expiry = setTimeout(() => publish(idle()), 90000);
@@ -313,7 +320,7 @@ function Fixture() {
         <NativeSend
           controller={controller}
           context={sendContext}
-          cancellationHash={cancellationHash}
+          replacement={replacement}
           onBack={() => undefined}
         />
       )}

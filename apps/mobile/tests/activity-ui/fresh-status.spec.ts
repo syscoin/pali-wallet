@@ -22,6 +22,28 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test('a saved Speed Up leaves reviewed replacement actions on the live pending original', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?fresh-status=retained-missing-pending-speedup');
+  await expect(listRow(page)).toHaveCount(2);
+  await listRow(page).last().click();
+  await expect(detailStatus(page, 'Pending')).toBeVisible();
+  const speedUp = page.getByRole('button', { name: 'Speed Up', exact: true });
+  const cancel = page.getByRole('button', { name: 'Cancel pending transaction', exact: true });
+  await expect(speedUp).toBeVisible();
+  await expect(cancel).toBeVisible();
+  await speedUp.scrollIntoViewIfNeeded();
+  const bounds = await speedUp.boundingBox();
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(320);
+  await page.screenshot({ path: testInfo.outputPath('retained-speed-up-actions.png'), animations: 'disabled' });
+
+  await page.getByRole('button', { name: 'View Speed Up attempt', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'View original transaction', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toBeVisible();
+  await expect(speedUp).toHaveCount(0);
+  await expect(cancel).toHaveCount(0);
+});
+
 for (const [indexed, observed, expected] of [
   ['pending', 'confirmed', 'Confirmed'],
   ['pending', 'reverted', 'Reverted'],

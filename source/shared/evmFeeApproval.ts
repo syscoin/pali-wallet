@@ -1,6 +1,7 @@
 import {
   assertEvmGasLimit,
   bufferedEvmGasLimit,
+  parseEvmFeeQuantity,
 } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import { getAddress } from 'ethers/address';
 
@@ -8,6 +9,7 @@ import {
   EVM_NATIVE_INTRINSIC_GAS,
   getEvmTransferCost,
 } from './evmTransferCost.ts';
+import type { Transaction } from 'ethers/transaction';
 
 export const EVM_FEE_APPROVAL_LIFETIME_MS = 90_000;
 const MAX_UINT256 = (BigInt(1) << BigInt(256)) - BigInt(1);
@@ -213,6 +215,43 @@ export function assertEvmFeeRefreshApproved(
     invalid('EVM fee approval changed');
 }
 
+/** A lower market quote cannot invalidate the exact already reviewed Speed Up. */
+export function assertEvmSpeedUpFeeRefreshApproved(
+  approved: EvmFeeApproval,
+  refreshed: EvmFeeApproval,
+  now: number
+): void {
+  assertEvmFeeApprovalCurrent(approved, now);
+  assertEvmFeeApprovalCurrent(refreshed, now);
+  if (approved.scope !== refreshed.scope)
+    return invalid('EVM fee approval changed');
+
+  const reviewed = approved.transaction;
+  const current = refreshed.transaction;
+  let unchangedExecution: EvmFeeEnvelope;
+  if (
+    reviewed.type === 0 &&
+    current.type === 0 &&
+    BigInt(current.gasPrice) <= BigInt(reviewed.gasPrice)
+  ) {
+    unchangedExecution = { ...current, gasPrice: reviewed.gasPrice };
+  } else if (
+    reviewed.type === 2 &&
+    current.type === 2 &&
+    BigInt(current.maxFeePerGas) <= BigInt(reviewed.maxFeePerGas) &&
+    BigInt(current.maxPriorityFeePerGas) <=
+      BigInt(reviewed.maxPriorityFeePerGas)
+  ) {
+    unchangedExecution = {
+      ...current,
+      maxFeePerGas: reviewed.maxFeePerGas,
+      maxPriorityFeePerGas: reviewed.maxPriorityFeePerGas,
+    };
+  } else return invalid('EVM fee approval changed');
+  if (JSON.stringify(unchangedExecution) !== JSON.stringify(reviewed))
+    invalid('EVM fee approval changed');
+}
+
 /** Successful RPC estimates use the SDK buffer; failures never produce a quote. */
 export function bufferEvmFeeEstimate(
   estimate: bigint,
@@ -263,4 +302,43 @@ export function assertEvmFeeEstimateApproved(
         BigInt(transaction.maxFeePerGas))
   )
     invalid('Reviewed EVM maximum fee is below the current base fee');
+}
+
+/** Initial and exact replay admission share live fee, gas and nonce checks. */
+export function assertEvmSpeedUpExecutable(
+  transaction: Pick<
+    Transaction,
+    'chainId' | 'nonce' | 'type' | 'gasLimit' | 'gasPrice' | 'maxFeePerGas'
+  >,
+  latestNonce: unknown,
+  latestBlock: unknown
+): void {
+  if (
+    !latestBlock ||
+    typeof latestBlock !== 'object' ||
+    Array.isArray(latestBlock)
+  )
+    return invalid('Missing current EVM block');
+  const block = latestBlock as { baseFeePerGas?: unknown; gasLimit?: unknown };
+  const baseFee =
+    block.baseFeePerGas === null || block.baseFeePerGas === undefined
+      ? null
+      : parseEvmFeeQuantity(block.baseFeePerGas);
+  const rate =
+    transaction.type === 2 ? transaction.maxFeePerGas : transaction.gasPrice;
+  if (
+    (transaction.type !== 0 &&
+      transaction.type !== 1 &&
+      transaction.type !== 2) ||
+    rate === null ||
+    parseEvmFeeQuantity(latestNonce) > BigInt(transaction.nonce) ||
+    (transaction.type === 2 && baseFee === null) ||
+    (baseFee !== null && baseFee > rate)
+  )
+    return invalid('The signed Speed Up is no longer executable');
+  assertEvmGasLimit(
+    transaction.gasLimit,
+    transaction.chainId,
+    parseEvmFeeQuantity(block.gasLimit)
+  );
 }

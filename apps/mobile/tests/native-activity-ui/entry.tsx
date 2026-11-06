@@ -358,8 +358,10 @@ function Fixture() {
           controller={controller}
           accountLabel="Public test account"
           onBack={() => setOpen(false)}
-          onReplay={retainedCollectible ? () => { throw new Error('Read-only collectible cannot replay'); } : undefined}
+          onReplay={retainedCollectible ? () => { throw new Error('Read-only collectible cannot replay'); }
+            : freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
           onCancelPending={freshStatus ? () => setOpen(false) : undefined}
+          onSpeedUpPending={freshStatus?.hasSavedSpeedUp ? () => setOpen(false) : undefined}
         />
       ) : (
         <Button title="Open Activity" onPress={() => setOpen(true)} />

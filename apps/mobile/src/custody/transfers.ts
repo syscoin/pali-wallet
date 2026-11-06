@@ -1,7 +1,8 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
-import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, captureEvmFeeApproval,
+import type { EvmReplacementRates, EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
+import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { EvmCancellationQuote } from './evmTransferReadRpc.ts';
@@ -13,7 +14,7 @@ import {
   TransferJournalError,
 } from './transferJournal.ts';
 import type { TransferJournalEntry } from './transferJournal.ts';
-import { NativeTransferRpc, NativeTransferRpcError, type NativeCancellationOriginal, type NativeTransferQuote } from './transferRpc.ts';
+import { NativeTransferRpc, NativeTransferRpcError, type NativeReplacementMode, type NativeReplacementOriginal, type NativeTransferQuote } from './transferRpc.ts';
 import type { WalletHttpFetch } from '../platform/httpPolicy.ts';
 import { getNativeSendContext, erc20SigningEnabled, type NativeSendContext } from './networkContext.ts';
 import {
@@ -42,7 +43,7 @@ export type NativeTransferReview = Readonly<{
   retry: boolean;
   intent?: Erc20TransferIntent;
   replay?: EvmReplayReview;
-  cancellation?: Readonly<{ originalHash: string }>;
+  replacement?: Readonly<{ mode: NativeReplacementMode; originalHash: string; originalMaximumFeeUnits: string }>;
 }>;
 export type NativeTransferSnapshot = Readonly<{
   context?: NativeSendContext | null;
@@ -75,7 +76,8 @@ export interface NativeTransferRuntime {
     contractAddress: string,
     assertCurrent: () => void
   ): Promise<Erc20Metadata>;
-  cancellationOriginal?(hash: string, assertCurrent: () => void, signal: AbortSignal): Promise<string | null>;
+  replacementOriginal?(hash: string, mode: NativeReplacementMode, assertCurrent: () => void, signal: AbortSignal):
+    Promise<Readonly<{ rawTransaction: string; binding: EvmVerifiedReplacementBinding; rates: EvmReplacementRates; intent?: Erc20TransferIntent }> | null>;
   journal(assertCurrent: () => void): Promise<NativeTransferJournalHandle>;
   submit(
     rawTransaction: string,
@@ -84,20 +86,20 @@ export interface NativeTransferRuntime {
     broadcast: EvmSignedBroadcast<string>,
     intent: Erc20TransferIntent | undefined,
     approved: PreparedEvmTransaction,
-    cancellation?: NativeCancellationApproval
+    replacement?: NativeReplacementApproval
   ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
     intent?: Erc20TransferIntent,
-    cancellation?: NativeCancellationApproval
+    replacement?: NativeReplacementApproval
   ): Promise<Readonly<{ rawTransaction: string; hash: string }>>;
   assertUnlocked(assertCurrent: () => void): void;
 }
-export type NativeCancellationApproval = Readonly<{
-  original: NativeCancellationOriginal;
-  feePlan: EvmCancellationQuote['feePlan'];
-}>;
+export type NativeReplacementApproval = Readonly<{ original: NativeReplacementOriginal; binding: EvmVerifiedReplacementBinding } & (
+  | { mode: 'cancel'; feePlan: EvmCancellationQuote['feePlan'] }
+  | { mode: 'speed-up' }
+)>;
 type Source = {
   getCatalogue?(): NativeWalletCatalogueSnapshot | null;
   getSnapshot(): CustodySnapshot;
@@ -131,6 +133,7 @@ export type NativeTransferView = Readonly<
     | 'cancel'
     | 'prepare'
     | 'prepareCancellation'
+    | 'prepareSpeedUp'
     | 'prepareToken'
     | 'confirm'
     | 'recover'
@@ -144,7 +147,7 @@ type PrivateReview = {
   expires: number;
   feeApproval?: EvmFeeApproval;
   replay?: Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
-  cancellation?: NativeCancellationApproval;
+  replacement?: NativeReplacementApproval;
 };
 const isTerminal = (
   phase: string
@@ -169,6 +172,7 @@ export class NativeTransfers {
     prepare: (recipient: string, amount: string) =>
       this.prepare(recipient, amount),
     prepareCancellation: (hash: string) => this.prepareCancellation(hash),
+    prepareSpeedUp: (hash: string) => this.prepareSpeedUp(hash),
     prepareToken: (contract: string, recipient: string, amount: string) =>
       this.prepareToken(contract, recipient, amount),
     confirm: (id: string) => this.confirm(id),
@@ -432,7 +436,7 @@ export class NativeTransfers {
               phase: this.snapshot.hash ? 'unknown' : 'idle',
               review: null,
               message: this.snapshot.hash
-                ? 'A signed transaction was saved before the review expired. Check it before sending again.'
+                ? 'Your signed transaction is saved. Check it before sending again.'
                 : 'The review expired or network conditions changed. Review the transfer again.',
             });
           throw new NativeTransferError('EXPIRED');
@@ -467,7 +471,7 @@ export class NativeTransfers {
     transaction: PreparedEvmTransaction,
     inputIntent?: Erc20TransferIntent,
     context = getNativeSendContext(this.source.getSnapshot().account!.network, this.source.getCatalogue?.()?.networks),
-    cancellation?: NativeCancellationApproval
+    replacement?: NativeReplacementApproval
   ) {
     const intent = inputIntent;
     assertTransferIntentEnvelope(transaction, intent);
@@ -499,12 +503,13 @@ export class NativeTransfers {
       nonce: transaction.nonce,
       retry: false,
       ...(intent ? { intent } : {}),
-      ...(cancellation ? { cancellation: Object.freeze({ originalHash: cancellation.original.hash }) } : {}),
+      ...(replacement ? { replacement: Object.freeze({ mode: replacement.mode, originalHash: replacement.original.hash,
+        originalMaximumFeeUnits: replacement.original.maximumFeeUnits }) } : {}),
     });
     this.review = {
       public: publicReview,
       transaction,
-      cancellation,
+      replacement,
       feeApproval,
       expires: feeApproval.expiresAtMonotonicMilliseconds,
     };
@@ -521,18 +526,30 @@ export class NativeTransfers {
     });
   }
   prepareCancellation(hash: string): Promise<void> {
+    return this.prepareReplacement(hash, 'cancel');
+  }
+  prepareSpeedUp(hash: string): Promise<void> {
+    return this.prepareReplacement(hash, 'speed-up');
+  }
+  private prepareReplacement(hash: string, mode: NativeReplacementMode): Promise<void> {
     if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/.test(hash))
       return Promise.reject(new NativeTransferError('INVALID_INPUT'));
     return this.perform(async ({ assertCurrent, runtime, signal, address, context, rpc }) => {
-      if (!runtime.cancellationOriginal) throw new NativeTransferError('NOT_READY');
+      if (!runtime.replacementOriginal) throw new NativeTransferError('NOT_READY');
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, hash: null, message: null, intent: null });
-      const raw = await runtime.cancellationOriginal(hash, assertCurrent, signal);
-      if (!raw) throw new NativeTransferError('EXPIRED');
-      const quote = await rpc.prepareCancellation(hash, raw, address, signal, assertCurrent);
-      assertCurrent();
-      this.showReview(quote.transaction, undefined, context,
-        Object.freeze({ original: quote.original, feePlan: quote.feePlan }));
+      const original = await runtime.replacementOriginal(hash, mode, assertCurrent, signal);
+      if (!original) throw new NativeTransferError('EXPIRED');
+      if (mode === 'cancel') {
+        const quote = await rpc.prepareCancellation(hash, original.rawTransaction, address, signal, assertCurrent, original.rates);
+        assertCurrent();
+        this.showReview(quote.transaction, undefined, context,
+          Object.freeze({ mode, original: quote.original, feePlan: quote.feePlan, binding: original.binding }));
+      } else {
+        const quote = await rpc.prepareSpeedUp(hash, original.rawTransaction, address, signal, assertCurrent, original.rates, original.intent);
+        assertCurrent();
+        this.showReview(quote.transaction, original.intent, context, Object.freeze({ mode, original: quote.original, binding: original.binding }));
+      }
     });
   }
   prepare(recipient: string, amount: string): Promise<void> {
@@ -678,22 +695,29 @@ export class NativeTransfers {
       let rawTransaction: string;
       let transactionHash: string;
       {
-        const cancellation = approved.cancellation;
-        const original = cancellation && await runtime.cancellationOriginal?.(cancellation.original.hash, guard, signal);
-        if (cancellation && !original) throw new NativeTransferError('EXPIRED');
-        const latest: NativeTransferQuote = cancellation
-          ? await rpc.prepareCancellation(cancellation.original.hash, original!, address, signal, guard)
-          : await rpc.requote(approved.transaction!, signal, approved.public.intent);
+        const replacement = approved.replacement;
+        let latest: NativeTransferQuote;
+        if (replacement) {
+          const { original, mode } = replacement;
+          const retained = await runtime.replacementOriginal?.(original.hash, mode, guard, signal);
+          if (!retained || retained.binding.expectedTipHash !== replacement.binding.expectedTipHash)
+            throw new NativeTransferError('EXPIRED');
+          latest = mode === 'cancel'
+            ? await rpc.prepareCancellation(original.hash, retained.rawTransaction, address, signal, guard, retained.rates)
+            : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, address, signal, guard, retained.rates, retained.intent);
+        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent);
         guard();
-        if (!cancellation) {
+        if (replacement?.mode !== 'cancel') {
           const refreshed = captureEvmFeeApproval(latest.transaction, context.registrationHash,
             approved.feeApproval!.expiresAtMonotonicMilliseconds);
-          try { assertEvmFeeRefreshApproved(approved.feeApproval!, refreshed, Math.floor(this.now())); }
+          const validateRefresh = replacement?.mode === 'speed-up'
+            ? assertEvmSpeedUpFeeRefreshApproved : assertEvmFeeRefreshApproved;
+          try { validateRefresh(approved.feeApproval!, refreshed, Math.floor(this.now())); }
           catch { throw new NativeTransferError('EXPIRED'); }
         } else if (
-          (cancellation && (latest.transaction.type !== approved.transaction!.type ||
+          (latest.transaction.type !== approved.transaction!.type ||
             (latest.transaction.type === 2 && approved.transaction!.type === 2 &&
-              BigInt(latest.transaction.maxPriorityFeePerGas) > BigInt(approved.transaction!.maxPriorityFeePerGas)))) ||
+              BigInt(latest.transaction.maxPriorityFeePerGas) > BigInt(approved.transaction!.maxPriorityFeePerGas))) ||
           latest.transaction.to !== approved.transaction!.to ||
           latest.transaction.value !== approved.transaction!.value ||
           latest.transaction.data !== approved.transaction!.data ||
@@ -718,7 +742,7 @@ export class NativeTransfers {
             approved.transaction!,
             guard,
             approved.public.intent,
-            cancellation
+            replacement
           )
         );
         guard();
@@ -742,9 +766,10 @@ export class NativeTransfers {
               startedSubmission = true;
               return send();
             }, preflight);
-            return rpc.broadcast(approvedBytes, transactionHash, signal, approved.cancellation ? {
-              mode: 'cancel',
-              original: approved.cancellation.original,
+            return rpc.broadcast(approvedBytes, transactionHash, signal, approved.replacement ? {
+              mode: approved.replacement.mode,
+              original: approved.replacement.original,
+              ...(approved.replacement.mode === 'speed-up' && approved.public.intent ? { intent: approved.public.intent } : {}),
               admit: atDispatch,
             } : {
               mode: 'new-send',
@@ -754,7 +779,7 @@ export class NativeTransfers {
           },
           approved.public.intent,
           approved.transaction!,
-          approved.cancellation
+          approved.replacement
         );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
@@ -901,6 +926,7 @@ export class NativeTransfers {
     return this.perform(async ({ assertCurrent, runtime, context, rpc }) => {
       this.review = null;
       this.publish({ phase: 'preparing', context, review: null, message: null });
+      assertCurrent();
       let selected = hash;
       if (!selected) { const entry = await (await runtime.journal(assertCurrent)).load(); assertCurrent(); selected = entry?.hash; }
       if (!selected) { this.publish(initial()); return; }
@@ -923,8 +949,13 @@ export class NativeTransfers {
         this.publish({ phase: result.status, hash: result.hash, review: null, intent: intent ?? null, message: this.terminalMessage(result.status, intent, context) }); return;
       }
       const approved = result.review;
-      this.publish({ hash: approved.hash });
-      if (!offerRetry) { replay.cancel(approved.id); this.publish({phase:'unknown',review:null,message:'No current receipt was found. The saved transaction remains available; check its status before sending again.'}); return; }
+      if (!offerRetry) {
+        replay.cancel(approved.id);
+        this.publish({ phase: 'unknown', hash: approved.hash, review: null,
+          message: 'No current receipt was found. The saved transaction remains available; check its status before sending again.' });
+        assertCurrent();
+        return;
+      }
       const token = approved.tokenTransfer?.token;
       const intent: Erc20TransferIntent | undefined = token ? Object.freeze({kind:'erc20-transfer',chainId:approved.chainId,token,recipient:approved.tokenTransfer!.recipient,amountUnits:approved.tokenTransfer!.amountUnits}) : undefined;
       const publicReview: NativeTransferReview = Object.freeze({ id:approved.id,context,from:approved.from,recipient:approved.tokenTransfer?.recipient ?? approved.to ?? 'Contract creation',
@@ -933,7 +964,8 @@ export class NativeTransfers {
       this.review = { public:publicReview,expires:this.now()+approved.validForMs,replay };
       if (this.expiry !== null) clearTimeout(this.expiry);
       this.expiry=setTimeout(()=>{if(this.review?.public.id===approved.id&&!this.active)this.cancel();},approved.validForMs);
-      this.publish({phase:'review',review:publicReview,intent:intent??null,message:'Resend the saved signed transaction.'});
+      this.publish({phase:'review',hash:approved.hash,review:publicReview,intent:intent??null,message:'Resend the saved signed transaction.'});
+      assertCurrent();
     });
   }
 }

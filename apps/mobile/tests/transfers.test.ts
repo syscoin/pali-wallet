@@ -476,6 +476,29 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     f.close();
   }
 });
+test('a reentrant lock cannot bring back a cancelled saved-transaction review', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.loseAcknowledgment();
+    await f.transfers.confirm(approved.id);
+    const hash = f.transfers.getSnapshot().hash;
+    assert(hash);
+    f.transfers.cancel();
+    f.transfers.subscribe((state) => {
+      if (state.hash === hash) f.source.lock();
+    });
+
+    await assert.rejects(f.transfers.recover(true, hash), { code: 'CANCELLED' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.equal(f.transfers.getSnapshot().hash, null);
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+  } finally {
+    f.close();
+  }
+});
 test('finalized receipt releases the journal and records the result', async () => {
   const f = fixture();
   try {
@@ -716,7 +739,7 @@ test('a final chain probe that outlives the review retains the exact signed reco
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.match(outcome.message ?? '', /saved before the review expired/i);
+    assert.equal(outcome.message, 'Your signed transaction is saved. Check it before sending again.');
   } finally {
     release();
     f.close();
