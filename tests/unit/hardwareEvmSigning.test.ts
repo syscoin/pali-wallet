@@ -250,7 +250,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
           data: '0x',
           type: legacy ? 0 : 2,
         });
-        expect(response.hash).toBe(tx.hash);
+        expect(response).toMatchObject({ hash: tx.hash });
         expect(device).toHaveBeenCalledTimes(1);
         if (kind === 'Trezor')
           expect(
@@ -454,7 +454,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
                   '0x',
                 ];
           expect(Array.from(parsed.args)).toEqual(expected);
-          expect(response.hash).toBe(tx.hash);
+          expect(response).toMatchObject({ hash: tx.hash });
         }
       );
     });

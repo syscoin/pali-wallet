@@ -462,6 +462,6 @@ Strict report fields contain only the imported account identity, three chain IDs
 
 ### Exact SDK and simulator selection
 
-Configuration reads the installed mobile keyring package metadata and requires it to match the exact package.json pin. The same version is embedded in the qualification build and verified by the loaded SDK metadata before reporting success. An unreviewed package, version range or mismatched installation cannot satisfy the gate.
+For an official SDK, configuration matches the installed package name and version to the exact manifest pin. A local Speed Up review archive must also match its manifest path, npm lock version and SHA-512 integrity. Configuration compares the installed package files byte for byte with the archive and adds its SHA-256 to the SDK identity embedded in the fixture. The loaded SDK must match the embedded package version, and the host validates the reported identity against the current checkout.
 
 The local iOS runner selects the newest available standard iOS runtime and an installed iPhone device type. PALI_IOS_SIMULATOR_RUNTIME and PALI_IOS_SIMULATOR_DEVICE_TYPE can select exact installed identities; an unavailable explicit selection fails instead of falling back. The hosted workflow intentionally pins iOS26.5, while a local27.2 run binds its refusal report to27.2. Simulator refusal still proves no custody. All Node qualification commands use the existing shared-source dependency resolver so the mobile-only npm installation is authoritative.

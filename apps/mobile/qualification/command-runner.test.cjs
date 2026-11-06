@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const test = require('node:test');
 const { Buffer } = require('node:buffer');
+const { expectedQualificationSdkVersion } = require('./report-validation.cjs');
 const { createCommandRunner, describeQualificationFailure, COLD_BOOT_TIMEOUT_MS } = require('./command-runner.cjs');
 const { isErc20QualificationReport, matchesErc20RestartEvidence } = require('./erc20-transfer.ts');
 const { matchesNevmRestartEvidence } = require('./nevm-transfer.ts');
@@ -160,7 +161,7 @@ for (const diagnosticsAvailable of [true, false]) test(`Android cleanup preserve
       if (args.some((value) => value.endsWith('pali-native-qualification-startup.json'))) return { status: 1, stderr: 'not present' };
       if (args.some((value) => value.endsWith('pali-native-qualification-load-error.json'))) return { status: 1, stderr: 'not present' };
       if (args[0] === 'exec-out') return { status: null, stdout: Buffer.from('PRIVATE_DATABASE_BYTES'), error: Object.assign(Error('database read timeout'), { code: 'ETIMEDOUT' }) };
-      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: require('../package.json').dependencies['@sidhujag/sysweb3-keyring'], nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() }));
+      return ok(JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android', networkCalls: 0, nativeBridgeExercised: true, sdkVersion: expectedQualificationSdkVersion, nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, mnemonicEntropyVerified: false, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() }));
     }
     if (args.includes('pidof')) return ok(++pidReads === 1 ? '1234' : '');
     if (args.includes('logcat')) return diagnosticsAvailable ? ok('F/libc: SIGABRT libhermes.so synthetic_secret_token_42 PUBLIC native qualification password 2026!') : { status: 1, stderr: 'synthetic_secret_token_42' };
@@ -268,7 +269,7 @@ function reportWaitFixture() {
     Date: { now: () => now }, sleep: async (milliseconds) => { now += milliseconds; },
   });
   const report = JSON.stringify({ version: 1, status: 'passed', phase: 'create', scenario: 'import', platform: 'android',
-    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: require('../package.json').dependencies['@sidhujag/sysweb3-keyring'], nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
+    networkCalls: 0, nativeBridgeExercised: true, sdkVersion: expectedQualificationSdkVersion, nativeSigningVerified: true, nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true, selectedAccountId: 'hd:60:1', selectedAccountIndex: 1, journalContainerVersion: 1, firstTransferHash: '0x' + 'c'.repeat(64), address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', transferHash: '0x' + 'b'.repeat(64), mnemonicEntropyVerified: false,
     fingerprint: 'a'.repeat(64), cryptoEvidence: { passed: true, productionIterations: 900000 }, storageDiagnostic: { stage: 'ready' }, ...erc20Evidence(), ...nevmEvidence(), ...zksysEvidence(), ...importedEvidence() });
   return { wait, validate, saved, report, now: () => now };
 }
@@ -279,9 +280,11 @@ test('the actual report parser preserves producer storage evidence and rejects u
   const fixture = reportWaitFixture();
   const ready = createStorageQualificationDiagnostic();
   ready.observe('ready');
-  const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: require('../package.json').dependencies['@sidhujag/sysweb3-keyring'],
+  const passed = { ...JSON.parse(fixture.report), storageDiagnostic: ready.report(), sdkVersion: expectedQualificationSdkVersion,
     osVersion: '26.5', sessionId: 'public-session', address: '0x6Fac4D18c912343BF86fa7049364Dd4E424Ab9C0', checks: [] };
   assert.equal(fixture.validate(JSON.stringify(passed), 'create', 'import').status, 'passed');
+  const unqualifiedSdk = { ...passed, sdkVersion: `${expectedQualificationSdkVersion}-unqualified` };
+  assert.throws(() => fixture.validate(JSON.stringify(unqualifiedSdk), 'create', 'import'), /Native qualification failed/);
   const failed = createStorageQualificationDiagnostic();
   failed.observe('sqlcipher-journal-readback');
   failed.capture(new WalletStorageError('STORAGE_UNAVAILABLE'));

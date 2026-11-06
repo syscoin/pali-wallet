@@ -100,6 +100,21 @@ beforeEach(() => {
         SmartAccount: {},
       },
       activeNetwork: { ...context.network },
+      accountTransactions: {
+        HDAccount: {
+          0: {
+            ethereum: {
+              123: [
+                {
+                  hash: Transaction.from(raw).hash,
+                  from: signer.address,
+                  nonce: 0,
+                },
+              ],
+            },
+          },
+        },
+      },
     },
     vaultGlobal: { activeSlip44: 60 },
   };
@@ -125,6 +140,7 @@ beforeEach(() => {
       }
     ),
     append: jest.fn(async () => undefined),
+    captureVerifiedReplacement: jest.fn(async () => undefined),
     updatePhase: jest.fn(async () => undefined),
   };
   provider = {
@@ -268,10 +284,13 @@ it('normal shared SDK submission rejects a network request epoch change after pe
     entered.resolve();
     await released.promise;
   });
-  const dispatch = jest.fn(async () => entry.hash);
+  const dispatch = jest.fn(async (bytes: string) => {
+    expect(bytes).toBe(raw);
+    return entry.hash;
+  });
   const pending = submitSignedEvmTransaction(
     raw,
-    dispatch,
+    ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
     boundary,
     () => undefined,
     Transaction.from(raw).unsignedSerialized
@@ -316,10 +335,13 @@ it.each([false, true])(
       if (method === 'eth_getCode') return '0xef0100' + '33'.repeat(20);
       throw Error('Unexpected RPC');
     });
-    const dispatch = jest.fn(async () => entry.hash);
+    const dispatch = jest.fn(async (bytes: string) => {
+      expect(bytes).toBe(replacement);
+      return entry.hash;
+    });
     const submit = submitSignedEvmTransaction(
       replacement,
-      dispatch,
+      ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
       boundary,
       undefined,
       Transaction.from(replacement).unsignedSerialized
@@ -373,11 +395,14 @@ it.each([1, 2])(
       throw Error('Unexpected RPC');
     });
     const hash = Transaction.from(replacement).hash;
-    const dispatch = jest.fn(async () => hash);
+    const dispatch = jest.fn(async (bytes: string) => {
+      expect(bytes).toBe(replacement);
+      return hash;
+    });
     await expect(
       submitSignedEvmTransaction(
         replacement,
-        dispatch,
+        ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
         boundary,
         undefined,
         Transaction.from(replacement).unsignedSerialized
@@ -388,7 +413,7 @@ it.each([1, 2])(
   }
 );
 
-it.each(['latest', 'pending', 'consumed', 'ready'])(
+it.each(['latest', 'pending', 'consumed', 'queued', 'ready'])(
   'handles %s after durable cancellation persistence through the installed SDK',
   async (blocked) => {
     const cancelContext = {
@@ -418,16 +443,35 @@ it.each(['latest', 'pending', 'consumed', 'ready'])(
       entered.resolve();
       await released.promise;
     });
+    const waitingInQueue = deferred(),
+      admitWrite = deferred();
+    let delegated = false;
+    if (blocked === 'queued') {
+      records.withReplayAdmission.mockImplementationOnce(
+        async (_session, _target, admit, _predecessor, preflight) => {
+          waitingInQueue.resolve();
+          await admitWrite.promise;
+          preflight.assertCurrent();
+          await preflight.run();
+          return { result: admit([]) };
+        }
+      );
+    }
     provider.send.mockImplementation(async (method, [, tag]) => {
       if (method === 'eth_getTransactionCount')
         return blocked === 'consumed' ? '0x1' : '0x0';
       expect(method).toBe('eth_getCode');
-      return tag === blocked ? `0xef0100${'33'.repeat(20)}` : '0x';
+      return tag === blocked || (delegated && tag === 'latest')
+        ? `0xef0100${'33'.repeat(20)}`
+        : '0x';
     });
-    const dispatch = jest.fn(async () => entry.hash);
+    const dispatch = jest.fn(async (bytes: string) => {
+      expect(bytes).toBe(cancellation);
+      return entry.hash;
+    });
     const result = submitSignedEvmTransaction(
       cancellation,
-      dispatch,
+      ({ rawTransaction, admit }) => admit(() => dispatch(rawTransaction)),
       boundary,
       undefined,
       Transaction.from(cancellation).unsignedSerialized
@@ -435,6 +479,12 @@ it.each(['latest', 'pending', 'consumed', 'ready'])(
     await entered.promise;
     expect(provider.send).not.toHaveBeenCalled();
     released.resolve();
+    if (blocked === 'queued') {
+      await waitingInQueue.promise;
+      expect(provider.send).not.toHaveBeenCalled();
+      delegated = true;
+      admitWrite.resolve();
+    }
     const outcome = await result;
     if (blocked === 'ready') {
       expect(outcome).toBe(entry.hash);

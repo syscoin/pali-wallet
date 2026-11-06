@@ -145,12 +145,14 @@ for (const scenario of ['import', 'generate'])
       path.join(os.tmpdir(), 'pali-physical-config-')
     );
     try {
+      const keyringVersion = '3.9.7';
       fs.mkdirSync(path.join(directory, 'scripts'));
       fs.mkdirSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
-      fs.writeFileSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] }));
+      fs.writeFileSync(path.join(directory, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
       fs.mkdirSync(path.join(directory, 'qualification'));
       for (const file of [
         'scripts/configure-native-qualification.cjs',
+        'scripts/qualification-sdk.cjs',
         'qualification/physical-contract.ts',
       ])
         fs.copyFileSync(
@@ -173,7 +175,7 @@ for (const scenario of ['import', 'generate'])
         path.join(directory, 'package.json'),
         JSON.stringify({
           main: 'index.ts',
-          dependencies: { '@sidhujag/sysweb3-keyring': JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] },
+          dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion },
         })
       );
       fs.writeFileSync(

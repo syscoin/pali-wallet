@@ -1,7 +1,7 @@
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmSignedRecordSummary } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRecordSummary } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -38,7 +38,7 @@ import { createActivityScope, type ActivityScope, type EvmActivityReadScope } fr
 import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress, Transaction } from 'ethers/transaction';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
+import { isUtxoAccountPrivateKey, keyExportRegistrationHash, snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import { importedKeyIdentity, isUtxoWifText, normalizeImportedKey, normalizeUtxoImport } from './importedAccounts.ts';
 import { importAccountWithRecovery } from '../../../../source/wallet/importedAccountRecovery.ts';
@@ -357,7 +357,7 @@ export function createKeyringRuntimeFactory(
             await (keyring === target ? source : target).destroy();
           }
         };
-        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>) {
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -369,8 +369,7 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('CANCELLED');
           };
           check();
-          if (!metadata) return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check });
-          return Object.freeze({ assertCurrent: check, persistSigned: async (record: Parameters<typeof signedRecords.append>[1]) => { await signedRecords.append({ keyring, assertCurrent: check },record,metadata); check(); } });
+          return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check }, { metadata, replacement });
         }
         const signedView = (captured: number, externalGuard: () => void, walletBindingId: string, account = selectedAccount()) => {
           const check = () => { current(captured); checkGuard(externalGuard); };
@@ -934,8 +933,8 @@ export function createKeyringRuntimeFactory(
                 const ring = keyring;
                 const utxo = findUtxoNetwork(scope.networkId);
                 const sdkNetwork = utxo && getUtxoSdkNetwork(utxo.id);
-                const script = utxo && findWifAddressType(scope.address, utxo.id);
                 const type = parseNativeAccountId(scope.accountId).type;
+                const script = utxo && type === 'Imported' && findWifAddressType(scope.address, utxo.id);
                 const check = () => {
                   current(captured); checkGuard(assertCurrent);
                   current(captured);
@@ -949,13 +948,16 @@ export function createKeyringRuntimeFactory(
                       state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type)
                     throw new KeyringRuntimeError('CANCELLED');
                   if (utxo && sdkNetwork) {
-                    const actual = state.activeNetwork, account = state.accounts.Imported[selected.index];
-                    if (!script || selected.type !== 'Imported' || !account || account.id !== selected.index || account.address !== selected.address ||
+                    const actual = state.activeNetwork, account = state.accounts[type][selected.index];
+                    if (!account || account.id !== selected.index || account.address !== selected.address ||
                         actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
                         actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
                         actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
                       throw new KeyringRuntimeError('CANCELLED');
-                    checkedWifAccount(account, utxo.id);
+                    if (type === 'Imported') {
+                      if (!script) throw new KeyringRuntimeError('CANCELLED');
+                      checkedWifAccount(account, utxo.id);
+                    } else checkedAccount(account, selected.index, utxo.id);
                   }
                 };
                 check();
@@ -967,7 +969,15 @@ export function createKeyringRuntimeFactory(
                 // The SDK selector is fixed here; no account type or alternate index comes from a screen.
                 const privateKey = await ring.getPrivateKeyByAccountId(scope.index, type === 'HDAccount' ? sdk.KeyringAccountType.HDAccount : sdk.KeyringAccountType.Imported, password);
                 check();
-                if (utxo) {
+                if (utxo && sdkNetwork) {
+                  if (type === 'HDAccount') {
+                    if (!isUtxoAccountPrivateKey(privateKey, utxo.testnet)) throw new KeyringRuntimeError('OPERATION_FAILED');
+                    const result = ring.validateZprv(privateKey, sdkNetwork);
+                    if (!result.isValid || !result.node || result.node.neutered().toBase58() !== state.accounts.HDAccount[scope.index]?.xpub)
+                      throw new KeyringRuntimeError('OPERATION_FAILED');
+                    check();
+                    return privateKey;
+                  }
                   if (!script || !isUtxoWifText(privateKey)) throw new KeyringRuntimeError('OPERATION_FAILED');
                   const { ECPair, payments } = syscoinUtils.bitcoinjs;
                   const network = utxo.addressNetwork;
@@ -1250,11 +1260,6 @@ export function createKeyringRuntimeFactory(
               const work = Promise.resolve().then(async () => {
                 check();
                 const { context, intent, expectedUnsigned } = review;
-                const boundary = sdk.captureEvmSubmission(
-                  context,
-                  check,
-                  () => captureSignedSubmission(context, check, intent ? { intent } : undefined)
-                );
                 const tx = Transaction.from(rawTransaction);
                 if (tx.to === null || tx.hash !== hash)
                   throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1263,15 +1268,28 @@ export function createKeyringRuntimeFactory(
                   value: tx.value.toString(), data: tx.data,
                 }, intent);
                 try {
-                  if (context.operation === 'cancel') {
-                    const records = await signedRecords.listSender({ keyring, assertCurrent: check }, tx.chainId.toString(), context.account.address);
-                    if (!pendingCancellationOriginal(records.findLast((record) => record.nonce === tx.nonce), context.originalHash!))
-                      throw new NativeTransferError('EXPIRED');
-                  }
+                  const replacement = context.operation === 'cancel'
+                    ? await signedRecords.captureVerifiedReplacement(
+                      { keyring, assertCurrent: check },
+                      {
+                        chainId: String(context.network.chainId),
+                        from: context.account.address,
+                        nonce: tx.nonce,
+                        originalHash: context.originalHash!,
+                        operation: 'cancel',
+                      }
+                    ) : undefined;
+                  if (replacement && replacement.expectedTipHash !== replacement.originalHash)
+                    throw new NativeTransferError('EXPIRED');
+                  const boundary = sdk.captureEvmSubmission(
+                    context, check, () => captureSignedSubmission(context, check, intent ? { intent } : undefined, replacement)
+                  );
                   await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
                 } catch (error) {
                   if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
                     throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                  if (error instanceof Error && error.message === 'EVM_SIGNED_RECORD_ORIGINAL_CHANGED')
+                    throw new NativeTransferError('EXPIRED');
                   throw error;
                 }
               });
