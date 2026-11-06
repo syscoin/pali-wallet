@@ -1,12 +1,13 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { bufferUtils as syscoinBufferUtils } from 'syscointx-js';
 
+import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds.ts';
+
 const ALLOCATION_BURN_TO_SYSCOIN_VERSION = 138;
 const SYSCOIN_BURN_TO_ALLOCATION_VERSION = 139;
 const ALLOCATION_MINT_VERSION = 140;
 const ALLOCATION_BURN_TO_ETHEREUM_VERSION = 141;
-const ALLOCATION_SEND_VERSION = 142;
-const SYSX_ASSET_GUID = '123456';
+export const ALLOCATION_SEND_VERSION = 142;
 const CORE_MAX_SCRIPT_SIZE = 10_000;
 const MAX_CONCURRENT_PREVOUT_LOOKUPS = 8;
 const CORE_WITNESS_COMMITMENT_HEADER = Buffer.from('aa21a9ed', 'hex');
@@ -158,7 +159,7 @@ const getCoreSyscoinPayload = (transaction: any): Buffer => {
   return payload;
 };
 
-const getExactAssetAllocations = (
+export const getExactAssetAllocations = (
   transaction: any
 ): IExactAssetAllocation[] => {
   if (!SYSCOIN_ASSET_VERSIONS.has(transaction?.version)) return [];
