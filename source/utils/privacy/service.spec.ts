@@ -53,16 +53,19 @@ test('defaults to Sysnode and does not invalidate an unchanged origin', async ()
 
 test('revokes old service work before clearing and saving the new origin', async () => {
   let release!: () => void;
+  let began!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;
   });
+  const started = new Promise<void>((resolve) => {
+    began = resolve;
+  });
   const before = privacyServiceRevision();
-  const operation = changePrivacyServiceOrigin(
-    'http://127.0.0.1:8800',
-    () => held
-  );
-  await Promise.resolve();
-  await Promise.resolve();
+  const operation = changePrivacyServiceOrigin('http://127.0.0.1:8800', () => {
+    began();
+    return held;
+  });
+  await started;
   expect(() => assertPrivacyServiceStable(before)).toThrow(
     'privacy_service_changed'
   );

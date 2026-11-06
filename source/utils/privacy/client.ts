@@ -1,3 +1,5 @@
+import { DEFAULT_PRIVACY_SERVICE_ORIGIN } from '../../shared/privacyServiceOrigin.ts';
+
 import {
   createPrivacyRpc,
   PRIVACY_POOL_ABI,
@@ -25,7 +27,7 @@ const rpc = createPrivacyRpc(requestJson);
 export function fetchPrivacySnapshot(
   poolId: PrivacyPoolId,
   signal: AbortSignal,
-  serviceOrigin?: string
+  serviceOrigin = DEFAULT_PRIVACY_SERVICE_ORIGIN
 ) {
   return readPrivacyPoolSnapshot(poolId, signal, requestJson, serviceOrigin);
 }

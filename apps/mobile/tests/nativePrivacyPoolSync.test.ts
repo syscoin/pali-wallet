@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  createPrivacyServiceSettings,
+  DEFAULT_PRIVACY_SERVICE_ORIGIN,
+} from '../../../source/shared/privacyServiceOrigin.ts';
 import { getBytes, hexlify, parseEther, toQuantity } from 'ethers/utils';
 import {
   advanceMerkleWork,
@@ -89,6 +93,7 @@ function fixture(
     alterBlock?: (count: number) => object;
     index?: (count: number) => Handle;
     release?: (kind: string, count: number) => Promise<void>;
+    serviceOrigin?: string;
   } = {}
 ) {
   let indexes = 0,
@@ -124,8 +129,12 @@ function fixture(
     };
   };
   const transport: OwnedPrivacyPullTransport = {
-    prepareSnapshot(selected, signal) {
+    prepareSnapshot(selected, serviceOrigin, signal) {
       assert.equal(selected, poolId);
+      assert.equal(
+        serviceOrigin,
+        options.serviceOrigin ?? DEFAULT_PRIVACY_SERVICE_ORIGIN
+      );
       return wrap('snapshot', options.index?.(++indexes) ?? json(data), signal);
     },
     prepareAnchor(binding, read, id, signal) {
@@ -158,7 +167,8 @@ function fixture(
 function create(
   transport: OwnedPrivacyPullTransport,
   owner = new AbortController(),
-  executeMerkleBatch = evaluateMerkleBatch
+  executeMerkleBatch = evaluateMerkleBatch,
+  service = { origin: DEFAULT_PRIVACY_SERVICE_ORIGIN, assertCurrent() {} }
 ) {
   return {
     owner,
@@ -168,26 +178,39 @@ function create(
       lifetime: owner.signal,
       transport,
       executeMerkleBatch,
+      service,
     }),
   };
 }
 
-async function evaluateMerkleBatch(program: Uint8Array, signal: AbortSignal, check: () => void): Promise<Uint8Array> {
+async function evaluateMerkleBatch(
+  program: Uint8Array,
+  signal: AbortSignal,
+  check: () => void
+): Promise<Uint8Array> {
   check();
   assert.equal(signal.aborted, false);
-  const view = new DataView(program.buffer, program.byteOffset, program.byteLength);
+  const view = new DataView(
+    program.buffer,
+    program.byteOffset,
+    program.byteLength
+  );
   const count = view.getUint16(1);
   assert.equal(program[0], 1);
   assert.equal(program.length, 3 + 66 * count);
   assert(count > 0 && count <= 296);
   const output = new Uint8Array(32 * count);
   for (let index = 0; index < count; index++) {
-    const operands = [3 + 66 * index, 36 + 66 * index].map(offset => {
-      if (program[offset] === 0) return hexlify(program.subarray(offset + 1, offset + 33));
+    const operands = [3 + 66 * index, 36 + 66 * index].map((offset) => {
+      if (program[offset] === 0)
+        return hexlify(program.subarray(offset + 1, offset + 33));
       assert.equal(program[offset], 1);
       const reference = view.getUint16(offset + 1);
       assert(reference < index);
-      assert.deepEqual(program.subarray(offset + 3, offset + 33), new Uint8Array(30));
+      assert.deepEqual(
+        program.subarray(offset + 3, offset + 33),
+        new Uint8Array(30)
+      );
       return hexlify(output.subarray(reference * 32, (reference + 1) * 32));
     });
     output.set(getBytes(hashPair(operands[0]!, operands[1]!)), 32 * index);
@@ -200,32 +223,50 @@ test('a retired native batch drains without publishing its checkpoint, paths or 
   const provider = fixture();
   let entered!: () => void;
   let release!: () => void;
-  const started = new Promise<void>(resolve => { entered = resolve; });
-  const held = new Promise<void>(resolve => { release = resolve; });
-  const { sync, owner } = create(provider.transport, new AbortController(), async (program, signal, check) => {
-    const bytes = await evaluateMerkleBatch(program, signal, check);
-    entered();
-    await held;
-    return bytes;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
   });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const { sync, owner } = create(
+    provider.transport,
+    new AbortController(),
+    async (program, signal, check) => {
+      const bytes = await evaluateMerkleBatch(program, signal, check);
+      entered();
+      await held;
+      return bytes;
+    }
+  );
   const pending = sync.refresh();
   await started;
   owner.abort();
   release();
   await assert.rejects(pending, { message: 'privacy_cancelled' });
-  assert.equal(provider.requests.filter(kind => kind === 'chainId').length, 1);
+  assert.equal(
+    provider.requests.filter((kind) => kind === 'chainId').length,
+    1
+  );
   await assert.rejects(sync.readSnapshot(poolId));
   await sync.dispose();
 });
 
 test('invalid native batch output cannot produce a verified snapshot or run its second anchor', async () => {
   const provider = fixture();
-  const { sync } = create(provider.transport, new AbortController(), async (program, signal, check) => {
-    const bytes = await evaluateMerkleBatch(program, signal, check);
-    return bytes.subarray(0, bytes.length - 1);
-  });
+  const { sync } = create(
+    provider.transport,
+    new AbortController(),
+    async (program, signal, check) => {
+      const bytes = await evaluateMerkleBatch(program, signal, check);
+      return bytes.subarray(0, bytes.length - 1);
+    }
+  );
   assert.equal((await sync.refresh()).phase, 'error');
-  assert.equal(provider.requests.filter(kind => kind === 'chainId').length, 1);
+  assert.equal(
+    provider.requests.filter((kind) => kind === 'chainId').length,
+    1
+  );
   assert.deepEqual(await sync.readNote(note), { phase: 'waiting' });
   await assert.rejects(sync.readSnapshot(poolId));
   await sync.dispose();
@@ -338,6 +379,88 @@ test('second anchor disagreement and locally wrong roots never become ready', as
   await forgedRoot.dispose();
 });
 
+test('native snapshots use the captured custom service origin', async () => {
+  for (const origin of [
+    'https://privacy.example:8443',
+    'http://localhost:8800',
+  ]) {
+    const provider = fixture(snapshot(), { serviceOrigin: origin });
+    const { sync } = create(provider.transport, undefined, undefined, {
+      origin: origin + '/',
+      assertCurrent() {},
+    });
+    assert.equal((await sync.refresh()).phase, 'ready');
+    await sync.dispose();
+  }
+});
+
+test('invalid service origins cannot reserve a native snapshot', () => {
+  const provider = fixture();
+  for (const origin of [
+    'http://remote.example',
+    'https://privacy.example/path',
+    'https://user@privacy.example',
+    'https://privacy.example?override=1',
+    'https://privacy.example#fragment',
+  ]) {
+    assert.throws(
+      () =>
+        create(provider.transport, undefined, undefined, {
+          origin,
+          assertCurrent() {},
+        }),
+      /privacy_service_origin_invalid/
+    );
+  }
+  assert.deepEqual(provider.requests, []);
+});
+
+test('changing the service retires an admitted native response before anchors or publication', async () => {
+  let saved: string | undefined;
+  const settings = createPrivacyServiceSettings({
+    async read() {
+      return saved;
+    },
+    async write(_key, origin) {
+      saved = origin;
+    },
+  });
+  const captured = await settings.capture();
+  const entered = Promise.withResolvers<void>();
+  const finish = Promise.withResolvers<{ status: number; byteCount: number }>();
+  let releases = 0;
+  const transport = snapshots((selected, origin) => {
+    assert.equal(selected, poolId);
+    assert.equal(origin, captured.origin);
+    return {
+      async start(check) {
+        check();
+        entered.resolve();
+        return finish.promise;
+      },
+      async pull() {
+        assert.fail('retired response must not be read');
+      },
+      async release() {
+        releases++;
+      },
+    };
+  });
+  const { sync } = create(transport, undefined, undefined, captured);
+  const pending = sync.refresh();
+  await entered.promise;
+  await settings.changeOrigin(
+    'https://new-privacy.example',
+    async () => undefined
+  );
+  finish.resolve({ status: 200, byteCount: 4 });
+  await assert.rejects(pending, /privacy_cancelled/);
+  assert.equal(releases, 1);
+  assert.throws(() => sync.getStatus(), /privacy_cancelled/);
+  await assert.rejects(sync.readSnapshot(poolId), /privacy_cancelled/);
+  await sync.dispose();
+});
+
 test('refuses wrong registrations and wrong pool payloads before any anchor reservation', async () => {
   const provider = fixture();
   assert.throws(
@@ -358,6 +481,7 @@ test('refuses wrong registrations and wrong pool payloads before any anchor rese
         }),
         transport: provider.transport,
         executeMerkleBatch: evaluateMerkleBatch,
+        service: { origin: DEFAULT_PRIVACY_SERVICE_ORIGIN, assertCurrent() {} },
       }),
     { message: 'privacy_wrong_chain' }
   );
@@ -451,7 +575,7 @@ test('owner replacement releases a held native pull and rejects its late bytes',
     pulls = 0;
   let signal!: AbortSignal;
   const first = create(
-    snapshots((_pool, ownerSignal) => {
+    snapshots((_pool, _serviceOrigin, ownerSignal) => {
       signal = ownerSignal;
       return {
         async start(check) {
@@ -550,7 +674,7 @@ test('deadline retires held start without letting a replacement reserve before r
     pulls = 0,
     releases = 0;
   const { sync } = create(
-    snapshots((_pool, signal) => {
+    snapshots((_pool, _serviceOrigin, signal) => {
       if (++reservations !== 1)
         return json(
           {

@@ -1,4 +1,5 @@
 import { abortable } from '../../../../source/shared/boundedHttp.ts';
+import { normalizePrivacyServiceOrigin } from '../../../../source/shared/privacyServiceOrigin.ts';
 import {
   createOwnedSnapshotAnchor,
   type AnchorBinding,
@@ -58,7 +59,11 @@ type Handle = Readonly<{
 
 /** Both reservation methods share one host slot, including across owners. */
 export type OwnedPrivacyPullTransport = Readonly<{
-  prepareSnapshot(poolId: PrivacyPoolId, signal: AbortSignal): Handle;
+  prepareSnapshot(
+    poolId: PrivacyPoolId,
+    serviceOrigin: string,
+    signal: AbortSignal
+  ): Handle;
   prepareAnchor(
     binding: AnchorBinding,
     read: PrivacyAnchorRead,
@@ -148,7 +153,7 @@ function createSessionCache(poolId: PrivacyPoolId, assertCurrent: () => void) {
 
 /**
  * Explicit foreground owner for one registered pool and saved Ethereum endpoint.
- * The host must abort its unique lifetime on route, wallet or network replacement.
+ * The host aborts its lifetime on route, wallet, network or service replacement.
  * The trusted host reserves one native handle without starting I/O.
  */
 export function createNativePrivacyPoolSync(
@@ -156,6 +161,7 @@ export function createNativePrivacyPoolSync(
     network: NativeNetworkRegistration;
     poolId: PrivacyPoolId;
     lifetime: AbortSignal;
+    service: Readonly<{ origin: string; assertCurrent(): void }>;
     transport: OwnedPrivacyPullTransport;
     /** One owned native operation. It must drain before this promise settles. */
     executeMerkleBatch(
@@ -174,6 +180,12 @@ export function createNativePrivacyPoolSync(
   )
     throw cancelled();
   const network = snapshotNativeNetwork(options.network);
+  if (!options.service || typeof options.service.assertCurrent !== 'function')
+    throw cancelled();
+  const serviceOrigin = normalizePrivacyServiceOrigin(options.service.origin);
+  const assertServiceCurrent = options.service.assertCurrent.bind(
+    options.service
+  );
   if (network.chainId !== '1') throw new Error('privacy_wrong_chain');
   getPrivacyPool(poolId);
   const rpcUrl = validatePrivacyRpcUrl(network.rpcUrl);
@@ -191,6 +203,20 @@ export function createNativePrivacyPoolSync(
 
   function checkOwner() {
     if (closed || lifetime.aborted) throw cancelled();
+    let result: unknown;
+    try {
+      result = assertServiceCurrent();
+    } catch {
+      throw cancelled();
+    }
+    if (result !== undefined) {
+      if (
+        result &&
+        (typeof result === 'object' || typeof result === 'function')
+      )
+        void Promise.resolve(result).catch(() => undefined);
+      throw cancelled();
+    }
   }
   function checkRun(expected = run) {
     checkOwner();
@@ -336,7 +362,7 @@ export function createNativePrivacyPoolSync(
           const limit = (status: number) =>
             responseLimit({ status, ok: status === 200 });
           const operation = reserve(
-            () => prepareSnapshot(id, local.signal),
+            () => prepareSnapshot(id, serviceOrigin, local.signal),
             local.signal,
             limit
           );
@@ -351,7 +377,8 @@ export function createNativePrivacyPoolSync(
           } finally {
             await waitForHandle(operation.release(), local.signal);
           }
-        }
+        },
+        serviceOrigin
       );
     } finally {
       requestSignal.removeEventListener('abort', abort);

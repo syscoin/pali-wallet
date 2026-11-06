@@ -13,6 +13,7 @@ CAP = 2 * 1024 * 1024
 QUALIFIED = 16 * 1024 * 1024
 LARGE_BODIES = {'/medium': 6_693_325, '/large': 13_106_047, '/limit': QUALIFIED}
 PATHS = {
+    '/api/privacy/v1/pools/eth-1/snapshot',
     '/exact', '/progress', '/empty', '/oversize-length', '/oversize-progress', '/oversize-chunked',
     '/encoded', '/multipart-replace', '/multipart', '/redirect', '/challenge', '/partial', '/truncated', '/held', '/reopened',
     '/deadline', '/after-deadline', '/retained', '/after-release', '/abandoned',

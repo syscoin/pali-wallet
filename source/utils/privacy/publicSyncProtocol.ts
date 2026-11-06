@@ -1,6 +1,11 @@
 import { Interface } from 'ethers/abi';
 import { parseEther, toQuantity } from 'ethers/utils';
 
+import {
+  DEFAULT_PRIVACY_SERVICE_ORIGIN,
+  normalizePrivacyServiceOrigin,
+} from '../../shared/privacyServiceOrigin.ts';
+
 import { getPrivacyPool, PRIVACY_TREE_LEVELS } from './registry.ts';
 import {
   validatePrivacyRpcUrl,
@@ -19,7 +24,7 @@ export type PrivacyJsonTransport = (
   responseLimit: (response: Pick<Response, 'ok' | 'status'>) => number
 ) => Promise<{ data: unknown; status: number }>;
 
-export const PRIVACY_SERVICE_URL = 'https://sysnode.info/api/privacy/v1';
+export const PRIVACY_SERVICE_URL = `${DEFAULT_PRIVACY_SERVICE_ORIGIN}/api/privacy/v1`;
 const MAX_SNAPSHOT_BYTES = 160 * 1024 * 1024;
 const MAX_SCALAR_RPC_BYTES = 64 * 1024;
 // Block replies include every transaction hash even when full objects are off.
@@ -74,11 +79,12 @@ export async function readPrivacyPoolSnapshot(
   poolId: PrivacyPoolId,
   signal: AbortSignal,
   requestJson: PrivacyJsonTransport,
-  serviceOrigin = 'https://sysnode.info'
+  serviceOrigin: string
 ): Promise<PrivacySnapshot | PrivacyIndexProgress> {
   const pool = getPrivacyPool(poolId);
+  const origin = normalizePrivacyServiceOrigin(serviceOrigin);
   const response = await requestJson(
-    `${serviceOrigin}/api/privacy/v1/pools/${pool.id}/snapshot`,
+    `${origin}/api/privacy/v1/pools/${pool.id}/snapshot`,
     { cache: 'no-store', credentials: 'omit', redirect: 'error', signal },
     ({ status }) => {
       if (status !== 200 && status !== 202)

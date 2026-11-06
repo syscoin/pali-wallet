@@ -73,7 +73,7 @@ private enum PublicSnapshotDownloadChecks {
       let info = try handle.info()
       precondition(info.status == 200 && info.byteCount == count)
       do {
-        _ = try host.prepare(pool: "eth-1") { _ in preconditionFailure("GET competed with retained anchor") }
+        _ = try host.prepare(pool: "eth-1", serviceOrigin: "https://snapshot.example") { _ in preconditionFailure("GET competed with retained anchor") }
         preconditionFailure("retained anchor did not occupy shared slot")
       } catch PaliPublicSnapshotDownloadError.busy {}
       var position = 0
@@ -121,18 +121,41 @@ private enum PublicSnapshotDownloadChecks {
     let port = UInt16(CommandLine.arguments[1])!
     let host = PaliPublicSnapshotDownloader.shared
 
-    for pool in ["eth-0.1", "eth-1", "eth-10", "eth-100"] {
-      precondition(PaliPublicSnapshotDownloader.endpoint(for: pool)?.absoluteString ==
-        "https://sysnode.info/api/privacy/v1/pools/\(pool)/snapshot")
+    let origins = ["https://snapshot.example", "https://snapshot.example:8443/",
+                   "http://localhost:8800", "http://127.0.0.1:8800"]
+    for origin in origins {
+      for pool in ["eth-0.1", "eth-1", "eth-10", "eth-100"] {
+        precondition(PaliPublicSnapshotDownloader.endpoint(for: pool, serviceOrigin: origin)?.absoluteString ==
+          origin.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/api/privacy/v1/pools/\(pool)/snapshot")
+      }
     }
     for pool in ["eth-0.10", "../eth-1", "eth-1?x=y", "ETH-1", ""] {
-      precondition(PaliPublicSnapshotDownloader.endpoint(for: pool) == nil)
+      precondition(PaliPublicSnapshotDownloader.endpoint(for: pool, serviceOrigin: origins[0]) == nil)
       do {
-        _ = try host.prepare(pool: pool) { _ in preconditionFailure("invalid pool admitted") }
+        _ = try host.prepare(pool: pool, serviceOrigin: origins[0]) { _ in preconditionFailure("invalid pool admitted") }
         preconditionFailure("invalid pool not refused")
       } catch PaliPublicSnapshotDownloadError.invalid {}
     }
-    print("registered pool allowlist")
+    for origin in ["", "/relative", "http://snapshot.example", "http://192.168.1.2:8800",
+                   "http://[::1]:8800", "https://a:b@snapshot.example", "https://snapshot.example/path",
+                   "https://snapshot.example/?key=x", "https://snapshot.example/#x", "javascript:alert(1)",
+                   "https://snapshot.example:65536"] {
+      precondition(PaliPublicSnapshotDownloader.endpoint(for: "eth-1", serviceOrigin: origin) == nil)
+      do {
+        _ = try host.prepare(pool: "eth-1", serviceOrigin: origin) { _ in preconditionFailure("invalid origin dispatched") }
+        preconditionFailure("invalid service origin not refused")
+      } catch PaliPublicSnapshotDownloadError.invalid {}
+    }
+    let selectedOrigin = "http://127.0.0.1:\(port)"
+    let selectedResult = Completion()
+    let selected = try host.prepare(pool: "eth-1", serviceOrigin: selectedOrigin) { selectedResult.accept($0) }
+    selected.start()
+    try selectedResult.wait().get()
+    let selectedInfo = try selected.info()
+    let selectedBytes = try selected.pull()
+    let selectedEnd = try selected.pull()
+    precondition(selectedInfo.byteCount == 5 && selectedBytes == Data("again".utf8) && selectedEnd == nil)
+    print("explicit service origins and registered pool allowlist")
 
     try checkAnchorPosts(port: port, host: host, heldReady: CommandLine.arguments[2])
 

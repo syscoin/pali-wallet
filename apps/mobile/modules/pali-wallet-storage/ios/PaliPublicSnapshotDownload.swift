@@ -96,20 +96,32 @@ final class PaliPublicSnapshotDownloader: @unchecked Sendable {
   private var active: PaliPublicSnapshotOperation?
   private init() {}
 
-  static func endpoint(for pool: String) -> URL? {
+  static func endpoint(for pool: String, serviceOrigin: String) -> URL? {
     switch pool {
-    case "eth-0.1", "eth-1", "eth-10", "eth-100":
-      return URL(string: "https://sysnode.info/api/privacy/v1/pools/\(pool)/snapshot")
+    case "eth-0.1", "eth-1", "eth-10", "eth-100": break
     default: return nil
     }
+    guard var parts = URLComponents(string: serviceOrigin),
+          let scheme = parts.scheme?.lowercased(),
+          let host = parts.host?.lowercased(), !host.isEmpty,
+          scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1"].contains(host)),
+          parts.user == nil, parts.password == nil,
+          parts.query == nil, parts.fragment == nil,
+          parts.path.isEmpty || parts.path == "/",
+          parts.port == nil || (0...65535).contains(parts.port!) else { return nil }
+    parts.scheme = scheme
+    parts.host = host
+    parts.path = "/api/privacy/v1/pools/\(pool)/snapshot"
+    return parts.url
   }
 
   /// The caller receives the exact cancellation handle before starting any I/O.
   func prepare(
     pool: String,
+    serviceOrigin: String,
     completion: @escaping PaliPublicSnapshotCompletion
   ) throws -> PaliPublicSnapshotOperation {
-    guard let endpoint = Self.endpoint(for: pool) else { throw PaliPublicSnapshotDownloadError.invalid }
+    guard let endpoint = Self.endpoint(for: pool, serviceOrigin: serviceOrigin) else { throw PaliPublicSnapshotDownloadError.invalid }
     return try reserve(endpoint, timeout: 25, snapshotLimit: 2 * 1024 * 1024, completion: completion)
   }
 
