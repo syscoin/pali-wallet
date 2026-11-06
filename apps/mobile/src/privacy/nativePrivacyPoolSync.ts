@@ -11,7 +11,10 @@ import {
   type PrivacyAnchorRead,
   type PrivacyJsonResponse,
 } from '../../../../source/utils/privacy/publicSyncProtocol.ts';
-import { getPrivacyPool } from '../../../../source/utils/privacy/registry.ts';
+import {
+  getPrivacyPool,
+  PRIVACY_CHAIN_ID,
+} from '../../../../source/utils/privacy/registry.ts';
 import { validatePrivacyRpcUrl } from '../../../../source/utils/privacy/snapshotValidation.ts';
 import type { IPrivacyNoteReader } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import type { IPrivacySnapshotReader } from '../../../../source/utils/privacy/trustedSnapshot.ts';
@@ -187,7 +190,8 @@ export function createNativePrivacyPoolSync(
   const assertServiceCurrent = options.service.assertCurrent.bind(
     options.service
   );
-  if (network.chainId !== '1') throw new Error('privacy_wrong_chain');
+  if (network.chainId !== String(PRIVACY_CHAIN_ID))
+    throw new Error('privacy_wrong_chain');
   getPrivacyPool(poolId);
   const rpcUrl = validatePrivacyRpcUrl(network.rpcUrl);
   if (!rpcUrl.startsWith('https:')) throw unavailable();
