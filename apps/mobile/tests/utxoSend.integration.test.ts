@@ -189,13 +189,11 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
       records,
       fetcher
     );
-    if (network === litecoinRegistration) {
-      const versions = [1, 2];
-      for (const version of versions) {
-        const unsupported = bitcoin.address.toBech32(Buffer.alloc(32, 9), version, network.addressNetwork.bech32);
-        await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
-        assert.deepEqual(calls, []);
-      }
+    const unsupportedVersions = network === litecoinRegistration ? [1, 2, 16] : [2, 16];
+    for (const version of unsupportedVersions) {
+      const unsupported = bitcoin.address.toBech32(Buffer.alloc(32, 9), version, network.addressNetwork.bech32);
+      await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
+      assert.deepEqual(calls, []);
     }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.equal(review.outputs[0]?.address, recipient);

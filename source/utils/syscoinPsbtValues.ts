@@ -597,6 +597,7 @@ export const getVerifiedSyscoinPsbtValueSummary = async (
 ): Promise<
   ReturnType<typeof getSyscoinPsbtValueSummary> & {
     inputAssets: ISyscoinPsbtInputAsset[];
+    inputScripts: Uint8Array[];
   }
 > => {
   const previousTransactions = await resolvePreviousTransactions(
@@ -612,5 +613,8 @@ export const getVerifiedSyscoinPsbtValueSummary = async (
     summary.assetAllocations
   );
 
-  return { ...summary, inputAssets };
+  const inputScripts = previousTransactions.map(
+    (previous, index) => previous.outs[psbt.txInputs[index].index].script
+  );
+  return { ...summary, inputAssets, inputScripts };
 };

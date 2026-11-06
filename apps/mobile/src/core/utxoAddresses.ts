@@ -1,5 +1,6 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { isCustomUtxoNetworkId, resolveUtxoNetwork, supportsUtxoSoftwareCustody, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { supportsUtxoSoftwareSpend } from '../../../../source/shared/utxoSoftwareCustody.ts';
+import { resolveUtxoNetwork, supportsUtxoSoftwareCustody, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
 export const UTXO_IMPORT_TYPES = ['p2wpkh', 'p2pkh', 'p2tr'] as const;
 export type UtxoImportAddressType = typeof UTXO_IMPORT_TYPES[number];
@@ -18,16 +19,10 @@ export function normalizeUtxoAddress(value: unknown, scope: UtxoNetworkId | Utxo
 
 /** A new receive or send must only use a script the software wallet supports. */
 export function canUseUtxoCustodyAddress(address: string, network: UtxoNetwork): boolean {
-  if (!isCustomUtxoNetworkId(network.id)) return supportsUtxoSoftwareCustody(network);
-
-  const { bitcoinjs } = syscoinUtils;
+  if (!supportsUtxoSoftwareCustody(network)) return false;
   try {
-    const [opcode] = bitcoinjs.address.toOutputScript(address, network.addressNetwork);
-    const { OP_1, OP_16 } = bitcoinjs.opcodes;
-    const version = opcode !== undefined && opcode >= OP_1 && opcode <= OP_16
-      ? opcode - OP_1 + 1
-      : 0;
-    return supportsUtxoSoftwareCustody(network, version);
+    const script = syscoinUtils.bitcoinjs.address.toOutputScript(address, network.addressNetwork);
+    return supportsUtxoSoftwareSpend(network, [script]);
   } catch { return false; }
 }
 

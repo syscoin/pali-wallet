@@ -13,6 +13,8 @@ import {
 import { createBalanceReader } from '../src/platformRpc.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { createActivityScope } from '../src/activity/types.ts';
+import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 const require = createRequire(import.meta.url);
@@ -368,6 +370,8 @@ test('native factory explicitly wires one owned transport to all network consume
         assert.fail('unexpected UTXO balance read');
       },
     },
+    '../core/utxoNetworks.ts': { isCustomUtxoNetworkId },
+    '../core/utxoReadSession.ts': { exactUtxoResponseFetch },
     '../platformRpc.ts': {
       createBalanceReader: (options: unknown) => {
         captures.balance = [options];
