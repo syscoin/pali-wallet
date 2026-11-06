@@ -1,6 +1,10 @@
+// Syscoin Core uses this consensus denomination on mainnet and Tanenbaum.
+const SENTRY_COLLATERAL_SATOSHIS = '10000000000000';
+
 export const SENTRY_NETWORKS = {
   mainnet: {
     chainId: 57,
+    collateralSatoshis: SENTRY_COLLATERAL_SATOSHIS,
     genesisHash:
       '0000022642db0346b6e01c2a397471f4f12e65d4f4251ec96c1f85367a61a7ab',
     defaultServiceUrl: 'https://sysnode.info',
@@ -8,6 +12,7 @@ export const SENTRY_NETWORKS = {
   },
   testnet: {
     chainId: 5700,
+    collateralSatoshis: SENTRY_COLLATERAL_SATOSHIS,
     genesisHash:
       '0000066e1a6b9cfeac8295dce0cc8d9170690a74bc4878cf8a0b412554f5c222',
     defaultServiceUrl: '',

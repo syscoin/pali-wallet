@@ -60,6 +60,7 @@ on:
       - 'source/utils/psbtWorkBudget.ts'
       - 'source/utils/slhDsa/constants.ts'
       - 'source/utils/slhDsa/hex.ts'
+      - 'source/utils/syscoinAssetAmount.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
       - 'source/utils/tokenDiscovery.ts'

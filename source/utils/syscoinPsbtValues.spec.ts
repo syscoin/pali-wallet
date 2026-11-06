@@ -8,6 +8,8 @@ import {
 
 import { getSyscoinPsbtReviewError } from './syscoinPsbtReview';
 import {
+  ALLOCATION_SEND_VERSION,
+  assertPlainAllocationSendData,
   getSyscoinPsbtValueSummary,
   getVerifiedSyscoinPsbtValueSummary,
 } from './syscoinPsbtValues';
@@ -17,6 +19,43 @@ const CORE_WITNESS_COMMITMENT = Buffer.concat([
   Buffer.from('aa21a9ed', 'hex'),
   Buffer.alloc(32),
 ]);
+
+it.each([
+  { values: ['999999999999999999'], valid: true },
+  { values: ['1000000000000000000'], valid: false },
+  { values: ['999999999999999998', '1'], valid: true },
+  { values: ['999999999999999999', '1'], valid: false },
+])(
+  'checks Core MoneyRange per asset output and total ($values)',
+  ({ values, valid }) => {
+    const { bitcoinjs } = syscoinUtils;
+    const transaction = new bitcoinjs.Transaction();
+    transaction.version = ALLOCATION_SEND_VERSION;
+    transaction.addInput(Buffer.alloc(32, 7), 0);
+    for (let index = 0; index < values.length; index++) {
+      transaction.addOutput(
+        Buffer.from('0014' + '11'.repeat(20), 'hex'),
+        BigInt(294)
+      );
+    }
+    const data = syscointx.bufferUtils.serializeAssetAllocations([
+      {
+        assetGuid: '18446744073709551615',
+        values: values.map((value, n) => ({
+          n,
+          value: new syscoinUtils.BN(value),
+        })),
+      },
+    ]);
+    transaction.addOutput(
+      bitcoinjs.payments.embed({ data: [data] }).output!,
+      BigInt(0)
+    );
+    const check = () => assertPlainAllocationSendData(transaction);
+    if (valid) expect(check).not.toThrow();
+    else expect(check).toThrow('SPT amount exceeds the protocol range');
+  }
+);
 
 const createUnfinalizedBurnToSyscoinPsbt = ({
   allocationAssetGuid = '123456',
@@ -871,6 +910,7 @@ describe('Syscoin PSBT value summary', () => {
         },
       ],
       inputScripts: [new Uint8Array(previousTransaction.outs[1]!.script)],
+      inputValuesSatoshis: ['80000000000000'],
       outputValuesSatoshis: ['1000000000', '79998999999000'],
     });
   });

@@ -3,11 +3,15 @@ import { bufferUtils as syscoinBufferUtils } from 'syscointx-js';
 
 import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds.ts';
 
+import type { Transaction } from 'bitcoinjs-lib';
+
 const ALLOCATION_BURN_TO_SYSCOIN_VERSION = 138;
 const SYSCOIN_BURN_TO_ALLOCATION_VERSION = 139;
 const ALLOCATION_MINT_VERSION = 140;
 const ALLOCATION_BURN_TO_ETHEREUM_VERSION = 141;
 export const ALLOCATION_SEND_VERSION = 142;
+// Syscoin Core applies MoneyRange to each asset output and the total per GUID.
+const MAX_SPT_AMOUNT = BigInt('999999999999999999');
 const CORE_MAX_SCRIPT_SIZE = 10_000;
 const MAX_CONCURRENT_PREVOUT_LOOKUPS = 8;
 const CORE_WITNESS_COMMITMENT_HEADER = Buffer.from('aa21a9ed', 'hex');
@@ -158,6 +162,41 @@ const getCoreSyscoinPayload = (transaction: any): Buffer => {
 
   return payload;
 };
+
+export const isPositiveSptAmount = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[1-9][0-9]{0,17}$/.test(value) &&
+  BigInt(value) <= MAX_SPT_AMOUNT;
+
+/** A plain allocation send has one zero-value data output and no memo. */
+export function assertPlainAllocationSendData(transaction: Transaction): void {
+  const { bitcoinjs } = syscoinUtils;
+  const data = transaction.outs.filter(
+    ({ script }) => script[0] === bitcoinjs.opcodes.OP_RETURN
+  );
+  if (
+    transaction.version !== ALLOCATION_SEND_VERSION ||
+    data.length !== 1 ||
+    data[0]!.value !== BigInt(0)
+  )
+    throw new Error('Invalid ordinary SPT data output');
+  const payload = getCoreSyscoinPayload(transaction);
+  const decoded = syscoinBufferUtils.deserializeAssetAllocations(payload);
+  for (const { values } of normalizeAssetAllocations(decoded)) {
+    let total = BigInt(0);
+    for (const { value } of values) {
+      if (!isPositiveSptAmount(value))
+        throw new Error('SPT amount exceeds the protocol range');
+      total += BigInt(value);
+      if (total > MAX_SPT_AMOUNT)
+        throw new Error('SPT amount exceeds the protocol range');
+    }
+  }
+  const canonical = syscoinBufferUtils.serializeAssetAllocations(decoded);
+  const script = bitcoinjs.payments.embed({ data: [canonical] }).output;
+  if (!script || !equalBytes(data[0]!.script, script))
+    throw new Error('Invalid ordinary SPT data output');
+}
 
 export const getExactAssetAllocations = (
   transaction: any
@@ -599,6 +638,7 @@ export const getVerifiedSyscoinPsbtValueSummary = async (
   ReturnType<typeof getSyscoinPsbtValueSummary> & {
     inputAssets: ISyscoinPsbtInputAsset[];
     inputScripts: Uint8Array[];
+    inputValuesSatoshis: string[];
   }
 > => {
   const previousTransactions = await resolvePreviousTransactions(
@@ -614,8 +654,13 @@ export const getVerifiedSyscoinPsbtValueSummary = async (
     summary.assetAllocations
   );
 
-  const inputScripts = previousTransactions.map(
-    (previous, index) => previous.outs[psbt.txInputs[index].index].script
+  const inputOutputs = previousTransactions.map(
+    (previous, index) => previous.outs[psbt.txInputs[index].index]
   );
-  return { ...summary, inputAssets, inputScripts };
+  return {
+    ...summary,
+    inputAssets,
+    inputScripts: inputOutputs.map(({ script }) => script),
+    inputValuesSatoshis: inputOutputs.map(({ value }) => value.toString()),
+  };
 };

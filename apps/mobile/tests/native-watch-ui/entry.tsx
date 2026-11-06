@@ -1,3 +1,4 @@
+import { sysxSendFixture } from './sysxSendFixture';
 import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
@@ -25,7 +26,7 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
 }) as typeof AppState.addEventListener;
 const backListeners = new Set<Parameters<typeof BackHandler.addEventListener>[1]>();
 const hasGuardianFixture = new URLSearchParams(window.location.search).has('guardian-fixture');
-if (removalFixtureEnabled || hasGuardianFixture) {
+if (removalFixtureEnabled || hasGuardianFixture || sysxSendFixture.enabled) {
   BackHandler.addEventListener = ((_event, listener) => {
     backListeners.add(listener);
     return { remove() { backListeners.delete(listener); } };
@@ -61,6 +62,8 @@ declare global {
   interface Window {
     __watchFixture: {
       activity: typeof activityFixture;
+      sysx: typeof sysxSendFixture;
+      selectNativeNetwork(id: string): Promise<void>;
       evmActivity: typeof evmActivityFixture;
       guardian: typeof guardianFixture;
       notes: typeof noteInventoryFixture;
@@ -103,6 +106,11 @@ declare global {
 }
 window.__watchFixture = {
   guardian: guardianFixture,
+  sysx: sysxSendFixture,
+  async selectNativeNetwork(id) {
+    const authority = latestAuthority!;
+    await authority.selectNetwork(id, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+  },
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
   quotes: () => [...quoteRequests], audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,

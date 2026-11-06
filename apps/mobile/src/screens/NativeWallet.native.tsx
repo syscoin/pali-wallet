@@ -29,6 +29,8 @@ import { NativeWalletRemovalScreen, type RemovalScreenOutcome } from './NativeWa
 import { WalletRemovalError, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { NativeImport } from './NativeImport';
 import type { NativeImportView } from '../custody/importedAccounts';
+import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory';
+import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../../source/shared/syscoinAssetIds';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
@@ -52,8 +54,9 @@ const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWall
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
 type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number }>;
+const SYSX_SEND_ASSET = Object.freeze({ assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' });
 type SendTarget = Readonly<
-  { kind: 'native' } | { kind: 'token'; token: Erc20Metadata } |
+  { kind: 'native' | 'spt' } | { kind: 'token'; token: Erc20Metadata } |
   { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
 >;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
@@ -175,6 +178,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
   const canSendUtxo = !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
+  const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
@@ -182,7 +186,8 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     const current = readyContext();
     if (stage !== 'choose' || AppState.currentState !== 'active' || !current) return;
     if (next === 'send') {
-      if (!sendTarget || (!canSign && !(canSendUtxo && sendTarget.kind === 'native'))) return;
+      if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
+        !canSign && !(canSendUtxo && sendTarget.kind === 'native'))) return;
       setSendDraft({ context: current.context, target: sendTarget });
     }
     rootOrigin.current = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
@@ -618,14 +623,16 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && sendTarget && canSign && transferView && snapshot.account) return <NativeSend
+  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
     controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
     token={sendTarget.kind === 'token' ? sendTarget.token : undefined}
     collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined}
     savedHash={sendTarget.kind === 'saved' ? sendTarget.hash : undefined}
     replacement={sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved' || sendTarget.kind === 'speed-up' ? { hash: sendTarget.hash, mode: sendTarget.kind } : undefined}
     accountLabel={accountLabel} onBack={closeStage} />;
-  else if (snapshot.phase === 'ready' && sendTarget?.kind === 'native' && utxo && canSendUtxo && openUtxoSend) return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend} accountLabel={accountLabel} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt) && utxo && canSendUtxo && openUtxoSend)
+    return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend}
+      asset={sendTarget.kind === 'spt' ? SYSX_SEND_ASSET : undefined} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
@@ -634,6 +641,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
     onSend={canSign || canSendUtxo ? () => openStage('send', { kind: 'native' }) : undefined}
+    onSendSysx={canSendSpt ? () => openStage('send', { kind: 'spt' }) : undefined}
     onSendToken={canSign ? (token) => openStage('send', { kind: 'token', token }) : undefined}
     onSendCollectible={canSign ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}

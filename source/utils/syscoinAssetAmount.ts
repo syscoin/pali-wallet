@@ -23,7 +23,7 @@ const parseAssetAmount = (
   const normalizedAmount = String(amount).trim();
   const match = /^(0|[1-9]\d*)(?:\.(\d+))?$/.exec(normalizedAmount);
 
-  if (!match) {
+  if (!match?.[1]) {
     throw new Error('Amount must be a positive decimal number');
   }
   if (match[1].length > 20) {

@@ -29,6 +29,7 @@ type Props = {
   onViewRecovery(): void;
   onSecurity?(): void;
   onSend?(): void;
+  onSendSysx?(): void;
   onSendToken?(token: Erc20Metadata): void;
   onSendCollectible?(collectible: SavedCollectible): void;
   reader?: BalanceReader;
@@ -43,16 +44,16 @@ type Feedback = { scope: string; text: string; failed?: boolean } | null;
 const scopeOf = (account: NativePortfolioAccount) => `${account.revision}:${account.network}:${account.address}`;
 
 /** Only the custody authority's public account projection reaches this screen. */
-export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
+export function NativePortfolio({ source, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, reader, accountLabel = 'Account 1', onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Props) {
   const balanceReader = useMemo(() => reader ?? createBalanceReader({ fetch: walletFetch, registrations: () => source.getCatalogue?.()?.networks }), [reader, source]);
   const model = useMemo(() => new NativePortfolioController(source, balanceReader), [source, balanceReader]);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
   useLayoutEffect(() => model.connect(), [model]);
   const scope = snapshot.account ? scopeOf(snapshot.account) : 'unavailable';
-  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
+  return <NativePortfolioContent key={scope} model={model} snapshot={snapshot} onExit={onExit} onLock={onLock} onViewRecovery={onViewRecovery} onSecurity={onSecurity} onSend={onSend} onSendSysx={onSendSysx} onSendToken={onSendToken} onSendCollectible={onSendCollectible} accountLabel={accountLabel} onManageAccounts={onManageAccounts} onManageNetworks={onManageNetworks} onActivity={onActivity} tokenView={tokenView} navigation={navigation} />;
 }
 
-function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
+function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecovery, onSecurity, onSend, onSendSysx, onSendToken, onSendCollectible, accountLabel, onManageAccounts, onManageNetworks, onActivity, tokenView, navigation }: Omit<Props, 'source' | 'reader' | 'accountLabel'> & {
   model: NativePortfolioController; snapshot: NativePortfolioSnapshot; accountLabel: string;
 }) {
   const [receiveScope, setReceiveScope] = useState<string | null>(null);
@@ -182,6 +183,7 @@ function NativePortfolioContent({ model, snapshot, onExit, onLock, onViewRecover
           {sysx.status === 'available' ? <>
             <Text style={s.address} testID="native-portfolio-sysx">{formatBaseUnits(sysx.confirmedUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>
             {sysx.pendingDeltaUnits !== '0' && <Text style={s.unit}>Pending {formatBalanceDelta(sysx.pendingDeltaUnits, SYSX_ASSET_DECIMALS)} SYSX</Text>}
+            {onSendSysx && sysx.confirmedUnits !== '0' && <Button title="Send SYSX" variant="secondary" onPress={() => { if (account && model.isCurrent(account)) onSendSysx(); }} />}
           </> : <Text style={s.unit} testID="native-portfolio-sysx">{loading ? 'Loading balance…' : 'Balance unavailable'}</Text>}
         </Card>}
         {faucetCard}

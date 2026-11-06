@@ -33,7 +33,8 @@ const scope = () => ({
       '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
   },
 });
-const request = { address: receiver.address, amountSatoshis: '90000' };
+const recipient = { address: receiver.address, amountSatoshis: '90000' };
+const request = { kind: 'native' as const, ...recipient };
 
 function fixture(witness = true, inputScript?: Uint8Array) {
   const payer = bitcoin.payments[witness ? 'p2wpkh' : 'p2pkh']({
@@ -231,9 +232,9 @@ it.each([true, false])(
               ...descriptor,
               scope: f.signingScope,
               review: {
-                recipient: request,
+                recipient,
                 outputs: [
-                  request,
+                  recipient,
                   { address: f.payer.address, amountSatoshis: '19000' },
                 ],
                 outpoints: [`${f.previous.getId()}:0`],
