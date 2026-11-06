@@ -1,22 +1,17 @@
-import {
-  AbiCoder,
-  HDNodeWallet,
-  Interface,
-  concat,
-  getCreate2Address,
-  keccak256,
-} from 'ethers';
+import { AbiCoder, HDNodeWallet, keccak256 } from 'ethers';
 
 import {
   getPaliEntryPointAddress,
   paliEntryPointInterface,
   paliSmartAccountFactoryInterface,
 } from '../../source/utils/smartAccount/contracts';
+import { derivePaliSmartAccountDeployment } from '../../source/utils/smartAccount/counterfactual';
 import {
   getPaliInfrastructureContracts,
   PALI_CREATE2_DEPLOYER_ADDRESS,
   PALI_MULTICALL3_CANONICAL_ADDRESS,
 } from '../../source/utils/smartAccount/deployment';
+import { PALI_ACCOUNT_PROXY_CREATION_CODE } from '../../source/utils/smartAccount/deploymentMetadata';
 
 import type { BrowserContext } from '@playwright/test';
 
@@ -32,11 +27,6 @@ export const VISUAL_FIXTURE_RPC = 'https://rpc-zk.tanenbaum.io';
 export const VISUAL_FIXTURE_EXPLORER = 'https://explorer-zk.tanenbaum.io';
 
 const abi = AbiCoder.defaultAbiCoder();
-const initialization = new Interface([
-  'function initializeAccount(bytes initCode)',
-]);
-const moduleArray = 'tuple(address module,bytes data)[]';
-const emptyModule = ['0x0000000000000000000000000000000000000000', '0x'];
 const transactionHash = `0x${'71'.repeat(32)}`;
 const blockHash = `0x${'72'.repeat(32)}`;
 const parentHash = `0x${'73'.repeat(32)}`;
@@ -45,27 +35,6 @@ const peer = '0x1111111111111111111111111111111111111111';
 const isAddress = (value: unknown): value is string =>
   typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value);
 const lower = (value: string) => value.toLowerCase();
-const encodeInitData = (validator: string, data: string) =>
-  abi.encode(
-    [moduleArray, moduleArray, 'tuple(address module,bytes data)', moduleArray],
-    [[[validator, data]], [], emptyModule, []]
-  );
-const proxyDeployment = (
-  proxy: string,
-  implementation: string,
-  initCode: string
-) =>
-  concat([
-    proxy,
-    abi.encode(
-      ['address', 'bytes'],
-      [
-        implementation,
-        initialization.encodeFunctionData('initializeAccount', [initCode]),
-      ]
-    ),
-  ]);
-
 export function createVisualFixture() {
   if (
     HDNodeWallet.fromPhrase(VISUAL_FIXTURE_SEED).address !==
@@ -85,26 +54,10 @@ export function createVisualFixture() {
   if (!factory?.deployCalldata || !implementation || !validator)
     throw new Error('Visual fixture requires canonical factory deployment');
 
-  // Use the exact ERC1967Proxy creation code embedded by the checked factory,
-  // rather than inventing a predicted address or duplicating its bytecode.
-  // The prefix includes the compiled creation-code size (0x026c).
-  const proxyPrefix = '608060405261026c803803806100148161016e565b';
-  const deployment = lower(factory.deployCalldata);
-  const start = deployment.indexOf(proxyPrefix);
-  const proxyCreationCode = `0x${deployment.slice(start, start + 0x26c * 2)}`;
-  if (
-    start < 0 ||
-    deployment.indexOf(proxyPrefix, start + 1) !== -1 ||
-    proxyCreationCode.length !== 2 + 0x26c * 2 ||
-    !proxyCreationCode.endsWith('3d5ffd')
-  )
-    throw new Error('Canonical factory proxy creation code changed');
-
   const authenticatorData = abi.encode(
     ['address[]', 'uint64'],
     [[VISUAL_FIXTURE_ADDRESS], 1]
   );
-  const initCode = encodeInitData(validator.address, authenticatorData);
   const anchor = `pali:eip155:${VISUAL_FIXTURE_CHAIN_ID}:${lower(
     VISUAL_FIXTURE_ADDRESS
   )}:smart-account-v1`;
@@ -120,13 +73,13 @@ export function createVisualFixture() {
       ]
     )
   );
-  const smartAccountAddress = getCreate2Address(
-    factory.address,
-    deploymentSalt,
-    keccak256(
-      proxyDeployment(proxyCreationCode, implementation.address, initCode)
-    )
-  );
+  const { address: smartAccountAddress, initCode } =
+    derivePaliSmartAccountDeployment({
+      validator: validator.address,
+      data: authenticatorData,
+      deploySalt: deploymentSalt,
+      factoryAddress: factory.address,
+    });
 
   const transaction = {
     hash: transactionHash,
@@ -158,7 +111,7 @@ export function createVisualFixture() {
     initCode,
     implementation,
     infrastructure,
-    proxyCreationCode,
+    proxyCreationCode: PALI_ACCOUNT_PROXY_CREATION_CODE,
     smartAccountAddress,
     transaction,
     transactions: Array.from({ length: 15 }, (_, index) => ({
@@ -190,10 +143,9 @@ function factoryRead(fixture: VisualFixture, data: string): string | undefined {
       lower(parsed.args[1]) !== lower(fixture.authenticatorData)
     )
       return undefined;
-    const initCode = encodeInitData(parsed.args[0], parsed.args[1]);
     return paliSmartAccountFactoryInterface.encodeFunctionResult(
       parsed.fragment,
-      [initCode]
+      [fixture.initCode]
     );
   }
   if (parsed.signature === 'getAddress(bytes32,bytes)') {
@@ -202,20 +154,9 @@ function factoryRead(fixture: VisualFixture, data: string): string | undefined {
       lower(parsed.args[1]) !== lower(fixture.initCode)
     )
       return undefined;
-    const creation = proxyDeployment(
-      fixture.proxyCreationCode,
-      fixture.implementation.address,
-      parsed.args[1]
-    );
     return paliSmartAccountFactoryInterface.encodeFunctionResult(
       parsed.fragment,
-      [
-        getCreate2Address(
-          fixture.factory.address,
-          parsed.args[0],
-          keccak256(creation)
-        ),
-      ]
+      [fixture.smartAccountAddress]
     );
   }
   if (parsed.signature === 'implementation()')
