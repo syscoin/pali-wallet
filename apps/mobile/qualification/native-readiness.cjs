@@ -21,17 +21,18 @@ function iosLogQueryFailure(error, elapsed) {
     elapsedTruncated: Number.isFinite(elapsed) && elapsed > 600000 });
 }
 
-function closedRootTransport(error) {
+function closedRootTransport(error, serial) {
   const failure = describeQualificationFailure(error);
+  const args = serial ? ['-s', serial, 'root'] : ['root'];
   return failure.kind === 'command' && failure.command === 'adb' &&
-    failure.args.length === 1 && failure.args[0] === 'root' &&
+    failure.args.length === args.length && args.every((arg, index) => failure.args[index] === arg) &&
     failure.status === 1 && failure.timedOut === false &&
     failure.signal === null && failure.errorCode === null &&
     failure.stdoutTail === '' && failure.stderrTail.trim() === 'adb: unable to connect for root: closed';
 }
 
 /** Setup only: never retry root or any app action, and never infer uid from an ACK. */
-function prepareAndroidRoot(run, record) {
+function prepareAndroidRoot(run, record, serial) {
   let rootFailure;
   let ready = false;
   let stage = 'connection';
@@ -40,7 +41,7 @@ function prepareAndroidRoot(run, record) {
     stage = 'root';
     try { run('adb', ['root'], false, CONNECTION_TIMEOUT_MS); }
     catch (error) {
-      if (!closedRootTransport(error)) throw error;
+      if (!closedRootTransport(error, serial)) throw error;
       rootFailure = describeQualificationFailure(error);
     }
     stage = 'reconnection';

@@ -89,7 +89,7 @@ function createIosStageRecorder(record, now = () => performance.now()) {
   const stages = [];
   const publish = () => record(Object.freeze({ version: 1, stages: Object.freeze(stages.map((row) => Object.freeze({ ...row }))) }));
   return async (stage, action) => {
-    if (!/^(create|boot|bootstatus|install|container|terminate|(?:readiness|launch|report)-(?:create|restart))$/.test(stage) || stages.length >= 16)
+    if (!/^(create|boot|bootstatus|install|container|terminate|public-pool-trust|(?:readiness|launch|report)-(?:create|restart))$/.test(stage) || stages.length >= 16)
       throw Error('Invalid iOS qualification stage');
     const row = { stage, status: 'running', elapsedMs: null };
     stages.push(row); publish();

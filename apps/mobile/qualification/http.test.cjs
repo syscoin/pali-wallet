@@ -363,11 +363,11 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'app.json'), originalApp);
     fs.writeFileSync(path.join(root, 'index.ts'), 'public production entry');
-    const env = { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: build.sourceRevision };
-    delete env.PALI_PHYSICAL_QUALIFICATION;
+    const env = { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: build.sourceRevision };
     const run = (extra) => spawnSync(process.execPath, [path.join(root, 'scripts/configure-native-qualification.cjs')], { env: { ...env, ...extra } });
     assert.notEqual(run({ GITHUB_SHA: '' }).status, 0);
     assert.notEqual(run({ PALI_PHYSICAL_QUALIFICATION: 'import' }).status, 0);
+    assert.notEqual(run({ PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1' }).status, 0);
     assert.equal(run({}).status, 0);
     const configured = JSON.parse(readFileSync(path.join(root, 'app.json'))).expo;
     assert.equal(configured.android.package, 'com.paliwallet.qualification');
