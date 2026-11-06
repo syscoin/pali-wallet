@@ -17,6 +17,7 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
+  legacyEvmNonceErrorKey,
   IEvmTransactionContext,
 } from 'utils/evmTransactionContext';
 import { ellipsis } from 'utils/format';
@@ -854,8 +855,11 @@ export const SendCalls = () => {
               }
             }
           }
+          const legacyKey = legacyEvmNonceErrorKey(error);
           const errorMessage = unknown
             ? t('send.submissionStatusUnknown')
+            : legacyKey
+            ? t(legacyKey)
             : getSafeSmartAccountCallErrorMessage(
                 error,
                 t('send.sendError'),
@@ -1111,8 +1115,11 @@ export const SendCalls = () => {
           if (unknown) unknownSubmissionRef.current = true;
           if (error?.transactionNotBroadcast === true)
             await markSubmissionNotBroadcast();
+          const legacyKey = legacyEvmNonceErrorKey(error);
           const errorMessage = unknown
             ? t('send.submissionStatusUnknown')
+            : legacyKey
+            ? t(legacyKey)
             : getSafeSmartAccountCallErrorMessage(
                 error,
                 t('send.sendError'),
@@ -1182,9 +1189,10 @@ export const SendCalls = () => {
       setProcessingIndex(-1);
       alert.error(
         t(
-          error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
-            ? 'transactions.psbtSigningContextChanged'
-            : 'send.sendError'
+          legacyEvmNonceErrorKey(error) ||
+            (error?.message === EVM_TRANSACTION_CONTEXT_CHANGED
+              ? 'transactions.psbtSigningContextChanged'
+              : 'send.sendError')
         )
       );
     } finally {

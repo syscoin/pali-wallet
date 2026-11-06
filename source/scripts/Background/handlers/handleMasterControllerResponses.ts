@@ -2,6 +2,10 @@ import { walletTokenReviewError } from '../../../shared/walletTokenReview';
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
+import {
+  EVM_LEGACY_PENDING,
+  EVM_LEGACY_VERIFICATION_UNAVAILABLE,
+} from 'utils/evmTransactionContext';
 import { isExternalWalletUrl } from 'utils/extensionContexts';
 import { extractErrorMessage } from 'utils/index';
 
@@ -107,7 +111,10 @@ const normalizeControllerErrorMessage = (error: unknown): string => {
   return extractErrorMessage(error, 'Unknown error');
 };
 
-export const controllerErrorResponse = (error: any) => {
+export const controllerErrorResponse = (
+  error: any,
+  trustedBatchHash?: { hash?: string }
+) => {
   const message = normalizeControllerErrorMessage(error);
   const submission: {
     code?: string;
@@ -117,13 +124,20 @@ export const controllerErrorResponse = (error: any) => {
     transactionNotBroadcast?: boolean;
     txid?: string;
   } = {};
-  if (typeof error?.transactionNotBroadcast === 'boolean')
+  if (trustedBatchHash?.hash) submission.transactionNotBroadcast = false;
+  else if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
   if (
     error?.code === 'HARDWARE_REQUEST_CANCELLED' ||
     error?.code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER' ||
     error?.code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS' ||
     error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
+  )
+    submission.code = error.code;
+  if (
+    (error?.code === EVM_LEGACY_PENDING ||
+      error?.code === EVM_LEGACY_VERIFICATION_UNAVAILABLE) &&
+    error?.transactionNotBroadcast === true
   )
     submission.code = error.code;
   if (
@@ -152,11 +166,14 @@ export const controllerErrorResponse = (error: any) => {
     if (typeof error.recipientBlockReason === 'string')
       submission.recipientBlockReason = error.recipientBlockReason;
   }
+  const reportedHash = trustedBatchHash
+    ? trustedBatchHash.hash
+    : error?.transactionHash;
   if (
-    typeof error?.transactionHash === 'string' &&
-    /^0x[0-9a-fA-F]{64}$/.test(error.transactionHash)
+    typeof reportedHash === 'string' &&
+    /^0x[0-9a-fA-F]{64}$/.test(reportedHash)
   )
-    submission.transactionHash = error.transactionHash;
+    submission.transactionHash = reportedHash;
   return {
     error: Object.keys(submission).length
       ? { message, ...submission }
@@ -234,21 +251,44 @@ export const handleMasterControllerResponses = (
         params
       );
 
-      let targetMethod = MasterControllerInstance;
+      let targetMethod: any = MasterControllerInstance;
+      const manualNonceRoute =
+        Array.isArray(methods) &&
+        methods.length === 2 &&
+        methods[0] === 'wallet' &&
+        methods[1] === 'authorizeDappManualNonce';
 
       const signer = personalSignApproval?.signer;
       const route = signer ? ['wallet', signer.method] : methods;
-      for (const method of route) {
-        if (targetMethod && method in targetMethod) {
-          targetMethod = targetMethod[method];
-        } else {
-          throw new Error('Method not found');
+      if (manualNonceRoute) {
+        targetMethod = async (nonce: unknown) => {
+          const approval = captureDappEvmSubmission(sender);
+          if (!approval) throw transactionApprovalExpired();
+          await approval.checkDocument();
+          approval.approveManualNonce(nonce);
+          return true;
+        };
+      } else
+        for (const method of route) {
+          if (targetMethod && method in targetMethod) {
+            targetMethod = targetMethod[method];
+          } else {
+            throw new Error('Method not found');
+          }
         }
-      }
 
       if (typeof targetMethod === 'function') {
         const finishSubmission = beginApprovalSubmission(sender, methods);
         let assertUtxoSignatureCurrent: (() => void) | undefined;
+        let batchAttempt = false;
+        let acknowledgedBatchHash: string | undefined;
+        let nonceClaim:
+          | ReturnType<
+              NonNullable<
+                ReturnType<typeof captureDappEvmSubmission>
+              >['claimNonce']
+            >
+          | undefined;
         let retiredBatch:
           | {
               isSoleRetiredAttempt: () => boolean;
@@ -266,10 +306,21 @@ export const handleMasterControllerResponses = (
                 ? route[1]
                 : undefined;
             const sendsEvm = walletMethod === 'sendAndSaveEthTransaction';
+            const recommendsNonce =
+              walletMethod === 'getRecommendedEvmNonce' ||
+              walletMethod === 'getRecommendedNonceForBatch';
+            const quoteApproval = recommendsNonce
+              ? captureDappEvmSubmission(sender)
+              : undefined;
+            if (quoteApproval) await quoteApproval.checkDocument();
+            const recordNonce = quoteApproval?.beginNonceRecommendation(
+              params?.[0]
+            );
             const dappApproval = sendsEvm
               ? captureDappEvmSubmission(sender)
               : undefined;
             if (dappApproval?.batch) {
+              batchAttempt = true;
               const release = await captureStartedEoaSendCallsAttempt(
                 dappApproval.batch,
                 dappApproval.context.chainId,
@@ -281,8 +332,10 @@ export const handleMasterControllerResponses = (
                 release,
               };
             }
-            if (dappApproval) await dappApproval.checkDocument();
-            else if (sendsEvm && isExternalWalletUrl(sender.url))
+            if (dappApproval) {
+              await dappApproval.checkDocument();
+              nonceClaim = dappApproval.claimNonce(params?.[0]?.nonce);
+            } else if (sendsEvm && isExternalWalletUrl(sender.url))
               throw transactionApprovalExpired();
             const smartMethod =
               walletMethod === 'submitSmartAccountExecution' ||
@@ -325,6 +378,23 @@ export const handleMasterControllerResponses = (
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
                   authorizeDapp: dappApproval?.assertCurrent,
+                  dappNonceApproval: nonceClaim?.approval,
+                  // This callback is injected by the worker, never the renderer.
+                  // It sees only the SDK's acknowledged transaction response.
+                  onBroadcast:
+                    dappApproval?.batch && nonceClaim
+                      ? async (response: {
+                          hash?: unknown;
+                          nonce?: unknown;
+                        }) => {
+                          if (
+                            typeof response?.hash === 'string' &&
+                            /^0x[0-9a-fA-F]{64}$/.test(response.hash) &&
+                            response.nonce === nonceClaim?.approval.nonce
+                          )
+                            acknowledgedBatchHash = response.hash;
+                        }
+                      : undefined,
                   sendCallsSubmissionId: undefined,
                   ...(dappApproval && {
                     expectedContext: dappApproval.context,
@@ -358,6 +428,7 @@ export const handleMasterControllerResponses = (
                   ]
                 : argumentsForCall)
             );
+            recordNonce?.(response);
             // Hardware message signing can remain pending while wallet storage
             // becomes unavailable. Do not release that signature after the
             // existing admission gate closes. Transaction submissions retain
@@ -385,11 +456,13 @@ export const handleMasterControllerResponses = (
               assertSetupAdmission();
               personalSignApproval.assertCurrent();
             }
+            nonceClaim?.finish();
             finishSubmission();
             sendResponse(response);
           })
           .catch(async (error) => {
             const release =
+              !acknowledgedBatchHash &&
               error instanceof Error &&
               Object.getOwnPropertyDescriptor(error, 'transactionNotBroadcast')
                 ?.value === true &&
@@ -397,7 +470,11 @@ export const handleMasterControllerResponses = (
               retiredBatch?.isSoleRetiredAttempt()
                 ? retiredBatch.release
                 : undefined;
-            finishSubmission(error);
+            // Only an SDK ACK captured by the worker can advance a batch
+            // after a later persistence/context error. An arbitrary error hash
+            // is not evidence that this exact nonce was accepted.
+            nonceClaim?.finish(acknowledgedBatchHash ? undefined : error);
+            finishSubmission(acknowledgedBatchHash ? undefined : error);
             if (release) {
               try {
                 await release();
@@ -411,6 +488,7 @@ export const handleMasterControllerResponses = (
             console.error('Error executing method:', error);
             // Preserve structured errors from syscoinjs-lib
             if (
+              !batchAttempt &&
               error &&
               typeof error === 'object' &&
               error.code &&
@@ -420,7 +498,12 @@ export const handleMasterControllerResponses = (
               sendResponse(error);
             } else {
               // For regular errors, wrap in error object
-              sendResponse(controllerErrorResponse(error));
+              sendResponse(
+                controllerErrorResponse(
+                  error,
+                  batchAttempt ? { hash: acknowledgedBatchHash } : undefined
+                )
+              );
             }
             return false;
           });

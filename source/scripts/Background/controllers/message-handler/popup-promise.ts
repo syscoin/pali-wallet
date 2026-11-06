@@ -388,7 +388,17 @@ const openApprovalPopup = async (
               submissionStarted = possible;
             },
             evmContext
-              ? { ...document, context: evmContext, batch: evmBatch }
+              ? {
+                  ...document,
+                  context: evmContext,
+                  batch: evmBatch,
+                  ...(route === MethodRoute.SendEthTx
+                    ? {
+                        originalNonce: (data as { tx?: { nonce?: unknown } }).tx
+                          ?.nonce,
+                      }
+                    : {}),
+                }
               : undefined,
             utxoReview ? { ...document, ...utxoReview } : undefined,
             smartMethods ? { ...document, methods: smartMethods } : undefined

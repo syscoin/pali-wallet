@@ -29,6 +29,7 @@ import { BigNumber } from 'utils/ethersV6Compat';
 import {
   IEvmTransactionContext,
   EVM_TRANSACTION_CONTEXT_CHANGED,
+  legacyEvmNonceErrorKey,
 } from 'utils/evmTransactionContext';
 import { fetchGasAndDecodeFunction } from 'utils/fetchGasAndDecodeFunction';
 import { ellipsis } from 'utils/format';
@@ -240,6 +241,8 @@ export const SendTransaction = () => {
   const [loading, setLoading] = useState<boolean>(false);
   const [closing, setClosing] = useState(false);
   const [submissionUnknown, setSubmissionUnknown] = useState(false);
+  const [nonceRefreshRequired, setNonceRefreshRequired] = useState(false);
+  const [nonceRefreshing, setNonceRefreshing] = useState(false);
   const approvalActionRef = React.useRef<
     'ready' | 'submitting' | 'outcome-unknown' | 'dismissed' | 'completed'
   >('ready');
@@ -250,6 +253,8 @@ export const SendTransaction = () => {
   );
   const [isPqSigning, setIsPqSigning] = useState<boolean>(false);
   const [initialLoading, setInitialLoading] = useState<boolean>(true);
+  const [initialNonceReviewError, setInitialNonceReviewError] =
+    useState<string>();
   const [tx, setTx] = useState<ITxState>();
   const [fee, setFee] = useState<IFeeState>();
   const [txResponse, setTxResponse] = useState<string | null>(null);
@@ -327,7 +332,12 @@ export const SendTransaction = () => {
   const [isCheckingContract, setIsCheckingContract] = useState<boolean>(false);
   const [hasCheckedContract, setHasCheckedContract] = useState<boolean>(false);
 
-  const editingDisabled = loading || closing || confirmed || submissionUnknown;
+  const editingDisabled =
+    loading ||
+    closing ||
+    confirmed ||
+    submissionUnknown ||
+    nonceRefreshRequired;
   const editingDisabledRef = React.useRef(editingDisabled);
   editingDisabledRef.current = editingDisabled;
   // A previously rendered editor can still finish validation after Confirm.
@@ -750,6 +760,33 @@ export const SendTransaction = () => {
     };
   }, []);
 
+  const refreshAutomaticNonce = async (generation: number) => {
+    setNonceRefreshRequired(true);
+    setNonceRefreshing(true);
+    try {
+      const value = await controllerEmitter(
+        ['wallet', 'getRecommendedEvmNonce'],
+        [approvedContext.account.address]
+      );
+      if (!Number.isSafeInteger(value) || Number(value) < 0)
+        throw new Error('Invalid recommended nonce');
+      if (!mountedRef.current || generation !== closeGenerationRef.current)
+        return;
+      setTx((current) => current && { ...current, nonce: Number(value) });
+      setNonceRefreshRequired(false);
+    } catch (error) {
+      if (!mountedRef.current || generation !== closeGenerationRef.current)
+        return;
+      if (
+        !handleTransactionError(error, alert, t, activeAccount, activeNetwork)
+      )
+        alert.error(t('send.cantCompleteTxs'));
+    } finally {
+      if (mountedRef.current && generation === closeGenerationRef.current)
+        setNonceRefreshing(false);
+    }
+  };
+
   const submitTransaction = async (generation: number) => {
     if (!hasCurrentApprovalDataQuote) return;
     if (!hasCurrentSmartAccountFeeQuote) {
@@ -961,6 +998,14 @@ export const SendTransaction = () => {
             smartAccount: activeAccount.smartAccount,
           });
         } else if (isLegacyTransaction) {
+          if (
+            isExternal &&
+            (customNonce !== undefined || dataTx.nonce !== undefined)
+          )
+            await controllerEmitter(
+              ['wallet', 'authorizeDappManualNonce'],
+              [customNonce ?? dataTx.nonce]
+            );
           // Legacy transaction handling - MUST remove all EIP-1559 fields
           const txWithoutType = omitTransactionObjectData(txToSend, [
             'type',
@@ -1027,6 +1072,14 @@ export const SendTransaction = () => {
               : 10000 // Default 10 seconds for regular wallets
           );
         } else {
+          if (
+            isExternal &&
+            (customNonce !== undefined || dataTx.nonce !== undefined)
+          )
+            await controllerEmitter(
+              ['wallet', 'authorizeDappManualNonce'],
+              [customNonce ?? dataTx.nonce]
+            );
           // EIP-1559 transaction handling
           // Determine if we have a valid destination address. For contract deployments, omit 'to'
           const candidateTo =
@@ -1141,6 +1194,22 @@ export const SendTransaction = () => {
           activeNetwork
         );
 
+        // A definitely unbroadcast automatic dapp attempt retires its nonce
+        // authority. Refresh the review before allowing another confirmation.
+        if (
+          submissionRequested &&
+          error?.transactionNotBroadcast === true &&
+          isExternal &&
+          !activeAccount.isSmartAccount &&
+          dataTx.nonce === undefined &&
+          customNonce === undefined
+        ) {
+          setLoading(false);
+          if (!wasHandledSpecifically) alert.error(t('send.cantCompleteTxs'));
+          void refreshAutomaticNonce(generation);
+          return;
+        }
+
         // For errors that were handled specifically, just stop loading
         if (wasHandledSpecifically) {
           setLoading(false);
@@ -1182,7 +1251,12 @@ export const SendTransaction = () => {
   };
 
   const handleConfirm = async () => {
-    if (!mountedRef.current || approvalActionRef.current !== 'ready') return;
+    if (
+      !mountedRef.current ||
+      nonceRefreshRequired ||
+      approvalActionRef.current !== 'ready'
+    )
+      return;
     invalidatePendingClose();
     const generation = closeGenerationRef.current;
     approvalActionRef.current = 'submitting';
@@ -1294,6 +1368,7 @@ export const SendTransaction = () => {
           setAcceptedDappFeeRequest(false);
           setFeeRecommendationOnly(Boolean(recommendationOnly));
           setTx(formTx);
+          setInitialNonceReviewError(undefined);
           setInitialLoading(false);
         }
       } catch (e) {
@@ -1308,6 +1383,12 @@ export const SendTransaction = () => {
           generation === closeGenerationRef.current
         ) {
           setInitialLoading(false);
+          const legacyKey = legacyEvmNonceErrorKey(e);
+          if (legacyKey) {
+            setInitialNonceReviewError(legacyKey);
+            alert.error(t(legacyKey));
+            return;
+          }
           logError('error getting fees', 'Transaction', e);
           alert.error(t('send.txWillFail'), e);
           await clearTransactionNavigationState();
@@ -1633,6 +1714,24 @@ export const SendTransaction = () => {
       {initialLoading ? (
         <div className="flex items-center justify-center min-h-[400px]">
           <LoadingComponent />
+        </div>
+      ) : initialNonceReviewError ? (
+        <div className="text-center">
+          <p>{t(initialNonceReviewError)}</p>
+          <Button type="button" disabled={closing} onClick={handleCancel}>
+            {t('buttons.cancel')}
+          </Button>
+          <Button
+            type="button"
+            disabled={closing}
+            onClick={() => {
+              setInitialNonceReviewError(undefined);
+              setInitialLoading(true);
+              setFeeQuoteRevision((revision) => revision + 1);
+            }}
+          >
+            {t('receive.retry')}
+          </Button>
         </div>
       ) : tx?.from ? (
         <div className="flex flex-col w-full h-screen">
@@ -1996,6 +2095,17 @@ export const SendTransaction = () => {
                 </Button>
               </div>
             )}
+            {nonceRefreshRequired && !nonceRefreshing && (
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() =>
+                  void refreshAutomaticNonce(closeGenerationRef.current)
+                }
+              >
+                {t('receive.retry')}
+              </Button>
+            )}
             <div className="flex gap-3 justify-center">
               <Button
                 variant="secondary"
@@ -2016,6 +2126,7 @@ export const SendTransaction = () => {
                   closing ||
                   confirmed ||
                   submissionUnknown ||
+                  nonceRefreshRequired ||
                   !hasCurrentSmartAccountFeeQuote ||
                   !hasCurrentApprovalDataQuote ||
                   hasTxDataError ||

@@ -399,6 +399,8 @@
     "reduceFee": "トランザクションを送信するには手数料を減らしてください。",
     "cantCompleteTxs": "取引を完了できません。後でもう一度お試しください。",
     "savedNonceConflict": "保存済みのトランザクションがこのノンスを使用しています。アクティビティを確認してください。",
+    "legacyPendingNonce": "以前の取引が保留中です。再試行する前にアクティビティを確認してください。",
+    "legacyNonceVerificationUnavailable": "以前の取引を確認できません。接続とアクティビティを確認して、もう一度お試しください。",
     "txSuccessfull": "取引成功",
     "txSuccessfullMessage": "取引が正常に送信されました。ホームページのアクティビティセクションで詳細を確認できます。",
     "estimatedGasFee": "推定ガス手数料",

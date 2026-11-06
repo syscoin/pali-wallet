@@ -1,6 +1,7 @@
 // Utility functions for handling transaction errors with specific messaging
 import {
   isSavedEvmNonceConflict,
+  legacyEvmNonceErrorKey,
   WALLET_NETWORK_CATCHING_UP_MESSAGE,
 } from 'utils/evmTransactionContext';
 import { truncate } from 'utils/index';
@@ -180,6 +181,11 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
+  const legacyNonceKey = legacyEvmNonceErrorKey(error);
+  if (legacyNonceKey) {
+    alert.error(t(legacyNonceKey));
+    return true;
+  }
   if (isSavedEvmNonceConflict(error)) {
     alert.error(t('send.savedNonceConflict'));
     return true;

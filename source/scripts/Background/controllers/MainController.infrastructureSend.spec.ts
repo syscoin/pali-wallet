@@ -20,6 +20,10 @@ jest.mock('utils/evmCallBlacklist', () => ({
 jest.mock('utils/navigationState', () => ({
   clearNavigationState: jest.fn().mockResolvedValue(undefined),
   clearTransactionNavigationState: jest.fn().mockResolvedValue(undefined),
+  getWalletNavigationScope: jest.fn(() => ({
+    account: 'account-a',
+    network: 'network-a',
+  })),
 }));
 
 import { getController } from '..';
@@ -435,15 +439,79 @@ describe('infrastructure transaction broadcast boundary', () => {
     beforeEach(() => {
       currentState.vaultGlobal = { activeSlip44: 60 };
       wallet.walletSessionGeneration = 1;
+      wallet.captureFreshEvmRead = jest.fn(() => ({
+        network: currentState.vault.activeNetwork,
+      }));
+      wallet.inspectOrdinaryEvmNonce = jest.fn(
+        async (_read, _from, options) => {
+          options.assertCurrent();
+          return { nonce: 7 };
+        }
+      );
+    });
+
+    it('reports an acknowledged dapp hash to the worker before history persistence fails', async () => {
+      const events: string[] = [];
+      wallet.sendAndSaveTransaction.mockImplementation(async () => {
+        events.push('history');
+        throw new Error('Synthetic history persistence failure');
+      });
+      const onBroadcast = jest.fn(async (ack) => {
+        expect(ack.hash).toBe(response.hash);
+        expect(ack.nonce).toBe(7);
+        events.push('ack');
+      });
+      const transaction = {
+        chainId: 1,
+        from: 'payer-a',
+        nonce: 7,
+        gasPrice: '0x1',
+        value: '0x1',
+      };
+      await expect(
+        wallet.sendAndSaveEthTransaction(
+          transaction,
+          true,
+          undefined,
+          undefined,
+          {
+            expectedContext,
+            authorizeDapp: () => undefined,
+            dappNonceApproval: { nonce: 7, source: 'automatic' },
+            onBroadcast,
+          }
+        )
+      ).rejects.toMatchObject({
+        message: 'Synthetic history persistence failure',
+        transactionHash: response.hash,
+        transactionNonce: 7,
+        transactionNotBroadcast: false,
+      });
+      expect(send).toHaveBeenCalledWith(
+        transaction,
+        true,
+        expect.objectContaining({
+          walletNonce: { nonce: 7, source: 'automatic' },
+        })
+      );
+      expect(onBroadcast).toHaveBeenCalledTimes(1);
+      expect(events).toEqual(['ack', 'history']);
     });
 
     it('rejects a context already changed before querying transaction targets', async () => {
       currentState.vault.activeNetwork.chainId = 2;
       await expect(
-        wallet.sendAndSaveEthTransaction({}, false, undefined, undefined, {
-          expectedContext,
-          authorizeDapp: () => undefined,
-        })
+        wallet.sendAndSaveEthTransaction(
+          { nonce: 7 },
+          false,
+          undefined,
+          undefined,
+          {
+            expectedContext,
+            authorizeDapp: () => undefined,
+            dappNonceApproval: { nonce: 7, source: 'automatic' },
+          }
+        )
       ).rejects.toMatchObject({
         message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
         transactionNotBroadcast: true,
@@ -472,11 +540,15 @@ describe('infrastructure transaction broadcast boundary', () => {
         });
         await expect(
           wallet.sendAndSaveEthTransaction(
-            { chainId: 1, from: 'payer-a' },
+            { chainId: 1, from: 'payer-a', nonce: 7 },
             false,
             undefined,
             undefined,
-            { expectedContext, authorizeDapp: () => undefined }
+            {
+              expectedContext,
+              authorizeDapp: () => undefined,
+              dappNonceApproval: { nonce: 7, source: 'automatic' },
+            }
           )
         ).rejects.toMatchObject({
           message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
@@ -488,20 +560,28 @@ describe('infrastructure transaction broadcast boundary', () => {
     );
 
     it('sets the approved chain and sender without mutating the caller transaction', async () => {
-      const params = { value: '0x1' };
+      const params = { value: '0x1', nonce: 7 };
       await wallet.sendAndSaveEthTransaction(
         params,
         false,
         undefined,
         undefined,
-        { expectedContext, authorizeDapp: () => undefined }
+        {
+          expectedContext,
+          authorizeDapp: () => undefined,
+          dappNonceApproval: { nonce: 7, source: 'automatic' },
+        }
       );
       expect(send).toHaveBeenCalledWith(
-        { chainId: 1, from: 'payer-a', value: '0x1' },
+        { chainId: 1, from: 'payer-a', value: '0x1', nonce: 7 },
         false,
-        specialized
+        expect.objectContaining({
+          mode: 'specialized',
+          assertCurrent: expect.any(Function),
+          walletNonce: { nonce: 7, source: 'automatic' },
+        })
       );
-      expect(params).toEqual({ value: '0x1' });
+      expect(params).toEqual({ value: '0x1', nonce: 7 });
     });
 
     it.each([{ chainId: 2 }, { from: 'payer-b' }])(
@@ -509,11 +589,15 @@ describe('infrastructure transaction broadcast boundary', () => {
       async (params) => {
         await expect(
           wallet.sendAndSaveEthTransaction(
-            params,
+            { ...params, nonce: 7 },
             false,
             undefined,
             undefined,
-            { expectedContext, authorizeDapp: () => undefined }
+            {
+              expectedContext,
+              authorizeDapp: () => undefined,
+              dappNonceApproval: { nonce: 7, source: 'automatic' },
+            }
           )
         ).rejects.toMatchObject({ transactionNotBroadcast: true });
         expect(send).not.toHaveBeenCalled();
@@ -527,11 +611,15 @@ describe('infrastructure transaction broadcast boundary', () => {
       });
       await expect(
         wallet.sendAndSaveEthTransaction(
-          { chainId: 1 },
+          { chainId: 1, nonce: 7 },
           false,
           undefined,
           undefined,
-          { expectedContext, authorizeDapp: () => undefined }
+          {
+            expectedContext,
+            authorizeDapp: () => undefined,
+            dappNonceApproval: { nonce: 7, source: 'automatic' },
+          }
         )
       ).rejects.toMatchObject({
         message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
