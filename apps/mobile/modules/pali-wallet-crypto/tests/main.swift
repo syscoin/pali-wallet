@@ -37,6 +37,17 @@ for value in fixtures["aes"] as! [[String: Any]] {
   catch PaliCryptoFailure.invalidInput { cases += 1 }
 }
 check(hex(try PaliCryptoPrimitives.digest(Data("abc".utf8))) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"); cases += 1
+for value in fixtures["hmacSha512"] as! [[String: Any]] {
+  let result = try PaliCryptoPrimitives.signHmacSha512(
+    fromHex(value["keyHex"] as! String), fromHex(value["dataHex"] as! String))
+  check(hex(result) == value["expectedHex"] as! String); cases += 1
+}
+do { _ = try PaliCryptoPrimitives.signHmacSha512(Data(), Data()); check(false) }
+catch PaliCryptoFailure.invalidInput { cases += 1 }
+do { _ = try PaliCryptoPrimitives.signHmacSha512(Data(repeating: 1, count: 4_097), Data()); check(false) }
+catch PaliCryptoFailure.invalidInput { cases += 1 }
+do { _ = try PaliCryptoPrimitives.signHmacSha512(Data([1]), Data(repeating: 1, count: 1_048_577)); check(false) }
+catch PaliCryptoFailure.invalidInput { cases += 1 }
 let backup = Data(repeating: 0x37, count: 8 * 1024 * 1024)
 let backupCiphertext = try PaliCryptoPrimitives.encrypt(Data(repeating: 0, count: 32), Data(repeating: 0, count: 12), Data(repeating: 0x21, count: 64), backup)
 check(backupCiphertext.count == backup.count + 16); cases += 1

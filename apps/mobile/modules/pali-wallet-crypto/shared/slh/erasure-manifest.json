@@ -1,0 +1,150 @@
+{
+  "files": [
+    {
+      "file": "sha2_offsets.h",
+      "annotations": 0,
+      "sha256": "fbbece33219c2fcc4c76616ea779fbec1a977715a9fc0ac2c9c1b61c2e902f76"
+    },
+    {
+      "file": "utils.h",
+      "annotations": 0,
+      "sha256": "06d3eaf20944104873d9e143dce2c049719d4aff4a5073c70551bed79c5fa314"
+    },
+    {
+      "file": "fors.c",
+      "annotations": 9,
+      "sha256": "44e185024b91c3bd2d5a1fac65eefbc95d8a7886ba1b0e16415db9be7b37efba"
+    },
+    {
+      "file": "sha2.c",
+      "annotations": 67,
+      "sha256": "df59ad1e75c711d32ffcdc9eb9afdf526e99e0648be7551681d7b34670b07a9b"
+    },
+    {
+      "file": "params.h",
+      "annotations": 0,
+      "sha256": "35e262c1f61043e65a6376ac5e34635bc98a9a30413335e137b7138f8f9c3f9c"
+    },
+    {
+      "file": "utilsx1.c",
+      "annotations": 1,
+      "sha256": "4989e17d5a14136028dd2963033c044dc7d52d69137b7dc6a164feb5f0c22cd8"
+    },
+    {
+      "file": "merkle.h",
+      "annotations": 0,
+      "sha256": "2f704262633f56514218bb79798079102e50393879520c9d05b2bf77005ce23f"
+    },
+    {
+      "file": "randombytes.h",
+      "annotations": 0,
+      "sha256": "cb0022583e425fcf2cbb9227519893e336d194b04e7d8083c4ed6c60dbbfd7e4"
+    },
+    {
+      "file": "wots.c",
+      "annotations": 2,
+      "sha256": "e9b643c17caa998b2e754b0f5e88d2a0ad289359ecdf0005d4db55d71418257b"
+    },
+    {
+      "file": "address.h",
+      "annotations": 0,
+      "sha256": "86b33648b11e72d09c21e4b478881f5e6aaf6770ef47a29df6fd7d424aaa4a88"
+    },
+    {
+      "file": "wotsx1.c",
+      "annotations": 1,
+      "sha256": "876a87588a55b896f28bc4e41a59a7199729002d58d7391aa2d18dbef1ecd80c"
+    },
+    {
+      "file": "context.h",
+      "annotations": 0,
+      "sha256": "6953afd8e8d45fab9f47bf8beeac549fdb45aeb02c2d2e263c1304b3d11ccc85"
+    },
+    {
+      "file": "hash_sha2.c",
+      "annotations": 9,
+      "sha256": "9a57fe8f4ce3929055e6020c3ef01721e716d978320d0efae96b4bfcf855a3e0"
+    },
+    {
+      "file": "sign.c",
+      "annotations": 16,
+      "sha256": "264c764d22dc5e6803dcf1d6aa7a32d451012fb5bf74fa32c693e6c4a933dbaa"
+    },
+    {
+      "file": "thash_sha2_simple.c",
+      "annotations": 6,
+      "sha256": "0b2b8d7a7020accabb583b2c3f3955aa36113d88f393730b450f8d846ca7ad80"
+    },
+    {
+      "file": "api.h",
+      "annotations": 0,
+      "sha256": "a0c7abd648a4a695ff031f034a68e431559338c37890b428f21ce3fd91314636"
+    },
+    {
+      "file": "fors.h",
+      "annotations": 0,
+      "sha256": "349cbe538ae0c6510b8ceeb9685e40b226a7386ce2e2454c3269c354cb42f2a5"
+    },
+    {
+      "file": "sha2.h",
+      "annotations": 0,
+      "sha256": "c5b7768e75d52c68111b3cdf3e1b192d52bccb85e0ba9fa0ac2437bc3f427f83"
+    },
+    {
+      "file": "utils.c",
+      "annotations": 3,
+      "sha256": "b67d80d4afd048fd10cd852666ca52b20c2c735dd11eacdf6c1c5eba9a823b14"
+    },
+    {
+      "file": "main.c",
+      "annotations": 0,
+      "sha256": "4f69f6dd82d3b7bcb20ebf2704dba350a1e2592e8b7d2ad0de8ade6362703f99"
+    },
+    {
+      "file": "merkle.c",
+      "annotations": 3,
+      "sha256": "9920f34c6e95c0353ad3994b4fa42df8a09a3653cc1d4805de1280aeede4f52f"
+    },
+    {
+      "file": "randombytes.c",
+      "annotations": 0,
+      "sha256": "1a90ce693874fb9d7f43e26c6a3c16514db45ab2eba534809e4caa2ee72f54dc"
+    },
+    {
+      "file": "thash.h",
+      "annotations": 0,
+      "sha256": "9a81d94591cb7d97606b0927525e59994b70b0043301f47861f98570d9e3cec2"
+    },
+    {
+      "file": "utilsx1.h",
+      "annotations": 0,
+      "sha256": "1df02869660b96a0e79205bfa6bf09b999392c42aeb5469f64b565cd5cdef752"
+    },
+    {
+      "file": "wotsx1.h",
+      "annotations": 0,
+      "sha256": "fdf5431c896cba8814fb5a682df259ba5267d0643e726469801ee9f33810a024"
+    },
+    {
+      "file": "address.c",
+      "annotations": 0,
+      "sha256": "e07ecc87e564db0f2055b761d9b9a56edec7cb7508e3410117e857f4e4e5a5aa"
+    },
+    {
+      "file": "wots.h",
+      "annotations": 0,
+      "sha256": "18a7c81e8006bef01e33e2894f51f3d54583f43c29a631691cbb1e1c46674655"
+    },
+    {
+      "file": "hash.h",
+      "annotations": 0,
+      "sha256": "2b09886addb6b9628e645d0054bc06ff1eb418f59a778c8a4b741b7184a6b1bd"
+    },
+    {
+      "file": "slhdsa_emscripten_wrapper.c",
+      "annotations": 28,
+      "sha256": "06f0b89b160a2ded31095f8eec870cc1ca2a130473354d96fee836d58578071c"
+    }
+  ],
+  "patchSha256": "353e42bd1af2b19352df68cbba42336a6a52c09d91a5c4530cb8707338424947"
+}

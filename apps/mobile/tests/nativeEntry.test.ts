@@ -15,7 +15,8 @@ const { decodeNativeReport, assertFullNativeReport } = createRequire(import.meta
 const { importedEvidence } = createRequire(import.meta.url)('../qualification/imported-report-fixture.cjs');
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
-const sdkVersion = createRequire(import.meta.url)('../package.json').dependencies['@sidhujag/sysweb3-keyring'];
+const { readQualificationSdkPin } = createRequire(import.meta.url)('../scripts/qualification-sdk.cjs');
+const sdkVersion = readQualificationSdkPin(root).identity;
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',
@@ -97,8 +98,11 @@ const old = { getRandomValues() { throw Error('OLD_CRYPTO'); } };
 Object.defineProperty(globalThis, 'crypto', { value: old, configurable: true });
 let calls = 0;
 const installed = { getRandomValues(value) { calls++; value.fill(0x42); return value; } };
-const eager = process.env.PALI_ORDER_PROBE === 'eager';
-let bip39 = eager ? require('bip39') : undefined;
+const mode = process.env.PALI_ORDER_PROBE;
+const eager = mode !== 'gated';
+// The qualification Merkle entry loads this exact ESM graph before BIP39.
+if (mode === 'eager-merkle') await import('ethers/crypto');
+let bip39 = mode === 'eager' ? require('bip39') : undefined;
 await loadAfterNativeCrypto(async () => {
   await Promise.resolve();
   Object.defineProperty(globalThis, 'crypto', { value: installed, configurable: true });
@@ -112,9 +116,9 @@ if (eager) {
   assert.equal(bip39.mnemonicToEntropy(phrase), '42'.repeat(16));
   assert.equal(calls, 1);
 }
-process.stdout.write(JSON.stringify({ mode: eager ? 'eager' : 'gated', passed: true }));
+process.stdout.write(JSON.stringify({ mode, passed: true }));
 `;
-for (const mode of ['eager', 'gated']) {
+for (const mode of ['eager', 'eager-merkle', 'gated']) {
   test(`real BIP39/noble browser branch demonstrates ${mode} module capture`, () => {
     const child = spawnSync(
       process.execPath,
@@ -130,6 +134,13 @@ for (const mode of ['eager', 'gated']) {
     assert.deepEqual(JSON.parse(child.stdout), { mode, passed: true });
   });
 }
+
+test('qualification observes entropy before the public Merkle dependency graph loads', () => {
+  const source = readFileSync(new NodeURL('../qualification/index.tsx', import.meta.url), 'utf8');
+  const observer = source.indexOf('value: observedCrypto');
+  const merkle = source.indexOf("import('../src/crypto/qualificationPublicMerkle.ts')");
+  assert(observer >= 0 && merkle > observer);
+});
 
 test('production and qualification entries cannot eagerly import the wallet graph', () => {
   const entry = readFileSync(
