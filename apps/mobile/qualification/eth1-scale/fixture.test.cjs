@@ -1,13 +1,14 @@
 /* global __dirname */
 const assert = require('node:assert/strict');
+const { execFileSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
-const { mkdtempSync, rmSync, truncateSync, writeFileSync } = require('node:fs');
+const { appendFileSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 const { test } = require('node:test');
 const { Script } = require('node:vm');
 const { ETH1_SCALE, readEth1ScaleSnapshot, readEth1ScaleTranscript, referencePaths } = require('../eth1-scale-input.cjs');
-const { APP, buildOverlay } = require('../prepare-eth1-release-scale.cjs');
+const { APP, BASE, buildOverlay } = require('../prepare-eth1-release-scale.cjs');
 const { PUBLIC_POOL_ANCHOR_READS, PUBLIC_POOL_LEAVES, PUBLIC_POOL_ROOT,
   PUBLIC_POOL_PATH_DIGESTS } = require('../public-pool-contract.ts');
 
@@ -66,12 +67,25 @@ test('the independent bottom-up reference agrees with the existing small smoke r
   assert.deepEqual(proof.pathDigests, PUBLIC_POOL_PATH_DIGESTS);
 });
 
-test('the source-pinned projection keeps the scale budget and clock inside the detached loopback adapter', () => {
-  const root = resolve(__dirname, '../../../..');
-  const projected = buildOverlay(root, { blockTimestampMs: exampleTime });
+test('the source-pinned projection keeps the scale budget and clock inside the detached loopback adapter', (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'pali-eth1-scale-source-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  // The scale builder projects BASE even when the active checkout has moved on.
+  const archive = execFileSync('git', ['archive', BASE, 'apps/mobile'], {
+    cwd: resolve(__dirname, '../../../..'),
+    maxBuffer: 16 * 1024 * 1024,
+  });
+  execFileSync('tar', ['-xf', '-', '-C', root], { input: archive });
+  const project = () => buildOverlay(root, { blockTimestampMs: exampleTime });
+  const projected = project();
   assert.equal(projected.size, 11);
   for (const [name, source] of projected) {
     if (name.endsWith('.cjs')) assert.doesNotThrow(() => new Script(source, { filename: name }));
+    const path = join(root, 'apps/mobile', name);
+    const pinned = readFileSync(path);
+    appendFileSync(path, '\n');
+    assert.throws(project, { message: 'ETH1_SCALE_SOURCE_MISMATCH' }, name);
+    writeFileSync(path, pinned);
   }
   const sync = projected.get('src/privacy/nativePrivacyPoolSync.ts');
   assert.match(sync, /MAX_RESPONSE_BYTES = 16 \* 1024 \* 1024/);
