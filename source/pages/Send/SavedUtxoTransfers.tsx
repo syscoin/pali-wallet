@@ -11,6 +11,7 @@ type Saved = Readonly<{ accepted: boolean; txid: string }>;
 type Review = Readonly<{
   feeSatoshis: string;
   id: string;
+  originalOrigin?: string;
   outputs: readonly SavedUtxoReviewOutput[];
 }>;
 
@@ -86,6 +87,14 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
         {review ? (
           <>
             <p>{t('send.savedUtxo.review')}</p>
+            {review.originalOrigin && (
+              <p>
+                {t('transactions.origin')}{' '}
+                <span className="break-all" dir="ltr">
+                  {review.originalOrigin}
+                </span>
+              </p>
+            )}
             {review.outputs.map((output, index) => (
               <div key={index}>
                 {output.script ? (

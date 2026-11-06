@@ -462,14 +462,46 @@ export class UtxoSignedRecords {
         if (existing.phase === 'pending') projected += 2;
       const fits = () =>
         projected <= UTXO_SIGNED_RECORD_BYTES && count <= MAX_RECORDS;
+      const evicted: string[] = [];
       const retained = before.entries.filter((existing) => {
-        if (fits() || existing.phase !== 'confirmed') return true;
+        if (
+          fits() ||
+          existing.phase !== 'confirmed' ||
+          this.observations.has(existing.key)
+        )
+          return true;
         projected -= JSON.stringify(existing).length + 1;
         count--;
+        evicted.push(existing.key);
         return false;
       });
       if (!fits()) return capacity();
-      if (await this.write(session, before, [...retained, entry])) return;
+      // A status check can acquire the retained row while the manifest is
+      // being encrypted or the host is waiting at its commit boundary.
+      let evictionBlocked = false;
+      const guardedSession: UtxoRecordSession = evicted.length
+        ? {
+            ...session,
+            assertCurrent: () => {
+              guard(session);
+              if (
+                evicted.some((evictedKey) => this.observations.has(evictedKey))
+              ) {
+                evictionBlocked = true;
+                capacity();
+              }
+            },
+          }
+        : session;
+      try {
+        if (await this.write(guardedSession, before, [...retained, entry]))
+          return;
+      } catch (error) {
+        // Native storage may normalize a rejected guard after rolling back.
+        // A failed rollback or uncertain write takes precedence over capacity.
+        if (evictionBlocked && !this.unavailable) return capacity();
+        throw error;
+      }
     }
     throw new Error('UTXO_SIGNED_RECORD_CONFLICT');
   }
@@ -489,7 +521,8 @@ export class UtxoSignedRecords {
     owner: UtxoRecordOwner,
     txid: string,
     phase: Summary['phase'],
-    onlyFrom?: Summary['phase']
+    onlyFrom?: Summary['phase'],
+    observedChunks?: Entry['chunks']
   ) {
     const identity = ownerId(owner),
       key = recordKey(chainKey(owner), txid);
@@ -498,6 +531,16 @@ export class UtxoSignedRecords {
       const match = before.entries.find(
         (entry) => entry.key === key && entry.owner === identity
       );
+      if (
+        observedChunks &&
+        (match?.chunks.length !== observedChunks.length ||
+          !match.chunks.every(
+            (chunk, index) =>
+              chunk.nonce === observedChunks[index]?.nonce &&
+              chunk.ciphertext === observedChunks[index]?.ciphertext
+          ))
+      )
+        throw new Error('UTXO observation changed');
       if (!match) return corrupt();
       if (
         match.phase === phase ||
@@ -699,13 +742,15 @@ export class UtxoSignedRecords {
     });
   }
 
-  /** Explicit same-endpoint observation. Missing or malformed data does not authorize a new spend. */
-  async observe(
+  /** Admit a status read only after authenticating the exact saved record. */
+  async observeRetained(
     session: UtxoRecordSession,
     owner: UtxoRecordOwner,
     txid: string,
-    url: string,
-    fetchTx: () => Promise<unknown>
+    read: (
+      record: UtxoDurableSubmission,
+      assertCurrent: () => void
+    ) => Promise<unknown>
   ): Promise<'confirmed' | 'seen' | 'unknown'> {
     guard(session);
     const key = recordKey(chainKey(owner), txid),
@@ -720,12 +765,14 @@ export class UtxoSignedRecords {
       },
     };
     try {
-      const retained = await this.readExact(observation, owner, txid);
-      if (!retained || retained.url !== url) return 'unknown';
+      const { entries } = await this.load(observation);
+      const match = await this.readMatching(observation, owner, txid, entries);
+      if (!match) return 'unknown';
+      const retained = snapshotUtxoSubmission(match.record);
       guard(observation);
       let response: unknown = null;
       try {
-        response = await fetchTx();
+        response = await read(retained, observation.assertCurrent);
       } catch {
         // A failed network read cannot keep an older confirmation eligible for eviction.
       }
@@ -754,7 +801,8 @@ export class UtxoSignedRecords {
           confirmed ? 'confirmed' : matches ? 'submitted' : 'pending',
           // An unverified observation revokes terminal eviction authority.
           // Preserve any earlier submission ACK on an already retained record.
-          matches ? undefined : 'confirmed'
+          matches ? undefined : 'confirmed',
+          match.entry.chunks
         )
       );
       return confirmed ? 'confirmed' : matches ? 'seen' : 'unknown';

@@ -346,6 +346,14 @@ export function NativeUtxoSendScreen({
                     <Text>{units(recipient.amountSatoshis)}</Text>
                   </>
                 )}
+                {review.retryProviderOrigin && (
+                  <>
+                    <Text style={styles.muted}>Original provider</Text>
+                    <Text selectable style={s.address}>
+                      {review.retryProviderOrigin}
+                    </Text>
+                  </>
+                )}
                 <Text style={styles.muted}>Network fee</Text>
                 <Text testID="native-utxo-fee">
                   {units(review.feeSatoshis)}

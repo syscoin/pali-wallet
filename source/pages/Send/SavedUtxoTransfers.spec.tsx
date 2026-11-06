@@ -23,6 +23,7 @@ it('separates exact saved asset amounts, native funding and transaction data bef
       return {
         feeSatoshis: '1000',
         id: 'review',
+        originalOrigin: 'https://original.invalid',
         outputs: [
           {
             address: 'sys1qpublicrecipient',
@@ -57,6 +58,8 @@ it('separates exact saved asset amounts, native funding and transaction data bef
     )
   ).toBeVisible();
   expect(screen.getAllByText('0.00000546 SYS')).toHaveLength(2);
+  expect(screen.getByText('https://original.invalid')).toBeVisible();
+  expect(screen.getByText(/transactions.origin/)).toBeVisible();
   const data = screen.getByText('transactions.opReturnData');
   expect(data.closest('details')).not.toHaveAttribute('open');
   fireEvent.click(data);

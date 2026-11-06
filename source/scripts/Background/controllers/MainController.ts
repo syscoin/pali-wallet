@@ -96,11 +96,16 @@ import {
   utxoSubmissionUrl,
 } from '../../../wallet/utxoSignedBinding';
 import {
+  snapshotUtxoSubmission,
   UTXO_SIGNED_RECORD_PREFIX,
   type UtxoDurableSubmission,
   type UtxoSignedRecords,
 } from '../../../wallet/utxoSignedRecords';
-import { submitReviewedUtxo } from '../../../wallet/utxoSubmission';
+import {
+  observeRetainedUtxo,
+  submitRetainedUtxo,
+  submitReviewedUtxo,
+} from '../../../wallet/utxoSubmission';
 import { checkForUpdates } from '../handlers/handlePaliUpdates';
 import { getLedgerHost } from '../ledgerHost';
 import {
@@ -236,6 +241,7 @@ import { getNetworkChain } from 'utils/network';
 import {
   networkRegistrationFingerprint,
   resolvePinnedUtxoBackendChain,
+  withPinnedUtxoBackendChain,
 } from 'utils/networkRegistration';
 import { normalizeNftTokenId } from 'utils/nftTokenId';
 import type { IClassicNoteIdentity } from 'utils/privacy/note';
@@ -467,6 +473,17 @@ const fiatNetworkKey = (network: INetwork) =>
     network.slip44,
     network.coingeckoId,
   ]);
+
+function readKeyringVaultState() {
+  const { vault, vaultGlobal } = store.getState();
+  const activeNetwork = withPinnedUtxoBackendChain(
+    vault.activeNetwork,
+    vaultGlobal.networks?.syscoin?.[vault.activeNetwork.chainId]
+  );
+  return activeNetwork === vault.activeNetwork
+    ? vault
+    : { ...vault, activeNetwork };
+}
 
 const UTXO_RETRY_REVIEW_MS = 90_000;
 const retainedCancellationReviewsByWallet = new WeakMap<
@@ -1086,34 +1103,58 @@ class MainController {
     const signing = this.captureUtxoSigningContext();
     const network = store.getState().vault.activeNetwork;
     return this.getRetainedUtxoRecords().list(
-      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      {
+        keyring: signing.keyring,
+        assertCurrent: signing.assertWalletReviewCurrent,
+      },
       this.utxoRecordOwner(network, signing.context.account)
     );
   }
 
   public async checkRetainedUtxoTransfer(txid: string) {
     const signing = this.captureUtxoSigningContext();
-    const network = store.getState().vault.activeNetwork;
+    const { vault, vaultGlobal } = store.getState();
+    const network = vault.activeNetwork;
     const owner = this.utxoRecordOwner(network, signing.context.account);
-    return signing.withRead((read) =>
-      this.getRetainedUtxoRecords().observe(
-        { keyring: signing.keyring, assertCurrent: read.assertCurrent },
+    const backendChain = resolvePinnedUtxoBackendChain(
+      network,
+      vaultGlobal.networks?.syscoin?.[network.chainId]
+    );
+    if (!backendChain)
+      throw new Error('Verify this UTXO network before checking a transfer');
+    const assertCurrent = signing.assertWalletReviewCurrent;
+    return this.withUtxoReadOwner(assertCurrent, (signal) =>
+      observeRetainedUtxo({
+        records: this.getRetainedUtxoRecords(),
+        session: { keyring: signing.keyring, assertCurrent },
         owner,
         txid,
-        utxoSubmissionUrl(network.url),
-        () => syscoinjs.utils.fetchBackendRawTx(network.url, txid, read)
-      )
+        backendChain,
+        signal,
+        async fetch(input, init) {
+          if (typeof input !== 'string' || init?.method !== 'GET')
+            throw new Error('Invalid saved UTXO status request');
+          return withWalletBackend(input, () => {
+            assertCurrent();
+            if (init.signal?.aborted)
+              throw new Error('Saved UTXO status changed');
+            return globalThis.fetch(input, init);
+          });
+        },
+      })
     );
   }
 
   public async prepareRetainedUtxoRetry(txid: string) {
+    if (typeof txid !== 'string' || !/^[0-9a-f]{64}$/.test(txid))
+      throw new Error('Invalid saved transaction ID');
     const signing = this.captureUtxoSigningContext();
     const previous = utxoReviewsByWallet.get(this);
     if (previous) this.cancelRetainedUtxoRetry(previous.id);
     const preparing = { id: crypto.randomUUID() };
     utxoReviewsByWallet.set(this, preparing);
     const network = store.getState().vault.activeNetwork;
-    const record = await this.getRetainedUtxoRecords().readExact(
+    const retained = await this.getRetainedUtxoRecords().readExact(
       {
         keyring: signing.keyring,
         assertCurrent: signing.assertWalletReviewCurrent,
@@ -1124,14 +1165,19 @@ class MainController {
     signing.assertWalletReviewCurrent();
     if (
       utxoReviewsByWallet.get(this) !== preparing ||
-      !record ||
-      record.url !== utxoSubmissionUrl(network.url)
+      !retained ||
+      retained.txid !== txid
     )
       throw new Error('Saved transfer is unavailable on this network');
+    const record = snapshotUtxoSubmission(retained);
     const { networks } = getNetworkConfig(network.slip44, network.currency);
     const addressNetwork =
       network.slip44 === 1 ? networks.testnet : networks.mainnet;
     const outputs = reviewSavedUtxoOutputs(record, addressNetwork);
+    const originalOrigin =
+      record.url === utxoSubmissionUrl(network.url)
+        ? undefined
+        : new URL(record.url).origin;
     const { id } = preparing;
     utxoReviewsByWallet.set(this, {
       id,
@@ -1143,7 +1189,13 @@ class MainController {
         UTXO_RETRY_REVIEW_MS
       ),
     });
-    return { id, txid, feeSatoshis: record.feeSatoshis, outputs };
+    return {
+      id,
+      txid,
+      feeSatoshis: record.feeSatoshis,
+      outputs,
+      originalOrigin,
+    };
   }
 
   public async confirmRetainedUtxoRetry(id: string) {
@@ -1165,15 +1217,14 @@ class MainController {
     const submit = async (markInvoked: () => void) => {
       await this.assertNoSentryCollateralInputs({ txInputs: transaction.ins });
       assertCurrent();
-      return withWalletBackend(signing.context.rpcUrl, () =>
-        submitReviewedUtxo({
+      return withWalletBackend(record.url, () =>
+        submitRetainedUtxo({
           record,
           sender: signing.transactions,
           records: this.getRetainedUtxoRecords(),
           session: { keyring: signing.keyring, assertCurrent },
-          intent: 'replay',
           fetch: (input, init) => {
-            markInvoked();
+            if (init?.method === 'POST') markInvoked();
             return globalThis.fetch(input, init);
           },
         })
@@ -1853,7 +1904,7 @@ class MainController {
         this.captureEvmSignedSubmission(keyring, context),
     });
 
-    keyring.setVaultStateGetter(() => store.getState().vault);
+    keyring.setVaultStateGetter(readKeyringVaultState);
 
     // Note: Session transfer is handled in switchActiveKeyring method
     // to avoid double transfers and ensure proper state management
@@ -8391,7 +8442,6 @@ class MainController {
                 assertCurrent,
               },
               records: this.getRetainedUtxoRecords(),
-              intent: 'initial',
               fetch: (input, init) => {
                 markInvoked();
                 senderInvoked = true;
@@ -8720,7 +8770,7 @@ class MainController {
         txResponse = (await sending) as unknown as IEvmTransactionResponse;
       } finally {
         if (shouldUseTargetAccount) {
-          keyring.setVaultStateGetter(() => store.getState().vault);
+          keyring.setVaultStateGetter(readKeyringVaultState);
         }
       }
 
@@ -8844,7 +8894,7 @@ class MainController {
       return signature;
     } finally {
       if (shouldUseTargetAccount) {
-        keyring.setVaultStateGetter(() => store.getState().vault);
+        keyring.setVaultStateGetter(readKeyringVaultState);
       }
     }
   }
@@ -11676,6 +11726,29 @@ class MainController {
     ) => Promise<T>,
     approvalSignal?: AbortSignal
   ): Promise<T> {
+    return this.withUtxoReadOwner(
+      assertCurrent,
+      (signal) =>
+        withWalletBackend(scope.url, async () => {
+          const read = createOwnedUtxoBlockbookRead(
+            scope,
+            signal,
+            assertCurrent,
+            globalThis.fetch.bind(globalThis)
+          );
+          const result = await operation(read);
+          read.assertCurrent();
+          return result;
+        }),
+      approvalSignal
+    );
+  }
+
+  private async withUtxoReadOwner<T>(
+    assertCurrent: () => void,
+    operation: (signal: AbortSignal) => Promise<T>,
+    approvalSignal?: AbortSignal
+  ): Promise<T> {
     assertCurrent();
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -11683,17 +11756,9 @@ class MainController {
     if (approvalSignal?.aborted) abort();
     (this.activeUtxoReads ??= new Set()).add(controller);
     try {
-      return await withWalletBackend(scope.url, async () => {
-        const read = createOwnedUtxoBlockbookRead(
-          scope,
-          controller.signal,
-          assertCurrent,
-          globalThis.fetch.bind(globalThis)
-        );
-        const result = await operation(read);
-        read.assertCurrent();
-        return result;
-      });
+      const result = await operation(controller.signal);
+      assertCurrent();
+      return result;
     } catch (error) {
       assertCurrent();
       throw error;

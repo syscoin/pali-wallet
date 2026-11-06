@@ -365,7 +365,6 @@ const prepareUtxoRemoval = async () => {
   const send = () =>
     submitReviewedUtxo({
       fetch,
-      intent: 'initial',
       record: transaction,
       records: wallet.getRetainedUtxoRecords(),
       sender,
@@ -425,11 +424,10 @@ it('keeps an inactive UTXO sender while another network in its group has an unre
       },
     });
     await expect(
-      journal.observe(
+      journal.observeRetained(
         c.session,
         c.owner,
         c.transaction.txid,
-        c.transaction.url,
         async () => ({
           txid: c.transaction.txid,
           hex: c.transaction.rawTransaction,
