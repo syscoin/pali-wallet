@@ -10861,10 +10861,10 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-"syscoinjs-lib@file:apps/mobile/vendor/syscoinjs-lib-1.0.280-ff7d6e6.tgz":
-  version "1.0.280"
-  resolved "file:apps/mobile/vendor/syscoinjs-lib-1.0.280-ff7d6e6.tgz#3529d449f7e518956f9da97a5b43109fb6408774"
-  integrity sha512-AHai6fpGS9gt4mlTynuXKUG2mobT58MwJh/gTCZK+8FX/yuwcK5ueg2wxnbHrjL4/9v4+hJ6s3UJB/SCAlJ/pg==
+syscoinjs-lib@2.0.0:
+  version "2.0.0"
+  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-2.0.0.tgz#55294c728718b471ba8cfdfda632264b027ba809"
+  integrity sha512-eS3vBcbWP0MyUwY/8ncqW38WixfaLH1BD7ceknbZQsktbCT1YPuu7zE7fGX2Nuy3lm0yNveljq0mqHEhqcv1tA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"
@@ -10878,13 +10878,13 @@ symbol-tree@^3.2.4:
     eth-object "https://github.com/syscoin/eth-object.git"
     eth-proof "^2.1.6"
     ethers "^6.17.0"
-    syscointx-js "^1.0.128"
+    syscointx-js "2.0.0"
     varuint-bitcoin "^2.0.0"
 
-syscointx-js@^1.0.128, "syscointx-js@file:apps/mobile/vendor/syscointx-js-1.0.128-ae4edfe.tgz":
-  version "1.0.128"
-  resolved "file:apps/mobile/vendor/syscointx-js-1.0.128-ae4edfe.tgz#80f9f83a101bdf0a9bd9716b92401c15c91e4aa4"
-  integrity sha512-4FTUfNaAynOt6l+jf3qnh3gsXGEepassjHjfX2E/3fhX5f87LGUybuEU2ZCC8VV76YX0vgb0cK12sfJ6o4T5lQ==
+syscointx-js@2.0.0:
+  version "2.0.0"
+  resolved "https://registry.npmjs.org/syscointx-js/-/syscointx-js-2.0.0.tgz#6bc594edfe26b018683a1fd783cf0ce7b3753485"
+  integrity sha512-u5ji1uPe1g/UMDMO4PJs1LJy3mu2RC28PvHMqEAuuObfneBBe8R+WIyD8EPUpRejBHNNOgUJLRubj2JG0/5sQw==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     bitcoin-ops "^1.4.1"
