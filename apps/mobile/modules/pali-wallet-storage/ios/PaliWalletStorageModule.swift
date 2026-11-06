@@ -1,6 +1,9 @@
 import ExpoModulesCore
 import Foundation
 import Darwin
+#if os(iOS)
+import UIKit
+#endif
 
 private enum WalletStoragePolicyStage: String {
   case leaseAcquire = "PALI_STORAGE_POLICY_LEASE_ACQUIRE"
@@ -52,6 +55,7 @@ private final class WalletStorageLeaseState: @unchecked Sendable {
 public final class PaliWalletStorageModule: Module {
   #if os(iOS)
   private let noteBackupPickerOwner = PaliNoteBackupPickerOwner()
+  private let publicSnapshots = PaliPublicSnapshotBridge()
   #endif
   private let state = WalletStorageLeaseState.shared
   private let files = FileManager.default
@@ -137,6 +141,62 @@ public final class PaliWalletStorageModule: Module {
   public func definition() -> ModuleDefinition {
     Name("PaliWalletStorage")
     #if os(iOS)
+    Function("preparePublicSnapshot") { (pool: String, serviceOrigin: String) throws -> String in
+      try self.publicSnapshots.prepare { completion in
+        try PaliPublicSnapshotDownloader.shared.prepare(pool: pool, serviceOrigin: serviceOrigin, completion: completion)
+      }
+    }
+    Function("preparePublicSnapshotAnchor") {
+      (endpoint: String, address: String, block: Double, root: String, kind: String, id: Double) throws -> String in
+      let read: PaliPublicSnapshotAnchor.Read
+      switch kind {
+      case "chainId": read = .chainId
+      case "block": read = .block
+      case "nextIndex": read = .nextIndex
+      case "getLastRoot": read = .lastRoot
+      case "levels": read = .levels
+      case "denomination": read = .denomination
+      case "isKnownRoot": read = .knownRoot
+      default: throw PaliPublicSnapshotDownloadError.invalid
+      }
+      guard let blockNumber = Int(exactly: block), let requestId = Int(exactly: id) else {
+        throw PaliPublicSnapshotDownloadError.invalid
+      }
+      let anchor = try PaliPublicSnapshotAnchor(
+        registeredEndpoint: endpoint, poolAddress: address, blockNumber: blockNumber, root: root
+      )
+      return try self.publicSnapshots.prepare { completion in
+        try PaliPublicSnapshotDownloader.shared.prepareAnchor(anchor, read: read, id: requestId, completion: completion)
+      }
+    }
+    AsyncFunction("startPublicSnapshot") { (token: String, promise: Promise) in
+      MainActor.assumeIsolated {
+        guard UIApplication.shared.applicationState == .active else {
+          promise.reject(PaliPublicSnapshotDownloadError.cancelled.rawValue, "Public snapshot unavailable")
+          return
+        }
+        do {
+          try self.publicSnapshots.start(token) { result in
+            switch result {
+            case .success(let info): promise.resolve(["status": info.status, "byteCount": info.byteCount])
+            case .failure(let error): promise.reject(error.rawValue, "Public snapshot unavailable")
+            }
+          }
+        } catch {
+          promise.reject((error as? PaliPublicSnapshotDownloadError ?? .unavailable).rawValue, "Public snapshot unavailable")
+        }
+      }
+    }.runOnQueue(.main)
+    AsyncFunction("pullPublicSnapshot") { (token: String) throws -> Data? in
+      try self.publicSnapshots.pull(token)
+    }
+    AsyncFunction("releasePublicSnapshot") { (token: String, promise: Promise) in
+      do { try self.publicSnapshots.release(token) { promise.resolve(nil) } }
+      catch {
+        promise.reject((error as? PaliPublicSnapshotDownloadError ?? .unavailable).rawValue, "Public snapshot unavailable")
+      }
+    }
+    OnAppEntersBackground { self.publicSnapshots.cancelActive() }
     AsyncFunction("pickEncryptedNoteBackup") { (promise: Promise) in
       MainActor.assumeIsolated {
         PaliNoteBackupPicker.shared.pick(owner: self.noteBackupPickerOwner,
@@ -160,6 +220,7 @@ public final class PaliWalletStorageModule: Module {
       }
     }.runOnQueue(.main)
     OnDestroy {
+      self.publicSnapshots.close()
       let owner = self.noteBackupPickerOwner
       owner.retire()
       DispatchQueue.main.async { PaliNoteBackupPicker.shared.invalidate(owner: owner) }

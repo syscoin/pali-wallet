@@ -15,7 +15,8 @@ const { decodeNativeReport, assertFullNativeReport } = createRequire(import.meta
 const { importedEvidence } = createRequire(import.meta.url)('../qualification/imported-report-fixture.cjs');
 
 const root = fileURLToPath(new NodeURL('../', import.meta.url));
-const sdkVersion = createRequire(import.meta.url)('../package.json').dependencies['@sidhujag/sysweb3-keyring'];
+const { readQualificationSdkPin } = createRequire(import.meta.url)('../scripts/qualification-sdk.cjs');
+const sdkVersion = readQualificationSdkPin(root).identity;
 const erc20Evidence = (phase = 'create') => ({
   nativeErc20Verified: true, erc20AccountId: 'hd:60:2', erc20AccountIndex: 2,
   erc20Address: '0xb6716976A3ebe8D39aCEB04372f22Ff8e6802D7A',

@@ -10,7 +10,7 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { createCommandRunner } = require('./command-runner.cjs');
-const { createHttpFixture, ROUTES, HELD_ROUTES } = require('./http-server.cjs');
+const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
 const { startHttpCompanion, assertAudit } = require('./http-companion.cjs');
 const { qualifyNativeHttp } = require('./http-native.ts');
 const { qualifyNativePost } = require('./post-native.ts');
@@ -71,7 +71,7 @@ function cookieControl() {
 test('actual loopback fixture exercises all helper cases and independent server evidence (Node control)', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
-    const value = await qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+    const value = await qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch: { port: fixture.port, token: expected.token }, build,
       walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
     assertHttpReport(value, expected);
@@ -86,7 +86,7 @@ test('a transport failure after opening the stalled quote cannot prove the produ
       if (url.includes('/quote-stalled/')) throw Error('transport failed before deadline');
       return response;
     };
-    await assert.rejects(qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+    await assert.rejects(qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch: { port: fixture.port, token: expected.token }, build,
       walletFetch, cookieFetch: cookieControl(), phase: 'create', scenario: 'import', platform: 'ios',
       sessionId: report().sessionId, networkCalls: () => 0 }), (error) => error.failedCase === 'quote-stalled-deadline');
     const evidence = fixture.snapshot(expected.token);
@@ -98,7 +98,7 @@ test('a transport failure after opening the stalled quote cannot prove the produ
 test('redirect-following adapter fails; fixture sees forbidden target rather than claiming privacy', async () => {
   const fixture = await createHttpFixture(); fixture.begin(expected.token);
   try {
-    await assert.rejects(qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+    await assert.rejects(qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch: { port: fixture.port, token: expected.token }, build,
       walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), redirect: 'follow' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 }));
     assert.equal(fixture.snapshot(expected.token).counts.target, 1);
@@ -111,7 +111,7 @@ test('late successful completion after abort cannot be reported as native HTTP q
       if (url.includes('/before?') && init.signal.aborted) return new Response('{"ok":true}');
       throw error;
     });
-    await assert.rejects(qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+    await assert.rejects(qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch: { port: fixture.port, token: expected.token }, build,
       walletFetch, cookieFetch: cookieControl(), phase: 'create', scenario: 'import', platform: 'ios',
       sessionId: report().sessionId, networkCalls: () => 0 }), /HTTP_QUALIFICATION_FAILED/);
     const evidence = fixture.snapshot(expected.token);
@@ -138,7 +138,7 @@ for (const [name, chunks, complete, passes] of [
         init.signal.addEventListener('abort', () => { try { controller.error(Error('cancelled')); } catch { /* Already closed. */ } }, { once: true });
       } }), { status: 200 });
     };
-    const operation = qualifyNativeHttp({ launch: { port: fixture.port, token: expected.token }, build,
+    const operation = qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch: { port: fixture.port, token: expected.token }, build,
       walletFetch, cookieFetch: cookieControl(), phase: 'create', scenario: 'import', platform: 'ios',
       sessionId: report().sessionId, networkCalls: () => 0 });
     if (passes) { await operation; assertAudit(fixture.snapshot(expected.token), expected.token, fixture.port); }
@@ -313,7 +313,7 @@ test('real child IPC, same-source sidecar, server audit and shutdown compose wit
     const suffix = new URLSearchParams(await companion.begin('create', 'import'));
     const launch = httpLaunch(suffix.get('httpPort'), suffix.get('httpToken'));
     endpoint = `http://127.0.0.1:${launch.port}/${launch.token}/exact?q=exact`;
-    const value = await qualifyNativeHttp({ launch, build: { ...build,
+    const value = await qualifyNativeHttp({ snapshotTransport: snapshotFixtureControl, launch, build: { ...build,
       lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex') },
       walletFetch: (url, init) => fetch(url, { ...init, headers: paliHttpHeaders(init.headers), credentials: 'omit', redirect: 'error' }), cookieFetch: cookieControl(),
       phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId, networkCalls: () => 0 });
@@ -353,11 +353,13 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pali-http-config-'));
   const originalApp = readFileSync(require.resolve('../app.json'));
   try {
+    const keyringVersion = '3.9.7';
     fs.mkdirSync(path.join(root, 'scripts'));
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
-    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] }));
-    fs.copyFileSync(require.resolve('../scripts/configure-native-qualification.cjs'), path.join(root, 'scripts/configure-native-qualification.cjs'));
-    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': JSON.parse(fs.readFileSync(require.resolve('../package.json'))).dependencies['@sidhujag/sysweb3-keyring'] } }));
+    fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
+    for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
+      fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
+    fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ main: 'index.ts', dependencies: { '@sidhujag/sysweb3-keyring': keyringVersion } }));
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'app.json'), originalApp);
     fs.writeFileSync(path.join(root, 'index.ts'), 'public production entry');

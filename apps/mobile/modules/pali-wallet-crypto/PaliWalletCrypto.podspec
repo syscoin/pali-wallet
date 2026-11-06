@@ -15,8 +15,9 @@ Pod::Spec.new do |s|
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
   s.frameworks = 'CryptoKit', 'Security'
-  s.source_files = 'ios/*.{swift,h,m}', 'shared/mimc_batch.{h,c}'
-  s.public_header_files = 'shared/mimc_batch.h'
-  s.preserve_paths = 'shared/*.inc', 'shared/FIAT-*', 'shared/PROVENANCE.md'
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  s.source_files = 'ios/*.{swift,h,m}', 'shared/mimc_batch.{h,c}', 'shared/slh/*.{h,c}'
+  s.public_header_files = 'shared/mimc_batch.h', 'shared/slh/pali_slh_native.h'
+  s.preserve_paths = 'shared/*.inc', 'shared/FIAT-*', 'shared/PROVENANCE.md',
+    'shared/slh/*.json', 'shared/slh/*.patch', 'shared/slh/LICENSE.upstream', 'shared/slh/licenses/*'
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'CLANG_C_LANGUAGE_STANDARD' => 'c11' }
 end

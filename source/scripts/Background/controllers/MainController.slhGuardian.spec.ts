@@ -39,6 +39,7 @@ import {
   SLH_DSA_PARAMETER_SET,
   SLH_DSA_SIGNATURE_LENGTH,
   clearRuntimeSLHDSAStates,
+  getSLHDSASessionGeneration,
   createSLHDSAProvisionedState,
   getSLHDSAKeyId,
   getSLHDSAStateStorageKey,
@@ -152,11 +153,13 @@ describe('non-active SLH smart guardian signer hydration', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     await saveEncryptedSLHDSAState(
       provisioned(GUARDIAN_KEY, GUARDIAN_ID, 7),
-      stateCrypto
+      stateCrypto,
+      () => undefined
     );
     await saveEncryptedSLHDSAState(
       provisioned(OTHER_KEY, OTHER_ID, 29),
-      stateCrypto
+      stateCrypto,
+      () => undefined
     );
     jest.mocked(signSLHDSAInOffscreen).mockResolvedValue(SIGNATURE);
   });
@@ -175,7 +178,10 @@ describe('non-active SLH smart guardian signer hydration', () => {
     'signs the explicit guardian rather than the selected account (%s)',
     async (cacheStatus) => {
       if (cacheStatus === 'warm') {
-        putRuntimeSLHDSAState(provisioned(GUARDIAN_KEY, GUARDIAN_ID, 7));
+        putRuntimeSLHDSAState(
+          provisioned(GUARDIAN_KEY, GUARDIAN_ID, 7),
+          getSLHDSASessionGeneration()
+        );
       } else {
         // Lock clears runtime state, but must retain encrypted durable state.
         clearRuntimeSLHDSAStates();
@@ -193,10 +199,12 @@ describe('non-active SLH smart guardian signer hydration', () => {
       const guardian = await loadEncryptedSLHDSAState({
         crypto: stateCrypto,
         keyId: getSLHDSAKeyId(GUARDIAN_KEY),
+        assertOwner: () => undefined,
       });
       const other = await loadEncryptedSLHDSAState({
         crypto: stateCrypto,
         keyId: getSLHDSAKeyId(OTHER_KEY),
+        assertOwner: () => undefined,
       });
       expect(guardian?.signatureCount).toBe(8);
       expect(other?.signatureCount).toBe(29);
@@ -243,6 +251,7 @@ describe('non-active SLH smart guardian signer hydration', () => {
     const state = await loadEncryptedSLHDSAState({
       crypto: stateCrypto,
       keyId: params().keyId,
+      assertOwner: () => undefined,
     });
     expect(state?.signatureCount).toBe(8);
   });

@@ -3,6 +3,7 @@ import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
+import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
@@ -77,11 +78,11 @@ function fixture() {
       return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
-    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: (approvedBytes: string) => Promise<unknown>, intent?: Erc20TransferIntent) {
+    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: EvmSignedBroadcast<string>, intent?: Erc20TransferIntent) {
       const journal = await runtime.journal(guard);
       try { await journal.saveSigned(rawTransaction,intent); guard(); }
       catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
-      await broadcast(rawTransaction);
+      await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
     },
     async token(contractAddress: string, guard: () => void) {
       guard();

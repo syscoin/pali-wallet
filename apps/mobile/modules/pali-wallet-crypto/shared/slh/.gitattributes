@@ -1,0 +1,11 @@
+# Preserve the pinned upstream bytes and the overlay's unified-diff context.
+LICENSE.upstream whitespace=-blank-at-eof
+licenses/*.txt whitespace=-blank-at-eof
+erasure.patch whitespace=-blank-at-eol
+address.c whitespace=-blank-at-eol
+hash_sha2.c whitespace=-blank-at-eof
+sha2.c whitespace=-blank-at-eol
+sha2_offsets.h whitespace=-blank-at-eol
+slhdsa_emscripten_wrapper.c whitespace=-blank-at-eof
+utils.h whitespace=-blank-at-eol
+wotsx1.h whitespace=-blank-at-eol

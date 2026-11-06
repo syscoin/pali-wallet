@@ -1,5 +1,5 @@
 import { Transaction } from 'ethers/transaction';
-import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
@@ -81,7 +81,7 @@ export interface NativeTransferRuntime {
     rawTransaction: string,
     hash: string,
     assertCurrent: () => void,
-    broadcast: (approvedBytes: string) => Promise<unknown>,
+    broadcast: EvmSignedBroadcast<string>,
     intent: Erc20TransferIntent | undefined,
     approved: PreparedEvmTransaction,
     cancellation?: NativeCancellationApproval
@@ -732,24 +732,26 @@ export class NativeTransfers {
         message: null,
       });
       try {
-        const beforeBroadcast = (): undefined => {
-          guard();
-          startedSubmission = true;
-        };
         await runtime.submit(
           rawTransaction,
           transactionHash,
           guard,
-          (approvedBytes) =>
-            rpc.broadcast(approvedBytes, transactionHash, signal, approved.cancellation ? {
+          ({ rawTransaction: approvedBytes, admit }) => {
+            const atDispatch: typeof admit = (send, preflight) => admit(() => {
+              guard();
+              startedSubmission = true;
+              return send();
+            }, preflight);
+            return rpc.broadcast(approvedBytes, transactionHash, signal, approved.cancellation ? {
               mode: 'cancel',
               original: approved.cancellation.original,
-              beforeBroadcast,
+              admit: atDispatch,
             } : {
               mode: 'new-send',
               intent: approved.public.intent,
-              beforeBroadcast,
-            }),
+              admit: atDispatch,
+            });
+          },
           approved.public.intent,
           approved.transaction!,
           approved.cancellation

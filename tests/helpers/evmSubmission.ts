@@ -7,6 +7,10 @@ export function createTestEvmSubmissionCapture() {
   const retained = new Map<string, EvmSignedSubmission>();
   return (): EvmSubmissionLifecycle => ({
     assertCurrent: () => undefined,
+    dispatchSigned: async (_record, initiate, preflight) => {
+      await preflight();
+      return initiate();
+    },
     async persistSigned(record) {
       retained.set(record.hash, record);
     },

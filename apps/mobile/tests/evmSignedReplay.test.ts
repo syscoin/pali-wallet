@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { Wallet, Transaction } from 'ethers';
+import { Wallet, Transaction, sha256 } from 'ethers';
+import type { EvmSignedSubmission } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import {
   EvmSignedReplay,
   observeRetainedEvmTransaction,
 } from '../../../source/wallet/evmSignedReplay.ts';
 import { observeEvmTransaction } from '../../../source/shared/evmTransactionObservation.ts';
-import { signedRecordTestSession } from './signedRecordTestSession.ts';
+import { historicalSignedBundle, signedRecordTestSession } from './signedRecordTestSession.ts';
 const wallet = new Wallet('0x' + '11'.repeat(32));
 const recipient = '0x' + '22'.repeat(20),
   blockHash = '0x' + '33'.repeat(32);
@@ -109,6 +110,8 @@ async function fixture() {
       fee?: number;
       value?: number;
       chainId?: number;
+      gasLimit?: number;
+      historical?: true;
     } = {}
   ) {
     const { operation = 'send', originalHash, fee = 3, chainId = 7654321 } = options;
@@ -118,7 +121,7 @@ async function fixture() {
       nonce: n,
       to: operation === 'cancel' ? wallet.address : to,
       value: options.value ?? (operation === 'cancel' ? 0 : 1),
-      gasLimit: operation === 'cancel' ? 42000 : 100000,
+      gasLimit: options.gasLimit ?? (operation === 'cancel' ? 42000 : 100000),
       ...(type === 2
         ? { maxFeePerGas: fee, maxPriorityFeePerGas: 1 }
         : { gasPrice: fee }),
@@ -132,7 +135,7 @@ async function fixture() {
         : {}),
     });
     const tx = Transaction.from(bytes);
-    await records.append(session, {
+    const signed: EvmSignedSubmission = {
       rawTransaction: bytes,
       hash: tx.hash!,
       from: wallet.address,
@@ -140,7 +143,29 @@ async function fixture() {
       nonce: n,
       type,
       context: { ...context, network: { ...context.network, chainId }, operation, ...(originalHash ? { originalHash } : {}) },
-    });
+    };
+    if (options.historical) {
+      assert(raw);
+      const bundle = JSON.parse(raw);
+      const { entries: [historical] } = JSON.parse(await historicalSignedBundle(session, bytes, 'signed'));
+      const { chunks, ...summary } = historical;
+      const entries = [...bundle.entries, { ...summary, operation, ...(originalHash ? { originalHash } : {}), chunks }];
+      const revision = bundle.revision + 1;
+      const root = await session.keyring.encryptPrivateRecord({
+        domain: bundle.root.domain,
+        recordId: bundle.root.recordId,
+        plaintext: new TextEncoder().encode(JSON.stringify({
+          version: 1, revision, transactions: entries.length,
+          entriesHash: sha256(new TextEncoder().encode(JSON.stringify(entries))),
+        })),
+      });
+      raw = JSON.stringify({ ...bundle, revision, root, entries });
+    } else {
+      const binding = operation === 'send' ? undefined : await records.captureVerifiedReplacement(session, {
+        chainId: String(chainId), from: wallet.address, nonce: n, operation, originalHash: originalHash!,
+      });
+      await records.append(session, signed, undefined, binding);
+    }
     return tx;
   }
   return {
@@ -456,14 +481,34 @@ test('cancellation cannot be admitted without a late checker', async () => {
   assert.deepEqual(f.dispatched, []);
 });
 
-test('only older payment variants on the same chain and nonce are suppressed', async () => {
+test('Cancel bars payment replay in its own nonce scope, including historical appends after Cancel', async () => {
   const f = await fixture(), original = await f.append(0), replay = f.create();
-  await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
-  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7, chainId: 1 });
+  const witness = (originalHash: string) => f.records.readPendingCancellation(f.session, {
+    chainId: '7654321', from: wallet.address, nonce: 0, originalHash,
+  });
+  await f.append(1, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '44'.repeat(32), fee: 7 });
+  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: '0x' + '55'.repeat(32), fee: 7, chainId: 1 });
+  assert.equal(await witness(original.hash!), null);
   assert.equal((await replay.prepare(original.hash!)).status, 'review');
-  await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
-  const later = await f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 });
-  assert.equal((await replay.prepare(later.hash!)).status, 'review');
+  const cancel = await f.append(0, 2, recipient, '0x', { operation: 'cancel', originalHash: original.hash!, fee: 7 });
+  assert.equal(await witness(cancel.hash!), cancel.serialized);
+  await assert.rejects(witness(original.hash!), /ORIGINAL_CHANGED/);
+  await assert.rejects(f.append(0, 2, recipient, '0x', { operation: 'speed-up', originalHash: original.hash!, fee: 9 }), /ORIGINAL_CHANGED/);
+  const historical = await f.append(0, 2, recipient, '0x', {
+    operation: 'speed-up', originalHash: cancel.hash!, fee: 9, historical: true,
+  });
+  assert.equal((await f.records.readExact(f.session, '7654321', wallet.address, historical.hash!))?.rawTransaction, historical.serialized);
+  await assert.rejects(replay.prepare(historical.hash!), { code: 'CONTEXT_CHANGED' });
+  const reprice = await f.append(0, 2, wallet.address, '0x', {
+    operation: 'speed-up', originalHash: cancel.hash!, fee: 10, value: 0, gasLimit: 42000,
+  });
+  assert.equal(await witness(reprice.hash!), reprice.serialized);
+  await assert.rejects(witness(cancel.hash!), /ORIGINAL_CHANGED/);
+  assert.equal((await replay.prepare(reprice.hash!)).status, 'review');
+  const repeatCancel = await f.append(0, 2, wallet.address, '0x', {
+    operation: 'cancel', originalHash: reprice.hash!, fee: 12, gasLimit: 42000,
+  });
+  assert.equal((await replay.prepare(repeatCancel.hash!)).status, 'review');
   await assert.rejects(replay.prepare(original.hash!), { code: 'CONTEXT_CHANGED' });
 });
 

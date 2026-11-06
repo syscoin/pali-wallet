@@ -55,14 +55,16 @@ test('local projection retains exact money, null creation target and a call hint
   expect(result.confirmations).toBeUndefined();
 });
 
-test('bounded pages append and a focus refresh keeps already loaded older records', async () => {
-  mockEmitter.mockImplementation((_: unknown, [cursor]: any[]) =>
-    Promise.resolve(
+test('bounded pages cross the JSON message boundary and preserve older records on refresh', async () => {
+  mockEmitter.mockImplementation((_: unknown, params: unknown[]) => {
+    const [cursor] = JSON.parse(JSON.stringify(params));
+    if (cursor === null) return Promise.reject(new Error('Invalid cursor'));
+    return Promise.resolve(
       cursor
         ? { transactions: [row('2')], nextCursor: null }
         : { transactions: [row('1')], nextCursor: hash('1') }
-    )
-  );
+    );
+  });
   const { result } = renderHook(() =>
     useSavedEvmTransactions(true, 'a:network')
   );
@@ -70,7 +72,7 @@ test('bounded pages append and a focus refresh keeps already loaded older record
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([hash('1')]);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSavedEvmTransactions'],
-    [undefined, 30]
+    []
   );
   await act(async () => result.current.loadMore());
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
