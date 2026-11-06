@@ -16,9 +16,12 @@ export class EvmCancellationPayerCodeError extends Error {
 export class EvmCancellationNonceError extends Error {
   readonly code = 'EVM_CANCELLATION_NONCE';
 
-  constructor() {
+  readonly reason: 'queued' | 'unavailable';
+
+  constructor(reason: 'queued' | 'unavailable' = 'unavailable') {
     super('Unable to verify a ready cancellation nonce');
     this.name = 'EvmCancellationNonceError';
+    this.reason = reason;
   }
 }
 
@@ -36,8 +39,11 @@ export function assertEvmCancellationNonceReady(
   )
     throw new EvmCancellationNonceError();
   const expected = BigInt(nonce);
-  if (expected >= BigInt(1) << BigInt(256) || BigInt(latestNonce) !== expected)
+  if (expected >= BigInt(1) << BigInt(256))
     throw new EvmCancellationNonceError();
+  const latest = BigInt(latestNonce);
+  if (latest < expected) throw new EvmCancellationNonceError('queued');
+  if (latest !== expected) throw new EvmCancellationNonceError();
 }
 
 function checkCurrent(assertCurrent: () => void): void {
@@ -119,8 +125,12 @@ export async function assertRetainedEvmCancellationReady(
   checkCurrent(assertCurrent);
   // Receipt absence permits an unobserved or pending original. Only the
   // currently executable nonce can be cancelled through this recovery path.
-  if (observed.status !== 'missing' || observed.latestNonce !== expected.nonce)
-    throw new EvmCancellationNonceError();
+  if (observed.status !== 'missing') throw new EvmCancellationNonceError();
+  // Observation validates the latest nonce before returning its decimal form.
+  assertEvmCancellationNonceReady(
+    expected.nonce,
+    `0x${BigInt(observed.latestNonce).toString(16)}`
+  );
   await assertEvmCancellationPayerHasNoCode(
     expected.from,
     (address, tag) => read('eth_getCode', [address, tag]),

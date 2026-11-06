@@ -5,6 +5,7 @@ test.use({ baseURL: 'http://127.0.0.1:4179' });
 test('SYSX appears as an exact read-only balance on the selected Syscoin UTXO account', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?network-portfolio');
+  await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Ethereum balance 1.234 ETH');
   await page.evaluate(() => window.__nativeNetworkPortfolio.select('syscoin'));
   await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Syscoin Mainnet balance 1.234 SYS');
   await expect(page.getByTestId('native-portfolio-sysx')).toHaveText('90071992.54740995 SYSX');
@@ -156,5 +157,64 @@ test('a quote arriving during a press keeps the selected Receive button in place
     await expect(page.getByTestId('native-receive-qr')).toHaveAttribute('aria-label', /QR code for Rollux address/);
   } finally {
     quoteReady.resolve();
+  }
+});
+
+
+// Exercise the actual NativePortfolio with synthetic public account data.
+test('scrolled native wallet opens Receive at its header', async ({ page }, info) => {
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179'
+    ? route.continue() : route.abort('blockedbyclient'));
+  await page.setViewportSize({ width: 320, height: 600 });
+  await page.goto('/?network-portfolio&font-scale=1.6');
+  const receive = page.getByTestId('native-portfolio-receive');
+  await expect(receive).toBeVisible();
+  const scroll = await receive.evaluate((element) => {
+    let parent = element.parentElement;
+    while (parent && !(parent.scrollHeight > parent.clientHeight && /(auto|scroll)/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+    if (!parent) return 0;
+    parent.scrollTop = Math.min(180, parent.scrollHeight - parent.clientHeight);
+    return parent.scrollTop;
+  });
+  expect(scroll).toBeGreaterThan(0);
+  await receive.click();
+  // Capture before any later click or locator scrolls the screen.
+  await page.screenshot({ path: info.outputPath('native-receive-after-scrolled-home.png') });
+  await expect(page.getByRole('heading', { name: 'Receive ETH', exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+});
+
+test('native Receive footer words remain whole at 320px and 1.6 text', async ({ page }, info) => {
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:4179'
+    ? route.continue() : route.abort('blockedbyclient'));
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?network-portfolio&font-scale=1.6');
+  await page.getByTestId('native-portfolio-receive').click();
+  await expect(page.getByTestId('native-receive-copy')).toBeVisible();
+  // RN Web does not apply native font scaling. Scale each computed font and
+  // line-height once by 1.6; this does not establish native text shaping.
+  await page.evaluate(() => {
+    const values = Array.from(document.querySelectorAll<HTMLElement>('[dir="auto"]')).map((element) => {
+      const style = getComputedStyle(element);
+      return { element, font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) };
+    });
+    for (const { element, font, line } of values) {
+      if (Number.isFinite(font)) element.style.setProperty('font-size', `${font * 1.6}px`, 'important');
+      if (Number.isFinite(line)) element.style.setProperty('line-height', `${line * 1.6}px`, 'important');
+    }
+  });
+  await page.screenshot({ path: info.outputPath('native-receive-footer-320-1_6.png') });
+  for (const label of ['Copy address', 'Share address']) {
+    const text = page.getByRole('button', { name: label, exact: true }).getByText(label, { exact: true });
+    const split = await text.evaluate((element) => {
+      const node = element.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) return ['missing text'];
+      return Array.from((node.textContent ?? '').matchAll(/[A-Za-z]+/g)).filter((match) => {
+        const range = document.createRange();
+        range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
+        return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size !== 1;
+      }).map((match) => match[0]);
+    });
+    expect(split, `${label} should not break within a word`).toEqual([]);
   }
 });

@@ -9,6 +9,7 @@ import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { registerRootComponent } from 'expo';
+import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getNativeSendContext,
@@ -33,6 +34,9 @@ import type {
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
 const route = new URLSearchParams(window.location.search);
+// RN Web sets fontScale to 1 and rejects Dimensions.set in a browser. This
+// fixture-only hook sets the dimensions before the actual component mounts.
+if (route.get('font-scale') === '1.6') Dimensions.get('window').fontScale = 1.6;
 const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
 const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
 const collectibleStandard = route.get('collectible');
@@ -100,6 +104,7 @@ const controller: NativeTransferView = {
     });
   },
   async prepareCancellation(hash) {
+    if (route.has('cancel-queued')) throw Error('CANCELLATION_QUEUED');
     publishReview(sender, '0', { mode: 'cancel', originalHash: hash, originalMaximumFeeUnits: '63000' });
   },
   async prepareSavedCancellation(hash) {

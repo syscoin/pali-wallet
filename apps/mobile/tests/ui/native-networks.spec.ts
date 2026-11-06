@@ -317,3 +317,30 @@ test('explains why a selected custom UTXO network cannot be removed', async ({ p
   await expect(page.getByRole('button', { name: 'Remove network', exact: true })).toBeDisabled();
   await expect(page.getByText('Only unused custom UTXO networks can be removed.', { exact: true })).toBeVisible();
 });
+
+test('add network starts with its header in view after scrolling the list', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/?networks=1');
+  const add = page.getByRole('button', { name: 'Add network', exact: true });
+  await add.scrollIntoViewIfNeeded();
+  const before = await add.evaluate(element => {
+    let parent = element.parentElement;
+    while (parent && !(parent.scrollHeight > parent.clientHeight && /(auto|scroll)/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+    if (!parent) throw Error('No scrollable network list fixture');
+    return { top: parent.scrollTop, height: parent.clientHeight, contentHeight: parent.scrollHeight };
+  });
+  expect(before.top).toBeGreaterThan(0);
+  await add.click();
+  // No locator click, focus, scrollIntoView or screenshot before measuring:
+  // those could implicitly scroll the header into view.
+  const result = await page.getByRole('button', { name: 'Back', exact: true }).evaluate(element => {
+    const box = element.getBoundingClientRect();
+    let parent = element.parentElement;
+    while (parent && !(parent.scrollHeight > parent.clientHeight && /(auto|scroll)/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+    return { top: box.top, bottom: box.bottom, viewport: window.innerHeight, scrollTop: parent?.scrollTop ?? 0 };
+  });
+  await test.info().attach('initial-scroll-geometry', { body: JSON.stringify({ before, after: result }), contentType: 'application/json' });
+  await page.screenshot({ path: test.info().outputPath('network-form-after-scrolled-list.png') });
+  expect(result.top, 'form Back should be visible on entry').toBeGreaterThanOrEqual(0);
+  expect(result.bottom).toBeLessThanOrEqual(result.viewport);
+});

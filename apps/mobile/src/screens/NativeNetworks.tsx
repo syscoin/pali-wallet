@@ -292,7 +292,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     !search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search)) ?? [];
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+      <Screen key={form ? 'network-form' : 'network-list'}>
         <Header title={form ? form.utxo ? (form.id ? 'Edit UTXO network' : 'Add UTXO network') : form.id ? 'Edit network' : 'Add network' : 'Networks'} subtitle={form?.utxo && form.id ? undefined : 'Choose a network for this account'} onBack={form ? discardForm : close} />
         {form ? <>
           {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (

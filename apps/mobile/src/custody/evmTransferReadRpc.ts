@@ -248,6 +248,8 @@ export class EvmTransferReadRpc {
         read('eth_getBalance', [from, 'latest']),
         this.feeData(read, sampled, signal),
         verifyPayer.catch((error) => {
+            if (error instanceof EvmCancellationNonceError && error.reason === 'queued')
+              return rejectRead('CANCELLATION_QUEUED');
             if (error instanceof EvmCancellationNonceError || error instanceof EvmCancellationPayerCodeError)
               return rejectRead('REVIEW_REQUIRED');
             throw error;
