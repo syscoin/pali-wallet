@@ -586,9 +586,7 @@ it('keeps every exact MAX refinement on the same explicit fresh-read attempt', a
   const total = BigNumber.from(10).pow(18).mul(100),
     rate = BigNumber.from(3000000000);
   expect(retries.map(([, args]) => args[0].value)).toEqual(
-    [500000, 25200, 36000].map((gas) =>
-      total.sub(rate.mul(gas)).toHexString()
-    )
+    [500000, 25200, 36000].map((gas) => total.sub(rate.mul(gas)).toHexString())
   );
   for (const [, args] of retries) expect(args[1]).toEqual(mockScope);
   expect(mockFreshProviders).toHaveLength(initialReads + 3);
