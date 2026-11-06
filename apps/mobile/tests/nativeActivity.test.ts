@@ -296,6 +296,73 @@ test('cached fallback survives a timed-out page without implicit RPC hydration',
   assert.equal(f.controller.getSnapshot().error, null);
 });
 
+test('Saved pending still pages and inspects after explorer timeout, then retires on lock', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const fixtureRecords = fixture();
+  const first = fixtureRecords.local(2, 'submitted'), older = fixtureRecords.local(1, 'attempted');
+  const explorer = new FakeExplorer(({ signal }) => new Promise((_resolve, reject) => {
+    signal.addEventListener('abort', () => reject(Error('timeout')), { once: true });
+  }));
+  const cursors: (string | undefined)[] = [];
+  const held = deferred<EvmTransactionObservation>();
+  let ownedChecks = 0;
+  const f = fixture({
+    explorer,
+    async loadSavedPending(_scope, beforeHash, guard) {
+      guard();
+      cursors.push(beforeHash);
+      return beforeHash === undefined ? { records: [first], nextCursor: first.hash }
+        : { records: [older], nextCursor: null };
+    },
+    observeLocal: (local) => ++ownedChecks === 1
+      ? Promise.resolve({ status: 'missing', latestNonce: String(local.nonce + 1) })
+      : held.promise,
+  });
+  let detailSignal: AbortSignal | undefined;
+  const observe = f.runtime.observeLocal!;
+  f.runtime.observeLocal = (record, guard, signal) => {
+    detailSignal = signal;
+    return observe(record, guard, signal);
+  };
+  const disconnect = f.controller.connect();
+  try {
+    for (let turn = 0; turn < 20 && explorer.pages.length === 0; turn++) await Promise.resolve();
+    assert.equal(explorer.pages.length, 1);
+    t.mock.timers.tick(30000);
+    for (let turn = 0; turn < 20 && !f.controller.getSnapshot().error; turn++) await Promise.resolve();
+    assert.match(f.controller.getSnapshot().error ?? '', /could not be fully loaded/);
+    assert.equal(explorer.pages[0]?.signal.aborted, true);
+    t.mock.timers.reset();
+
+    await f.controller.loadSavedPending();
+    await f.controller.loadSavedPending();
+    assert.deepEqual(cursors, [undefined, first.hash]);
+    assert.deepEqual(f.controller.getSnapshot().savedPending?.rows.map((row) => row.hash), [first.hash, older.hash]);
+    assert.equal(f.localReads.length, 0);
+    assert.equal(f.receipts.calls.length, 0);
+
+    f.controller.inspect(older.hash);
+    await until(() => f.controller.getSnapshot().savedPending?.rows[1]?.retainedObservation?.status === 'missing');
+    assert.equal(detailSignal?.aborted, false);
+    assert.notEqual(detailSignal, explorer.pages[0]?.signal);
+    assert.equal(explorer.pages.length, 1);
+    assert.equal(f.receipts.calls.length, 0);
+
+    f.controller.inspect(older.hash);
+    await until(() => f.localReads.length === 2);
+    f.source.change({ phase: 'locked', account: null });
+    assert.equal(detailSignal?.aborted, true);
+    assert.equal(f.controller.getSnapshot().canViewSavedPending, false);
+    assert.equal(f.controller.getSnapshot().savedPending, undefined);
+    held.resolve({ status: 'missing', latestNonce: '9' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(f.controller.getSnapshot().savedPending, undefined);
+    assert.equal(f.controller.getSnapshot().status, 'locked');
+  } finally {
+    disconnect();
+  }
+});
+
 test('load-more preserves cursors, deduplicates boundary rows and keeps the saved list position', async () => {
   const explorer = new FakeExplorer(({ feed, page }) => feed === 'tokentx' ? [] : page === 1
     ? Array.from({ length: 20 }, (_, index) => candidate(index + 1)) : [candidate(20), candidate(21)]);

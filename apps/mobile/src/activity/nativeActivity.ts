@@ -126,7 +126,7 @@ type FeedState = {
   error: boolean;
 };
 type SavedPendingPage = {
-  detailLifetime: AbortController;
+  lifetime: AbortController;
   records: Map<string, LocalActivityRecord>;
   cursor: string | null | undefined;
   status: NonNullable<NativeActivitySnapshot['savedPending']>['status'];
@@ -149,6 +149,8 @@ const initial = (): NativeActivitySnapshot =>
     coverage:
       'Direct transactions and ERC20 transfer events from the selected network are included.',
     truncated: false,
+    canViewSavedPending: false,
+    savedPending: undefined,
   });
 
 /** Account-bound read model. Neither network results nor this controller can sign. */
@@ -235,15 +237,19 @@ export class NativeActivity {
     this.request?.abort();
     this.request = null;
     this.scope = null;
-    this.savedPending?.detailLifetime.abort();
+    this.savedPending?.lifetime.abort();
     this.savedPending = undefined;
     this.hydration = [];
     this.checking.clear();
   }
-  private guard(generation: number, revision: number) {
+  private guard(
+    generation: number,
+    revision: number,
+    signal = this.request?.signal
+  ) {
     if (
       generation !== this.generation ||
-      this.request?.signal.aborted ||
+      signal?.aborted ||
       this.source.getSnapshot().phase !== 'ready' ||
       this.source.getSnapshot().revision !== revision
     )
@@ -503,13 +509,14 @@ export class NativeActivity {
   /** Pages only the authenticated local journal. No explorer or receipt reads. */
   async loadSavedPending(): Promise<void> {
     const runtime = this.runtime(), scope = this.scope;
-    const request = this.request;
-    if (!scope || !request || !runtime?.loadSavedPending || request.signal.aborted) return;
+    if (!scope || !runtime?.loadSavedPending) return;
     if (this.savedPending?.status === 'loading' || this.savedPending?.cursor === null) return;
-    const page = this.savedPending ??= { detailLifetime: new AbortController(), records: new Map(), cursor: undefined, status: 'ready' };
+    // An explorer timeout only retires explorer work. The journal still
+    // belongs to this wallet revision and the currently open saved page.
+    const page = this.savedPending ??= { lifetime: new AbortController(), records: new Map(), cursor: undefined, status: 'ready' };
     const generation = this.generation, revision = this.source.getSnapshot().revision;
     const guard = () => {
-      this.guard(generation, revision);
+      this.guard(generation, revision, page.lifetime.signal);
       if (this.savedPending !== page || this.runtime() !== runtime) throw new ActivityError('CANCELLED');
     };
     page.status = 'loading';
@@ -528,7 +535,7 @@ export class NativeActivity {
     this.renderRows();
   }
   closeSavedPending(): void {
-    this.savedPending?.detailLifetime.abort();
+    this.savedPending?.lifetime.abort();
     this.savedPending = undefined;
     this.publish({ savedPending: undefined });
   }
@@ -645,20 +652,20 @@ export class NativeActivity {
       this.workers < 2 &&
       this.hydration.length &&
       this.scope &&
-      this.request &&
-      !this.request.signal.aborted
+      this.request
     ) {
       const detail = this.hydration.shift()!;
       const { hash, page } = detail;
       if (page && page !== this.savedPending) continue;
       const scope = this.scope,
-        signal = page?.detailLifetime.signal ?? this.request.signal,
+        signal = page?.lifetime.signal ?? this.request.signal,
         runtime = this.runtime(),
         generation = this.generation,
         revision = this.source.getSnapshot().revision;
+      if (signal.aborted) continue;
       const guard = () => {
-        this.guard(generation, revision);
-        if (signal.aborted || this.checking.get(hash) !== detail ||
+        this.guard(generation, revision, signal);
+        if (this.checking.get(hash) !== detail ||
             (page && (this.savedPending !== page || this.runtime() !== runtime)))
           throw new ActivityError('CANCELLED');
       };
