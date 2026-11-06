@@ -544,7 +544,11 @@ it.each([
     }));
     render(<EvmTransactionsList userTransactions={mockRows} />);
     expect(await screen.findByText('Pending')).toBeTruthy();
-    expect(screen.getByText(`Options:${local.hash}`)).toBeTruthy();
+    expect(screen.queryByText(`Options:${local.hash}`)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+    expect(mockNavigate).toHaveBeenLastCalledWith('/home/details', {
+      state: expect.objectContaining({ hash: local.hash, tx: local }),
+    });
     fireEvent.click(screen.getByRole('button', { name: 'buttons.loadMore' }));
     await waitFor(() => {
       expect(screen.queryByText('Pending')).toBeNull();

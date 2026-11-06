@@ -61,6 +61,7 @@ let records: any;
 let provider: { _send: jest.Mock; send: jest.Mock };
 let raw: string;
 let entry: any;
+const observed = () => ({ entry, revision: 1 });
 
 beforeAll(async () => {
   raw = await signer.signTransaction({
@@ -131,6 +132,7 @@ beforeEach(() => {
   };
   records = {
     readExact: jest.fn(async () => entry),
+    readForObservation: jest.fn(async () => observed()),
     readPage: jest.fn(async () => ({ entries: [entry], nextCursor: null })),
     withReplayAdmission: jest.fn(
       async (_session, _target, admit, _predecessorNonce, preflight) => {
@@ -142,6 +144,8 @@ beforeEach(() => {
     append: jest.fn(async () => undefined),
     captureVerifiedReplacement: jest.fn(async () => undefined),
     updatePhase: jest.fn(async () => undefined),
+    updateObservedPhase: jest.fn(async () => undefined),
+    reconcileMinedCancellation: jest.fn(async () => undefined),
   };
   provider = {
     _send: jest.fn(async ({ id }) => [{ jsonrpc: '2.0', id, result: '0x7b' }]),
@@ -224,14 +228,21 @@ it.each([
       xprv: 'encrypted fixture',
     };
     const entered = deferred(),
-      released = deferred<any>();
-    records.readExact.mockImplementationOnce(async () => {
+      released = deferred<ReturnType<typeof observed>>();
+    records.readForObservation.mockImplementationOnce(async () => {
       entered.resolve();
       return released.promise;
     });
     const pending = wallet.prepareEvmSignedReplay(entry.hash);
     const rejected = expect(pending).rejects.toThrow();
-    await entered.promise;
+    await Promise.race([
+      entered.promise,
+      rejected.then(() => {
+        throw Error(
+          'Replay rejected before reaching the held observation read'
+        );
+      }),
+    ]);
     const navigation = getWalletNavigationScope();
     if (change === 'watch conversion')
       delete mockState.vault.accounts.Imported[0].xprv;
@@ -246,28 +257,33 @@ it.each([
       wallet.networkRequestGeneration += 1;
       expect(getWalletNavigationScope()).toEqual(navigation);
     }
-    released.resolve(entry);
+    released.resolve(observed());
     await rejected;
     expect(provider.send).not.toHaveBeenCalled();
   }
 );
 it('advanceWalletSession cancels the retained review owner and pending preparation', async () => {
   const entered = deferred(),
-    released = deferred<any>();
-  records.readExact.mockImplementationOnce(async () => {
+    released = deferred<ReturnType<typeof observed>>();
+  records.readForObservation.mockImplementationOnce(async () => {
     entered.resolve();
     return released.promise;
   });
   const pending = wallet.prepareEvmSignedReplay(entry.hash);
   const rejected = expect(pending).rejects.toThrow();
-  await entered.promise;
+  await Promise.race([
+    entered.promise,
+    rejected.then(() => {
+      throw Error('Replay rejected before reaching the held observation read');
+    }),
+  ]);
   const oldReplay = wallet.retainedEvmReplay,
     cancel = jest.spyOn(oldReplay, 'cancel');
   wallet.advanceWalletSession();
   expect(cancel).toHaveBeenCalledTimes(1);
   expect(wallet.retainedEvmReplay).toBeUndefined();
   expect(wallet.retainedEvmRecords).toBeUndefined();
-  released.resolve(entry);
+  released.resolve(observed());
   await rejected;
   expect(provider.send).not.toHaveBeenCalled();
 });
@@ -745,6 +761,8 @@ it('does not POST when an ordinary replay expires during the fresh chain check',
     )
   ).toBe(false);
   expect(records.updatePhase).not.toHaveBeenCalled();
+  expect(records.updateObservedPhase).not.toHaveBeenCalled();
+  expect(records.reconcileMinedCancellation).not.toHaveBeenCalled();
   await expect(
     wallet.confirmEvmSignedReplay(prepared.review.id)
   ).rejects.toThrow('EXPIRED');

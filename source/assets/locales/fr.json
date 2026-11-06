@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "Ajoutez des fonds à ce compte avant d’accélérer la transaction. Le montant initial ne sera pas modifié.",
     "speedUpFeeUnavailable": "Impossible de vérifier les frais. Veuillez réessayer.",
     "replay": {
+      "reviewCancellation": "Vérifier l’annulation",
+      "cancellationDescription": "Annuler cette transaction avec des frais réseau maximum de {{fee}} {{currency}} ? La transaction d’origine peut encore être confirmée en premier.",
+      "cancellationExpired": "Cette vérification a expiré. Vérifiez à nouveau les frais.",
       "review": "Vérifier le renvoi",
       "title": "Renvoyer la transaction",
       "description": "Renvoie la même transaction signée avec son montant et ses frais d’origine.",

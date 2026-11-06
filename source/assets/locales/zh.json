@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "加速此交易前，请先向此账户充值。原始金额不会改变。",
     "speedUpFeeUnavailable": "无法检查费用。请重试。",
     "replay": {
+      "reviewCancellation": "检查取消操作",
+      "cancellationDescription": "要以最高 {{fee}} {{currency}} 的网络费用取消此交易吗？原交易仍可能先得到确认。",
+      "cancellationExpired": "取消操作的审核已过期。请重新检查费用。",
       "review": "检查重新发送",
       "title": "重新发送交易",
       "description": "以原始金额和费用重新发送同一笔已签名交易。",

@@ -1,7 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
-import type { EvmReplacementRates, EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecordCancellationFence, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -65,6 +65,7 @@ export type NativeTransferSnapshot = Readonly<{
   intent: Erc20TransferIntent | null;
 }>;
 export interface NativeTransferJournalHandle {
+  assertSpendingNonce(nonce: number): Promise<void>;
   load(hash?: string): Promise<TransferJournalEntry | null>;
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
@@ -387,6 +388,17 @@ export class NativeTransfers {
         } catch {
           throw new NativeTransferError('CANCELLED');
         }
+        if (error instanceof EvmSignedRecordCancellationFence) {
+          const hash = error.recoveryHash;
+          this.publish({
+            phase: hash ? 'unknown' : 'unavailable',
+            hash, review: null, intent: null,
+            message: hash
+              ? 'A saved cancellation uses this nonce. Check its status or review a retry before sending again.'
+              : 'A saved cancellation uses this nonce. Check Activity before sending again.',
+          });
+          return;
+        }
         if (error instanceof TransferJournalError && error.code === 'HISTORY_UNAVAILABLE') {
           this.publish({ phase: 'unavailable', review: null,
             message: 'Your previous transfer could not be safely saved to local activity. No new transfer was broadcast. Close and reopen Pali, then try again.' });
@@ -587,6 +599,8 @@ export class NativeTransfers {
       }
       const quote = await rpc.prepare(address, to, units, signal);
       assertCurrent();
+      if (old) await journal.assertSpendingNonce(Number(quote.transaction.nonce));
+      assertCurrent();
       this.showReview(quote.transaction, undefined, context);
     });
   }
@@ -648,6 +662,8 @@ export class NativeTransfers {
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal);
+      assertCurrent();
+      if (old) await journal.assertSpendingNonce(Number(quote.transaction.nonce));
       assertCurrent();
       this.showReview(quote.transaction, intent, context);
     });
@@ -786,6 +802,7 @@ export class NativeTransfers {
         // storage adapter simultaneously revoked the session.
         if (error instanceof TransferJournalError && error.code === 'REOPEN_REQUIRED') throw error;
         assertCurrent();
+        if (error instanceof EvmSignedRecordCancellationFence) throw error;
         if (!startedSubmission) {
           // A signature alone does not prove the signed record was committed.
           // Check under the wallet owner, since the review may have expired.

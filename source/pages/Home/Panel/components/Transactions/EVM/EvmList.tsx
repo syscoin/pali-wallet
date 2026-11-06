@@ -3,7 +3,10 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
-import { mergeEvmExplorerTransactions } from '../../../../../../shared/evmHistory';
+import {
+  EVM_TRANSACTION_HISTORY_SOURCE,
+  mergeEvmExplorerTransactions,
+} from '../../../../../../shared/evmHistory';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -529,6 +532,9 @@ const EvmTransactionItem = React.memo(
             <div className="m-auto">
               {isConfirmed ||
               isReplaced ||
+              ('historySource' in tx &&
+                tx.historySource ===
+                  EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned) ||
               settlement === 'replacementPending' ? (
                 <Tooltip content={t('notifications.clickToView')}>
                   <DetailArrowSvg

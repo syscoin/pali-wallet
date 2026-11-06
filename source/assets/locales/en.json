@@ -1191,6 +1191,9 @@
     "speedUpAmountWouldChange": "Add funds to this account before speeding up this transaction. The original amount will not be changed.",
     "speedUpFeeUnavailable": "Unable to check the fee. Please try again.",
     "replay": {
+      "reviewCancellation": "Review cancellation",
+      "cancellationDescription": "Cancel this transaction with a maximum network fee of {{fee}} {{currency}}? The original may still confirm first.",
+      "cancellationExpired": "This cancellation review expired. Check the fee again.",
       "review": "Review resend",
       "title": "Resend transaction",
       "description": "Resend the same signed transaction with its original amount and fees.",

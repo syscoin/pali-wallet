@@ -223,9 +223,10 @@ export async function observeRetainedEvmTransaction(
   const current = assertCurrent,
     read = observe;
   current();
-  const entry = await records.readExact(session, chainId, from, hash);
+  const saved = await records.readForObservation(session, chainId, from, hash);
   current();
-  if (!entry) throw new EvmReplayError('NOT_FOUND');
+  if (!saved) throw new EvmReplayError('NOT_FOUND');
+  const { entry, revision } = saved;
   const observation = await read(request(entry));
   current();
   const terminalPhase =
@@ -239,16 +240,30 @@ export async function observeRetainedEvmTransaction(
     (['confirmed', 'reverted', 'nonce-consumed'].includes(entry.phase)
       ? 'submitted'
       : entry.phase);
-  if (terminalPhase || phase !== entry.phase) {
-    await records.updatePhase(
-      session,
-      entry.chainId,
-      entry.from,
-      entry.hash,
-      phase
-    );
-    current();
+  try {
+    if (entry.operation === 'cancel' && observation.status === 'mined') {
+      await records.reconcileMinedCancellation(
+        session,
+        entry,
+        revision,
+        observation,
+        () => {
+          current();
+          return read(request(entry));
+        }
+      );
+    } else if (terminalPhase || phase !== entry.phase) {
+      await records.updateObservedPhase(session, entry, revision, phase);
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === 'EVM_SIGNED_RECORD_OBSERVATION_CHANGED'
+    )
+      throw new EvmReplayError('CONTEXT_CHANGED');
+    throw error;
   }
+  current();
   return Object.freeze({
     entry: Object.freeze({ ...entry, phase }),
     observation,
