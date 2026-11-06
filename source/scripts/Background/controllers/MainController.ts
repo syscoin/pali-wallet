@@ -6522,23 +6522,62 @@ class MainController {
           !hasOtherOwner(networkToRemove.slip44)
             ? networkToRemove.slip44
             : undefined;
-        this.resetAutoLockTimer();
-        await persistNetworkRemoval(
-          { chain, chainId, rpcUrl, label, key },
-          () => {
+        const commit = (assertCurrent: () => void) => {
+          assertCurrent();
+          this.resetAutoLockTimer();
+          return persistNetworkRemoval(
+            { chain, chainId, rpcUrl, label, key },
+            () => {
+              assertCurrent();
+              if (removedSlip44 !== undefined && hasOtherOwner(removedSlip44))
+                throw new Error(
+                  'Network ownership changed. Please confirm removal again.'
+                );
+            },
+            () => walletStateGeneration === this.walletStateGeneration,
+            removedSlip44 === undefined
+              ? undefined
+              : {
+                  slip44: removedSlip44,
+                  async readSentryStores(
+                    rootPublicIdentity,
+                    assertRemovalCurrent
+                  ) {
+                    const { readSentryKeyStoresForRetirement } = await import(
+                      'utils/sentry/keyStore'
+                    );
+                    assertRemovalCurrent();
+                    return readSentryKeyStoresForRetirement(
+                      rootPublicIdentity,
+                      assertRemovalCurrent
+                    );
+                  },
+                },
+            () => {
+              if (removedSlip44 !== undefined)
+                this.keyrings.delete(removedSlip44);
+            }
+          );
+        };
+        if (
+          chain === INetworkType.Syscoin &&
+          networkToRemove?.slip44 !== undefined
+        ) {
+          const keyring = this.getActiveKeyring();
+          const assertCurrent = () => {
             assertCanRemove();
-            if (removedSlip44 !== undefined && hasOtherOwner(removedSlip44))
-              throw new Error(
-                'Network ownership changed. Please confirm removal again.'
-              );
-          },
-          () => walletStateGeneration === this.walletStateGeneration,
-          removedSlip44,
-          () => {
-            if (removedSlip44 !== undefined)
-              this.keyrings.delete(removedSlip44);
-          }
-        );
+            assertWalletPersistenceAllowed();
+            this.assertWalletReadyForSigning();
+            this.assertCurrentWalletSession(generation, keyring);
+          };
+          await this.getRetainedUtxoRecords().removeRegistration(
+            { keyring, assertCurrent },
+            { chainId, slip44: networkToRemove.slip44 },
+            () => commit(assertCurrent)
+          );
+        } else {
+          await commit(assertCanRemove);
+        }
       });
     } finally {
       this.isRemovingNetwork = false;

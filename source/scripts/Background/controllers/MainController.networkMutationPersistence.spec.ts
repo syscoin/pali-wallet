@@ -535,7 +535,8 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
         expect(writeCount).toBe(attempts);
       });
 
-      it('waits for a signed admission and preserves the endpoint after lost acknowledgment', async () => {
+      const mutations = ['endpoint', 'network'] as const;
+      it.each(mutations)('keeps %s after lost ACK', async (mutation) => {
         const originalCrypto = Object.getOwnPropertyDescriptor(
           globalThis,
           'crypto'
@@ -586,13 +587,21 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
             chainId: target.chainId,
             slip44: target.slip44,
             genesisHash: coin.hashGenesisBlock,
-            account: { id: 0, type: 'HDAccount', xpub: 'public-fixture-xpub' },
+            account: {
+              id: 0,
+              type: 'HDAccount',
+              xpub: 'public-fixture-xpub',
+            },
           };
           const signedRecord = {
             owner,
             rawTransaction: signed.toHex(),
             txid: signed.getId(),
-            url: utxoSubmissionUrl(target.url),
+            url: utxoSubmissionUrl(
+              mutation === 'endpoint'
+                ? target.url
+                : 'https://previous-network.synthetic.invalid'
+            ),
             outpoints: [`${prevout.getId()}:0`],
             feeSatoshis: '1000',
             operation: 'wallet',
@@ -615,12 +624,24 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
             ...target,
             url: 'https://edited-network.synthetic.invalid',
           };
-          const change = wallet.editCustomRpc(
-            edited,
-            networkRegistrationFingerprint(liveTarget())
+          const expectedRegistration = networkRegistrationFingerprint(
+            liveTarget()
           );
+          const change =
+            mutation === 'endpoint'
+              ? wallet.editCustomRpc(edited, expectedRegistration)
+              : wallet.removeKeyringNetwork(
+                  target.kind,
+                  target.chainId,
+                  target.url,
+                  target.label,
+                  expectedRegistration
+                );
           const rejection = expect(change).rejects.toMatchObject({
-            code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER',
+            code:
+              mutation === 'endpoint'
+                ? 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER'
+                : 'UTXO_NETWORK_HAS_SAVED_TRANSFER',
           });
           held.resolve();
           await admission;
@@ -638,7 +659,10 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
               { ...target, label: 'Updated label' },
               networkRegistrationFingerprint(liveTarget())
             )
-          ).resolves.toMatchObject({ label: 'Updated label', url: target.url });
+          ).resolves.toMatchObject({
+            label: 'Updated label',
+            url: target.url,
+          });
         } finally {
           held.resolve();
           await admission?.catch(() => undefined);

@@ -12,6 +12,8 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
+import { webcrypto } from 'crypto';
+
 import {
   loadSlip44State,
   loadState,
@@ -28,12 +30,28 @@ import {
 import { INetwork, INetworkType, KeyringAccountType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  getSentryVaultId,
+  removeSentryKey,
+  saveSentryKey,
+} from 'utils/sentry/keyStore';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
 
 const FAILURE = 'Synthetic network removal registry refusal';
 const originalChrome = global.chrome;
+const originalCrypto = Object.getOwnPropertyDescriptor(global, 'crypto');
+
+beforeAll(() => {
+  Object.defineProperty(global, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+  });
+});
+afterAll(() => {
+  if (originalCrypto) Object.defineProperty(global, 'crypto', originalCrypto);
+});
 const source: INetwork = {
   chainId: 1,
   kind: INetworkType.Ethereum,
@@ -121,7 +139,7 @@ beforeEach(async () => {
     runtime: { id: 'synthetic-network-removal' },
     storage: {
       local: {
-        get: (keys: string[], callback: (values: any) => void) => {
+        get: (keys: string[] | null, callback: (values: any) => void) => {
           if (failReads) {
             (chrome.runtime as any).lastError = {
               message: 'Synthetic storage read failure',
@@ -131,11 +149,13 @@ beforeEach(async () => {
             return;
           }
           callback(
-            Object.fromEntries(
-              keys
-                .filter((key) => key in records)
-                .map((key) => [key, structuredClone(records[key])])
-            )
+            keys === null
+              ? structuredClone(records)
+              : Object.fromEntries(
+                  keys
+                    .filter((key) => key in records)
+                    .map((key) => [key, structuredClone(records[key])])
+                )
           );
         },
         set: (items: Record<string, any>, callback: () => void) => {
@@ -213,6 +233,13 @@ beforeEach(async () => {
   wallet.resetAutoLockTimer = jest.fn();
   wallet.keyrings = new Map([
     [111, { publicFixture: 'inactive keyring owner' }],
+    [
+      60,
+      {
+        isUnlocked: () => true,
+        getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+      },
+    ],
   ]);
   commits = [];
 });
@@ -239,6 +266,147 @@ it('durably removes a healthy inactive network together with its owned vault and
   expect(commits).toHaveLength(1);
   expect(commits[0]['state-vault-111']).toBeNull();
   expect(commits[0]['state-vault-111-passkey-profile']).toBeNull();
+});
+
+it('keeps the final network registration and vault while it has imported accounts', async () => {
+  await chromeStorage.setItem('state-vault-111', {
+    ...inactiveVault,
+    accounts: {
+      ...inactiveVault.accounts,
+      Imported: {
+        1: {
+          address: 'public imported address',
+          xpub: 'public imported key',
+          xprv: 'synthetic encrypted record',
+        },
+      },
+    },
+  });
+  const before = await projection();
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
+  });
+  expect(await projection()).toEqual(before);
+  expect(commits).toEqual([]);
+});
+
+const sentryRecordForInactiveVault = async () => {
+  const vaultId = await getSentryVaultId(
+    inactiveVault.accounts.HDAccount[0].xpub
+  );
+  const network = 'testnet' as const;
+  const key = `sentry-operator-v1:${vaultId}:${network}`;
+  const assertCurrent = () => undefined;
+  const summary = await saveSentryKey({
+    vaultId,
+    network,
+    seed: 'synthetic seed for network retirement test',
+    label: 'Synthetic node',
+    key: {
+      role: 'operator',
+      scheme: 'bls-basic',
+      publicKey: '12'.repeat(48),
+      secretKey: '34'.repeat(32),
+    },
+    assertCurrent,
+  });
+  return { vaultId, network, key, summary, assertCurrent };
+};
+
+it('keeps the last UTXO vault while it owns Sentry keys even if the retiring co-owner is a different chain', async () => {
+  const { key } = await sentryRecordForInactiveVault();
+  const priorRecord = structuredClone(records[key]);
+  const before = await projection();
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+  });
+  expect(await projection()).toEqual(before);
+  expect(records[key]).toEqual(priorRecord);
+  expect(commits).toEqual([]);
+});
+
+it.each([false, 'extra'])(
+  'preserves unrecognized Sentry records (%s)',
+  async (value) => {
+    const { key, vaultId, network } = await sentryRecordForInactiveVault();
+    const corrupt =
+      value === false
+        ? false
+        : { version: 1, vaultId, network, keys: [], futureData: true };
+    await chromeStorage.setItem(key, corrupt);
+    const before = await projection();
+    commits = [];
+    await expect(remove()).rejects.toMatchObject({
+      code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+    });
+    expect(await projection()).toEqual(before);
+    expect(records[key]).toEqual(corrupt);
+    expect(commits).toEqual([]);
+  }
+);
+
+it('holds removal if the persisted vault lacks its Sentry recovery identity', async () => {
+  const { key } = await sentryRecordForInactiveVault();
+  const before = structuredClone(records[key]);
+  const incomplete = structuredClone(inactiveVault);
+  incomplete.accounts.HDAccount[0].xpub = ' ';
+  await chromeStorage.setItem('state-vault-111', incomplete);
+  commits = [];
+  await expect(remove()).rejects.toThrow('Could not verify saved accounts');
+  expect(records['state-vault-111']).toEqual(incomplete);
+  expect(records[key]).toEqual(before);
+  expect(commits).toEqual([]);
+});
+
+it('preserves an unknown Sentry domain under the exact retiring vault identity', async () => {
+  const vaultId = await getSentryVaultId(
+    inactiveVault.accounts.HDAccount[0].xpub
+  );
+  const network = 'future-domain';
+  const key = `sentry-operator-v1:${vaultId}:${network}`;
+  const record = { version: 1, vaultId, network, keys: [] };
+  await chromeStorage.setItem(key, record);
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+  });
+  expect(records[key]).toEqual(record);
+  expect(records['state-vault-111']).toEqual(inactiveVault);
+  expect(commits).toEqual([]);
+});
+
+it('tombstones only an exact empty Sentry store in the same removal commit', async () => {
+  const { key, network, vaultId, summary, assertCurrent } =
+    await sentryRecordForInactiveVault();
+  await removeSentryKey(vaultId, network, summary.id, assertCurrent);
+  const unrelated = `sentry-operator-v1:${'0'.repeat(64)}:mainnet`;
+  await chromeStorage.setItem(unrelated, { some: 'unrelated data' });
+  commits = [];
+  await expect(remove()).resolves.toBeUndefined();
+  expect(commits).toHaveLength(1);
+  expect(commits[0][key]).toBeNull();
+  expect(commits[0]['state-vault-111']).toBeNull();
+  expect(records[unrelated]).toEqual({ some: 'unrelated data' });
+});
+
+it('restores the exact empty Sentry store if a lock retires the admitted removal', async () => {
+  const { key, network, vaultId, summary, assertCurrent } =
+    await sentryRecordForInactiveVault();
+  await removeSentryKey(vaultId, network, summary.id, assertCurrent);
+  const empty = structuredClone(records[key]);
+  const before = await projection();
+  commits = [];
+  const held = holdCommit();
+  const removing = result(remove());
+  await held.started;
+  wallet.advanceWalletSession();
+  held.release();
+  expect(await removing).toMatchObject({ success: false });
+  expect(await projection()).toEqual(before);
+  expect(commits.map((commit) => commit[key])).toEqual([null, empty]);
+  expect(records[key]).toEqual(empty);
 });
 
 it('retains an inactive UTXO network and its records after final registry persistence fails, then permits a fresh retry', async () => {
@@ -358,6 +526,38 @@ it.each(['session', 'network ABA', 'same-url replacement'] as const)(
     expect(removedKeys).toEqual([]);
   }
 );
+
+it('closes persistence if Chrome refuses to restore a retired removal', async () => {
+  const started = Promise.withResolvers<void>();
+  const acknowledge = Promise.withResolvers<void>();
+  const original = chrome.storage.local.set;
+  jest
+    .spyOn(chrome.storage.local, 'set')
+    .mockImplementation((items, callback) => {
+      if (items.state && items['state-vault-111'] === null) {
+        return original(items, () => {
+          void acknowledge.promise.then(() => callback?.());
+          started.resolve();
+        });
+      }
+      return original(items, callback);
+    });
+  const removing = result(remove());
+  await started.promise;
+  wallet.advanceWalletSession();
+  failRegistry = true;
+  acknowledge.resolve();
+  const outcome = await removing;
+  expect(walletPersistenceGate.blocked).toBe(true);
+  expect(outcome).toMatchObject({
+    success: false,
+    error: 'Could not restore wallet storage. Close and reopen Pali.',
+  });
+  expect(store.getState().vaultGlobal.networks.syscoin[target.chainId]).toEqual(
+    target
+  );
+  expect(commits).toHaveLength(2);
+});
 
 it('does not repair over a replacement wallet waiting behind the held commit', async () => {
   const held = holdCommit();

@@ -96,7 +96,14 @@ beforeEach(() => {
   jest.mocked(chromeStorage.setItems).mockReset().mockResolvedValue(undefined);
   wallet.walletSessionGeneration = 0;
   wallet.walletStateGeneration = 0;
-  wallet.keyrings = new Map([[1, { test: 'synthetic keyring' }]]);
+  const unlocked = {
+    isUnlocked: () => true,
+    getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+  };
+  wallet.keyrings = new Map([
+    [1, { ...unlocked }],
+    [57, unlocked],
+  ]);
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
   };
