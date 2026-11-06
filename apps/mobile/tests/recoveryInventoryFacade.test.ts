@@ -91,6 +91,7 @@ async function fixture(existing = true) {
     '../activity/receiptReader.ts': { ActivityReceiptReader: PassiveController },
     '../portfolio/erc20ReadRpc.ts': { createErc20Reader: () => ({}) },
     '../portfolio/ownedTokenReader.ts': { createOwnedTokenReader: () => () => assert.fail('inventory must not discover tokens') },
+    '../portfolio/nftOwnershipReadRpc.ts': { createNftOwnershipReader: () => () => assert.fail('inventory must not check collectibles') },
     '../core/utxoBalanceReader.ts': { createUtxoBalanceReader: () => assert.fail('inventory must not read UTXO balances') },
     '../platformRpc.ts': { createBalanceReader: () => ({}) },
     './http': { walletFetch() { assert.fail('inventory must not fetch'); } },

@@ -11,6 +11,7 @@ import { NativeActivity } from '../activity/nativeActivity.ts';
 import { ActivityExplorerReader } from '../activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../activity/receiptReader.ts';
 import { createErc20Reader } from '../portfolio/erc20ReadRpc.ts';
+import { createNftOwnershipReader } from '../portfolio/nftOwnershipReadRpc.ts';
 import { createOwnedTokenReader } from '../portfolio/ownedTokenReader.ts';
 import { createUtxoBalanceReader } from '../core/utxoBalanceReader.ts';
 import type { BalanceReader } from '../core/watchOnlyAuthority.ts';
@@ -90,7 +91,8 @@ export function createNativeWalletControllers() {
   });
   const backup = new SeedBackupFlow(authority, () => runtime?.backup);
   const keyExport = new HdKeyExportFlow(authority, () => runtime?.keyExport);
-  const evmBalances = createBalanceReader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks });
+  const readRpc = { fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks };
+  const evmBalances = createBalanceReader(readRpc);
   const balanceReader: BalanceReader = {
     readBalance: evmBalances.readBalance,
     readUtxoBalance(id, address, signal) {
@@ -102,7 +104,10 @@ export function createNativeWalletControllers() {
     },
   };
   const transfers = new NativeTransfers(authority, () => runtime?.transfers, { fetch: walletFetch });
-  const tokens = new NativeTokens(authority, () => runtime?.tokens, createErc20Reader({ fetch: walletFetch, registrations: () => authority.getCatalogue()?.networks }), Date.now, () => authority.lock(), createOwnedTokenReader(walletFetch));
+  const tokens = new NativeTokens(
+    authority, () => runtime?.tokens, createErc20Reader(readRpc), Date.now,
+    () => authority.lock(), createOwnedTokenReader(walletFetch), createNftOwnershipReader(readRpc)
+  );
   const activity = new NativeActivity(authority, () => runtime?.activity,
     new ActivityExplorerReader(walletFetch), new ActivityReceiptReader({ fetch: walletFetch }));
   const accounts: NativeAccountView = Object.freeze({

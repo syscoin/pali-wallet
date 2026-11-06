@@ -26,7 +26,7 @@ export type OwnedTokenSuggestions = Readonly<{
   limited: boolean;
 }>;
 
-type OwnedCollectibleSuggestion = Readonly<{
+export type OwnedCollectibleSuggestion = Readonly<{
   contractAddress: string;
   name: string;
   tokenStandard: 'ERC-721' | 'ERC-1155';

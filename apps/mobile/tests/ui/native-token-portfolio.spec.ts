@@ -152,6 +152,85 @@ test('collectible suggestions require an explicit lookup and remain read-only', 
   expect(await requests()).toHaveLength(3);
 });
 
+test('checks selected collectible ownership and cancels stale reads', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.route('https://api.coingecko.com/**', (route) =>
+    route.fulfill({ json: { ethereum: { usd: 100, usd_24h_change: 0 } } })
+  );
+  await page.goto('/?token-portfolio&holdings&collectible-check&ownership-fail');
+  const rpc = () => page.evaluate(() => window.__nativeTokenPortfolio.requests().filter((entry) => entry.startsWith('nft:')));
+  const aborts = () => page.evaluate(() => window.__nativeTokenPortfolio.nftAborts());
+  const check = page.getByRole('button', { name: 'Check ownership', exact: true });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'Find collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'View NFT Collection token 0', exact: true }).click();
+  await expect(check).toBeVisible();
+  await expect(page.getByText('Explorer-reported name', { exact: true })).toBeVisible();
+  expect(await rpc()).toEqual([]);
+  await check.click();
+  await expect(page.getByText('Ownership unavailable', { exact: true })).toBeVisible();
+  await check.click();
+  const result = page.getByTestId('native-collectible-quantity');
+  await expect(result).toHaveText('Quantity on network: 900719925474099312345');
+  expect(await rpc()).toEqual([
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`,
+    'nft:chain', 'nft:block:latest', `nft:code:${long}`, `nft:balanceOf:${long}`, `nft:balanceOfBatch:${long}`,
+    'nft:block:0x100', 'nft:chain',
+  ]);
+  await result.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('collectible-ownership-320.png') });
+  await enlargeText(page);
+  await result.scrollIntoViewIfNeeded();
+  await expect(result).toBeInViewport();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('collectible-ownership-large.png') });
+  await back.click();
+
+  const collection = page.getByRole('button', { name: 'View Paper foxes collection', exact: true });
+  await collection.click();
+  const id = page.getByRole('textbox', { name: 'Token ID', exact: true });
+  await id.fill('1e2');
+  await check.click();
+  await expect(page.getByText('Enter a valid token ID.', { exact: true })).toBeVisible();
+  expect(await rpc()).toHaveLength(11);
+  await id.fill('0');
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).at(-1)).toBe(`nft:ownerOf:${zero}`);
+  await expect(page.getByRole('button', { name: 'Checking ownership…' })).toBeDisabled();
+  await back.click();
+  expect(await aborts()).toBe(1);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await collection.click();
+  await expect(id).toHaveValue('');
+  await id.fill('0');
+  await check.click();
+  await expect(result).toHaveText('This account owns this item.');
+  expect(await rpc()).toHaveLength(22); // Held probe stopped; fresh check completed all seven reads.
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).length).toBe(26);
+  await id.fill('1');
+  expect(await aborts()).toBe(2);
+  await page.evaluate(() => window.__nativeTokenPortfolio.releaseNft());
+  await expect(result).toHaveCount(0);
+  await check.click();
+  await expect(result).toHaveText('This account doesn’t own this item.');
+  expect(await rpc()).toHaveLength(33);
+  await page.evaluate(() => window.__nativeTokenPortfolio.holdNft());
+  await check.click();
+  await expect.poll(async () => (await rpc()).length).toBe(37);
+  await page.evaluate(() => {
+    window.__nativeTokenPortfolio.lock();
+    window.__nativeTokenPortfolio.releaseNft();
+  });
+  expect(await aborts()).toBe(3);
+  await expect(result).toHaveCount(0);
+  expect(await rpc()).toHaveLength(37);
+});
+
 test('failed holdings stays separate from manual review and requires explicit retry', async ({
   page,
 }) => {

@@ -7,8 +7,14 @@ import {
 import { normalizeErc20Address, parseErc20Metadata } from './erc20Metadata.ts';
 import type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
-import { getNativeNetwork } from '../custody/networkContext.ts';
-import type { EvmNetworkId } from '../custody/networkContext.ts';
+import {
+  getNativeNetwork,
+  snapshotNativeNetwork,
+} from '../custody/networkContext.ts';
+import type {
+  EvmNetworkId,
+  NativeNetworkRegistration,
+} from '../custody/networkContext.ts';
 import { boundedResponseText, parseRpcQuantity } from '../platformRpc.ts';
 
 export type { Erc20Metadata } from '../../../../source/shared/erc20.ts';
@@ -46,7 +52,28 @@ type Method =
   | 'eth_getCode'
   | 'eth_call';
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
-type Read = (method: Method, params: readonly unknown[]) => Promise<unknown>;
+type ReadOptions = {
+  fetch?: FetchLike;
+  timeoutMs?: number;
+  registrations?: () => readonly NativeNetworkRegistration[] | undefined;
+};
+type Read = (
+  method: Method,
+  params: readonly unknown[],
+  captureRpcError?: true
+) => Promise<unknown>;
+type CapturedScope = Readonly<{
+  network: NativeNetworkRegistration;
+  assertCurrent(): void;
+}>;
+
+class ScopedCallRpcError extends Error {
+  readonly value: unknown;
+  constructor(value: unknown) {
+    super('EVM_CALL_FAILED');
+    this.value = value;
+  }
+}
 const SELECTORS = Object.freeze({
   name: '0x06fdde03',
   symbol: '0x95d89b41',
@@ -158,9 +185,7 @@ function codeResult(value: unknown): void {
 }
 
 /** Fixed read-only methods, bounded calls and one deadline per observation. */
-export function createErc20Reader(
-  options: { fetch?: FetchLike; timeoutMs?: number; registrations?: () => readonly import('../custody/networkContext.ts').NativeNetworkRegistration[] | undefined } = {}
-): Erc20Reader {
+function createReadOperation(options: ReadOptions) {
   const fetcher = options.fetch ?? ((url, init) => fetch(url, init));
   const timeoutMs = options.timeoutMs ?? 12_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30_000)
@@ -205,13 +230,15 @@ export function createErc20Reader(
     networkId: EvmNetworkId,
     address: string,
     external: AbortSignal,
-    work: (read: Read, block: string, holder: string) => Promise<T>
+    work: (read: Read, block: string, holder: string) => Promise<T>,
+    scope?: CapturedScope
   ): Promise<T> {
     check(external);
     let network: ReturnType<typeof getNativeNetwork>;
     let holder: string;
     try {
-      network = getNativeNetwork(networkId, options.registrations?.());
+      network =
+        scope?.network ?? getNativeNetwork(networkId, options.registrations?.());
       holder = normalizePublicAddress(address, networkId);
     } catch {
       return fail('INVALID_INPUT');
@@ -220,8 +247,20 @@ export function createErc20Reader(
     const abort = () => controller.abort();
     external.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(abort, timeoutMs);
-    const read: Read = async (method, params) => {
+    const assertCurrent = () => {
       check(controller.signal);
+      if (scope) {
+        try {
+          scope.assertCurrent();
+        } catch {
+          abort();
+          fail('CANCELLED');
+        }
+        check(controller.signal);
+      }
+    };
+    const read: Read = async (method, params, captureRpcError) => {
+      assertCurrent();
       if (
         ![
           'eth_chainId',
@@ -233,7 +272,7 @@ export function createErc20Reader(
         return fail('INVALID_INPUT');
       const done = await acquire(controller.signal);
       try {
-        check(controller.signal);
+        assertCurrent();
         const id = ++sequence;
         if (!Number.isSafeInteger(id)) return fail('UNAVAILABLE');
         const response = await cancellable(
@@ -252,7 +291,7 @@ export function createErc20Reader(
           }),
           controller.signal
         );
-        check(controller.signal);
+        assertCurrent();
         if (!response.ok) return fail('UNAVAILABLE');
         const contentType = response.headers.get('content-type');
         if (
@@ -280,7 +319,7 @@ export function createErc20Reader(
           check(controller.signal);
           return fail('INVALID_RESPONSE');
         }
-        check(controller.signal);
+        assertCurrent();
         let decoded: unknown;
         try {
           decoded = JSON.parse(body);
@@ -290,13 +329,15 @@ export function createErc20Reader(
         if (!decoded || typeof decoded !== 'object' || Array.isArray(decoded))
           return fail('INVALID_RESPONSE');
         const result = decoded as Record<string, unknown>;
-        if (
-          result.jsonrpc !== '2.0' ||
-          result.id !== id ||
-          Object.hasOwn(result, 'error') ||
-          !Object.hasOwn(result, 'result')
-        )
+        if (result.jsonrpc !== '2.0' || result.id !== id)
           return fail('INVALID_RESPONSE');
+        const hasResult = Object.hasOwn(result, 'result');
+        if (Object.hasOwn(result, 'error')) {
+          if (captureRpcError && method === 'eth_call' && !hasResult)
+            throw new ScopedCallRpcError(result.error);
+          return fail('INVALID_RESPONSE');
+        }
+        if (!hasResult) return fail('INVALID_RESPONSE');
         return result.result;
       } finally {
         done();
@@ -327,7 +368,7 @@ export function createErc20Reader(
         return fail('INVALID_RESPONSE');
       }
       if (chain !== BigInt(network.chainId)) return fail('WRONG_CHAIN');
-      check(controller.signal);
+      assertCurrent();
       return result;
     } catch (cause) {
       if (controller.signal.aborted) return fail('CANCELLED');
@@ -339,13 +380,19 @@ export function createErc20Reader(
       controller.abort();
     }
   }
-  function contract(value: unknown): string {
-    try {
-      return normalizeErc20Address(value);
-    } catch {
-      return fail('INVALID_INPUT');
-    }
+  return operation;
+}
+
+function contract(value: unknown): string {
+  try {
+    return normalizeErc20Address(value);
+  } catch {
+    return fail('INVALID_INPUT');
   }
+}
+
+export function createErc20Reader(options: ReadOptions = {}): Erc20Reader {
+  const operation = createReadOperation(options);
   const call = (read: Read, address: string, data: string, block: string) =>
     read('eth_call', [{ to: address, data }, block]);
   const balanceData = (holder: string) =>
@@ -425,4 +472,106 @@ export function createErc20Reader(
       );
     },
   });
+}
+
+type SelectedNftReadOptions = Required<
+  Pick<ReadOptions, 'fetch' | 'registrations'>
+> &
+  Pick<ReadOptions, 'timeoutMs'>;
+type ScopedCallOutcome =
+  | Readonly<{ kind: 'result'; data: string }>
+  | Readonly<{ kind: 'rpc-error'; error: unknown }>;
+
+/** Internal host seam with one selected contract and no caller-supplied block or RPC method. */
+export function createSelectedNftReadOperation(options: SelectedNftReadOptions) {
+  const { registrations } = options;
+  if (typeof options.fetch !== 'function' || typeof registrations !== 'function')
+    throw new Error('NFT read host required');
+  const operation = createReadOperation(options);
+  return async <T>(
+    networkId: EvmNetworkId,
+    owner: string,
+    contractAddress: string,
+    signal: AbortSignal,
+    guard: () => void,
+    work: (
+      scope: Readonly<{
+        holder: string;
+        target: string;
+        call(data: string): Promise<ScopedCallOutcome>;
+      }>
+    ) => Promise<T>
+  ): Promise<T> => {
+    check(signal);
+    const target = contract(contractAddress);
+    const registered = () => {
+      const list = registrations();
+      if (!list) return fail('INVALID_INPUT');
+      return getNativeNetwork(networkId, list);
+    };
+    let initial: NativeNetworkRegistration;
+    let network: NativeNetworkRegistration;
+    try {
+      initial = registered();
+      network = snapshotNativeNetwork(initial);
+    } catch {
+      return fail('INVALID_INPUT');
+    }
+    const assertCurrent = () => {
+      const result: unknown = guard();
+      if (result !== undefined) {
+        if (result && (typeof result === 'object' || typeof result === 'function'))
+          void Promise.resolve(result).catch(() => undefined);
+        fail('CANCELLED');
+      }
+      const latest = registered();
+      if (latest === initial && Object.isFrozen(initial)) return;
+      if (
+        snapshotNativeNetwork(latest).registrationHash !== network.registrationHash
+      )
+        fail('CANCELLED');
+    };
+    return operation(
+      networkId,
+      owner,
+      signal,
+      async (read, block, holder) => {
+        codeResult(await read('eth_getCode', [target, block]));
+        let calls = 0;
+        return work({
+          holder,
+          target,
+          async call(data) {
+            // One independent probe and one selected read.
+            if (++calls > 2) return fail('INVALID_RESPONSE');
+            if (
+              typeof data !== 'string' ||
+              data.length < 10 ||
+              data.length > 1026 ||
+              !/^0x(?:[0-9a-fA-F]{2})+$/.test(data)
+            )
+              return fail('INVALID_INPUT');
+            try {
+              const value = await read(
+                'eth_call',
+                [{ to: target, data }, block],
+                true
+              );
+              if (
+                typeof value !== 'string' ||
+                !/^0x(?:[0-9a-fA-F]{2})*$/.test(value)
+              )
+                return fail('INVALID_RESPONSE');
+              return { kind: 'result', data: value };
+            } catch (error) {
+              if (error instanceof ScopedCallRpcError)
+                return { kind: 'rpc-error', error: error.value };
+              throw error;
+            }
+          },
+        });
+      },
+      { network, assertCurrent }
+    );
+  };
 }
