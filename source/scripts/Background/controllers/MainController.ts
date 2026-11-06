@@ -62,6 +62,7 @@ import {
 } from '../../../shared/utxoActivityParticipants';
 import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
 import { createUtxoRegistrationPin } from '../../../shared/utxoRegistration';
+import { assertUtxoSoftwareSpend } from '../../../shared/utxoSoftwareCustody';
 import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
@@ -280,6 +281,7 @@ import { isSentryTransactionVersion } from 'utils/sentry/feeAuthorization';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
+  assertSLHDSASessionGeneration,
   cancelSLHDSAWorkerInOffscreen,
   clearRuntimeSLHDSAStates,
   clearSLHDSAPublicPrecomputeCache,
@@ -2108,6 +2110,7 @@ class MainController {
     >[0]
   ) {
     const signing = this.captureUtxoSigningContext();
+    signing.assertSoftwareSpend([]);
     const collateral = await this.getProtectedSentryOutpoints();
     signing.assertCurrent();
     const owner = this.utxoRecordOwner(
@@ -2145,6 +2148,7 @@ class MainController {
       if (!result?.psbt) return result;
       const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
       read.assertCurrent();
+      signing.assertSoftwareSpend(summary.inputScripts, psbt.txOutputs);
       await this.assertNoSentryCollateralInputs(psbt);
       read.assertCurrent();
       this.assertOrdinaryUtxoInputsCurrent(psbt, signing.context);
@@ -8888,10 +8892,12 @@ class MainController {
     pkSeed?: string;
   }) {
     this.configureSLHDSASessionStateCrypto();
+    const generation = getSLHDSASessionGeneration();
     try {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: () => assertSLHDSASessionGeneration(generation),
       });
       const hasState =
         Boolean(state?.secretKeyHex) &&
@@ -9062,6 +9068,7 @@ class MainController {
     const state = await loadEncryptedSLHDSAState({
       crypto: this.getSLHDSASessionStateCrypto(),
       keyId: params.keyId,
+      assertOwner: () => assertSLHDSASessionGeneration(sessionGeneration),
     });
     if (!state) {
       const setupStatus = await getSLHDSASmartAccountSetupStatus({
@@ -9172,6 +9179,7 @@ class MainController {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: assertCurrent,
       });
       assertCurrent();
       if (!state) {
@@ -11825,12 +11833,34 @@ class MainController {
       if (networkGeneration !== this.networkRequestGeneration)
         throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
     };
+    const assertSoftwareSpend = (
+      inputScripts: readonly Uint8Array[],
+      outputs: readonly { script: Uint8Array }[] = []
+    ) => {
+      assertWalletReviewCurrent();
+      const current = store.getState().vault;
+      if (current.activeNetwork.slip44 !== context.slip44)
+        throw new Error(UTXO_SIGNING_CONTEXT_CHANGED);
+      const selectedAccount = current.accounts[selected.type]?.[selected.id];
+      // Match the SDK's actual device route, never the submitted device flags.
+      if (
+        selected.type !== KeyringAccountType.Ledger &&
+        selected.type !== KeyringAccountType.Trezor &&
+        selectedAccount?.isLedgerWallet !== true &&
+        selectedAccount?.isTrezorWallet !== true
+      )
+        assertUtxoSoftwareSpend(context, [
+          ...inputScripts,
+          ...outputs.map(({ script }) => script),
+        ]);
+    };
     assertCurrent();
     return {
       context,
       assertCurrent,
       walletReviewScope,
       assertWalletReviewCurrent,
+      assertSoftwareSpend,
       keyring,
       transactions: keyring.syscoinTransaction,
       withRead: <T>(
@@ -11878,6 +11908,7 @@ class MainController {
   ) {
     const { utxoFeeReview, ...signingParams } = params;
     const assertCurrent = signing.assertWalletReviewCurrent;
+    signing.assertSoftwareSpend([]);
     return signing.withRead(async (read) => {
       const verified = await this.verifySyscoinPsbt(params.psbt, read);
       assertCurrent();
@@ -11904,6 +11935,10 @@ class MainController {
           )
         : undefined;
       try {
+        signing.assertSoftwareSpend(
+          verified.summary.inputScripts,
+          verified.psbt.txOutputs
+        );
         const signed = await signing.transactions.signPSBT(
           {
             ...signingParams,
