@@ -1,7 +1,7 @@
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy.ts';
 import type { SecurityPreferences, SecurityPreferenceSnapshot } from '../core/securityPreferences.ts';
 import type { NativeAccountRequest } from './accounts.ts';
-import type { NativeImportRequest } from './importedAccounts.ts';
+import type { NativeImportRequest, NativeUtxoImportDraft } from './importedAccounts.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { CustodyRuntimeError } from './types.ts';
@@ -87,8 +87,30 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
+  /** Local, read-only SDK preview. The form receives only the public address. */
+  async previewUtxoImport(input: NativeUtxoImportDraft, expectedRevision: number,
+    expectedCatalogueRevision: number, assertCurrent: () => void): Promise<string> {
+    const runtime = this.runtime;
+    const guard = () => {
+      const result: unknown = assertCurrent();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new CustodyOperationError('CANCELLED');
+      }
+      this.checkIdle();
+      if (runtime !== this.runtime || this.revision !== expectedRevision ||
+          this.snapshot.phase !== 'ready' || this.pending)
+        throw new CustodyOperationError('CANCELLED');
+    };
+    guard();
+    if (!runtime?.imports) throw new CustodyOperationError('NOT_READY');
+    const address = await runtime.imports.previewUtxo(input, expectedCatalogueRevision, guard);
+    guard();
+    return address;
+  }
+
   /** Private protected-form path; imported key material never enters account projections. */
-  importEvmAccount(input: NativeImportRequest, password: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
+  importAccount(input: NativeImportRequest, password: string, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.imports) throw new CustodyRuntimeError('NOT_READY');
       return runtime.imports.reserve(input, password, expectedCatalogueRevision);

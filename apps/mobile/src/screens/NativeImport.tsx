@@ -2,7 +2,7 @@ import { IdleTextInput, IdlePressable } from './IdleActivityBoundary';
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../custody/importedAccounts';
+import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport, UTXO_IMPORT_TYPES, type NativeImportView, type UtxoImportAddressType } from '../custody/importedAccounts';
 import { Button, Card, colors, Header, Notice, Screen, styles, Text } from '../ui';
 
 type Props = {
@@ -10,17 +10,20 @@ type Props = {
   contextRevision: number;
   catalogueRevision: number;
   networkLabel: string;
+  utxo: boolean;
   onImported(): void;
   onBack(): void;
   onSubmitStart(): void;
   onSubmitEnd(): void;
 };
 
-function failure(cause: unknown): string {
+const addressTypes = { p2wpkh: 'SegWit', p2pkh: 'Legacy', p2tr: 'Taproot' } as const;
+
+function failure(cause: unknown, invalidInput = 'Check the private key and account name, then review the address again.'): string {
   const code = cause instanceof Error ? cause.message : '';
   if (code === 'DUPLICATE_ACCOUNT') return 'This address is already a wallet account. Select that account instead.';
   if (code === 'ACCOUNT_LIMIT') return 'This wallet has reached its account limit. Use an existing account.';
-  if (code === 'INVALID_INPUT') return 'Check the private key and account name, then review the address again.';
+  if (code === 'INVALID_INPUT' || code === 'IMPORTED_KEY_INVALID') return invalidInput;
   if (code === 'BUSY') return 'Wait for the current wallet operation to finish, then try again.';
   if (code === 'INVALID_CREDENTIAL') return 'That password is incorrect. Unlock your wallet to try again.';
   if (code === 'AUTH_THROTTLED') return 'Too many incorrect passwords. Wait a few minutes before trying again.';
@@ -29,8 +32,9 @@ function failure(cause: unknown): string {
 }
 
 /** Secrets remain inside this protected form and its private submit call. */
-export function NativeImport({ imports, contextRevision, catalogueRevision, networkLabel, onImported, onBack, onSubmitStart, onSubmitEnd }: Props) {
+export function NativeImport({ imports, contextRevision, catalogueRevision, networkLabel, utxo, onImported, onBack, onSubmitStart, onSubmitEnd }: Props) {
   const [privateKey, setPrivateKey] = useState('');
+  const [utxoAddressType, setUtxoAddressType] = useState<UtxoImportAddressType>('p2wpkh');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [address, setAddress] = useState<string | null>(null);
@@ -63,18 +67,36 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     };
   }, [back, clear, imports]);
 
-  const review = () => {
-    if (lifetime.current.working) return;
+  const review = async () => {
+    const state = lifetime.current;
+    if (!state.mounted || state.working || AppState.currentState !== 'active') return;
     setError('');
     if (!name.trim() || name.trim().length > 64 || !name.isWellFormed() || /[\u0000-\u001f\u007f-\u009f]/.test(name)) {
       setError('Enter an account name of up to 64 characters.'); return;
     }
+    const request = ++state.request;
+    const check = () => {
+      if (!state.mounted || state.request !== request || AppState.currentState !== 'active')
+        throw new Error('CANCELLED');
+    };
+    state.working = true;
+    setBusy(true);
     try {
-      const key = normalizeImportedKey(privateKey);
-      setPrivateKey(key); setAddress(importedKeyIdentity(key, 0).address); setAcknowledged(false); setPassword('');
+      const draft = utxo ? normalizeUtxoImport({ privateKey, utxoAddressType }) : undefined;
+      const key = draft?.privateKey ?? normalizeImportedKey(privateKey);
+      const reviewed = draft
+        ? await imports.previewUtxo(draft, scope.current.contextRevision, scope.current.catalogueRevision, check)
+        : importedKeyIdentity(key, 0).address;
+      check();
+      setPrivateKey(key); setAddress(reviewed); setAcknowledged(false); setPassword('');
       Keyboard.dismiss();
-    } catch {
-      setError('Enter a valid 32-byte EVM private key. Recovery phrases, WIF and extended keys are not supported here.');
+    } catch (cause) {
+      if (state.mounted && state.request === request)
+        setError(utxo ? failure(cause, 'Check the WIF key and address type for this network.') :
+          'Enter a valid 32-byte EVM private key. Recovery phrases, WIF and extended keys are not supported here.');
+    } finally {
+      state.working = false;
+      if (state.mounted) setBusy(false);
     }
   };
   const submit = async () => {
@@ -82,7 +104,7 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
     if (!state.mounted || state.working || !privateKey || !address || !password || !acknowledged || AppState.currentState !== 'active') return;
     state.working = true; setBusy(true); setError('');
     const request = ++state.request;
-    const input = { privateKey, label: name.trim(), expectedAddress: address };
+    const input = { privateKey, label: name.trim(), expectedAddress: address, ...(utxo && { utxoAddressType }) };
     const entered = password;
     setPrivateKey(''); setPassword(''); Keyboard.dismiss();
     try {
@@ -105,12 +127,15 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen footer={address ? <Button title="Import account" disabled={busy || !password || !acknowledged} onPress={submit} /> :
-        <Button title="Review address" disabled={busy || !privateKey || !name.trim()} onPress={review} />}>
-        <Header title={address ? 'Review imported account' : 'Import private key'} subtitle={`${networkLabel} · EVM account`} onBack={back} />
-        <Notice title="Keep a separate copy of this key" body="Your recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing." tone="amber" />
+        <Button title="Review address" disabled={busy || !privateKey || !name.trim()} onPress={() => void review()} />}>
+        <Header title={address ? 'Review imported account' : 'Import private key'} subtitle={utxo ? networkLabel : `${networkLabel} · EVM account`} onBack={back} />
+        {!utxo && <Notice title="Keep a separate copy of this key" body="Your recovery phrase cannot restore an imported account. Keep its original private key backed up securely before continuing." tone="amber" />}
         {address ? <>
           <Card style={s.identity}><Text style={s.label}>{name.trim()}</Text><Text style={s.address}>{address}</Text></Card>
-          <Text style={styles.muted}>Check the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.</Text>
+          <Text style={styles.muted}>{utxo
+            ? `Check the complete ${addressTypes[utxoAddressType]} address for ${networkLabel}.`
+            : 'Check the complete address. This key controls the same account across EVM networks; available send features depend on the selected network.'}</Text>
+          {utxo && <Notice title="Back up this key" body="Your recovery phrase cannot restore this account." tone="amber" />}
           <IdlePressable accessibilityRole="checkbox" accessibilityState={{ checked: acknowledged, disabled: busy }} aria-checked={acknowledged} accessibilityLabel="I have a separate backup of this private key"
             disabled={busy} onPress={() => setAcknowledged((value) => !value)} style={s.checkRow}>
             <View style={[s.checkbox, acknowledged && s.checked]}><Text style={s.checkmark}>{acknowledged ? '✓' : ''}</Text></View>
@@ -125,12 +150,21 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
         </> : <>
           <View style={s.field}><Text style={s.label}>Account name</Text><IdleTextInput accessibilityLabel="Account name" value={name} onChangeText={setName}
             editable={!busy} maxLength={64} autoCorrect={false} autoComplete="off" style={s.input} /></View>
-          <View style={s.field}><Text style={s.label}>EVM private key</Text><IdleTextInput accessibilityLabel="EVM private key" value={privateKey} onChangeText={setPrivateKey}
-            editable={!busy} secureTextEntry maxLength={1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
+          <View style={s.field}><Text style={s.label}>{utxo ? 'WIF private key' : 'EVM private key'}</Text><IdleTextInput accessibilityLabel={utxo ? 'WIF private key' : 'EVM private key'} value={privateKey} onChangeText={setPrivateKey}
+            editable={!busy} secureTextEntry maxLength={utxo ? 65 : 1024} autoCapitalize="none" autoCorrect={false} spellCheck={false} autoComplete="off"
             textContentType="none" importantForAutofill="noExcludeDescendants" style={s.input} /></View>
-          <Text style={styles.muted}>Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.</Text>
+          {utxo ? <View style={s.field}>
+            <Text style={s.label}>Address type</Text>
+            <View style={s.addressTypes}>{UTXO_IMPORT_TYPES.map((type) => (
+              <IdlePressable key={type} accessibilityRole="radio" accessibilityState={{ checked: type === utxoAddressType, disabled: busy }}
+                aria-checked={type === utxoAddressType} disabled={busy} onPress={() => setUtxoAddressType(type)}
+                style={[s.addressOption, type === utxoAddressType && s.selectedAddressOption]}>
+                <Text style={[s.label, type === utxoAddressType && s.selectedAddressLabel]}>{addressTypes[type]}</Text>
+              </IdlePressable>
+            ))}</View>
+          </View> : <Text style={styles.muted}>Use a 64-character hexadecimal EVM key, with or without 0x. The key stays hidden while you enter it.</Text>}
         </>}
-        {busy && <ActivityIndicator accessibilityLabel="Importing account" color={colors.pink} />}
+        {busy && <ActivityIndicator accessibilityLabel={address ? 'Importing account' : 'Checking address'} color={colors.pink} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
       </Screen>
@@ -140,7 +174,12 @@ export function NativeImport({ imports, contextRevision, catalogueRevision, netw
 
 const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: colors.bg }, fill: { flex: 1 },
-  field: { gap: 10 }, label: { color: colors.muted, fontSize: 13, lineHeight: 20, fontWeight: '600' },
+  field: { gap: 10 },
+  addressTypes: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
+  addressOption: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 14 },
+  selectedAddressOption: { borderColor: colors.pink, backgroundColor: colors.raised },
+  selectedAddressLabel: { color: colors.text },
+  label: { color: colors.muted, fontSize: 13, lineHeight: 20, fontWeight: '600' },
   input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
   identity: { padding: 18, gap: 10 }, address: { fontSize: 14, lineHeight: 23 },
   checkRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },

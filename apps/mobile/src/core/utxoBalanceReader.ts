@@ -1,7 +1,7 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 import { parseUtxoPublicIdentifier } from './utxoIdentifier.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { openUtxoReadSession, utxoCount, utxoFailure, utxoFetchOptions, utxoObject, utxoUnits, UtxoBalanceError, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
 export { UtxoBalanceError, type UtxoBalanceErrorCode } from './utxoReadSession.ts';
 
@@ -10,27 +10,27 @@ export type UtxoBalance = Readonly<{
   confirmedUnits: string; pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number;
 }>;
 export interface UtxoBalanceReader {
-  readBalance(networkId: UtxoNetworkId, address: string, signal: AbortSignal): Promise<UtxoBalance>;
-  readAccount(networkId: UtxoNetworkId, identifier: string, signal: AbortSignal): Promise<UtxoBalance>;
+  readBalance(scope: UtxoNetworkId | UtxoNetwork, address: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
+  readAccount(scope: UtxoNetworkId | UtxoNetwork, identifier: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
 }
 
 /** The same SJS account query used by the extension, with the native bounded transport. */
 export function createUtxoBalanceReader(options: Readonly<{ fetch: UtxoFetch; timeoutMs?: number }>): UtxoBalanceReader {
   const checked = utxoFetchOptions(options);
-  async function read(networkId: UtxoNetworkId, identifier: string, isAccount: boolean, signal: AbortSignal): Promise<UtxoBalance> {
+  async function read(scope: UtxoNetworkId | UtxoNetwork, identifier: string, isAccount: boolean, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance> {
     if (signal.aborted) return utxoFailure('CANCELLED');
-    let canonical: string;
+    let canonical: string, network: UtxoNetwork;
     try {
-      getUtxoNetwork(networkId);
+      network = resolveUtxoNetwork(scope);
       if (isAccount) {
-        const source = parseUtxoPublicIdentifier(identifier, networkId);
+        const source = parseUtxoPublicIdentifier(identifier, network);
         if (source.kind !== 'account') return utxoFailure('INVALID_INPUT');
         canonical = source.identifier;
-      } else canonical = normalizeUtxoAddress(identifier, networkId);
+      } else canonical = normalizeUtxoAddress(identifier, network);
     } catch { return utxoFailure('INVALID_INPUT'); }
     let session: UtxoReadSession | undefined;
     try {
-      session = await openUtxoReadSession(networkId, checked, signal);
+      session = await openUtxoReadSession(network, checked, signal, false, undefined, undefined, assertCurrent);
       const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
       const summary = utxoObject(await syscoinUtils.fetchBackendAccount(prefix, canonical, 'details=tokenBalances&tokens=nonzero', isAccount, undefined, {
         signal,
@@ -42,14 +42,14 @@ export function createUtxoBalanceReader(options: Readonly<{ fetch: UtxoFetch; ti
         },
       }));
       if (summary.address !== canonical) return utxoFailure('INVALID_RESPONSE');
-      return Object.freeze({ networkId, kind: 'utxo', chainId: active.network.chainId, genesisHash: active.network.genesisHash,
+      return Object.freeze({ networkId: network.id, kind: 'utxo', chainId: active.network.chainId, genesisHash: active.network.genesisHash,
         confirmedUnits: utxoUnits(summary.balance, false), pendingDeltaUnits: utxoUnits(summary.unconfirmedBalance, true),
         unconfirmedTransactions: utxoCount(summary.unconfirmedTxs), observedHeight: active.observedHeight });
     } catch (cause) { throw cause instanceof UtxoBalanceError ? cause : new UtxoBalanceError(signal.aborted ? 'CANCELLED' : 'UNAVAILABLE'); }
     finally { session?.close(); }
   }
   return Object.freeze({
-    readBalance: (networkId: UtxoNetworkId, address: string, signal: AbortSignal) => read(networkId, address, false, signal),
-    readAccount: (networkId: UtxoNetworkId, identifier: string, signal: AbortSignal) => read(networkId, identifier, true, signal),
+    readBalance: (scope: UtxoNetworkId | UtxoNetwork, address: string, signal: AbortSignal, assertCurrent?: () => void) => read(scope, address, false, signal, assertCurrent),
+    readAccount: (scope: UtxoNetworkId | UtxoNetwork, identifier: string, signal: AbortSignal, assertCurrent?: () => void) => read(scope, identifier, true, signal, assertCurrent),
   });
 }

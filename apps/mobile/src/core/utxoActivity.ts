@@ -13,9 +13,9 @@ import { assertJsonWorkBudget, measureJsonWorkBudget } from '../../../../source/
 import { assertPublicWatchOnlyIdentifier } from '../../../../source/utils/watchOnlyIdentifier.ts';
 import { assertBaseUnits } from './amounts.ts';
 import { normalizeUtxoAddress } from './utxoAddresses.ts';
-import { findUtxoNetwork, getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { isCustomUtxoNetworkId, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import { openUtxoReadSession, utxoFetchOptions, utxoObject, type UtxoFetch, type UtxoReadSession } from './utxoReadSession.ts';
-import type { PublicSnapshot } from './types.ts';
+import type { NetworkId, PublicSnapshot, WalletNetwork } from './types.ts';
 
 export const UTXO_ACTIVITY_LIMITS = Object.freeze({ pageSize: 20, nativeIntegerDigits: 78, displayRows: 100, windowPages: 5, bytes: 1024 * 1024, nodes: 20000, timeoutMs: 30000 });
 export type UtxoActivityContext = Readonly<{ accountId: string; networkId: UtxoNetworkId; address: string; generation: number }>;
@@ -30,7 +30,7 @@ export type UtxoActivityPage = Readonly<{
   context: UtxoActivityContext; page: number; rows: readonly UtxoActivityRow[]; hasMore: boolean; emptyAccount: boolean;
 }>;
 /** Only the authority passes this private canonical source to its trusted reader. */
-export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean }>;
+export type UtxoActivitySource = Readonly<{ context: UtxoActivityContext; identifier: string; isAccount: boolean; registration?: UtxoNetwork; assertCurrent?: () => void }>;
 export type UtxoActivityDetail = Readonly<{ txid: string; row: UtxoActivityRow; from: readonly string[]; to: readonly string[] }>;
 export type UtxoActivityDetailCache = ReturnType<typeof createUtxoTransactionDetailsCache>;
 export interface UtxoActivityReader {
@@ -45,12 +45,19 @@ export class UtxoActivityError extends Error {
   constructor(code: UtxoActivityError['code']) { super('Account activity is unavailable'); this.name = 'UtxoActivityError'; this.code = code; }
 }
 const fail = (code: UtxoActivityError['code'] = 'INVALID'): never => { throw new UtxoActivityError(code); };
+function checkActivityOwner(assertCurrent?: () => void): void {
+  const ownership: unknown = assertCurrent?.();
+  if (ownership !== undefined) {
+    void Promise.resolve(ownership).catch(() => undefined);
+    return fail('CANCELLED');
+  }
+}
 const hash = (value: unknown): string => typeof value === 'string' && /^[0-9a-f]{64}$/i.test(value) ? value.toLowerCase() : fail();
-function context(value: UtxoActivityContext): UtxoActivityContext {
+function context(value: UtxoActivityContext, network: UtxoNetwork): UtxoActivityContext {
   assertJsonWorkBudget(value, 2048, 3, 30);
   if (typeof value.accountId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value.accountId) || !Number.isSafeInteger(value.generation) || value.generation < 0) return fail();
-  const networkId = getUtxoNetwork(value.networkId).id;
-  return Object.freeze({ accountId: value.accountId, networkId, address: normalizeUtxoAddress(value.address, networkId), generation: value.generation });
+  if (network.id !== value.networkId) return fail('CHANGED');
+  return Object.freeze({ accountId: value.accountId, networkId: network.id, address: normalizeUtxoAddress(value.address, network), generation: value.generation });
 }
 function units(value: unknown): string | null {
   // Same bounded native amount domain used by the public balance surface.
@@ -124,15 +131,22 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
   const summaries = new WeakMap<UtxoActivityRow, { source: UtxoActivitySource; raw: UtxoDetailTransaction; charge: number; observation: number }>();
   let observationSequence = 0;
   return Object.freeze({ async readPage(input: UtxoActivitySource, request: Readonly<{ page: number }>, signal: AbortSignal) {
-    const owner = context(input.context), page = request.page, identifier = input.identifier, isAccount = input.isAccount;
+    const { registration, assertCurrent } = input;
+    const network = resolveUtxoNetwork(registration ?? input.context.networkId);
+    if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return fail('CHANGED');
+    const owner = context(input.context, network), page = request.page, identifier = input.identifier, isAccount = input.isAccount;
     if (!Number.isSafeInteger(page) || page < 1 || typeof isAccount !== 'boolean') return fail();
     if (isAccount) assertPublicWatchOnlyIdentifier(identifier);
-    else if (normalizeUtxoAddress(identifier, owner.networkId) !== owner.address) return fail();
+    else if (normalizeUtxoAddress(identifier, network) !== owner.address) return fail();
     let workFailure: UtxoActivityError | null = null;
-    const check = () => { if (workFailure) throw workFailure; if (signal.aborted) fail('CANCELLED'); };
+    const check = () => {
+      checkActivityOwner(assertCurrent);
+      if (workFailure) throw workFailure;
+      if (signal.aborted) fail('CANCELLED');
+    };
     check(); let session: UtxoReadSession | undefined;
     try {
-      session = await openUtxoReadSession(owner.networkId, checked, signal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes);
+      session = await openUtxoReadSession(network, checked, signal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes, check);
       check(); const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
       const fetchAccount = async (url: string, queriedIdentifier: string, query: string, _parseData: boolean) => {
         check();
@@ -166,7 +180,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
       const result = Object.freeze({ context: owner, page, rows,
         hasMore: totalPages === null ? raw.transactions.length === UTXO_ACTIVITY_LIMITS.pageSize : page < totalPages,
         emptyAccount: rows.length === 0 && readHistoryCount(raw.txs) === 0 && readHistoryCount(raw.unconfirmedTxs) === 0 });
-      const captured = Object.freeze({ context: owner, identifier, isAccount });
+      const captured = Object.freeze({ context: owner, identifier, isAccount, registration });
     const observation = ++observationSequence;
       for (let index = 0; index < rows.length; index++) {
         const summary = raw.transactions[index] as UtxoDetailTransaction;
@@ -180,16 +194,23 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
     finally { session?.close(); }
   }, async readDetail(input: UtxoActivitySource, request: Readonly<{ row: UtxoActivityRow; txid: string }>, signal: AbortSignal,
     cache: UtxoActivityDetailCache, guard: () => void) {
-    const owner = context(input.context), identifier = input.identifier, isAccount = input.isAccount;
+    const { registration, assertCurrent } = input;
+    const network = resolveUtxoNetwork(registration ?? input.context.networkId);
+    if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return fail('CHANGED');
+    const owner = context(input.context, network), identifier = input.identifier, isAccount = input.isAccount;
     const txid = hash(request.txid), accepted = summaries.get(request.row);
     const summary = accepted?.raw;
-    if (!accepted || !summary || hash(summary.txid) !== txid || request.row.txid !== txid || !same(accepted.source.context, owner) || accepted.source.identifier !== identifier || accepted.source.isAccount !== isAccount) return fail('CHANGED');
-    const check = () => { guard(); if (signal.aborted) fail('CANCELLED'); };
+    if (!accepted || !summary || hash(summary.txid) !== txid || request.row.txid !== txid || !same(accepted.source.context, owner) || accepted.source.identifier !== identifier || accepted.source.isAccount !== isAccount || accepted.source.registration !== registration) return fail('CHANGED');
+    const check = () => {
+      checkActivityOwner(guard);
+      if (assertCurrent !== guard) checkActivityOwner(assertCurrent);
+      if (signal.aborted) fail('CANCELLED');
+    };
     check();
     const read = async (physicalSignal: AbortSignal) => {
       let session: UtxoReadSession | undefined;
       try {
-        session = await openUtxoReadSession(owner.networkId, checked, physicalSignal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes);
+        session = await openUtxoReadSession(network, checked, physicalSignal, false, UTXO_ACTIVITY_LIMITS.bytes, UTXO_ACTIVITY_LIMITS.bytes, assertCurrent);
         const active = session, prefix = active.network.endpoint.replace(/\/$/, '');
         const dispatch = ++observationSequence;
         const result = await sjsRaw(prefix, txid, { signal: physicalSignal, fetch: async (target: string, init: RequestInit) => {
@@ -226,7 +247,7 @@ export function createUtxoActivityReader(options: Readonly<{ fetch: UtxoFetch; t
   forgetDetails(rows: readonly UtxoActivityRow[]) { for (const row of rows) summaries.delete(row); } });
 }
 
-type PublicAuthority = { getSnapshot(): PublicSnapshot; subscribe(listener: (snapshot: PublicSnapshot) => void): () => void;
+type PublicAuthority = { getSnapshot(): PublicSnapshot; getNetwork(id: NetworkId): WalletNetwork; subscribe(listener: (snapshot: PublicSnapshot) => void): () => void;
   readUtxoActivityPage(request: Readonly<{ page: number }>, signal: AbortSignal): Promise<UtxoActivityPage>;
   readUtxoActivityDetail(request: Readonly<{ txid: string }>, signal: AbortSignal): Promise<UtxoActivityDetail>;
   retainUtxoActivityRows(rows: readonly UtxoActivityRow[]): void; releaseUtxoActivity(): void };
@@ -256,9 +277,12 @@ export class UtxoWatchActivity {
   constructor(authority: PublicAuthority, foreground: () => boolean) { this.authority = authority; this.foreground = foreground; this.state = this.empty(); }
   private capture(): UtxoActivityContext | null {
     const value = this.authority.getSnapshot(), account = value.accounts.find((a) => a.id === value.selectedAccountId);
-    const network = findUtxoNetwork(value.selectedNetworkId);
-    if (value.status !== 'ready' || !account || !network) return null;
-    try { return context({ accountId: account.id, networkId: network.id, address: account.addresses[network.id]!, generation: value.generation }); } catch { return null; }
+    if (value.status !== 'ready' || !account) return null;
+    try {
+      const network = this.authority.getNetwork(value.selectedNetworkId);
+      if (network.kind !== 'utxo' || !account.addresses[network.id]) return null;
+      return Object.freeze({ accountId: account.id, networkId: network.id, address: account.addresses[network.id]!, generation: value.generation });
+    } catch { return null; }
   }
   private empty(): UtxoActivityState { return Object.freeze({ status: 'idle', context: this.capture(), rows: Object.freeze([]), detail: null, firstPage: 0, page: 0, hasMore: false, hasNewer: false, windowed: false }); }
   private publish(value: UtxoActivityState) { this.state = Object.freeze(value); for (const listener of [...this.listeners]) { if (this.state !== value) break; if (this.listeners.has(listener)) { try { listener(); } catch { /* Observers cannot block revocation. */ } } } }

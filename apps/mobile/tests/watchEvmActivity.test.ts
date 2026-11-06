@@ -4,7 +4,7 @@ import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { ActivityReceiptReader } from '../src/activity/receiptReader.ts';
 import { createWatchEvmActivity } from '../src/activity/watchActivity.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { NATIVE_NETWORKS, getNativeNetwork } from '../src/custody/networkContext.ts';
 import { deferred, json } from './publicWatchFixtures.ts';
 
@@ -18,7 +18,7 @@ function fixture(accountCount = 2) {
   let historyRows: ((feed: string, page: string | null) => readonly Record<string, unknown>[]) | undefined;
   let repositoryReads = 0, afterFetch: ((call: Call) => Promise<void>) | undefined, wrongChain = false, fail = false, empty = false;
   const calls: Call[] = [], writes: string[] = [];
-  const repository = createPublicAccountStorage({ async get() { repositoryReads++; return raw; }, async set(_key, value) { writes.push(value); raw = value; } }).records;
+  const repository = createPublicAccountStorage({ async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; repositoryReads++; return raw; }, async set(_key, value) { writes.push(value); raw = value; } }).records;
   const fetcher = async (url: string, init: RequestInit) => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     const target = new URL(url), method = body?.method ?? target.searchParams.get('action')!;

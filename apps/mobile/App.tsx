@@ -57,6 +57,7 @@ import type {
 } from './src/core/types';
 import {
   publicAccountRecords,
+  watchUtxoNetworkSettings,
   loadAccountSelection,
   saveAccountSelection,
   balanceReader,
@@ -368,7 +369,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const activeAccount = snapshot.accounts.find(
     (a) => a.id === snapshot.selectedAccountId
   );
-  const liveNetwork = getNetwork(snapshot.selectedNetworkId);
+  const liveNetwork = watchAuthority ? watchAuthority.getNetwork(snapshot.selectedNetworkId) : getNetwork(snapshot.selectedNetworkId);
   const liveAmount =
     snapshot.balance.status === 'available'
       ? formatBaseUnits(snapshot.balance.units, liveNetwork.decimals)
@@ -387,7 +388,7 @@ function AppContent({ availableWatchNetworks }: AppProps) {
     ? sampleAssets.filter((a) => filter === 'all' || a.networkId === filter)
     : [liveAsset];
   const current = preview ? selected : liveAsset;
-  const networkChoices = preview ? sampleAssets : getWatchNetworks(activeAccount).map((network) => ({
+  const networkChoices = preview ? sampleAssets : (watchAuthority ? watchAuthority.getAccountNetworks(activeAccount) : getWatchNetworks(activeAccount)).map((network) => ({
     ...liveAsset,
     id: network.id,
     name: network.name,
@@ -519,7 +520,11 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   const navigateInfo = (s: string) => go(s as Route);
   const back = () => go('home');
   if (route === 'design') return <DesignStudio onExit={exit} />;
-  const accountActions = { watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
+  const watchNetworkActions = isNativePersistence ? {
+    networkSettings: watchUtxoNetworkSettings,
+    onNetworksChanged: async () => { await loadAccounts(); },
+  } : {};
+  const accountActions = { ...watchNetworkActions, watch: watchState, onAdd: addAccount, onRename: renameWatch, onRemove: removeWatch, onRetry: async () => { await loadAccounts(); setStartupError(''); }, availableWatchNetworks };
   const selectionNotice = selectionError ? <Notice title="Account choice not saved" body={selectionError} tone="amber" /> : null;
   if (route === 'native') return <><NativeWalletScreen onExit={exit} initialAccountId={requestedHdId} onWalletRemoved={walletRemoved} onSelectedNative={(id) => { setRequestedHdId(id); rememberSelection(nativeAccountSelection(id)); }} accounts={{ ...accountActions, onSelectWatch: openWatch, onNativeCatalogue: setCatalogue }} />{selectionNotice}</>;
   if (!preview && route === 'accounts') return <><WalletAccounts {...accountActions} catalogue={null}
@@ -580,6 +585,8 @@ function AppContent({ availableWatchNetworks }: AppProps) {
   else if (route === 'add')
     content = (
       <AddWatchAccount
+        {...watchNetworkActions}
+        utxoNetworks={watchState.utxoNetworks}
         availableNetworks={availableWatchNetworks}
         onCancel={() =>
           go(

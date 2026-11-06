@@ -68,8 +68,10 @@ export function NativeAccounts({
   controller,
   onBack,
   onImport,
+  networkLabel = 'EVM',
 }: {
   controller: NativeAccountView;
+  networkLabel?: string;
   onBack(): void;
   onImport?(): void;
 }) {
@@ -235,7 +237,7 @@ export function NativeAccounts({
             <View style={s.listHeader}>
               <Header
                 title={title}
-                subtitle="EVM · Wallet accounts"
+                subtitle={`${networkLabel} · Wallet accounts`}
                 onBack={close}
               />
               <Text style={styles.muted}>
@@ -366,7 +368,7 @@ export function NativeAccounts({
         >
           <Header
             title={title}
-            subtitle="EVM · Wallet accounts"
+            subtitle={`${networkLabel} · Wallet accounts`}
             onBack={() => {
               if (form && !busy) {
                 setForm(null);

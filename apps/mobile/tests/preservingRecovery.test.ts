@@ -240,8 +240,8 @@ test('real SDK recovery preserves imported ciphertext, account IDs and three-cha
   const item = { contractAddress: `0x${'44'.repeat(20)}`, tokenStandard: 'ERC-1155' as const, tokenId: ((1n << 256n) - 1n).toString() };
   try {
     await f.owner.manageAccounts({ kind: 'create', label: 'Second HD', password: OLD }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-    await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported private account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
-    await f.owner.importEvmAccount({ privateKey: KEY2, expectedAddress: importedWallet2.address, label: 'Second imported account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported private account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.owner.importAccount({ privateKey: KEY2, expectedAddress: importedWallet2.address, label: 'Second imported account' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     await f.owner.manageAccounts({ kind: 'select', id: 'imported:60:1' }, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     const fingerprint = await f.store.getWalletFingerprint();
     const ethereum = getNativeNetwork('ethereum'), activityScope = createActivityScope(fingerprint, 'imported:60:1', importedWallet2.address, 'ethereum');
@@ -432,7 +432,7 @@ test('malformed input and a forged private envelope do not count as a wrong phra
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   try {
-    await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Imported' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     f.owner.lock();
     recovery = f.coordinator();
     const before = f.read(); await assert.rejects(recovery.prepare('not a phrase', NEXT, () => undefined), { code: 'INVALID_INPUT' });
@@ -622,7 +622,7 @@ test('a live imported account missing its recovery envelope still blocks preserv
   const f = await fixture();
   let recovery: NativeRecoveryCoordinator | undefined;
   try {
-    await f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Live imported' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'Live imported' }, OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
     const catalogue = JSON.parse(f.read().records.find((row) => row.key === WALLET_CATALOGUE_KEY)!.value);
     catalogue.recovery = [];
     f.write(WALLET_CATALOGUE_KEY, catalogue);
@@ -1339,7 +1339,7 @@ test('UTXO custody uses SDK groups, preserves EVM selection and survives real pa
     assert.equal(f.owner.getCatalogue()?.active.accountId, 'hd:0:1');
     assert.deepEqual(f.owner.getSnapshot().account, gap);
     assert.deepEqual(f.owner.getCatalogue()?.accounts.map((account) => account.id), ['hd:0:0', 'hd:0:1', 'hd:0:2']);
-    await assert.rejects(f.owner.importEvmAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'EVM only' },
+    await assert.rejects(f.owner.importAccount({ privateKey: KEY, expectedAddress: importedWallet.address, label: 'EVM only' },
       OLD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision), { code: 'NOT_READY' });
     await selectNetwork(f, 'syscoin-nevm-testnet');
     assert.equal(getNativeNetwork('syscoin-nevm-testnet').chainId, '5700');

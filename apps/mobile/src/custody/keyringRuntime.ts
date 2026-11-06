@@ -12,6 +12,7 @@ import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sys
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
+import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { WalletStorageError, type OpenWalletStorage, type RecoveryStorageSnapshot, type WalletIdentityRead } from '../storage/types.ts';
 import type { CustodyRuntime, CustodyRuntimeFactory } from './types.ts';
 import { CustodyRuntimeError } from './types.ts';
@@ -38,7 +39,7 @@ import type { NativeActivityRuntime } from '../activity/nativeActivity.ts';
 import { computeAddress, Transaction } from 'ethers/transaction';
 import { snapshotHdKeyExportScope, type NativeHdKeyExportRuntime } from './hdKeyExport.ts';
 import { parseNativeAccountId, type NativeAccountType } from './accountIdentity.ts';
-import { importedKeyIdentity, normalizeImportedKey } from './importedAccounts.ts';
+import { importedKeyIdentity, normalizeImportedKey, normalizeUtxoImport } from './importedAccounts.ts';
 import { importAccountWithRecovery } from '../../../../source/wallet/importedAccountRecovery.ts';
 import type { NativeImportRuntime } from './importedAccounts.ts';
 import { stageInitialWallet, type RecoveryAccountGroup } from '../../../../source/wallet/accountRecovery.ts';
@@ -63,6 +64,7 @@ export type KeyringRuntimeDependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   assertActive?: () => void;
+  readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
   readUtxoAccount?: (id: UtxoNetworkId, xpub: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
   utxoFetch?: typeof globalThis.fetch;
   observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
@@ -292,6 +294,15 @@ export function createKeyringRuntimeFactory(
             throw new KeyringRuntimeError('OPERATION_FAILED');
           // Imported EVM scalars have no derivation path. The host owns their durable ordinal.
           return { ...value, id: index, address: expected.address };
+        };
+        const checkedWifAccount = (account: IKeyringAccountState, network: UtxoNetworkId) => {
+          if (!account || account.isImported !== true || account.isLedgerWallet ||
+              account.isTrezorWallet || account.isSmartAccount ||
+              !Number.isSafeInteger(account.id) || account.id < 0 ||
+              account.xpub !== account.address || normalizeUtxoAddress(account.address, network) !== account.address ||
+              typeof account.xprv !== 'string' || account.xprv.length < 32 || account.xprv.length > 1024)
+            throw new KeyringRuntimeError('OPERATION_FAILED');
+          return account;
         };
         const stateFor = (records: typeof catalogue.privateRecords, networkId = records.active.networkId): State => {
           const next = initialState();
@@ -732,21 +743,54 @@ export function createKeyringRuntimeFactory(
             };
         };
         const imports: NativeImportRuntime = {
+          async previewUtxo(input, expectedRevision, assertCurrent) {
+            const captured = generation, snapshot = catalogueSnapshot, ring = keyring;
+            const network = findUtxoNetwork(snapshot?.active.networkId);
+            const guard = () => {
+              current(captured); checkGuard(assertCurrent); current(captured);
+              if (active || reserved) throw new KeyringRuntimeError('BUSY');
+              if (!ring.isUnlocked() || catalogueSnapshot !== snapshot || keyring !== ring ||
+                  snapshot?.revision !== expectedRevision)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            guard();
+            if (!network || network.decimals !== 8 || !utxoRecords || !dependencies.utxoFetch || !dependencies.readUtxoBalance)
+              throw new KeyringRuntimeError('NOT_READY');
+            try {
+              const { privateKey, utxoAddressType } = normalizeUtxoImport(input);
+              guard();
+              const account = await ring.importAccount(privateKey, undefined, { utxoAddressType });
+              guard();
+              return checkedWifAccount(account, network.id).address;
+            } catch (cause) {
+              guard();
+              // The SDK importer currently reports duplicates without a code.
+              if (cause instanceof Error && cause.message === 'Account already exists, try again with another Private Key.')
+                throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
+              throw new KeyringRuntimeError('INVALID_INPUT');
+            }
+          },
           reserve(input, password, expectedRevision) {
-            if (closed || !keyring.isUnlocked() || !catalogueSnapshot || findUtxoNetwork(catalogueSnapshot.active.networkId))
+            if (closed || !keyring.isUnlocked() || !catalogueSnapshot)
               throw new KeyringRuntimeError('NOT_READY');
             if (active || reserved) throw new KeyringRuntimeError('BUSY');
             if (catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
+            const networkId = catalogueSnapshot.active.networkId;
+            const utxo = findUtxoNetwork(networkId);
+            if (utxo && (utxo.decimals !== 8 || !utxoRecords || !dependencies.utxoFetch || !dependencies.readUtxoBalance))
+              throw new KeyringRuntimeError('NOT_READY');
             let request: typeof input;
             try {
               request = decodeStorageValue(encodeStorageValue(input)) as typeof input;
               if (!request || typeof request !== 'object' || Array.isArray(request) ||
-                  Object.keys(request).sort().join(',') !== 'expectedAddress,label,privateKey' ||
+                  Object.keys(request).sort().join(',') !== (utxo ? 'expectedAddress,label,privateKey,utxoAddressType' : 'expectedAddress,label,privateKey') ||
                   typeof request.label !== 'string' || !request.label.isWellFormed() || !request.label || request.label.trim() !== request.label ||
                   request.label.length > 64 || /[\u0000-\u001f\u007f-\u009f]/.test(request.label)) throw new Error('INVALID_INPUT');
-              const key = normalizeImportedKey(request.privateKey);
-              const identity = importedKeyIdentity(key, 0);
-              if (request.expectedAddress !== identity.address) throw new Error('INVALID_INPUT');
+              const key = utxo
+                ? normalizeUtxoImport({ privateKey: request.privateKey, utxoAddressType: request.utxoAddressType! }).privateKey
+                : normalizeImportedKey(request.privateKey);
+              const address = utxo ? normalizeUtxoAddress(request.expectedAddress, utxo.id) : importedKeyIdentity(key, 0).address;
+              if (request.expectedAddress !== address) throw new Error('INVALID_INPUT');
               request = Object.freeze({ ...request, privateKey: key });
               validPassword(password, false);
             } catch { throw new KeyringRuntimeError('INVALID_INPUT'); }
@@ -766,13 +810,16 @@ export function createKeyringRuntimeFactory(
                   guard();
                   if (!(await authenticate(password, captured))) throw new KeyringRuntimeError('INVALID_CREDENTIAL');
                   guard(); await hydrate(captured); guard();
-                  if (!catalogueSnapshot || catalogueSnapshot.revision !== expectedRevision) throw new KeyringRuntimeError('CANCELLED');
+                  if (!catalogueSnapshot || catalogueSnapshot.revision !== expectedRevision ||
+                      catalogueSnapshot.active.networkId !== networkId) throw new KeyringRuntimeError('CANCELLED');
                   if (catalogueSnapshot.accounts.some((account) => account.address === request.expectedAddress))
                     throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
                   const prepared = await importAccountWithRecovery(keyring, { secret: request.privateKey, label: request.label,
-                    network: { kind: 'ethereum', slip44: 60 } }, guard); guard();
+                    network: utxo ? { kind: 'syscoin', slip44: utxo.slip44 } : { kind: 'ethereum', slip44: 60 },
+                    ...(utxo && { options: { utxoAddressType: request.utxoAddressType } }) }, guard); guard();
                   const index = prepared.account.id;
-                  const imported = checkedImported(prepared.account, request.privateKey, index);
+                  const imported = utxo ? checkedWifAccount(prepared.account, utxo.id) : checkedImported(prepared.account, request.privateKey, index);
+                  if (imported.address !== request.expectedAddress) throw new KeyringRuntimeError('INVALID_INPUT');
                   const next = await catalogue.mutate(expectedRevision, { kind: 'import',
                       account: imported, recovery: prepared.recovery }, guard); guard();
                   state.accounts.Imported[index] = imported;
@@ -955,7 +1002,10 @@ export function createKeyringRuntimeFactory(
               await dataBinding(captured, guard); guard();
               const { type, index } = selectedAccount();
               const xpub = state.accounts[type][index]!.xpub;
-              const result = await dependencies.readUtxoAccount!(id, xpub, controller.signal, guard);
+              const result = await (type === 'Imported'
+                ? dependencies.readUtxoBalance?.(id, address, controller.signal, guard)
+                : dependencies.readUtxoAccount!(id, xpub, controller.signal, guard));
+              if (!result) throw new KeyringRuntimeError('NOT_READY');
               guard();
               return result;
             } finally {
@@ -967,13 +1017,16 @@ export function createKeyringRuntimeFactory(
           ...(dependencies.utxoFetch && utxoRecords ? { async openUtxoSend(assertOwner: () => void) {
             const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
             const selected = selectedAccount(), network = findUtxoNetwork(snapshot?.active.networkId);
-            if (!network || network.decimals !== 8 || selected.type !== 'HDAccount') throw new KeyringRuntimeError('NOT_READY');
-            const sdkNetwork = getUtxoSdkNetwork(network.id), { xpub } = state.accounts.HDAccount[selected.index]!;
+            if (!network || network.decimals !== 8) throw new KeyringRuntimeError('NOT_READY');
+            const sdkNetwork = getUtxoSdkNetwork(network.id), account = state.accounts[selected.type][selected.index]!;
+            const { xpub } = account;
+            if (selected.type === 'Imported') checkedWifAccount(account, network.id);
             const guard = () => {
               current(captured); checkGuard(assertOwner); current(captured);
-              const actual = state.activeNetwork;
+              const actual = state.activeNetwork, live = state.accounts[selected.type][selected.index];
               if (ring !== keyring || !ring.isUnlocked() || catalogueSnapshot !== snapshot ||
-                  state.accounts.HDAccount[selected.index]?.xpub !== xpub ||
+                  live !== account || live.xpub !== xpub || live.address !== selected.address ||
+                  state.activeAccount.id !== selected.index || state.activeAccount.type !== selected.type ||
                   actual.kind !== sdkNetwork.kind || actual.chainId !== sdkNetwork.chainId ||
                   actual.slip44 !== sdkNetwork.slip44 || actual.currency !== sdkNetwork.currency ||
                   actual.utxoBackendChain !== sdkNetwork.utxoBackendChain || actual.url !== sdkNetwork.url)
@@ -986,7 +1039,7 @@ export function createKeyringRuntimeFactory(
             const { createNativeUtxoSend } = await import('./utxoSend.ts'); guard();
             const opened = createNativeUtxoSend(network, {
               profileId,
-              account: { address: selected.address, id: selected.index, type: 'HDAccount', xpub },
+              account: { address: selected.address, id: selected.index, type: selected.type, xpub },
               network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                 genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
             }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!);
