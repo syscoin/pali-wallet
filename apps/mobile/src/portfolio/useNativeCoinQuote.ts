@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import type { NativeNetworkRegistration } from '../custody/networkContext.ts';
 import { useFiatCurrency } from '../platform/fiatPreferences';
@@ -9,16 +9,18 @@ const read = createNativeCoinQuoteReader(walletFetch);
 const displayPrice = new Intl.NumberFormat(undefined, { maximumFractionDigits: 4 });
 
 /** Display only: the exact on-chain balance and send arithmetic stay separate. */
-export function useNativeCoinQuote(id: string | null, amount: string | null, registration?: NativeNetworkRegistration | null): string | null {
+export function useNativeCoinQuote(id: string | null, amount: string | null, registration?: NativeNetworkRegistration | null): Readonly<{
+  supported: boolean; quote: string | null;
+}> {
+  const source = useMemo(() => id ? nativeCoinQuoteSource(id, registration) : null, [id, registration]);
+  const supported = source !== null;
   const available = amount !== null;
   const preference = useFiatCurrency(available);
   const currency = preference.status === 'ready' ? preference.currency : null;
   const sourceKey = id && currency && JSON.stringify([id, registration?.registrationHash, currency]);
   const [quote, setQuote] = useState<{ key: string; value: NativeCoinQuote } | null>(null);
   useLayoutEffect(() => {
-    if (!id || !currency || !sourceKey || !available) return;
-    const source = nativeCoinQuoteSource(id, registration);
-    if (!source) return;
+    if (!source || !currency || !sourceKey || !available) return;
     let owner: AbortController | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const stop = () => { owner?.abort(); owner = undefined; clearTimeout(timer); };
@@ -47,9 +49,10 @@ export function useNativeCoinQuote(id: string | null, amount: string | null, reg
     const focus = Platform.OS === 'android' ? AppState.addEventListener('focus', start) : null;
     start();
     return () => { stop(); change.remove(); blur?.remove(); focus?.remove(); };
-  }, [id, sourceKey, available, registration, currency]);
-  if (!available || !currency || !sourceKey || quote?.key !== sourceKey) return null;
+  }, [source, sourceKey, available, currency]);
+  if (!supported || !available || !currency || !sourceKey || quote?.key !== sourceKey)
+    return { supported, quote: null };
   const value = Number(amount) * quote.value.price;
-  if (!Number.isFinite(value)) return null;
-  return `≈ ${displayPrice.format(value)} ${currency.toUpperCase()}`;
+  if (!Number.isFinite(value)) return { supported, quote: null };
+  return { supported, quote: `≈ ${displayPrice.format(value)} ${currency.toUpperCase()}` };
 }

@@ -33,6 +33,8 @@ if (removalFixtureEnabled || hasGuardianFixture || sysxSendFixture.enabled) {
   }) as typeof BackHandler.addEventListener;
 }
 const quoteRequests: string[] = [];
+const quoteGate = new URLSearchParams(window.location.search).has('hold-quote')
+  ? Promise.withResolvers<void>() : undefined;
 const guardianFixture = createGuardianRecoveryFixture(ADDRESS);
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input), window.location.href);
@@ -41,6 +43,7 @@ globalThis.fetch = async (input, init) => {
     if (init?.method !== 'GET' || init.body !== undefined || init.credentials !== 'omit' || init.redirect !== 'error')
       throw new Error('Unexpected quote request options');
     quoteRequests.push(url.href);
+    if (quoteGate) await quoteGate.promise;
     return Response.json(url.origin === 'https://api.coingecko.com' ? { ethereum: { usd: 100, eur: 200 } } : { rates: { usd: 100, eur: 200 } });
   }
   return (hasGuardianFixture ? await guardianFixture.fetch(input, init) : undefined) ??
@@ -70,6 +73,7 @@ declare global {
       removal: typeof walletRemovalFixture & { recreate: typeof recreateRemovalWallet };
       idle: typeof idleFixture;
       quotes(): string[];
+      releaseQuote(): void;
       audit(): typeof audit;
       events(): string[];
       shares(): string[];
@@ -113,7 +117,7 @@ window.__watchFixture = {
   },
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
-  quotes: () => [...quoteRequests], audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
+  quotes: () => [...quoteRequests], releaseQuote: () => quoteGate?.resolve(), audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },
