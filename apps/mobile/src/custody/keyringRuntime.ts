@@ -12,6 +12,7 @@ import type { IKeyringAccountState, INetwork as SdkNetwork } from '@sidhujag/sys
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { findUtxoNetwork, getUtxoSdkNetwork, supportsUtxoSoftwareCustody, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from '../core/utxoNetworks.ts';
 import { exactUtxoResponseFetch, verifyUtxoRegistration } from '../core/utxoReadSession.ts';
+import type { UtxoActivityContext, UtxoActivitySource } from '../core/utxoActivity.ts';
 import type { UtxoBalance } from '../core/utxoBalanceReader.ts';
 import { findWifAddressType, normalizeUtxoAddress } from '../core/utxoAddresses.ts';
 import { parseUtxoPublicIdentifier, type UtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
@@ -80,6 +81,14 @@ export type KeyringRuntimeDependencies = Readonly<{
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
   readonly readUtxoBalance?: (id: UtxoNetworkId, address: string, signal: AbortSignal) => Promise<UtxoBalance>;
+  /** Owns the private Blockbook identifier; a screen receives only projected rows. */
+  withUtxoActivityRead<T>(
+    expected: UtxoActivityContext,
+    signal: AbortSignal,
+    assertOwner: () => void,
+    assertView: () => void,
+    read: (source: UtxoActivitySource & { readonly readSentry?: never }, signal: AbortSignal, check: () => void) => Promise<T>,
+  ): Promise<T>;
   /** Selected software key only, consumed by the context-bound secret presentation flow. */
   readonly keyExport?: NativeHdKeyExportRuntime;
   readonly activity?: NativeActivityRuntime;
@@ -1157,6 +1166,36 @@ export function createKeyringRuntimeFactory(
               return normalizePublicAddress(selected.address, catalogueSnapshot!.active.networkId, catalogueSnapshot!.utxoNetworks);
             },
             lock,
+          },
+          async withUtxoActivityRead(expected, signal, assertOwner, assertView, read) {
+            const captured = generation, ring = keyring, snapshot = catalogueSnapshot;
+            const { accountId, networkId, address } = expected;
+            const network = snapshot && findUtxoNetwork(networkId, snapshot.utxoNetworks);
+            if (!network || snapshot.active.networkId !== networkId || snapshot.active.accountId !== accountId)
+              throw new KeyringRuntimeError('NOT_READY');
+            const selected = selectedAccount(), account = state.accounts[selected.type][selected.index]!;
+            const identifier = account.xpub;
+            const assertScope = () => {
+              current(captured); checkGuard(assertOwner); current(captured);
+              if (ring !== keyring || snapshot !== catalogueSnapshot || selectedAccount() !== selected ||
+                  state.accounts[selected.type][selected.index] !== account || account.xpub !== identifier || selected.address !== address)
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            const check = () => {
+              assertScope(); checkGuard(assertView);
+              if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            };
+            check();
+            await dataBinding(captured, check);
+            const parsed = parseUtxoPublicIdentifier(identifier, network);
+            if (parsed.identifier !== identifier || parsed.address !== address ||
+                (selected.type === 'HDAccount' && parsed.kind !== 'account'))
+              throw new KeyringRuntimeError('CANCELLED');
+            check();
+            const result = await read(Object.freeze({ context: expected, identifier: parsed.identifier,
+              isAccount: parsed.kind === 'account', registration: network, assertCurrent: assertScope }), signal, check);
+            await dataBinding(captured, check);
+            return result;
           },
           ...(dependencies.readUtxoAccount ? { async readUtxoBalance(id: UtxoNetworkId, address: string, external: AbortSignal) {
             const captured = generation, snapshot = catalogueSnapshot;

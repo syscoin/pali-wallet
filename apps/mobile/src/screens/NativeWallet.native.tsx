@@ -37,6 +37,7 @@ import { getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '.
 import { NativeAccounts } from './NativeAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
+import { UtxoActivityScreen } from './UtxoActivityScreen';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
@@ -117,6 +118,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
+  const [utxoActivityView, setUtxoActivityView] = useState<Controllers['utxoActivity'] | null>(null);
   const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
@@ -226,7 +228,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }
     setCanRemoveWallet(false);
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
@@ -240,7 +242,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     });
     const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setKeyExportView(local.keyExport); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
       const origin = rootOrigin.current;
@@ -636,10 +638,13 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     onSendCollectible={canSign ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
-    onActivity={utxo ? undefined : () => shell.select('activity')}
+    onActivity={(utxo ? utxoActivityView : activityView) ? () => shell.select('activity') : undefined}
     navigation={shell.navigation}
   />;
-    else if (shell.tab === 'activity') content = activityView && !utxo
+    else if (shell.tab === 'activity') content = utxo && utxoActivityView
+      ? <UtxoActivityScreen authority={utxoActivityView} selectedNetwork={utxo} accountLabel={accountLabel}
+          onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      : activityView && !utxo
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
           onReplay={canSign ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
           onCancelPending={canSign ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}

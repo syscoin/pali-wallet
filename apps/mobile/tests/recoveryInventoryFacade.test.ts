@@ -71,6 +71,8 @@ async function fixture(existing = true) {
   const dependencies: Record<string, unknown> = {
     './security': security,
     '../custody/authority.ts': { NativeCustodyAuthority, CustodyOperationError },
+    '../custody/utxoActivity.ts': { createNativeUtxoActivity: () => ({}) },
+    '../core/utxoActivity.ts': { createUtxoActivityReader: () => ({}) },
     '../custody/keyringRuntime.ts': {
       createKeyringRuntimeFactory: (options: KeyringRuntimeDependencies): CustodyRuntimeFactory => ({
         async open() {

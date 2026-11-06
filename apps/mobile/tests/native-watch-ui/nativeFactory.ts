@@ -1,4 +1,7 @@
-import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
+import { activityFetch } from './utxoActivityFixture';
+import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
+import { createUtxoActivityReader } from '../../src/core/utxoActivity';
+import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
@@ -269,6 +272,25 @@ export function createNativeWalletControllers() {
   latestTransfers = transfers;
   const tokens = new NativeTokens(authority, () => undefined);
   const activity = new NativeActivity(authority, () => undefined);
+  const activityRuntime: Pick<KeyringRuntime, 'withUtxoActivityRead'> = {
+    async withUtxoActivityRead(expected, signal, check, assertView, read) {
+      const current = () => {
+        check();
+        assertView();
+        if (!sessionUnlocked || signal.aborted) throw Error('Inactive fixture view');
+      };
+      current();
+      const result = await read({ context: expected, identifier: expected.address,
+        registration: getUtxoNetwork(expected.networkId), isAccount: false, assertCurrent: check }, signal, current);
+      current();
+      return result;
+    },
+  };
+  const utxoActivity = hdUtxoFixture ? createNativeUtxoActivity(authority, () => activityRuntime, createUtxoActivityReader({ async fetch(url, init) {
+    const response = await activityFetch(url, init);
+    if (!response) throw Error('Unexpected UTXO Activity route');
+    return response;
+  } })) : undefined;
   const accounts: NativeAccountView = {
     getSnapshot: () => authority.getCatalogue(), getContextRevision: () => authority.getSnapshot().revision,
     subscribe: (listener) => authority.subscribe(() => listener()),
@@ -312,7 +334,7 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports,
     ...(wifFixtureEnabled ? { async openUtxoSend() { throw Error('Synthetic UI fixture does not sign'); } } : {}),
-    balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, utxoActivity, accounts, backup,
     ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }, (password) => password === fixturePassword) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: readFixtureNoteInventory,

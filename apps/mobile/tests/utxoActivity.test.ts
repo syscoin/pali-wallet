@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
+import { createUtxoActivityReader, UtxoActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
 import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
@@ -43,7 +43,7 @@ function fixture(options: { count?: number; network?: 'bitcoin' | 'syscoin'; rep
 const signal = () => new AbortController().signal;
 const read = (f: ReturnType<typeof fixture>, page = 1, input = source) => createUtxoActivityReader(f).readPage(input, { page }, signal());
 const tick = () => new Promise<void>(r => setImmediate(r));
-async function settle(c: UtxoWatchActivity) { for (let i = 0; i < 100 && ['idle', 'loading'].includes(c.getSnapshot().status); i++) await tick(); }
+async function settle(c: UtxoActivity) { for (let i = 0; i < 100 && ['idle', 'loading'].includes(c.getSnapshot().status); i++) await tick(); }
 function authority(f: ReturnType<typeof fixture>) {
   return new WatchOnlyAuthority([{ id: 'watch', name: 'First', addresses: { bitcoin: BTC } }, { id: 'other', name: 'Second', addresses: { syscoin: SYS } }],
     { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
@@ -147,16 +147,16 @@ for(const address of ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa','3J98t1WpEZ73CNmQviec
   const f=fixture({count:1});const result=await read(f,1,{context:{...owner,address},identifier:address,isAccount:false});assert.equal(result.context.address,address);assert.ok(f.calls[2]?.includes(address));
 });
 test('screen auto-loads only when current/foreground and coalesces duplicate loads', async()=>{
-  const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoWatchActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
+  const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
   foreground=true;c.setFocused(true);await c.load();await settle(c);assert.equal(c.getSnapshot().rows.length,20);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();
 });
 test('older/newer windows stay at most100 rows while loading beyond page five',async()=>{
-  const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);
+  const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);
   for(let n=2;n<=6;n++)await c.loadMore();assert.equal(c.getSnapshot().page,6);assert.equal(c.getSnapshot().firstPage,2);assert.equal(c.getSnapshot().rows.length,100);assert.equal(c.getSnapshot().hasNewer,true);
   await c.loadNewer();assert.equal(c.getSnapshot().firstPage,1);assert.equal(c.getSnapshot().page,5);assert.equal(c.getSnapshot().rows.length,100);c.dispose();
 });
 test('fresh reorg and pending observations replace prior same-txid rows',async()=>{
-  let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
+  let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
 });
 
 function pendingObservation(row: ReturnType<typeof tx>) {
@@ -170,7 +170,7 @@ test('an owned first-page confirmation produces one generic indication from the 
     return body;
   } });
   const a = authority(f); a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   assert.equal(c.getSnapshot().rows.filter((row) => row.block === null).length, 2);
   assert.equal(await c.refresh(), undefined);
@@ -210,7 +210,7 @@ test('paging, retained pending rows and an unsuccessful observation cannot seed 
     return body;
   } });
   const a = authority(f); a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   assert.equal(await c.loadMore(), undefined);
   assert.equal(c.getSnapshot().rows.find((row) => row.txid === ID(1))?.observedConfirmations, 11);
@@ -242,7 +242,7 @@ test('a positive confirmation count and block placement must occur together in t
       return body;
     } });
     const a = authority(f); a.unlock();
-    const c = new UtxoWatchActivity(a, () => true); c.activate();
+    const c = new UtxoActivity(a, () => true); c.activate();
     await settle(c);
     pending = false;
     assert.equal(await c.refresh(), undefined);
@@ -265,7 +265,7 @@ test('confirmation indications expire across scope changes and late account resp
     { id: 'other', name: 'Second', addresses: { bitcoin: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' } },
   ], { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
   a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   mined = true;
   const indication = await c.refresh();
@@ -290,10 +290,10 @@ test('confirmation indications expire across scope changes and late account resp
 });
 
 test('failed page keeps prior rows stale with no automatic retry',async()=>{
-  let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
+  let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
 });
 test('lock and departing screen suppress ignored late reads and hidden reloads',async()=>{
-  for(const action of ['lock','screen','focus']) {const entered=gate(),pause=gate(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await entered.promise;
+  for(const action of ['lock','screen','focus']) {const entered=gate(),pause=gate(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await entered.promise;
     if(action==='lock')a.lock();else if(action==='screen')c.dispose();else c.setFocused(false);pause.resolve();await tick();await tick();assert.equal(c.getSnapshot().rows.length,0);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();}
 });
 test('cancelled account response cannot dispatch the txsummary fallback',async()=>{
@@ -315,14 +315,14 @@ test('oversized native integer observations stay unavailable instead of crashing
   await assert.rejects(read(f), { message: 'Account activity is unavailable' });
 });
 test('cross-page duplicates use the fresh observation and do not duplicate the list',async()=>{
-  const f=fixture({count:40,replace(path,body){if(path.includes('page=2'))body.transactions[0]={...body.transactions[0],txid:ID(1),blockHeight:-1,blockHash:undefined,confirmations:0};return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);await c.loadMore();
+  const f=fixture({count:40,replace(path,body){if(path.includes('page=2'))body.transactions[0]={...body.transactions[0],txid:ID(1),blockHeight:-1,blockHash:undefined,confirmations:0};return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);await c.loadMore();
   const rows=c.getSnapshot().rows;assert.equal(rows.length,39);assert.equal(rows.filter(r=>r.txid===ID(1)).length,1);assert.equal(rows.find(r=>r.txid===ID(1))?.block,null);c.dispose();
 });
 test('fresh moved block placement replaces an earlier block even with fewer confirmations',async()=>{
-  let moved=false;const f=fixture({count:1,replace(path,body){if(moved&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:191,blockHash:H,confirmations:10});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);moved=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block?.height,191);assert.equal(c.getSnapshot().rows[0]?.block?.hash,H);assert.equal(c.getSnapshot().rows[0]?.observedConfirmations,10);c.dispose();
+  let moved=false;const f=fixture({count:1,replace(path,body){if(moved&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:191,blockHash:H,confirmations:10});return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);moved=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block?.height,191);assert.equal(c.getSnapshot().rows[0]?.block?.hash,H);assert.equal(c.getSnapshot().rows[0]?.observedConfirmations,10);c.dispose();
 });
 test('zero summary counts with a nonempty accepted page do not erase retained rows',async()=>{
-  let refresh=false;const f=fixture({replace(path,body){if(refresh&&path.includes('/address/')){body.txs=0;body.unconfirmedTxs=0;body.transactions=[body.transactions[0]];}return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);assert.equal(c.getSnapshot().rows.length,20);refresh=true;await c.refresh();assert.equal(c.getSnapshot().rows.length,20);c.dispose();
+  let refresh=false;const f=fixture({replace(path,body){if(refresh&&path.includes('/address/')){body.txs=0;body.unconfirmedTxs=0;body.transactions=[body.transactions[0]];}return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);assert.equal(c.getSnapshot().rows.length,20);refresh=true;await c.refresh();assert.equal(c.getSnapshot().rows.length,20);c.dispose();
 });
 test('an included block with zero confirmations remains an included observation',async()=>{
   const f=fixture({count:1,replace(path,body){if(path.includes('/address/'))body.transactions[0].confirmations=0;return body;}});
@@ -492,7 +492,7 @@ test('only an owned exact confirmed v80 Syscoin detail can request public node i
       repository, historyReader: reader, reader: { async readBalance() { throw Error(); } }, signal: signal(),
     });
     a.unlock();
-    const c = new UtxoWatchActivity(a, () => true);
+    const c = new UtxoActivity(a, () => true);
     try {
       c.activate();
       await settle(c);

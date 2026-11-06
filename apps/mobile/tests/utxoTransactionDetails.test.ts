@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { utils as actualSjs } from 'syscoinjs-lib';
-import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityPage } from '../src/core/utxoActivity.ts';
+import { createUtxoActivityReader, UtxoActivity, type UtxoActivityPage } from '../src/core/utxoActivity.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount, type BalanceReader } from '../src/core/watchOnlyAuthority.ts';
 import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { createUtxoTransactionDetailsCache } from '../../../source/shared/utxoTransactionDetailCache.ts';
-import { XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
+import { UTXO_ADDRESSES, XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures.ts';
 const H = 'ab'.repeat(32), BLOCK = 'cd'.repeat(32), OTHER = '1BoatSLRHtKNngkdXEeobR76b53LETtpyT';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
 const signal = () => new AbortController().signal;
@@ -43,7 +43,7 @@ function fixture(count = 1, networkId: 'bitcoin' | 'syscoin' = 'bitcoin') {
   return { set accountHold(value: Promise<void> | undefined) { accountHeld = value; }, set summaryRows(value: readonly Record<string, unknown>[] | undefined) { summaryRows = value; }, set returnedCount(value: number) { count = value; }, set rowShift(value: number) { rowShift = value; }, set memo(value: string) { memo = value; }, open, reader, summary, address, identifier: parseUtxoPublicIdentifier(XPUB, networkId).identifier, calls, signals, writes, entered, get raw() { return raw; }, set raw(value: string) { raw = value; }, set hold(value: Promise<void> | undefined) { held = value; },
     set full(value: Record<string, any> | null) { full = value; }, set failure(value: boolean) { failure = value; }, set summaryHeight(value: number) { summaryHeight = value; } };
 }
-async function settled(model: UtxoWatchActivity) { for (let n = 0; n < 100 && ['loading', 'idle'].includes(model.getSnapshot().status); n++) await new Promise(resolve => setImmediate(resolve)); }
+async function settled(model: UtxoActivity) { for (let n = 0; n < 100 && ['loading', 'idle'].includes(model.getSnapshot().status); n++) await new Promise(resolve => setImmediate(resolve)); }
 
 test('selected detail uses actual SJS raw transport/shared ownership and keeps DTO public/exact', async () => {
   const f = fixture(), owner = await f.open();
@@ -58,6 +58,22 @@ test('selected detail uses actual SJS raw transport/shared ownership and keeps D
     assert.deepEqual(Object.keys(result).sort(), ['from', 'row', 'to', 'txid']);
     assert.ok(!JSON.stringify(result).includes(XPUB) && !JSON.stringify(result).includes('PRIVATE-RAW-HEX'));
     assert.deepEqual(f.writes, []);
+  } finally { owner.lock(); }
+});
+
+test('detail exposes only canonical network addresses and drops decorated account identifiers', async () => {
+  const f = fixture(), owner = await f.open();
+  try {
+    await owner.readUtxoActivityPage({ page: 1 }, signal());
+    f.full = { ...f.summary(),
+      vin: [{ value: '1100000000', addresses: [f.address.toUpperCase(), `${f.identifier}/0/0`, 'unverified-input'] }],
+      vout: [{ value: '100000000', addresses: [f.address, f.address.toUpperCase(), 'unverified-output'] },
+        { value: '900000000', addresses: [UTXO_ADDRESSES.syscoin, OTHER] }],
+    };
+    const detail = await owner.readUtxoActivityDetail({ txid: H }, signal());
+    assert.deepEqual(detail.from, [f.address]);
+    assert.deepEqual(detail.to, [f.address, OTHER]);
+    assert.deepEqual(f.calls.slice(3), ['/api/v2/', '/api/v2/block-index/0', '/api/v2/tx/' + H]);
   } finally { owner.lock(); }
 });
 
@@ -133,7 +149,7 @@ for (const kind of ['wrong-hash', 'oversize', 'participant-work', 'identifier-re
 });
 
 test('screen selection is explicit, failed hydration preserves compact row, retry/clear/back remain cancellable', async () => {
-  const f = fixture(), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true); model.activate(); await settled(model);
+  const f = fixture(), owner = await f.open(), model = new UtxoActivity(owner, () => true); model.activate(); await settled(model);
   try {
     assert.equal(model.getSnapshot().detail, null); assert.equal(f.calls.filter(path => path.startsWith('/api/v2/tx/')).length, 0);
     await model.selectDetail('ff'.repeat(32)); assert.equal(model.getSnapshot().detail, null);
@@ -145,7 +161,7 @@ test('screen selection is explicit, failed hydration preserves compact row, retr
 });
 
 test('accepted five-page authority window is bounded, old rows cannot hydrate and list paging never fetches raw bodies', async () => {
-  const f = fixture(140), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true); model.activate(); await settled(model);
+  const f = fixture(140), owner = await f.open(), model = new UtxoActivity(owner, () => true); model.activate(); await settled(model);
   try {
     for (let n = 2; n <= 6; n++) await model.loadMore();
     assert.equal(model.getSnapshot().rows.length, 100); assert.equal(f.calls.some(path => path.startsWith('/api/v2/tx/')), false);
@@ -173,7 +189,7 @@ test('full Syscoin bridge amount uses shared operation scope/precision while nat
 });
 
 test('summary refresh revokes a held selected detail and preserves its newly accepted compact page', async () => {
-  const f = fixture(), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true); model.activate(); await settled(model);
+  const f = fixture(), owner = await f.open(), model = new UtxoActivity(owner, () => true); model.activate(); await settled(model);
   const wait = deferred<void>(); f.hold = wait.promise;
   try {
     const detail = model.selectDetail(H); await f.entered.promise;
@@ -267,7 +283,7 @@ test('SJS read capabilities are captured when the reader is constructed before a
 
 
 test('retained visible old rows keep their exact raw-summary capability after a partial same-page refresh', async () => {
-  const f = fixture(20), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true); model.activate(); await settled(model);
+  const f = fixture(20), owner = await f.open(), model = new UtxoActivity(owner, () => true); model.activate(); await settled(model);
   try {
     assert.equal(model.getSnapshot().rows.length, 20);
     const old = model.getSnapshot().rows.find(row => row.txid === ID(11))!;
@@ -280,7 +296,7 @@ test('retained visible old rows keep their exact raw-summary capability after a 
 });
 
 test('repeated partial refresh obeys the shared8MiB metadata bound and preserves compact rows on eviction', async () => {
-  const f = fixture(1), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true);
+  const f = fixture(1), owner = await f.open(), model = new UtxoActivity(owner, () => true);
   f.memo = 'M'.repeat(900000); f.rowShift = 1; model.activate(); await settled(model);
   try {
     const first = model.getSnapshot().rows[0]!;
@@ -308,7 +324,7 @@ test('a cold authority admits new row capabilities without reviving a forgotten 
 
 
 for (const version of ['identical', 'earlier-better'] as const) test(`shared selected ${version} duplicate row keeps its own raw capability and attribution`, async () => {
-  const f = fixture(2), owner = await f.open(), model = new UtxoWatchActivity(owner, () => true);
+  const f = fixture(2), owner = await f.open(), model = new UtxoActivity(owner, () => true);
   const first = f.summary();
   f.summaryRows = [first, version === 'identical' ? { ...first } : { ...first, blockHeight: 0, confirmations: 0, addressValueOut: '0', vout: [] }];
   model.activate(); await settled(model);

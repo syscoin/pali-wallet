@@ -82,6 +82,31 @@ test('actual WatchSession automatically loads account activity, preserves list a
   expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
 });
 
+test('seeded UTXO Activity uses the shared list and detail at 320 pixels', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?hd-utxo-send=1');
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await load(page);
+  await expect(page.getByText('Account 1 · Bitcoin', { exact: true })).toBeVisible();
+  const calls = () => page.evaluate(() => window.__watchFixture.activity.calls());
+  expect((await calls()).some(url => /\/api\/v2\/tx\//.test(url))).toBe(false);
+  const row = page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first();
+  await row.focus();
+  await row.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
+  await expect(page.getByText('Whole transaction fee: 1.0 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByText('12ZEw5Hcv1hTb6YUQJ69y1V7uhcoDz92PH', { exact: true })).toBeVisible();
+  expect((await calls()).filter(url => /\/api\/v2\/tx\//.test(url))).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('seeded-utxo-activity-detail-320.png') });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await load(page);
+});
+
 test('unavailable, empty, stale and asset amounts remain distinct', async ({ page }) => {
   await open(page, 'syscoin', false, 'error');
   await expect(page.getByText('Activity unavailable', { exact: true })).toBeVisible();
