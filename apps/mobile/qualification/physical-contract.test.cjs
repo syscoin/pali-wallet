@@ -187,7 +187,6 @@ for (const scenario of ['import', 'generate'])
         })
       );
       const env = {
-        ...process.env,
         CI: 'true',
         PALI_NATIVE_QUALIFICATION: '1',
         PALI_NATIVE_HTTP_QUALIFICATION: '0',

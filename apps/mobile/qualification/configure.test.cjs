@@ -42,28 +42,21 @@ test('qualification configuration is explicit, isolated, and preserves the produ
       root,
       'scripts/configure-native-qualification.cjs'
     );
-    assert.notEqual(
-      spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'false', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
-      }).status,
-      0
-    );
+    // This fixture configures the ordinary app regardless of the hosted lane.
+    const env = { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' };
+    const run = (overrides) => spawnSync(process.execPath, [command], {
+      env: { ...env, ...overrides },
+    });
+    assert.notEqual(run({ CI: 'false' }).status, 0);
     assert.equal(
       JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main,
       'index.ts'
     );
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: '3.9.6' }));
-    assert.notEqual(spawnSync(process.execPath, [command], {
-      env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
-    }).status, 0);
+    assert.notEqual(run().status, 0);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'package.json'))).main, 'index.ts');
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
-    assert.equal(
-      spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
-      }).status,
-      0
-    );
+    assert.equal(run().status, 0);
     assert.equal(JSON.parse(fs.readFileSync(path.join(root, '.native-qualification.json'))).keyringVersion, keyringVersion);
     const app = JSON.parse(fs.readFileSync(path.join(root, 'app.json'))).expo;
     assert.equal(app.ios.bundleIdentifier, 'com.paliwallet.qualification');
@@ -78,12 +71,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
       fs.readFileSync(path.join(root, 'index.ts'), 'utf8'),
       original
     );
-    assert.notEqual(
-      spawnSync(process.execPath, [command], {
-        env: { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '0' },
-      }).status,
-      0
-    );
+    assert.notEqual(run().status, 0);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
