@@ -44,7 +44,9 @@ test('wallet holdings on the native Import route require verified review and exp
   expect(await requests()).toEqual([]);
   await contractInput.fill('0x1');
   expect(await requests()).toEqual([]);
-  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Find holdings', exact: true })
+    .click();
   const suggestion = page.getByRole('button', {
     name: `Review HINT token contract ${token}`,
   });
@@ -86,12 +88,78 @@ test('wallet holdings on the native Import route require verified review and exp
   expect(await saved()).not.toContain('Explorer fixture');
 });
 
+test('collectible suggestions require an explicit lookup and remain read-only', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  const external: string[] = [];
+  const quote =
+    'https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_24hr_change=true';
+  await page.route(quote, async (route) => {
+    expect(route.request().method()).toBe('GET');
+    await route.fulfill({
+      json: { ethereum: { usd: 100, usd_24h_change: 0 } },
+    });
+  });
+  page.on('request', (request) => {
+    if (
+      new URL(request.url()).origin !== new URL(fixtureUrl).origin &&
+      request.url() !== quote
+    )
+      external.push(request.url());
+  });
+  await page.goto('/?token-portfolio&holdings&holdings-fail');
+  const requests = () =>
+    page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  const panel = page.getByTestId('native-collectibles');
+  await expect(panel).toBeVisible();
+  expect(await requests()).toEqual([]);
+  await page.getByRole('button', { name: 'Find collectibles' }).click();
+  await expect(panel.getByText('Collectibles unavailable')).toBeVisible();
+  await page.getByRole('button', { name: 'Try again' }).click();
+  await expect(panel.getByText('Paper foxes', { exact: true })).toBeVisible();
+  await expect(panel.getByText('Token ID 0', { exact: true })).toBeVisible();
+  const quantity = panel.getByText('Quantity reported: 900719925474099312345', {
+    exact: true,
+  });
+  await expect(quantity).toBeVisible();
+  expect(
+    (await requests()).map((request) => request.match(/erc\d+-holdings/)?.[0])
+  ).toEqual(['erc721-holdings', 'erc721-holdings', 'erc1155-holdings']);
+  expect(external).toEqual([]);
+  expect(
+    await page.evaluate(() =>
+      localStorage.getItem('pali-native-token-ui:native-token-registry-v1')
+    )
+  ).toBeNull();
+  await page.screenshot({ path: testInfo.outputPath('collectibles-320.png') });
+  await enlargeText(page);
+  await quantity.scrollIntoViewIfNeeded();
+  await expect(quantity).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('collectibles-320-large-text.png'),
+  });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await expect(panel.getByText('Paper foxes', { exact: true })).toHaveCount(0);
+  expect(await requests()).toHaveLength(3);
+});
+
 test('failed holdings stays separate from manual review and requires explicit retry', async ({
   page,
 }) => {
   await page.goto('/?token-portfolio&holdings&holdings-fail');
   await page.getByTestId('native-token-import').click();
-  await page.getByRole('button', { name: 'Find holdings', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Find holdings', exact: true })
+    .click();
   await expect(
     page.getByText('Holdings unavailable', { exact: true })
   ).toBeVisible();

@@ -414,10 +414,11 @@ it.each([
     storedChain: 1,
     otherContract: false,
     omitted: true,
+    rejected: true,
   },
 ])(
   'filters real owned discovery ID $id against chain $storedChain and other contract $otherContract',
-  async ({ id, storedChain, otherContract, omitted }) => {
+  async ({ id, storedChain, otherContract, omitted, rejected }) => {
     const network = mockStore.getState().vault.activeNetwork;
     mockStore.dispatch(
       setActiveNetwork({
@@ -480,7 +481,8 @@ it.each([
       </Provider>
     );
     await act(async () => jest.advanceTimersByTimeAsync(0));
-    expect(observed[0].tokenId).toBe(id);
+    if (rejected) expect(observed).toEqual([]);
+    else expect(observed[0].tokenId).toBe(BigInt(id).toString());
     if (omitted) {
       expect(
         screen.queryByRole('button', { name: 'Import SAMPLE token' })
