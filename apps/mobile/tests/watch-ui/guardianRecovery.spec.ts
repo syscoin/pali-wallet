@@ -1,11 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { PALI_INFRASTRUCTURE_BY_ID } from '../../../../source/utils/smartAccount/deployment.ts';
+import { GUARDIAN_FIXTURE_RUNTIME } from '../guardianRecoveryRuntime.ts';
 
-const RUNTIME = `0x${PALI_INFRASTRUCTURE_BY_ID.guardianRecoveryModule.deployCalldata!.slice(-5662 * 2)}`;
 type Mode = Parameters<Window['__watchFixture']['guardian']['select']>[0];
 
 async function selectMode(page: Page, mode: Mode) {
-  await page.evaluate(({ mode, runtime }) => window.__watchFixture.guardian.select(mode, runtime), { mode, runtime: RUNTIME });
+  await page.evaluate(({ mode, runtime }) => window.__watchFixture.guardian.select(mode, runtime), { mode, runtime: GUARDIAN_FIXTURE_RUNTIME });
 }
 
 async function openGuardian(page: Page) {
