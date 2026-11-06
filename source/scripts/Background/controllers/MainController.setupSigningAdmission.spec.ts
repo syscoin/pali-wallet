@@ -77,6 +77,7 @@ describe('wallet setup signing capability admission', () => {
         activeNetwork: {
           kind: 'syscoin',
           chainId: 57,
+          slip44: 57,
           url: 'https://example.invalid',
         },
       },
@@ -109,7 +110,8 @@ describe('wallet setup signing capability admission', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.walletRecoveryContext = jest.fn(() => ({}));
     wallet.verifySyscoinPsbt = jest.fn(async () => ({
-      psbt: 'verified fixture',
+      psbt: { txOutputs: [] },
+      summary: { inputScripts: [] },
     }));
     wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
     wallet.checkRateLimit = jest.fn(async () => 0);

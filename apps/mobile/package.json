@@ -45,7 +45,8 @@
     "react-native-svg": "15.16.0",
     "react-native-web": "^0.21.4",
     "readable-stream": "3.6.2",
-    "syscoinjs-lib": "1.0.280"
+    "syscoinjs-lib": "2.0.0",
+    "syscointx-js": "2.0.0"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
@@ -61,7 +62,8 @@
   "overrides": {
     "glob": "14.0.3",
     "minimatch": "11.0.4",
-    "syscointx-js": "1.0.128",
+    "syscoinjs-lib": "$syscoinjs-lib",
+    "syscointx-js": "$syscointx-js",
     "axios@<1.20.0": "1.21.0",
     "jws": "^4.0.1",
     "isomorphic-fetch@2.2.1": {
