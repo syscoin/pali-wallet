@@ -1096,11 +1096,14 @@ class MainController {
     utxoReviewsByWallet.set(this, preparing);
     const network = store.getState().vault.activeNetwork;
     const record = await this.getRetainedUtxoRecords().readExact(
-      { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
+      {
+        keyring: signing.keyring,
+        assertCurrent: signing.assertWalletReviewCurrent,
+      },
       this.utxoRecordOwner(network, signing.context.account),
       txid
     );
-    signing.assertCurrent();
+    signing.assertWalletReviewCurrent();
     if (
       utxoReviewsByWallet.get(this) !== preparing ||
       !record ||
@@ -1146,7 +1149,7 @@ class MainController {
     this.cancelRetainedUtxoRetry(id);
     const { signing, record, deadline } = selected;
     const assertCurrent = () => {
-      signing.assertCurrent();
+      signing.assertWalletReviewCurrent();
       if (performance.now() >= deadline)
         throw new Error('Review the saved transfer again');
     };
