@@ -1,4 +1,5 @@
 /** @jest-environment jsdom */
+import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
 import '@testing-library/jest-dom';
 import {
   act,
@@ -42,7 +43,11 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState, dispatch: jest.fn() },
+  default: {
+    getState: () => mockState,
+    dispatch: jest.fn(),
+    subscribe: () => () => undefined,
+  },
 }));
 let mockWallet: any;
 let mockListener: any;
@@ -51,6 +56,8 @@ let mockTokenSender: string;
 let mockTokenTab: number | undefined;
 let mockOverwritePayload: boolean;
 let mockExpireBeforeSubmit: boolean;
+let mockRetainedAssetTransfer: boolean;
+const retainedHash = `0x${'bb'.repeat(32)}`;
 let mockStage: jest.SpyInstance;
 let mockCloseReview: () => void;
 let mockPostToBackground: (value: unknown) => void;
@@ -101,8 +108,8 @@ function connectReview() {
   queueMicrotask(() =>
     watchWalletTokenReview(
       port,
-      (request, persistentTab) =>
-        mockWallet.captureWalletTokenReview(request, persistentTab),
+      (request, persistentTab, signal) =>
+        mockWallet.captureWalletTokenReview(request, persistentTab, signal),
       (payload, authority) =>
         mockWallet.sendAndSaveTokenTransaction(payload, authority),
       controllerErrorResponse
@@ -327,6 +334,7 @@ beforeEach(() => {
   mockAuth.isUnlocked = true;
   mockOverwritePayload = false;
   mockExpireBeforeSubmit = false;
+  mockRetainedAssetTransfer = false;
   chrome.runtime.connect = jest.fn(
     connectReview
   ) as typeof chrome.runtime.connect;
@@ -372,9 +380,49 @@ beforeEach(() => {
       sendSignedErc20Transaction: mockSdkSend,
       sendSignedErc721Transaction: mockSdkSend,
       sendSignedErc1155Transaction: mockSdkSend,
+      getGasOverrides: () => ({}),
+      web3Provider: { signal: new AbortController().signal },
     },
   };
   mockWallet.getActiveKeyring = jest.fn(() => keyring);
+  mockWallet.getRetainedEvmRecords = () => ({
+    autoNonceAcceptance: new EvmAutoNonceAcceptance(),
+    captureAutoNonceSnapshot: async () => ({
+      owner: 'synthetic',
+      retained: mockRetainedAssetTransfer
+        ? [
+            {
+              chainId: String(mockState.vault.activeNetwork.chainId),
+              from: mockState.vault.accounts.HDAccount[0].address,
+              hash: retainedHash,
+              nonce: 7,
+              phase: 'signed',
+            },
+          ]
+        : [],
+      readMaximumCost: async () => BigInt(1),
+      touchesContract: async () => mockRetainedAssetTransfer,
+    }),
+  });
+  mockWallet.withReceiptReadProvider = jest.fn(async (signal, _, read) =>
+    read({
+      signal,
+      verifyConfiguredChainId: async () => undefined,
+      send: async (method: string) => {
+        if (method === 'eth_getTransactionCount') return '0x7';
+        if (method === 'eth_getTransactionByHash')
+          return {
+            hash: retainedHash,
+            from: mockState.vault.accounts.HDAccount[0].address,
+            nonce: '0x7',
+            blockHash: null,
+            blockNumber: null,
+            transactionIndex: null,
+          };
+        throw new Error(`Unexpected token read ${method}`);
+      },
+    })
+  );
   mockStage = jest.spyOn(mockWallet, 'captureWalletTokenReview');
   mockWallet.sendAndSaveTransaction = jest.fn(async () => undefined);
   mockWallet.sendAndSaveTokenTransaction =
@@ -499,6 +547,9 @@ it('preserves the localized pre-send blacklist refusal through the real token po
   await readyToken(true);
   fireEvent.click(confirmToken());
   await waitFor(() =>
+    expect(mockTokenReplies[0]).toEqual({ type: 'reviewed' })
+  );
+  await waitFor(() =>
     expect(mockAlertError).toHaveBeenCalledWith(
       'blacklist.tokenRecipientBlocked'
     )
@@ -548,12 +599,14 @@ it.each([
     });
     expect(mockStage).toHaveBeenCalledWith(
       expect.objectContaining({ type, transaction: expected }),
-      false
+      false,
+      expect.any(AbortSignal)
     );
     expect(mockSdkSend).toHaveBeenCalledWith(
       expected,
       expect.objectContaining({
         assertCurrent: expect.any(Function),
+        nonce: 7,
         signal: expect.any(AbortSignal),
       })
     );
@@ -567,6 +620,16 @@ it.each([
     );
   }
 );
+
+it('shows localized wait guidance before signing a second transfer of the same asset', async () => {
+  mockRetainedAssetTransfer = true;
+  await readyToken(false);
+  fireEvent.click(confirmToken());
+  await waitFor(() =>
+    expect(mockAlertError).toHaveBeenCalledWith('send.networkCatchingUp')
+  );
+  expect(mockSdkSend).not.toHaveBeenCalled();
+});
 
 it.each(['wrong page', 'altered submit', 'expired review'])(
   'rejects %s without signer entry',

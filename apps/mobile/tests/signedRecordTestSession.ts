@@ -1,6 +1,12 @@
 // Public deterministic fixture only; production always receives the captured SDK session.
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import type { EvmSignedRecordSession } from '../../../source/wallet/evmSignedRecords.ts';
+import { captureEvmSubmission, submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { Transaction } from 'ethers/transaction';
+import { createEvmSignedRecordLifecycle, type EvmSignedRecords, type EvmSignedRecordSession } from '../../../source/wallet/evmSignedRecords.ts';
+import type { NativeTransferRuntime } from '../src/custody/transfers.ts';
+import { createNativeAutomaticNoncePlanner } from '../src/custody/sharedSignedRecords.ts';
+import { unsignedTransferBytes } from '../src/custody/evmFeeContracts.ts';
+import { getNativeNetwork } from '../src/custody/networkContext.ts';
 export function signedRecordTestSession(assertCurrent: () => void = () => undefined): EvmSignedRecordSession {
   const keyring = Object.create(SoftwareKeyring.prototype);
   keyring.sessionPassword = { isCleared: () => false };
@@ -8,6 +14,31 @@ export function signedRecordTestSession(assertCurrent: () => void = () => undefi
   keyring.privateRecordSessionRevision = 0;
   keyring.getDecryptedMnemonic = () => 'public shared signed-record fixture';
   return { keyring, assertCurrent };
+}
+
+export function submitFixtureEvmTransaction(records: EvmSignedRecords): NativeTransferRuntime['submit'] {
+  return async (raw, hash, guard, broadcast, intent, approved, replacement, verifyAutomaticNonce) => {
+    const tx = Transaction.from(raw);
+    if (!tx.from || tx.hash !== hash || intent?.kind === 'nft-transfer') throw Error('Invalid EVM fixture submission');
+    const session = signedRecordTestSession(guard);
+    const endpoint = getNativeNetwork('ethereum').rpcUrl;
+    const from = tx.from;
+    const chainId = tx.chainId.toString();
+    const context = {
+      account: { id: 0, type: 'HDAccount' as const, address: from },
+      network: { kind: 'ethereum' as const, chainId: Number(chainId), slip44: 60, url: endpoint },
+      operation: replacement?.mode ?? (intent ? 'erc20' : 'send') as 'erc20' | 'send',
+      ...(replacement ? { originalHash: replacement.original.hash } : {}),
+    };
+    const boundary = captureEvmSubmission(context, guard, () => createEvmSignedRecordLifecycle(records, session, {
+      metadata: intent && { intent },
+      replacement: replacement?.binding,
+      automaticNonceEndpoint: replacement ? undefined : endpoint,
+      preflight: verifyAutomaticNonce ? (_record, assertCurrent, snapshot) =>
+        verifyAutomaticNonce(createNativeAutomaticNoncePlanner(records, session, chainId, from, endpoint, snapshot), assertCurrent) : undefined,
+    }));
+    await submitSignedEvmTransaction(raw, broadcast, boundary, undefined, unsignedTransferBytes(approved));
+  };
 }
 
 /** Authenticated historical fixture: bypasses new-transaction admission on purpose. */

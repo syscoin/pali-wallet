@@ -8,6 +8,7 @@ import {
   type IReviewedEvmTokenFees,
   type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
+import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import {
   coins,
   findUtxoCoinByRegistration,
@@ -51,6 +52,7 @@ import {
   assertEvmFeeRefreshApproved,
 } from '../../../shared/evmFeeApproval';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
+import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -351,6 +353,11 @@ import {
 import { IBalancesManager } from './balances/types';
 import { createBrowserKeyringHost } from './browserKeyringHost';
 import ChainListService from './chainlist';
+import {
+  planExtensionEvmNonce,
+  reviewedExtensionNonce,
+  type ExtensionReviewedNonce,
+} from './evmAutoNonce';
 import {
   assertEvmSignedRecordSdk,
   createChromeEvmSignedRecords,
@@ -1384,8 +1391,36 @@ class MainController {
     if (
       replacementProvider === null ||
       (context.operation !== 'cancel' && context.operation !== 'speed-up')
-    )
-      return createEvmSignedRecordLifecycle(records, session);
+    ) {
+      // The SDK freezes the approved nonce with the exact payer and endpoint.
+      const reviewed = context.walletNonce;
+      if (!reviewed) return createEvmSignedRecordLifecycle(records, session);
+      const read = this.captureFreshEvmRead(navigation);
+      if (read.keyring !== keyring || read.network.url !== context.network.url)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      return createEvmSignedRecordLifecycle(records, session, {
+        automaticNonceEndpoint: context.network.url,
+        preflight: async (record, assertDispatchCurrent, snapshot) => {
+          const signed = Transaction.from(record.rawTransaction);
+          const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
+          if (feePerGas === null)
+            throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+          const { total } = getEvmTransferCost(
+            signed.value,
+            signed.gasLimit,
+            feePerGas
+          );
+          await this.inspectOrdinaryEvmNonce(read, record.from, {
+            reviewed,
+            snapshot,
+            minimumBalance: total,
+            assertCurrent: assertDispatchCurrent,
+            protectedAssetContract:
+              signed.data !== '0x' ? signed.to ?? undefined : undefined,
+          });
+        },
+      });
+    }
     const payer = context.account.address;
     const originalHash = context.originalHash?.toLowerCase();
     if (context.origin?.kind === 'retained') {
@@ -8412,6 +8447,7 @@ class MainController {
     const authorizeDapp = saveOptions?.authorizeDapp;
     const internal = typeof saveOptions?.assertCurrentContext === 'function';
     let assertNativeReviewCurrent: (() => void) | undefined;
+    let walletNonce: ExtensionReviewedNonce | undefined;
     let prepareNativeReview:
       | (() => ReturnType<typeof recheckReviewedNativeEvmTransfer>)
       | undefined;
@@ -8506,7 +8542,7 @@ class MainController {
           nativeReview.id,
           Math.floor(performance.now())
         );
-        const read = this.captureFreshNativeEvmRead(nativeReview.scope);
+        const read = this.captureFreshEvmRead(nativeReview.scope);
         const { accounts, activeAccount, isBitcoinBased } =
           store.getState().vault;
         const account = accounts[activeAccount.type]?.[activeAccount.id];
@@ -8522,8 +8558,16 @@ class MainController {
           account.isTrezorWallet
         )
           throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        walletNonce = stored.review.walletNonce;
+        if (
+          params.nonce != null &&
+          reviewedExtensionNonce(params.nonce, walletNonce.source).nonce !==
+            walletNonce.nonce
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const reviewedNonce = walletNonce;
         const review = captureReviewedNativeEvmTransfer(
-          params,
+          { ...params, nonce: reviewedNonce.nonce },
           Boolean(isLegacy),
           stored.review.approval.maximumFeeUnits,
           account.address,
@@ -8544,14 +8588,24 @@ class MainController {
             Math.floor(performance.now())
           );
         };
-        prepareNativeReview = () =>
-          read.run((provider) =>
+        prepareNativeReview = async () => {
+          const noncePlan = await this.inspectOrdinaryEvmNonce(
+            read,
+            account.address,
+            {
+              reviewed: reviewedNonce,
+              assertCurrent: assertNativeReviewCurrent,
+            }
+          );
+          return read.run((provider) =>
             recheckReviewedNativeEvmTransfer(
               stored.review,
               provider,
-              read.assertCurrent
+              read.assertCurrent,
+              noncePlan
             )
           );
+        };
       }
 
       // Check the call target and obvious calldata recipients/spenders.
@@ -8589,6 +8643,28 @@ class MainController {
       const nativeTransaction = prepareNativeReview
         ? await prepareNativeReview()
         : undefined;
+      if (hardwareScope && params.data === '0x') {
+        const read = this.captureFreshEvmRead(hardwareScope);
+        const { activeAccount, accounts } = store.getState().vault;
+        const account = accounts[activeAccount.type]?.[activeAccount.id];
+        if (
+          read.network.kind !== INetworkType.Ethereum ||
+          typeof params.from !== 'string' ||
+          params.from.toLowerCase() !== account?.address?.toLowerCase() ||
+          Number(params.chainId) !== read.network.chainId
+        )
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const explicit =
+          params.nonce == null
+            ? undefined
+            : reviewedExtensionNonce(params.nonce, 'manual');
+        const plan = await this.inspectOrdinaryEvmNonce(read, account.address, {
+          reviewed: explicit,
+          assertCurrent: assertAuthority,
+        });
+        walletNonce =
+          explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
+      }
       assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
       const shouldUseTargetAccount =
@@ -8630,6 +8706,7 @@ class MainController {
           ? ethereum.sendFormattedTransaction(nativeTransaction, isLegacy, {
               assertCurrent: assertBeforeSign,
               mode: 'reviewed-native',
+              walletNonce,
             })
           : ethereum.sendFormattedTransaction(
               expectedContext
@@ -8638,9 +8715,15 @@ class MainController {
                     chainId: expectedContext.chainId,
                     from: expectedContext.account.address,
                   }
+                : walletNonce
+                ? { ...params, nonce: walletNonce.nonce }
                 : params,
               isLegacy,
-              { assertCurrent: assertBeforeSign, mode: 'specialized' }
+              {
+                assertCurrent: assertBeforeSign,
+                mode: 'specialized',
+                ...(walletNonce && { walletNonce }),
+              }
             );
         txResponse = (await sending) as unknown as IEvmTransactionResponse;
       } finally {
@@ -9133,6 +9216,47 @@ class MainController {
     }
   }
 
+  private async inspectOrdinaryEvmNonce(
+    read: ReturnType<MainController['captureFreshEvmRead']>,
+    from: string,
+    options: Readonly<{
+      assertCurrent?: () => void;
+      minimumBalance?: bigint;
+      protectedAssetContract?: string;
+      reviewed?: ExtensionReviewedNonce;
+      signal?: AbortSignal;
+      snapshot?: EvmAutoNonceSnapshot;
+    }> = {}
+  ) {
+    const assertCurrent = () => {
+      read.assertCurrent();
+      options.assertCurrent?.();
+    };
+    const chainId = String(read.network.chainId);
+    const records = this.getRetainedEvmRecords();
+    assertCurrent();
+    const snapshot =
+      options.snapshot ??
+      (await records.captureAutoNonceSnapshot(
+        { keyring: read.keyring, assertCurrent },
+        chainId,
+        from
+      ));
+    assertCurrent();
+    return read.run(
+      (provider) =>
+        planExtensionEvmNonce({
+          ...options,
+          provider,
+          scope: { chainId, endpoint: read.network.url, from },
+          snapshot,
+          acceptance: records.autoNonceAcceptance,
+          assertCurrent,
+        }),
+      options.signal
+    );
+  }
+
   public async getRecommendedEvmNonce(address: string): Promise<number> {
     let retainedReadFailed = false;
     try {
@@ -9289,8 +9413,12 @@ class MainController {
     return recordSendCallsBundle(host, id, bundle);
   }
 
-  /** Capture the reviewed ERC20 fields before accepting a submission ticket. */
-  public captureWalletTokenReview(request: unknown, persistentTab: boolean) {
+  /** Capture token and collectible intent and the host-owned nonce before submission. */
+  public async captureWalletTokenReview(
+    request: unknown,
+    persistentTab: boolean,
+    signal: AbortSignal
+  ) {
     const input = request as Partial<WalletTokenReviewRequest> | null;
     const reviewed = input?.transaction;
     if (
@@ -9323,6 +9451,7 @@ class MainController {
     )
       throw walletTokenReviewError();
     const from = accounts[activeAccount.type]?.[activeAccount.id]?.address;
+    if (!from) throw walletTokenReviewError();
     const receiver = getAddress(reviewed.receiver);
     const tokenAddress = getAddress(reviewed.tokenAddress);
     if (/^0x0{40}$/i.test(tokenAddress)) throw walletTokenReviewError();
@@ -9395,6 +9524,7 @@ class MainController {
       throw walletTokenReviewError();
     }
     const assertCurrent = () => {
+      if (signal.aborted) throw walletTokenReviewError();
       try {
         this.assertWalletReadyForSigning();
         this.assertCurrentWalletSession(session, keyring);
@@ -9414,7 +9544,14 @@ class MainController {
         throw walletTokenReviewError();
     };
     assertCurrent();
-    return { payload, assertCurrent };
+    const read = this.captureFreshEvmRead(scope);
+    const { nonce } = await this.inspectOrdinaryEvmNonce(read, from, {
+      assertCurrent,
+      protectedAssetContract: tokenAddress,
+      signal,
+    });
+    assertCurrent();
+    return { payload, nonce, assertCurrent };
   }
 
   /**
@@ -9509,6 +9646,25 @@ class MainController {
           transactionNotBroadcast: true,
         });
 
+      const read = this.captureFreshEvmRead(getWalletNavigationScope());
+      const reviewedNonce = reviewedExtensionNonce(
+        authority.nonce,
+        'automatic'
+      );
+      const maximumFee = getEvmTransferCost(
+        BigInt(0),
+        parseEvmFeeQuantity(params.gasLimit),
+        parseEvmFeeQuantity(
+          params.isLegacy ? params.gasPrice : params.maxFeePerGas
+        )
+      ).total;
+      await this.inspectOrdinaryEvmNonce(read, sourceAddress!, {
+        reviewed: reviewedNonce,
+        minimumBalance: maximumFee,
+        assertCurrent: authority.assertCurrent,
+        protectedAssetContract: params.tokenAddress,
+        signal: authority.signal,
+      });
       authority.assertCurrent();
       switch (approval.type) {
         case 'ERC20':
@@ -11976,7 +12132,7 @@ class MainController {
       !/^0x[\da-f]{1,64}$/i.test(transaction.value)
     )
       throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-    const read = this.captureFreshNativeEvmRead(expectedScope);
+    const read = this.captureFreshEvmRead(expectedScope);
     return read.run((provider) =>
       freshSdkGasEstimate(
         read.overrides,
@@ -11988,13 +12144,13 @@ class MainController {
     );
   }
 
-  private captureNativeEvmFeeReview(
+  private async captureNativeEvmFeeReview(
     params: Record<string, unknown>,
     isLegacy: boolean,
     maximumFee: string,
     scope: IWalletNavigationScope
   ) {
-    const read = this.captureFreshNativeEvmRead(scope);
+    const read = this.captureFreshEvmRead(scope);
     const { vault } = store.getState();
     const account =
       vault.accounts[vault.activeAccount.type]?.[vault.activeAccount.id];
@@ -12021,22 +12177,54 @@ class MainController {
       JSON.stringify([scope, read.network.url]),
       now
     );
-    return { read, review, now };
+    const explicit =
+      review.nonce === undefined
+        ? undefined
+        : reviewedExtensionNonce(review.nonce, 'manual');
+    const noncePlan = await this.inspectOrdinaryEvmNonce(
+      read,
+      account.address,
+      {
+        reviewed: explicit,
+      }
+    );
+    const walletNonce =
+      explicit ?? reviewedExtensionNonce(noncePlan.nonce, 'automatic');
+    const owned = captureReviewedNativeEvmTransfer(
+      { ...review.transaction, nonce: walletNonce.nonce },
+      isLegacy,
+      maximumFee,
+      account.address,
+      read.network.chainId,
+      read.overrides,
+      review.approval.scope,
+      now
+    );
+    return {
+      read,
+      review: Object.freeze({ ...owned, walletNonce }),
+      noncePlan,
+    };
   }
 
-  public reviewNativeEvmFee(
+  public async reviewNativeEvmFee(
     params: Record<string, unknown>,
     isLegacy: boolean,
     maximumFee: string,
     scope: IWalletNavigationScope
   ) {
-    const { read, review, now } = this.captureNativeEvmFeeReview(
+    const { read, review } = await this.captureNativeEvmFeeReview(
       params,
       isLegacy,
       maximumFee,
       scope
     );
-    return issueNativeEvmFeeReview(this, review, read.assertCurrent, now);
+    return issueNativeEvmFeeReview(
+      this,
+      review,
+      read.assertCurrent,
+      Math.floor(performance.now())
+    );
   }
 
   public async refreshNativeEvmFeeReview(
@@ -12045,14 +12233,19 @@ class MainController {
     maximumFee: string,
     scope: IWalletNavigationScope
   ) {
-    const { read, review } = this.captureNativeEvmFeeReview(
+    const { read, review, noncePlan } = await this.captureNativeEvmFeeReview(
       params,
       isLegacy,
       maximumFee,
       scope
     );
     await read.run((provider) =>
-      recheckReviewedNativeEvmTransfer(review, provider, read.assertCurrent)
+      recheckReviewedNativeEvmTransfer(
+        review,
+        provider,
+        read.assertCurrent,
+        noncePlan
+      )
     );
     return issueNativeEvmFeeReview(
       this,
@@ -12066,7 +12259,7 @@ class MainController {
     discardNativeEvmFeeReview(this, id);
   }
 
-  private captureFreshNativeEvmRead(expectedScope: IWalletNavigationScope) {
+  private captureFreshEvmRead(expectedScope: IWalletNavigationScope) {
     this.assertAssetMutationContext(expectedScope);
     const scope = { ...expectedScope };
     const network = { ...store.getState().vault.activeNetwork };
@@ -12092,12 +12285,15 @@ class MainController {
     };
     assertCurrent();
     const run = async <T>(
-      read: (provider: CustomJsonRpcProvider) => Promise<T>
+      read: (provider: CustomJsonRpcProvider) => Promise<T>,
+      authoritySignal?: AbortSignal
     ) => {
       assertCurrent();
       const abort = new AbortController();
       const invalidate = () =>
         abort.abort(new Error(EVM_TRANSACTION_CONTEXT_CHANGED));
+      const cancel = () => abort.abort(authoritySignal?.reason);
+      authoritySignal?.addEventListener('abort', cancel, { once: true });
       originalProvider.signal.addEventListener('abort', invalidate, {
         once: true,
       });
@@ -12119,6 +12315,8 @@ class MainController {
       );
       try {
         if (originalProvider.signal.aborted) invalidate();
+        if (authoritySignal?.aborted) cancel();
+        if (abort.signal.aborted) throw abort.signal.reason;
         return await this.withReceiptReadProvider(abort.signal, network, read);
       } catch (error) {
         if (abort.signal.aborted) throw abort.signal.reason;
@@ -12127,10 +12325,11 @@ class MainController {
         clearTimeout(timeout);
         unsubscribe();
         originalProvider.signal.removeEventListener('abort', invalidate);
+        authoritySignal?.removeEventListener('abort', cancel);
         abort.abort();
       }
     };
-    return { network, overrides, assertCurrent, run };
+    return { keyring, network, overrides, assertCurrent, run };
   }
 
   // Get current block with latest data

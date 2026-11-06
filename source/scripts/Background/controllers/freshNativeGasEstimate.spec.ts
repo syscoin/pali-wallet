@@ -20,6 +20,11 @@ const approved = {
   gasLimit: '25200',
   maxFeePerGas: '9007199254740999',
   maxPriorityFeePerGas: '0',
+  nonce: 9,
+};
+const noncePlan = {
+  state: 'pending' as const,
+  maximumPredecessorCost: BigInt(0),
 };
 const maximum = (
   BigInt(approved.maxFeePerGas) * BigInt(approved.gasLimit)
@@ -42,7 +47,6 @@ function fixture() {
   const replies = new Map<string, unknown>([
     ['eth_chainId', hex(chainId)],
     ['eth_getBalance', hex('1000000000000000000000')],
-    ['eth_getTransactionCount', '0x9'],
     [
       'eth_getBlockByNumber',
       {
@@ -70,7 +74,7 @@ function fixture() {
 
 afterEach(() => jest.restoreAllMocks());
 
-it.each([0, undefined])(
+it.each([0, 9])(
   'uses the installed provider and preserves the nonce override %s',
   async (nonce) => {
     const { calls, provider } = fixture();
@@ -79,7 +83,8 @@ it.each([0, undefined])(
       const transaction = await recheckReviewedNativeEvmTransfer(
         review,
         provider,
-        () => undefined
+        () => undefined,
+        noncePlan
       );
       expect(transaction).toEqual({
         ...approved,
@@ -93,7 +98,6 @@ it.each([0, undefined])(
         'eth_chainId',
         'eth_getBlockByNumber',
         'eth_getBalance',
-        ...(nonce === undefined ? ['eth_getTransactionCount'] : []),
         'eth_estimateGas',
       ]);
       expect(calls.at(-1)?.params).toEqual([
@@ -137,7 +141,12 @@ it('rejects a pending balance shortfall and a larger fresh estimate', async () =
   try {
     replies.set('eth_getBalance', '0x1');
     await expect(
-      recheckReviewedNativeEvmTransfer(capture(), provider, () => undefined)
+      recheckReviewedNativeEvmTransfer(
+        capture(),
+        provider,
+        () => undefined,
+        noncePlan
+      )
     ).rejects.toThrow('Insufficient funds');
     expect(calls.some(({ method }) => method === 'eth_estimateGas')).toBe(
       false
@@ -145,7 +154,12 @@ it('rejects a pending balance shortfall and a larger fresh estimate', async () =
     replies.set('eth_getBalance', hex('1000000000000000000000'));
     replies.set('eth_estimateGas', hex(25201));
     await expect(
-      recheckReviewedNativeEvmTransfer(capture(), provider, () => undefined)
+      recheckReviewedNativeEvmTransfer(
+        capture(),
+        provider,
+        () => undefined,
+        noncePlan
+      )
     ).rejects.toThrow('gas limit is no longer sufficient');
   } finally {
     provider.destroy();
@@ -166,6 +180,7 @@ it.each([false, true])(
             data: approved.data,
             gasLimit: approved.gasLimit,
             gasPrice: approved.maxFeePerGas,
+            nonce: approved.nonce,
           }
         : approved;
       const review = captureReviewedNativeEvmTransfer(
@@ -186,14 +201,20 @@ it.each([false, true])(
         const result = await recheckReviewedNativeEvmTransfer(
           review,
           provider,
-          () => undefined
+          () => undefined,
+          noncePlan
         );
         expect(result.gasLimit).toBe('25200');
         expect(result.value).toBe(approved.value);
       }
       replies.set('eth_estimateGas', hex(25201));
       await expect(
-        recheckReviewedNativeEvmTransfer(review, provider, () => undefined)
+        recheckReviewedNativeEvmTransfer(
+          review,
+          provider,
+          () => undefined,
+          noncePlan
+        )
       ).rejects.toThrow('gas limit is no longer sufficient');
     } finally {
       provider.destroy();
@@ -210,12 +231,12 @@ it('checks authority before any I/O and after the chain read', async () => {
         throw new Error('Stale reviewed context');
     };
     await expect(
-      recheckReviewedNativeEvmTransfer(capture(), provider, guard)
+      recheckReviewedNativeEvmTransfer(capture(), provider, guard, noncePlan)
     ).rejects.toThrow('Stale reviewed context');
     expect(calls).toHaveLength(0);
     isCurrent = true;
     await expect(
-      recheckReviewedNativeEvmTransfer(capture(), provider, guard)
+      recheckReviewedNativeEvmTransfer(capture(), provider, guard, noncePlan)
     ).rejects.toThrow('Stale reviewed context');
     expect(calls.map(({ method }) => method)).toEqual(['eth_chainId']);
   } finally {

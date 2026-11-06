@@ -102,7 +102,7 @@ index 6698c7c51da0f6760799258fbc1060468f6827e4..35ebf99af1a6c14394bc1d71e9e77c57
 @@ -77,0 +78 @@ export type {
 +  EvmRetainedCancellationOrigin,
 diff --git a/packages/sysweb3-keyring/src/transactions/ethereum.ts b/packages/sysweb3-keyring/src/transactions/ethereum.ts
-index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e99487df60a14 100644
+index ab381e7f3a475d1d96b00207739cc6786cfd9bec..be2428d40fc6f479fbb14d28bb39f265a7e85e62 100644
 --- a/packages/sysweb3-keyring/src/transactions/ethereum.ts
 +++ b/packages/sysweb3-keyring/src/transactions/ethereum.ts
 @@ -44,0 +45,2 @@ import {
@@ -116,19 +116,30 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +} from './evm-cancellation';
 @@ -80,0 +86 @@ import {
 +  type EvmSignedBroadcast,
-@@ -445 +451,2 @@ export class EthereumTransactions<
+@@ -445 +451,4 @@ export class EthereumTransactions<
 -    originalHash?: string
-+    originalHash?: string,
-+    origin?: EvmSubmissionContext['origin']
-@@ -459,0 +467 @@ export class EthereumTransactions<
-+        ...(origin !== undefined ? { origin } : {}),
-@@ -480 +488 @@ export class EthereumTransactions<
++    details: Pick<
++      EvmSubmissionContext,
++      'originalHash' | 'origin' | 'walletNonce'
++    > = {}
+@@ -459 +468 @@ export class EthereumTransactions<
+-        ...(originalHash !== undefined ? { originalHash } : {}),
++        ...details,
+@@ -480 +489 @@ export class EthereumTransactions<
 -    broadcast: (raw: string) => Promise<T>,
 +    broadcast: EvmSignedBroadcast<T>,
-@@ -1043 +1051 @@ export class EthereumTransactions<
+@@ -950 +959,3 @@ export class EthereumTransactions<
+-    const { assertCurrent, signal } = approval;
++    const { assertCurrent, signal, nonce } = approval;
++    if (!Number.isSafeInteger(nonce) || nonce < 0)
++      throw new Error(`Invalid ${standard} transaction approval nonce`);
+@@ -965 +976 @@ export class EthereumTransactions<
+-    return { assertApproval, signal };
++    return { assertApproval, signal, nonce };
+@@ -1043 +1054 @@ export class EthereumTransactions<
 -    provider = this.web3Provider
 +    provider: EvmFeeReader = this.web3Provider
-@@ -1064 +1072,7 @@ export class EthereumTransactions<
+@@ -1064 +1075,7 @@ export class EthereumTransactions<
 -    isLegacy: boolean
 +    isLegacy: boolean,
 +    bounds: Readonly<{
@@ -137,7 +148,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +      sampledBlockGasLimit: bigint;
 +      sampledBaseFeePerGas: bigint | null;
 +    }>
-@@ -1075,0 +1090,39 @@ export class EthereumTransactions<
+@@ -1075,0 +1093,39 @@ export class EthereumTransactions<
 +    if (!isForCancel) {
 +      const originalGasLimit = parseEvmFeeQuantity(
 +        gasLimit,
@@ -177,11 +188,11 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +
 +    // Keep the legacy direct cancellation helper. The guarded cancellation
 +    // transaction path already uses planEvmCancellationFees.
-@@ -1077 +1129,0 @@ export class EthereumTransactions<
+@@ -1077 +1132,0 @@ export class EthereumTransactions<
 -      // Apply multiplier for replacement transaction (cancel or speedup)
-@@ -1090 +1141,0 @@ export class EthereumTransactions<
+@@ -1090 +1144,0 @@ export class EthereumTransactions<
 -    const gasLimitToNumber = gasLimit?.toNumber();
-@@ -1111,15 +1162,6 @@ export class EthereumTransactions<
+@@ -1111,15 +1165,6 @@ export class EthereumTransactions<
 -    if (isForCancel) {
 -      const DEFAULT_GAS_LIMIT_VALUE = '42000';
 -
@@ -203,7 +214,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +      bounds.chainId,
 +      bounds.sampledBlockGasLimit
 +    );
-@@ -1146,2 +1188,6 @@ export class EthereumTransactions<
+@@ -1146,2 +1191,6 @@ export class EthereumTransactions<
 -    if (typeof options.validateOriginal !== 'function') {
 -      throw new Error('Cancellation original validator required');
 +    const { assertCurrentContext, validateOriginal, origin } = options;
@@ -212,9 +223,9 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +        throw new Error('Cancellation original validator required');
 +    } else if (validateOriginal !== undefined || fallbackNonce !== undefined) {
 +      throw new Error('Retained cancellation cannot use RPC fallback');
-@@ -1164 +1209,0 @@ export class EthereumTransactions<
+@@ -1164 +1212,0 @@ export class EthereumTransactions<
 -    const { assertCurrentContext, validateOriginal } = options;
-@@ -1223,0 +1269,18 @@ export class EthereumTransactions<
+@@ -1223,0 +1272,18 @@ export class EthereumTransactions<
 +    const retained =
 +      origin === undefined
 +        ? undefined
@@ -233,11 +244,13 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +        throw new Error('Retained cancellation network or type changed');
 +      isLegacy = legacy;
 +    }
-@@ -1233 +1296,2 @@ export class EthereumTransactions<
+@@ -1233 +1299,4 @@ export class EthereumTransactions<
 -          txHash
-+          retained ? txHash.toLowerCase() : txHash,
-+          retained
-@@ -1255,50 +1319,42 @@ export class EthereumTransactions<
++          {
++            originalHash: retained ? txHash.toLowerCase() : txHash,
++            origin: retained,
++          }
+@@ -1255,50 +1324,42 @@ export class EthereumTransactions<
 -    const response = await provider.getTransaction(txHash);
 -    assertCurrent();
 -    if (response?.blockNumber != null || response?.blockHash != null) {
@@ -330,7 +343,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +      if (tx) {
 +        cancellationNonce = software ? softwareNonce : tx.nonce;
 +        originalFees = softwareOriginalFees ?? tx;
-@@ -1306,10 +1362,12 @@ export class EthereumTransactions<
+@@ -1306,10 +1367,12 @@ export class EthereumTransactions<
 -        const feeData = await currentEip1559Fees();
 -        tx = {
 -          from: activeAccount.address,
@@ -353,17 +366,17 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +          assertCurrent();
 +          originalFees = { gasPrice };
 +        } else originalFees = await currentEip1559Fees();
-@@ -1317,6 +1374,0 @@ export class EthereumTransactions<
+@@ -1317,6 +1379,0 @@ export class EthereumTransactions<
 -    } else if (!tx) {
 -      // No fallback nonce provided and tx not found
 -      return {
 -        isCanceled: false,
 -        error: true,
 -      };
-@@ -1329 +1381 @@ export class EthereumTransactions<
+@@ -1329 +1386 @@ export class EthereumTransactions<
 -    } = softwareOriginalFees ?? tx;
 +    } = originalFees;
-@@ -1375,0 +1428,10 @@ export class EthereumTransactions<
+@@ -1375,0 +1433,10 @@ export class EthereumTransactions<
 +    const assertCancellationEnvelope = (unsigned: string) => {
 +      if (cancellationNonce === undefined)
 +        throw new Error('Cancellation nonce required');
@@ -374,10 +387,10 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +        feePlan,
 +      });
 +    };
-@@ -1391 +1453 @@ export class EthereumTransactions<
+@@ -1391 +1458 @@ export class EthereumTransactions<
 -      nonce: software ? softwareNonce : tx.nonce,
 +      nonce: cancellationNonce,
-@@ -1422,3 +1484,4 @@ export class EthereumTransactions<
+@@ -1422,3 +1489,4 @@ export class EthereumTransactions<
 -          nonce: resolvedParams.nonce
 -            ? Number(resolvedParams.nonce.toString())
 -            : undefined,
@@ -385,19 +398,19 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +            resolvedParams.nonce != null
 +              ? Number(resolvedParams.nonce.toString())
 +              : undefined,
-@@ -1439,0 +1503 @@ export class EthereumTransactions<
+@@ -1439,0 +1508 @@ export class EthereumTransactions<
 +        if (retained) assertCancellationEnvelope(rawTx);
-@@ -1468 +1532,2 @@ export class EthereumTransactions<
+@@ -1468 +1537,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1538,0 +1604 @@ export class EthereumTransactions<
+@@ -1538,0 +1609 @@ export class EthereumTransactions<
 +        if (retained) assertCancellationEnvelope(expectedUnsignedTransaction);
-@@ -1561 +1627,2 @@ export class EthereumTransactions<
+@@ -1561 +1632,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1603,6 +1670 @@ export class EthereumTransactions<
+@@ -1603,6 +1675 @@ export class EthereumTransactions<
 -            assertEvmCancellationEnvelope(serializeTransaction(transaction), {
 -              payer: activeAccount.address,
 -              chainId: activeNetwork.chainId,
@@ -405,19 +418,46 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 -              feePlan,
 -            });
 +            assertCancellationEnvelope(serializeTransaction(transaction));
-@@ -1777 +1839,2 @@ export class EthereumTransactions<
+@@ -1658 +1725,3 @@ export class EthereumTransactions<
+-      const { assertCurrent: assertHostCurrent, mode } = options;
++      const { assertCurrent: assertHostCurrent, mode, walletNonce } = options;
++      const nonceApproval =
++        walletNonce === undefined ? undefined : { ...walletNonce };
+@@ -1677 +1746,2 @@ export class EthereumTransactions<
+-        mode
++        mode,
++        nonceApproval
+@@ -1705 +1775,2 @@ export class EthereumTransactions<
+-    mode: IEvmSendOptions['mode']
++    mode: IEvmSendOptions['mode'],
++    walletNonce: IEvmSendOptions['walletNonce']
+@@ -1731 +1802,2 @@ export class EthereumTransactions<
+-      assertSigningCurrent
++      assertSigningCurrent,
++      { walletNonce }
+@@ -1733,0 +1806,5 @@ export class EthereumTransactions<
++    const approvedNonce = submission.context.walletNonce?.nonce;
++    const assertApprovedNonce = (nonce: number | undefined) => {
++      if (approvedNonce !== undefined && nonce !== approvedNonce)
++        throw new Error('EVM transaction nonce does not match wallet approval');
++    };
+@@ -1749,0 +1827 @@ export class EthereumTransactions<
++      assertApprovedNonce(Number(transaction.nonce));
+@@ -1777 +1855,2 @@ export class EthereumTransactions<
 -        (raw) => provider.sendTransaction(raw),
 +        ({ rawTransaction, admit }) =>
 +          admit(() => provider.sendTransaction(rawTransaction)),
-@@ -1971 +2034,2 @@ export class EthereumTransactions<
+@@ -1813,0 +1893 @@ export class EthereumTransactions<
++    assertApprovedNonce(supplied.nonce);
+@@ -1971 +2051,2 @@ export class EthereumTransactions<
 -            (raw) => provider.sendTransaction(raw),
 +            ({ rawTransaction, admit }) =>
 +              admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2106 +2170,2 @@ export class EthereumTransactions<
+@@ -2106 +2187,2 @@ export class EthereumTransactions<
 -            (raw) => provider.sendTransaction(raw),
 +            ({ rawTransaction, admit }) =>
 +              admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2192 +2257,6 @@ export class EthereumTransactions<
+@@ -2192 +2274,6 @@ export class EthereumTransactions<
 -    const { assertCurrentContext, validateOriginal, beforeBroadcast } = options;
 +    const {
 +      assertCurrentContext,
@@ -425,7 +465,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +      beforeBroadcast,
 +      retainedCancellation,
 +    } = options;
-@@ -2240,0 +2311,22 @@ export class EthereumTransactions<
+@@ -2240,0 +2328,22 @@ export class EthereumTransactions<
 +    let cancellation: Transaction | undefined;
 +    if (retainedCancellation !== undefined) {
 +      if (
@@ -448,7 +488,10 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +      )
 +        throw new Error('Invalid retained cancellation');
 +    }
-@@ -2262,0 +2355,9 @@ export class EthereumTransactions<
+@@ -2250 +2359 @@ export class EthereumTransactions<
+-          txHash
++          { originalHash: txHash }
+@@ -2262,0 +2372,9 @@ export class EthereumTransactions<
 +      if (
 +        cancellation &&
 +        (type !== cancellation.type ||
@@ -458,9 +501,9 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +          ) !== cancellation.gasLimit)
 +      )
 +        throw new Error('Retained cancellation does not match original');
-@@ -2294 +2394,0 @@ export class EthereumTransactions<
+@@ -2294 +2411,0 @@ export class EthereumTransactions<
 -    // Check if this might be a max send transaction by comparing total cost to balance
-@@ -2296,0 +2397,19 @@ export class EthereumTransactions<
+@@ -2296,0 +2414,19 @@ export class EthereumTransactions<
 +    const sampledBlock = await provider.getBlock('latest');
 +    assertCurrent();
 +    const bounds = Object.freeze({
@@ -480,7 +523,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +              'replacement base fee'
 +            ),
 +    });
-@@ -2309,9 +2427,0 @@ export class EthereumTransactions<
+@@ -2309,9 +2444,0 @@ export class EthereumTransactions<
 -    // Check if this is a contract call (has data)
 -    const isContractCall = txData && txData !== '0x' && txData.length > 2;
 -    const originalGasCost = isLegacy
@@ -490,7 +533,7 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 -    // If original transaction used >95% of balance, it's likely a max send
 -    const balanceThreshold = currentBalance.mul(95).div(100);
 -    const isLikelyMaxSend = originalTotalCost.gt(balanceThreshold);
-@@ -2330,3 +2440,5 @@ export class EthereumTransactions<
+@@ -2330,3 +2457,5 @@ export class EthereumTransactions<
 -      const feeData = await this.getFeeDataWithDynamicMaxPriorityFeePerGas(
 -        provider
 -      );
@@ -499,16 +542,16 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 +        getBlock: async () => sampledBlock,
 +        send: (method, params) => provider.send(method, params),
 +      });
-@@ -2342 +2454,2 @@ export class EthereumTransactions<
+@@ -2342 +2471,2 @@ export class EthereumTransactions<
 -      isLegacy
 +      isLegacy,
 +      bounds
-@@ -2345,0 +2459,4 @@ export class EthereumTransactions<
+@@ -2345,0 +2476,4 @@ export class EthereumTransactions<
 +    assertTransactionGasLimit({
 +      gasLimit: newGasValues.gasLimit,
 +      chainId: activeNetwork.chainId,
 +    });
-@@ -2354,5 +2471,2 @@ export class EthereumTransactions<
+@@ -2354,5 +2488,2 @@ export class EthereumTransactions<
 -    if (isLikelyMaxSend && txValue.add(maximumFee).gt(currentBalance)) {
 -      if (isContractCall) {
 -        console.error(
@@ -516,44 +559,191 @@ index ab381e7f3a475d1d96b00207739cc6786cfd9bec..ff61638e40ee179b9d7d5b931f5e9948
 -        );
 +    if (txValue.add(maximumFee).gt(currentBalance)) {
 +      if (txData.length > 2) {
-@@ -2364 +2478 @@ export class EthereumTransactions<
+@@ -2364 +2495 @@ export class EthereumTransactions<
 -            'Cannot speed up a likely max-send contract call; value cannot be adjusted to fit new gas',
 +            'Add funds before speeding up this contract call; the original amount will not be changed',
-@@ -2446 +2560,2 @@ export class EthereumTransactions<
+@@ -2446 +2577,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2550 +2665,2 @@ export class EthereumTransactions<
+@@ -2550 +2682,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -2844,2 +2960,4 @@ export class EthereumTransactions<
+@@ -2654 +2787 @@ export class EthereumTransactions<
+-    const { assertApproval, signal } = this.captureReviewedTokenApproval(
++    const { assertApproval, signal, nonce } = this.captureReviewedTokenApproval(
+@@ -2699 +2832,2 @@ export class EthereumTransactions<
+-      }
++      },
++      { walletNonce: { nonce, source: 'automatic' } }
+@@ -2714,4 +2847,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -2730,4 +2859,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -2751,0 +2878 @@ export class EthereumTransactions<
++            nonce,
+@@ -2767,5 +2893,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -2793 +2915 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -2805 +2927 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -2844,2 +2966,4 @@ export class EthereumTransactions<
 -              async (raw) => {
 -                const response = await provider.sendTransaction(raw);
 +              async ({ rawTransaction, admit }) => {
 +                const response = await admit(() =>
 +                  provider.sendTransaction(rawTransaction)
 +                );
-@@ -2968,2 +3086,4 @@ export class EthereumTransactions<
+@@ -2867,5 +2990,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -2892 +3011 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -2906 +3025 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -2942 +3061 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -2954 +3073 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -2968,2 +3087,4 @@ export class EthereumTransactions<
 -              async (raw) => {
 -                const response = await provider.sendTransaction(raw);
 +              async ({ rawTransaction, admit }) => {
 +                const response = await admit(() =>
 +                  provider.sendTransaction(rawTransaction)
 +                );
-@@ -3185 +3305,2 @@ export class EthereumTransactions<
+@@ -3004 +3125 @@ export class EthereumTransactions<
+-    const { assertApproval, signal } = this.captureReviewedTokenApproval(
++    const { assertApproval, signal, nonce } = this.captureReviewedTokenApproval(
+@@ -3038 +3159,2 @@ export class EthereumTransactions<
+-      }
++      },
++      { walletNonce: { nonce, source: 'automatic' } }
+@@ -3055,4 +3176,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -3071,4 +3188,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -3091,0 +3206 @@ export class EthereumTransactions<
++            nonce,
+@@ -3107,5 +3221,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -3133 +3243 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -3145 +3255 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -3185 +3295,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3309 +3430,2 @@ export class EthereumTransactions<
+@@ -3204,5 +3314,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -3229 +3335 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -3244 +3350 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -3283 +3389 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -3295 +3401 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -3309 +3415,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3528 +3650,2 @@ export class EthereumTransactions<
+@@ -3343 +3450 @@ export class EthereumTransactions<
+-    const { assertApproval, signal } = this.captureReviewedTokenApproval(
++    const { assertApproval, signal, nonce } = this.captureReviewedTokenApproval(
+@@ -3382 +3489,2 @@ export class EthereumTransactions<
+-      }
++      },
++      { walletNonce: { nonce, source: 'automatic' } }
+@@ -3402,4 +3509,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -3412,4 +3515,0 @@ export class EthereumTransactions<
+-            nonce: await provider.getTransactionCount(
+-              activeAccountAddress,
+-              'pending'
+-            ),
+@@ -3434,0 +3535 @@ export class EthereumTransactions<
++            nonce,
+@@ -3450,5 +3550,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -3476 +3572 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -3488 +3584 @@ export class EthereumTransactions<
+-            nonce: transactionNonce,
++            nonce,
+@@ -3528 +3624,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
-@@ -3648 +3771,2 @@ export class EthereumTransactions<
+@@ -3547,5 +3643,0 @@ export class EthereumTransactions<
+-      assertCurrent();
+-      const transactionNonce = await provider.getTransactionCount(
+-        activeAccountAddress,
+-        'pending'
+-      );
+@@ -3572 +3664 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -3586 +3678 @@ export class EthereumTransactions<
+-            nonce: this.toBigNumber(transactionNonce)._hex,
++            nonce: this.toBigNumber(nonce)._hex,
+@@ -3622 +3714 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -3634 +3726 @@ export class EthereumTransactions<
+-                nonce: transactionNonce,
++                nonce,
+@@ -3648 +3740,2 @@ export class EthereumTransactions<
 -              (raw) => provider.sendTransaction(raw),
 +              ({ rawTransaction, admit }) =>
 +                admit(() => provider.sendTransaction(rawTransaction)),
@@ -637,18 +827,20 @@ index d954c2c60e5d8899b4f75840ece1408cd9ca2df1..8fddcac216f7f551f4597676a23355e7
 +    ({ rawTransaction, admit }) =>
 +      admit(() => provider.sendTransaction(rawTransaction)),
 diff --git a/packages/sysweb3-keyring/src/transactions/evm-submission.ts b/packages/sysweb3-keyring/src/transactions/evm-submission.ts
-index 8001b55924b7cb5be3326899efc6dfed97316d21..f075d36cd622d26d85778593175a47d84a425d1a 100644
+index 8001b55924b7cb5be3326899efc6dfed97316d21..226e9692c3c1993978e5412baf610d045622b081 100644
 --- a/packages/sysweb3-keyring/src/transactions/evm-submission.ts
 +++ b/packages/sysweb3-keyring/src/transactions/evm-submission.ts
-@@ -3 +3,4 @@ import { Transaction } from 'ethers/transaction';
+@@ -3 +3,5 @@ import { Transaction } from 'ethers/transaction';
 -import type { KeyringAccountType } from '../types';
 +import type {
 +  EvmRetainedCancellationOrigin,
++  EvmWalletNonce,
 +  KeyringAccountType,
 +} from '../types';
-@@ -14,0 +18 @@ export type EvmSubmissionContext = Readonly<{
+@@ -14,0 +19,2 @@ export type EvmSubmissionContext = Readonly<{
 +  origin?: EvmRetainedCancellationOrigin;
-@@ -27,0 +32,12 @@ export type EvmSignedSubmission = Readonly<{
++  walletNonce?: EvmWalletNonce;
+@@ -27,0 +34,12 @@ export type EvmSignedSubmission = Readonly<{
 +/** The transport calls this after preflight, immediately around synchronous wire initiation. */
 +export type AdmitEvmSignedDispatch<T> = (
 +  initiate: () => Promise<T>,
@@ -661,18 +853,37 @@ index 8001b55924b7cb5be3326899efc6dfed97316d21..f075d36cd622d26d85778593175a47d8
 +  }>
 +) => Promise<T>;
 +
-@@ -32,0 +49,6 @@ export type EvmSubmissionLifecycle = Readonly<{
+@@ -32,0 +51,6 @@ export type EvmSubmissionLifecycle = Readonly<{
 +  /** Admit the exact retained record, releasing the owner before the remote response. */
 +  dispatchSigned: <T>(
 +    record: EvmSignedSubmission,
 +    initiate: () => Promise<T>,
 +    preflight: () => Promise<void>
 +  ) => Promise<T>;
-@@ -43,0 +66 @@ export type EvmSubmissionBoundary = Readonly<{
+@@ -43,0 +68 @@ export type EvmSubmissionBoundary = Readonly<{
 +  dispatchSigned: EvmSubmissionLifecycle['dispatchSigned'];
-@@ -66,0 +90 @@ export function captureEvmSubmission(
-+  const origin = input.origin;
-@@ -73,0 +98,8 @@ export function captureEvmSubmission(
+@@ -66,0 +92,18 @@ export function captureEvmSubmission(
++  const { origin, walletNonce } = input;
++  let approvedWalletNonce: EvmWalletNonce | undefined;
++  if (walletNonce !== undefined) {
++    if (
++      !walletNonce ||
++      typeof walletNonce !== 'object' ||
++      Array.isArray(walletNonce)
++    )
++      throw new TypeError('Invalid wallet EVM nonce approval');
++    const { nonce, source } = walletNonce;
++    if (
++      !Number.isSafeInteger(nonce) ||
++      nonce < 0 ||
++      (source !== 'automatic' && source !== 'manual')
++    )
++      throw new TypeError('Invalid wallet EVM nonce approval');
++    approvedWalletNonce = Object.freeze({ nonce, source });
++  }
+@@ -70,0 +114 @@ export function captureEvmSubmission(
++    ...(approvedWalletNonce ? { walletNonce: approvedWalletNonce } : {}),
+@@ -73,0 +118,8 @@ export function captureEvmSubmission(
 +    ...(origin
 +      ? {
 +          origin: Object.freeze({
@@ -681,24 +892,28 @@ index 8001b55924b7cb5be3326899efc6dfed97316d21..f075d36cd622d26d85778593175a47d8
 +          }),
 +        }
 +      : {}),
-@@ -80,0 +113 @@ export function captureEvmSubmission(
+@@ -80,0 +133 @@ export function captureEvmSubmission(
 +  const dispatchSigned = lifecycle?.dispatchSigned;
-@@ -85 +118,2 @@ export function captureEvmSubmission(
+@@ -85 +138,2 @@ export function captureEvmSubmission(
 -    typeof persistSigned !== 'function'
 +    typeof persistSigned !== 'function' ||
 +    typeof dispatchSigned !== 'function'
-@@ -102,0 +137 @@ export function captureEvmSubmission(
+@@ -102,0 +157 @@ export function captureEvmSubmission(
 +    dispatchSigned,
-@@ -176 +211 @@ export function submitSignedEvmTransaction<T>(
+@@ -176 +231 @@ export function submitSignedEvmTransaction<T>(
 -  broadcast: (rawTransaction: string) => Promise<T>,
 +  broadcast: EvmSignedBroadcast<T>,
-@@ -194 +229 @@ export function submitSignedHardwareEvmTransaction<T>(
+@@ -194 +249 @@ export function submitSignedHardwareEvmTransaction<T>(
 -  broadcast: (rawTransaction: string) => Promise<T>,
 +  broadcast: EvmSignedBroadcast<T>,
-@@ -217 +252 @@ async function submit<T>(
+@@ -217 +272 @@ async function submit<T>(
 -  broadcast: (rawTransaction: string) => Promise<T>,
 +  broadcast: EvmSignedBroadcast<T>,
-@@ -263,2 +298,5 @@ async function submit<T>(
+@@ -245,0 +301,3 @@ async function submit<T>(
++    const approvedNonce = boundary.context.walletNonce?.nonce;
++    if (approvedNonce !== undefined && tx.nonce !== approvedNonce)
++      throw new Error('Signed EVM nonce does not match wallet approval');
+@@ -263,2 +321,5 @@ async function submit<T>(
 -    if (admission.mode === 'hardware') {
 -      await admission.verifyCurrentChain();
 +    let open = true;
@@ -706,7 +921,7 @@ index 8001b55924b7cb5be3326899efc6dfed97316d21..f075d36cd622d26d85778593175a47d8
 +    const assertDispatchOpen = () => {
 +      if (!open || dispatched)
 +        throw new Error('Invalid EVM dispatch admission');
-@@ -265,0 +304,50 @@ async function submit<T>(
+@@ -265,0 +327,50 @@ async function submit<T>(
 +    };
 +    try {
 +      const result = await broadcast(
@@ -757,19 +972,27 @@ index 8001b55924b7cb5be3326899efc6dfed97316d21..f075d36cd622d26d85778593175a47d8
 +      return result;
 +    } finally {
 +      open = false;
-@@ -267,4 +354,0 @@ async function submit<T>(
+@@ -267,4 +377,0 @@ async function submit<T>(
 -    if (beforeBroadcast) assertSynchronous(beforeBroadcast);
 -    check();
 -    dispatched = true;
 -    return await broadcast(rawTransaction);
 diff --git a/packages/sysweb3-keyring/src/types.ts b/packages/sysweb3-keyring/src/types.ts
-index d29818d95f1d7ce5840d316ecf3854affd6970bc..cb0003c39964cc847128a331e5f4dbeb8e86ff52 100644
+index d29818d95f1d7ce5840d316ecf3854affd6970bc..ae47573ba409980b62d884257a249994215a07e3 100644
 --- a/packages/sysweb3-keyring/src/types.ts
 +++ b/packages/sysweb3-keyring/src/types.ts
-@@ -96,0 +97,2 @@ export type IEvmReplacementOptions = EvmReplacementFeeApproval &
+@@ -62,0 +63,5 @@ export type EvmLocalAccount = {
++export type EvmWalletNonce = Readonly<{
++  nonce: number;
++  source: 'automatic' | 'manual';
++}>;
++
+@@ -66,0 +72 @@ export interface IEvmSendOptions {
++  walletNonce?: EvmWalletNonce;
+@@ -96,0 +103,2 @@ export type IEvmReplacementOptions = EvmReplacementFeeApproval &
 +    /** Exact signed original obtained from the host's protected cancellation lineage. */
 +    retainedCancellation?: string;
-@@ -98,0 +101,11 @@ export type IEvmReplacementOptions = EvmReplacementFeeApproval &
+@@ -98,0 +107,11 @@ export type IEvmReplacementOptions = EvmReplacementFeeApproval &
 +export type EvmRetainedCancellationOrigin = Readonly<{
 +  kind: 'retained';
 +  rawTransaction: string;
@@ -781,7 +1004,7 @@ index d29818d95f1d7ce5840d316ecf3854affd6970bc..cb0003c39964cc847128a331e5f4dbeb
 +  >;
 +}>;
 +
-@@ -100 +113,8 @@ export type IEvmCancellationOptions = EvmReplacementFeeApproval &
+@@ -100 +119,8 @@ export type IEvmCancellationOptions = EvmReplacementFeeApproval &
 -  EvmOriginalAdmission<TransactionResponse | null>;
 +  (
 +    | (EvmOriginalAdmission<TransactionResponse | null> & { origin?: never })
@@ -791,3 +1014,6 @@ index d29818d95f1d7ce5840d316ecf3854affd6970bc..cb0003c39964cc847128a331e5f4dbeb
 +        validateOriginal?: never;
 +      })
 +  );
+@@ -501,0 +528,2 @@ export type IReviewedEvmTokenApproval = Readonly<{
++  /** Nonce selected by the host's ordinary wallet policy before signing. */
++  nonce: number;

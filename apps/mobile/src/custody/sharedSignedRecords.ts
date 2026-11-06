@@ -2,11 +2,26 @@ import { Transaction } from 'ethers/transaction';
 import { EvmSignedRecords, type EvmSignedRecordSession, type EvmRetainedSignedRecord } from '../../../../source/wallet/evmSignedRecords.ts';
 import { projectSavedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { decodeRetainedNftTransfer, isRetainedNftReplayEnvelope } from '../../../../source/shared/nftTransfer.ts';
+import type { EvmAutoNonceSnapshot } from '../../../../source/shared/evmAutoNonce.ts';
+import type { NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
 import { nativeAccountId, type NativeAccountType } from './accountIdentity.ts';
 import { assertTransferIntentEnvelope, snapshotErc20TransferIntent, type Erc20TransferIntent } from './transferIntent.ts';
 import { TransferJournalError, type TransferJournalEntry, type TransferJournalPhase } from './transferJournal.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { LOCAL_ACTIVITY_LIMIT, type LocalActivityRecord } from '../activity/types.ts';
+
+export function createNativeAutomaticNoncePlanner(
+  records: EvmSignedRecords, session: EvmSignedRecordSession, chainId: string, from: string, endpoint: string,
+  heldSnapshot?: EvmAutoNonceSnapshot
+): NativeAutomaticNoncePlanner {
+  return async (input) => {
+    const assertCurrent = () => { session.assertCurrent(); input.assertCurrent(); };
+    assertCurrent();
+    const snapshot = heldSnapshot ?? await records.captureAutoNonceSnapshot({ keyring: session.keyring, assertCurrent }, chainId, from);
+    assertCurrent();
+    return records.autoNonceAcceptance.plan({ ...input, chainId, from, endpoint, snapshot, assertCurrent });
+  };
+}
 
 /** Presentation adapter only. Canonical storage, ownership and retention are shared. */
 export function createNativeSignedRecordView(
@@ -18,6 +33,7 @@ export function createNativeSignedRecordView(
     try { return await operation(); }
     catch (error) { if (records.requiresReopen) throw new TransferJournalError('REOPEN_REQUIRED'); throw error; }
   };
+  const planAutomaticNonce = createNativeAutomaticNoncePlanner(records, session, network.chainId, account.address, network.rpcUrl);
   const map = (entry: EvmRetainedSignedRecord): TransferJournalEntry => {
     const tx = Transaction.from(entry.rawTransaction);
     const collectible = decodeRetainedNftTransfer(entry, tx);
@@ -48,6 +64,7 @@ export function createNativeSignedRecordView(
       ...(saved.collectibleTransfer ? { collectibleTransfer: saved.collectibleTransfer } : {})});
   };
   return Object.freeze({
+    planAutomaticNonce: (...args: Parameters<NativeAutomaticNoncePlanner>) => checked(() => planAutomaticNonce(...args)),
     assertSpendingNonce(nonce: number) {
       return checked(() => records.assertSpendingNonce(session, network.chainId, account.address, nonce));
     },

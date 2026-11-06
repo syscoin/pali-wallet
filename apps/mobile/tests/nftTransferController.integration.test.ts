@@ -431,18 +431,14 @@ test('collectible review preserves an explicit override below the external pendi
   });
 });
 
-test('a collectible can use a different pending nonce without repeating its wire nonce check', async () => {
+test('a collectible can follow an acknowledged native send while pending RPC lags', async () => {
   const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, acknowledgeCommit }) => {
+  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
     await transfers.prepare(recipient, '0.000000000000000001');
     await transfers.confirm(transfers.getSnapshot().review!.id);
     assert.equal(posted.length, 1);
-    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), {
-      code: 'PENDING_TRANSFER',
-    });
-    assert.equal(transfers.getSnapshot().hash, Transaction.from(posted[0]!).hash);
-    setPendingNonce('0x1');
+    setExpectedEstimateNonce('0x1', 'pending');
     await transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units);
     const approved = transfers.getSnapshot().review!;
     assert.equal(approved.nonce, '1');

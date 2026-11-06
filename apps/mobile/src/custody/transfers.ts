@@ -5,7 +5,8 @@ import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, type Ev
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import type { EvmCancellationQuote, EvmNftPreparedQuote } from './evmTransferReadRpc.ts';
+import type { EvmCancellationQuote, EvmNftPreparedQuote, NativeAutomaticNoncePlanner } from './evmTransferReadRpc.ts';
+import { EvmAutomaticNonceUnresolved } from './evmFeeContracts.ts';
 import { parseDecimalAmount } from '../core/amounts.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
@@ -73,11 +74,13 @@ export type NativeTransferSnapshot = Readonly<{
   inspectionOnly?: boolean;
 }>;
 export interface NativeTransferJournalHandle {
+  planAutomaticNonce: NativeAutomaticNoncePlanner;
   assertSpendingNonce(nonce: number): Promise<void>;
   load(hash?: string): Promise<TransferJournalEntry | null>;
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
+export type NativeAutomaticNonceDispatch = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
     options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
@@ -100,7 +103,8 @@ export interface NativeTransferRuntime {
     broadcast: EvmSignedBroadcast<string>,
     intent: NativeAssetTransferIntent | undefined,
     approved: PreparedEvmTransaction,
-    replacement?: NativeReplacementApproval
+    replacement?: NativeReplacementApproval,
+    verifyAutomaticNonce?: NativeAutomaticNonceDispatch
   ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
@@ -412,6 +416,15 @@ export class NativeTransfers {
           rpc,
         });
       })
+      .catch(async (error: unknown) => {
+        if (!(error instanceof EvmAutomaticNonceUnresolved) || error.reason === 'asset-state') throw error;
+        assertCurrent();
+        // Quotes have released their journal snapshot. Find the current
+        // Activity route using the normal owned nonce check.
+        const journal = await runtime.journal(assertCurrent);
+        await journal.assertSpendingNonce(error.nonce);
+        throw new NativeTransferRpcError('REVIEW_REQUIRED');
+      })
       .catch((error: unknown) => {
         // Journal uncertainty outlives transfer cancellation. Retire only the
         // captured wallet; a late old-runtime error cannot lock its replacement.
@@ -425,6 +438,13 @@ export class NativeTransfers {
           assertCurrent();
         } catch {
           throw new NativeTransferError('CANCELLED');
+        }
+        if (error instanceof EvmAutomaticNonceUnresolved && error.reason === 'asset-state') {
+          this.publish({
+            phase: 'idle', review: null,
+            message: 'The network is still updating after a transfer involving this asset. Try again shortly.',
+          });
+          throw new NativeTransferError('EXPIRED');
         }
         if (error instanceof NativeTransferError && error.code === 'NONCE_RETAINED') {
           this.publish({ phase: 'idle', review: null });
@@ -689,7 +709,8 @@ export class NativeTransfers {
       });
       const journal = await runtime.journal(assertCurrent);
       assertCurrent();
-      const quote = await rpc.prepare(address, to, units, signal, nonceOverride);
+      const quote = await rpc.prepare(address, to, units, signal, nonceOverride,
+        nonceOverride === undefined ? journal.planAutomaticNonce : undefined);
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -746,7 +767,8 @@ export class NativeTransfers {
       if (intent.token.contractAddress !== contract)
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
-      const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride);
+      const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride,
+        nonceOverride === undefined ? journal.planAutomaticNonce : undefined);
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -791,7 +813,9 @@ export class NativeTransfers {
       const journal = await runtime.journal(guard);
       guard();
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
-      const quote = await withNftInventorySignal(signal, inventory.signal, (owned) => rpc.prepareNft(selection, request, owned, guard, nonceOverride)).catch((error: unknown) => { guard(); throw error; });
+      const quote = await withNftInventorySignal(signal, inventory.signal, (owned) =>
+        rpc.prepareNft(selection, request, owned, guard, nonceOverride, nonceOverride === undefined ? journal.planAutomaticNonce : undefined))
+        .catch((error: unknown) => { guard(); throw error; });
       guard();
       await this.checkDraftNonce(journal, quote.envelope.nonce, nonceOverride !== undefined);
       guard();
@@ -850,6 +874,8 @@ export class NativeTransfers {
       };
       const journal = await runtime.journal(guard);
       guard();
+      const automatic = !approved.replacement && approved.public.nonceOverride === undefined;
+      const planner = automatic ? journal.planAutomaticNonce : undefined;
       this.publish({
         phase: 'signing',
         review: approved.public,
@@ -871,11 +897,11 @@ export class NativeTransfers {
             : await rpc.prepareSpeedUp(original.hash, retained.rawTransaction, address, signal, guard, retained.rates, retained.intent);
         } else if (collectible) {
           freshCollectible = await withNftInventorySignal(signal, collectible.inventorySignal, (owned) =>
-            rpc.requoteNft(collectible.selection, collectible.quote, owned, guard))
+            rpc.requoteNft(collectible.selection, collectible.quote, owned, guard, planner))
             .catch((error: unknown) => { guard(); throw error; });
           latest = { transaction: freshCollectible.envelope, balanceUnits: freshCollectible.balanceUnits,
             totalUnits: freshCollectible.totalUnits, maximumFeeUnits: freshCollectible.maximumFeeUnits };
-        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride);
+        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride, planner);
         guard();
         if (replacement?.mode !== 'cancel') {
           const refreshed = captureEvmFeeApproval(latest.transaction, context.registrationHash,
@@ -925,6 +951,26 @@ export class NativeTransfers {
         review: approved.public,
         message: null,
       });
+      let automaticVerified = false;
+      const assertAutomaticAdmission = automatic ? () => {
+        guard();
+        if (!automaticVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
+      } : undefined;
+      const verifyAutomaticNonce: NativeAutomaticNonceDispatch | undefined = automatic
+        ? async (heldPlanner, assertAdmission) => {
+          const check = () => { guard(); assertAdmission(); };
+          const verify = (owned: AbortSignal) =>
+            rpc.verifyAutomaticForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible);
+          if (collectible) {
+            if (!freshCollectible) throw new NativeTransferError('EXPIRED');
+            await withNftInventorySignal(signal, collectible.inventorySignal, verify);
+          } else {
+            await verify(signal);
+          }
+          check();
+          automaticVerified = true;
+        }
+        : undefined;
       try {
         await runtime.submit(
           rawTransaction,
@@ -935,11 +981,13 @@ export class NativeTransfers {
               if (!freshCollectible) throw new NativeTransferError('EXPIRED');
               return rpc.broadcast(approvedBytes, transactionHash, signal, {
                 mode: 'collectible', approval: freshCollectible, assertCurrent: guard,
-                inventorySignal: collectible.inventorySignal, onDispatch: () => { guard(); startedSubmission = true; }, admit,
+                inventorySignal: collectible.inventorySignal, onDispatch: () => { guard(); startedSubmission = true; },
+                assertAutomaticAdmission, admit,
               }).catch((error: unknown) => { if (!startedSubmission) guard(); throw error; });
             }
             const atDispatch: typeof admit = (send, preflight) => admit(() => {
               guard();
+              assertAutomaticAdmission?.();
               startedSubmission = true;
               return send();
             }, preflight);
@@ -953,12 +1001,14 @@ export class NativeTransfers {
               mode: 'new-send',
               nonceOverride: approved.public.nonceOverride,
               intent: approved.public.intent,
+              assertAutomaticAdmission,
               admit: atDispatch,
             });
           },
           intent,
           approved.transaction!,
-          approved.replacement
+          approved.replacement,
+          verifyAutomaticNonce
         );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the

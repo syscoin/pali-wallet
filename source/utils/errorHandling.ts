@@ -1,4 +1,8 @@
 // Utility functions for handling transaction errors with specific messaging
+import {
+  isSavedEvmNonceConflict,
+  WALLET_NETWORK_CATCHING_UP_MESSAGE,
+} from 'utils/evmTransactionContext';
 import { truncate } from 'utils/index';
 import {
   isNativeGasError,
@@ -176,17 +180,13 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
-  if (
-    error?.code === 'EVM_SIGNED_RECORD_NONCE_CONFLICT' &&
-    error?.transactionNotBroadcast === true
-  ) {
+  if (isSavedEvmNonceConflict(error)) {
     alert.error(t('send.savedNonceConflict'));
     return true;
   }
   if (
     error?.code === 'UTXO_NETWORK_CATCHING_UP' ||
-    error?.message ===
-      'The network is still updating your previous transaction. Please try again shortly.'
+    error?.message === WALLET_NETWORK_CATCHING_UP_MESSAGE
   ) {
     alert.error(t('send.networkCatchingUp'));
     return true;

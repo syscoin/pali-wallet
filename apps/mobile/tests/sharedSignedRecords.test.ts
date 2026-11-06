@@ -3,7 +3,7 @@ import test from 'node:test';
 import { webcrypto } from 'node:crypto';
 import { Wallet, Transaction } from 'ethers';
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import { EvmSignedRecords, inspectEvmSignedBundle, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
 function fixture(now: () => number = () => 1000) {
@@ -338,4 +338,97 @@ test('near-limit append reserves space for every phase and the largest supported
   assert.deepEqual(last.entries.map((entry:any)=>JSON.stringify(entry.chunks)),chunks);
   const full=f.value();await assert.rejects(f.store.updatePhase(f.session(),'7654321',signer.address,first.hash,'submitted'),/CAPACITY/);
   assert.equal(f.value(),full);
+});
+
+
+test('automatic nonce advances only after an exact wire ACK and keeps that nonce in the held snapshot', async () => {
+  const f = fixture(), session = f.session();
+  const first = await signed(0), second = await signed(1);
+  const endpoint = first.context.network.url;
+  const scope = { chainId: first.chainId, from: first.from, endpoint, latest: 0, pending: 0 };
+  const readPending = async () => null;
+  const assertCurrent = session.assertCurrent;
+  const plan = async () => f.store.autoNonceAcceptance.plan({
+    ...scope, readPending, assertCurrent,
+    snapshot: await f.store.captureAutoNonceSnapshot(session, first.chainId, first.from),
+  });
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { automaticNonceEndpoint: endpoint });
+  await lifecycle.persistSigned(first);
+  assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
+  let ack!: (hash: string) => void, dispatching!: () => void;
+  const acknowledgement = new Promise<string>((resolve) => { ack = resolve; });
+  const started = new Promise<void>((resolve) => { dispatching = resolve; });
+  const submitted = lifecycle.dispatchSigned(first, () => {
+    dispatching();
+    return acknowledgement;
+  }, async () => undefined);
+  await started;
+  assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
+  ack(first.hash);
+  assert.equal(await submitted, first.hash);
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 1, maximumPredecessorCost: 126123n });
+
+  const next = createEvmSignedRecordLifecycle(f.store, session, {
+    automaticNonceEndpoint: endpoint,
+    async preflight(record, assertDispatchCurrent, snapshot) {
+      assert.deepEqual(snapshot.retained.map(({ hash }) => hash), [first.hash]);
+      const selection = await f.store.autoNonceAcceptance.plan({
+        ...scope, readPending, assertCurrent: assertDispatchCurrent, snapshot,
+      });
+      assert.equal(selection.kind, 'ready');
+      assert.equal(selection.nonce, record.nonce);
+    },
+  });
+  await next.persistSigned(second);
+  assert.equal(await next.dispatchSigned(second, async () => ({ hash: second.hash }), async () => undefined).then((response) => response.hash), second.hash);
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 2, maximumPredecessorCost: 252246n });
+});
+
+test('after reorg, a previously accepted phase needs new pending evidence, including on reopen', async () => {
+  const f = fixture(), session = f.session();
+  const record = await signed();
+  const endpoint = record.context.network.url;
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { automaticNonceEndpoint: endpoint });
+  await lifecycle.persistSigned(record);
+  await lifecycle.dispatchSigned(record, async () => record.hash, async () => undefined);
+  await f.store.updatePhase(session, record.chainId, record.from, record.hash, 'confirmed');
+  await f.store.updatePhase(session, record.chainId, record.from, record.hash, 'submitted');
+  const expected = {
+    chainId: '0x' + Number(record.chainId).toString(16), from: record.from, hash: record.hash, nonce: '0x0',
+    blockHash: null, blockNumber: null, transactionIndex: null,
+  };
+  for (const journal of [f.store, new EvmSignedRecords(f.port)]) {
+    const scope = {
+      chainId: record.chainId, from: record.from, endpoint, latest: 0, pending: 0,
+      snapshot: await journal.captureAutoNonceSnapshot(session, record.chainId, record.from),
+      assertCurrent: session.assertCurrent,
+    };
+    assert.deepEqual(await journal.autoNonceAcceptance.plan({
+      ...scope, readPending: async () => null,
+    }), { kind: 'unresolved', nonce: 0 });
+    assert.deepEqual(await journal.autoNonceAcceptance.plan({
+      ...scope, readPending: async (hash) => {
+        assert.equal(hash, record.hash);
+        return expected;
+      },
+    }), { kind: 'ready', nonce: 1, maximumPredecessorCost: 126123n });
+  }
+});
+
+test('concurrent automatic sends cannot persist and dispatch competing reviewed nonces', async () => {
+  const f = fixture(), session = f.session();
+  const candidates = await Promise.all([signed(0, 2, '0x01'), signed(0, 2, '0x02')]);
+  const wire: string[] = [];
+  const settled = await Promise.allSettled(candidates.map(async (record) => {
+    const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { automaticNonceEndpoint: record.context.network.url });
+    await lifecycle.persistSigned(record);
+    return lifecycle.dispatchSigned(record, async () => {
+      wire.push(record.hash);
+      return record.hash;
+    }, async () => undefined);
+  }));
+  assert.equal(wire.length, 1);
+  const losing = settled.find((result) => result.status === 'rejected');
+  assert.equal(losing?.reason?.code, 'EVM_SIGNED_RECORD_NONCE_CONFLICT');
+  assert.equal(losing?.reason?.recoveryHash, wire[0]);
 });

@@ -28,6 +28,7 @@ function fixture(overrides: Record<string, unknown> = {}) {
       calls.push({ ...body, init });
       const raw = values[body.method];
       const result = typeof raw === 'function' ? await raw(body, init) : raw;
+      if (result instanceof Response) return result;
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: body.id, result }),
         { headers: { 'content-type': 'application/json' } }
@@ -244,6 +245,17 @@ test('broadcasts only exact verified bytes once and retains an unknown result on
     lost.calls.filter((c) => c.method === 'eth_sendRawTransaction').length,
     1
   );
+  const wrongEndpoint = fixture({
+    eth_sendRawTransaction: ({ id }: { id: number }) => {
+      const response = Response.json({ jsonrpc: '2.0', id, result: hash });
+      Object.defineProperty(response, 'url', { value: 'https://different-rpc.invalid/' });
+      return response;
+    },
+  });
+  await assert.rejects(wrongEndpoint.rpc.broadcast(raw, hash, signal(), {
+    mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); },
+  }), { code: 'INVALID_RESPONSE' });
+  assert.equal(wrongEndpoint.calls.filter((c) => c.method === 'eth_sendRawTransaction').length, 1);
   const invalid = fixture();
   await assert.rejects(
     invalid.rpc.broadcast(raw, '0x' + '0'.repeat(64), signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } })

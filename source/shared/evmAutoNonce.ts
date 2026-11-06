@@ -6,14 +6,28 @@ type NonceIdentity = Pick<
 >;
 type RetainedNonce = NonceIdentity & Pick<EvmSignedRecordSummary, 'phase'>;
 
+export type EvmAutoNonceSnapshot = Readonly<{
+  owner: string;
+  readMaximumCost(hash: string): Promise<bigint>;
+  retained: readonly RetainedNonce[];
+  touchesContract?(hash: string, contract: string): Promise<boolean>;
+}>;
+
 /** The host supplies fresh evidence from the same captured RPC endpoint. A
  * persisted `submitted` phase alone does not prove acknowledgement or sighting. */
 type AcceptedNonce = NonceIdentity &
   Readonly<{ endpoint: string; source: 'acknowledged' | 'observed-pending' }>;
 
-export type EvmAutoNoncePlan =
+type Selection =
   | Readonly<{ kind: 'ready'; nonce: number }>
   | Readonly<{ kind: 'unresolved'; nonce: number }>;
+
+export type EvmAutoNoncePlan =
+  | Readonly<{ kind: 'ready'; maximumPredecessorCost: bigint; nonce: number }>
+  | Readonly<{ kind: 'unresolved'; nonce: number; reason?: 'asset-state' }>;
+
+const canStillBePending = ({ phase }: RetainedNonce) =>
+  phase === 'signed' || phase === 'attempted' || phase === 'submitted';
 
 const validNonce = (nonce: number): boolean =>
   Number.isSafeInteger(nonce) && nonce >= 0;
@@ -37,7 +51,7 @@ export function planEvmAutoNonce({
   latest: number;
   pending: number;
   retained: readonly RetainedNonce[];
-}>): EvmAutoNoncePlan {
+}>): Selection {
   if (!validNonce(latest) || !validNonce(pending))
     throw new Error('Invalid EVM nonce counts');
 
@@ -62,9 +76,7 @@ export function planEvmAutoNonce({
     if (!validNonce(entry.nonce)) throw new Error('Invalid retained EVM nonce');
     if (entry.nonce < floor) continue;
     const hasAcceptance =
-      (entry.phase === 'signed' ||
-        entry.phase === 'attempted' ||
-        entry.phase === 'submitted') &&
+      canStillBePending(entry) &&
       acceptedNonces.get(entry.hash) === entry.nonce;
     occupied.set(
       entry.nonce,
@@ -80,4 +92,235 @@ export function planEvmAutoNonce({
     nonce++;
   }
   return { kind: 'ready', nonce };
+}
+
+const MAX_ACKNOWLEDGEMENTS = 128;
+const ACKNOWLEDGEMENT_MS = 30_000;
+const MAX_ADDITIONAL_READS = 16;
+const MAX_AHEAD_OF_RPC = 16;
+const RPC_QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i;
+
+function matchesPending(value: unknown, entry: NonceIdentity): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const tx = value as Record<string, unknown>;
+  return (
+    typeof tx.hash === 'string' &&
+    tx.hash.toLowerCase() === entry.hash &&
+    typeof tx.from === 'string' &&
+    tx.from.toLowerCase() === entry.from.toLowerCase() &&
+    typeof tx.nonce === 'string' &&
+    RPC_QUANTITY.test(tx.nonce) &&
+    BigInt(tx.nonce) === BigInt(entry.nonce) &&
+    (tx.chainId === undefined ||
+      (typeof tx.chainId === 'string' &&
+        RPC_QUANTITY.test(tx.chainId) &&
+        BigInt(tx.chainId) === BigInt(entry.chainId))) &&
+    tx.blockHash === null &&
+    tx.blockNumber === null &&
+    tx.transactionIndex === null
+  );
+}
+
+type Acknowledgement = {
+  endpoint: string;
+  expires?: number;
+  identity: NonceIdentity;
+  owner: string;
+};
+
+function sameSender(entry: NonceIdentity, chainId: string, from: string) {
+  return entry.chainId === chainId && entry.from.toLowerCase() === from;
+}
+
+function acknowledgementKey(
+  owner: string,
+  endpoint: string,
+  identity: NonceIdentity
+) {
+  return JSON.stringify([owner, endpoint, identity.hash]);
+}
+
+/** Short-lived exact acknowledgements bridge RPC propagation delays. The
+ * protected journal remains the source of identity and recoverability. */
+export class EvmAutoNonceAcceptance {
+  private readonly acknowledgements = new Map<string, Acknowledgement>();
+
+  private readonly now: () => number;
+
+  constructor(now = () => performance.now()) {
+    this.now = now;
+  }
+
+  track(
+    owner: string,
+    endpoint: string,
+    { chainId, from, hash, nonce }: NonceIdentity
+  ) {
+    const identity = { chainId, from, hash, nonce };
+    const key = acknowledgementKey(owner, endpoint, identity);
+    const ticket: Acknowledgement = { owner, endpoint, identity };
+    this.acknowledgements.delete(key);
+    this.acknowledgements.set(key, ticket);
+    if (this.acknowledgements.size > MAX_ACKNOWLEDGEMENTS)
+      this.acknowledgements.delete(this.acknowledgements.keys().next().value!);
+
+    return (acknowledgedHash: unknown) => {
+      if (this.acknowledgements.get(key) !== ticket) return;
+      if (
+        typeof acknowledgedHash === 'string' &&
+        acknowledgedHash.toLowerCase() === identity.hash
+      )
+        ticket.expires = this.now() + ACKNOWLEDGEMENT_MS;
+      else this.acknowledgements.delete(key);
+    };
+  }
+
+  retireNonce(owner: string, entry: NonceIdentity) {
+    for (const [key, hint] of this.acknowledgements) {
+      if (
+        hint.owner === owner &&
+        sameSender(hint.identity, entry.chainId, entry.from.toLowerCase()) &&
+        hint.identity.nonce === entry.nonce
+      )
+        this.acknowledgements.delete(key);
+    }
+  }
+
+  async plan({
+    chainId,
+    from,
+    endpoint,
+    latest,
+    pending,
+    protectedAssetContract,
+    snapshot,
+    readPending,
+    assertCurrent,
+  }: Readonly<{
+    assertCurrent(): void;
+    chainId: string;
+    endpoint: string;
+    from: string;
+    latest: number;
+    pending: number;
+    protectedAssetContract?: string;
+    readPending(hash: string): Promise<unknown>;
+    snapshot: EvmAutoNonceSnapshot;
+  }>): Promise<EvmAutoNoncePlan> {
+    assertCurrent();
+    if (!validNonce(latest) || !validNonce(pending))
+      throw new Error('Invalid EVM nonce counts');
+    const sender = from.toLowerCase();
+    const floor = Math.max(latest, pending);
+    const { owner, retained } = snapshot;
+    for (const [key, hint] of this.acknowledgements) {
+      if (
+        hint.owner === owner &&
+        sameSender(hint.identity, chainId, sender) &&
+        hint.identity.nonce < latest
+      )
+        this.acknowledgements.delete(key);
+    }
+    const variants = new Map<number, RetainedNonce[]>();
+    for (const entry of retained) {
+      if (!sameSender(entry, chainId, sender)) continue;
+      if (!validNonce(entry.nonce))
+        throw new Error('Invalid retained EVM nonce');
+      if (entry.nonce < floor) continue;
+      const siblings = variants.get(entry.nonce);
+      if (siblings) siblings.push(entry);
+      else variants.set(entry.nonce, [entry]);
+    }
+
+    const accepted: AcceptedNonce[] = [];
+    const usedAcknowledgements: Array<{
+      key: string;
+      nonce: number;
+      ticket: Acknowledgement;
+    }> = [];
+    let reads = 0;
+    let costReads = 0;
+    let maximumPredecessorCost = BigInt(0);
+    for (let nonce = floor; variants.has(nonce); nonce++) {
+      if (nonce - floor >= MAX_AHEAD_OF_RPC)
+        return { kind: 'unresolved', nonce };
+      const siblings = variants.get(nonce)!;
+      let proof: AcceptedNonce | undefined;
+      for (const entry of siblings) {
+        if (!canStillBePending(entry)) continue;
+        const key = acknowledgementKey(owner, endpoint, entry);
+        const hint = this.acknowledgements.get(key);
+        if (hint?.expires !== undefined && hint.expires > this.now()) {
+          proof = { ...entry, endpoint, source: 'acknowledged' };
+          usedAcknowledgements.push({ key, nonce, ticket: hint });
+          break;
+        }
+      }
+      if (!proof) {
+        for (const entry of siblings) {
+          if (!canStillBePending(entry) || reads >= MAX_ADDITIONAL_READS)
+            continue;
+          reads++;
+          assertCurrent();
+          const result = await readPending(entry.hash);
+          assertCurrent();
+          if (matchesPending(result, entry)) {
+            proof = { ...entry, endpoint, source: 'observed-pending' };
+            break;
+          }
+        }
+      }
+      if (!proof) break;
+      if (nonce === Number.MAX_SAFE_INTEGER)
+        throw new Error('EVM nonce exceeds safe range');
+      accepted.push(proof);
+
+      // Reserve the costliest saved alternative, since a replacement can win
+      // even when this endpoint has only acknowledged the previous variant.
+      let maximumAtNonce = BigInt(0);
+      for (const entry of siblings) {
+        if (costReads++ >= MAX_ADDITIONAL_READS)
+          return { kind: 'unresolved', nonce };
+        assertCurrent();
+        const cost = await snapshot.readMaximumCost(entry.hash);
+        assertCurrent();
+        if (
+          protectedAssetContract &&
+          (!snapshot.touchesContract ||
+            (await snapshot.touchesContract(
+              entry.hash,
+              protectedAssetContract
+            )))
+        ) {
+          assertCurrent();
+          return { kind: 'unresolved', nonce, reason: 'asset-state' };
+        }
+        assertCurrent();
+        if (cost > maximumAtNonce) maximumAtNonce = cost;
+      }
+      maximumPredecessorCost += maximumAtNonce;
+    }
+
+    assertCurrent();
+    for (const { key, nonce, ticket } of usedAcknowledgements) {
+      if (
+        this.acknowledgements.get(key) !== ticket ||
+        ticket.expires === undefined ||
+        ticket.expires <= this.now()
+      )
+        return { kind: 'unresolved', nonce };
+    }
+    const selection = planEvmAutoNonce({
+      chainId,
+      from,
+      endpoint,
+      latest,
+      pending,
+      retained,
+      accepted,
+    });
+    return selection.kind === 'ready'
+      ? { ...selection, maximumPredecessorCost }
+      : selection;
+  }
 }

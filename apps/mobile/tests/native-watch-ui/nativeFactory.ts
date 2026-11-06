@@ -252,7 +252,9 @@ export function createNativeWalletControllers() {
   const transferRuntime: NativeTransferRuntime = {
     replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
-    async journal(guard) { guard(); return { async assertSpendingNonce() { guard(); }, async load() { guard(); return null; },
+    async journal(guard) { guard(); return {
+      async planAutomaticNonce({ latest, pending }) { guard(); return { kind: 'ready', nonce: Math.max(latest, pending), maximumPredecessorCost: 0n }; },
+      async assertSpendingNonce() { guard(); }, async load() { guard(); return null; },
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },

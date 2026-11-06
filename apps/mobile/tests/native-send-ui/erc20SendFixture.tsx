@@ -15,7 +15,7 @@ import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay';
 import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords';
 import { createNativeSignedRecordView } from '../../src/custody/sharedSignedRecords';
-import { historicalSignedBundle, signedRecordTestSession } from '../signedRecordTestSession';
+import { historicalSignedBundle, signedRecordTestSession, submitFixtureEvmTransaction } from '../signedRecordTestSession';
 import { assertTransferIntentEnvelope } from '../../src/custody/transferIntent';
 import { NativeSend } from '../../src/screens/NativeSend';
 import { Button, Text } from '../../src/ui';
@@ -118,6 +118,7 @@ const rpc = new NativeTransferRpc({
           ? '0x20'
           : request.params[0]
       );
+    else if (request.method === 'eth_getTransactionByHash') result = null;
     else if (request.method === 'eth_getTransactionReceipt') {
       const entry = finalized
         ? await signedRecords.readExact(signedRecordTestSession(), '1', wallet.address, request.params[0])
@@ -157,11 +158,7 @@ const runtime: NativeTransferRuntime = {
     return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
-  async submit(rawTransaction, _hash, guard, broadcast, intent) {
-    if (intent?.kind === 'nft-transfer') throw Error('Unexpected NFT fixture intent');
-    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard();
-    await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
-  },
+  submit: submitFixtureEvmTransaction(signedRecords),
   async token(contract, guard) {
     guard();
     if (contract !== token.contractAddress) throw Error('Unknown token');

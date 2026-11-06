@@ -12,3 +12,15 @@ export interface IEvmTransactionContext {
 
 export const EVM_TRANSACTION_CONTEXT_CHANGED =
   'PALI_TRANSACTION_CONTEXT_CHANGED';
+
+export const isSavedEvmNonceConflict = (
+  error:
+    | { code?: unknown; transactionNotBroadcast?: unknown }
+    | null
+    | undefined
+): boolean =>
+  error?.code === 'EVM_SIGNED_RECORD_NONCE_CONFLICT' &&
+  error.transactionNotBroadcast === true;
+
+export const WALLET_NETWORK_CATCHING_UP_MESSAGE =
+  'The network is still updating your previous transaction. Please try again shortly.';
