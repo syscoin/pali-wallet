@@ -2,6 +2,7 @@ import {
   findUtxoCoinByRegistration,
   getNetworkConfigFromCoin,
 } from '@sidhujag/sysweb3-network';
+import bs58check from 'bs58check';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
 import {
@@ -21,13 +22,27 @@ export function createUtxoActivityParticipantProjection(
     ? getNetworkConfigFromCoin(coin).networks.mainnet
     : null;
   const normalize = (values: readonly unknown[]) =>
-    network
+    coin
       ? normalizeUtxoActivityParticipants(values, (value) => {
-          const { address } = syscoinUtils.bitcoinjs;
-          return address.fromOutputScript(
-            address.toOutputScript(value, network),
-            network
-          );
+          if (network) {
+            const { address } = syscoinUtils.bitcoinjs;
+            return address.fromOutputScript(
+              address.toOutputScript(value, network),
+              network
+            );
+          }
+          // The SDK's SegWit config requires a Bech32 prefix. Legacy-only
+          // registrations still have exact Base58Check address versions.
+          const decoded = bs58check.decode(value);
+          const version =
+            decoded.length === 21
+              ? decoded[0]
+              : decoded.length === 22 && decoded[0] !== 0
+              ? decoded[0] * 256 + decoded[1]
+              : -1;
+          if (version !== coin.addressType && version !== coin.addressTypeP2sh)
+            throw new Error('Invalid legacy participant address');
+          return value;
         })
       : [];
   return {
