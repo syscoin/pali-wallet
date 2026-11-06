@@ -26,6 +26,7 @@ import {
   KeyringAccountType,
 } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
+import { hasVerifiedSmartAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { ellipsis } from 'utils/index';
 import {
   createBrowsingNavigationContext,
@@ -323,29 +324,37 @@ const SmartAccountEntry = ({
               data-navigation-scroll="smart-account-picker"
               className="max-h-[35vh] overflow-y-auto remove-scrollbar space-y-2"
             >
-              {visibleItems.map((account) => (
-                <button
-                  key={account.id}
-                  data-testid={`smart-account-option-${account.id}`}
-                  type="button"
-                  disabled={disabled}
-                  aria-busy={pendingId === account.id}
-                  onClick={() => chooseAccount(account)}
-                  className="w-full rounded-lg bg-bkg-2 p-3 text-left hover:bg-bkg-3 disabled:opacity-60 disabled:cursor-wait"
-                >
-                  <span className="block truncate text-sm text-brand-white">
-                    {account.label}
-                  </span>
-                  <span
-                    className="block mt-1 text-xs text-brand-gray200"
-                    title={account.address}
+              {visibleItems.map((account) => {
+                const canPublishAddress = hasVerifiedSmartAccountAddress(
+                  account,
+                  activeNetwork.chainId
+                );
+                return (
+                  <button
+                    key={account.id}
+                    data-testid={`smart-account-option-${account.id}`}
+                    type="button"
+                    disabled={disabled}
+                    aria-busy={pendingId === account.id}
+                    onClick={() => chooseAccount(account)}
+                    className="w-full rounded-lg bg-bkg-2 p-3 text-left hover:bg-bkg-3 disabled:opacity-60 disabled:cursor-wait"
                   >
-                    {pendingId === account.id
-                      ? t('buttons.loading')
-                      : ellipsis(account.address, 8, 8)}
-                  </span>
-                </button>
-              ))}
+                    <span className="block truncate text-sm text-brand-white">
+                      {account.label}
+                    </span>
+                    <span
+                      className="block mt-1 text-xs text-brand-gray200"
+                      title={canPublishAddress ? account.address : undefined}
+                    >
+                      {pendingId === account.id
+                        ? t('buttons.loading')
+                        : !canPublishAddress
+                        ? t('receive.addressUnavailable')
+                        : ellipsis(account.address, 8, 8)}
+                    </span>
+                  </button>
+                );
+              })}
               {matchingAccounts.length === 0 && (
                 <p role="status" className="py-3 text-sm text-brand-gray200">
                   {t('connections.noMatchingAccounts')}

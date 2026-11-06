@@ -1,5 +1,6 @@
 import React from 'react';
 
+import { smartAccountAddressFixture } from '../../../tests/fixtures/smartAccountAddress';
 import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 
@@ -308,6 +309,25 @@ describe('large account-change approval list', () => {
     search('UTXO');
     expect(row('UTXO only')).toBeUndefined();
     expect(rows()).toHaveLength(1);
+  });
+
+  it('shows only a verified same-chain smart account during selection', () => {
+    const { account } = smartAccountAddressFixture();
+    const address = `0x${'1'.repeat(40)}`;
+    mockState.vault.accounts.SmartAccount = {
+      0: { ...account, id: 0, label: 'Verified smart account' },
+      1: {
+        ...account,
+        address,
+        xpub: address,
+        id: 1,
+        label: 'Unverified smart account',
+      },
+    };
+
+    search('smart account');
+    expect(row('Verified smart account')).toBeDefined();
+    expect(row('Unverified smart account')).toBeUndefined();
   });
 
   it('resets pagination for a new search without dropping the visible current selection', () => {

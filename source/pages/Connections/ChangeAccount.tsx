@@ -24,6 +24,7 @@ import { selectAccountAssets } from 'state/vault/selectors';
 import { IDAppAccountSelectionContext } from 'types/controllers';
 import { KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
 
@@ -124,6 +125,11 @@ export const ChangeAccount = () => {
         account,
         keyringAccountType || '',
         activeNetwork
+      ) &&
+      canPublishAccountAddress(
+        account,
+        keyringAccountType,
+        activeNetwork.chainId
       ),
     [activeNetwork]
   );

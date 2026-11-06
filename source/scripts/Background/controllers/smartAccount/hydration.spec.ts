@@ -2,7 +2,16 @@ jest.mock('state/store', () => ({
   __esModule: true,
   default: {
     dispatch: jest.fn(),
-    getState: () => ({ vault: {} }),
+    getState: () => ({
+      vault: {
+        activeAccount: { id: 9, type: 'SmartAccount' },
+        activeNetwork: {
+          chainId: CHAIN_ID,
+          kind: 'ethereum',
+          url: 'https://fixture.invalid',
+        },
+      },
+    }),
   },
 }));
 
@@ -22,6 +31,7 @@ import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
 import { createTestEvmSubmissionCapture } from '../../../../../tests/helpers/evmSubmission';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 import { KeyringAccountType } from 'types/network';
 import { BigNumber } from 'utils/ethersV6Compat';
 import {
@@ -32,8 +42,9 @@ import {
 
 import SmartAccountController from './index';
 
-const ACCOUNT_ADDRESS = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 const CHAIN_ID = 57;
+const identity = smartAccountAddressFixture(CHAIN_ID);
+const ACCOUNT_ADDRESS = identity.account.address;
 
 const buildAccount = () => ({
   address: ACCOUNT_ADDRESS,
@@ -163,14 +174,13 @@ describe('SmartAccountController smart account execution fees', () => {
       hash: '0xabc',
       wait: jest.fn(),
     });
+    const transaction = { web3Provider: { estimateGas } };
     const controller: any = new SmartAccountController({
-      getEthereumTransaction: () => ({
-        web3Provider: { estimateGas },
-      }),
+      getEthereumTransaction: () => transaction,
       sendAndSaveEthTransaction,
     } as any);
     controller.getActiveSmartAccount = jest.fn(() => ({
-      account: { address: ACCOUNT_ADDRESS, id: 9 },
+      account: { ...identity.account, id: 9 },
       metadata: {
         chainId: CHAIN_ID,
         deploymentGasPayer: gasPayer,
@@ -198,6 +208,22 @@ describe('SmartAccountController smart account execution fees', () => {
       preVerificationGas: '0',
       sender: ACCOUNT_ADDRESS,
     });
+
+  const withPreparedDeployment = (
+    controller: any,
+    userOperation: ReturnType<typeof buildUserOperation>,
+    gasPrice?: string
+  ) => {
+    const executionContextId = 'reviewed-deployment';
+    controller.executionContexts.set(executionContextId, {
+      accountId: 9,
+      expiresAt: Date.now() + 60_000,
+      snapshot: controller.infrastructureContext(),
+      gasPrice,
+      userOperation: { ...userOperation },
+    });
+    return { executionContextId, userOperation };
+  };
 
   describe.each([
     ['native gas', 'insufficient funds', 'PALI_NATIVE_GAS_REQUIRED'],
@@ -346,17 +372,65 @@ describe('SmartAccountController smart account execution fees', () => {
       .fn()
       .mockResolvedValue(undefined);
     estimateGas.mockRejectedValueOnce(new Error('execution reverted'));
-    const userOperation = { ...buildUserOperation(), initCode: '0x1234' };
+    const userOperation = {
+      ...buildUserOperation(),
+      initCode: identity.deploymentInitCode,
+    };
 
     await expect(
       controller.submitSmartAccountExecution({
         executions: [],
         gasPayer,
         signature: '0x1234',
-        userOperation,
+        ...withPreparedDeployment(controller, userOperation),
       })
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
     expect(controller.ensureSmartAccountDeploymentPrefund).toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('never funds a first UserOperation with altered deployment bytes', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+    const prefund = jest.spyOn(
+      controller,
+      'ensureSmartAccountDeploymentPrefund'
+    );
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        ...withPreparedDeployment(controller, {
+          ...buildUserOperation(),
+          initCode: '0x1234',
+        }),
+      })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+    expect(prefund).not.toHaveBeenCalled();
+    expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
+  });
+
+  it('never funds a canonical first UserOperation without its prepared owner context', async () => {
+    const { controller, sendAndSaveEthTransaction } = buildController();
+    const prefund = jest.spyOn(
+      controller,
+      'ensureSmartAccountDeploymentPrefund'
+    );
+    await expect(
+      controller.submitSmartAccountExecution({
+        executions: [],
+        gasPayer,
+        signature: '0x1234',
+        userOperation: {
+          ...buildUserOperation(),
+          initCode: identity.deploymentInitCode,
+        },
+      })
+    ).rejects.toMatchObject({
+      message: 'PALI_TRANSACTION_CONTEXT_CHANGED',
+      transactionNotBroadcast: true,
+    });
+    expect(prefund).not.toHaveBeenCalled();
     expect(sendAndSaveEthTransaction).not.toHaveBeenCalled();
   });
 
@@ -379,7 +453,10 @@ describe('SmartAccountController smart account execution fees', () => {
           executions: [],
           gasPayer,
           signature: '0x1234',
-          userOperation: { ...buildUserOperation(), initCode: '0x1234' },
+          ...withPreparedDeployment(controller, {
+            ...buildUserOperation(),
+            initCode: identity.deploymentInitCode,
+          }),
         })
       ).rejects.toBe(error);
       expect(error).not.toHaveProperty('transactionNotBroadcast');
@@ -597,9 +674,8 @@ describe('SmartAccountController smart account execution fees', () => {
           };
         }),
       };
-      controller.deps.getEthereumTransaction = () => ({
-        web3Provider: provider,
-      });
+      const transaction = { web3Provider: provider };
+      controller.deps.getEthereumTransaction = () => transaction;
       controller.getWalletGasPayerAccount.mockResolvedValue(fixturePayer);
       const persistSigned = jest.fn(async () => {
         if (phase === 'before POST') {
@@ -663,16 +739,21 @@ describe('SmartAccountController smart account execution fees', () => {
           return response;
         }
       );
+      const userOperation = {
+        ...buildUserOperation(),
+        ...(operation === 'prefund'
+          ? { initCode: identity.deploymentInitCode }
+          : {}),
+      };
       const approval = controller.submitSmartAccountExecution(
         {
           executions: [],
           gasPayer: fixturePayer,
           gasPrice: '13',
           signature: '0x1234',
-          userOperation: {
-            ...buildUserOperation(),
-            ...(operation === 'prefund' ? { initCode: '0x1234' } : {}),
-          },
+          ...(operation === 'prefund'
+            ? withPreparedDeployment(controller, userOperation, '13')
+            : { userOperation }),
           waitForConfirmation:
             operation === 'handleOps' && phase === 'wait failure',
         },

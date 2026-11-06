@@ -1,3 +1,4 @@
+import { smartAccountAddressFixture } from '../../tests/fixtures/smartAccountAddress';
 import {
   IKeyringAccountState,
   INetwork,
@@ -40,9 +41,16 @@ const smartMetadata = (chainId: number): ISmartAccountMetadata => ({
   isDeployed: false,
 });
 
+const makeSmartAccount = (chainId: number, id = 0): IKeyringAccountState => ({
+  ...initialActiveHdAccountState,
+  ...smartAccountAddressFixture(chainId).account,
+  id,
+  isSmartAccount: true,
+});
+
 describe('getLocalEvmRecipients', () => {
   it('excludes and blocks a smart account from another chain', () => {
-    const smart = makeAccount(ADDRESS, smartMetadata(zkNetwork.chainId));
+    const smart = makeSmartAccount(zkNetwork.chainId);
     const result = getLocalEvmRecipients(
       { SmartAccount: { 0: smart } },
       nevmNetwork
@@ -50,11 +58,16 @@ describe('getLocalEvmRecipients', () => {
 
     expect(result.accounts).toEqual([]);
     expect(result.addresses).toEqual([]);
-    expect(result.incompatibleSmartAddresses).toEqual(new Set([ADDRESS]));
+    expect(result.incompatibleSmartAddresses).toEqual(
+      new Set([smart.address.toLowerCase()])
+    );
+    expect(result.getRecipientIssue(smart.address)).toBe(
+      'send.smartAccountWrongNetwork'
+    );
   });
 
   it('permits funding an undeployed smart account on its own chain', () => {
-    const smart = makeAccount(ADDRESS, smartMetadata(zkNetwork.chainId));
+    const smart = makeSmartAccount(zkNetwork.chainId);
     const result = getLocalEvmRecipients(
       { SmartAccount: { 0: smart } },
       zkNetwork
@@ -63,12 +76,31 @@ describe('getLocalEvmRecipients', () => {
     expect(smart.smartAccount?.isDeployed).toBe(false);
     expect(smart.balances.ethereum).toBe(0);
     expect(result.accounts).toEqual([smart]);
-    expect(result.addresses).toEqual([ADDRESS]);
+    expect(result.addresses).toEqual([smart.address.toLowerCase()]);
     expect(result.incompatibleSmartAddresses.size).toBe(0);
   });
 
+  it('blocks a same-chain recipient with a mismatched counterfactual address', () => {
+    const smart = {
+      ...makeSmartAccount(zkNetwork.chainId),
+      address: ADDRESS,
+      xpub: ADDRESS,
+    };
+    const result = getLocalEvmRecipients(
+      { SmartAccount: { 0: smart } },
+      zkNetwork
+    );
+
+    expect(result.accounts).toEqual([]);
+    expect(result.addresses).toEqual([]);
+    expect(result.incompatibleSmartAddresses.size).toBe(0);
+    expect(result.getRecipientIssue(ADDRESS)).toBe(
+      'receive.addressUnavailable'
+    );
+  });
+
   it('retains compatibility when the same chain uses another RPC URL', () => {
-    const smart = makeAccount(ADDRESS, smartMetadata(zkNetwork.chainId));
+    const smart = makeSmartAccount(zkNetwork.chainId);
     const result = getLocalEvmRecipients(
       { SmartAccount: { 0: smart } },
       { ...zkNetwork, url: 'https://another-rpc.example' }
@@ -99,13 +131,13 @@ describe('getLocalEvmRecipients', () => {
     KeyringAccountType.Trezor,
     KeyringAccountType.SmartAccount,
   ])('permits an address also owned by a compatible %s account', (type) => {
-    const wrongChain = makeAccount(ADDRESS, smartMetadata(zkNetwork.chainId));
-    const compatible = makeAccount(
-      ADDRESS,
+    const compatible =
       type === KeyringAccountType.SmartAccount
-        ? smartMetadata(nevmNetwork.chainId)
-        : undefined,
-      1
+        ? makeSmartAccount(nevmNetwork.chainId, 1)
+        : makeAccount(ADDRESS, undefined, 1);
+    const wrongChain = makeAccount(
+      compatible.address,
+      smartMetadata(zkNetwork.chainId)
     );
     const accountBuckets =
       type === KeyringAccountType.SmartAccount
@@ -114,7 +146,7 @@ describe('getLocalEvmRecipients', () => {
     const result = getLocalEvmRecipients(accountBuckets, nevmNetwork);
 
     expect(result.accounts).toEqual([compatible]);
-    expect(result.addresses).toEqual([ADDRESS]);
+    expect(result.addresses).toEqual([compatible.address.toLowerCase()]);
     expect(result.incompatibleSmartAddresses.size).toBe(0);
   });
 

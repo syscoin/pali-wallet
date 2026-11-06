@@ -32,6 +32,7 @@ jest.mock('state/store', () => ({
 
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import store, { persistAccountCreation } from 'state/store';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 import { KeyringAccountType } from 'types/network';
 
 import MainController from './MainController';
@@ -46,7 +47,7 @@ const flows: [string, any[], string, KeyringAccountType][] = [
   ],
   [
     'createSmartAccount',
-    [{ address: '0x-public-smart-address', metadata: {} }],
+    [{ label: 'smart' }],
     'createSmartAccount',
     KeyringAccountType.SmartAccount,
   ],
@@ -92,7 +93,7 @@ describe('account mutation wallet setup reservation', () => {
     jest.useFakeTimers();
     mockState = {
       vault: {
-        activeNetwork: { kind: 'syscoin', slip44: 57 },
+        activeNetwork: { kind: 'syscoin', slip44: 57, chainId: 1 },
         accounts: {
           HDAccount: {},
           Imported: {},
@@ -145,6 +146,8 @@ describe('account mutation wallet setup reservation', () => {
       const expected =
         sdkMethod === 'importAccount'
           ? { ...account, isImported: true, xprv: 'encrypted-fixture' }
+          : sdkMethod === 'createSmartAccount'
+          ? { ...account, ...smartAccountAddressFixture().account }
           : account;
       keyring[sdkMethod].mockResolvedValueOnce(expected);
       await expect(wallet[method](...args)).resolves.toEqual(expected);

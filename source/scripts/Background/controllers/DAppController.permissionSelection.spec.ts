@@ -20,6 +20,7 @@ jest.mock('./message-handler/provider-cache', () => ({
   clearProviderCache: jest.fn(),
 }));
 
+import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
 import dappReducer from 'state/dapp';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -112,9 +113,8 @@ it.each(['missing', 'wrong-family', 'wrong-smart-chain', 'wrong-utxo-slip44'])(
     let type = KeyringAccountType.HDAccount;
     if (change === 'wrong-smart-chain') {
       type = KeyringAccountType.SmartAccount;
-      mockState.vault.accounts.SmartAccount = {
-        1: { id: 1, address, smartAccount: { chainId: 2 } },
-      };
+      const { account } = smartAccountAddressFixture(2);
+      mockState.vault.accounts.SmartAccount = { 1: { ...account, id: 1 } };
     }
     if (change === 'wrong-utxo-slip44') {
       mockState.vault.activeNetwork = {
@@ -138,6 +138,26 @@ it.each(['missing', 'wrong-family', 'wrong-smart-chain', 'wrong-utxo-slip44'])(
     expect(controller.get(host)).toEqual(previous);
   }
 );
+
+it('keeps the existing permission when a same-chain smart address cannot be verified', async () => {
+  await grant();
+  const previous = controller.get(host);
+  const { account } = smartAccountAddressFixture();
+  const invalid = { ...account, id: 1, address, xpub: address };
+  mockState.vault.accounts.SmartAccount = { 1: invalid };
+  mockDispatch.mockClear();
+  (chrome.tabs.query as jest.Mock).mockClear();
+
+  expect(() =>
+    controller.requestPermissions(host, 1, KeyringAccountType.SmartAccount, {
+      ...context(),
+      xpub: invalid.xpub,
+    })
+  ).toThrow('Account is not available on the active network');
+  expect(mockDispatch).not.toHaveBeenCalled();
+  expect(chrome.tabs.query).not.toHaveBeenCalled();
+  expect(controller.get(host)).toEqual(previous);
+});
 
 const holdGrant = () => {
   let finish!: () => void;

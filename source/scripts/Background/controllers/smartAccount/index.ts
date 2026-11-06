@@ -19,6 +19,7 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -90,6 +91,7 @@ import {
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
+import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
 import {
@@ -109,11 +111,6 @@ import {
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
-  createSmartAccountRecord: (params: {
-    address: string;
-    label?: string;
-    metadata: ISmartAccountMetadata;
-  }) => Promise<any>;
   getEthereumTransaction: () => any;
   getLatestUpdateForCurrentAccount: (
     isPolling?: boolean,
@@ -1160,6 +1157,10 @@ class SmartAccountController {
       availableModules: getAvailablePaliModules(activeNetwork.chainId),
       chainId: activeNetwork.chainId,
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
+      deploymentAuth: {
+        data: authenticator.auth.data,
+        validator: authenticator.auth.validator,
+      },
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
       factoryAddress,
@@ -1261,6 +1262,10 @@ class SmartAccountController {
       availableModules: getAvailablePaliModules(chainId),
       chainId,
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
+      deploymentAuth: {
+        data: authenticator.auth.data,
+        validator: authenticator.auth.validator,
+      },
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
       factoryAddress,
@@ -1270,24 +1275,6 @@ class SmartAccountController {
       address: smartAccount.address,
       metadata: this.getDurableSmartAccountMetadata(metadata),
     };
-  }
-
-  public async createSmartAccount(params: {
-    address: string;
-    label?: string;
-    metadata: ISmartAccountMetadata;
-  }): Promise<any> {
-    const metadata = {
-      ...params.metadata,
-      availableModules: getAvailablePaliModules(params.metadata.chainId),
-      isDeployed: params.metadata.isDeployed,
-    };
-
-    return this.deps.createSmartAccountRecord({
-      address: params.address,
-      label: params.label,
-      metadata: this.getDurableSmartAccountMetadata(metadata),
-    });
   }
 
   public async registerSmartAccountOnChain(
@@ -1329,6 +1316,7 @@ class SmartAccountController {
           'Smart account descriptor is required for deterministic deployment'
         );
       }
+      requireSmartAccountAddressIdentity(active.account, context.chainId);
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
@@ -1336,27 +1324,10 @@ class SmartAccountController {
 
       const code = await provider.getCode(accountAddress);
       assertCurrent();
-      const factoryAddress =
-        metadata.factoryAddress ||
-        getPaliSmartAccountFactoryAddress(metadata.chainId);
       if (code === '0x') {
         if (!metadata.auth) {
           throw new Error(
             'Smart account initial authenticator metadata is required for deployment'
-          );
-        }
-        const auth = this.requireAuthenticator(metadata);
-        const smartAccount = await toPaliSmartAccount({
-          auth,
-          chainId: metadata.chainId,
-          deploySalt: metadata.descriptor.deploymentSalt,
-          factoryAddress,
-          provider,
-        });
-        assertCurrent();
-        if (smartAccount.address !== accountAddress) {
-          throw new Error(
-            'Stored smart account authenticator does not match the deterministic account address.'
           );
         }
         // The factory gates createAccount on EntryPoint.senderCreator(), so
@@ -1887,6 +1858,10 @@ class SmartAccountController {
       ? 'cached-deployed'
       : await provider.getCode(active.account.address);
     assertContext();
+    const deployment =
+      code === '0x'
+        ? requireSmartAccountAddressIdentity(active.account, snapshot.chainId)
+        : null;
     if (code !== '0x' && !useDeployedCachedMetadata) {
       await this.assertSmartAccountExecutionModeSupported(
         accountContract,
@@ -1988,8 +1963,9 @@ class SmartAccountController {
       }),
       callData,
       gasFees,
-      initCode:
-        code === '0x' ? await smartAccount.getDeploymentInitCode() : '0x',
+      initCode: deployment
+        ? hexConcat([deployment.factory, deployment.factoryData])
+        : '0x',
       nonce,
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
@@ -2189,6 +2165,22 @@ class SmartAccountController {
         throw new Error(
           'Signed UserOperation does not match the active smart account'
         );
+      }
+      const initCode = params.userOperation.initCode;
+      if (initCode && initCode !== '0x') {
+        if (!params.executionContextId)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const deployment = requireSmartAccountAddressIdentity(
+          active.account,
+          store.getState().vault.activeNetwork.chainId
+        );
+        if (
+          initCode.toLowerCase() !==
+          hexConcat([deployment.factory, deployment.factoryData]).toLowerCase()
+        )
+          throw new Error(
+            'Signed UserOperation deployment does not match the smart account'
+          );
       }
       const gasPayer = await this.getWalletGasPayerAccount(
         params.gasPayer || active.metadata.deploymentGasPayer,

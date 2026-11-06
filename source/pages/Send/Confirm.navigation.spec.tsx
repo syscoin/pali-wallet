@@ -11,6 +11,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 import { INetworkType } from 'types/network';
 import { TransactionType } from 'types/transactions';
 import { BigNumber, Interface } from 'utils/ethersV6Compat';
@@ -288,7 +289,8 @@ beforeEach(() => {
 });
 
 const wrongNetworkSmartAddress = '0x3333333333333333333333333333333333333333';
-const currentNetworkSmartAddress = '0x4444444444444444444444444444444444444444';
+const currentNetworkSmart = smartAccountAddressFixture(5700).account;
+const currentNetworkSmartAddress = currentNetworkSmart.address;
 const prepareEvmRecipientConfirmation = (receiver: string) => {
   mockState.vault.isBitcoinBased = false;
   mockState.vault.activeNetwork = {
@@ -311,10 +313,9 @@ const prepareEvmRecipientConfirmation = (receiver: string) => {
       smartAccount: { chainId: 57042 },
     },
     1: {
+      ...currentNetworkSmart,
       id: 1,
-      address: currentNetworkSmartAddress,
       isSmartAccount: true,
-      smartAccount: { chainId: 5700, isDeployed: false },
     },
   };
   mockLocation.state.tx = {
@@ -1493,23 +1494,34 @@ it.each([
   }
 );
 
-it('blocks a stale wrong-network smart recipient in confirmation before fee preparation or submission', async () => {
-  prepareEvmRecipientConfirmation(wrongNetworkSmartAddress);
-  render(<SendConfirm />);
-  const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
-  expect(screen.getByText('send.smartAccountWrongNetwork')).toBeTruthy();
-  expect(confirm.hasAttribute('disabled')).toBe(true);
-  expect(mockControllerEmitter).not.toHaveBeenCalled();
-  // Calling the captured callback bypasses the DOM disabled attribute and
-  // verifies that the submission boundary independently rejects the recipient.
-  await act(async () => {
-    mockConfirmClick();
-  });
-  expect(mockAlert.error).toHaveBeenCalledWith('send.smartAccountWrongNetwork');
-  expect(mockControllerEmitter).not.toHaveBeenCalled();
-  expect(mockClearNavigationState).not.toHaveBeenCalled();
-  expect(mockNavigate).not.toHaveBeenCalled();
-});
+it.each([
+  ['wrong-network', 'send.smartAccountWrongNetwork'],
+  ['same-chain unverified', 'receive.addressUnavailable'],
+])(
+  'blocks a %s smart recipient in confirmation before fee preparation or submission',
+  async (reason, message) => {
+    const sameChain = reason === 'same-chain unverified';
+    prepareEvmRecipientConfirmation(
+      sameChain ? currentNetworkSmartAddress : wrongNetworkSmartAddress
+    );
+    if (sameChain)
+      mockState.vault.accounts.SmartAccount[1].xpub = wrongNetworkSmartAddress;
+    render(<SendConfirm />);
+    const confirm = screen.getByRole('button', { name: 'buttons.confirm' });
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+    // Calling the captured callback bypasses the DOM disabled attribute and
+    // verifies that the submission boundary independently rejects the recipient.
+    await act(async () => {
+      mockConfirmClick();
+    });
+    expect(mockAlert.error).toHaveBeenCalledWith(message);
+    expect(mockControllerEmitter).not.toHaveBeenCalled();
+    expect(mockClearNavigationState).not.toHaveBeenCalled();
+    expect(mockNavigate).not.toHaveBeenCalled();
+  }
+);
 
 it.each(['undeployed smart account', 'EOA'])(
   'allows confirmation to send to a compatible %s using the normal transaction path',
