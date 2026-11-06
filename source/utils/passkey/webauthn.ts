@@ -9,6 +9,7 @@ import {
   hexToBytes,
 } from './base64url';
 import { asCborBytes, asCborMap, decodeCbor } from './cbor';
+import { P256_ORDER as P256_N, parseP256DerSignature } from './p256Signature';
 import { validatePasskeyClientDataJSON } from './validation';
 
 export type PasskeyPublicKey = {
@@ -65,9 +66,6 @@ const AUTH_DATA_FIXED_LENGTH = 37;
 const ATTESTED_CREDENTIAL_DATA_FLAG = 0x40;
 const BACKUP_ELIGIBLE_FLAG = 0x08;
 const BACKUP_STATE_FLAG = 0x10;
-const P256_N = BigInt(
-  '0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551'
-);
 const P256_P = BigInt(
   '0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff'
 );
@@ -308,36 +306,6 @@ export const getPasskeyBackupStatus = (
   return PasskeyBackupStatus.DeviceBound;
 };
 
-const parseDerSignature = (signature: Uint8Array) => {
-  if (signature[0] !== 0x30) throw new Error('Invalid DER signature');
-  let offset = 2;
-
-  if (signature[1] & 0x80) {
-    offset = 2 + (signature[1] & 0x7f);
-  }
-
-  const readInteger = () => {
-    if (signature[offset] !== 0x02)
-      throw new Error('Invalid DER signature integer');
-    const length = signature[offset + 1];
-    offset += 2;
-    let value = signature.slice(offset, offset + length);
-    offset += length;
-
-    while (value.length > 32 && value[0] === 0) {
-      value = value.slice(1);
-    }
-    if (value.length > 32)
-      throw new Error('Invalid P-256 signature integer length');
-
-    const padded = new Uint8Array(32);
-    padded.set(value, 32 - value.length);
-    return padded;
-  };
-
-  return { r: readInteger(), s: normalizeP256S(readInteger()) };
-};
-
 const extractCredentialPublicKey = async (
   attestationObject: Uint8Array,
   expectedOrigin: string
@@ -497,7 +465,9 @@ const getPasskeyAssertionForCredential = async (
 
   const clientDataHash = await sha256(clientDataJSON);
   const digest = await sha256(concatBytes(authenticatorData, clientDataHash));
-  const { r, s } = parseDerSignature(signature);
+  const rawSignature = parseP256DerSignature(signature);
+  const r = rawSignature.subarray(0, 32);
+  const s = normalizeP256S(rawSignature.subarray(32));
   const origin = getClientDataOrigin(clientDataJSON, originOffset);
   const rpIdHash = bytesToHex(authenticatorData.slice(0, 32));
   const originLength = toUtf8Bytes(origin).length;

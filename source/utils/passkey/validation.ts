@@ -1,5 +1,7 @@
 import { defaultAbiCoder } from 'utils/ethersV6Compat';
 
+import { readPasskeyClientData } from './clientData';
+
 export type PasskeyWebAuthnProof = {
   authenticatorData: string;
   challengeOffset: number;
@@ -24,19 +26,12 @@ export const validatePasskeyClientDataJSON = (
   expectedOrigin?: string
 ) => {
   const clientDataText = new TextDecoder().decode(clientDataJSON);
-  const clientData = JSON.parse(clientDataText);
-  if (clientData.type !== 'webauthn.get') {
-    throw new Error('WebAuthn client data has an unexpected type');
-  }
-  if (clientData.challenge !== expectedChallenge) {
-    throw new Error('WebAuthn client data has an unexpected challenge');
-  }
-  if (clientData.crossOrigin === true) {
-    throw new Error('Cross-origin WebAuthn assertions are not supported');
-  }
-  if (expectedOrigin && clientData.origin !== expectedOrigin) {
-    throw new Error('WebAuthn client data has an unexpected origin');
-  }
+  const clientData = readPasskeyClientData(
+    clientDataText,
+    'webauthn.get',
+    expectedChallenge,
+    expectedOrigin
+  );
 
   const getByteOffset = (textOffset: number) =>
     new TextEncoder().encode(clientDataText.slice(0, textOffset)).length;
