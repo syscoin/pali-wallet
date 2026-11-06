@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -10,6 +10,7 @@ import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody
 import { openWalletStorage } from '../src/storage/coordinator.ts';
 import type { NativeStoragePorts } from '../src/storage/coordinator.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
+import { WalletStorageError } from '../src/storage/types.ts';
 import { createStorageQualificationDiagnostic } from '../qualification/storage-diagnostics.ts';
 import { createNativePolicyObserver, observeNativeStoragePolicy } from '../src/storage/nativePolicyDiagnostic.ts';
 import {
@@ -19,7 +20,7 @@ import {
   validPair,
 } from './storageHelpers.ts';
 
-async function setup() {
+async function setup(hooks?: Parameters<typeof nodeConnection>[1]) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-bootstrap-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let record: string | null = null;
@@ -72,7 +73,7 @@ async function setup() {
     },
     async openDatabase() {
       opened++;
-      return nodeConnection(file).connection;
+      return nodeConnection(file, hooks).connection;
     },
   };
   return {
@@ -120,6 +121,320 @@ test('new storage provisions once, verifies device key metadata, and reopens wit
     await f.cleanup();
   }
 });
+
+test('the leased device-unlock pair port reads only the exact stored pair and survives cold reopen', async () => {
+  const operations: string[] = [];
+  const f = await setup({ before(_kind, sql) { operations.push(sql); } });
+  let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+  try {
+    storage = await openWalletStorage(f.ports);
+    const firstRead = storage.keyringStorage.readDeviceUnlockVaultPair;
+    assert.ok(firstRead);
+    assert.equal(await firstRead(), null);
+    const pair = validPair(37);
+    await storage.keyringStorage.createManyIfAbsent(pair);
+    const fingerprint = await storage.getWalletFingerprint();
+    assert.equal(fingerprint, createHash('sha256').update(JSON.stringify([
+      'pali.native.wallet-backup.v1', JSON.stringify(pair.vault), JSON.stringify(pair['vault-keys']),
+    ])).digest('hex'));
+    await storage.close();
+    assert.equal(f.held, false);
+    await assert.rejects(firstRead(), { code: 'STORAGE_CLOSED' });
+
+    storage = await openWalletStorage(f.ports);
+    const coldRead = storage.keyringStorage.readDeviceUnlockVaultPair;
+    assert.ok(coldRead);
+    operations.length = 0;
+    const result = await coldRead();
+    assert.deepEqual(result, { vault: pair.vault, keys: pair['vault-keys'], pairFingerprint: fingerprint });
+    assert.ok(Object.isFrozen(result) && Object.isFrozen(result?.keys));
+    assert.equal(f.held, true);
+    assert.equal(operations.length, 1);
+    assert.match(operations[0]!, /^SELECT .*key IN \('vault', 'vault-keys'\)/);
+  } finally {
+    try { await storage?.close(); } finally { await f.cleanup(); }
+  }
+});
+
+test('the pair port rejects partial, malformed and over-limit SQL records without repairing them', async () => {
+  const f = await setup();
+  let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+  try {
+    storage = await openWalletStorage(f.ports);
+    const read = storage.keyringStorage.readDeviceUnlockVaultPair;
+    assert.ok(read);
+    const pair = validPair();
+    await storage.keyringStorage.createManyIfAbsent(pair);
+    const { database } = nodeConnection(f.file);
+    try {
+      const update = database.prepare('UPDATE keyring_records SET value = ? WHERE key = ?');
+      const select = database.prepare('SELECT value FROM keyring_records WHERE key = ?');
+      const invalidKeys = JSON.stringify({ ...pair['vault-keys'], legacy: true });
+      update.run(invalidKeys, 'vault-keys');
+      await assert.rejects(read(), { code: 'STORAGE_CORRUPT' });
+      assert.equal(select.get('vault-keys')?.value, invalidKeys);
+      database.exec("DELETE FROM keyring_records WHERE key = 'vault-keys'");
+      await assert.rejects(read(), { code: 'STORAGE_CORRUPT' });
+      assert.equal(select.get('vault-keys'), undefined);
+      database.prepare('INSERT INTO keyring_records (key, value) VALUES (?, ?)').run('vault-keys', JSON.stringify(pair['vault-keys']));
+
+      const legacyVault = JSON.stringify(JSON.stringify({ ...JSON.parse(pair.vault), v: 3 }));
+      update.run(legacyVault, 'vault');
+      await assert.rejects(read(), { code: 'STORAGE_CORRUPT' });
+      assert.equal(select.get('vault')?.value, legacyVault);
+      database.exec('PRAGMA ignore_check_constraints = ON');
+      const oversize = 'x'.repeat(65_537);
+      update.run(oversize, 'vault');
+      await assert.rejects(read(), { code: 'STORAGE_CORRUPT' });
+      assert.equal(select.get('vault')?.value, oversize);
+    } finally { database.close(); }
+  } finally {
+    try { await storage?.close(); } finally { await f.cleanup(); }
+  }
+});
+
+const ENROLLMENT = 'device-unlock-enrollment';
+const ENROLLMENT_ID = 'a1'.repeat(16);
+const NEXT_ENROLLMENT_ID = 'b2'.repeat(16);
+const currentEnrollment = () => undefined;
+
+test('the leased enrollment reference requires exact one-use ownership and cannot replay after ABA', async () => {
+  const f = await setup();
+  let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+  try {
+    storage = await openWalletStorage(f.ports);
+    const enrollment = storage.deviceUnlockEnrollment!;
+    assert.equal(await enrollment.read(), null);
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    const originalPair = await storage.keyringStorage.readDeviceUnlockVaultPair!();
+    const first = (await enrollment.read())!, stale = (await enrollment.read())!;
+    assert.ok(Object.isFrozen(first));
+    assert.equal(first.pairFingerprint, originalPair?.pairFingerprint);
+    assert.equal(first.enrollmentId, null);
+    await assert.rejects(enrollment.compareAndSet({ ...first }, ENROLLMENT_ID, currentEnrollment), { code: 'STORAGE_CHANGED' });
+    await assert.rejects(enrollment.compareAndSet((await enrollment.read())!, ENROLLMENT_ID + '\n', currentEnrollment), { code: 'STORAGE_CHANGED' });
+    const asyncGuard = (await enrollment.read())!;
+    await assert.rejects(enrollment.compareAndSet(asyncGuard, ENROLLMENT_ID, async () => undefined), { code: 'STORAGE_CHANGED' });
+    assert.equal((await enrollment.read())?.enrollmentId, null);
+    assert.equal(await enrollment.compareAndSet(first, ENROLLMENT_ID, currentEnrollment), true);
+    await assert.rejects(enrollment.compareAndSet(first, ENROLLMENT_ID, currentEnrollment), { code: 'STORAGE_CHANGED' });
+    const active = (await enrollment.read())!;
+    assert.deepEqual(active, { ...first, enrollmentId: ENROLLMENT_ID });
+    assert.equal(await enrollment.compareAndSet(active, null, currentEnrollment), true);
+    assert.equal(await enrollment.compareAndSet(stale, NEXT_ENROLLMENT_ID, currentEnrollment), false);
+    assert.deepEqual(await enrollment.read(), first);
+    assert.deepEqual(await storage.keyringStorage.readDeviceUnlockVaultPair!(), originalPair);
+  } finally {
+    try { await storage?.close(); } finally { await f.cleanup(); }
+  }
+});
+
+test('a changed row or pair rejects a captured enrollment without rewriting the competing bytes', async () => {
+  const f = await setup();
+  let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+  try {
+    storage = await openWalletStorage(f.ports);
+    const enrollment = storage.deviceUnlockEnrollment!;
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    const first = (await enrollment.read())!;
+    const { database } = nodeConnection(f.file);
+    try {
+      const changed = '["malformed"]';
+      database.prepare('INSERT INTO wallet_metadata (key, value) VALUES (?, ?)').run(ENROLLMENT, changed);
+      assert.equal(await enrollment.compareAndSet(first, ENROLLMENT_ID, currentEnrollment), false);
+      assert.equal(database.prepare('SELECT value FROM wallet_metadata WHERE key = ?').get(ENROLLMENT)?.value, changed);
+      const malformed = (await enrollment.read())!;
+      assert.equal(malformed.enrollmentId, null);
+      assert.equal(await enrollment.compareAndSet(malformed, ENROLLMENT_ID, currentEnrollment), true);
+      const active = (await enrollment.read())!;
+      assert.equal(active.enrollmentId, ENROLLMENT_ID);
+      await storage.keyringStorage.set('vault', validPair(2).vault);
+      assert.equal((await enrollment.read())?.enrollmentId, null);
+      assert.equal(await enrollment.compareAndSet(active, null, currentEnrollment), false);
+    } finally { database.close(); }
+  } finally {
+    try { await storage?.close(); } finally { await f.cleanup(); }
+  }
+});
+
+test('enrollment cancellation before COMMIT rolls back, and lost ACK requires a cold read for activation or revocation', async () => {
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>((resolve) => { enter = resolve; });
+  const paused = new Promise<void>((resolve) => { release = resolve; });
+  let hold = false, loseAck = false;
+  const f = await setup({
+    before(kind, sql) {
+      if (hold && kind === 'run' && sql.startsWith('INSERT INTO wallet_metadata')) {
+        hold = false;
+        enter();
+        return paused;
+      }
+    },
+    after(kind, sql) {
+      if (loseAck && kind === 'exec' && sql === 'COMMIT') {
+        loseAck = false;
+        throw new Error('Synthetic lost enrollment acknowledgement');
+      }
+    },
+  });
+  let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+  try {
+    storage = await openWalletStorage(f.ports);
+    await storage.keyringStorage.createManyIfAbsent(validPair());
+    const enrollment = storage.deviceUnlockEnrollment!;
+    const before = (await enrollment.read())!;
+    let active = true;
+    hold = true;
+    const held = enrollment.compareAndSet(before, ENROLLMENT_ID, () => { if (!active) throw new Error('CANCELLED'); });
+    await entered;
+    active = false;
+    release();
+    await assert.rejects(held);
+    assert.equal((await enrollment.read())?.enrollmentId, null);
+    await assert.rejects(enrollment.compareAndSet(before, ENROLLMENT_ID, currentEnrollment), { code: 'STORAGE_CHANGED' });
+
+    const fresh = (await enrollment.read())!;
+    loseAck = true;
+    await assert.rejects(enrollment.compareAndSet(fresh, ENROLLMENT_ID, currentEnrollment), { code: 'STORAGE_REOPEN_REQUIRED' });
+    await assert.rejects(enrollment.read(), { code: 'STORAGE_REOPEN_REQUIRED' });
+    await storage.close();
+    await assert.rejects(enrollment.read(), { code: 'STORAGE_CLOSED' });
+    storage = await openWalletStorage(f.ports);
+    const reopened = storage.deviceUnlockEnrollment!;
+    await assert.rejects(reopened.compareAndSet(fresh, NEXT_ENROLLMENT_ID, currentEnrollment), { code: 'STORAGE_CHANGED' });
+    const recovered = (await reopened.read())!;
+    assert.equal(recovered.enrollmentId, ENROLLMENT_ID);
+
+    loseAck = true;
+    await assert.rejects(reopened.compareAndSet(recovered, null, currentEnrollment), { code: 'STORAGE_REOPEN_REQUIRED' });
+    await assert.rejects(reopened.read(), { code: 'STORAGE_REOPEN_REQUIRED' });
+    await storage.close();
+    storage = await openWalletStorage(f.ports);
+    assert.equal((await storage.deviceUnlockEnrollment!.read())?.enrollmentId, null);
+  } finally {
+    release();
+    try { await storage?.close(); } finally { await f.cleanup(); }
+  }
+});
+
+for (const mode of ['activation', 'revocation'] as const) {
+  test(`owner retirement after acknowledged enrollment ${mode} requires a cold read`, async () => {
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const paused = new Promise<void>((resolve) => { release = resolve; });
+    let hold = false, active = true;
+    const f = await setup({
+      after(kind, sql) {
+        if (hold && kind === 'exec' && sql === 'COMMIT') {
+          hold = false;
+          enter();
+          return paused;
+        }
+      },
+    });
+    let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+    try {
+      storage = await openWalletStorage(f.ports);
+      await storage.keyringStorage.createManyIfAbsent(validPair());
+      const enrollment = storage.deviceUnlockEnrollment!;
+      if (mode === 'revocation')
+        assert.equal(await enrollment.compareAndSet((await enrollment.read())!, ENROLLMENT_ID, currentEnrollment), true);
+      const before = (await enrollment.read())!;
+      const next = mode === 'activation' ? ENROLLMENT_ID : null;
+      hold = true;
+      const result = enrollment.compareAndSet(before, next, () => {
+        if (!active) throw new WalletStorageError('STORAGE_CHANGED');
+      });
+      await entered;
+      active = false;
+      release();
+      await assert.rejects(result, { code: 'STORAGE_REOPEN_REQUIRED' });
+      await assert.rejects(storage.readState(), { code: 'STORAGE_REOPEN_REQUIRED' });
+      await storage.close();
+      storage = await openWalletStorage(f.ports, before.installationId);
+      assert.equal((await storage.deviceUnlockEnrollment!.read())?.enrollmentId, next);
+    } finally {
+      release();
+      try { await storage?.close(); } finally { await f.cleanup(); }
+    }
+  });
+}
+
+const malformedEnrollmentBytes = {
+  'embedded NUL': ['610062', '610063'],
+  'invalid UTF-8': ['8061', '8161'],
+} as const;
+
+for (const shape of ['canonical', 'malformed', 'embedded NUL', 'invalid UTF-8'] as const) {
+  test(`wallet removal checks, preserves on rollback, and deletes the exact ${shape} enrollment row`, async () => {
+    let cancelOnDelete = false, cancelled = false;
+    const f = await setup({
+      after(kind, sql) {
+        if (cancelOnDelete && kind === 'run' && sql === "DELETE FROM wallet_metadata WHERE key <> 'installation'") cancelled = true;
+      },
+    });
+    let storage: Awaited<ReturnType<typeof openWalletStorage>> | undefined;
+    try {
+      storage = await openWalletStorage(f.ports);
+      await storage.keyringStorage.createManyIfAbsent(validPair());
+      const enrollment = storage.deviceUnlockEnrollment!;
+      assert.equal(await enrollment.compareAndSet((await enrollment.read())!, ENROLLMENT_ID, currentEnrollment), true);
+      const bytes = shape === 'embedded NUL' || shape === 'invalid UTF-8' ? malformedEnrollmentBytes[shape] : undefined;
+      // Bypass the in-process generation to test the durable raw-row comparison.
+      const changed = nodeConnection(f.file).database;
+      let competingHex: string;
+      try {
+        const writeBytes = (hex: string) => {
+          changed.prepare('UPDATE wallet_metadata SET value = CAST(? AS TEXT) WHERE key = ?')
+            .run(Buffer.from(hex, 'hex'), ENROLLMENT);
+        };
+        if (bytes) {
+          writeBytes(bytes[0]);
+          assert.equal((await enrollment.read())?.enrollmentId, null);
+        }
+        const before = await storage.recovery!.readSnapshot();
+        if (bytes) writeBytes(bytes[1]);
+        else {
+          const raw = changed.prepare('SELECT value FROM wallet_metadata WHERE key = ?').get(ENROLLMENT)?.value as string;
+          const reference = JSON.parse(raw) as string[];
+          reference[4] = NEXT_ENROLLMENT_ID;
+          const competing = shape === 'canonical' ? JSON.stringify(reference) : 'x'.repeat(300);
+          changed.prepare('UPDATE wallet_metadata SET value = ? WHERE key = ?').run(competing, ENROLLMENT);
+        }
+        competingHex = changed.prepare('SELECT hex(CAST(value AS BLOB)) AS value FROM wallet_metadata WHERE key = ?')
+          .get(ENROLLMENT)?.value as string;
+        await assert.rejects(storage.removal!.commit(before, currentEnrollment), { code: 'STORAGE_CHANGED' });
+      } finally { changed.close(); }
+
+      const unchanged = await storage.recovery!.readSnapshot();
+      const exactRow = { key: ENROLLMENT, value: competingHex };
+      assert.deepEqual(unchanged.metadata.find((row) => row.key === ENROLLMENT), exactRow);
+      assert.equal((await enrollment.read())?.enrollmentId, shape === 'canonical' ? NEXT_ENROLLMENT_ID : null);
+      cancelOnDelete = true;
+      await assert.rejects(storage.removal!.commit(unchanged, () => {
+        if (cancelled) throw new WalletStorageError('STORAGE_CHANGED');
+      }), { code: 'STORAGE_CHANGED' });
+      assert.equal(cancelled, true);
+      const installation = unchanged.metadata.find((row) => row.key === 'installation')!.value;
+      await storage.close();
+      storage = await openWalletStorage(f.ports, installation);
+      const reopened = await storage.recovery!.readSnapshot();
+      assert.deepEqual(reopened, unchanged);
+
+      cancelOnDelete = false;
+      assert.deepEqual(await storage.removal!.commit(reopened, currentEnrollment), { status: 'wallet-records-removed' });
+      await assert.rejects(storage.deviceUnlockEnrollment!.read(), { code: 'STORAGE_CLOSED' });
+      await storage.close();
+      storage = await openWalletStorage(f.ports, installation);
+      const removed = await storage.recovery!.readSnapshot();
+      assert.deepEqual(removed.metadata, [{ key: 'installation', value: installation }]);
+      assert.equal(removed.state.presence, 'empty');
+      assert.equal(await storage.deviceUnlockEnrollment!.read(), null);
+    } finally {
+      try { await storage?.close(); } finally { await f.cleanup(); }
+    }
+  });
+}
 
 test('the native storage coordinator exposes note backup to the real keyring across a cold reopen', async () => {
   const f = await setup();

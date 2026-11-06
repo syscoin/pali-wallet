@@ -37,11 +37,20 @@ export interface SqlConnection {
   closeAsync(): Promise<void>;
 }
 
+/** Internal encrypted pair snapshot for the SDK device-unlock seam. */
+export type DeviceUnlockVaultPair = Readonly<{
+  vault: string;
+  keys: Readonly<{ salt: string }>;
+  pairFingerprint: string;
+}>;
+
 export interface KeyringStoragePort {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
   deleteItem(key: string): Promise<void>;
   createManyIfAbsent(items: Record<string, unknown>): Promise<boolean>;
+  /** Read one bounded snapshot of the current encrypted vault and salt. */
+  readDeviceUnlockVaultPair?(): Promise<DeviceUnlockVaultPair | null>;
   /** Atomically replace an exact snapshot. Optional cleanup keys must equal their
    * snapshots (undefined requires absence); matching present rows are deleted. */
   compareAndSet(key: string, expected: unknown, value: unknown,
@@ -64,7 +73,7 @@ export type WalletIdentityRead = Readonly<{
 export type NoteDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
 /** Opaque common-codec bundle bytes; no transaction policy lives in this row. */
 export type SignedRecordDomainRow = Readonly<{ profileId: string; walletBindingId: string; value: string }>;
-/** Private, byte-preserving host snapshot; never a screen or public account DTO. */
+/** Private, byte-preserving wallet snapshot. The device enrollment value is opaque SQL hex. */
 export type RecoveryStorageSnapshot = Readonly<{
   identity: WalletIdentityRead | null;
   state: WalletStoredState;
@@ -83,9 +92,27 @@ export type WalletRemovalResult = Readonly<{
   status: 'wallet-records-removed' | 'reopen-required';
 }>;
 
+/** Internal nonsecret reference. Only the exact read result owns a mutation. */
+export type DeviceUnlockEnrollmentSnapshot = Readonly<{
+  installationId: string;
+  walletBindingId: string;
+  pairFingerprint: string;
+  enrollmentId: string | null;
+}>;
+
 export interface OpenWalletStorage {
   readonly keyringStorage: KeyringStoragePort;
   readonly signedRecords: EvmSignedRecordStorage;
+  readonly deviceUnlockEnrollment?: Readonly<{
+    /** An invalid reference has no active enrollment ID. Never an authentication result. */
+    read(): Promise<DeviceUnlockEnrollmentSnapshot | null>;
+    /** Activate a fresh, already protected ID or revoke with null. Consumes expected. */
+    compareAndSet(
+      expected: DeviceUnlockEnrollmentSnapshot,
+      enrollmentId: string | null,
+      assertCurrent: () => void
+    ): Promise<boolean>;
+  }>;
   /** Private note domain, sharing this owner’s SQL queue and lease. */
   readonly notes?: Readonly<{
     read(): Promise<readonly NoteDomainRow[]>;

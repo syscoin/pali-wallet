@@ -164,6 +164,14 @@ async function fixture(
       const db = new DatabaseSync(file);
       try { db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, ?)').run(key, encodeStorageValue(value)); } finally { db.close(); }
     },
+    metaHex(key: string, hex?: string) {
+      const db = new DatabaseSync(file);
+      try {
+        if (hex !== undefined)
+          db.prepare('INSERT OR REPLACE INTO wallet_metadata VALUES (?, CAST(? AS TEXT))').run(key, Buffer.from(hex, 'hex'));
+        return db.prepare('SELECT hex(CAST(value AS BLOB)) AS value FROM wallet_metadata WHERE key = ?').get(key)?.value;
+      } finally { db.close(); }
+    },
     get opens() {
       return opens;
     },
@@ -371,8 +379,11 @@ test('late successful staging after cancel is discarded without replacing the pa
 
 for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as const) {
   test(`recovery ${fault} has one complete old/new state and never compensates by deletion`, async () => {
-    const f = await fixture(); f.owner.lock(); const recovery = f.coordinator();
+    const f = await fixture(); const recovery = f.coordinator();
     try {
+      const enrollment = f.store.deviceUnlockEnrollment;
+      assert.equal(await enrollment.compareAndSet((await enrollment.read())!, 'b2'.repeat(16), () => undefined), true);
+      f.owner.lock();
       const before = f.read(), proof = await recovery.prepare(PHRASE, NEXT, () => undefined); let injected = false;
       const fail = (_kind: unknown, sql: string) => {
         if (!injected && (fault === 'before-write' ? sql.startsWith('UPDATE keyring_records') : sql === 'COMMIT')) { injected = true; throw new Error('Injected commit fault'); }
@@ -383,6 +394,7 @@ for (const fault of ['before-write', 'commit-not-applied', 'commit-applied'] as 
       f.setHook(); f.setAfter(); assert.equal(injected, true);
       assert.deepEqual(retained(f.read()), retained(before));
       if (fault !== 'commit-applied') assert.deepEqual(f.read(), before);
+      else assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
       await f.reopen(); await f.owner.unlock(fault === 'commit-applied' ? NEXT : OLD);
       assert.equal(f.owner.getSnapshot().phase, 'ready');
     } finally { f.setHook(); f.setAfter(); await recovery.dispose(); await f.close(); }
@@ -922,21 +934,65 @@ async function noteBundle(count = 17) {
   return { keyring, profile, bundle: { format: 'pali-private-note-vault', version: 1, root, shards } };
 }
 
-test('realSDK multi-shard note domain survives password recovery byte-for-byte alongside existing records', async () => {
+test('real SDK recovery retires the exact enrollment and preserves multi-shard notes and retained records', async () => {
   const f = await fixture(), data = await noteBundle(); let recovery: NativeRecoveryCoordinator | undefined;
   try {
+    const enrollment = f.store.deviceUnlockEnrollment;
+    const old = (await enrollment.read())!;
+    const id = 'a1'.repeat(16);
+    assert.equal(await enrollment.compareAndSet(old, id, () => undefined), true);
+    const active = (await enrollment.read())!;
+    assert.equal(active.enrollmentId, id);
     f.notes(data.profile, data.bundle, await f.store.getWalletFingerprint());
     const original = f.read(); const inventory = await readRecoveryInventory(f.store);
     assert.equal(inventory.privateNotes, 'requires-matching-phrase-verification');
     assert.equal(JSON.stringify(inventory).includes(data.profile), false);
+    assert.equal(JSON.stringify(inventory).includes(id), false);
     f.owner.lock(); recovery = f.coordinator(); const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
     assert.equal(await recovery.commit(proof), 'committed-locked');
     assert.deepEqual(f.read().notes, original.notes); assert.deepEqual(retained(f.read()), retained(original));
+    assert.equal(f.read().metadata.some((row) => row.key === 'device-unlock-enrollment'), false);
     await f.reopen(); await f.owner.unlock(NEXT);
+    const newEnrollment = f.store.deviceUnlockEnrollment;
+    const fresh = (await newEnrollment.read())!;
+    assert.equal(fresh.enrollmentId, null);
+    assert.equal(fresh.walletBindingId, old.walletBindingId);
+    assert.notEqual(fresh.pairFingerprint, old.pairFingerprint);
+    await assert.rejects(newEnrollment.compareAndSet(active, id, () => undefined), { code: 'STORAGE_CHANGED' });
     const result = await readPrivateVaultBundle(data.bundle, { keyring: data.keyring, generation: 1, assertCurrent() {} });
     assert.equal(result.manifest.notes.length, 17);
   } finally { await data.keyring.lockWallet(); await recovery?.dispose(); await f.close(); }
 });
+
+for (const [shape, bytes] of [
+  ['oversized text', '78'.repeat(300)],
+  ['embedded NUL', '610062'],
+  ['invalid UTF-8', '8061'],
+] as const) {
+  test(`enrollment with ${shape} cannot block password unlock or matching-phrase recovery`, async () => {
+    const f = await fixture(); let recovery: NativeRecoveryCoordinator | undefined;
+    const metadataKey = 'device-unlock-enrollment';
+    try {
+      f.metaHex(metadataKey, bytes);
+      await f.reopen(); await f.owner.unlock(OLD);
+      assert.equal(f.owner.getSnapshot().phase, 'ready');
+      const enrollment = f.store.deviceUnlockEnrollment;
+      const inactive = (await enrollment.read())!;
+      assert.equal(inactive.enrollmentId, null);
+      if (shape === 'oversized text')
+        await assert.rejects(enrollment.compareAndSet(inactive, 'a1'.repeat(16), () => undefined), { code: 'STORAGE_CHANGED' });
+      assert.equal(f.metaHex(metadataKey), bytes.toUpperCase());
+      const original = f.read(); f.owner.lock(); recovery = f.coordinator();
+      const proof = await recovery.prepare(PHRASE, NEXT, () => undefined);
+      assert.equal(await recovery.commit(proof), 'committed-locked');
+      assert.deepEqual(retained(f.read()), retained(original));
+      assert.equal(f.metaHex(metadataKey), undefined);
+      await f.reopen(); await f.owner.unlock(NEXT);
+      assert.equal(f.owner.getSnapshot().phase, 'ready');
+      assert.equal((await f.store.deviceUnlockEnrollment.read())?.enrollmentId, null);
+    } finally { await recovery?.dispose(); await f.close(); }
+  });
+}
 
 test('matching phrase plus damaged retained note AEAD refuses recovery without any rewrite', async () => {
   const f = await fixture(), data = await noteBundle(1); let recovery: NativeRecoveryCoordinator | undefined;
