@@ -17,7 +17,7 @@ test('qualification configuration is explicit, isolated, and preserves the produ
     fs.mkdirSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring'), { recursive: true });
     fs.writeFileSync(path.join(root, 'node_modules/@sidhujag/sysweb3-keyring/package.json'), JSON.stringify({ name: '@sidhujag/sysweb3-keyring', version: keyringVersion }));
     for (const script of ['configure-native-qualification.cjs', 'qualification-sdk.cjs'])
-      fs.copyFileSync(path.join(__dirname, '../scripts', script), path.join(root, 'scripts', script));
+      fs.copyFileSync(require.resolve(`../scripts/${script}`), path.join(root, 'scripts', script));
     fs.writeFileSync(
       path.join(root, 'package.json'),
       JSON.stringify({

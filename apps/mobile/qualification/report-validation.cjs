@@ -1,5 +1,7 @@
 const { readQualificationSdkPin } = require('../scripts/qualification-sdk.cjs');
-const EXPECTED_SDK_VERSION = readQualificationSdkPin(require('node:path').resolve(__dirname, '..')).identity;
+const EXPECTED_SDK_VERSION = readQualificationSdkPin(
+  require('node:path').dirname(require.resolve('../package.json'))
+).identity;
 const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
