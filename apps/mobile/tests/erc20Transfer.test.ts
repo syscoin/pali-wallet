@@ -251,7 +251,7 @@ test('generic broadcast preserves signed bytes and enforces an explicitly suppli
   assert.equal(
     await rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
       mode: 'new-send',
-      beforeBroadcast: () => undefined,
+      admit: async (send, preflight) => { await preflight?.(); return send(); },
     }),
     keccak256(raw)
   );
@@ -259,7 +259,7 @@ test('generic broadcast preserves signed bytes and enforces an explicitly suppli
   await assert.rejects(
     rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
       mode: 'new-send',
-      beforeBroadcast: () => undefined,
+      admit: async (send, preflight) => { await preflight?.(); return send(); },
       intent: { ...intent, amountUnits: '124' },
     }),
     { code: 'INVALID_RESPONSE' }
@@ -270,7 +270,7 @@ test('generic broadcast preserves signed bytes and enforces an explicitly suppli
       raw,
       keccak256(raw),
       new AbortController().signal,
-      { mode: 'new-send', beforeBroadcast: () => undefined, intent }
+      { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); }, intent }
     ),
     keccak256(raw)
   );

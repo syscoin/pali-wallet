@@ -4,6 +4,7 @@ import { sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { concat, getBytes } from 'ethers/utils';
 
+import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
 
 import type {
@@ -73,6 +74,50 @@ export type EvmSignedRecordSummary = Readonly<{
 }>;
 export type EvmRetainedSignedRecord = EvmSignedRecordSummary &
   Readonly<{ rawTransaction: string }>;
+
+type VerifiedPendingOriginal = Readonly<{
+  chainId: string;
+  from: string;
+  nonce: number;
+  operation: 'cancel' | 'speed-up';
+  originalHash: string;
+}>;
+export type EvmVerifiedReplacementBinding = VerifiedPendingOriginal &
+  Readonly<{
+    expectedTipHash: string | null;
+    profileId: string;
+  }>;
+const verifiedReplacementBindings =
+  new WeakSet<EvmVerifiedReplacementBinding>();
+function isPendingPhase(phase: EvmSignedPhase): boolean {
+  return phase === 'signed' || phase === 'attempted' || phase === 'submitted';
+}
+
+function matchesNonce(
+  entry: Pick<VerifiedPendingOriginal, 'chainId' | 'from' | 'nonce'>,
+  {
+    chainId,
+    from,
+    nonce,
+  }: Pick<VerifiedPendingOriginal, 'chainId' | 'from' | 'nonce'>
+): boolean {
+  return (
+    entry.chainId === chainId && entry.from === from && entry.nonce === nonce
+  );
+}
+
+function isCancellationEnvelope(tx: Transaction): boolean {
+  return isEvmProtectedEmptySelfCall(tx, 'cancel');
+}
+
+function repricesCancellation(tx: Transaction, original: Transaction): boolean {
+  return (
+    isCancellationEnvelope(tx) &&
+    tx.type === original.type &&
+    tx.gasLimit === original.gasLimit
+  );
+}
+
 type Entry = EvmSignedRecordSummary &
   Readonly<{ chunks: readonly IEncryptedPrivateRecord[] }>;
 type Bundle = Readonly<{
@@ -328,16 +373,6 @@ function summary(entry: Entry): EvmSignedRecordSummary {
   void _chunks;
   return Object.freeze(value);
 }
-function replayableVariants(entries: readonly Entry[]): readonly Entry[] {
-  const lastCancel = entries
-    .map((entry) => entry.operation)
-    .lastIndexOf('cancel');
-  return lastCancel < 0
-    ? entries
-    : entries.filter(
-        (entry, index) => index >= lastCancel || entry.operation === 'cancel'
-      );
-}
 async function entriesHash(entries: readonly Entry[]): Promise<string> {
   const bytes = encoder.encode(JSON.stringify(entries));
   try {
@@ -528,10 +563,152 @@ export class EvmSignedRecords {
       pieces.forEach((bytes) => bytes.fill(0));
     }
   }
+
+  private async replayableVariants(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[]
+  ): Promise<readonly Entry[]> {
+    const firstCancel = entries.findIndex(
+      (entry) => entry.operation === 'cancel'
+    );
+    if (firstCancel < 0) return entries;
+    const allowed = new Map<string, Transaction>();
+    const result: Entry[] = [];
+    for (const entry of entries.slice(firstCancel)) {
+      const parent = entry.originalHash
+        ? allowed.get(entry.originalHash)
+        : undefined;
+      if (
+        entry.operation !== 'cancel' &&
+        !(entry.operation === 'speed-up' && parent)
+      )
+        continue;
+      const tx = Transaction.from(
+        (await this.materialize(session, entry)).rawTransaction
+      );
+      if (
+        entry.operation === 'cancel'
+          ? isCancellationEnvelope(tx)
+          : repricesCancellation(tx, parent!)
+      ) {
+        allowed.set(entry.hash, tx);
+        result.push(entry);
+      }
+    }
+    return result;
+  }
+
+  /** Only the authenticated pending tip of a cancellation lineage can be repriced. */
+  readPendingCancellation(
+    session: EvmSignedRecordSession,
+    input: Omit<VerifiedPendingOriginal, 'operation'>
+  ): Promise<string | null> {
+    const scope = Object.freeze({
+      ...input,
+      from: getAddress(input.from).toLowerCase(),
+    });
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const sameNonce = (bundle?.entries ?? []).filter((entry) =>
+        matchesNonce(entry, scope)
+      );
+      if (!sameNonce.some((entry) => entry.operation === 'cancel')) return null;
+      const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
+      if (!tip || tip.hash !== scope.originalHash || !isPendingPhase(tip.phase))
+        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      return (await this.materialize(session, tip)).rawTransaction;
+    });
+  }
+
+  /** A host-verified pending transaction can predate this journal. Its exact
+   * nonce lineage must still match at write time, even when initially empty. */
+  captureVerifiedReplacement(
+    session: EvmSignedRecordSession,
+    input: VerifiedPendingOriginal
+  ): Promise<EvmVerifiedReplacementBinding> {
+    const original = Object.freeze({
+      ...input,
+      from: getAddress(input.from).toLowerCase(),
+    });
+    if (
+      !HASH.test(original.originalHash) ||
+      !Number.isSafeInteger(original.nonce) ||
+      original.nonce < 0
+    )
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    return this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const binding = Object.freeze({
+        ...original,
+        profileId: id,
+        expectedTipHash: await this.verifiedReplacementTip(
+          session,
+          bundle?.entries ?? [],
+          original
+        ),
+      });
+      verifiedReplacementBindings.add(binding);
+      return binding;
+    });
+  }
+
+  private async verifiedReplacementTip(
+    session: EvmSignedRecordSession,
+    entries: readonly Entry[],
+    original: VerifiedPendingOriginal,
+    replacement?: Transaction
+  ): Promise<string | null> {
+    const sameNonce = entries.filter((entry) => matchesNonce(entry, original));
+    const tracked = entries.find(
+      (entry) => entry.hash === original.originalHash
+    );
+    if (tracked && !matchesNonce(tracked, original))
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    if (sameNonce.some((entry) => entry.operation === 'cancel')) {
+      const tip = (await this.replayableVariants(session, sameNonce)).at(-1);
+      if (
+        !tip ||
+        !isPendingPhase(tip.phase) ||
+        tip.hash !== original.originalHash ||
+        (original.operation === 'speed-up' &&
+          replacement &&
+          !repricesCancellation(
+            replacement,
+            Transaction.from(
+              (await this.materialize(session, tip)).rawTransaction
+            )
+          ))
+      )
+        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      return tip.hash;
+    }
+    const retainedIndex = sameNonce.findIndex(
+      (entry) => entry.hash === original.originalHash
+    );
+    if (retainedIndex < 0) return sameNonce.at(-1)?.hash ?? null;
+    if (!isPendingPhase(sameNonce[retainedIndex]!.phase))
+      throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+    const lineage = new Set([original.originalHash]);
+    for (const entry of sameNonce.slice(retainedIndex + 1)) {
+      if (
+        entry.operation !== 'speed-up' ||
+        !entry.originalHash ||
+        !lineage.has(entry.originalHash) ||
+        (entry.phase !== 'signed' && entry.phase !== 'attempted')
+      )
+        throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      lineage.add(entry.hash);
+    }
+    return sameNonce.at(-1)?.hash ?? null;
+  }
+
   append(
     session: EvmSignedRecordSession,
     signed: EvmSignedSubmission,
-    metadata?: Readonly<Record<string, unknown>>
+    metadata?: Readonly<Record<string, unknown>>,
+    replacement?: EvmVerifiedReplacementBinding
   ): Promise<EvmRetainedSignedRecord> {
     guard(session);
     const raw = signed.rawTransaction,
@@ -551,8 +728,17 @@ export class EvmSignedRecords {
       }),
       network: Object.freeze({ chainId: source.network.chainId }),
       operation: source.operation,
-      originalHash: source.originalHash,
+      originalHash: source.originalHash?.toLowerCase(),
     });
+    const isReplacement =
+      context.operation === 'speed-up' || context.operation === 'cancel';
+    if (
+      isReplacement !== Boolean(replacement) ||
+      (replacement &&
+        (!verifiedReplacementBindings.has(replacement) ||
+          replacement.originalHash !== context.originalHash))
+    )
+      return Promise.reject(new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED'));
     const tx = Transaction.from(raw);
     if (
       !tx.isSigned() ||
@@ -563,12 +749,35 @@ export class EvmSignedRecords {
     )
       return Promise.reject(new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED'));
     assertEvmGasLimit(tx.gasLimit, tx.chainId);
+    if (context.operation === 'cancel' && !isCancellationEnvelope(tx))
+      return Promise.reject(new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED'));
     const metadataSnapshot =
       metadata === undefined ? undefined : snapshotMetadata(metadata);
     return this.exclusive(async () => {
       const id = await profile(session);
       for (let attempt = 0; attempt < 3; attempt++) {
         const previous = await this.load(session, id);
+        if (replacement) {
+          if (
+            id !== replacement.profileId ||
+            replacement.operation !== context.operation ||
+            !matchesNonce(
+              {
+                chainId: tx.chainId.toString(),
+                from: tx.from!.toLowerCase(),
+                nonce: tx.nonce,
+              },
+              replacement
+            ) ||
+            (await this.verifiedReplacementTip(
+              session,
+              previous.bundle?.entries ?? [],
+              replacement,
+              tx
+            )) !== replacement.expectedTipHash
+          )
+            throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+        }
         const duplicate = previous.bundle?.entries.find(
           (entry) => entry.hash === hash
         );
@@ -789,7 +998,7 @@ export class EvmSignedRecords {
           (nonce === undefined || entry.nonce === nonce)
       );
       const matching = replayCandidatesOnly
-        ? replayableVariants(scoped)
+        ? await this.replayableVariants(session, scoped)
         : scoped;
       const end =
         beforeHash === undefined
@@ -808,8 +1017,8 @@ export class EvmSignedRecords {
       });
     });
   }
-  /** Admit against the authenticated append order. A replay dispatch preflight
-   * runs inside the queue. Box the result to release before its ACK. */
+  /** Admit initial dispatch or replay under the authenticated cancellation barrier.
+   * An owned replay preflight runs inside the queue. Box the result to release before its ACK. */
   withReplayAdmission<T>(
     session: EvmSignedRecordSession,
     {
@@ -836,7 +1045,8 @@ export class EvmSignedRecords {
       const sender = (bundle?.entries ?? []).filter(
         (entry) => entry.chainId === chainId && entry.from === address
       );
-      const variants = replayableVariants(
+      const variants = await this.replayableVariants(
+        session,
         sender.filter((entry) => entry.nonce === nonce)
       );
       const retained = variants.find((entry) => entry.hash === hash);
@@ -849,8 +1059,11 @@ export class EvmSignedRecords {
       const predecessors =
         predecessorNonce === undefined
           ? []
-          : replayableVariants(
-              sender.filter((entry) => entry.nonce === predecessorNonce)
+          : (
+              await this.replayableVariants(
+                session,
+                sender.filter((entry) => entry.nonce === predecessorNonce)
+              )
             ).map(summary);
       guard(session);
       if (preflight) {
@@ -923,14 +1136,86 @@ export class EvmSignedRecords {
 /** Shared SDK hook implementation; hosts contribute only a captured session and storage. */
 export function createEvmSignedRecordLifecycle(
   records: EvmSignedRecords,
-  session: EvmSignedRecordSession
+  session: EvmSignedRecordSession,
+  options?: Readonly<{
+    metadata?: Readonly<Record<string, unknown>>;
+    preflight?: (
+      record: EvmSignedSubmission,
+      assertCurrent: () => void
+    ) => Promise<void>;
+    replacement?:
+      | EvmVerifiedReplacementBinding
+      | Promise<EvmVerifiedReplacementBinding>;
+  }>
 ) {
   guard(session);
   return Object.freeze({
     assertCurrent: () => guard(session),
     persistSigned: async (record: EvmSignedSubmission) => {
-      await records.append(session, record);
+      const replacement = options?.replacement;
+      await records.append(
+        session,
+        record,
+        options?.metadata,
+        replacement && (await replacement)
+      );
       guard(session);
+    },
+    async dispatchSigned<T>(
+      record: EvmSignedSubmission,
+      initiate: () => Promise<T>,
+      preflight: () => Promise<void>
+    ): Promise<T> {
+      let expires: number | undefined;
+      const expired = () => new Error('EVM_SIGNED_DISPATCH_PREFLIGHT_EXPIRED');
+      const assertAdmission = () => {
+        guard(session);
+        if (expires !== undefined && performance.now() >= expires)
+          throw expired();
+      };
+      const admitted = await records.withReplayAdmission(
+        session,
+        {
+          chainId: record.chainId,
+          from: record.from,
+          nonce: record.nonce,
+          hash: record.hash,
+          operation: record.context.operation,
+          originalHash: record.context.originalHash?.toLowerCase(),
+        },
+        () => {
+          assertAdmission();
+          const response = initiate();
+          void response.catch(() => undefined);
+          return response;
+        },
+        undefined,
+        {
+          assertCurrent: assertAdmission,
+          async run() {
+            const timeout = 12_000;
+            expires = performance.now() + timeout;
+            let timer: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                (async () => {
+                  await preflight();
+                  assertAdmission();
+                  await options?.preflight?.(record, assertAdmission);
+                  assertAdmission();
+                })(),
+                new Promise<never>((_resolve, reject) => {
+                  timer = setTimeout(() => reject(expired()), timeout);
+                }),
+              ]);
+            } finally {
+              clearTimeout(timer);
+            }
+          },
+        }
+      );
+      if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
+      return admitted.result;
     },
   });
 }

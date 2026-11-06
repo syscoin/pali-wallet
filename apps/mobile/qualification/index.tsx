@@ -378,8 +378,10 @@ function QualificationApp() {
             ));
             // The embedded package metadata must match the exact locked build pin.
             const installedVersion = require('@sidhujag/sysweb3-keyring/package.json').version;
-            expect(typeof installedVersion === 'string' && installedVersion === Constants.expoConfig?.extra?.paliQualificationSdkVersion);
-            verifiedSdkVersion = installedVersion;
+            const { paliQualificationSdkVersion, paliQualificationSdkIdentity } = Constants.expoConfig?.extra ?? {};
+            expect(typeof installedVersion === 'string' && installedVersion === paliQualificationSdkVersion &&
+              typeof paliQualificationSdkIdentity === 'string');
+            verifiedSdkVersion = paliQualificationSdkIdentity;
             stage = 'initialize native custody';
             setStatus(stage);
             return sdk;
