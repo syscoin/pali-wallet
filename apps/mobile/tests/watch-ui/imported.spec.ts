@@ -84,6 +84,46 @@ test('private-key import reviews full address, then selects the account with rec
   expect((await page.evaluate(() => window.__watchFixture.audit())).broadcasts).toBe(0);
 });
 
+test('Bitcoin WIF address selection and review stay readable at 320px', async ({ page }, info) => {
+  const fixtureKey = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
+  const fixtureAddress = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
+  await page.setViewportSize({ width: 320, height: 740 });
+  await openWallet(page, '?wif-fixture=1');
+  await openImport(page);
+  const keyField = page.getByRole('textbox', { name: 'WIF private key', exact: true });
+  await expect(keyField).toHaveAttribute('type', 'password');
+  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(NAME);
+  await keyField.fill(fixtureKey);
+  await expect(page.getByRole('radio', { name: 'SegWit', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.getByRole('radio', { name: 'Legacy', exact: true }).click();
+  await expect(page.getByRole('radio', { name: 'Legacy', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await page.screenshot({ path: info.outputPath('wif-entry-320.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await expect(page.getByText(fixtureAddress, { exact: true })).toBeVisible();
+  await expect(page.getByText('Your recovery phrase cannot restore this account.', { exact: true })).toBeVisible();
+  await expect(keyField).toHaveCount(0);
+  expect(await page.content()).not.toContain(fixtureKey);
+  await expect(page.getByRole('button', { name: 'Import account', exact: true })).toBeDisabled();
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.4 !important; }' });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: info.outputPath('wif-review-320.png'), fullPage: true });
+  await submit(page);
+  await expect(page.getByText(`${NAME} · Bitcoin`, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__watchFixture.catalogue().active.accountId)).toBe('imported:0:0');
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  await expect(page.getByTestId('native-receive-address')).toHaveText(fixtureAddress);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await openImport(page);
+  await page.getByRole('textbox', { name: 'Account name', exact: true }).fill('Duplicate');
+  await keyField.fill(fixtureKey);
+  await page.getByRole('radio', { name: 'Legacy', exact: true }).click();
+  await page.getByRole('button', { name: 'Review address', exact: true }).click();
+  await expect(page.getByText('This address is already a wallet account. Select that account instead.', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Import account', exact: true })).toHaveCount(0);
+  await expect(keyField).toHaveAttribute('type', 'password');
+  expect((await page.evaluate(() => window.__watchFixture.audit())).importAttempts).toBe(1);
+});
+
 test('malformed keys and oversized valid prefixes never reach import', async ({ page }) => {
   await openWallet(page); await openImport(page);
   for (const key of ['0x' + '0'.repeat(64), '5HueCGU8rMjxEXxiPuD5BDu', KEY + '12']) {

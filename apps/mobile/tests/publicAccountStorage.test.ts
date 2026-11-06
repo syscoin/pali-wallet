@@ -73,7 +73,7 @@ test('an acknowledged but missing or wrong write fails readback verification', a
     let raw = encode([first]);
     let written = false;
     const repository = createPublicAccountStorage({
-      async get() { if (written && kind === 'throw') throw Error('readback failed'); return raw; },
+      async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; if (written && kind === 'throw') throw Error('readback failed'); return raw; },
       async set() { written = true; if (kind === 'different') raw = encode([]); },
     });
     const loaded = await repository.records.load();

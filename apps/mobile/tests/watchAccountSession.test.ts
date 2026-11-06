@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPublicAccountStorage } from '../src/core/publicAccountStorage.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { WatchOnlyAuthority, createEvmWatchAccount } from '../src/core/watchOnlyAuthority.ts';
 import { createUtxoBalanceReader } from '../src/core/utxoBalanceReader.ts';
 import { UTXO_NETWORKS, getUtxoNetwork } from '../src/core/utxoNetworks.ts';
@@ -11,7 +11,7 @@ import { XPUB, keyRecord, deferred, json, metadata } from './publicWatchFixtures
 function fixture(records: readonly StoredWatchAccount[] = [keyRecord()]) {
   let raw = JSON.stringify({ version: 1, records }), fail = false, gate: Promise<void> | undefined;
   const entered = deferred<void>(), calls: { url: string; signal?: AbortSignal | null }[] = [], writes: string[] = [];
-  const storage = createPublicAccountStorage({ async get() { if (fail) throw Error('unavailable'); return raw; }, async set(_key, value) { writes.push(value); raw = value; } });
+  const storage = createPublicAccountStorage({ async get(key) { if (key !== PUBLIC_ACCOUNTS_KEY) return null; if (fail) throw Error('unavailable'); return raw; }, async set(_key, value) { writes.push(value); raw = value; } });
   const balance = createUtxoBalanceReader({ async fetch(url, init) {
     calls.push({ url, signal: init.signal });
     const network = UTXO_NETWORKS.find((entry) => url.startsWith(entry.endpoint + '/'));
@@ -68,7 +68,7 @@ test('opening cancellation and corrupt storage dispatch no account query and do 
 });
 test('forged public projection fails before any read', async () => {
   const f = fixture(), record = keyRecord(), fake = createEvmWatchAccount('key', 'key', '0x1111111111111111111111111111111111111111');
-  await assert.rejects(WatchOnlyAuthority.openRecords({ ...f.options, repository: { load: async () => ({ version: 1, records: [record], accounts: [fake] }) } }));
+  await assert.rejects(WatchOnlyAuthority.openRecords({ ...f.options, repository: { assertNetworkCurrent() {}, load: async () => ({ version: 1, records: [record], accounts: [fake], utxoNetworks: UTXO_NETWORKS }) } }));
   assert.equal(f.calls.length, 0);
 });
 test('changed persisted source is rejected before disclosing the previous account key', async () => {

@@ -5,7 +5,6 @@ import * as Clipboard from 'expo-clipboard';
 import { formatSyscoinTokenAmount } from '../../../../source/shared/utxoTokenAmounts';
 import { formatBaseUnits } from '../core/amounts';
 import { UtxoWatchActivity, type UtxoActivityContext, type UtxoActivityRow } from '../core/utxoActivity';
-import { getUtxoNetwork } from '../core/utxoNetworks';
 import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import type { ShellLeafNavigation } from './RealAppShell';
 import { Button, Card, colors, Header, Notice, styles, Text } from '../ui';
@@ -43,7 +42,7 @@ export function WatchActivity({ authority, navigation, onBack }: {
   const summaryChosen = state.rows.find((row) => row.txid === selected);
   const detail = state.detail?.txid === selected ? state.detail : null;
   const chosen = detail?.row ?? summaryChosen;
-  const network = state.context ? getUtxoNetwork(state.context.networkId) : null;
+  const network = state.context ? authority.getNetwork(state.context.networkId) : null;
   const account = authority.getSnapshot().accounts.find((row) => row.id === state.context?.accountId);
   useLayoutEffect(() => {
     const life = lifetime.current; life.alive = true;
@@ -79,7 +78,10 @@ export function WatchActivity({ authority, navigation, onBack }: {
     try {
       if (!current()) return;
       if (kind === 'copy') { if (await Clipboard.setStringAsync(row.txid) === false) throw Error(); }
-      else await Linking.openURL(new URL(`tx/${row.txid}`, network.explorer).href);
+      else if (context) {
+        const explorer = authority.getUtxoExplorer(context.networkId).replace(/\/$/, '') + '/';
+        await Linking.openURL(new URL(`tx/${row.txid}`, explorer).href);
+      }
       if (current()) setFeedback(kind === 'copy' ? 'Transaction ID copied.' : 'Explorer opened.');
     } catch { if (current()) setFeedback(kind === 'copy' ? 'Could not copy the transaction ID.' : 'Could not open the explorer.'); }
     finally {

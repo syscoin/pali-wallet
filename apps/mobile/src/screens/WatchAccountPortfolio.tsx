@@ -4,8 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { formatBalanceDelta, formatBaseUnits } from '../core/amounts';
-import { getNetwork } from '../core/networks';
-import { getWatchNetworks, type WatchOnlyAuthority } from '../core/watchOnlyAuthority';
+import type { WatchOnlyAuthority } from '../core/watchOnlyAuthority';
 import { getNativeNetwork } from '../custody/networkContext';
 import { openTestnetFaucet } from '../custody/testnetFaucet';
 import { useNativeCoinQuote } from '../portfolio/useNativeCoinQuote';
@@ -41,7 +40,7 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     return () => authority.cancelRefresh();
   }, [authority]);
   const account = snapshot.accounts.find((entry) => entry.id === snapshot.selectedAccountId);
-  const network = getNetwork(snapshot.selectedNetworkId);
+  const network = authority.getNetwork(snapshot.selectedNetworkId);
   const address = account?.addresses[network.id];
   const current = (generation: number) => lifecycle.current.alive && AppState.currentState === 'active' && authority.getSnapshot().generation === generation && authority.getSnapshot().status === 'ready';
   const publicAction = async (kind: 'copy' | 'share' | 'faucet') => {
@@ -74,16 +73,16 @@ export function WatchAccountPortfolio({ authority, onAccounts, onExit, onLock, n
     <Header title={mode === 'receive' ? `Receive ${network.symbol}` : mode === 'networks' ? 'Choose network' : 'Wallet'} subtitle={`${account?.name ?? 'Watch account'} · Watch-only`} onBack={back} right={mode === 'home' ? <Button title="Accounts" variant="quiet" onPress={onAccounts} /> : undefined} />
     {snapshot.status !== 'ready' || !address ? <Notice title="Public account hidden" body="Open your watch account to view its public balance." /> : mode === 'networks' ? <>
       <Text style={styles.muted}>Choose the network for this saved EVM public address.</Text>
-      {getWatchNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ' · Test network' : ''}${choice.id === network.id ? ' · Selected' : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); void authority.refresh(); }} last /></Card>)}
+      {authority.getAccountNetworks(account).map((choice) => <Card key={choice.id}><Row title={choice.name} subtitle={`${choice.symbol}${choice.testnet ? ' · Test network' : ''}${choice.id === network.id ? ' · Selected' : ''}`} icon="globe" onPress={() => { authority.selectNetwork(choice.id); setMode('home'); setFeedback(''); void authority.refresh(); }} last /></Card>)}
     </> : mode === 'receive' ? <>
-      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} size={48} /><Text style={s.name}>{network.name}</Text><Text style={styles.muted}>{account.name}</Text></View>
+      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={48} /><Text style={s.name}>{network.name}</Text><Text style={styles.muted}>{account.name}</Text></View>
       <View style={s.qr} accessible accessibilityRole="image" accessibilityLabel={`QR code for ${network.name} address ${address}`}><QRCode value={address} size={204} quietZone={16} color={colors.bg} backgroundColor="#ffffff" /></View>
       <Text selectable style={s.receiveAddress} accessibilityLabel={`${network.name} address ${address}`}>{address}</Text>
       <Notice title="Check the network" body={`Use ${network.name}${network.testnet ? ' (test network)' : ''} for this address. Check the network in the sending wallet before transferring funds.`} />
       {utxo && <Notice title="One address only" body="Other receive and change addresses in the original wallet are not included." />}
       {faucetCard}
     </> : <>
-      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{quote && <Text style={styles.muted} testID="watch-portfolio-quote">{quote}</Text>}{loading && <ActivityIndicator color={colors.pink} />}</View>
+      <View style={s.hero}><Coin id={utxo ? network.symbol : network.id} fallbackSymbol={utxo ? network.symbol : undefined} size={46} /><Text style={s.label}>{network.name.toUpperCase()}{utxo ? ' CONFIRMED BALANCE' : ' BALANCE'}</Text><Text style={[s.amount, amount !== null && amount.length > 14 && styles.walletBalanceLong, amount !== null && amount.length > 20 && styles.walletBalancePrecise]} accessibilityLabel={amount === null ? loading ? `Loading ${network.name} balance` : 'Balance unavailable' : `${network.name}${utxo ? ' confirmed' : ''} balance ${amount} ${network.symbol}`}>{amount ?? '—'}</Text><Text style={styles.muted}>{amount === null ? loading ? 'Updating…' : 'Balance unavailable' : network.symbol}</Text>{quote && <Text style={styles.muted} testID="watch-portfolio-quote">{quote}</Text>}{loading && <ActivityIndicator color={colors.pink} />}</View>
       {utxo && <Card style={{ padding: 18, gap: 6 }}><Text style={s.label}>Pending balance change</Text><Text accessibilityLabel={pendingAmount === null ? 'Pending balance change unavailable' : `Pending balance change ${pendingAmount} ${network.symbol}`} style={s.name}>{pendingAmount === null ? 'Unavailable' : `${pendingAmount} ${network.symbol}`}</Text><Text style={styles.muted}>Incoming and outgoing transactions waiting for confirmation.</Text></Card>}
 
       {snapshot.balance.status === 'error' && <Notice title="Could not load your balance" body="Your address is still available. Refresh to try again." tone="amber" />}

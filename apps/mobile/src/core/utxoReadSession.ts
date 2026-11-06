@@ -1,6 +1,7 @@
-import { verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
-import { boundedResponseText, ResponseSizeLimitError } from '../platformRpc.ts';
-import { getUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { observeFirstUseUtxoRpc, verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
+import { utxoRegistrationDisplayName } from '../../../../source/shared/utxoChainCatalogue.ts';
+import { boundedResponseText, cancelResponseBody, ResponseSizeLimitError } from '../platformRpc.ts';
+import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
 export type UtxoFetch = (url: string, init: RequestInit) => Promise<Response>;
 export type UtxoBalanceErrorCode = 'INVALID_INPUT' | 'NETWORK_MISMATCH' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'RESPONSE_TOO_LARGE' | 'CANCELLED';
@@ -26,12 +27,12 @@ export function utxoUnits(value: unknown, signed: boolean): string {
   if (typeof value !== 'string' || !(signed ? /^(?:0|-?[1-9][0-9]{0,77})$/ : /^(?:0|[1-9][0-9]{0,77})$/).test(value)) return utxoFailure('INVALID_RESPONSE');
   return value;
 }
-function statusIdentity(value: unknown, network: UtxoNetwork): number {
+function readStatus(value: unknown, network: UtxoNetwork) {
   const root = utxoObject(value), blockbook = utxoObject(root.blockbook), backend = utxoObject(root.backend, true);
-  if (blockbook.coin !== network.blockbookCoin || blockbook.network !== network.symbol || blockbook.decimals !== network.decimals || backend.chain !== network.backendChain)
+  if (blockbook.decimals !== network.decimals || backend.chain !== network.backendChain)
     return utxoFailure('NETWORK_MISMATCH');
   if (blockbook.initialSync !== false || blockbook.inSync !== true || blockbook.inSyncMempool !== true) return utxoFailure('UNAVAILABLE');
-  return utxoCount(blockbook.bestHeight);
+  return { coin: blockbook.coin, network: blockbook.network, height: utxoCount(blockbook.bestHeight) };
 }
 export function utxoFetchOptions(options: Readonly<{ fetch: UtxoFetch; timeoutMs?: number }>, defaultTimeout = 12000) {
   const port = options && typeof options === 'object' ? Object.getOwnPropertyDescriptor(options, 'fetch') : undefined;
@@ -50,30 +51,39 @@ export interface UtxoReadSession {
   close(): void;
 }
 
-/** Shared bounded transport boundary. No address is disclosed during opening. */
-export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>, external: AbortSignal,
-  sampled = false, totalBytes = Number.MAX_SAFE_INTEGER, responseBytes = 32768): Promise<UtxoReadSession> {
+function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>, external: AbortSignal,
+  totalBytes: number, responseBytes: number, assertCurrent?: () => void) {
   if (!Number.isSafeInteger(responseBytes) || responseBytes < 1 || responseBytes > 1024 * 1024) return utxoFailure('INVALID_INPUT');
-  let network: UtxoNetwork;
-  try { network = getUtxoNetwork(networkId); } catch { return utxoFailure('INVALID_INPUT'); }
   if (external.aborted) return utxoFailure('CANCELLED');
   const controller = new AbortController(); let failure: UtxoBalanceError | null = null, consumed = 0;
   const abort = () => controller.abort(); external.addEventListener('abort', abort, { once: true });
   if (external.aborted) controller.abort();
   const timer = setTimeout(abort, options.timeoutMs);
   const close = () => { controller.abort(); clearTimeout(timer); external.removeEventListener('abort', abort); };
-  const check = () => { if (failure) throw failure; if (controller.signal.aborted) return utxoFailure('CANCELLED'); };
+  const check = () => {
+    if (failure) throw failure;
+    if (controller.signal.aborted) return utxoFailure('CANCELLED');
+    if (assertCurrent) {
+      try {
+        const checked: unknown = assertCurrent();
+        if (checked !== undefined) {
+          void Promise.resolve(checked).catch(() => undefined);
+          return utxoFailure('CANCELLED');
+        }
+      } catch { return utxoFailure('CANCELLED'); }
+    }
+  };
   const charge = (bytes: number) => { if (bytes > totalBytes - consumed) throw new ResponseSizeLimitError(); consumed += bytes; };
   async function read(path: string, retryUnavailable = false): Promise<unknown> {
     try {
       check();
-      const url = network.endpoint + path;
+      const url = endpoint + path;
       const pending = Promise.resolve().then(() => { check(); return options.fetch(url, {
         method: 'GET', headers: { Accept: 'application/json' }, signal: controller.signal,
         credentials: 'omit', redirect: 'error', cache: 'no-store', referrerPolicy: 'no-referrer',
       }); }).then((response) => {
-        if (controller.signal.aborted) { try { void response.body?.cancel().catch(() => undefined); } catch { /* Best effort. */ } }
-        check(); return response;
+        try { check(); return response; }
+        catch (error) { cancelResponseBody(response); throw error; }
       });
       const response = await new Promise<Response>((resolve, reject) => {
         const stopped = () => reject(failure ?? new UtxoBalanceError('CANCELLED'));
@@ -99,24 +109,68 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
       controller.abort(); throw failure;
     }
   }
+  const statusPath = '/api/v2/', genesisPath = '/api/v2/block-index/0';
+  function identityPath(url: string, signal: AbortSignal) {
+    if (signal !== controller.signal) return utxoFailure('INVALID_INPUT');
+    if (url === endpoint + statusPath) return statusPath;
+    if (url === endpoint + genesisPath) return genesisPath;
+    return utxoFailure('INVALID_INPUT');
+  }
+  return { signal: controller.signal, check, read, close, identityPath, consumedBytes: () => consumed };
+}
+
+/** Discover or reverify a registration without any address or account-key requests. */
+export async function verifyUtxoRegistration(
+  draft: Readonly<{ endpoint: string; name: string; explorer: string }>,
+  expected: UtxoNetwork | undefined,
+  options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>,
+  external: AbortSignal,
+  assertCurrent: () => void
+): Promise<UtxoNetwork> {
+  const endpoint = canonicalUtxoEndpoint(draft.endpoint);
+  const explorer = draft.explorer ? canonicalUtxoEndpoint(draft.explorer) : endpoint;
+  const { name } = draft;
+  const selected = expected === undefined ? undefined : resolveUtxoNetwork(expected);
+  const transport = openUtxoTransport(endpoint, options, external, 64 * 1024, 32 * 1024, assertCurrent);
+  const owner = {
+    assertCurrent: transport.check, signal: transport.signal,
+    readJson: (url: string, signal: AbortSignal) => transport.read(transport.identityPath(url, signal)),
+  };
   try {
-    let observedHeight: number | undefined;
+    if (selected) {
+      const { chainId, slip44, backendChain } = selected;
+      await verifyOwnedUtxoRpc(endpoint, { ...owner, registration: { chainId, slip44 }, backendChain });
+      transport.check();
+      return projectUtxoRegistration({ id: selected.id, chainId, slip44, backendChain, endpoint, name: name || selected.name, explorer });
+    }
+    const observed = await observeFirstUseUtxoRpc(endpoint, owner);
+    observed.assertCurrent();
+    return projectUtxoRegistration({ id: newCustomUtxoNetworkId(), ...observed.registration, backendChain: observed.observedBackendChain,
+      endpoint, name: name || utxoRegistrationDisplayName(observed.coin), explorer });
+  } finally { transport.close(); }
+}
+
+/** Shared bounded transport boundary. No address is disclosed during opening. */
+export async function openUtxoReadSession(scope: UtxoNetworkId | UtxoNetwork, options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>, external: AbortSignal,
+  sampled = false, totalBytes = Number.MAX_SAFE_INTEGER, responseBytes = 32768, assertCurrent?: () => void): Promise<UtxoReadSession> {
+  let network: UtxoNetwork;
+  try { network = resolveUtxoNetwork(scope); } catch { return utxoFailure('INVALID_INPUT'); }
+  if (isCustomUtxoNetworkId(network.id) && typeof assertCurrent !== 'function') return utxoFailure('INVALID_INPUT');
+  const { signal, check, read, close, identityPath, consumedBytes } = openUtxoTransport(network.endpoint, options, external, totalBytes, responseBytes, assertCurrent);
+  try {
+    let status: ReturnType<typeof readStatus> | undefined;
     let validationFailure: UtxoBalanceError | undefined;
-    const statusPath = '/api/v2/', genesisPath = '/api/v2/block-index/0';
     try {
       await verifyOwnedUtxoRpc(network.endpoint, {
         registration: { chainId: network.chainId, slip44: network.slip44 },
         backendChain: network.backendChain,
         assertCurrent: check,
-        signal: controller.signal,
-        async readJson(url, signal) {
-          if (signal !== controller.signal) return utxoFailure('INVALID_INPUT');
-          const path = url === network.endpoint + statusPath ? statusPath
-            : url === network.endpoint + genesisPath ? genesisPath : null;
-          if (!path) return utxoFailure('INVALID_INPUT');
+        signal,
+        async readJson(url, ownerSignal) {
+          const path = identityPath(url, ownerSignal);
           const body = await read(path);
           try {
-            if (path === statusPath) observedHeight = statusIdentity(body, network);
+            if (path === '/api/v2/') status = readStatus(body, network);
             else utxoObject(body);
           } catch (error) {
             if (error instanceof UtxoBalanceError) validationFailure = error;
@@ -130,22 +184,24 @@ export async function openUtxoReadSession(networkId: UtxoNetworkId, options: Rea
       if (validationFailure) throw validationFailure;
       return utxoFailure('NETWORK_MISMATCH');
     }
-    if (observedHeight === undefined) return utxoFailure('INVALID_RESPONSE');
-    const verifiedHeight = observedHeight;
+    if (status === undefined) return utxoFailure('INVALID_RESPONSE');
+    const verified = status;
+    const verifiedHeight = verified.height;
     let anchorHash: string | null = null;
     if (sampled) {
       const raw = utxoObject(await read(`/api/v2/block-index/${verifiedHeight}`)).blockHash;
       if (typeof raw !== 'string' || !/^[0-9a-f]{64}$/.test(raw)) return utxoFailure('INVALID_RESPONSE');
       anchorHash = raw;
     }
-    return Object.freeze({ network, observedHeight: verifiedHeight, anchorHash, read, close, consumedBytes: () => consumed,
+    return Object.freeze({ network, observedHeight: verifiedHeight, anchorHash, read, close, consumedBytes,
       async verifyAnchor() {
         try {
           if (!sampled) return utxoFailure('INVALID_INPUT');
           if (utxoObject(await read(`/api/v2/block-index/${verifiedHeight}`)).blockHash !== anchorHash) return utxoFailure('NETWORK_MISMATCH');
-          const current = statusIdentity(await read('/api/v2/'), network);
-          if (current < verifiedHeight) return utxoFailure('NETWORK_MISMATCH');
-          check(); return current;
+          const current = readStatus(await read('/api/v2/'), network);
+          if (current.height < verifiedHeight || current.coin !== verified.coin || current.network !== verified.network)
+            return utxoFailure('NETWORK_MISMATCH');
+          check(); return current.height;
         } catch (cause) { close(); throw cause; }
       },
     });

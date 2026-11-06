@@ -11,7 +11,7 @@ import { assertJsonWorkBudget } from '../../../../source/utils/requestPayloadBud
 import { normalizePublicAddress } from './addresses.ts';
 import { loadedBalance } from './amounts.ts';
 import { getNetwork, NETWORKS } from './networks.ts';
-import { getUtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { getUtxoNetwork, isCustomUtxoNetworkId, UTXO_NETWORKS, utxoRegistrationData, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 import type { UtxoBalance } from './utxoBalanceReader.ts';
 import type { WatchRecordRepository, WatchRecordSnapshot } from './publicAccountStorage.ts';
 import { createWatchAccountCodec, type StoredWatchAccount } from './watchAccountCodec.ts';
@@ -28,7 +28,7 @@ import type {
 } from './types.ts';
 
 type RecordOpenOptions = Readonly<{
-  repository: Pick<WatchRecordRepository, 'load'>; reader: BalanceReader;
+  repository: Pick<WatchRecordRepository, 'load' | 'assertNetworkCurrent'>; reader: BalanceReader;
   signal: AbortSignal; now?: () => number; historyReader?: UtxoActivityReader; evmActivityReaders?: EvmActivityReaders;
   idle?: { begin(): void; check(): boolean; stop(): void };
 }>;
@@ -36,6 +36,7 @@ type AccountSource = Extract<StoredWatchAccount, { kind: 'utxo-public' }>;
 type RecordSession = {
   repository: Pick<WatchRecordRepository, 'load'>; identity: string;
   sources: ReadonlyMap<string, AccountSource>;
+  assertNetworkCurrent: () => void;
 };
 function ownFields(value: unknown, keys: readonly string[]): Record<string, unknown> {
   if (!value || typeof value !== 'object' || ![Object.prototype, null].includes(Object.getPrototypeOf(value)) || Reflect.ownKeys(value).length !== keys.length)
@@ -49,12 +50,13 @@ function ownFields(value: unknown, keys: readonly string[]): Record<string, unkn
   return copy;
 }
 function recordView(snapshot: WatchRecordSnapshot) {
-  const data = ownFields(snapshot, ['version', 'records', 'accounts']);
+  const data = ownFields(snapshot, ['version', 'records', 'accounts', 'utxoNetworks']);
   if (data.version !== 1) throw new Error('Invalid public account record version');
-  const decoded = createWatchAccountCodec().validate(data.records), records = decoded.records;
-  const accounts = validatePublicAccounts(data.accounts);
+  if (!Array.isArray(data.utxoNetworks)) throw new Error('Invalid public UTXO registrations');
+  const decoded = createWatchAccountCodec(data.utxoNetworks).validate(data.records), { records, utxoNetworks } = decoded;
+  const accounts = validatePublicAccounts(data.accounts, utxoNetworks);
   if (JSON.stringify(decoded.accounts) !== JSON.stringify(accounts)) throw new Error('Public account projection changed');
-  return { records, accounts, identity: JSON.stringify({ version: data.version, records, accounts }) };
+  return { records, accounts, utxoNetworks, identity: JSON.stringify({ version: data.version, records, accounts, utxoNetworks: utxoNetworks.map(utxoRegistrationData) }) };
 }
 function admissionCancelled(): Error { return new Error('Public account opening was cancelled'); }
 function ownFunction(value: unknown, name: string): (...args: never[]) => unknown {
@@ -71,13 +73,14 @@ export interface BalanceReader {
     signal: AbortSignal
   ): Promise<{ chainId: number; units: string }>;
   /** Separate from the EVM observation contract; amounts are never combined. */
-  readUtxoBalance?(networkId: UtxoNetworkId, address: string, signal: AbortSignal): Promise<UtxoBalance>;
-  readUtxoAccount?(networkId: UtxoNetworkId, identifier: string, signal: AbortSignal): Promise<UtxoBalance>;
+  readUtxoBalance?(scope: UtxoNetworkId | UtxoNetwork, address: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
+  readUtxoAccount?(scope: UtxoNetworkId | UtxoNetwork, identifier: string, signal: AbortSignal, assertCurrent?: () => void): Promise<UtxoBalance>;
 }
 
 /** Untrusted persisted public data must not import private keyring records. */
 export function validatePublicAccounts(
-  input: unknown
+  input: unknown,
+  registrations = UTXO_NETWORKS
 ): readonly PublicAccount[] {
   assertJsonWorkBudget(input, 32_768, 5, 500);
   if (!Array.isArray(input) || input.length > 20)
@@ -116,7 +119,7 @@ export function validatePublicAccounts(
         throw new Error('Invalid public addresses');
       const networkIds = Object.keys(addresses);
       if (networkIds.length !== Reflect.ownKeys(addresses).length) throw new Error('Invalid public addresses');
-      const utxo = networkIds.filter((id) => getNetwork(id as NetworkId).kind === 'utxo');
+      const utxo = networkIds.filter((id) => getNetwork(id as NetworkId, registrations).kind === 'utxo');
       if (utxo.length && (utxo.length !== 1 || networkIds.length !== 1))
         throw new Error('A UTXO watch account has exactly one network and address');
       const normalized: Partial<Record<NetworkId, string>> = {};
@@ -125,7 +128,7 @@ export function validatePublicAccounts(
           throw new Error('Invalid public address');
         normalized[networkId as NetworkId] = normalizePublicAddress(
           address,
-          networkId as NetworkId
+          networkId as NetworkId, registrations
         );
       }
       if (Object.keys(normalized).length === 0)
@@ -148,19 +151,21 @@ export function createEvmWatchAccount(id: string, name: string, address: string)
 
 export type WatchAccountNetwork = 'evm' | UtxoNetworkId;
 /** Preserve EVM callers; a UTXO address is never copied to another network. */
-export function createWatchAccount(id: string, name: string, address: string, network: WatchAccountNetwork = 'evm'): PublicAccount {
+export function createWatchAccount(id: string, name: string, address: string, network: WatchAccountNetwork = 'evm', registrations = UTXO_NETWORKS): PublicAccount {
   if (network === 'evm') return createEvmWatchAccount(id, name, address);
-  const fixed = getUtxoNetwork(network);
-  return validatePublicAccounts([{ id, name, addresses: { [fixed.id]: normalizePublicAddress(address, fixed.id) } }])[0]!;
+  const fixed = getUtxoNetwork(network, registrations);
+  return validatePublicAccounts([{ id, name, addresses: { [fixed.id]: normalizePublicAddress(address, fixed.id, registrations) } }], registrations)[0]!;
 }
 
 /** Existing records retain their explicit address mappings; missing networks are never inferred. */
-export function getWatchNetworks(account: PublicAccount | undefined): readonly WalletNetwork[] {
-  return Object.freeze(NETWORKS.filter((network) => network.canWatch && !!account?.addresses[network.id]));
+export function getWatchNetworks(account: PublicAccount | undefined, registrations = UTXO_NETWORKS): readonly WalletNetwork[] {
+  const networks = [...registrations.map(({ id }) => getNetwork(id, registrations)), ...NETWORKS.filter(({ kind }) => kind === 'evm')];
+  return Object.freeze(networks.filter((network) => network.canWatch && !!account?.addresses[network.id]));
 }
 
 export class WatchOnlyAuthority implements WalletAuthority {
   private readonly accounts: readonly PublicAccount[];
+  private readonly utxoNetworks: readonly UtxoNetwork[];
   private readonly reader: BalanceReader;
   private readonly historyReader?: UtxoActivityReader;
   private readonly evmActivityReaders?: EvmActivityReaders;
@@ -184,6 +189,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   /** Open the canonical saved records; public snapshots expose addresses only. */
   static async openRecords(options: RecordOpenOptions): Promise<WatchOnlyAuthority> {
     const load = ownFunction(options.repository, 'load') as WatchRecordRepository['load'];
+    const verify = ownFunction(options.repository, 'assertNetworkCurrent') as WatchRecordRepository['assertNetworkCurrent'];
     const signal = options.signal;
     let rejectAdmission!: (error: Error) => void;
     const stopped = new Promise<never>((_resolve, reject) => { rejectAdmission = reject; });
@@ -198,8 +204,16 @@ export class WatchOnlyAuthority implements WalletAuthority {
         if (record.kind === 'utxo-public') sources.set(record.id, record);
       }
       check();
-      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle, options.historyReader, options.evmActivityReaders);
-      authority.recordSession = { repository: Object.freeze({ load }), identity: view.identity, sources };
+      const assertNetworkCurrent = () => {
+        const result: unknown = verify(snapshot);
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => undefined);
+          throw new Error('Invalid UTXO registration owner');
+        }
+      };
+      assertNetworkCurrent(); check();
+      const authority = new WatchOnlyAuthority(view.accounts, options.reader, options.now, options.idle, options.historyReader, options.evmActivityReaders, view.utxoNetworks);
+      authority.recordSession = { repository: Object.freeze({ load }), identity: view.identity, sources, assertNetworkCurrent };
       return authority;
     } catch { throw signal.aborted ? admissionCancelled() : new Error('Saved public accounts could not be opened'); }
     finally { signal.removeEventListener('abort', abort); }
@@ -214,10 +228,12 @@ export class WatchOnlyAuthority implements WalletAuthority {
     now: () => number = Date.now,
     idle?: { begin(): void; check(): boolean; stop(): void },
     historyReader?: UtxoActivityReader,
-    evmActivityReaders?: EvmActivityReaders
+    evmActivityReaders?: EvmActivityReaders,
+    registrations = UTXO_NETWORKS
   ) {
     this.idle = idle;
-    this.accounts = validatePublicAccounts(accounts);
+    this.utxoNetworks = registrations;
+    this.accounts = validatePublicAccounts(accounts, registrations);
     this.reader = reader;
     this.historyReader = historyReader ? Object.freeze({ readPage: historyReader.readPage.bind(historyReader), readDetail: historyReader.readDetail.bind(historyReader), summaryBytes: historyReader.summaryBytes.bind(historyReader), forgetDetails: historyReader.forgetDetails.bind(historyReader) }) : undefined;
     this.evmActivityReaders = evmActivityReaders ? Object.freeze({
@@ -229,6 +245,16 @@ export class WatchOnlyAuthority implements WalletAuthority {
     this.networkId = (Object.keys(this.accounts[0]?.addresses ?? {})[0] ??
       'ethereum') as NetworkId;
   }
+
+  getNetwork = (id: NetworkId): WalletNetwork => getNetwork(id, this.utxoNetworks);
+  getUtxoExplorer = (id: UtxoNetworkId): string => {
+    if (isCustomUtxoNetworkId(id)) {
+      if (!this.recordSession) throw new Error('Missing UTXO registration owner');
+      this.recordSession.assertNetworkCurrent();
+    }
+    return getUtxoNetwork(id, this.utxoNetworks).explorer;
+  };
+  getAccountNetworks = (account: PublicAccount | undefined): readonly WalletNetwork[] => getWatchNetworks(account, this.utxoNetworks);
 
   getSnapshot(): PublicSnapshot {
     if (!this.locked && this.idle && !this.checkingIdle) { this.checkingIdle = true; try { if (!this.idle.check()) this.lock(); } finally { this.checkingIdle = false; } }
@@ -363,7 +389,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
   selectNetwork(id: NetworkId): void {
     this.getSnapshot();
     if (this.locked) throw new Error('Wallet is locked');
-    const network = getNetwork(id);
+    const network = this.getNetwork(id);
     if (
       !network.canWatch ||
       !this.accounts.find((a) => a.id === this.accountId)?.addresses[id]
@@ -384,22 +410,27 @@ export class WatchOnlyAuthority implements WalletAuthority {
     const request = new AbortController();
     this.pending = request;
     const generation = this.generation;
-    const network = getNetwork(this.networkId);
+    const network = this.getNetwork(this.networkId);
     this.balance = Object.freeze({ status: 'loading' });
     this.publish();
     try {
       if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
       const source = this.currentSource(), session = this.recordSession;
-      if (source && session) {
+      const registered = network.kind === 'utxo' && isCustomUtxoNetworkId(network.id) ? getUtxoNetwork(network.id, this.utxoNetworks) : undefined;
+      if ((source || registered) && session) {
         const current = recordView(await session.repository.load());
         if (request.signal.aborted || this.pending !== request || generation !== this.generation || this.locked) return;
         if (current.identity !== session.identity) throw new Error('Saved watch accounts changed. Reopen them.');
       }
+      const checkRegistration = session?.assertNetworkCurrent;
+      if (registered && !session) throw new Error('Missing UTXO registration owner');
+      checkRegistration?.();
       const response = source
-        ? await this.reader.readUtxoAccount?.(source.networkId, source.identifier, request.signal)
+        ? await this.reader.readUtxoAccount?.(registered ?? source.networkId, source.identifier, request.signal, checkRegistration)
         : network.kind === 'utxo'
-          ? await this.reader.readUtxoBalance?.(network.id, address, request.signal)
+          ? await this.reader.readUtxoBalance?.(registered ?? network.id, address, request.signal, checkRegistration)
           : await this.reader.readBalance(network.id, address, request.signal);
+      checkRegistration?.();
       if (
         request.signal.aborted ||
         this.pending !== request ||
@@ -408,7 +439,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
       )
         return;
       if (network.kind === 'utxo') {
-        this.balance = utxoObservation(response as UtxoBalance, network.id, this.now());
+        this.balance = utxoObservation(response as UtxoBalance, registered ?? network.id, this.now());
       } else {
         if (!response || 'kind' in response || response.chainId !== network.chainId)
           throw new Error('Network identity mismatch');
@@ -437,13 +468,15 @@ export class WatchOnlyAuthority implements WalletAuthority {
   /** One ownership boundary for public history; each async read rechecks saved records. */
   private async withActivityRead<T>(kind: 'utxo' | 'evm', external: AbortSignal | undefined,
     assertCurrent: () => void, action: (owner: { accountId: string; address: string; networkId: NetworkId; generation: number;
-      source: AccountSource | undefined; recordIdentity: string }, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
+      source: AccountSource | undefined; recordIdentity: string; registration?: UtxoNetwork; assertNetworkCurrent?: () => void }, signal: AbortSignal, check: () => void) => Promise<T>): Promise<T> {
     const snapshot = this.getSnapshot();
-    if (snapshot.status !== 'ready' || external?.aborted || getNetwork(this.networkId).kind !== kind) throw new Error('Account activity unavailable');
+    if (snapshot.status !== 'ready' || external?.aborted || this.getNetwork(this.networkId).kind !== kind) throw new Error('Account activity unavailable');
     const account = this.accounts.find((row) => row.id === this.accountId), networkId = this.networkId;
     const address = account?.addresses[networkId];
     if (!account || !address) throw new Error('Account activity unavailable');
     const generation = this.generation, session = this.recordSession, source = this.currentSource();
+    const registration = kind === 'utxo' && isCustomUtxoNetworkId(networkId) ? getUtxoNetwork(networkId, this.utxoNetworks) : undefined;
+    if (registration && !session) throw new Error('Missing UTXO registration owner');
     const request = new AbortController(); this.historyRequests.add(request); if (kind === 'utxo') this.utxoRequests.add(request);
     const abort = () => request.abort(); external?.addEventListener('abort', abort, { once: true });
     let stopped!: (reason: Error) => void;
@@ -453,6 +486,7 @@ export class WatchOnlyAuthority implements WalletAuthority {
     request.signal.addEventListener('abort', onAbort, { once: true });
     const check = () => {
       this.getSnapshot();
+      session?.assertNetworkCurrent();
       const result: unknown = assertCurrent();
       if (result !== undefined) {
         if (result && (typeof result === 'object' || typeof result === 'function')) void Promise.resolve(result).catch(() => undefined);
@@ -472,8 +506,8 @@ export class WatchOnlyAuthority implements WalletAuthority {
     };
     try {
       check(); await verifyRecords(); check();
-      const owner = { accountId: account.id, address, networkId, generation, source,
-        recordIdentity: session?.identity ?? JSON.stringify(this.accounts) };
+      const owner = { accountId: account.id, address, networkId, generation, source, registration,
+        assertNetworkCurrent: session?.assertNetworkCurrent, recordIdentity: session?.identity ?? JSON.stringify(this.accounts) };
       const result = await Promise.race([action(owner, request.signal, check), cancelled]);
       check(); await verifyRecords(); check(); return result;
     } catch { throw new Error(request.signal.aborted ? 'Account activity cancelled' : 'Account activity unavailable'); }
@@ -495,10 +529,11 @@ export class WatchOnlyAuthority implements WalletAuthority {
       checkAdmission();
     }
     const result = await this.withActivityRead('utxo', external, () => undefined, async (owner, signal, check) => {
-      const { accountId, address, networkId, generation, source } = owner;
+      const { accountId, address, networkId, generation, source, registration } = owner;
       const result = await reader.readPage({
         context: Object.freeze({ accountId, networkId: networkId as UtxoNetworkId, address, generation }),
         identifier: source?.identifier ?? address, isAccount: !!source,
+        ...(registration ? { registration, assertCurrent: check } : {}),
       }, { page }, signal);
       check();
       if (result.context.accountId !== accountId || result.context.networkId !== networkId || result.context.address !== address || result.context.generation !== generation || result.page !== page)
@@ -552,9 +587,12 @@ export class WatchOnlyAuthority implements WalletAuthority {
       const result = await this.withActivityRead('utxo', operation.signal, () => undefined, async (owner, signal, check) => {
         const current = () => { check(); if (this.utxoDetails !== cache || !this.utxoRows.has(row)) throw new Error('Account activity context changed'); };
         current();
-        const { accountId, address, networkId, source, generation } = owner;
+        const { accountId, address, networkId, source, generation, registration } = owner;
         const value = await this.historyReader!.readDetail({ context: Object.freeze({ accountId, address, networkId: networkId as UtxoNetworkId, generation }),
-          identifier: source?.identifier ?? address, isAccount: !!source }, { row, txid: key }, signal, cache, current);
+          identifier: source?.identifier ?? address, isAccount: !!source,
+          // The physical cached fetch can have multiple viewers. Its owner is
+          // the saved registration; the separate callback below owns this viewer.
+          ...(registration ? { registration, assertCurrent: owner.assertNetworkCurrent } : {}) }, { row, txid: key }, signal, cache, current);
         current(); return value;
       });
       if (operation.signal.aborted || this.getSnapshot().status !== 'ready' || this.generation !== generation || this.utxoDetails !== cache || !this.utxoRows.has(row)) throw new Error('Account activity cancelled');
