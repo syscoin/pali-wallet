@@ -13,6 +13,7 @@ on:
       - 'apps/mobile/src/**'
       - 'apps/mobile/modules/**'
       - 'apps/mobile/qualification/**'
+      - 'apps/mobile/tests/crypto-vectors.json'
       - 'apps/mobile/index.ts'
       - 'apps/mobile/package*.json'
       - 'apps/mobile/app.json'
