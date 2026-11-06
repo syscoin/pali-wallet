@@ -2,7 +2,7 @@ import { registerRootComponent } from 'expo';
 import Constants from 'expo-constants';
 import * as FileSystem from 'expo-file-system/legacy';
 import React, { useEffect, useState } from 'react';
-import { Linking, Platform, Text, View } from 'react-native';
+import { AppState, Linking, Platform, Text, View } from 'react-native';
 import { assertQualificationBuild, parseQualificationLaunch } from './launch-parameters.ts';
 import {
   physicalBuild,
@@ -15,6 +15,7 @@ import { captureQualificationCryptoLoad, captureQualificationModuleLoad } from '
 import { qualifyNativeHandleContract } from './native-handle-contract.ts';
 import { createStorageQualificationDiagnostic } from './storage-diagnostics.ts';
 import { httpBuild, type HttpLaunch } from './http-contract.ts';
+import { publicPoolBuild, type PublicPoolLaunch } from './public-pool-contract.ts';
 
 import type { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import type { KeyringRuntime } from '../src/custody/keyringRuntime.ts';
@@ -51,6 +52,7 @@ type LaunchParameters = {
   address: string | null;
   physical?: never;
   http?: HttpLaunch;
+  publicPool?: PublicPoolLaunch;
 } | PhysicalLaunch;
 const expect = (value: unknown) => {
   if (!value) throw Error('QUALIFICATION_ASSERTION_FAILED');
@@ -287,6 +289,35 @@ function QualificationApp() {
           const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
           await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
         });
+        const publicPoolConfiguration = Constants.expoConfig?.extra?.paliPublicPoolQualification;
+        if (publicPoolConfiguration !== undefined || (!parameters.physical && parameters.publicPool)) {
+          if (parameters.physical || parameters.http || !parameters.publicPool || !['ios', 'android'].includes(Platform.OS) ||
+              !FileSystem.documentDirectory) throw Error('PUBLIC_POOL_QUALIFICATION_BUILD_INVALID');
+          const launch = parameters.publicPool;
+          const { build, caSha256 } = publicPoolBuild(publicPoolConfiguration);
+          await check('public pool snapshot, Merkle and anchors', async () => {
+            const [{ createNativePublicSnapshotTransport }, { createNativePublicMerkleExecutor }, { qualifyNativePublicPool }] = await Promise.all([
+              import('../src/privacy/publicSnapshotNative.native.ts'), import('../src/crypto/native'), import('./public-pool-native.ts'),
+            ]);
+            const owner = new AbortController();
+            const appState = AppState.addEventListener('change', (state) => { if (state !== 'active') owner.abort(); });
+            const blur = Platform.OS === 'android' ? AppState.addEventListener('blur', () => owner.abort()) : undefined;
+            try {
+              if (AppState.currentState !== 'active') throw Error('PUBLIC_POOL_QUALIFICATION_INACTIVE');
+              const result = await qualifyNativePublicPool({ launch, transport: createNativePublicSnapshotTransport(),
+                executeMerkleBatch: createNativePublicMerkleExecutor(), lifetime: owner.signal });
+              expect(!owner.signal.aborted && AppState.currentState === 'active' && networkCalls === 0);
+              const destination = `${FileSystem.documentDirectory}pali-native-public-pool-${launch.token}.json`;
+              await FileSystem.writeAsStringAsync(`${destination}.tmp`, JSON.stringify({ ...build, caSha256,
+                kind: 'native-public-pool', status: 'passed', platform: Platform.OS, sessionId: Constants.sessionId,
+                token: launch.token, networkCalls, result }));
+              expect(!owner.signal.aborted && AppState.currentState === 'active');
+              await FileSystem.moveAsync({ from: `${destination}.tmp`, to: destination });
+            } finally { appState.remove(); blur?.remove(); owner.abort(); }
+          });
+          setStatus('Offline public pool verification passed');
+          return;
+        }
         const httpConfiguration = Constants.expoConfig?.extra?.paliHttpQualification;
         if (httpConfiguration !== undefined || (!parameters.physical && parameters.http)) {
           if (parameters.physical || !parameters.http || !['ios', 'android'].includes(Platform.OS))
