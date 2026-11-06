@@ -1,7 +1,7 @@
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmSignedRecordSummary } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRecordSummary } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -362,7 +362,7 @@ export function createKeyringRuntimeFactory(
             await (keyring === target ? source : target).destroy();
           }
         };
-        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>) {
+        function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void, metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -374,8 +374,7 @@ export function createKeyringRuntimeFactory(
               throw new KeyringRuntimeError('CANCELLED');
           };
           check();
-          if (!metadata) return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check });
-          return Object.freeze({ assertCurrent: check, persistSigned: async (record: Parameters<typeof signedRecords.append>[1]) => { await signedRecords.append({ keyring, assertCurrent: check },record,metadata); check(); } });
+          return createEvmSignedRecordLifecycle(signedRecords, { keyring, assertCurrent: check }, { metadata, replacement });
         }
         const signedView = (captured: number, externalGuard: () => void, walletBindingId: string, account = selectedAccount()) => {
           const check = () => { current(captured); checkGuard(externalGuard); };
@@ -1273,11 +1272,6 @@ export function createKeyringRuntimeFactory(
               const work = Promise.resolve().then(async () => {
                 check();
                 const { context, intent, expectedUnsigned } = review;
-                const boundary = sdk.captureEvmSubmission(
-                  context,
-                  check,
-                  () => captureSignedSubmission(context, check, intent ? { intent } : undefined)
-                );
                 const tx = Transaction.from(rawTransaction);
                 if (tx.to === null || tx.hash !== hash)
                   throw new KeyringRuntimeError('INVALID_INPUT');
@@ -1286,15 +1280,28 @@ export function createKeyringRuntimeFactory(
                   value: tx.value.toString(), data: tx.data,
                 }, intent);
                 try {
-                  if (context.operation === 'cancel') {
-                    const records = await signedRecords.listSender({ keyring, assertCurrent: check }, tx.chainId.toString(), context.account.address);
-                    if (!pendingCancellationOriginal(records.findLast((record) => record.nonce === tx.nonce), context.originalHash!))
-                      throw new NativeTransferError('EXPIRED');
-                  }
+                  const replacement = context.operation === 'cancel'
+                    ? await signedRecords.captureVerifiedReplacement(
+                      { keyring, assertCurrent: check },
+                      {
+                        chainId: String(context.network.chainId),
+                        from: context.account.address,
+                        nonce: tx.nonce,
+                        originalHash: context.originalHash!,
+                        operation: 'cancel',
+                      }
+                    ) : undefined;
+                  if (replacement && replacement.expectedTipHash !== replacement.originalHash)
+                    throw new NativeTransferError('EXPIRED');
+                  const boundary = sdk.captureEvmSubmission(
+                    context, check, () => captureSignedSubmission(context, check, intent ? { intent } : undefined, replacement)
+                  );
                   await sdk.submitSignedEvmTransaction(rawTransaction, broadcast, boundary, undefined, expectedUnsigned);
                 } catch (error) {
                   if (signedRecords.requiresReopen || (error && typeof error === 'object' && 'code' in error && error.code === 'STORAGE_REOPEN_REQUIRED'))
                     throw Object.assign(new TransferJournalError('REOPEN_REQUIRED'), { transactionNotBroadcast: true });
+                  if (error instanceof Error && error.message === 'EVM_SIGNED_RECORD_ORIGINAL_CHANGED')
+                    throw new NativeTransferError('EXPIRED');
                   throw error;
                 }
               });

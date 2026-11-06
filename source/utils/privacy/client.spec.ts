@@ -229,6 +229,74 @@ test('only sends a public pool identifier to Sysnode, without cookies or wallet 
   expect(fetch.mock.calls[0][1]).not.toHaveProperty('body');
 });
 
+test('accepts dense canonical snapshot words and ignores JSON punctuation inside strings', async () => {
+  const manyLeaves = Array.from({ length: 1024 }, (_, index) =>
+    hash(index + 1)
+  );
+  const valid = {
+    ...snapshot,
+    leafCount: manyLeaves.length,
+    leaves: manyLeaves,
+  };
+  const extra = '{[,]}"\\'.repeat(1024);
+  global.fetch = jest.fn(
+    async () => new Response(JSON.stringify({ ...valid, extra }))
+  );
+  await expect(fetchPrivacySnapshot(id, signal())).resolves.toEqual(valid);
+});
+
+test.each(['objects', 'scalars'] as const)(
+  'rejects a dense snapshot of tiny %s before JSON.parse allocates it',
+  async (kind) => {
+    const body = JSON.stringify({
+      ...snapshot,
+      leaves: Array.from({ length: 4096 }, () => (kind === 'objects' ? {} : 0)),
+    });
+    global.fetch = jest.fn(async () => new Response(body));
+    const parse = jest.spyOn(JSON, 'parse');
+    try {
+      await expect(fetchPrivacySnapshot(id, signal())).rejects.toThrow(
+        'privacy_data_invalid'
+      );
+      expect(parse).not.toHaveBeenCalledWith(body);
+    } finally {
+      parse.mockRestore();
+    }
+  }
+);
+
+test('rejects a padded snapshot with too many object properties before parsing', async () => {
+  const extra = Object.fromEntries(
+    Array.from({ length: 512 }, (_, index) => [`ignored${index}`, 0])
+  );
+  const body = JSON.stringify({ ...snapshot, ...extra }).padEnd(64 * 1024);
+  global.fetch = jest.fn(async () => new Response(body));
+  const parse = jest.spyOn(JSON, 'parse');
+  try {
+    await expect(fetchPrivacySnapshot(id, signal())).rejects.toThrow(
+      'privacy_data_invalid'
+    );
+    expect(parse).not.toHaveBeenCalledWith(body);
+  } finally {
+    parse.mockRestore();
+  }
+});
+
+test.each([
+  { status: 503 },
+  { status: 200, headers: { 'Content-Length': String(160 * 1024 * 1024 + 1) } },
+])(
+  'cancels a snapshot response refused before reader acquisition: %j',
+  async (init) => {
+    const cancel = jest.fn();
+    global.fetch = jest.fn(
+      async () => new Response(new ReadableStream({ cancel }), init)
+    );
+    await expect(fetchPrivacySnapshot(id, signal())).rejects.toThrow();
+    expect(cancel).toHaveBeenCalledTimes(1);
+  }
+);
+
 test('the selected local privacy service receives the same public-only request', async () => {
   const fetch = jest.fn<
     ReturnType<typeof global.fetch>,

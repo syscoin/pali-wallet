@@ -2,15 +2,20 @@ package org.syscoin.pali.storage
 
 import android.system.Os
 import android.system.OsConstants
+import com.facebook.react.bridge.ReactContext
+import com.facebook.react.common.LifecycleState
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.functions.Queues
+import expo.modules.kotlin.jni.ArrayBuffer
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
+import java.nio.ByteBuffer
 import java.util.UUID
 
 class PaliWalletStorageModule : Module() {
   private val noteBackupPickerOwner = PaliNoteBackupPicker.Owner()
+  private val publicSnapshots = PaliPublicSnapshotBridge()
 
   companion object {
     private val mutex = Any()
@@ -19,6 +24,17 @@ class PaliWalletStorageModule : Module() {
   }
 
   private fun failure(): Nothing = throw IllegalStateException("STORAGE_UNAVAILABLE")
+
+  private fun snapshotInteger(value: Double): Long {
+    if (value < 1 || value > 9_007_199_254_740_991.0 || value.toLong().toDouble() != value)
+      throw PaliPublicSnapshotException(PaliPublicSnapshotError.INVALID)
+    return value.toLong()
+  }
+
+  private fun rejectSnapshot(promise: Promise, error: Throwable) {
+    val code = (error as? PaliPublicSnapshotException)?.error ?: PaliPublicSnapshotError.UNAVAILABLE
+    promise.reject(code.code, "Public snapshot unavailable", null)
+  }
 
   private fun directory(): File {
     val context = appContext.reactContext ?: failure()
@@ -55,6 +71,46 @@ class PaliWalletStorageModule : Module() {
 
   override fun definition() = ModuleDefinition {
     Name("PaliWalletStorage")
+    Function("preparePublicSnapshot") { pool: String, serviceOrigin: String ->
+      publicSnapshots.prepare { PaliPublicSnapshotDownloader.prepare(pool, serviceOrigin, it) }
+    }
+    Function("preparePublicSnapshotAnchor") {
+      endpoint: String, address: String, block: Double, root: String, kind: String, id: Double ->
+      val read = when (kind) {
+        "chainId" -> PaliPublicSnapshotAnchor.Read.CHAIN_ID
+        "block" -> PaliPublicSnapshotAnchor.Read.BLOCK
+        "nextIndex" -> PaliPublicSnapshotAnchor.Read.NEXT_INDEX
+        "getLastRoot" -> PaliPublicSnapshotAnchor.Read.LAST_ROOT
+        "levels" -> PaliPublicSnapshotAnchor.Read.LEVELS
+        "denomination" -> PaliPublicSnapshotAnchor.Read.DENOMINATION
+        "isKnownRoot" -> PaliPublicSnapshotAnchor.Read.KNOWN_ROOT
+        else -> throw PaliPublicSnapshotException(PaliPublicSnapshotError.INVALID)
+      }
+      val anchor = PaliPublicSnapshotAnchor(endpoint, address, snapshotInteger(block), root)
+      val requestId = snapshotInteger(id)
+      publicSnapshots.prepare { PaliPublicSnapshotDownloader.prepareAnchor(anchor, read, requestId, it) }
+    }
+    AsyncFunction("startPublicSnapshot") { token: String, promise: Promise ->
+      try {
+        val reactContext = appContext.reactContext as? ReactContext
+        if (appContext.currentActivity == null || reactContext?.lifecycleState != LifecycleState.RESUMED)
+          throw PaliPublicSnapshotException(PaliPublicSnapshotError.CANCELLED)
+        publicSnapshots.start(token) { result ->
+          result.fold(
+            { info -> promise.resolve(mapOf("status" to info.status, "byteCount" to info.byteCount)) },
+            { error -> rejectSnapshot(promise, error) }
+          )
+        }
+      } catch (error: Exception) { rejectSnapshot(promise, error) }
+    }.runOnQueue(Queues.MAIN)
+    AsyncFunction("pullPublicSnapshot") { token: String ->
+      publicSnapshots.pull(token)?.let { ArrayBuffer.copyOf(ByteBuffer.wrap(it)) }
+    }
+    AsyncFunction("releasePublicSnapshot") { token: String, promise: Promise ->
+      try { publicSnapshots.release(token) { promise.resolve(null) } }
+      catch (error: Exception) { rejectSnapshot(promise, error) }
+    }
+    OnActivityEntersBackground { publicSnapshots.cancelActive() }
     AsyncFunction("pickEncryptedNoteBackup") { promise: Promise ->
       val activity = appContext.currentActivity.takeIf { appContext.hasActiveReactInstance }
       PaliNoteBackupPicker.pick(noteBackupPickerOwner, activity, false, promise)
@@ -73,7 +129,10 @@ class PaliWalletStorageModule : Module() {
       PaliNoteBackupPicker.receive(noteBackupPickerOwner, activity, result.requestCode, result.resultCode, result.data)
     }
     OnActivityDestroys { PaliNoteBackupPicker.activityDestroyed(noteBackupPickerOwner) }
-    OnDestroy { PaliNoteBackupPicker.invalidate(noteBackupPickerOwner) }
+    OnDestroy {
+      publicSnapshots.close()
+      PaliNoteBackupPicker.invalidate(noteBackupPickerOwner)
+    }
 
     AsyncFunction("acquire") {
       synchronized(mutex) {

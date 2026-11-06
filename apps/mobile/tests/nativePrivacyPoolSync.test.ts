@@ -252,6 +252,20 @@ test('a retired native batch drains without publishing its checkpoint, paths or 
   await sync.dispose();
 });
 
+test('a dense malformed native snapshot drains before contacting the anchor or executing Merkle work', async () => {
+  const provider = fixture(snapshot(), {
+    index: () => json({ leaves: Array.from({ length: 4096 }, () => ({})) }),
+  });
+  const { sync } = create(provider.transport, undefined, async () => {
+    assert.fail('unexpected Merkle work');
+  });
+  assert.equal((await sync.refresh()).phase, 'error');
+  assert.deepEqual(provider.requests, ['snapshot']);
+  assert.deepEqual(provider.released, ['snapshot']);
+  await assert.rejects(sync.readSnapshot(poolId));
+  await sync.dispose();
+});
+
 test('invalid native batch output cannot produce a verified snapshot or run its second anchor', async () => {
   const provider = fixture();
   const { sync } = create(
