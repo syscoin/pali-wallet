@@ -282,6 +282,11 @@ function QualificationApp() {
           await qualifyNativePublicMerkle(createNativePublicMerkleExecutor());
           await qualifyWalletHmac(nativeCrypto);
         });
+        await check('native SLH leaf setup vector', async () => {
+          const { requireNativeModule } = await import('expo-modules-core');
+          const { qualifyNativeSlhLeaf } = await import('./native-slh-leaf.ts');
+          await qualifyNativeSlhLeaf(requireNativeModule('PaliWalletCrypto'));
+        });
         const httpConfiguration = Constants.expoConfig?.extra?.paliHttpQualification;
         if (httpConfiguration !== undefined || (!parameters.physical && parameters.http)) {
           if (parameters.physical || !parameters.http || !['ios', 'android'].includes(Platform.OS))

@@ -13,6 +13,7 @@ const CHECKS = Object.freeze([
   'native crypto bridge and full vectors',
   'native factory handles reject direct construction',
   'native public Merkle and HMAC vectors',
+  'native SLH leaf setup vector',
 ]);
 // The remaining labels are substeps, not completed timed cases.
 const TIMED_CRYPTO_CASES = Object.freeze(CRYPTO_FULL_CASES.filter((name) =>
