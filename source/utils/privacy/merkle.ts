@@ -40,7 +40,7 @@ export const ZERO_VALUE = ZEROES[0];
 export const getMerkleZero = (level: number): string => {
   if (!Number.isInteger(level) || level < 0 || level >= TREE_DEPTH)
     throw new Error('Invalid Merkle level');
-  return ZEROES[level];
+  return ZEROES[level]!;
 };
 
 export type MerkleSubtreeListener = (
@@ -86,7 +86,7 @@ const constants = (): bigint[] => {
 const permute = (left: bigint, right: bigint): [bigint, bigint] => {
   const values = constants();
   for (let i = 0; i < ROUNDS; i += 1) {
-    const t = (left + values[i]) % FIELD_SIZE;
+    const t = (left + values[i]!) % FIELD_SIZE;
     const square = (t * t) % FIELD_SIZE;
     const fourth = (square * square) % FIELD_SIZE;
     const next = (right + fourth * t) % FIELD_SIZE;
@@ -145,7 +145,7 @@ const foldRoot = (work: MerkleWork): string => {
   // The deployed constructor fills zero0..zero19, then hashes zero19 once
   // more for roots[0]. There is no inclusion proof for an empty pool.
   if (work.nextIndex === 0)
-    return hashPair(ZEROES[TREE_DEPTH - 1], ZEROES[TREE_DEPTH - 1]);
+    return hashPair(ZEROES[TREE_DEPTH - 1]!, ZEROES[TREE_DEPTH - 1]!);
   if (work.nextIndex === TREE_CAPACITY) {
     return toHex(fieldElement(work.frontier[TREE_DEPTH] as string));
   }
@@ -154,7 +154,7 @@ const foldRoot = (work: MerkleWork): string => {
     root =
       Math.floor(work.nextIndex / 2 ** level) % 2 === 1
         ? hashPair(work.frontier[level] as string, root)
-        : hashPair(root, ZEROES[level]);
+        : hashPair(root, ZEROES[level]!);
   }
   return root;
 };
@@ -186,7 +186,7 @@ export const advanceMerkleWork = (
   delete work.root;
   const end = Math.min(work.nextIndex + maxLeaves, leaves.length);
   while (work.nextIndex < end) {
-    let carry = toHex(fieldElement(leaves[work.nextIndex]));
+    let carry = toHex(fieldElement(leaves[work.nextIndex]!));
     let index = work.nextIndex;
     let level = 0;
     while (index % 2 === 1) {

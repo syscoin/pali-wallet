@@ -83,6 +83,10 @@ type Dependencies = {
     poolId: PrivacyPoolId,
     signal: AbortSignal
   ): Promise<PrivacySnapshot | PrivacyIndexProgress>;
+  merkleWork?: Readonly<{
+    batchSize: number;
+    yieldBetweenBatches: () => Promise<void>;
+  }>;
   now(): number;
   schedule(poolId: PrivacyPoolId, delay: number): void;
   /** Arm one request deadline and return its cancellation. */
@@ -109,10 +113,15 @@ export function createPrivacyPoolSync(
     fetchSnapshot,
     verifyAnchor,
     now,
+    merkleWork,
     schedule,
     stop,
     startRequestTimeout,
   } = dependencies;
+  const batchSize = merkleWork?.batchSize ?? 128;
+  if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 128)
+    throw new Error('Invalid privacy Merkle batch size');
+  const yieldBetweenBatches = merkleWork?.yieldBetweenBatches;
   const tasks = new Map<PrivacyPoolId, Promise<void>>();
   const aborts = new Map<PrivacyPoolId, AbortController>();
   const actions = new Map<PrivacyPoolId, Promise<unknown>>();
@@ -326,7 +335,7 @@ export function createPrivacyPoolSync(
         record.work = advanceMerkleWork(
           record.work!,
           snapshot.leaves,
-          128,
+          batchSize,
           (level, index, root) =>
             recordMerkleSubtree(pathIndex!, level, index, root)
         );
@@ -337,6 +346,8 @@ export function createPrivacyPoolSync(
           total: snapshot.leafCount,
         };
         if (!(await cache.save(record, generation))) return;
+        if (!record.work.complete && yieldBetweenBatches)
+          await yieldBetweenBatches();
       } while (!record.work.complete && now() < deadline);
       if (!record.work.complete) {
         schedule(poolId, 0);
@@ -420,7 +431,7 @@ export function createPrivacyPoolSync(
     poolId: PrivacyPoolId,
     trusted: NonNullable<ReturnType<typeof verifiedTrees.get>>,
     record: PrivacyRecord | undefined
-  ) => {
+  ): record is PrivacyRecord => {
     const age = now() - trusted.blockTimestamp;
     return (
       verifiedTrees.get(poolId) === trusted &&
