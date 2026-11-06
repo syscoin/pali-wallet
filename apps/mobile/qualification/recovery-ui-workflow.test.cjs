@@ -48,7 +48,7 @@ test('portable recovery output is exercised in the existing CI budget and upload
   const job = workflow.jobs.validate;
   assert.equal(job['timeout-minutes'], 20);
   assert.equal(job.defaults.run['working-directory'], 'apps/mobile');
-  for (const command of ['npm run lint', 'npm run typecheck', 'npm test', 'npm run build:web', 'npm run test:ui', 'npm run test:activity-ui', 'npm run test:watch-ui', 'npm run test:faucet-ui', 'npm run test:recovery-ui'])
+  for (const command of ['npm run lint', 'npm run typecheck', 'npm test', 'npm run build:web', 'npm run test:ui', 'npm run test:activity-ui', 'npm run test:watch-ui -- --workers=2', 'npm run test:faucet-ui', 'npm run test:recovery-ui'])
     assert.equal(job.steps.filter((step) => step.run === command).length, 1, command);
   for (const platform of ['android', 'ios']) assert(job.steps.some((step) => step.run?.startsWith(`npx --no-install expo export --platform ${platform} `)));
   const upload = job.steps.find((step) => step.name === 'Upload browser failure evidence');
