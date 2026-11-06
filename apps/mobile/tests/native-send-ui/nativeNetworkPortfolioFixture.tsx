@@ -41,7 +41,7 @@ const authority = {
   },
   cancelAccountOperation() {},
 };
-const networks = createNativeNetworkView(authority);
+const networks = createNativeNetworkView(authority, { utxoSendAvailable: true });
 const reader: BalanceReader = {
   async readBalance(id) {
     reads.push(id); return { chainId: Number(getNativeNetwork(id).chainId), units: '1234000000000000000' };

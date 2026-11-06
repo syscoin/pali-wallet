@@ -1032,7 +1032,10 @@ export const SendCalls = () => {
               false,
               undefined,
               undefined,
-              { expectedContext: approvedContext },
+              {
+                expectedContext: approvedContext,
+                sendCallsSubmissionId: lastStartedSubmissionRef.current,
+              },
             ],
             approvedAccount.isTrezorWallet || approvedAccount.isLedgerWallet
               ? 300000

@@ -10,6 +10,7 @@ import {
 } from '@sidhujag/sysweb3-keyring';
 import {
   coins,
+  findUtxoCoinByRegistration,
   getSysRpc,
   observeSysRpc,
   getEthRpc,
@@ -50,6 +51,7 @@ import {
   readBlockbookNativeQuote,
 } from '../../../shared/nativeCoinQuotes';
 import { snapshotNftTransferIntent } from '../../../shared/nftTransfer';
+import { utxoRegistrationDisplayName } from '../../../shared/utxoChainCatalogue';
 import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
@@ -305,6 +307,7 @@ import {
 import {
   assertNoRecentAcknowledgedInputOverlap,
   createUtxoAcknowledgedInputs,
+  utxoNetworkCatchingUpError,
   utxoInputOutpoints,
   type UtxoAcknowledgedInputs,
 } from 'utils/utxoAcknowledgedInputs';
@@ -974,12 +977,14 @@ class MainController {
       signSmartAccountActionDigestInternal: (
         params,
         targetAccount,
-        executionContextId
+        executionContextId,
+        assertApprovalCurrent
       ) =>
         this.signSmartAccountActionDigestInternal(
           params,
           targetAccount,
-          executionContextId
+          executionContextId,
+          assertApprovalCurrent
         ),
       signSLHDSARecoveryTargetActionHash: (params) =>
         this.signSLHDSARecoveryTargetActionHash(params),
@@ -1939,17 +1944,33 @@ class MainController {
       store.getState().vault.activeNetwork,
       signing.context.account
     );
-    const pending = await this.getRetainedUtxoRecords().excludedOutpoints(
+    const journal = await this.getRetainedUtxoRecords().fundingExclusions(
       { keyring: signing.keyring, assertCurrent: signing.assertCurrent },
       owner
     );
     signing.assertCurrent();
-    const excludedOutpoints = [...collateral, ...pending];
+    const excludedOutpoints = [...collateral, ...journal.outpoints];
     return signing.withRead(async (read) => {
-      const result = await signing.transactions.getEstimateSysTransactionFee(
-        { ...params, excludedOutpoints },
-        read
-      );
+      const result = await signing.transactions
+        .getEstimateSysTransactionFee({ ...params, excludedOutpoints }, read)
+        .catch((error) => {
+          read.assertCurrent();
+          if (
+            params.nativeSweep === true &&
+            journal.submitted.size > 0 &&
+            error?.error === true &&
+            error.code === 'INSUFFICIENT_FUNDS' &&
+            Array.isArray(error.excludedNativeOutpoints)
+          ) {
+            if (
+              error.excludedNativeOutpoints.some((point: string) =>
+                journal.submitted.has(point)
+              )
+            )
+              throw utxoNetworkCatchingUpError();
+          }
+          throw error;
+        });
       read.assertCurrent();
       if (!result?.psbt) return result;
       const { psbt, summary } = await this.verifySyscoinPsbt(result.psbt, read);
@@ -4818,12 +4839,18 @@ class MainController {
     return this.smartAccount.prepareSmartAccount(params);
   }
 
-  public async registerSmartAccountOnChain(params: {
-    accountId: number;
-    expectedContext?: IEvmTransactionContext;
-  }) {
+  public async registerSmartAccountOnChain(
+    params: {
+      accountId: number;
+      expectedContext?: IEvmTransactionContext;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.registerSmartAccountOnChain(params);
+    return this.smartAccount.registerSmartAccountOnChain(
+      params,
+      assertApprovalCurrent
+    );
   }
 
   public async hydrateSmartAccount(
@@ -4969,32 +4996,38 @@ class MainController {
     );
   }
 
-  public async submitSmartAccountExecution(params: {
-    accountId?: number;
-    executionCalldata?: string;
-    executionContextId?: string;
-    executions?: Array<{
-      data: string;
-      nonce?: string;
-      target: string;
-      value: string;
-    }>;
-    expectedContext?: IEvmTransactionContext;
-    gasPayer?: {
-      address: string;
-      id: number;
-      type: KeyringAccountType;
-    };
-    maxFeePerGas?: string;
-    maxPriorityFeePerGas?: string;
-    mode?: string;
-    signature: string;
-    userOperation?: SmartAccountPackedUserOperation;
-    validator?: string;
-    waitForConfirmation?: boolean;
-  }) {
+  public async submitSmartAccountExecution(
+    params: {
+      accountId?: number;
+      executionCalldata?: string;
+      executionContextId?: string;
+      executions?: Array<{
+        data: string;
+        nonce?: string;
+        target: string;
+        value: string;
+      }>;
+      expectedContext?: IEvmTransactionContext;
+      gasPayer?: {
+        address: string;
+        id: number;
+        type: KeyringAccountType;
+      };
+      maxFeePerGas?: string;
+      maxPriorityFeePerGas?: string;
+      mode?: string;
+      signature: string;
+      userOperation?: SmartAccountPackedUserOperation;
+      validator?: string;
+      waitForConfirmation?: boolean;
+    },
+    assertApprovalCurrent?: () => void
+  ) {
     this.assertWalletReadyForSigning();
-    return this.smartAccount.submitSmartAccountExecution(params);
+    return this.smartAccount.submitSmartAccountExecution(
+      params,
+      assertApprovalCurrent
+    );
   }
 
   public async prepareSmartAccountGuardianRegistration(params: {
@@ -5547,7 +5580,12 @@ class MainController {
           ? await getSysRpc(draft, { ...owner, registration, backendChain })
           : await observeSysRpc(draft, { ...owner, registration });
       assertCurrent();
-      return result.rpc.formattedNetwork;
+      const network = result.rpc.formattedNetwork;
+      if (label) return network;
+      const coin = findUtxoCoinByRegistration(network);
+      return coin
+        ? { ...network, label: utxoRegistrationDisplayName(coin) }
+        : network;
     });
   }
 
@@ -8485,7 +8523,7 @@ class MainController {
     params: string[],
     targetAccount: { id: number; type: KeyringAccountType },
     executionContextId?: string,
-    assertPersonalSignApproval?: () => void
+    assertApprovalCurrent?: () => void
   ): Promise<string> {
     const generation = this.walletSessionGeneration;
     const assertContext = () => {
@@ -8493,7 +8531,7 @@ class MainController {
       this.assertCurrentWalletSession(generation);
       if (executionContextId)
         this.assertSmartAccountExecutionContext(executionContextId, params[1]);
-      assertPersonalSignApproval?.();
+      assertApprovalCurrent?.();
     };
     assertContext();
     const { accounts, activeAccount } = store.getState().vault;

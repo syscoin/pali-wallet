@@ -1,4 +1,5 @@
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
+import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import { isExternalWalletUrl } from 'utils/extensionContexts';
 import { extractErrorMessage } from 'utils/index';
@@ -6,8 +7,9 @@ import { extractErrorMessage } from 'utils/index';
 import {
   beginApprovalSubmission,
   captureDappEvmSubmission,
+  captureDappSmartAccountSubmission,
   captureDappUtxoSubmission,
-  utxoDappApprovalExpired,
+  transactionApprovalExpired,
 } from './approvalSubmission';
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requirePersonalSignApproval } from './personalSignApproval';
@@ -236,6 +238,12 @@ export const handleMasterControllerResponses = (
       if (typeof targetMethod === 'function') {
         const finishSubmission = beginApprovalSubmission(sender, methods);
         let assertUtxoSignatureCurrent: (() => void) | undefined;
+        let retiredBatch:
+          | {
+              isSoleRetiredAttempt: () => boolean;
+              release: () => Promise<void>;
+            }
+          | undefined;
         Promise.resolve()
           .then(async () => {
             if (personalSignApproval)
@@ -250,6 +258,32 @@ export const handleMasterControllerResponses = (
             const dappApproval = sendsEvm
               ? captureDappEvmSubmission(sender)
               : undefined;
+            if (dappApproval?.batch) {
+              const release = await captureStartedEoaSendCallsAttempt(
+                dappApproval.batch,
+                dappApproval.context.chainId,
+                params?.[4]?.sendCallsSubmissionId
+              );
+              if (!release) throw transactionApprovalExpired();
+              retiredBatch = {
+                isSoleRetiredAttempt: dappApproval.isSoleRetiredAttempt,
+                release,
+              };
+            }
+            if (dappApproval) await dappApproval.checkDocument();
+            else if (sendsEvm && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
+            const smartMethod =
+              walletMethod === 'submitSmartAccountExecution' ||
+              walletMethod === 'registerSmartAccountOnChain'
+                ? walletMethod
+                : undefined;
+            const smartApproval = smartMethod
+              ? captureDappSmartAccountSubmission(sender, smartMethod)
+              : undefined;
+            if (smartApproval) await smartApproval.checkDocument();
+            else if (smartMethod && isExternalWalletUrl(sender.url))
+              throw transactionApprovalExpired();
             const utxoMethod =
               walletMethod === 'signSyscoinPsbt' ||
               walletMethod === 'signSendAndSaveTransaction'
@@ -265,7 +299,7 @@ export const handleMasterControllerResponses = (
                 isExternalWalletUrl(sender.url) ||
                 params?.[0]?.ordinaryWalletSend !== true)
             )
-              throw utxoDappApprovalExpired();
+              throw transactionApprovalExpired();
 
             let argumentsForCall = params;
             if (sendsEvm) {
@@ -280,10 +314,19 @@ export const handleMasterControllerResponses = (
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
                   authorizeDapp: dappApproval?.assertCurrent,
+                  sendCallsSubmissionId: undefined,
                   ...(dappApproval && {
                     expectedContext: dappApproval.context,
                   }),
                 },
+              ];
+            } else if (smartMethod) {
+              // This capability belongs to the worker, not the renderer.
+              argumentsForCall = [
+                smartApproval?.context
+                  ? { ...params?.[0], expectedContext: smartApproval.context }
+                  : params?.[0],
+                smartApproval?.assertCurrent,
               ];
             } else if (utxoApproval) {
               argumentsForCall = [utxoApproval.input, utxoApproval.authority];
@@ -291,6 +334,8 @@ export const handleMasterControllerResponses = (
               argumentsForCall = [params[0]];
             }
             // Always execute the method; never attempt to send functions over messaging
+            dappApproval?.assertCurrent();
+            smartApproval?.assertCurrent();
             utxoApproval?.authority.assertCurrent();
             const response = await (targetMethod as any)(
               ...(signer
@@ -332,8 +377,26 @@ export const handleMasterControllerResponses = (
             finishSubmission();
             sendResponse(response);
           })
-          .catch((error) => {
+          .catch(async (error) => {
+            const release =
+              error instanceof Error &&
+              Object.getOwnPropertyDescriptor(error, 'transactionNotBroadcast')
+                ?.value === true &&
+              !('transactionHash' in error) &&
+              retiredBatch?.isSoleRetiredAttempt()
+                ? retiredBatch.release
+                : undefined;
             finishSubmission(error);
+            if (release) {
+              try {
+                await release();
+              } catch (releaseError) {
+                console.error(
+                  'Failed to release retired sendCalls attempt:',
+                  releaseError
+                );
+              }
+            }
             console.error('Error executing method:', error);
             // Preserve structured errors from syscoinjs-lib
             if (

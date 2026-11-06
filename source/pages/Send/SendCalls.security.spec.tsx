@@ -273,12 +273,16 @@ describe('sendCalls submission lifecycle', () => {
       address: `0x${'4'.repeat(40)}`,
     };
     await signButton().props.onClick();
-    for (const [, params] of sends()) {
+    const starts = records().filter((record) => record.submissionStarted);
+    for (const [index, [, params]] of sends().entries()) {
       expect(params[0]).toMatchObject({
         chainId: 1,
         from: mockQuery.approvedContext.account.address,
       });
-      expect(params[4]).toEqual({ expectedContext: mockQuery.approvedContext });
+      expect(params[4]).toEqual({
+        expectedContext: mockQuery.approvedContext,
+        sendCallsSubmissionId: starts[index].submissionId,
+      });
     }
     expect(records().every((record) => record.chainId === 1)).toBe(true);
   });

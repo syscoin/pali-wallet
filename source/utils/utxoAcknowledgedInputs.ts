@@ -97,6 +97,14 @@ export const getRecentAcknowledgedInputOutpoints = (
   return outpoints;
 };
 
+export const utxoNetworkCatchingUpError = () =>
+  Object.assign(
+    new Error(
+      'The network is still updating your previous transaction. Please try again shortly.'
+    ),
+    { code: UTXO_NETWORK_CATCHING_UP, transactionNotBroadcast: true }
+  );
+
 /** Ordinary Send only. Explicit external PSBT/RBF approval remains unchanged. */
 export const assertNoRecentAcknowledgedInputOverlap = (
   inputs: readonly Input[],
@@ -106,10 +114,5 @@ export const assertNoRecentAcknowledgedInputOverlap = (
 ) => {
   const acknowledged = getRecentAcknowledgedInputOutpoints(history, scope, now);
   if (utxoInputOutpoints(inputs).some((outpoint) => acknowledged.has(outpoint)))
-    throw Object.assign(
-      new Error(
-        'The network is still updating your previous transaction. Please try again shortly.'
-      ),
-      { code: UTXO_NETWORK_CATCHING_UP, transactionNotBroadcast: true }
-    );
+    throw utxoNetworkCatchingUpError();
 };

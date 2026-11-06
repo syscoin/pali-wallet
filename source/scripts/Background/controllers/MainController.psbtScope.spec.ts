@@ -161,7 +161,10 @@ describe('PSBT approval context', () => {
     wallet.sendAndSaveTransaction = jest.fn();
     wallet.getProtectedSentryOutpoints = jest.fn().mockResolvedValue([]);
     wallet.getRetainedUtxoRecords = jest.fn(() => ({
-      excludedOutpoints: jest.fn(async () => []),
+      fundingExclusions: jest.fn(async () => ({
+        outpoints: [],
+        submitted: new Set(),
+      })),
       admit: async (
         _session: unknown,
         _record: unknown,
@@ -492,6 +495,80 @@ describe('PSBT approval context', () => {
       { amount: '1', excludedOutpoints: [reservation] },
       expect.objectContaining({ fetch: expect.any(Function) })
     );
+  });
+
+  it.each([
+    ['journal match', true, '01'.repeat(32) + ':0', true],
+    ['signed or unknown', true, '01'.repeat(32) + ':0', false],
+    ['protected collateral', true, '02'.repeat(32) + ':0', false],
+    ['other outpoint', true, '01'.repeat(32) + ':1', false],
+    ['ordinary send', false, '01'.repeat(32) + ':0', false],
+    ['empty wallet', true, undefined, false],
+  ] as const)(
+    'classifies an empty native quote using only observed journal exclusions (%s)',
+    async (scenario, nativeSweep, observed, catchingUp) => {
+      const pending = { txid: '01'.repeat(32), vout: 0 };
+      const collateral = { txid: '02'.repeat(32), vout: 0 };
+      wallet.getRetainedUtxoRecords.mockReturnValue({
+        fundingExclusions: jest.fn(async () => ({
+          outpoints: [pending],
+          submitted:
+            scenario === 'signed or unknown'
+              ? new Set()
+              : new Set([`${pending.txid}:${pending.vout}`]),
+        })),
+      });
+      wallet.getProtectedSentryOutpoints.mockResolvedValue([collateral]);
+      const insufficient = {
+        error: true,
+        code: 'INSUFFICIENT_FUNDS',
+        message: 'No native UTXOs are available to sweep.',
+        ...(observed && { excludedNativeOutpoints: [observed] }),
+      };
+      keyring.syscoinTransaction.getEstimateSysTransactionFee.mockRejectedValueOnce(
+        insufficient
+      );
+      const result = wallet.getEstimateSysTransactionFee({
+        amount: '1',
+        nativeSweep,
+      });
+      if (catchingUp)
+        await expect(result).rejects.toMatchObject({
+          code: UTXO_NETWORK_CATCHING_UP,
+          transactionNotBroadcast: true,
+        });
+      else await expect(result).rejects.toBe(insufficient);
+      expect(
+        keyring.syscoinTransaction.getEstimateSysTransactionFee
+      ).toHaveBeenCalledTimes(1);
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+    }
+  );
+
+  it('discards a delayed empty-sweep explanation after the wallet endpoint changes', async () => {
+    const pending = { txid: '01'.repeat(32), vout: 0 };
+    wallet.getRetainedUtxoRecords.mockReturnValue({
+      fundingExclusions: jest.fn(async () => ({
+        outpoints: [pending],
+        submitted: new Set([`${pending.txid}:${pending.vout}`]),
+      })),
+    });
+    keyring.syscoinTransaction.getEstimateSysTransactionFee.mockImplementationOnce(
+      async () => {
+        state.vault.activeNetwork.url = 'https://rpc-b.invalid';
+        throw Object.assign(
+          new Error('No native UTXOs are available to sweep.'),
+          {
+            error: true,
+            code: 'INSUFFICIENT_FUNDS',
+            excludedNativeOutpoints: [`${pending.txid}:${pending.vout}`],
+          }
+        );
+      }
+    );
+    await expect(
+      wallet.getEstimateSysTransactionFee({ amount: '1', nativeSweep: true })
+    ).rejects.toThrow(UTXO_SIGNING_CONTEXT_CHANGED);
   });
 
   it('keeps ordinary transactions on custom Syscoin networks working without Sentry support', async () => {

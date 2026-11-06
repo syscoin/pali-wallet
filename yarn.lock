@@ -2708,10 +2708,10 @@
   resolved "https://registry.npmjs.org/@sidhujag/sysweb3-core/-/sysweb3-core-1.0.30.tgz#b13e85229a1aeb727a9616719ea4ba8bed14e691"
   integrity sha512-KQY33lqKuP6XiRE2fX0iEqa+4tYAUNuASgBdTSbGkqOnopAqZPlIYWAlAqc0i6+K08Fl8vNmff7SIFm33XlNpg==
 
-"@sidhujag/sysweb3-keyring@2.1.4":
-  version "2.1.4"
-  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.4.tgz#f0a1ca8fff9478272e0e9c4e0da0dc2199972a1d"
-  integrity sha512-NJ1QMeDfWu8XQ/NzBAV9ZfzXczdHrUmMorVTeHA2A7HDWXGXjGifcp2inP4wlLhw8Lvu/yQTtX7l0U+C9oZK6w==
+"@sidhujag/sysweb3-keyring@2.1.5":
+  version "2.1.5"
+  resolved "https://registry.npmjs.org/@sidhujag/sysweb3-keyring/-/sysweb3-keyring-2.1.5.tgz#a9f521766f0d4f6dcf10e354852a14c4f0723caf"
+  integrity sha512-v2MxQpxSbUHRbjd29TXMew6Noa77JS25axlYo7NKFZ3oPlU4tiESgHZUAE8uwnIXpWU+aVIYXfbPbT4aMEXBFA==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     "@ledgerhq/context-module" "2.8.0"
@@ -10861,10 +10861,10 @@ symbol-tree@^3.2.4:
   resolved "https://registry.yarnpkg.com/symbol-tree/-/symbol-tree-3.2.4.tgz#430637d248ba77e078883951fb9aa0eed7c63fa2"
   integrity sha512-9QNk5KwDF+Bvz+PyObkmSYjI5ksVUYtjW7AU22r2NKcfLJcXp96hkDWU3+XndOsUb+AQ9QhfzfCT2O+CNWT5Tw==
 
-syscoinjs-lib@1.0.279:
-  version "1.0.279"
-  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.279.tgz#e07d89815e95717cd0be66df93c74e34611b50cc"
-  integrity sha512-vxqj9yoV9Fh+EWtgMPSddpLGfRVIrMR66rSLSC0gOwRFN+nyzEFL4af1IReiW5cLOttE5oobX4TvzlG7wX3Sag==
+syscoinjs-lib@1.0.280:
+  version "1.0.280"
+  resolved "https://registry.npmjs.org/syscoinjs-lib/-/syscoinjs-lib-1.0.280.tgz#3771bf81ed07aa93b2140576bae617ec27f17502"
+  integrity sha512-ig88pEIPpn3oiOP6bmilzwDUVugXzStbc8jtSf4yeD3yqzuL98mIncLqoQ4NZaiuwjtT5f1AAcI9Gf+2bBUorg==
   dependencies:
     "@bitcoinerlab/secp256k1" "^1.2.0"
     axios "^1.18.1"

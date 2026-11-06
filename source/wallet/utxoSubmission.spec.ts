@@ -175,6 +175,35 @@ it('persists before the first POST and returns the exact ACK while its marker is
   finishMarker.finish();
 });
 
+it('retains a trusted acknowledgment for the same owner after reopening', async () => {
+  const c = context();
+  const transaction = record();
+  await expect(
+    submitReviewedUtxo({
+      ...c,
+      record: transaction,
+      intent: 'initial',
+      fetch: async () => c.response(transaction.txid),
+    })
+  ).resolves.toEqual({ txid: transaction.txid });
+  // Join the same admission queue after the detached acknowledgment writer.
+  await expect(
+    c.records.hasUnresolvedForAccount(c.session, owner.slip44, owner.account)
+  ).resolves.toBe(true);
+  const reopened = new UtxoSignedRecords(c.storage, c.storage);
+  const outpoints = [{ txid: transaction.outpoints[0].slice(0, 64), vout: 0 }];
+  expect(await reopened.fundingExclusions(c.session, owner)).toEqual({
+    outpoints,
+    submitted: new Set(transaction.outpoints),
+  });
+  expect(
+    await reopened.fundingExclusions(c.session, {
+      ...owner,
+      account: { ...owner.account, id: owner.account.id + 1 },
+    })
+  ).toEqual({ outpoints, submitted: new Set() });
+});
+
 it('never POSTs when authority is revoked before the durable commit', async () => {
   const c = context(),
     transaction = record(),
@@ -229,9 +258,10 @@ it('retains unknown bytes, fences ordinary overlap and permits separately author
   expect(await reopened.readExact(c.session, owner, transaction.txid)).toEqual(
     transaction
   );
-  expect(await reopened.excludedOutpoints(c.session, owner)).toEqual([
-    { txid: transaction.outpoints[0].slice(0, 64), vout: 0 },
-  ]);
+  expect(await reopened.fundingExclusions(c.session, owner)).toEqual({
+    outpoints: [{ txid: transaction.outpoints[0].slice(0, 64), vout: 0 }],
+    submitted: new Set(),
+  });
   await expect(reopened.persist(c.session, replacement)).rejects.toThrow(
     'UTXO_SIGNED_OUTPOINT_PENDING'
   );
@@ -391,11 +421,15 @@ it('cannot restore terminal eviction authority from an observation held across r
     await posted.promise;
     finishObservation.finish();
     await stale;
-    expect(await c.records.excludedOutpoints(c.session, owner)).toHaveLength(1);
+    expect(
+      (await c.records.fundingExclusions(c.session, owner)).outpoints
+    ).toHaveLength(1);
     await expect(
       check.observe(c.session, owner, transaction.txid, url, async () => result)
     ).resolves.toBe('confirmed');
-    expect(await c.records.excludedOutpoints(c.session, owner)).toEqual([]);
+    expect(
+      (await c.records.fundingExclusions(c.session, owner)).outpoints
+    ).toEqual([]);
   } finally {
     finishObservation.finish();
     reply.finish();
@@ -521,7 +555,9 @@ it('retains previously confirmed bytes when their current owned observation is u
       )
     ).resolves.toBe('unknown');
     expect(fetchMissing).not.toHaveBeenCalled();
-    expect(await c.records.excludedOutpoints(c.session, owner)).toEqual([]);
+    expect(
+      (await c.records.fundingExclusions(c.session, owner)).outpoints
+    ).toEqual([]);
 
     await expect(
       c.records.observe(c.session, owner, transaction.txid, url, fetchMissing)
@@ -533,9 +569,9 @@ it('retains previously confirmed bytes when their current owned observation is u
         operation: 'external',
       })
     ).rejects.toThrow('UTXO_SIGNED_RECORD_CAPACITY');
-    expect(await reopened.excludedOutpoints(c.session, owner)).toEqual([
-      { txid: transaction.outpoints[0]!.slice(0, 64), vout: 0 },
-    ]);
+    expect(
+      (await reopened.fundingExclusions(c.session, owner)).outpoints
+    ).toEqual([{ txid: transaction.outpoints[0]!.slice(0, 64), vout: 0 }]);
     expect(
       await reopened.readExact(c.session, owner, transaction.txid)
     ).toEqual(transaction);
@@ -709,5 +745,7 @@ it('keeps a newer confirmation when an older unknown observation loses ownership
   resume.finish();
   await rejected;
   await expect(newer).resolves.toBe('confirmed');
-  expect(await reopened.excludedOutpoints(c.session, owner)).toEqual([]);
+  expect(
+    (await reopened.fundingExclusions(c.session, owner)).outpoints
+  ).toEqual([]);
 });

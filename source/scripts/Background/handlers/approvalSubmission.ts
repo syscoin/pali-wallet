@@ -9,25 +9,44 @@ import type {
 } from 'utils/utxoSigningContext';
 
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
+import type { EoaSendCallsReservation } from '../controllers/message-handler/sendCallsBundles';
 import type { IReviewedEvmTokenApproval } from '@sidhujag/sysweb3-keyring';
 
-export type DappUtxoReview = Readonly<{
+export type TransactionApprovalDocument = Readonly<{
   assertCurrent: () => void;
   checkDocument: () => Promise<void>;
-  context: IUtxoSigningContext;
   getSignal: () => AbortSignal;
-  method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
-  psbt: Readonly<{
-    assets: string;
-    psbt: string;
-    sentryFeeAuthorization?: string;
-  }>;
 }>;
+
+type DappEvmReview = TransactionApprovalDocument &
+  Readonly<{
+    batch?: EoaSendCallsReservation;
+    context: IEvmTransactionContext;
+  }>;
+
+export type DappUtxoReview = TransactionApprovalDocument &
+  Readonly<{
+    context: IUtxoSigningContext;
+    method: 'signSendAndSaveTransaction' | 'signSyscoinPsbt';
+    psbt: Readonly<{
+      assets: string;
+      psbt: string;
+      sentryFeeAuthorization?: string;
+    }>;
+  }>;
+
+export type DappSmartAccountMethod =
+  | 'registerSmartAccountOnChain'
+  | 'submitSmartAccountExecution';
+
+type DappSmartAccountReview = TransactionApprovalDocument &
+  Readonly<{ methods: readonly DappSmartAccountMethod[] }>;
 
 type Watch = {
   attempts: Set<object>;
-  evmSend?: IEvmTransactionContext;
+  evmSend?: DappEvmReview;
   notify: (possible: boolean) => void;
+  smart?: DappSmartAccountReview;
   utxo?: DappUtxoReview;
 };
 const watches = new Map<string, Set<Watch>>();
@@ -36,8 +55,9 @@ const watches = new Map<string, Set<Watch>>();
 export const watchApprovalSubmission = (
   documentId: string,
   notify: Watch['notify'],
-  evmSend?: IEvmTransactionContext,
-  utxo?: DappUtxoReview
+  evmSend?: DappEvmReview,
+  utxo?: DappUtxoReview,
+  smart?: DappSmartAccountReview
 ): (() => void) => {
   const watch: Watch = {
     attempts: new Set(),
@@ -45,9 +65,16 @@ export const watchApprovalSubmission = (
       evmSend &&
       Object.freeze({
         ...evmSend,
-        account: Object.freeze({ ...evmSend.account }),
+        batch: evmSend.batch && Object.freeze({ ...evmSend.batch }),
+        context: Object.freeze({
+          ...evmSend.context,
+          account: Object.freeze({ ...evmSend.context.account }),
+        }),
       }),
     notify,
+    smart:
+      smart &&
+      Object.freeze({ ...smart, methods: Object.freeze([...smart.methods]) }),
     utxo:
       utxo &&
       Object.freeze({
@@ -68,10 +95,33 @@ export const watchApprovalSubmission = (
   };
 };
 
-export const utxoDappApprovalExpired = () =>
+export const transactionApprovalExpired = () =>
   Object.assign(new Error('This transaction approval is no longer current.'), {
     transactionNotBroadcast: true,
   });
+
+const captureApprovalDocument = (
+  documentId: string,
+  watch: Watch,
+  review: TransactionApprovalDocument
+) => {
+  const signal = review.getSignal();
+  const assertCurrent = () => {
+    if (signal.aborted || !watches.get(documentId)?.has(watch))
+      throw transactionApprovalExpired();
+    review.assertCurrent();
+  };
+  assertCurrent();
+  return {
+    assertCurrent,
+    signal,
+    async checkDocument() {
+      assertCurrent();
+      await review.checkDocument();
+      assertCurrent();
+    },
+  };
+};
 
 /** Bind an exact reviewed PSBT to its enrolled browser document and method. */
 export const captureDappUtxoSubmission = (
@@ -86,31 +136,25 @@ export const captureDappUtxoSubmission = (
   );
   if (!watch?.utxo) return;
   const review = watch.utxo;
-  const signal = review.getSignal();
-  const assertCurrent = () => {
-    if (signal.aborted || !watches.get(documentId)?.has(watch))
-      throw utxoDappApprovalExpired();
-    review.assertCurrent();
-  };
-  assertCurrent();
+  const { assertCurrent, checkDocument, signal } = captureApprovalDocument(
+    documentId,
+    watch,
+    review
+  );
   if (
     method !== review.method ||
     input?.psbt?.psbt !== review.psbt.psbt ||
     input.psbt.assets !== review.psbt.assets ||
     input.psbt.sentryFeeAuthorization !== review.psbt.sentryFeeAuthorization
   )
-    throw utxoDappApprovalExpired();
+    throw transactionApprovalExpired();
   const authority: UtxoDappSigningAuthority = Object.freeze({
     assertCurrent,
     signal,
   });
   return {
     authority,
-    async checkDocument() {
-      assertCurrent();
-      await review.checkDocument();
-      assertCurrent();
-    },
+    checkDocument,
     input: { psbt: review.psbt, expectedContext: review.context },
   };
 };
@@ -125,13 +169,40 @@ export const captureDappEvmSubmission = (
     (candidate) => candidate.evmSend
   );
   if (!watch?.evmSend) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.evmSend
+  );
   return {
-    context: watch.evmSend,
-    assertCurrent: () => {
-      if (!watches.get(documentId)?.has(watch))
-        throw new Error('This transaction approval is no longer current.');
-    },
+    batch: watch.evmSend.batch,
+    context: watch.evmSend.context,
+    assertCurrent,
+    checkDocument,
+    // A prior success or unknown dispatch remains in attempts. It may not
+    // have a durable bundle hash yet, so a later failure cannot release it.
+    isSoleRetiredAttempt: () =>
+      !watches.get(documentId)?.has(watch) && watch.attempts.size === 1,
   };
+};
+
+/** The enrolled route determines which smart-account operations it may submit. */
+export const captureDappSmartAccountSubmission = (
+  sender: chrome.runtime.MessageSender,
+  method: DappSmartAccountMethod
+) => {
+  if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
+  const { documentId } = sender;
+  const watch = [...(watches.get(documentId) || [])].find((candidate) =>
+    candidate.smart?.methods.includes(method)
+  );
+  if (!watch?.smart) return;
+  const { assertCurrent, checkDocument } = captureApprovalDocument(
+    documentId,
+    watch,
+    watch.smart
+  );
+  return { context: watch.evmSend?.context, assertCurrent, checkDocument };
 };
 
 /** Called only around the actual trusted controller invocation, never by a dapp. */

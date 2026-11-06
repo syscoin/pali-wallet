@@ -35,6 +35,7 @@ const publicState = (page: Page) =>
       url: network.url,
       slip44: network.slip44,
       default: network.default,
+      utxoBackendChain: network.utxoBackendChain,
     });
     const networks = (state: any) => ({
       syscoin: project(state.vaultGlobal.networks.syscoin[id]),
@@ -282,8 +283,23 @@ test('network manager distinguishes active UTXO and EVM registrations sharing an
         exact: true,
       });
       await expect(save).toBeEnabled();
+      const readsBeforeSave = reads.length;
       await save.click();
       await expect(manager).toBeVisible();
+      if (family === 'syscoin') {
+        const proofPaths = ['/api/v2/', '/api/v2/block-index/0'];
+        expect(
+          proofPaths.every((pathname) =>
+            reads
+              .slice(readsBeforeSave)
+              .some(
+                (read) =>
+                  read.family === family &&
+                  new URL(read.url).pathname === pathname
+              )
+          )
+        ).toBe(true);
+      }
       await expect
         .poll(async () => (await publicState(page)).saved[family].url)
         .toBe(sharedRpc);
@@ -308,6 +324,7 @@ test('network manager distinguishes active UTXO and EVM registrations sharing an
         const saved = await publicState(page);
         expect(saved.live).toEqual(saved.saved);
         expect(saved.live.syscoin.url).toBe(sharedRpc);
+        expect(saved.live.syscoin.utxoBackendChain).toBe('test');
         expect(saved.live.ethereum.url).toBe(sharedRpc);
         expect(saved.live.syscoin.kind).not.toBe(saved.live.ethereum.kind);
         observations.edited = saved;
