@@ -20,7 +20,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   selected: boolean;
   busy: boolean;
   onSelect(id: Id): Promise<void>;
-  onEdit?: () => void;
+  onEdit?: (network: NativeNetworkSnapshot<Id>['networks'][number]) => void;
 }) {
   return <View style={[s.network, s.networkRow, selected && s.active]}><IdlePressable accessibilityRole="radio"
     accessibilityLabel={`${network.name}, ${network.symbol}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
@@ -35,7 +35,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </IdlePressable>{onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}`} disabled={busy} onPress={onEdit} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
+  </IdlePressable>{onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}`} disabled={busy} onPress={() => onEdit(network)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
 type CatalogueResult =
@@ -181,6 +181,11 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setForm({ utxo: true, id: network.id, catalogueRevision: snapshot.revision, contextRevision: controller.getContextRevision(),
       name: network.name, rpcUrl: network.customUtxoEndpoint,
       chainId: '', symbol: network.symbol, testnet: network.testnet });
+  };
+
+  const editSaved = (network: NativeNetworkSnapshot<Id>['networks'][number]) => {
+    if (network.registration) edit(network.registration);
+    else editUtxo(network);
   };
 
   const verifyEndpoint = async () => {
@@ -361,11 +366,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
               <Text style={s.sectionTitle}>{testnet ? 'Test networks' : 'Main networks'}</Text>
               {testnet && <Text style={s.help}>Test networks use tokens intended for testing.</Text>}
               {networks.map((network) => {
-                const registration = network.registration;
-                const onEdit = controller.save && registration ? () => edit(registration)
-                  : controller.renameUtxo && network.customUtxoEndpoint ? () => editUtxo(network) : undefined;
+                const canEdit = network.registration ? controller.save : controller.renameUtxo && network.customUtxoEndpoint;
                 return <NetworkOption key={network.id} network={network}
-                  selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={onEdit} />;
+                  selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={canEdit ? editSaved : undefined} />;
               })}
             </View>;
           })}
