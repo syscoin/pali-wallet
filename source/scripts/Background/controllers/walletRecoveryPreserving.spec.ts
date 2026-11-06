@@ -228,7 +228,8 @@ async function fixture() {
   };
   await saveEncryptedSLHDSAState(
     pq,
-    createSlhDsaProfileStateCrypto(keyring, () => undefined)
+    createSlhDsaProfileStateCrypto(keyring, () => undefined),
+    () => undefined
   );
   let sequence = 0;
   const nextId = () =>
@@ -393,6 +394,7 @@ it('matching-phrase reset preserves full account metadata, imported profile copi
       await loadEncryptedSLHDSAState({
         keyId: f.pq.keyId,
         crypto: createSlhDsaProfileStateCrypto(f.keyring, () => undefined),
+        assertOwner: () => undefined,
       })
     ).toEqual(f.pq);
     const oldGroups = before['state-vault-60'],

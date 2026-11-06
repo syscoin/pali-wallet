@@ -3,7 +3,6 @@ import { DEFAULT_PRIVACY_SERVICE_ORIGIN } from '../../shared/privacyServiceOrigi
 import {
   createPrivacyRpc,
   PRIVACY_POOL_ABI,
-  readPrivacyJson,
   readPrivacyPoolSnapshot,
   verifyPrivacySnapshotAnchor,
 } from './publicSyncProtocol';
@@ -15,12 +14,23 @@ import type { PrivacyPoolId, PrivacySnapshot } from './types';
 export { validatePrivacyRpcUrl, validateSnapshot } from './snapshotValidation';
 export { PRIVACY_SERVICE_URL } from './publicSyncProtocol';
 
-const requestJson: PrivacyJsonTransport = async (url, init, responseLimit) => {
+const requestJson: PrivacyJsonTransport = async (
+  url,
+  init,
+  responseLimit,
+  readResponse
+) => {
   const response = await fetch(url, init);
-  return {
-    data: await readPrivacyJson(response, responseLimit(response)),
-    status: response.status,
-  };
+  try {
+    return {
+      data: await readResponse(response, responseLimit(response)),
+      status: response.status,
+    };
+  } finally {
+    // Status or Content-Length can reject before the reader takes the body.
+    if (response.body && !response.body.locked)
+      await response.body.cancel().catch(() => undefined);
+  }
 };
 const rpc = createPrivacyRpc(requestJson);
 

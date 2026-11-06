@@ -49,6 +49,8 @@ on:
       - 'source/utils/privacy/withdrawalTransactionTypes.ts'
       - 'source/utils/requestPayloadBudget.ts'
       - 'source/utils/psbtWorkBudget.ts'
+      - 'source/utils/slhDsa/constants.ts'
+      - 'source/utils/slhDsa/hex.ts'
       - 'source/utils/syscoinPsbtValues.ts'
       - 'source/utils/utxoAcknowledgedInputs.ts'
       - 'source/utils/tokenDiscovery.ts'
@@ -103,6 +105,7 @@ jobs:
             -module-cache-path "$RUNNER_TEMP/pali-snapshot-swift-cache" \
             -D PALI_SNAPSHOT_LOOPBACK -parse-as-library \
             "$snapshot_module/ios/PaliPublicSnapshotDownload.swift" \
+            "$snapshot_module/ios/PaliPublicSnapshotBridge.swift" \
             "$snapshot_module/tests/PublicSnapshotDownloadChecks.swift" \
             -o "$snapshot_binary" 2>&1 | tee "$RUNNER_TEMP/pali-native-ios/public-snapshot-loopback.log"
           SWIFT_BACKTRACE=enable=no python3 "$snapshot_module/tests/public_snapshot_loopback.py" \
@@ -182,7 +185,7 @@ jobs:
         run: sdkmanager 'ndk;27.1.12297006' 'platforms;android-37.0' 'build-tools;37.0.0'
       - run: node scripts/configure-native-qualification.cjs
       - run: npx --no-install expo prebuild --platform android --no-install
-      - name: Run Android JVM public snapshot loopback
+      - name: Run Android JVM public snapshot and SLH ownership checks
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/pali-native-android"
@@ -190,6 +193,10 @@ jobs:
             --tests org.syscoin.pali.storage.PaliPublicSnapshotDownloadTest \
             --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
             2>&1 | tee "$RUNNER_TEMP/pali-native-android/public-snapshot-loopback.log"
+          (cd android && ./gradlew :pali-wallet-crypto:testDebugUnitTest \
+            --tests expo.modules.paliwalletcrypto.PaliSlhLeafOperationTest \
+            --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64) \
+            2>&1 | tee "$RUNNER_TEMP/pali-native-android/slh-leaf-ownership.log"
       - name: Build real Android binary
         run: |
           (cd android && ./gradlew :app:assembleRelease --no-daemon --max-workers 2 -PreactNativeArchitectures=arm64-v8a,x86_64)

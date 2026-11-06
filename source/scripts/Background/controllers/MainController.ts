@@ -273,6 +273,7 @@ import { isSentryTransactionVersion } from 'utils/sentry/feeAuthorization';
 import { getSentryNetwork, SENTRY_NETWORKS } from 'utils/sentry/network';
 import {
   getSLHDSASessionGeneration,
+  assertSLHDSASessionGeneration,
   cancelSLHDSAWorkerInOffscreen,
   clearRuntimeSLHDSAStates,
   clearSLHDSAPublicPrecomputeCache,
@@ -8673,10 +8674,12 @@ class MainController {
     pkSeed?: string;
   }) {
     this.configureSLHDSASessionStateCrypto();
+    const generation = getSLHDSASessionGeneration();
     try {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: () => assertSLHDSASessionGeneration(generation),
       });
       const hasState =
         Boolean(state?.secretKeyHex) &&
@@ -8847,6 +8850,7 @@ class MainController {
     const state = await loadEncryptedSLHDSAState({
       crypto: this.getSLHDSASessionStateCrypto(),
       keyId: params.keyId,
+      assertOwner: () => assertSLHDSASessionGeneration(sessionGeneration),
     });
     if (!state) {
       const setupStatus = await getSLHDSASmartAccountSetupStatus({
@@ -8957,6 +8961,7 @@ class MainController {
       const state = await loadEncryptedSLHDSAState({
         crypto: this.getSLHDSASessionStateCrypto(),
         keyId: params.keyId,
+        assertOwner: assertCurrent,
       });
       assertCurrent();
       if (!state) {

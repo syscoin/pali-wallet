@@ -21,7 +21,11 @@ import type {
 export type PrivacyJsonTransport = (
   url: string,
   init: RequestInit & { signal: AbortSignal },
-  responseLimit: (response: Pick<Response, 'ok' | 'status'>) => number
+  responseLimit: (response: Pick<Response, 'ok' | 'status'>) => number,
+  readResponse: (
+    response: PrivacyJsonResponse,
+    limit: number
+  ) => Promise<unknown>
 ) => Promise<{ data: unknown; status: number }>;
 
 export const PRIVACY_SERVICE_URL = `${DEFAULT_PRIVACY_SERVICE_ORIGIN}/api/privacy/v1`;
@@ -48,9 +52,10 @@ export type PrivacyJsonResponse = Readonly<{
   headers: Pick<Headers, 'get'>;
 }>;
 
-export async function readPrivacyJson(
+async function readPrivacyJson(
   response: PrivacyJsonResponse,
-  limit: number
+  limit: number,
+  parse: (text: string) => unknown
 ): Promise<unknown> {
   const declared = response.headers.get('content-length');
   if (declared && Number(declared) > limit)
@@ -69,11 +74,54 @@ export async function readPrivacyJson(
       text += decoder.decode(value, { stream: true });
     }
     text += decoder.decode();
-    return JSON.parse(text);
+    return parse(text);
   } finally {
     await reader.cancel().catch(() => undefined);
   }
 }
+
+function snapshotStringEnd(text: string, start: number): number {
+  for (
+    let end = text.indexOf('"', start + 1);
+    end !== -1;
+    end = text.indexOf('"', end + 1)
+  ) {
+    let backslash = end;
+    while (text[backslash - 1] === '\\') backslash -= 1;
+    if ((end - backslash) % 2 === 0) return end;
+  }
+  throw new Error('privacy_data_invalid');
+}
+
+function parseSnapshotJson(text: string): unknown {
+  // Snapshot arrays contain 66-character hex words. Bound structural tokens
+  // before JSON.parse can allocate a dense array of tiny values or containers.
+  const maximumMetadataEntries = 256;
+  const maximumSeparators =
+    Math.floor(text.length / 64) + maximumMetadataEntries;
+  let separators = 0;
+  let containers = 0;
+  let properties = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      index = snapshotStringEnd(text, index);
+    } else if (
+      (character === ',' && ++separators > maximumSeparators) ||
+      (character === ':' && ++properties > maximumMetadataEntries) ||
+      ((character === '{' || character === '[') &&
+        ++containers > maximumMetadataEntries)
+    ) {
+      throw new Error('privacy_data_invalid');
+    }
+  }
+  return JSON.parse(text);
+}
+
+const readSnapshotJson = (response: PrivacyJsonResponse, limit: number) =>
+  readPrivacyJson(response, limit, parseSnapshotJson);
+const readRpcJson = (response: PrivacyJsonResponse, limit: number) =>
+  readPrivacyJson(response, limit, JSON.parse);
 
 export async function readPrivacyPoolSnapshot(
   poolId: PrivacyPoolId,
@@ -90,7 +138,8 @@ export async function readPrivacyPoolSnapshot(
       if (status !== 200 && status !== 202)
         throw new Error('privacy_service_unavailable');
       return status === 200 ? MAX_SNAPSHOT_BYTES : 4096;
-    }
+    },
+    readSnapshotJson
   );
   const data: any = response.data;
   if (response.status === 200) return validateSnapshot(poolId, data);
@@ -131,7 +180,7 @@ export async function readPrivacyRpcResponse(
 ) {
   if (!response.ok) throw new Error('privacy_rpc_unavailable');
   return privacyRpcResult(
-    await readPrivacyJson(response, privacyRpcResponseLimit(block)),
+    await readRpcJson(response, privacyRpcResponseLimit(block)),
     id
   );
 }
@@ -161,7 +210,8 @@ export function createPrivacyRpc(requestJson: PrivacyJsonTransport) {
           method === 'eth_getBlockByNumber' ||
             method === 'eth_getTransactionReceipt'
         );
-      }
+      },
+      readRpcJson
     );
     return privacyRpcResult(data, id);
   };
