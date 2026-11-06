@@ -1,7 +1,7 @@
 import { id } from 'ethers/hash';
 import { parseNativeAccountId } from './accountIdentity.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
-import { isUtxoWifText } from './importedAccounts.ts';
+import { isUtxoAccountPrivateKey, isUtxoWifText } from './importedAccounts.ts';
 import { getNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 import { CustodyRuntimeError } from './types.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
@@ -30,11 +30,6 @@ export type HdKeyExportPresentation = Readonly<{
   address: string;
   privateKey: string;
 }>;
-
-export function isUtxoAccountPrivateKey(value: unknown, testnet: boolean): value is string {
-  return typeof value === 'string' && /^(zprv|vprv)[1-9A-HJ-NP-Za-km-z]{107}$/.test(value) &&
-    value.startsWith(testnet ? 'vprv' : 'zprv');
-}
 
 export function keyExportRegistrationHash(networkId: string, registrations: readonly NativeNetworkRegistration[]): string {
   const utxo = findUtxoNetwork(networkId);
@@ -153,8 +148,10 @@ export class HdKeyExportFlow {
       current();
       const utxo = findUtxoNetwork(expected.networkId);
       const accountType = parseNativeAccountId(expected.accountId).type;
+      const selected = this.authority.getCatalogue()?.accounts.find(({ id }) => id === expected.accountId);
+      const extended = accountType === 'HDAccount' || selected?.utxoExtended === true;
       const keyMatchesFormat = utxo
-        ? accountType === 'HDAccount' ? isUtxoAccountPrivateKey(privateKey, utxo.testnet) : isUtxoWifText(privateKey)
+        ? extended ? isUtxoAccountPrivateKey(privateKey, utxo.testnet) : isUtxoWifText(privateKey)
         : typeof privateKey === 'string' && /^0x[0-9a-f]{64}$/.test(privateKey);
       if (!keyMatchesFormat) throw new Error('UNAVAILABLE');
       const id = globalThis.crypto.randomUUID();

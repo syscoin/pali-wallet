@@ -106,7 +106,7 @@ test('Bitcoin WIF import and password-confirmed key backup stay readable at 320p
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page.getByRole('button', { name: 'Back', exact: true }).click();
   await openImport(page);
-  const keyField = page.getByRole('textbox', { name: 'WIF private key', exact: true });
+  const keyField = page.getByRole('textbox', { name: 'UTXO private key', exact: true });
   await expect(keyField).toHaveAttribute('type', 'password');
   await page.getByRole('textbox', { name: 'Account name', exact: true }).fill(NAME);
   await keyField.fill(fixtureKey);

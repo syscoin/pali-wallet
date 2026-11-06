@@ -46,6 +46,7 @@ export type NativeCatalogueAccount = Readonly<{
   slip44: number;
   address: string;
   label: string;
+  utxoExtended?: true;
 }>;
 /** Public projection. Complete encrypted SDK records remain inside custody. */
 export type NativeWalletCatalogueSnapshot = Readonly<{
@@ -246,10 +247,13 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
         if (utxo) {
           if (normalizeUtxoAddress(account.address, utxo.id) !== account.address)
             return invalid();
-          if (type === 'HDAccount' && !/^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub))
+          const bip84 = /^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub);
+          if (type === 'HDAccount' && !bip84)
             return invalid();
           if (type === 'Imported' &&
-              (account.xpub !== account.address || !account.xprv || account.isImported !== true ||
+              ((account.xpub !== account.address &&
+                (!bip84 || !account.xpub.startsWith(utxo.testnet ? 'vpub' : 'zpub'))) ||
+               !account.xprv || account.isImported !== true ||
                account.isLedgerWallet || account.isTrezorWallet || account.isSmartAccount))
             return invalid();
         }
@@ -314,7 +318,7 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     return invalid();
   if (utxo) {
     const identity = parseUtxoPublicIdentifier(account.xpub, utxo.id);
-    if (identity.kind !== (selected.type === 'Imported' ? 'address' : 'account') ||
+    if (identity.kind !== (account.xpub === account.address ? 'address' : 'account') ||
         identity.identifier !== account.xpub || identity.address !== account.address)
       return invalid();
   }
@@ -334,6 +338,8 @@ function publicAccounts(group: RecoveryAccountGroup): NativeCatalogueAccount[] {
       slip44,
       address: account.address,
       label: account.label,
+      ...(group.activeNetwork.kind === 'syscoin' && type === 'Imported' &&
+        account.xpub !== account.address ? { utxoExtended: true as const } : {}),
     }))
   );
 }
