@@ -405,8 +405,19 @@ export const SendConfirm = () => {
   });
   const renderedFeeSelection = feeSelectionRef.current;
 
+  const [refreshingCustomNativeFee, setRefreshingCustomNativeFee] =
+    useState(false);
+  const refreshCustomNativeFeeApproval = () => {
+    setRefreshingCustomNativeFee(true);
+    setFeeCalculationError(null);
+  };
+
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
+    if (isNativeSoftwareSend && customFee.isCustom) {
+      refreshCustomNativeFeeApproval();
+      return;
+    }
     setQuotedEvmFeeMode(undefined);
     setFeeCalculationError(null);
     setIsCalculatingFees(false);
@@ -748,8 +759,10 @@ export const SendConfirm = () => {
           [id]
         ).catch(() => undefined);
     };
+    const fresh = refreshingCustomNativeFee && customFee.isCustom;
+    const action = fresh ? 'refreshNativeEvmFeeReview' : 'reviewNativeEvmFee';
     void controllerEmitter(
-      ['wallet', 'reviewNativeEvmFee'],
+      ['wallet', action],
       [request.params, request.legacy, request.maximumFee, request.scope]
     )
       .then((result: any) => {
@@ -770,6 +783,7 @@ export const SendConfirm = () => {
         const remaining = started + result.validForMs - performance.now();
         if (remaining <= 0) throw new Error('Native fee approval expired');
         setNativeFeeApproval({ id: result.id, key: request.key });
+        if (fresh) setRefreshingCustomNativeFee(false);
         expiry = setTimeout(() => {
           discard();
           retireNativeFeeApproval();
@@ -780,6 +794,7 @@ export const SendConfirm = () => {
       .catch(() => {
         if (!cancelled) {
           discard();
+          if (fresh) setRefreshingCustomNativeFee(false);
           setFeeCalculationError(t('send.feeCalculationFailedRetry'));
         }
       });
@@ -2312,7 +2327,11 @@ export const SendConfirm = () => {
         showModal={isOpenEditFeeModal}
         setIsOpen={setIsOpenEditFeeModal}
         customFee={customFee}
-        setCustomFee={setCustomFee}
+        setCustomFee={(next) => {
+          setCustomFee(next);
+          if (isNativeSoftwareSend && customFee.isCustom && feeCalculationError)
+            refreshCustomNativeFeeApproval();
+        }}
         setHaveError={() => {
           // No-op function since haveError is not used
         }}
@@ -2551,7 +2570,8 @@ export const SendConfirm = () => {
                   </span>
                 </div>
                 {!isBitcoinBased &&
-                  !feeCalculationError &&
+                  (!feeCalculationError ||
+                    (isNativeSoftwareSend && customFee.isCustom)) &&
                   (isEIP1559Compatible ? (
                     <button
                       type="button"
@@ -2561,6 +2581,7 @@ export const SendConfirm = () => {
                         loading ||
                         submission.pending ||
                         isCalculatingFees ||
+                        (refreshingCustomNativeFee && !!nativeReviewKey) ||
                         (!customFee.isCustom && !(fee.maxFeePerGas > 0))
                       }
                       className="flex h-11 w-11 shrink-0 items-center justify-center rounded hover:text-fields-input-borderfocus focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200 disabled:cursor-not-allowed"

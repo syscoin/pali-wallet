@@ -11807,7 +11807,7 @@ class MainController {
     );
   }
 
-  public reviewNativeEvmFee(
+  private captureNativeEvmFeeReview(
     params: Record<string, unknown>,
     isLegacy: boolean,
     maximumFee: string,
@@ -11840,7 +11840,45 @@ class MainController {
       JSON.stringify([scope, read.network.url]),
       now
     );
+    return { read, review, now };
+  }
+
+  public reviewNativeEvmFee(
+    params: Record<string, unknown>,
+    isLegacy: boolean,
+    maximumFee: string,
+    scope: IWalletNavigationScope
+  ) {
+    const { read, review, now } = this.captureNativeEvmFeeReview(
+      params,
+      isLegacy,
+      maximumFee,
+      scope
+    );
     return issueNativeEvmFeeReview(this, review, read.assertCurrent, now);
+  }
+
+  public async refreshNativeEvmFeeReview(
+    params: Record<string, unknown>,
+    isLegacy: boolean,
+    maximumFee: string,
+    scope: IWalletNavigationScope
+  ) {
+    const { read, review } = this.captureNativeEvmFeeReview(
+      params,
+      isLegacy,
+      maximumFee,
+      scope
+    );
+    await read.run((provider) =>
+      recheckReviewedNativeEvmTransfer(review, provider, read.assertCurrent)
+    );
+    return issueNativeEvmFeeReview(
+      this,
+      review,
+      read.assertCurrent,
+      Math.floor(performance.now())
+    );
   }
 
   public discardNativeEvmFeeReview(id: string) {
