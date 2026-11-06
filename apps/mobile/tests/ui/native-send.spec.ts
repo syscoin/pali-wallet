@@ -141,6 +141,28 @@ test('an unavailable local picker blocks its selected address but leaves manual 
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
 });
 
+test('Advanced nonce is opt-in and shows the exact choice before approval at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 640 });
+  await page.goto('/');
+  const nonce = page.getByLabel('Transaction nonce', { exact: true });
+  await expect(nonce).toHaveCount(0);
+  const advanced = page.getByRole('button', { name: 'Advanced options', exact: true });
+  await expect(advanced).toHaveAttribute('aria-expanded', 'false');
+  await advanced.click();
+  await expect(page.getByRole('button', { name: 'Hide advanced options' })).toHaveAttribute('aria-expanded', 'true');
+  await expect(nonce).toHaveAttribute('placeholder', 'Automatic');
+  await nonce.fill('7');
+  await page.getByRole('button', { name: 'Hide advanced options' }).click();
+  await page.getByRole('button', { name: 'Advanced options', exact: true }).click();
+  await expect(nonce).toHaveValue('');
+  await nonce.fill('0');
+  await prepare(page);
+  await expect(page.getByTestId('native-send-reviewed-nonce')).toHaveText('0');
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+  await page.getByTestId('native-send-confirm').click();
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toHaveLength(1);
+});
+
 test('cancellation shows the original and maximum fee before one explicit approval at 320px', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 640 });
   await page.goto('/?cancel-transfer');

@@ -55,6 +55,11 @@ const failure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'INVALID_NONCE') return 'Enter a valid whole number for the nonce.';
+  if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
+  if (code === 'NONCE_UNAVAILABLE')
+    return hasSavedTransaction ? 'Check the saved transaction in Activity.'
+      : 'This nonce has already been used on-chain. Choose another or leave it blank.';
   if (code === 'INVALID_INPUT')
     return asset === 'collectible'
       ? `Enter a valid ${context.name} recipient address.`
@@ -100,7 +105,7 @@ type RecipientPickerSession = Readonly<{
   accounts: readonly EvmRecipientChoice[];
 }>;
 
-function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024 }: {
+function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
   label: string;
   value: string;
   onChange(value: string): void;
@@ -108,6 +113,7 @@ function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'defau
   busy: boolean;
   keyboardType?: TextInputProps['keyboardType'];
   max?: number;
+  placeholder?: string;
 }) {
   return (
     <View style={s.field}>
@@ -128,6 +134,7 @@ function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'defau
         textContentType="none"
         keyboardType={keyboardType}
         maxLength={max}
+        placeholder={placeholder}
         placeholderTextColor={colors.muted}
         selectionColor={colors.pink}
         style={s.input}
@@ -186,6 +193,8 @@ export function NativeSend({
   }, []);
   const [amount, setAmount] = useState(initialAmount);
   const [tokenId, setTokenId] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [nonce, setNonce] = useState('');
   const [error, setError] = useState('');
   const lifetime = useRef({ alive: true, epoch: 0 });
   const pickerIsCurrent = (session: RecipientPickerSession) =>
@@ -334,10 +343,11 @@ export function NativeSend({
       setError('Choose an account again or enter a recipient address.');
       return;
     }
+    const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
     if (!draftCollectible) {
       void run(() => token
-        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount)
-        : controller.prepare(recipient.trim(), amount));
+        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount, nonceOverride)
+        : controller.prepare(recipient.trim(), amount, nonceOverride));
       return;
     }
     let id: string;
@@ -360,7 +370,7 @@ export function NativeSend({
       return;
     }
     Keyboard.dismiss();
-    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity));
+    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity, nonceOverride));
   };
   const clearCollectibleError = () => {
     if (draftCollectible && error) setError('');
@@ -459,6 +469,12 @@ export function NativeSend({
                 >
                   {reviewedCollectible?.recipient ?? review.recipient}
                 </Text>
+                {review.nonceOverride !== undefined && <>
+                  <View style={s.separator} />
+                  <Text style={s.label}>MANUAL NONCE</Text>
+                  <Text testID="native-send-reviewed-nonce">{review.nonce}</Text>
+                  <Text style={s.hint}>This can replace a pending transaction with the same nonce, including one sent from another wallet.</Text>
+                </>}
                 <View style={s.separator} />
                 <Text style={s.label}>EXECUTION FEE LIMIT</Text>
                 <Text testID="native-send-fee">
@@ -600,6 +616,8 @@ export function NativeSend({
                     setRecipient('');
                     setAmount(initialAmount);
                     setTokenId('');
+                    setAdvanced(false);
+                    setNonce('');
                     setError('');
                     controller.cancel();
                   }}
@@ -689,7 +707,20 @@ export function NativeSend({
                     onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
                 </>
               )}
-
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+                disabled={busy} expanded={advanced} onPress={() => {
+                  if (advanced) {
+                    setNonce('');
+                    setError('');
+                  }
+                  setAdvanced(!advanced);
+                }} />
+              {advanced && <>
+                <SendInput label="Transaction nonce" value={nonce} onChange={setNonce}
+                  busy={busy} keyboardType="number-pad" max={64} placeholder="Automatic"
+                  onEdit={() => { if (error) setError(''); }} />
+                <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
+              </>}
             </>
           )}
           {busy && (

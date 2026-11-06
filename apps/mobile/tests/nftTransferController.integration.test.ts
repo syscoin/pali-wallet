@@ -77,6 +77,7 @@ async function withController(
     reopen(): Promise<NativeTransfers>;
     confirmOnChain(raw: string): void;
     setPendingNonce(nonce: string): void;
+    setExpectedEstimateNonce(nonce: string, tag: 'latest' | 'pending'): void;
     invalidateCancellationObservation(mode: ObservationFault, readNumber: 1 | 2): void;
     holdOriginalObservation(hash: string): Readonly<{
       started: Promise<void>;
@@ -139,6 +140,8 @@ async function withController(
   let hasHolding = true;
   let confirmed: Transaction | undefined;
   let pendingNonce: string | undefined;
+    let expectedEstimateNonce: string | undefined;
+    let expectedEstimateTag: 'latest' | 'pending' = 'pending';
   let invalidObservation: Readonly<{ mode: ObservationFault; readNumber: 1 | 2 }> | undefined;
   let omitTransaction = false;
   let confirmationsRead = 0;
@@ -233,7 +236,8 @@ async function withController(
         case 'eth_getBalance':
           assert.equal(call.params[0], owner);
           assert.ok(call.params[1] === 'pending' || call.params[1] === 'latest');
-          result = '0xffffffffffff';
+          result = expectedEstimateTag === 'latest' && call.params[1] === 'pending'
+            ? '0x1' : '0xffffffffffff';
           break;
         case 'eth_gasPrice':
           result = '0x65';
@@ -251,8 +255,8 @@ async function withController(
           } else {
             assert.deepEqual(call.params, [{
               from: owner, to: contractAddress, value: '0x0', data: asset.data, type: '0x2',
-              chainId: '0x1', nonce: pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
-            }, 'pending']);
+              chainId: '0x1', nonce: expectedEstimateNonce ?? pendingNonce ?? '0x0', maxFeePerGas: '0xfc', maxPriorityFeePerGas: '0x2',
+            }, expectedEstimateTag]);
             result = '0x7530';
           }
           break;
@@ -347,6 +351,7 @@ async function withController(
         return transfers;
       },
       setPendingNonce(nonce) { pendingNonce = nonce; },
+      setExpectedEstimateNonce(nonce, tag) { expectedEstimateNonce = nonce; expectedEstimateTag = tag; },
       confirmOnChain(raw) { confirmed = Transaction.from(raw); confirmationsRead = 0; },
       invalidateCancellationObservation(mode, readNumber) { invalidObservation = { mode, readNumber }; },
       holdOriginalObservation(hash) {
@@ -410,6 +415,21 @@ async function reviewCollectible(transfers: NativeTransfers, asset: Case) {
   assert.equal(Object.hasOwn(review, 'transaction'), false);
   return review.id;
 }
+
+test('collectible review preserves an explicit override below the external pending count', async () => {
+  const asset = collectibleFixture('ERC-721');
+  await withController(asset, 'success', async ({ transfers, posted, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
+    acknowledgeCommit();
+    setPendingNonce('0x1');
+    setExpectedEstimateNonce('0x0', 'latest');
+    await transfers.view.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units, '0');
+    const approved = transfers.getSnapshot().review!;
+    assert.equal(approved.nonce, '0');
+    assert.equal(approved.nonceOverride, 0);
+    await transfers.confirm(approved.id);
+    assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0]);
+  });
+});
 
 test('a collectible can use a different pending nonce without repeating its wire nonce check', async () => {
   const asset = collectibleFixture('ERC-721');

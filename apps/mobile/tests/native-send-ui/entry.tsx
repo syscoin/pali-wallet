@@ -110,8 +110,8 @@ const controller: NativeTransferView = {
       mode: 'speed-up', originalHash: hash, originalMaximumFeeUnits: '63000',
     });
   },
-  async prepare(to, amount) {
-    publishReview(to, parseDecimalAmount(amount, 18).toString());
+  async prepare(to, amount, nonce) {
+    publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id) {
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
@@ -147,7 +147,8 @@ const controller: NativeTransferView = {
   },
 };
 
-function publishReview(to: string, amountUnits: string, replacement?: NonNullable<NativeTransferSnapshot['review']>['replacement']) {
+function publishReview(to: string, amountUnits: string,
+  replacement?: NonNullable<NativeTransferSnapshot['review']>['replacement'], nonce?: string) {
   clearTimeout(expiry);
   const gas = replacement ? 42000n : 21000n;
   const maximumFee = gas * 3n;
@@ -165,7 +166,8 @@ function publishReview(to: string, amountUnits: string, replacement?: NonNullabl
       gasLimit: gas.toString(),
       maximumFeePerGas: '3',
       priorityFeePerGas: '1',
-      nonce: '0',
+      nonce: nonce ?? '0',
+      ...(nonce === undefined ? {} : { nonceOverride: Number(nonce) }),
       retry: false,
       ...(replacement ? { replacement } : {}),
     }),

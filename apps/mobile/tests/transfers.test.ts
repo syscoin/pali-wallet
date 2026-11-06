@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
@@ -35,7 +36,10 @@ function fixture() {
   const listeners = new Set<(state: CustodySnapshot) => void>();
   const records: Record<string, unknown> = {};
   let availableBalance = '0x10000000000000000';
+  let canonicalBalance: string | undefined;
+  let expectedEstimateState: 'latest' | 'pending' | undefined;
   let nonce = '0x0';
+  let minedNonce = '0x0';
   let baseFee = '0x1';
   let dropped = false;
   let final = false;
@@ -145,17 +149,21 @@ function fixture() {
             : 1n)
             .toString(16)
             .padStart(64, '0');
-      else if (body.method === 'eth_getBalance') result = availableBalance;
+      else if (body.method === 'eth_getBalance')
+        result = body.params[1] === 'latest' ? canonicalBalance ?? availableBalance : availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
-          body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
+          body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
       else if (body.method === 'eth_getBlockByNumber')
         result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
       else if (body.method === 'eth_gasPrice') result = '0x2';
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-      else if (body.method === 'eth_estimateGas') result = '0x5208';
+      else if (body.method === 'eth_estimateGas') {
+        if (expectedEstimateState) assert.equal(body.params[1], expectedEstimateState);
+        result = '0x5208';
+      }
       else if (body.method === 'eth_sendRawTransaction') {
         const record = (JSON.parse(Object.values(records)[0] as string) as { entries: { phase: string }[] }).entries[0]!;
         assert(['signed', 'submitted'].includes(record.phase));
@@ -201,8 +209,17 @@ function fixture() {
     nextNonce() {
       nonce = '0x1';
     },
+    consumeNonce() {
+      nonce = '0x1';
+      minedNonce = '0x1';
+    },
     insufficient() {
       availableBalance = '0x1';
+    },
+    externalPendingBalance(state: 'latest' | 'pending') {
+      canonicalBalance = '0xde0b6b3a7640000';
+      availableBalance = '0x1';
+      expectedEstimateState = state;
     },
     lowerFeesWithReducedBalance() {
       baseFee = '0x0';
@@ -322,6 +339,67 @@ test('invalid ERC20 input makes no RPC or writes with a saved native transfer', 
   } finally {
     f.close();
   }
+});
+
+test('ordinary coin and token sends preserve a deliberate override below the external pending count', async () => {
+  for (const asset of ['coin', 'token'] as const) {
+    const f = fixture();
+    try {
+      f.nextNonce();
+      f.externalPendingBalance('latest');
+      await (asset === 'coin'
+        ? f.transfers.view.prepare(to, '0.9', '0')
+        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'));
+      const approved = f.transfers.getSnapshot().review!;
+      assert.equal(approved.nonce, '0');
+      assert.equal(approved.nonceOverride, 0);
+      assert.equal(f.signatures(), 0);
+      await f.transfers.confirm(approved.id);
+      assert.equal(f.broadcasts.length, 1);
+      assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 0);
+      assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 0);
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_RETAINED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      f.externalPendingBalance('pending');
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '4'), { code: 'INSUFFICIENT_BALANCE' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      assert.equal(f.broadcasts.length, 1);
+    } finally { f.close(); }
+  }
+});
+
+test('manual nonce rejects malformed inputs and accepts zero only while it is available', async () => {
+  const f = fixture();
+  try {
+    for (const input of ['-1', '1.5', '0x0', '1e2', '9007199254740992']) {
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', input), { code: 'INVALID_NONCE' });
+    }
+    assert.equal(f.rpcMethods.length, 0);
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    assert.equal(approved.nonceOverride, 0);
+    f.consumeNonce();
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 0);
+    await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.deepEqual(f.records, {});
+  } finally { f.close(); }
+});
+
+test('a manual nonce claimed during durable append retains its exact signed bytes without posting', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    f.holdWrite(async () => f.consumeNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved?.nonce, 0);
+    assert.equal(saved?.hash, f.transfers.getSnapshot().hash);
+  } finally { f.close(); }
 });
 
 test('a pending nonce change during durable append preserves the approved bytes without posting', async () => {
