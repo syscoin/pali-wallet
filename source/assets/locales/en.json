@@ -399,6 +399,8 @@
     "reduceFee": "Please, reduce fees to send transaction.",
     "cantCompleteTxs": "Can't complete transaction. Try again later.",
     "savedNonceConflict": "A saved transaction already uses this nonce. Check Activity.",
+    "legacyPendingNonce": "A previous transaction is pending. Check Activity before trying again.",
+    "legacyNonceVerificationUnavailable": "Unable to verify previous transactions. Check your connection and Activity, then try again.",
     "txSuccessfull": "Transaction successful",
     "txSuccessfullMessage": "Your transaction has been successfully submitted. You can see more details under activity on your home page.",
     "estimatedGasFee": "Estimated gas fee",

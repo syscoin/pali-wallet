@@ -52,7 +52,6 @@ import {
   assertEvmFeeRefreshApproved,
 } from '../../../shared/evmFeeApproval';
 import { getEvmTransferCost } from '../../../shared/evmTransferCost';
-import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import {
   BLOCKBOOK_TICKER_PATH,
   readBlockbookNativeQuote,
@@ -202,7 +201,6 @@ import {
   UtxoRpcDraft,
 } from 'types/transactions';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
-import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import {
   AsyncMutex,
   fiatPriceMutex,
@@ -223,10 +221,7 @@ import {
 } from 'utils/ethersV6Compat';
 import { decodeTransactionData } from 'utils/ethUtil';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
-import {
-  getEoaNonceFromHistoryTransaction,
-  needsEoaNonceHistoryVerification,
-} from 'utils/evmNonce';
+import { getEoaNonceFromHistoryTransaction } from 'utils/evmNonce';
 import {
   buildEvmMinedNonceIndex,
   getEvmSettlementStatus,
@@ -317,6 +312,7 @@ import type {
   SmartAccountGuardianRecoveryDigestContext,
   SmartAccountGuardianRecoveryOperation,
 } from 'utils/smartAccount';
+import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import { chromeStorage } from 'utils/storageAPI';
 import {
   assertUtxoBuilderFee,
@@ -369,6 +365,7 @@ import { IBalancesManager } from './balances/types';
 import { createBrowserKeyringHost } from './browserKeyringHost';
 import ChainListService from './chainlist';
 import {
+  assertNoObservedLegacyPending,
   planExtensionEvmNonce,
   reviewedExtensionNonce,
   type ExtensionReviewedNonce,
@@ -384,6 +381,7 @@ import {
   assertLiveEvmReplacementChain,
   createExtensionEvmReplay,
   createExtensionRetainedCancellation,
+  readLiveEvmChainId,
 } from './evmSignedReplay';
 import {
   captureReviewedNativeEvmTransfer,
@@ -427,6 +425,7 @@ import {
 } from './transactions/types';
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
+import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
 import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type {
@@ -1462,6 +1461,7 @@ class MainController {
           await this.inspectOrdinaryEvmNonce(read, record.from, {
             reviewed,
             snapshot,
+            currentSignedHash: record.hash,
             minimumBalance: total,
             assertCurrent: assertDispatchCurrent,
             protectedAssetContract:
@@ -3272,7 +3272,7 @@ class MainController {
       prepareFees: async (transaction, session) => {
         const { provider } = binding(session);
         if (
-          uint(await read(session, () => provider.send('eth_chainId', []))) !==
+          uint(await readLiveEvmChainId(provider, session.assertCurrent)) !==
           BigInt(1)
         )
           throw new Error('privacy_deposit_context_invalid');
@@ -3582,7 +3582,7 @@ class MainController {
         const { provider } = sessionBinding(session);
         if (
           privacyFeeQuantity(
-            await read(session, () => provider.send('eth_chainId', []))
+            await readLiveEvmChainId(provider, session.assertCurrent)
           ) !== BigInt(1)
         )
           throw new Error('privacy_withdrawal_context_changed');
@@ -3606,7 +3606,7 @@ class MainController {
         const { provider } = sessionBinding(session);
         if (
           privacyFeeQuantity(
-            await read(session, () => provider.send('eth_chainId', []))
+            await readLiveEvmChainId(provider, session.assertCurrent)
           ) !== BigInt(1)
         )
           throw new Error('privacy_withdrawal_context_changed');
@@ -8560,6 +8560,7 @@ class MainController {
       assertCurrentContext?: () => void;
       authorizeDapp?: () => void;
       clearNavigation?: boolean;
+      dappNonceApproval?: ExtensionReviewedNonce;
       expectedContext?: IEvmTransactionContext;
       hardwareScope?: IWalletNavigationScope;
       nativeReview?: { id: string; scope: IWalletNavigationScope };
@@ -8796,6 +8797,34 @@ class MainController {
         });
         walletNonce =
           explicit ?? reviewedExtensionNonce(plan.nonce, 'automatic');
+      }
+      if (authorizeDapp) {
+        const approval = saveOptions?.dappNonceApproval;
+        if (
+          !approval ||
+          !expectedContext ||
+          params.nonce === undefined ||
+          params.nonce === null
+        )
+          throw Object.assign(new Error('Dapp nonce approval is required'), {
+            transactionNotBroadcast: true,
+          });
+        const approvedNonce = reviewedExtensionNonce(
+          params.nonce,
+          approval.source
+        );
+        if (approvedNonce.nonce !== approval.nonce)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const read = this.captureFreshEvmRead(getWalletNavigationScope());
+        await this.inspectOrdinaryEvmNonce(
+          read,
+          expectedContext.account.address,
+          {
+            reviewed: approvedNonce,
+            assertCurrent: assertAuthority,
+          }
+        );
+        walletNonce = approvedNonce;
       }
       assertAuthority();
       const { accounts, activeAccount } = store.getState().vault;
@@ -9357,6 +9386,7 @@ class MainController {
     from: string,
     options: Readonly<{
       assertCurrent?: () => void;
+      currentSignedHash?: string;
       minimumBalance?: bigint;
       protectedAssetContract?: string;
       reviewed?: ExtensionReviewedNonce;
@@ -9379,142 +9409,57 @@ class MainController {
         from
       ));
     assertCurrent();
-    return read.run(
-      (provider) =>
-        planExtensionEvmNonce({
-          ...options,
+    return read.run(async (provider) => {
+      const scope = { chainId, endpoint: read.network.url, from };
+      const plan = await planExtensionEvmNonce({
+        ...options,
+        provider,
+        scope,
+        snapshot,
+        acceptance: records.autoNonceAcceptance,
+        assertCurrent,
+      });
+      if (options.reviewed?.source !== 'manual') {
+        assertCurrent();
+        const { accounts, accountTransactions } = store.getState().vault;
+        const hashes = Object.entries(accounts).flatMap(([type, members]) =>
+          Object.entries(members).flatMap(([id, account]) =>
+            account?.address?.toLowerCase() === from.toLowerCase()
+              ? (
+                  accountTransactions?.[type as keyof typeof accounts]?.[
+                    Number(id)
+                  ]?.ethereum?.[read.network.chainId] || []
+                )
+                  .filter(
+                    (tx: any) =>
+                      getEoaNonceFromHistoryTransaction(tx, from) ===
+                        plan.nonce &&
+                      typeof tx.hash === 'string' &&
+                      /^0x[0-9a-fA-F]{64}$/.test(tx.hash) &&
+                      tx.hash.toLowerCase() !==
+                        options.currentSignedHash?.toLowerCase()
+                  )
+                  .map((tx: any) => tx.hash as string)
+              : []
+          )
+        );
+        await assertNoObservedLegacyPending({
           provider,
-          scope: { chainId, endpoint: read.network.url, from },
-          snapshot,
-          acceptance: records.autoNonceAcceptance,
+          scope,
+          nonce: plan.nonce,
+          hashes,
           assertCurrent,
-        }),
-      options.signal
-    );
+        });
+      }
+      return plan;
+    }, options.signal);
   }
 
   public async getRecommendedEvmNonce(address: string): Promise<number> {
-    let retainedReadFailed = false;
-    try {
-      const session = this.capturePrivateVaultSession();
-      const capturedNetwork = { ...store.getState().vault.activeNetwork };
-      const assertNonceContext = () => {
-        session.assertCurrent();
-        const network = store.getState().vault.activeNetwork;
-        if (
-          network.chainId !== capturedNetwork.chainId ||
-          network.url !== capturedNetwork.url
-        )
-          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      };
-      const provider = this.ethereumTransaction?.web3Provider;
-      if (!provider) {
-        throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-      }
-
-      const latestNonce = await provider.getTransactionCount(address, 'latest');
-      assertNonceContext();
-
-      const normalizedAddress = address.toLowerCase();
-      const { accounts, accountTransactions, activeNetwork } =
-        store.getState().vault;
-      const localTransactions = Object.entries(accounts).flatMap(
-        ([type, members]) =>
-          Object.entries(members).flatMap(([id, account]) =>
-            account?.address?.toLowerCase() === normalizedAddress
-              ? accountTransactions?.[type as keyof typeof accounts]?.[
-                  Number(id)
-                ]?.ethereum?.[activeNetwork.chainId] || []
-              : []
-          )
-      );
-      const localConfirmedTransactions: Array<{
-        nonce: number;
-        transaction: any;
-      }> = [];
-      const localPendingNonces = new Set<number>();
-      try {
-        const retained = await this.getRetainedEvmRecords().listSender(
-          { keyring: session.keyring, assertCurrent: assertNonceContext },
-          String(activeNetwork.chainId),
-          address
-        );
-        assertNonceContext();
-        for (const entry of retained)
-          if (
-            !['confirmed', 'reverted'].includes(entry.phase) &&
-            entry.nonce >= latestNonce
-          )
-            localPendingNonces.add(entry.nonce);
-      } catch (error) {
-        retainedReadFailed = true;
-        throw error;
-      }
-
-      // Match MetaMask's nonce model: start from canonical/latest chain state
-      // plus local confirmed history, then skip nonces Pali has locally pending.
-      for (const tx of localTransactions as any[]) {
-        const nonce = getEoaNonceFromHistoryTransaction(tx, normalizedAddress);
-        if (nonce === undefined) {
-          continue;
-        }
-
-        if (isTransactionInBlock(tx)) {
-          localConfirmedTransactions.push({ nonce, transaction: tx });
-        } else {
-          localPendingNonces.add(nonce);
-        }
-      }
-
-      // Highest confirmed nonce is the only one that can affect the result.
-      // Verify incomplete explorer/history rows lazily so priority operations
-      // and old token-event records cannot masquerade as EOA transactions.
-      localConfirmedTransactions.sort((a, b) => b.nonce - a.nonce);
-      let localConfirmedNextNonce = 0;
-      for (const candidate of localConfirmedTransactions) {
-        if (candidate.nonce < latestNonce) {
-          break;
-        }
-
-        if (needsEoaNonceHistoryVerification(candidate.transaction)) {
-          const hash = candidate.transaction?.hash;
-          if (!hash) {
-            continue;
-          }
-
-          try {
-            const providerTransaction = await provider.send(
-              'eth_getTransactionByHash',
-              [hash]
-            );
-            if (
-              !providerTransaction ||
-              getEoaNonceFromHistoryTransaction(
-                providerTransaction as any,
-                normalizedAddress
-              ) !== candidate.nonce
-            ) {
-              continue;
-            }
-          } catch {
-            continue;
-          }
-        }
-
-        localConfirmedNextNonce = candidate.nonce + 1;
-        break;
-      }
-
-      let nextNonce = Math.max(latestNonce, localConfirmedNextNonce);
-      while (localPendingNonces.has(nextNonce)) {
-        nextNonce += 1;
-      }
-
-      return nextNonce;
-    } catch (error) {
-      if (retainedReadFailed) throw error;
-      return await this.ethereumTransaction.getRecommendedNonce(address);
-    }
+    const read = this.captureFreshEvmRead(getWalletNavigationScope());
+    const { nonce } = await this.inspectOrdinaryEvmNonce(read, address);
+    read.assertCurrent();
+    return nonce;
   }
 
   /**

@@ -24,3 +24,15 @@ export const isSavedEvmNonceConflict = (
 
 export const WALLET_NETWORK_CATCHING_UP_MESSAGE =
   'The network is still updating your previous transaction. Please try again shortly.';
+
+export const EVM_LEGACY_PENDING = 'EVM_LEGACY_PENDING';
+export const EVM_LEGACY_VERIFICATION_UNAVAILABLE =
+  'EVM_LEGACY_VERIFICATION_UNAVAILABLE';
+
+/** Only locally classified pre-broadcast failures receive these messages. */
+export const legacyEvmNonceErrorKey = (error: any): string | undefined => {
+  if (error?.transactionNotBroadcast !== true) return;
+  if (error.code === EVM_LEGACY_PENDING) return 'send.legacyPendingNonce';
+  if (error.code === EVM_LEGACY_VERIFICATION_UNAVAILABLE)
+    return 'send.legacyNonceVerificationUnavailable';
+};

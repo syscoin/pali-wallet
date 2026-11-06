@@ -27,6 +27,7 @@ import { webcrypto } from 'crypto';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { EvmAutoNonceAcceptance } from '../../../shared/evmAutoNonce';
 import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
 import { KeyringAccountType } from 'types/network';
@@ -675,7 +676,9 @@ it('fresh explicit replay uses exact stored bytes and consumes its confirmation 
   expect(
     provider.send.mock.calls.some(([method]) => method === 'eth_getCode')
   ).toBe(false);
-  expect(provider._send).toHaveBeenCalledTimes(1);
+  // Prepare and confirm each bracket observation with live chain reads.
+  // Dispatch then checks the chain once more under admission.
+  expect(provider._send).toHaveBeenCalledTimes(5);
 });
 
 it('refuses the exact provider send when final shared replay admission fails', async () => {
@@ -757,7 +760,8 @@ it.each(['latest', 'pending', 'queued', 'consumed', 'ready'])(
           ? 'Unable to verify a ready cancellation nonce'
           : 'Unable to verify a code-free cancellation payer'
       );
-    expect(provider._send).toHaveBeenCalledTimes(1);
+    // Both observations and the final admitted dispatch use the live chain.
+    expect(provider._send).toHaveBeenCalledTimes(5);
     expect(nonceReads).toBe(3);
     expect(
       provider.send.mock.calls.filter(([method]) => method === 'eth_getCode')
@@ -838,6 +842,80 @@ it.each(['send', 'cancel'] as const)(
       ]);
     } finally {
       release.resolve();
+      abort.abort();
+      live.destroy();
+    }
+  }
+);
+
+it.each([
+  'wrong-before-observation',
+  'wrong-during-observation',
+  'unchanged',
+] as const)(
+  'checks the live provider chain while observing a saved transaction: %s',
+  async (scenario) => {
+    const { CustomJsonRpcProvider } = jest.requireActual(
+      '@sidhujag/sysweb3-keyring/cjs/providers'
+    );
+    const abort = new AbortController();
+    const live = new CustomJsonRpcProvider(
+      abort.signal,
+      context.network.url,
+      context.network.chainId
+    );
+    keyring.ethereumTransaction.web3Provider = live;
+    const wire: string[] = [];
+    let chain = '0x7b';
+    jest.spyOn(global, 'fetch').mockImplementation(async (url, init) => {
+      expect(url).toBe(context.network.url);
+      expect(init?.signal).toBe(abort.signal);
+      const { id, method } = JSON.parse(init!.body as string);
+      wire.push(method);
+      let result: unknown;
+      if (method === 'eth_chainId') result = chain;
+      else if (method === 'eth_getTransactionReceipt') result = null;
+      else if (method === 'eth_getTransactionCount') {
+        result = scenario === 'unchanged' ? '0x0' : '0x1';
+        if (scenario === 'wrong-during-observation') chain = '0x1';
+      } else throw Error('Unexpected RPC');
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ jsonrpc: '2.0', id, result }),
+      } as Response;
+    });
+    try {
+      // The real installed provider caches the first result for send().
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      if (scenario === 'wrong-before-observation') chain = '0x1';
+      const before = wire.length;
+      await expect(live.send('eth_chainId', [])).resolves.toBe('0x7b');
+      expect(wire).toHaveLength(before);
+      const result = wallet.prepareEvmSignedReplay(entry.hash);
+      if (scenario === 'unchanged') {
+        await expect(result).resolves.toMatchObject({ status: 'review' });
+        expect(wire).not.toContain('eth_sendRawTransaction');
+      } else {
+        await expect(result).rejects.toMatchObject({ code: 'CONTEXT_CHANGED' });
+        expect(wire.slice(before)).toEqual(
+          scenario === 'wrong-before-observation'
+            ? ['eth_chainId']
+            : [
+                'eth_chainId',
+                'eth_getTransactionReceipt',
+                'eth_getTransactionCount',
+                'eth_chainId',
+              ]
+        );
+      }
+      // A wrong backend may not mark this transaction consumed or dispatch it.
+      expect(records.updateObservedPhase).not.toHaveBeenCalled();
+      expect(records.updatePhase).not.toHaveBeenCalled();
+      expect(records.reconcileMinedCancellation).not.toHaveBeenCalled();
+      expect(records.append).not.toHaveBeenCalled();
+      expect(wire).not.toContain('eth_sendRawTransaction');
+    } finally {
       abort.abort();
       live.destroy();
     }
@@ -925,4 +1003,323 @@ it('refuses cancellation metadata on a signed payment before any code read or se
         method === 'eth_getCode' || method === 'eth_sendRawTransaction'
     )
   ).toBe(false);
+});
+
+// Exercise the controller entry points for single dapp requests and EOA batches.
+describe('dapp automatic nonce recommendation', () => {
+  function nonceFixture({
+    pending = 0,
+    retained = [] as any[],
+    observed: pendingObserved = false,
+  } = {}) {
+    mockState.vault.accountTransactions = {
+      HDAccount: { 0: { ethereum: { 123: [] } } },
+    };
+    const assertCurrent = jest.fn(() => undefined);
+    const session = { keyring, assertCurrent };
+    wallet.capturePrivateVaultSession = jest.fn(() => session);
+    wallet.assertWalletReadyForSigning = jest.fn();
+    const hash = entry.hash;
+    const rpc = provider as any;
+    rpc.signal = new AbortController().signal;
+    rpc.verifyConfiguredChainId = jest.fn(async () => undefined);
+    rpc.getTransactionCount = jest.fn(async (address: string, tag: string) => {
+      expect(address).toBe(signer.address);
+      return tag === 'latest' ? 0 : pending;
+    });
+    rpc.send = jest.fn(async (method: string, params: unknown[]) => {
+      if (method === 'eth_chainId') return '0x7b';
+      if (method === 'eth_getTransactionCount')
+        return params[1] === 'latest' ? '0x0' : `0x${pending.toString(16)}`;
+      if (method === 'eth_getTransactionByHash')
+        return pendingObserved && params[0] === hash
+          ? {
+              hash,
+              from: signer.address,
+              nonce: '0x0',
+              blockHash: null,
+              blockNumber: null,
+              transactionIndex: null,
+            }
+          : null;
+      throw Error('Unexpected fixture RPC');
+    });
+    records.listSender = jest.fn(async () => retained);
+    records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
+    records.captureAutoNonceSnapshot = jest.fn(async () => ({
+      owner: 'nonce-review-fixture',
+      retained,
+      readMaximumCost: async () => BigInt(21000),
+      touchesContract: async () => false,
+    }));
+    // Compatible with the same captured-route helper used by the reviewed
+    // native/token paths, while all requests remain synthetic and local.
+    wallet.captureFreshEvmRead = jest.fn(() => ({
+      keyring,
+      network: context.network,
+      assertCurrent,
+      run: (work: (freshProvider: any) => unknown) => work(rpc),
+    }));
+    return { rpc, retained };
+  }
+
+  it('starts both single dapp and batch recommendations after an external pending nonce', async () => {
+    const { rpc } = nonceFixture({ pending: 1 });
+    await expect(wallet.getRecommendedEvmNonce(signer.address)).resolves.toBe(
+      1
+    );
+    await expect(
+      wallet.getRecommendedNonceForBatch(signer.address)
+    ).resolves.toBe(1);
+    expect(
+      rpc.send.mock.calls.some(
+        ([method, params]: [string, string[]]) =>
+          method === 'eth_getTransactionCount' && params[1] === 'pending'
+      ) ||
+        rpc.getTransactionCount.mock.calls.some(
+          (call: [string, string]) => call[1] === 'pending'
+        )
+    ).toBe(true);
+  });
+
+  it('does not recommend a nonce beyond an unseen dropped signed predecessor', async () => {
+    const predecessor = {
+      chainId: '123',
+      from: signer.address,
+      hash: entry.hash,
+      nonce: 0,
+      phase: 'signed',
+    };
+    const { rpc } = nonceFixture({ pending: 0, retained: [predecessor] });
+    await expect(
+      wallet.getRecommendedEvmNonce(signer.address)
+    ).rejects.toThrow();
+    await expect(
+      wallet.getRecommendedNonceForBatch(signer.address)
+    ).rejects.toThrow();
+    expect(
+      rpc.send.mock.calls.filter(
+        ([method]: [string]) => method === 'eth_sendRawTransaction'
+      )
+    ).toHaveLength(0);
+  });
+
+  it('can advance over a same-endpoint observed pending predecessor despite lagging counts', async () => {
+    const predecessor = {
+      chainId: '123',
+      from: signer.address,
+      hash: entry.hash,
+      nonce: 0,
+      phase: 'signed',
+    };
+    nonceFixture({ pending: 0, retained: [predecessor], observed: true });
+    await expect(wallet.getRecommendedEvmNonce(signer.address)).resolves.toBe(
+      1
+    );
+  });
+});
+
+it.each([
+  'unchanged',
+  'pending count',
+  'legacy pending',
+  'lock',
+  'account',
+  'network',
+])(
+  'checks automatic dapp submission with %s before dispatch',
+  async (change) => {
+    const sdkKeyring = Object.assign(
+      Object.create(SoftwareKeyring.prototype),
+      keyring,
+      {
+        sessionPassword: { isCleared: () => false },
+        sessionMnemonic: { isCleared: () => false },
+        privateRecordSessionRevision: 0,
+        getDecryptedMnemonic: () => 'Public journal nonce test fixture',
+      }
+    );
+    wallet.getActiveKeyring.mockReturnValue(sdkKeyring);
+    let saved: string | undefined;
+    const journal = new EvmSignedRecords({
+      async read() {
+        return saved;
+      },
+      async compareAndSet(_id, expected, next, assertCurrent) {
+        assertCurrent();
+        if (saved !== expected) return false;
+        saved = next;
+        return true;
+      },
+    });
+    wallet.getRetainedEvmRecords.mockReturnValue(journal);
+    const admission = jest.spyOn(journal, 'withReplayAdmission');
+    const legacyHash = `0x${'ab'.repeat(32)}`;
+    if (change === 'legacy pending')
+      mockState.vault.accountTransactions.HDAccount[0].ethereum[123][0].hash =
+        legacyHash;
+    const rpc = {
+      signal: new AbortController().signal,
+      verifyConfiguredChainId: jest.fn(async () => undefined),
+      send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_getTransactionCount')
+          return params[1] === 'pending' && change === 'pending count'
+            ? '0x1'
+            : '0x0';
+        if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
+        if (
+          method === 'eth_getTransactionByHash' &&
+          change === 'legacy pending'
+        )
+          return {
+            hash: legacyHash,
+            from: signer.address,
+            nonce: '0x0',
+            chainId: '0x7b',
+            blockHash: null,
+            blockNumber: null,
+            transactionIndex: null,
+          };
+        throw Error('Unexpected fixture RPC');
+      }),
+    };
+    wallet.captureFreshEvmRead = jest.fn(() => ({
+      keyring: sdkKeyring,
+      network: context.network,
+      assertCurrent: () => undefined,
+      run: (work: (freshProvider: typeof rpc) => unknown) => work(rpc),
+    }));
+    const approved = {
+      ...context,
+      walletNonce: { nonce: 0, source: 'automatic' as const },
+    };
+    const boundary = captureEvmSubmission(
+      approved,
+      () => undefined,
+      () => wallet.captureEvmSignedSubmission(sdkKeyring, approved)
+    );
+    const broadcast = jest.fn(
+      async (bytes: string) => Transaction.from(bytes).hash
+    );
+    if (change === 'lock') keyring.isUnlocked.mockReturnValue(false);
+    if (change === 'account') mockState.vault.activeAccount.id = 1;
+    if (change === 'network')
+      mockState.vault.activeNetwork.url = 'https://changed.invalid';
+    const submit = submitSignedEvmTransaction(
+      raw,
+      ({ rawTransaction, admit }) => admit(() => broadcast(rawTransaction)),
+      boundary,
+      undefined,
+      Transaction.from(raw).unsignedSerialized
+    );
+    if (change === 'unchanged') {
+      await expect(submit).resolves.toBe(Transaction.from(raw).hash);
+      expect(broadcast).toHaveBeenCalledTimes(1);
+      expect(admission).toHaveBeenCalledTimes(1);
+      expect(saved).toBeDefined();
+    } else {
+      const message =
+        change === 'pending count'
+          ? 'The account nonce changed. Review this transfer again.'
+          : change === 'legacy pending'
+          ? 'A previous transaction is still pending. Check Activity before trying again.'
+          : change === 'lock'
+          ? 'Wallet session changed. Unlock the wallet and try again.'
+          : 'PALI_TRANSACTION_CONTEXT_CHANGED';
+      await expect(submit).rejects.toThrow(message);
+      expect(broadcast).not.toHaveBeenCalled();
+      if (change === 'pending count' || change === 'legacy pending') {
+        expect(saved).toBeDefined();
+        expect(admission).toHaveBeenCalledTimes(1);
+        expect(rpc.send).toHaveBeenCalledWith('eth_getTransactionCount', [
+          signer.address,
+          'pending',
+        ]);
+        if (change === 'legacy pending')
+          expect(rpc.send).toHaveBeenCalledWith('eth_getTransactionByHash', [
+            legacyHash,
+          ]);
+      } else {
+        expect(admission).not.toHaveBeenCalled();
+      }
+    }
+  }
+);
+
+describe('legacy pending guard in the shared nonce inspector', () => {
+  const install = (pending: number, pendingLookup: unknown) => {
+    const assertCurrent = jest.fn();
+    const rpc = {
+      signal: new AbortController().signal,
+      verifyConfiguredChainId: jest.fn(async () => undefined),
+      send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_getTransactionCount')
+          return params[1] === 'pending' ? `0x${pending.toString(16)}` : '0x0';
+        if (method === 'eth_getTransactionByHash') return pendingLookup;
+        throw Error(`Unexpected RPC: ${method}`);
+      }),
+    };
+    const read = {
+      keyring,
+      network: context.network,
+      assertCurrent,
+      run: (work: (freshProvider: any) => unknown) => work(rpc),
+    };
+    const snapshot = {
+      owner: 'legacy-test',
+      retained: [],
+      readMaximumCost: async () => BigInt(0),
+    };
+    records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
+    records.captureAutoNonceSnapshot = jest.fn(async () => snapshot);
+    wallet.captureFreshEvmRead = jest.fn(() => read);
+    return { rpc, read, snapshot };
+  };
+  it('checks the same candidate at quote and when a held snapshot is supplied', async () => {
+    const legacyPendingTx = {
+      hash: entry.hash,
+      from: signer.address,
+      nonce: '0x0',
+      chainId: '0x7b',
+      blockHash: null,
+      blockNumber: null,
+      transactionIndex: null,
+    };
+    const { read, snapshot } = install(0, legacyPendingTx);
+    await expect(wallet.getRecommendedEvmNonce(signer.address)).rejects.toThrow(
+      'A previous transaction is still pending'
+    );
+    await expect(
+      wallet.inspectOrdinaryEvmNonce(read, signer.address, {
+        snapshot,
+        reviewed: { nonce: 0, source: 'automatic' },
+      })
+    ).rejects.toThrow('A previous transaction is still pending');
+  });
+  it('lets the pending count account for the predecessor and preserves explicit manual nonce policy', async () => {
+    const legacyPendingTx = {
+      hash: entry.hash,
+      from: signer.address,
+      nonce: '0x0',
+      chainId: '0x7b',
+      blockHash: null,
+      blockNumber: null,
+      transactionIndex: null,
+    };
+    const { rpc, read, snapshot } = install(1, legacyPendingTx);
+    await expect(wallet.getRecommendedEvmNonce(signer.address)).resolves.toBe(
+      1
+    );
+    await expect(
+      wallet.inspectOrdinaryEvmNonce(read, signer.address, {
+        snapshot,
+        reviewed: { nonce: 0, source: 'manual' },
+      })
+    ).resolves.toMatchObject({ nonce: 0 });
+    expect(
+      rpc.send.mock.calls.filter(
+        ([method]) => method === 'eth_getTransactionByHash'
+      )
+    ).toHaveLength(0);
+  });
 });

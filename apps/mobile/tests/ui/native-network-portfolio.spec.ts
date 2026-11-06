@@ -139,6 +139,9 @@ test('a quote arriving during a press keeps the selected Receive button in place
     await page.mouse.move(button!.x + button!.width / 2, button!.y + button!.height / 2);
     await page.mouse.down();
     try {
+      // Capture both measurements after React has committed the pressed scale.
+      await expect.poll(() => receive.evaluate((node) => getComputedStyle(node).transform))
+        .toBe('matrix(0.99, 0, 0, 0.99, 0, 0)');
       const before = await receive.boundingBox();
       quoteReady.resolve();
       await expect(quote).toHaveText('≈ 2.468 USD');

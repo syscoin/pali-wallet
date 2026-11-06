@@ -1,8 +1,11 @@
 import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
-import { WALLET_NETWORK_CATCHING_UP_MESSAGE } from 'utils/evmTransactionContext';
-
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
+import {
+  EVM_LEGACY_PENDING,
+  EVM_LEGACY_VERIFICATION_UNAVAILABLE,
+  WALLET_NETWORK_CATCHING_UP_MESSAGE,
+} from 'utils/evmTransactionContext';
 
 import type {
   EvmAutoNonceAcceptance,
@@ -48,6 +51,114 @@ export function reviewedExtensionNonce(
   const value = parseEvmFeeQuantity(nonce, 'reviewed transaction nonce');
   if (value > BigInt(Number.MAX_SAFE_INTEGER)) throw unavailable();
   return Object.freeze({ nonce: Number(value), source });
+}
+
+/**
+ * Legacy public history is only a hint. Refuse reuse when this exact candidate
+ * is independently observed pending on the captured endpoint; never advance
+ * the nonce or treat a history row as signed-journal ownership.
+ */
+export async function assertNoObservedLegacyPending({
+  provider,
+  scope,
+  nonce,
+  hashes,
+  assertCurrent,
+}: Readonly<{
+  assertCurrent(): void;
+  hashes: readonly string[];
+  nonce: number;
+  provider: NonceProvider;
+  scope: NonceScope;
+}>): Promise<void> {
+  const candidates = [...new Set(hashes.map((hash) => hash.toLowerCase()))];
+  const cannotVerify = () =>
+    Object.assign(
+      new Error(
+        'Unable to check previous transactions. Refresh Activity and try again.'
+      ),
+      {
+        transactionNotBroadcast: true,
+        code: EVM_LEGACY_VERIFICATION_UNAVAILABLE,
+      }
+    );
+  if (candidates.length > 16) throw cannotVerify();
+  if (!candidates.length) return;
+  const check = () => {
+    assertCurrent();
+    if (provider.signal.aborted) throw provider.signal.reason;
+  };
+  const quantity = (value: unknown): bigint | undefined => {
+    if (
+      typeof value !== 'string' ||
+      !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)
+    )
+      return;
+    return BigInt(value);
+  };
+  for (const hash of candidates) {
+    check();
+    let value: unknown;
+    try {
+      value = await provider.send('eth_getTransactionByHash', [hash]);
+    } catch {
+      check();
+      throw cannotVerify();
+    }
+    check();
+    if (value === null) continue;
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw cannotVerify();
+    const tx = value as Record<string, unknown>;
+    const txNonce = quantity(tx.nonce);
+    const txChainId =
+      tx.chainId === undefined ? undefined : quantity(tx.chainId);
+    const unprotected =
+      txChainId === BigInt(0) &&
+      (tx.type === undefined || tx.type === '0x0' || tx.type === 0);
+    const pending =
+      tx.blockHash === null &&
+      tx.blockNumber === null &&
+      tx.transactionIndex === null;
+    const mined =
+      typeof tx.blockHash === 'string' &&
+      /^0x[0-9a-f]{64}$/i.test(tx.blockHash) &&
+      quantity(tx.blockNumber) !== undefined &&
+      quantity(tx.transactionIndex) !== undefined;
+    if (
+      typeof tx.hash !== 'string' ||
+      !/^0x[0-9a-f]{64}$/i.test(tx.hash) ||
+      typeof tx.from !== 'string' ||
+      !/^0x[0-9a-f]{40}$/i.test(tx.from) ||
+      txNonce === undefined ||
+      txNonce > BigInt(Number.MAX_SAFE_INTEGER) ||
+      (tx.chainId !== undefined && txChainId === undefined) ||
+      (txChainId === BigInt(0) && !unprotected) ||
+      (!pending && !mined)
+    )
+      throw cannotVerify();
+    if (
+      tx.hash.toLowerCase() === hash &&
+      tx.from.toLowerCase() === scope.from.toLowerCase() &&
+      txNonce === BigInt(nonce) &&
+      (txChainId === undefined ||
+        unprotected ||
+        txChainId === BigInt(scope.chainId)) &&
+      pending
+    ) {
+      await provider.verifyConfiguredChainId();
+      check();
+      throw Object.assign(
+        new Error(
+          'A previous transaction is still pending. Check Activity before trying again.'
+        ),
+        { transactionNotBroadcast: true, code: EVM_LEGACY_PENDING }
+      );
+    }
+  }
+  check();
+  await provider.verifyConfiguredChainId();
+  check();
 }
 
 /** Read fresh counts directly from the same owned RPC route used for submission. */

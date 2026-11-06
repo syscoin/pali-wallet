@@ -117,6 +117,17 @@ function setup() {
     }),
     getBalance: jest.fn(async () => BigInt(65000000)),
   };
+  (provider as any)._send = jest.fn(
+    async ({
+      id,
+      method,
+      params,
+    }: {
+      id: number;
+      method: string;
+      params: unknown[];
+    }) => [{ jsonrpc: '2.0', id, result: await provider.send(method, params) }]
+  );
   const vault = {
     getWithdrawalAttempt: jest.fn(async (_id, session) => {
       session.assertCurrent();
@@ -478,7 +489,10 @@ it('quotes a fresh pending nonce and rechecks it even while the actual SDK read 
       requests.push(method);
       if (method !== 'eth_getTransactionCount' && method !== 'eth_chainId')
         throw new Error('Unexpected synthetic read');
-      return { result: method === 'eth_chainId' ? '0x1' : pending };
+      return {
+        jsonrpc: '2.0',
+        result: method === 'eth_chainId' ? '0x1' : pending,
+      };
     })
   );
   live.getFeeData = jest.fn(async () => ({
@@ -1153,5 +1167,73 @@ it.each([
     await expect(
       vault.withWithdrawalNote(NOTE_ID, session, () => 'must not return')
     ).rejects.toThrow('privacy_note_restore_required');
+  }
+);
+
+function cachedChainProvider() {
+  const { CustomJsonRpcProvider } = jest.requireActual(
+    '@sidhujag/sysweb3-keyring/cjs/providers'
+  );
+  const live = new CustomJsonRpcProvider(
+    new AbortController().signal,
+    'https://operator.example',
+    1
+  );
+  let chain = '0x1';
+  const methods: string[] = [];
+  live.requestRpc = jest.fn(async (calls: Array<{ method: string }>) =>
+    calls.map(({ method }) => {
+      methods.push(method);
+      if (method === 'eth_chainId') return { jsonrpc: '2.0', result: chain };
+      if (method === 'eth_getTransactionCount')
+        return { jsonrpc: '2.0', result: '0x7' };
+      throw new Error('Unexpected synthetic RPC');
+    })
+  );
+  live.estimateGas = jest.fn(async () => BigInt(100001));
+  live.getFeeData = jest.fn(async () => ({
+    maxFeePerGas: BigInt(100),
+    maxPriorityFeePerGas: BigInt(1),
+  }));
+  live.getBalance = jest.fn(async () => BigInt('2000000000000000000'));
+  return {
+    live,
+    methods,
+    setChain: (value: string) => {
+      chain = value;
+    },
+  };
+}
+
+it.each(['direct', 'relayer'] as const)(
+  'checks the live chain before %s withdrawal quote',
+  async (kind) => {
+    for (const scenario of ['changed', 'unchanged'] as const) {
+      const { wallet, host } = setup();
+      const { live, methods, setChain } = cachedChainProvider();
+      wallet.ethereumTransaction.web3Provider = live;
+      try {
+        await expect(live.send('eth_chainId', [])).resolves.toBe('0x1');
+        if (scenario === 'changed') setChain('0x89');
+        const before = methods.length;
+        await expect(live.send('eth_chainId', [])).resolves.toBe('0x1');
+        expect(methods).toHaveLength(before);
+        const session = host.captureSession();
+        const quote =
+          kind === 'direct'
+            ? host.quoteDirectFees(session)
+            : host.quoteRelayerGasPrice(session);
+        if (scenario === 'changed') {
+          await expect(quote).rejects.toThrow(
+            'privacy_withdrawal_context_changed'
+          );
+          expect(live.getFeeData).not.toHaveBeenCalled();
+        } else if (kind === 'direct') {
+          await expect(quote).resolves.toMatchObject({ nonce: '7' });
+        } else await expect(quote).resolves.toBe('100');
+      } finally {
+        live.destroy();
+      }
+    }
   }
 );

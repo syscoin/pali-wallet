@@ -28,7 +28,7 @@ type Captured = Omit<EvmReplaySession, 'observe' | 'dispatch'> &
     provider: Pick<CustomJsonRpcProvider, 'send' | '_send'>;
   }>;
 
-async function readLiveEvmChainId(
+export async function readLiveEvmChainId(
   provider: Pick<CustomJsonRpcProvider, '_send'>,
   assertCurrent: () => void
 ): Promise<string> {
@@ -134,7 +134,10 @@ export function createExtensionEvmReplay(
       observe: (expected) =>
         observeEvmTransaction(
           expected,
-          (method, params) => send(method, [...params]),
+          (method, params) =>
+            method === 'eth_chainId'
+              ? readLiveEvmChainId(captured.provider, captured.assertCurrent)
+              : send(method, [...params]),
           captured.assertCurrent
         ),
       dispatch: (raw, admit, context) => {

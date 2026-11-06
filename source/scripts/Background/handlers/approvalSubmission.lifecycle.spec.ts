@@ -27,6 +27,7 @@ describe('transaction approval submission lifetime', () => {
   let closeWindow: (id: number) => void;
   let controllerMessage: any;
   let send: jest.Mock;
+  let recommendedNonce: jest.Mock;
   const data = {
     host: 'https://synthetic.invalid',
     approvalId: 'approval-lifecycle',
@@ -87,6 +88,7 @@ describe('transaction approval submission lifetime', () => {
     jest.clearAllMocks();
     messages = [];
     send = jest.fn(async () => ({ hash: `0x${'1'.repeat(64)}` }));
+    recommendedNonce = jest.fn(async () => 4);
     mockCreatePopup.mockResolvedValue({ id: 9 });
     (crypto as any).randomUUID = jest
       .fn()
@@ -120,6 +122,7 @@ describe('transaction approval submission lifetime', () => {
     handleMasterControllerResponses({
       wallet: {
         sendAndSaveEthTransaction: send,
+        getRecommendedEvmNonce: recommendedNonce,
         submitSmartAccountExecution: send,
         registerSmartAccountOnChain: send,
         signSendAndSaveTransaction: send,
@@ -175,7 +178,9 @@ describe('transaction approval submission lifetime', () => {
   const submit = (
     method: string,
     sourceSender: any = sender(),
-    params: any[] = [{}]
+    params: any[] = method === 'sendAndSaveEthTransaction'
+      ? [{ nonce: 4 }]
+      : [{}]
   ) =>
     new Promise<any>((resolve) => {
       controllerMessage(
@@ -187,6 +192,13 @@ describe('transaction approval submission lifetime', () => {
         resolve
       );
     });
+
+  const reviewNonce = async (nonce = 4) => {
+    recommendedNonce.mockResolvedValueOnce(nonce);
+    await expect(
+      submit('getRecommendedEvmNonce', sender(), [payer.address])
+    ).resolves.toBe(nonce);
+  };
 
   it('accepts an ordinary internal UTXO confirmation with no external approval', async () => {
     const input = { ordinaryWalletSend: true, psbt: utxoPsbt };
@@ -402,6 +414,7 @@ describe('transaction approval submission lifetime', () => {
   it('healthy control marks an admitted send as uncertain when its popup then closes', async () => {
     const { pending } = await begin();
     const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+    await reviewNonce();
     await submit('sendAndSaveEthTransaction');
     closeWindow(9);
     await rejected;
@@ -411,6 +424,7 @@ describe('transaction approval submission lifetime', () => {
   it('binds the enrolled EVM approval to the captured wallet context and expires it on close', async () => {
     const { pending } = await begin();
     const rejected = expect(pending).rejects.toMatchObject({ code: -32603 });
+    await reviewNonce();
     await submit('sendAndSaveEthTransaction');
     const admitted = send.mock.calls[0][4];
     expect(admitted.expectedContext).toEqual(approvedContext);
@@ -477,6 +491,7 @@ describe('transaction approval submission lifetime', () => {
       }
       const { pending } = await begin(undefined, request, batch || undefined);
       const rejected = pending.catch((error) => error);
+      await reviewNonce(outcome === 'earlier-ack' ? 3 : 4);
       const unsigned = Transaction.from({
         chainId: approvedContext.chainId,
         gasLimit: 21000,
@@ -546,23 +561,23 @@ describe('transaction approval submission lifetime', () => {
           );
         }
       );
-      const submitEvm = () =>
+      const submitEvm = (nonce = 4) =>
         submit(
           'sendAndSaveEthTransaction',
           sender(),
           batch
             ? [
-                {},
+                { nonce },
                 false,
                 undefined,
                 undefined,
                 { sendCallsSubmissionId: submissionId },
               ]
-            : undefined
+            : [{ nonce }]
         );
       if (outcome === 'earlier-ack') {
         send.mockResolvedValueOnce(acknowledgement);
-        await expect(submitEvm()).resolves.toEqual(acknowledgement);
+        await expect(submitEvm(3)).resolves.toEqual(acknowledgement);
       }
       const submitted = submitEvm();
       try {
@@ -771,6 +786,7 @@ describe('transaction approval submission lifetime', () => {
       send.mockImplementation(
         () => new Promise((resolve) => (finish = resolve))
       );
+      if (submission === 'sendAndSaveEthTransaction') await reviewNonce();
       const submitted = submit(submission);
       await new Promise(setImmediate);
       expect(send).toHaveBeenCalledTimes(1);
