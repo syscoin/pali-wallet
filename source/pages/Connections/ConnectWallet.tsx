@@ -35,6 +35,7 @@ import { RootState } from 'state/store';
 import { selectAccountAssets } from 'state/vault/selectors';
 import { KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { ellipsis } from 'utils/index';
@@ -111,7 +112,8 @@ export const ConnectWallet = () => {
         kind,
         chainId: networkChainId,
         slip44,
-      }),
+      }) &&
+      canPublishAccountAddress(account, keyringAccountType, networkChainId),
     // Full background snapshots clone the network even for price-only updates.
     // Reinitialize consent only when its actual compatibility context changes.
     [kind, networkChainId, slip44]

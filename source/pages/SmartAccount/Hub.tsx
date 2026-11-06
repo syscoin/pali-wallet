@@ -49,6 +49,7 @@ import {
   signAndSubmitSmartAccountExecutions,
 } from 'utils/smartAccount';
 import type { CustomValidatorPreflightResult } from 'utils/smartAccount';
+import { hasVerifiedSmartAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { getSmartAccountActionErrorMessage } from 'utils/smartAccountErrors';
 
 import CompositeApprovalDialog from './CompositeApprovalDialog';
@@ -1075,8 +1076,13 @@ const SmartAccountHub = () => {
         <span className="text-xs text-brand-gray200">
           {t('smartAccountHub.accountAddress')}
         </span>
-        {smartAccountAddress && (
+        {smartAccountAddress &&
+        hasVerifiedSmartAccountAddress(account, activeNetwork.chainId) ? (
           <AddressText value={smartAccountAddress} preset="medium" />
+        ) : (
+          <span className="text-xs text-brand-gray200">
+            {t('receive.addressUnavailable')}
+          </span>
         )}
         {!metadata?.isDeployed && (
           <span className="text-xs text-warning-error">

@@ -55,6 +55,7 @@ import {
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { formatGweiValue, formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
@@ -153,7 +154,7 @@ export const SendConfirm = () => {
       ),
     [activeAccount?.address, currentEvmTransactions]
   );
-  const { addresses: localEvmAddresses, incompatibleSmartAddresses } = useMemo(
+  const { addresses: localEvmAddresses, getRecipientIssue } = useMemo(
     () => getLocalEvmRecipients(accounts, activeNetwork),
     [accounts, activeNetwork]
   );
@@ -275,9 +276,9 @@ export const SendConfirm = () => {
     ]
   );
 
-  const recipientWrongNetwork =
-    !isBitcoinBased &&
-    incompatibleSmartAddresses.has((resolvedToAddress || toRaw).toLowerCase());
+  const recipientIssue = isBitcoinBased
+    ? null
+    : getRecipientIssue(resolvedToAddress || toRaw);
 
   // We always display addresses; ENS names are only used as input and resolved to addresses
 
@@ -800,7 +801,7 @@ export const SendConfirm = () => {
     if (
       !isSmartAccountSend ||
       !basicTxValues ||
-      recipientWrongNetwork ||
+      recipientIssue ||
       !smartAccountFeeOverrides ||
       smartAccountQuoteNeedsRefresh ||
       tokenReviewInvalid
@@ -1195,8 +1196,8 @@ export const SendConfirm = () => {
           { transactionNotBroadcast: true }
         );
     };
-    if (recipientWrongNetwork) {
-      alert.error(t('send.smartAccountWrongNetwork'));
+    if (recipientIssue) {
+      alert.error(t(recipientIssue));
       return;
     }
     if (recipientPoisoningCollision) {
@@ -1783,8 +1784,8 @@ export const SendConfirm = () => {
       alert.error(sptReviewMessage);
       return;
     }
-    if (recipientWrongNetwork) {
-      alert.error(t('send.smartAccountWrongNetwork'));
+    if (recipientIssue) {
+      alert.error(t(recipientIssue));
       return;
     }
     // A queued handler must retain the quote it rendered, including readiness
@@ -1823,7 +1824,7 @@ export const SendConfirm = () => {
     if (
       !basicTxValues ||
       isBitcoinBased ||
-      recipientWrongNetwork ||
+      recipientIssue ||
       isEIP1559Compatible === undefined
     )
       return;
@@ -2072,7 +2073,7 @@ export const SendConfirm = () => {
     isBitcoinBased,
     isEIP1559Compatible,
     activeNetwork.chainId,
-    recipientWrongNetwork,
+    recipientIssue,
     resolvedToAddress,
     customFee.isCustom,
     customFee.gasLimit,
@@ -2267,25 +2268,30 @@ export const SendConfirm = () => {
   const renderAddress = (
     label: string,
     address: string,
-    display: React.ReactNode
+    display: React.ReactNode,
+    publishable = true
   ) => (
     <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
       {t(label)}
       <span className="text-white text-xs">
-        <Tooltip content={address} childrenClassName="flex">
-          {display}
-          <IconButton
-            aria-label={t('buttons.copy')}
-            onClick={() => copy(address ?? '')}
-          >
-            <Icon
-              wrapperClassname="flex items-center justify-center"
-              name="Copy"
-              isSvg
-              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-            />
-          </IconButton>
-        </Tooltip>
+        {publishable ? (
+          <Tooltip content={address} childrenClassName="flex">
+            {display}
+            <IconButton
+              aria-label={t('buttons.copy')}
+              onClick={() => copy(address ?? '')}
+            >
+              <Icon
+                wrapperClassname="flex items-center justify-center"
+                name="Copy"
+                isSvg
+                className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+              />
+            </IconButton>
+          </Tooltip>
+        ) : (
+          t('receive.addressUnavailable')
+        )}
       </span>
     </div>
   );
@@ -2480,7 +2486,12 @@ export const SendConfirm = () => {
             {renderAddress(
               'send.from',
               basicTxValues.sender,
-              ellipsis(basicTxValues.sender, 7, 15)
+              ellipsis(basicTxValues.sender, 7, 15),
+              canPublishAccountAddress(
+                activeAccount,
+                activeAccountMeta.type,
+                activeNetwork.chainId
+              )
             )}
             {transactionReviewDivider}
             {renderAddress(
@@ -2488,12 +2499,12 @@ export const SendConfirm = () => {
               tooltipToAddress,
               <>{ellipsis(labelToDisplay, 7, 15)} </>
             )}
-            {recipientWrongNetwork && (
+            {recipientIssue && (
               <p
                 role="alert"
                 className="w-full mt-3 p-3 rounded-lg border border-warning-error text-warning-error text-xs"
               >
-                {t('send.smartAccountWrongNetwork')}
+                {t(recipientIssue)}
               </p>
             )}
             {recipientPoisoningCollision && (
@@ -2890,7 +2901,7 @@ export const SendConfirm = () => {
                 confirmed ||
                 submission.blocked ||
                 Boolean(recipientPoisoningCollision) ||
-                recipientWrongNetwork ||
+                Boolean(recipientIssue) ||
                 Boolean(sptReviewError) ||
                 tokenReviewInvalid ||
                 !confirmationFeeReady ||

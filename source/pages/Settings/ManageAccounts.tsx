@@ -37,6 +37,7 @@ import {
   navigateBack,
   navigateWithContext,
 } from 'utils/navigationState';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 // Static account type configuration to prevent recreation
 const ACCOUNT_TYPE_CONFIG = {
@@ -385,9 +386,17 @@ const ManageAccountsView = React.memo(() => {
   const removeAccountDescription = useMemo(() => {
     if (!accountToRemove) return '';
 
+    const { account, accountType } = accountToRemove;
+    const canPublishAddress = canPublishAccountAddress(
+      account,
+      accountType,
+      activeNetwork.chainId
+    );
     const confirmation = t('settings.removeAccountConfirmation', {
-      accountName: `${accountToRemove.account.label} (${accountToRemove.account.address})`,
-      accountType: accountTypeLabel(accountToRemove.accountType),
+      accountName: canPublishAddress
+        ? `${account.label} (${account.address})`
+        : account.label,
+      accountType: accountTypeLabel(accountType),
     });
     const hasImportedPrivateKey =
       accountToRemove.accountType === KeyringAccountType.Imported &&
@@ -395,7 +404,7 @@ const ManageAccountsView = React.memo(() => {
     return hasImportedPrivateKey
       ? `${confirmation} ${t('settings.importedAccountRemovalWarning')}`
       : confirmation;
-  }, [accountToRemove, accountTypeLabel, t]);
+  }, [accountToRemove, accountTypeLabel, activeNetwork.chainId, t]);
 
   // Memoized unified account rendering
   const renderAccount = useCallback(
@@ -403,6 +412,14 @@ const ManageAccountsView = React.memo(() => {
       const config = ACCOUNT_TYPE_CONFIG[accountType];
       const IconComponent = config.icon;
       const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
+      const canPublishAddress = canPublishAccountAddress(
+        account,
+        accountType,
+        activeNetwork.chainId
+      );
+      const accountName = canPublishAddress
+        ? `${account.label} (${account.address})`
+        : account.label;
 
       return (
         <li
@@ -426,11 +443,12 @@ const ManageAccountsView = React.memo(() => {
               <div className="transform group-hover:scale-110 transition-transform duration-300 ease-out flex-shrink-0">
                 <IconComponent />
               </div>
-              <span
-                className="truncate"
-                title={`${account.label} (${account.address})`}
-              >
-                {account.label} ({ellipsis(account.address, 4, 4)})
+              <span className="truncate" title={accountName}>
+                {account.label} (
+                {canPublishAddress
+                  ? ellipsis(account.address, 4, 4)
+                  : t('receive.addressUnavailable')}
+                )
               </span>
             </div>
             <span
@@ -462,9 +480,7 @@ const ManageAccountsView = React.memo(() => {
 
           <div className="flex gap-x-2 items-center flex-shrink-0">
             <IconButton
-              aria-label={`${t('buttons.edit')}: ${account.label} (${
-                account.address
-              })`}
+              aria-label={`${t('buttons.edit')}: ${accountName}`}
               className="flex h-11 w-11 items-center justify-center rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-royalblue"
               onClick={() => editAccount(account, accountType)}
               type="primary"
@@ -479,9 +495,7 @@ const ManageAccountsView = React.memo(() => {
 
             {canRemoveAccount(account, accountType) && (
               <IconButton
-                aria-label={`${t('buttons.remove')}: ${account.label} (${
-                  account.address
-                })`}
+                aria-label={`${t('buttons.remove')}: ${accountName}`}
                 onClick={() => handleRemoveClick(account, accountType)}
                 type="primary"
                 shape="circle"
@@ -499,6 +513,7 @@ const ManageAccountsView = React.memo(() => {
       );
     },
     [
+      activeNetwork.chainId,
       editAccount,
       isActiveAccount,
       canRemoveAccount,

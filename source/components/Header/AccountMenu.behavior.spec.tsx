@@ -4,6 +4,8 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { smartAccountAddressFixture } from '../../../tests/fixtures/smartAccountAddress';
+
 import RenderAccountsListByBitcoinBased from './RenderAccountsListByBitcoinBased';
 
 const mockAlert = { error: jest.fn(), info: jest.fn() };
@@ -14,6 +16,7 @@ type MockAccount = {
   label: string;
   slip44: number;
   smartAccount?: { chainId: number };
+  xpub?: string;
 };
 const createMockAccounts = (): Record<string, Record<number, MockAccount>> => ({
   HDAccount: {
@@ -180,7 +183,8 @@ it('centers badge text and the active check inside explicit local boxes', async 
 });
 
 it('compacts the Smart badge without shrinking text or losing its full accessible type', async () => {
-  const address = '0x1111111111111111111111111111111111111111';
+  const { account: smart } = smartAccountAddressFixture();
+  const { address } = smart;
   mockState.vault.activeAccount = { id: 0, type: 'SmartAccount' };
   mockState.vault.activeNetwork = { kind: 'ethereum', chainId: 1, slip44: 60 };
   mockState.vault.accounts = {
@@ -188,9 +192,8 @@ it('compacts the Smart badge without shrinking text or losing its full accessibl
       0: {
         id: 0,
         label: 'My longer smart account name',
-        address,
+        ...smart,
         slip44: 60,
-        smartAccount: { chainId: 1 },
       },
     },
   };
@@ -347,4 +350,33 @@ it('coalesces repeated selection while its first account switch is pending', asy
   expect(setActiveAccount).toHaveBeenCalledTimes(1);
   await act(async () => resolve());
   await user.keyboard('{Escape}');
+});
+
+it('keeps an unverified smart account selectable without exposing its address', async () => {
+  const { account } = smartAccountAddressFixture();
+  const address = '0x1111111111111111111111111111111111111111';
+  mockState.vault.activeNetwork = { kind: 'ethereum', chainId: 1, slip44: 60 };
+  mockState.vault.accounts = {
+    SmartAccount: {
+      0: {
+        ...account,
+        id: 0,
+        label: 'Needs verification',
+        address,
+        xpub: address,
+        slip44: 60,
+      },
+    },
+  };
+  const { setActiveAccount, user } = await openAccounts();
+  const select = screen.getByRole('menuitem', {
+    name: 'Needs verification, Smart Account',
+  });
+  expect(select.textContent).not.toContain(address);
+  expect(within(select.closest('li')!).getAllByRole('menuitem')).toEqual([
+    select,
+  ]);
+  expect(screen.queryByTitle(new RegExp(address))).toBeNull();
+  await user.click(select);
+  expect(setActiveAccount).toHaveBeenCalledWith(0, 'SmartAccount');
 });

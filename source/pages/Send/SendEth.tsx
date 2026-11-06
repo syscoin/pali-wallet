@@ -53,6 +53,7 @@ import {
 } from 'utils/index';
 import { takeHardwareSendDraft } from 'utils/navigationState';
 import { isErc721BalanceAvailable } from 'utils/nftQuantity';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 import { getDefaultGasLimit } from 'utils/transactionUtils';
 import { isValidEthereumAddress } from 'utils/validations';
@@ -259,9 +260,6 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const activeNetwork = useSelector(
     (state: RootState) => state.vault.activeNetwork
   );
-  const isBitcoinBased = useSelector(
-    (state: RootState) => state.vault.isBitcoinBased
-  );
   const { account: activeAccount, assets: activeAccountAssets } = useSelector(
     selectActiveAccountWithAssets
   );
@@ -351,6 +349,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const vaultActiveAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
   );
+  const publicAddress = useMemo(
+    () =>
+      canPublishAccountAddress(
+        activeAccount,
+        vaultActiveAccount.type,
+        activeNetwork.chainId
+      )
+        ? activeAccount?.address
+        : undefined,
+    [activeAccount, vaultActiveAccount.type, activeNetwork.chainId]
+  );
   const accountTransactions = useSelector(
     (state: RootState) => state.vault.accountTransactions
   );
@@ -376,7 +385,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   const {
     accounts: localRecipientAccounts,
     addresses: localEvmAddresses,
-    incompatibleSmartAddresses,
+    getRecipientIssue,
   } = useMemo(
     () => getLocalEvmRecipients(accounts, activeNetwork),
     [accounts, activeNetwork]
@@ -600,7 +609,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       // recent. Incoming dust and explorer token-event placeholders are never
       // promoted into an address-selection surface.
       trustedRecentRecipients.forEach((address) => {
-        if (incompatibleSmartAddresses.has(address.toLowerCase())) return;
+        if (getRecipientIssue(address)) return;
         const maybeName = (ensCache as any)?.[address]?.name;
         const display = maybeName || address;
         if (
@@ -635,7 +644,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     },
     [
       localRecipientAccounts,
-      incompatibleSmartAddresses,
+      getRecipientIssue,
       ensCache,
       trustedRecentRecipients,
     ]
@@ -864,11 +873,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
           alert.error(t('send.unableToResolveEns'));
           return;
         }
-        if (
-          destination &&
-          incompatibleSmartAddresses.has(destination.toLowerCase())
-        ) {
-          alert.error(t('send.smartAccountWrongNetwork'));
+        const recipientIssue = getRecipientIssue(destination);
+        if (recipientIssue) {
+          alert.error(t(recipientIssue));
           return;
         }
         values = { ...values, receiver: destination };
@@ -1004,7 +1011,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
       nftOwnershipKey,
       location.state?.returnContext,
       isCurrentForm,
-      incompatibleSmartAddresses,
+      getRecipientIssue,
       verifiedERC20Balance,
     ]
   );
@@ -1062,14 +1069,9 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   };
 
   const openAccountInExplorer = useCallback(() => {
-    const accountAddress = activeAccount?.address;
-    if (!accountAddress || !explorer) return;
-
-    window.open(
-      buildExplorerUrl(explorer, 'address', accountAddress),
-      '_blank'
-    );
-  }, [activeAccount?.address, isBitcoinBased, explorer]);
+    if (!publicAddress || !explorer || !isCurrentForm(false)) return;
+    window.open(buildExplorerUrl(explorer, 'address', publicAddress), '_blank');
+  }, [publicAddress, explorer, isCurrentForm]);
 
   const handleMaxButton = () => {
     // Only work with verified balances - no fallbacks
@@ -1270,13 +1272,17 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
   // ✅ OPTIMIZED: Effect with proper dependencies
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
-    if (!placeholder || !activeAccount?.xpub) return;
+    if (!placeholder) return;
+    if (!publicAddress || !activeAccount?.xpub) {
+      placeholder.replaceChildren();
+      return;
+    }
 
     placeholder.innerHTML = toSvg(activeAccount.xpub, 50, {
       backColor: '#07152B',
       padding: 1,
     });
-  }, [activeAccount?.address, activeAccount?.xpub]);
+  }, [publicAddress, activeAccount?.xpub]);
 
   // Attach reverse ENS effect after handlers are defined
   useEffect(() => {
@@ -1417,7 +1423,7 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
     <div className="w-full md:max-w-sm">
       <div className="flex flex-col items-center justify-center">
         <AccountExplorerAvatar
-          available={Boolean(explorer)}
+          available={Boolean(explorer && publicAddress)}
           onClick={openAccountInExplorer}
         />
         <div className="flex min-w-0 max-w-full flex-wrap gap-1 justify-center items-center">
@@ -1428,28 +1434,30 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
             <p className="min-w-0 max-w-full font-medium [overflow-wrap:anywhere]">
               {activeAccount?.label}
             </p>
-            <Tooltip content={t('buttons.copy')}>
-              <button
-                type="button"
-                aria-label={t('buttons.copy')}
-                className="inline-flex min-h-11 items-center gap-1 rounded-lg px-1 hover:text-brand-royalblue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue transition-colors duration-200"
-                onClick={async () => {
-                  if (!isCurrentForm(false)) return;
-                  const current = beginAddressCopy();
-                  try {
-                    await navigator.clipboard.writeText(activeAccount?.address);
-                    if (current() && isCurrentForm(false))
-                      alert.success(t('home.addressCopied'));
-                  } catch {
-                    if (current() && isCurrentForm(false))
-                      alert.error(t('transactions.copyFailed'));
-                  }
-                }}
-              >
-                {ellipsis(activeAccount?.address, 4, 4)}
-                <Icon name="copy" className="text-xs" />
-              </button>
-            </Tooltip>
+            {publicAddress && (
+              <Tooltip content={t('buttons.copy')}>
+                <button
+                  type="button"
+                  aria-label={t('buttons.copy')}
+                  className="inline-flex min-h-11 items-center gap-1 rounded-lg px-1 hover:text-brand-royalblue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue transition-colors duration-200"
+                  onClick={async () => {
+                    if (!isCurrentForm(false)) return;
+                    const current = beginAddressCopy();
+                    try {
+                      await navigator.clipboard.writeText(publicAddress);
+                      if (current() && isCurrentForm(false))
+                        alert.success(t('home.addressCopied'));
+                    } catch {
+                      if (current() && isCurrentForm(false))
+                        alert.error(t('transactions.copyFailed'));
+                    }
+                  }}
+                >
+                  {ellipsis(publicAddress, 4, 4)}
+                  <Icon name="copy" className="text-xs" />
+                </button>
+              </Tooltip>
+            )}
           </div>
           {isAccountImported && (
             <div className="text-brand-blue100 text-xs font-medium bg-alpha-whiteAlpha200 py-[2px] px-[6px] rounded-[100px] w-max h-full">
@@ -1527,9 +1535,8 @@ const SendEthForm = ({ scopeKey }: { scopeKey: string }) => {
                   }
 
                   const assertNotPoisoned = (address: string) => {
-                    if (incompatibleSmartAddresses.has(address.toLowerCase())) {
-                      throw new Error(t('send.smartAccountWrongNetwork'));
-                    }
+                    const recipientIssue = getRecipientIssue(address);
+                    if (recipientIssue) throw new Error(t(recipientIssue));
                     const collision = findEvmAddressPoisoningCollision(
                       address,
                       trustedRecentRecipients,

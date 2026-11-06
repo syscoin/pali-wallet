@@ -18,6 +18,7 @@ import {
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { getDappOrigin, matchAttestedDappOrigin } from 'utils/dappOrigin';
 
 import { clearProviderCache } from './message-handler/provider-cache';
@@ -175,7 +176,8 @@ const DAppController = (
     const account = accounts[accountType]?.[accountId];
     if (
       !account ||
-      !isAccountCompatibleWithNetwork(account, accountType, network)
+      !isAccountCompatibleWithNetwork(account, accountType, network) ||
+      !canPublishAccountAddress(account, accountType, network.chainId)
     )
       throw new Error('Account is not available on the active network');
     if (expectedContext !== undefined) {
@@ -271,6 +273,7 @@ const DAppController = (
         current?.xpub === xpub &&
         (!isBitcoinBased || (activeNetwork.slip44 ?? 57) === slip44) &&
         isAccountCompatibleWithNetwork(current, accountType, activeNetwork) &&
+        canPublishAccountAddress(current, accountType, activeNetwork.chainId) &&
         // Initial connection approval also promises its advertised network.
         // An existing permission request admits the selected identity across
         // compatible EVM networks and retains that established behavior.

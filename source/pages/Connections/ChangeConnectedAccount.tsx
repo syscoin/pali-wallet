@@ -8,29 +8,53 @@ import { Button, Icon, PageActionFooter, Tooltip } from 'components/index';
 import { getAccountReviewTokens, TokenIconStack } from 'components/TokenIcon';
 import { useQueryData, useUtils } from 'hooks/index';
 import { useController } from 'hooks/useController';
-import { RootState } from 'state/store';
+import store, { RootState } from 'state/store';
 import {
   selectActiveAccount,
   selectActiveAccountRef,
   selectAccountAssets,
 } from 'state/vault/selectors';
+import { KeyringAccountType } from 'types/network';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 export const ChangeConnectedAccount = () => {
   const { controllerEmitter } = useController();
   const { t } = useTranslation();
   const activeAccountRef = useSelector(selectActiveAccountRef);
   const activeAccount = useSelector(selectActiveAccount);
-  const { isBitcoinBased } = useSelector((state: RootState) => state.vault);
+  const { activeNetwork, isBitcoinBased } = useSelector(
+    (state: RootState) => state.vault
+  );
   const accountAssets = useSelector(selectAccountAssets);
   const { useCopyClipboard, alert } = useUtils();
   const [, copy] = useCopyClipboard();
   const { host, eventName, connectedAccount, accountType } = useQueryData();
   const [isChanging, setIsChanging] = useState(false);
   const [switchError, setSwitchError] = useState('');
+  const canSwitchAccount =
+    Boolean(connectedAccount) &&
+    canPublishAccountAddress(
+      connectedAccount,
+      accountType,
+      activeNetwork?.chainId
+    );
 
   const handleAccept = async () => {
+    if (!canSwitchAccount) return;
+    if (accountType === KeyringAccountType.SmartAccount) {
+      const { accounts, activeNetwork: currentNetwork } =
+        store.getState().vault;
+      const current = accounts[accountType]?.[connectedAccount.id];
+      if (
+        current?.address !== connectedAccount.address ||
+        !canPublishAccountAddress(current, accountType, currentNetwork?.chainId)
+      ) {
+        setSwitchError(t('receive.addressUnavailable'));
+        return;
+      }
+    }
     setSwitchError('');
     setIsChanging(true);
     try {
@@ -72,8 +96,14 @@ export const ChangeConnectedAccount = () => {
     tokens: any[],
     required = false
   ) => {
-    const label = required ? account.label : account?.label;
-    const address = required ? account.address : account?.address;
+    const label = account?.label;
+    const address = canPublishAccountAddress(
+      account,
+      type,
+      activeNetwork?.chainId
+    )
+      ? account?.address
+      : undefined;
     return (
       <div className="space-y-3">
         <h4 className="text-xs font-medium text-brand-graylight uppercase tracking-wider">
@@ -99,36 +129,40 @@ export const ChangeConnectedAccount = () => {
                 <p className="font-medium text-sm text-brand-white mb-1 truncate">
                   {label}
                 </p>
-                <div className="flex items-center gap-1">
-                  <Tooltip content={address} placement="top">
-                    <p className="text-xs text-brand-graylight">
-                      {ellipsis(address, 8, 4)}
-                    </p>
-                  </Tooltip>
-                  <div className="inline-flex flex-shrink-0 items-center">
-                    <button
-                      aria-label={t('buttons.copy')}
-                      onClick={async () => {
-                        try {
-                          await copy(
-                            required ? account.address : account?.address
-                          );
-                          alert.info(t('home.addressCopied'));
-                        } catch {
-                          alert.error(t('transactions.copyFailed'));
-                        }
-                      }}
-                      className="hover:text-brand-royalblue transition-colors duration-200"
-                    >
-                      <Icon
-                        name="copy"
-                        className="text-xs"
-                        size={10}
-                        wrapperClassname="h-[1em] flex items-center"
-                      />
-                    </button>
+                {address ? (
+                  <div className="flex items-center gap-1">
+                    <Tooltip content={address} placement="top">
+                      <p className="text-xs text-brand-graylight">
+                        {ellipsis(address, 8, 4)}
+                      </p>
+                    </Tooltip>
+                    <div className="inline-flex flex-shrink-0 items-center">
+                      <button
+                        aria-label={t('buttons.copy')}
+                        onClick={async () => {
+                          try {
+                            await copy(address);
+                            alert.info(t('home.addressCopied'));
+                          } catch {
+                            alert.error(t('transactions.copyFailed'));
+                          }
+                        }}
+                        className="hover:text-brand-royalblue transition-colors duration-200"
+                      >
+                        <Icon
+                          name="copy"
+                          className="text-xs"
+                          size={10}
+                          wrapperClassname="h-[1em] flex items-center"
+                        />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <p className="text-xs text-brand-graylight">
+                    {t('receive.addressUnavailable')}
+                  </p>
+                )}
               </div>
             </div>
             {/* Keep the loading skeleton and a short balance in one footprint. */}
@@ -211,7 +245,7 @@ export const ChangeConnectedAccount = () => {
             type="button"
             onClick={handleAccept}
             loading={isChanging}
-            disabled={isChanging}
+            disabled={isChanging || !canSwitchAccount}
           >
             {t('connections.switchAccount')}
           </Button>

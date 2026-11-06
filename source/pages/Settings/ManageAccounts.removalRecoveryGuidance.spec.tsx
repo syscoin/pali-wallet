@@ -18,6 +18,7 @@ import ko from 'assets/locales/ko.json';
 import pt from 'assets/locales/pt.json';
 import ru from 'assets/locales/ru.json';
 import zh from 'assets/locales/zh.json';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 import { KeyringAccountType } from 'types/network';
 
 import ManageAccounts from './ManageAccounts';
@@ -198,11 +199,10 @@ beforeEach(() => {
         },
         SmartAccount: {
           0: {
+            ...smartAccountAddressFixture().account,
             id: 0,
-            address: address('7'),
             label: 'Smart account',
             isSmartAccount: true,
-            smartAccount: { chainId: 1 },
           },
         },
       },

@@ -37,6 +37,7 @@ jest.mock('./message-handler/provider-cache', () => ({
 
 import { runInNewContext } from 'vm';
 
+import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
 import { notificationManager } from '../notification-manager';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -862,6 +863,31 @@ describe('per-site account notification disclosure', () => {
     await deliver(instance, PaliEvents.accountsChanged, [addressA]);
     expect(messages(1)[0].params).toEqual([]);
     expect(messages(2)[0].params).toEqual([]);
+  });
+
+  it('withholds a granted same-chain smart address if its derivation no longer matches', async () => {
+    const instance = controller();
+    const { account } = smartAccountAddressFixture(57057);
+    state.dapp.dapps[originA] = {
+      accountId: 0,
+      accountType: KeyringAccountType.SmartAccount,
+      chain: INetworkType.Ethereum,
+    };
+    state.vault.accounts.SmartAccount = { 0: { id: 0, ...account } };
+    expect(instance.getAccount(originA)?.address).toBe(account.address);
+    await deliver(instance, PaliEvents.accountsChanged, [addressB]);
+    expect(messages(1)[0].params).toEqual([account.address]);
+
+    state.vault.accounts.SmartAccount[0] = {
+      ...account,
+      id: 0,
+      address: addressA,
+      xpub: addressA,
+    };
+    expect(instance.getAccount(originA)).toBeNull();
+    await deliver(instance, PaliEvents.accountsChanged, [addressA]);
+    expect(messages(1)[1].params).toEqual([]);
+    expect(messages(2)[1].params).toEqual([addressB]);
   });
 
   it('never sends an EVM account xpub and keeps unrelated public events intact', async () => {
