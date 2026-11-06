@@ -1,4 +1,5 @@
 import * as sharedHistory from '../../../source/shared/evmHistory.ts';
+import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -124,6 +125,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
         '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => null },
         '../../../../source/shared/erc20': {},
+        '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
       };
       const source = kind === 'native' ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');

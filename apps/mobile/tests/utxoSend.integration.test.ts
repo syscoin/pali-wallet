@@ -13,6 +13,7 @@ import { convertExtendedKeyVersion } from '@sidhujag/sysweb3-keyring/cjs/utils/d
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { HDNodeWallet } from 'ethers/wallet';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { bufferUtils } from 'syscointx-js';
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network/cjs/coin-utils.js';
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 
@@ -20,6 +21,9 @@ import {
   UTXO_SIGNED_RECORD_KEY,
   UtxoSignedRecords,
 } from '../../../source/wallet/utxoSignedRecords.ts';
+import { SENTRY_NETWORKS } from '../../../source/shared/sentryNetworks.ts';
+import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../source/shared/syscoinAssetIds.ts';
+import { ALLOCATION_SEND_VERSION, getExactAssetAllocations } from '../../../source/utils/syscoinPsbtValues.ts';
 import { createNativeUtxoSend } from '../src/custody/utxoSend.ts';
 import { getUtxoNetwork, getUtxoSdkNetwork, projectUtxoRegistration, UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -33,7 +37,10 @@ import { verifyUtxoRegistration } from '../src/core/utxoReadSession.ts';
 import { findWifAddressType, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../src/core/utxoAddresses.ts';
 import { WALLET_CATALOGUE_KEY, type NativeAccountRecord } from '../src/custody/walletCatalogue.ts';
 import { metadata } from './publicWatchFixtures.ts';
+import { SENTRY_TX_HEX } from './sentryNodeFixtures.ts';
 
+const syntheticPassword = 'synthetic fixture password';
+const fixtureAccountStateKey = 'fixture-custody-catalogue';
 const phrase =
   'abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about';
 const bitcoin = syscoinUtils.bitcoinjs;
@@ -43,42 +50,53 @@ const litecoinRegistration = projectUtxoRegistration({
   id: 'utxo:custom:0123456789abcdef0123456789abcdef', chainId: 2, slip44: 2,
   backendChain: 'Provider-main_2', endpoint: litecoinEndpoint, name: 'Litecoin fixture', explorer: litecoinEndpoint,
 });
-for (const network of [getUtxoNetwork('bitcoin'), litecoinRegistration])
-test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
+const testNetworks = [
+  { network: getUtxoNetwork('bitcoin'), type: 'HDAccount', spt: false, utxoAddressType: undefined },
+  { network: litecoinRegistration, type: 'HDAccount', spt: false, utxoAddressType: undefined },
+  { network: getUtxoNetwork('syscoin'), type: 'HDAccount', spt: true, utxoAddressType: undefined },
+  { network: getUtxoNetwork('utxo:5700'), type: 'Imported', spt: true, utxoAddressType: 'p2wpkh' },
+  { network: getUtxoNetwork('syscoin'), type: 'Imported', spt: true, utxoAddressType: 'p2tr' },
+] as const;
+for (const { network, type, spt, utxoAddressType } of testNetworks)
+test(`real native SDK ${spt ? `SYSX on ${network.symbol}` : network.symbol} ${utxoAddressType ?? type} quote, signed bytes, SQLite admission and exact ACK use the same scoped route`, async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'pali-utxo-signed-'));
   const file = join(directory, 'wallet.sqlite');
   const db = nodeConnection(file);
-  const storage = await SqliteWalletStorage.open(
+  let storage = await SqliteWalletStorage.open(
     db.connection,
     digest,
     INSTALLATION,
     true
   );
-  const ring = new SoftwareKeyring(createKeyringHost(storage.keyringStorage), {
+  let ring = new SoftwareKeyring(createKeyringHost(storage.keyringStorage), {
     captureEvmSubmission: null,
   });
   try {
     const sdkNetwork = getUtxoSdkNetwork(network);
     const state = {
-      activeAccount: { id: 0, type: KeyringAccountType.HDAccount },
+      activeAccount: { id: 0, type: KeyringAccountType.HDAccount as KeyringAccountType },
       activeNetwork: sdkNetwork,
       accounts: {
         HDAccount: {} as Record<
           number,
           Awaited<ReturnType<typeof ring.initializeWalletSecurely>>
         >,
-        Imported: {},
+        Imported: {} as Record<number, Awaited<ReturnType<typeof ring.importAccount>>>,
         Ledger: {},
         Trezor: {},
         SmartAccount: {},
       },
     };
     ring.setVaultStateGetter(() => state);
-    const account = await ring.initializeWalletSecurely(
-      phrase,
-      'synthetic fixture password'
-    );
-    state.accounts.HDAccount[0] = account;
+    const hd = await ring.initializeWalletSecurely(phrase, syntheticPassword);
+    state.accounts.HDAccount[0] = hd;
+    const account = type === 'Imported'
+      ? await ring.importAccount(bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 13), { network: network.addressNetwork }).toWIF(), 'Fixture WIF', { utxoAddressType })
+      : hd;
+    if (type === 'Imported') {
+      state.accounts.Imported[account.id] = account;
+      state.activeAccount = { id: account.id, type: KeyringAccountType.Imported };
+    }
     const profileId = await ring.getPrivateRecordProfileId();
     const evmRoot = HDNodeWallet.fromPhrase(phrase);
     let active = true;
@@ -94,21 +112,51 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
       },
       assertCurrent
     );
+    const asset = spt
+      ? { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' } : undefined;
     const previous = new bitcoin.Transaction();
     previous.addInput(Buffer.alloc(32, 7), 0);
     previous.addOutput(
       bitcoin.address.toOutputScript(account.address, network.addressNetwork),
       100000n
     );
-    const previousId = previous.getId();
+    if (asset) {
+      previous.version = ALLOCATION_SEND_VERSION;
+      const data = bufferUtils.serializeAssetAllocations([{
+        assetGuid: asset.assetGuid,
+        values: [{ n: 0, value: new syscoinUtils.BN('200000000') }],
+      }]);
+      previous.addOutput(bitcoin.payments.embed({ data: [data] }).output, 0n);
+    }
+    const collateral = previous.clone();
+    collateral.outs[0].value = BigInt((network.testnet ? SENTRY_NETWORKS.testnet : SENTRY_NETWORKS.mainnet).collateralSatoshis);
+    const previousId = previous.getId(), collateralId = collateral.getId();
+    const assetCarrier = previous.clone();
+    assetCarrier.outs[0].value = 330n; // Taproot carrier cannot cover both asset outputs plus fees.
+    const feeCollateral = bitcoin.Transaction.fromHex(SENTRY_TX_HEX);
+    const payload = Buffer.from(bitcoin.script.decompile(feeCollateral.outs[1].script)[1]);
+    // Project the public v80 codec fixture to an internal collateral registration.
+    // Its zero hash identifies vout 0, and internal registration has no collateral signature.
+    const internal = payload.subarray(0, payload.length - 65);
+    assert.equal(internal.at(-1), 65);
+    internal.fill(0, 6, 42);
+    internal[internal.length - 1] = 0;
+    feeCollateral.outs[0].script = previous.outs[0].script;
+    feeCollateral.outs[0].value = collateral.outs[0].value;
+    feeCollateral.outs[1].script = bitcoin.payments.embed({ data: [internal] }).output;
+    const assetCarrierId = assetCarrier.getId(), feeCollateralId = feeCollateral.getId();
+    let useCollateral: false | 'asset' | 'fee' = false;
     const recipient = bitcoin.payments.p2wpkh({
       hash: Buffer.alloc(20, 8),
       network: network.addressNetwork,
     }).address;
-    const records = new UtxoSignedRecords(storage.utxoSignedRecords!, storage.utxoSignedRecords!);
+    let records = new UtxoSignedRecords(storage.utxoSignedRecords!, storage.utxoSignedRecords!);
+    let currentPostAuthority = assertCurrent;
     const calls: string[] = [];
     let published: string | undefined;
     let ackId: string | undefined;
+    let failAck = !!asset;
+    const posted: string[] = [];
     const reply = (url: string, data: unknown) => {
       const response = Response.json(data);
       Object.defineProperty(response, 'url', { value: url });
@@ -125,35 +173,48 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
         return reply(url, { result: '0.00001024' });
       if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`)
         return reply(url, { tokens: [] });
-      if (path === `/api/v2/utxo/${account.xpub}`)
-        return reply(url, [
-          {
-            txid: previousId,
-            vout: 0,
-            value: '100000',
-            address: account.address,
-            confirmations: 10,
-            path: `m/84'/${network.slip44}'/0'/0/0`,
-          },
-        ]);
+      if (path === `/api/v2/utxo/${account.xpub}`) {
+        const funding = useCollateral === 'fee' ? [assetCarrier, feeCollateral]
+          : [useCollateral === 'asset' ? collateral : previous];
+        return reply(url, funding.map((transaction) => ({
+          txid: transaction.getId(),
+          vout: 0,
+          value: transaction.outs[0].value.toString(),
+          address: account.address,
+          confirmations: 10,
+          ...(type === 'HDAccount' ? { path: `m/84'/${network.slip44}'/0'/0/0` } : {}),
+          ...(asset && transaction !== feeCollateral ? { assetInfo: { assetGuid: SYSX_ASSET_GUID, value: '200000000' } } : {}),
+        })));
+      }
       if (path === `/api/v2/tx/${previousId}`)
         return reply(url, { hex: previous.toHex() });
+      if (path === `/api/v2/tx/${collateralId}`)
+        return reply(url, { hex: collateral.toHex() });
+      if (path === `/api/v2/tx/${assetCarrierId}`)
+        return reply(url, { hex: assetCarrier.toHex() });
+      if (path === `/api/v2/tx/${feeCollateralId}`)
+        return reply(url, { hex: feeCollateral.toHex() });
       if (path === '/api/v2/sendtx/' && init?.method === 'POST') {
         published = init.body as string;
+        posted.push(published);
         const tx = bitcoin.Transaction.fromHex(published);
         const signedId: string = tx.getId();
         ackId = signedId;
         const retained = await records.readExact(
-          { keyring: ring, assertCurrent },
+          { keyring: ring, assertCurrent: currentPostAuthority },
           {
             chainId: network.chainId,
             slip44: network.slip44,
             genesisHash: network.genesisHash,
-            account: { id: 0, type: 'HDAccount', xpub: account.xpub },
+            account: { id: account.id, type, xpub: account.xpub },
           },
           signedId
         );
         assert.equal(retained?.rawTransaction, published);
+        if (failAck) {
+          failAck = false;
+          throw new Error('Offline acknowledgement interrupted');
+        }
         return reply(url, { result: ackId });
       }
       if (ackId && path === `/api/v2/tx/${ackId}`)
@@ -165,13 +226,13 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
         });
       throw new Error(`Unexpected offline fixture route ${path}`);
     };
-    const send = createNativeUtxoSend(
+    const openSend = (assertOwner: () => void) => createNativeUtxoSend(
       network,
       {
         profileId,
         account: {
-          id: 0,
-          type: 'HDAccount',
+          id: account.id,
+          type,
           address: account.address,
           xpub: account.xpub,
         },
@@ -184,16 +245,153 @@ test(`real native SDK ${network.symbol} HD quote, signed bytes, SQLite admission
           url: network.endpoint,
         },
       },
-      { keyring: ring, assertCurrent },
+      { keyring: ring, assertCurrent: assertOwner },
       ring.syscoinTransaction,
       records,
-      fetcher
+      fetcher,
+      ring.getAddress
     );
+    const send = openSend(assertCurrent);
+    if (asset) {
+      const sign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const quote = ring.syscoinTransaction.getEstimateSysTransactionFee.bind(ring.syscoinTransaction);
+      const draft = { amount: '0.12345678', recipient, asset };
+      await assert.rejects(send.prepare({ ...draft, amount: '10000000000.00000000' }), { code: 'INVALID_INPUT' });
+      assert.equal(calls.length, 0);
+      useCollateral = utxoAddressType === 'p2tr' ? 'fee' : 'asset';
+      await assert.rejects(send.prepare(draft), {
+        code: 'UTXO_POSSIBLE_SENTRY_COLLATERAL',
+        transactionNotBroadcast: true,
+      });
+      if (useCollateral === 'fee') {
+        assert.equal(feeCollateral.version, 80);
+        assert.equal(findWifAddressType(account.address, network), 'p2tr');
+        assert(calls.includes(`GET /api/v2/tx/${feeCollateralId}`));
+      }
+      useCollateral = false;
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(await send.list(), []);
+      assert.deepEqual(posted, []);
+      async function whileQuoteHeld<T>(action: (pending: ReturnType<typeof send.prepare>) => Promise<T>): Promise<T> {
+        let release!: () => void;
+        let entered!: () => void;
+        const held = new Promise<void>((resolve) => { release = resolve; });
+        const enteredQuote = new Promise<void>((resolve) => { entered = resolve; });
+        const heldQuote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', async (...args: Parameters<typeof quote>) => {
+          entered();
+          await held;
+          assert.equal(args[0].token?.guid, SYSX_ASSET_GUID);
+          assert.equal(args[0].amount, '0.12345678');
+          return quote(...args);
+        });
+        const pending = send.prepare(draft);
+        try {
+          await enteredQuote;
+          const result = action(pending);
+          release();
+          return await result;
+        } finally {
+          release();
+          draft.asset.assetGuid = SYSX_ASSET_GUID;
+          draft.asset.decimals = SYSX_ASSET_DECIMALS;
+          heldQuote.mock.restore();
+        }
+      }
+      await whileQuoteHeld((pending) => {
+        const rejected = assert.rejects(pending, /CANCELLED/);
+        send.cancel();
+        return rejected;
+      });
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(await send.list(), []);
+      assert.deepEqual(posted, []);
+
+      const wrongAmountQuote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', (...[options, read]: Parameters<typeof quote>) =>
+        quote({ ...options, amount: '0.12345679' }, read));
+      await assert.rejects(send.prepare(draft), /PSBT does not match the ordinary SPT review/);
+      wrongAmountQuote.mock.restore();
+      const extraDataQuote = t.mock.method(ring.syscoinTransaction, 'getEstimateSysTransactionFee', async (...args: Parameters<typeof quote>) => {
+        const result = await quote(...args);
+        const psbt = PsbtUtils.fromPali(result.psbt, sdkNetwork);
+        psbt.addOutput({ script: bitcoin.payments.embed({ data: [Buffer.from('extra')] }).output, value: 0n });
+        return { ...result, psbt: PsbtUtils.toPali(psbt) };
+      });
+      await assert.rejects(send.prepare(draft), /Invalid ordinary SPT data output/);
+      extraDataQuote.mock.restore();
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(posted, []);
+
+      const callStart = calls.length;
+      const review = await whileQuoteHeld((pending) => {
+        asset.assetGuid = '123457';
+        asset.decimals = 0;
+        return pending;
+      });
+      assert.equal(calls.slice(callStart).filter((call) => call.includes('/api/v2/xpub/')).length, type === 'HDAccount' ? 1 : 0);
+      assert.deepEqual(review.assetDisplay, { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' });
+      assert.equal(review.outputs[0]?.address, recipient);
+      assert.deepEqual(review.outputs[0]?.asset, { assetGuid: SYSX_ASSET_GUID, rawAmount: '12345678' });
+      assert.equal(review.outputs[0]?.amountSatoshis, '294');
+      const change = review.outputs.find(({ address, asset }) => address !== recipient && asset);
+      assert.equal(change?.asset?.rawAmount, '187654322');
+      assert.equal(change?.address === account.address, type === 'Imported');
+      assert(BigInt(review.feeSatoshis) > 0n);
+      await assert.rejects(send.confirm({ ...review }), /NOT_READY/);
+      assert.equal(sign.mock.callCount(), 0);
+      assert.deepEqual(posted, []);
+      await assert.rejects(send.confirm(review), { code: 'UTXO_SUBMISSION_UNKNOWN' });
+      assert.equal(sign.mock.callCount(), 1);
+      assert.equal(posted.length, 1);
+      const signed = bitcoin.Transaction.fromHex(posted[0]!);
+      assert.equal(signed.version, ALLOCATION_SEND_VERSION);
+      const allocations = getExactAssetAllocations(signed);
+      assert.equal(allocations[0]?.assetGuid, SYSX_ASSET_GUID);
+      assert.equal(allocations[0]?.values.find(({ n }) =>
+        bitcoin.address.fromOutputScript(signed.outs[n].script, network.addressNetwork) === recipient
+      )?.value, '12345678');
+      // This direct SDK fixture owns the account map as a host would. Persist it
+      // with the vault/journal and hydrate a fresh object from the reopened DB.
+      await storage.keyringStorage.set(fixtureAccountStateKey, state);
+      send.cancel();
+      active = false;
+      await ring.destroy();
+      await storage.close();
+      storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, false);
+      const persistedState = await storage.keyringStorage.get(fixtureAccountStateKey) as typeof state;
+      assert.notEqual(persistedState, state);
+      assert.equal(persistedState.activeAccount.id, account.id);
+      assert.equal(persistedState.activeAccount.type, KeyringAccountType[type]);
+      ring = new SoftwareKeyring(createKeyringHost(storage.keyringStorage), { captureEvmSubmission: null });
+      ring.setVaultStateGetter(() => persistedState);
+      assert.equal((await ring.unlock(syntheticPassword)).canLogin, true);
+      assert.equal(await ring.getPrivateRecordProfileId(), profileId);
+      currentPostAuthority = () => assert.equal(ring.isUnlocked(), true);
+      records = new UtxoSignedRecords(storage.utxoSignedRecords!, storage.utxoSignedRecords!);
+      const freshSign = t.mock.method(ring.syscoinTransaction, 'signPSBT');
+      const reopened = openSend(currentPostAuthority);
+      const afterRestart = calls.length;
+      assert.deepEqual(await reopened.list(), [{ txid: signed.getId(), accepted: false }]);
+      await assert.rejects(reopened.confirm(review), /NOT_READY/);
+      const retry = await reopened.prepareRetry(signed.getId());
+      assert.deepEqual(retry.outputs, review.outputs);
+      assert.equal(retry.feeSatoshis, review.feeSatoshis);
+      await reopened.confirm(retry);
+      assert.equal(sign.mock.callCount(), 1);
+      assert.equal(freshSign.mock.callCount(), 0);
+      assert.deepEqual(calls.slice(afterRestart), ['POST /api/v2/sendtx/']);
+      assert.deepEqual(posted, [posted[0], posted[0]]);
+      return;
+    }
+    await assert.rejects(send.prepare({
+      amount: '1', recipient,
+      asset: { assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' },
+    }), { code: 'INVALID_INPUT' });
+    assert.equal(calls.length, 0);
     const unsupportedVersions = network === litecoinRegistration ? [1, 2, 16] : [2, 16];
     for (const version of unsupportedVersions) {
       const unsupported = bitcoin.address.toBech32(Buffer.alloc(32, 9), version, network.addressNetwork.bech32);
       await assert.rejects(send.prepare({ amount: '0.0004', recipient: unsupported }), { code: 'INVALID_INPUT' });
-      assert.deepEqual(calls, []);
+      assert.equal(calls.length, 0);
     }
     let review = await send.prepare({ amount: '0.0004', recipient });
     assert.equal(review.outputs[0]?.address, recipient);

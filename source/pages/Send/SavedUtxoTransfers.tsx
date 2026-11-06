@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { SYSX_ASSET_GUID } from '../../shared/syscoinAssetIds';
 import { useController } from 'hooks/useController';
 import { formatSyscoinValue } from 'utils/formatSyscoinValue';
+
+import type { SavedUtxoReviewOutput } from '../../wallet/utxoSavedReview';
 
 type Saved = Readonly<{ accepted: boolean; txid: string }>;
 type Review = Readonly<{
   feeSatoshis: string;
   id: string;
-  outputs: readonly Readonly<{ address: string; amountSatoshis: string }>[];
+  outputs: readonly SavedUtxoReviewOutput[];
 }>;
 
 export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
@@ -85,7 +88,31 @@ export function SavedUtxoTransfers({ symbol }: { symbol: string }) {
             <p>{t('send.savedUtxo.review')}</p>
             {review.outputs.map((output, index) => (
               <div key={index}>
-                <p className="break-all">{output.address}</p>
+                {output.script ? (
+                  <details>
+                    <summary>
+                      {t(
+                        output.script.kind === 'data'
+                          ? 'transactions.opReturnData'
+                          : 'transactions.outputScript'
+                      )}
+                    </summary>
+                    <p className="break-all">{output.script.hex}</p>
+                  </details>
+                ) : (
+                  <p className="break-all">{output.address}</p>
+                )}
+                {output.asset && (
+                  <p>
+                    {output.asset.assetGuid === SYSX_ASSET_GUID
+                      ? `${formatSyscoinValue(output.asset.rawAmount)} SYSX`
+                      : `${output.asset.rawAmount} ${t(
+                          'transactions.replay.rawUnits'
+                        )}`}
+                    {' · '}
+                    {t('send.assetGuid')} {output.asset.assetGuid}
+                  </p>
+                )}
                 <p>
                   {formatSyscoinValue(output.amountSatoshis)} {symbol}
                 </p>

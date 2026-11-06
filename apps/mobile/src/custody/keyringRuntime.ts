@@ -1258,7 +1258,7 @@ export function createKeyringRuntimeFactory(
               account: { address: selected.address, id: selected.index, type: selected.type, xpub },
               network: { kind: 'syscoin', currency: sdkNetwork.currency, chainId: sdkNetwork.chainId,
                 genesisHash: network.genesisHash, slip44: sdkNetwork.slip44, url: sdkNetwork.url },
-            }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!);
+            }, { keyring: ring, assertCurrent: guard }, ring.syscoinTransaction, utxoRecords, dependencies.utxoFetch!, ring.getAddress);
             utxoSend = opened;
             return Object.freeze<NativeUtxoSend>({ ...opened, async confirm(view) {
               const pending = opened.confirm(view);

@@ -52,7 +52,15 @@ const token = {
   description: 'Imported description',
   image: 'ipfs://imported-image',
 };
+const accountSummary = {
+  address: 'zpub-fixture',
+  balance: '0',
+  unconfirmedBalance: '0',
+  txs: 0,
+  unconfirmedTxs: 0,
+};
 const healthyInventory = {
+  ...accountSummary,
   tokensAsset: [
     {
       assetGuid: token.assetGuid,
@@ -142,15 +150,8 @@ it('commits a valid SPT balance through the real refresh pipeline', async () => 
 });
 
 it.each([
-  { tokensAsset: [] },
-  {
-    address: 'zpub-fixture',
-    addressOrXpub: 'zpub-fixture',
-    balance: '0',
-    unconfirmedBalance: '0',
-    txs: 0,
-    unconfirmedTxs: 0,
-  },
+  { ...accountSummary, tokensAsset: [] },
+  { ...accountSummary, addressOrXpub: 'zpub-fixture' },
   {
     address: 'zpub-fixture',
     balance: 1000,
@@ -223,8 +224,9 @@ it.each([
   'unavailable',
   [],
   { error: 'backend unavailable' },
-  { tokensAsset: {} },
-  { tokensAsset: null },
+  { address: accountSummary.address, tokensAsset: [] },
+  { ...accountSummary, tokensAsset: {} },
+  { ...accountSummary, tokensAsset: null },
 ])(
   'preserves SPT balances and metadata on an unusable SDK response: %p',
   async (reply) => {
@@ -267,6 +269,7 @@ it('preserves the entire imported inventory after mixed valid and unidentified r
     })
   );
   mockRead.mockResolvedValue({
+    ...accountSummary,
     tokensAsset: [...healthyInventory.tokensAsset, { balance: '900' }],
   });
   const failure = await refresh().catch((error: Error) => error);
@@ -291,7 +294,7 @@ it.each([
   { assetGuid: 1.5 },
   { assetGuid: Number.MAX_SAFE_INTEGER + 1 },
 ])('preserves balances on a malformed inventory row: %p', async (row) => {
-  mockRead.mockResolvedValue({ tokensAsset: [row] });
+  mockRead.mockResolvedValue({ ...accountSummary, tokensAsset: [row] });
   await expect(refresh()).rejects.toThrow(
     'SPT token inventory is unavailable or invalid'
   );
@@ -310,6 +313,7 @@ it.each(['998877', 998877, '18446744073709551615'])(
       })
     );
     mockRead.mockResolvedValue({
+      ...accountSummary,
       tokensAsset: [{ ...healthyInventory.tokensAsset[0], assetGuid }],
     });
     await refresh();

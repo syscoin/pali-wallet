@@ -2,6 +2,27 @@ import { test, expect } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
+test('SYSX appears as an exact read-only balance on the selected Syscoin UTXO account', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?network-portfolio');
+  await page.evaluate(() => window.__nativeNetworkPortfolio.select('syscoin'));
+  await expect(page.getByTestId('native-portfolio-balance')).toHaveAttribute('aria-label', 'Syscoin Mainnet balance 1.234 SYS');
+  await expect(page.getByTestId('native-portfolio-sysx')).toHaveText('90071992.54740995 SYSX');
+  await expect(page.getByText('Pending -0.00000001 SYSX', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /send sysx/i })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.evaluate(() => window.__nativeNetworkPortfolio.setSysx('unavailable'));
+  await page.getByTestId('native-portfolio-refresh').click();
+  await expect(page.getByTestId('native-portfolio-sysx')).toHaveText('Balance unavailable');
+  await expect(page.getByText('Pending -0.00000001 SYSX', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => window.__nativeNetworkPortfolio.setSysx('empty'));
+  await page.getByTestId('native-portfolio-refresh').click();
+  await expect(page.getByTestId('native-portfolio-sysx')).toHaveCount(0);
+  await page.evaluate(() => window.__nativeNetworkPortfolio.select('bitcoin'));
+  await expect(page.getByTestId('native-portfolio-sysx')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__nativeNetworkPortfolio.reads())).toEqual(['ethereum', 'syscoin', 'syscoin', 'syscoin', 'bitcoin']);
+});
+
 test('actual network view switches portfolio and Receive with generic Send available', async ({ page }) => {
   await page.goto('/?network-portfolio');
   await expect(page.getByTestId('native-portfolio-balance')).toHaveText('1.234');

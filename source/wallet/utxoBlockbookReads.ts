@@ -9,7 +9,13 @@ import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache
 export type UtxoBlockbookReadScope =
   | Readonly<{ kind: 'fee'; url: string }>
   | Readonly<{ kind: 'detail'; txid: string; url: string }>
-  | Readonly<{ address: string; kind: 'wallet'; url: string; xpub: string }>;
+  | Readonly<{
+      address: string;
+      kind: 'wallet';
+      reuseAddressDiscovery?: true;
+      url: string;
+      xpub: string;
+    }>;
 
 const RESPONSE_BYTES = 1024 * 1024;
 const OPERATION_BYTES = RESPONSE_BYTES * 2;
@@ -40,13 +46,16 @@ export function createOwnedUtxoBlockbookRead(
   } else {
     allowed.add(FEE);
   }
+  let addressDiscovery: string | undefined;
   if (scope.kind === 'wallet') {
     if (scope.address)
       allowed.add(`/api/v2/utxo/${encodeURIComponent(scope.address)}`);
     if (scope.xpub) {
       const xpub = encodeURIComponent(scope.xpub);
       allowed.add(`/api/v2/utxo/${xpub}`);
-      allowed.add(`/api/v2/xpub/${xpub}?tokens=used&details=tokens`);
+      const path = `/api/v2/xpub/${xpub}?tokens=used&details=tokens`;
+      allowed.add(path);
+      if (scope.reuseAddressDiscovery) addressDiscovery = path;
     }
   }
   const wallet = scope.kind === 'wallet';
@@ -110,10 +119,10 @@ export function createOwnedUtxoBlockbookRead(
     }
   }
 
-  // Prevout verification and hardware enrichment share one bounded response.
-  // Keep the body, not a Response stream, so each caller can consume it once.
-  const rawReads = new Map<string, ReturnType<typeof read>>();
-  signal.addEventListener('abort', () => rawReads.clear(), { once: true });
+  // Prevout verification and signing enrichment can reuse one exact body.
+  // An SPT quote also shares discovery between the builder and consent check.
+  const reads = new Map<string, ReturnType<typeof read>>();
+  signal.addEventListener('abort', () => reads.clear(), { once: true });
 
   return Object.freeze({
     signal,
@@ -137,12 +146,15 @@ export function createOwnedUtxoBlockbookRead(
       if (!allowed.has(path) && !(wallet && txid))
         throw new Error('Invalid owned Blockbook route');
 
-      let pending = txid ? rawReads.get(txid) : undefined;
+      const reusable = !!txid || path === addressDiscovery;
+      let pending = reusable ? reads.get(path) : undefined;
       if (!pending) {
-        pending = txid ? Promise.resolve().then(() => read(url)) : read(url);
-        if (txid) {
-          rawReads.set(txid, pending);
-          const forget = () => rawReads.delete(txid);
+        pending = reusable
+          ? Promise.resolve().then(() => read(url))
+          : read(url);
+        if (reusable) {
+          reads.set(path, pending);
+          const forget = () => reads.delete(path);
           void pending.then(({ body }) => {
             if (!body) forget();
           }, forget);
