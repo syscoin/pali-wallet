@@ -7,8 +7,11 @@ import type { NativeNetworkSnapshot, NativeNetworkView } from '../../src/custody
 import { NativeNetworks } from '../../src/screens/NativeNetworks';
 import { Text } from '../../src/ui';
 
-const networks = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
+const networks: NativeNetworkSnapshot['networks'][number][] = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
   symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }));
+const customUtxo = { id: 'custom-litecoin', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
+  canSign: true, customUtxoEndpoint: 'https://litecoin.example/blockbook' };
+if (new URLSearchParams(window.location.search).has('utxo')) networks.push(customUtxo);
 let snapshot: NativeNetworkSnapshot | null = Object.freeze({ revision: 4, selectedId: 'ethereum', networks });
 let contextRevision = 19;
 let cancelled = 0;
@@ -45,6 +48,18 @@ const controller: NativeNetworkView = {
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   cancel() { cancelled++; contextRevision++; },
   loadCatalogue,
+  async verifyUtxoEndpoint(id, endpoint, expectedContextRevision, expectedCatalogueRevision) {
+    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
+        snapshot.revision !== expectedCatalogueRevision || endpoint !== 'https://replacement.example/blockbook')
+      throw Error('INVALID_INPUT');
+  },
+  async renameUtxo(id, name, expectedContextRevision, expectedCatalogueRevision) {
+    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
+        snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
+      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name } : network) });
+    contextRevision++; notify();
+  },
   async save(registration, expectedContextRevision, expectedCatalogueRevision) {
     if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
     saveRequests++;

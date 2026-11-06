@@ -457,11 +457,14 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const unsupportedEndpoint = 'https://offline-zec.invalid/blockbook';
   const zec = findUtxoCoinByRegistration({ chainId: 133, slip44: 133 })!;
   const btgEndpoint = 'https://offline-btg.invalid/blockbook';
+  const candidateEndpoint = 'https://offline-ltc-candidate.invalid/blockbook';
   const btg = findUtxoCoinByRegistration({ chainId: 156, slip44: 156 })!;
   assert.equal(zec.segwit, false);
   assert.equal(btg.segwit, true);
   assert.equal(btg.forkId, 79);
   const registration = litecoinRegistration;
+  let candidateMismatch: 'backend' | 'genesis' | undefined;
+  let holdCandidateStatus: (() => Promise<void>) | undefined;
   let address = '';
   let lookup = '';
   let fundingAddress = '';
@@ -479,6 +482,19 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     assert.equal(typeof input, 'string');
     const url = String(input);
+    if (url.startsWith(candidateEndpoint + '/')) {
+      const path = url.slice(candidateEndpoint.length);
+      calls.push(`${init?.method} ${path}`);
+      assert.equal(init?.method, 'GET');
+      if (path === '/api/v2/') {
+        await holdCandidateStatus?.();
+        const status = metadata(registration);
+        if (candidateMismatch === 'backend') status.backend.chain = 'wrong-backend';
+        return reply(url, status);
+      }
+      assert.equal(path, '/api/v2/block-index/0');
+      return reply(url, { blockHash: candidateMismatch === 'genesis' ? 'c'.repeat(64) : registration.genesisHash });
+    }
     const unsupported = url.startsWith(btgEndpoint + '/') ? [btgEndpoint, btg] as const
       : url.startsWith(unsupportedEndpoint + '/') ? [unsupportedEndpoint, zec] as const : undefined;
     if (unsupported) {
@@ -628,6 +644,45 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
     assert.deepEqual(calls.slice(beforeAdd), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
     const custom = owner.getCatalogue()!.utxoNetworks.find((candidate) => candidate.endpoint === endpoint)!;
     assert.equal(custom.backendChain, registration.backendChain);
+    const beforePreview = owner.getCatalogue()!;
+    const contextRevision = owner.getSnapshot().revision;
+    const verifyCandidate = (id = custom.id, signal = new AbortController().signal) =>
+      owner.verifyUtxoEndpoint(id, candidateEndpoint, contextRevision, beforePreview.revision, signal);
+    const requestsBeforePreview = calls.length;
+    await verifyCandidate();
+    assert.equal(owner.getCatalogue(), beforePreview);
+    assert.equal(owner.getSnapshot().revision, contextRevision);
+    assert.deepEqual(calls.slice(requestsBeforePreview), ['GET /api/v2/', 'GET /api/v2/block-index/0']);
+    for (const mismatch of ['backend', 'genesis'] as const) {
+      candidateMismatch = mismatch;
+      await assert.rejects(verifyCandidate(), /UTXO registration does not match the selected coin/);
+      assert.equal(owner.getCatalogue(), beforePreview);
+    }
+    candidateMismatch = undefined;
+    const candidateEntered = Promise.withResolvers<void>(), releaseCandidate = Promise.withResolvers<void>();
+    const previewLifetime = new AbortController();
+    const beforeCancelledPreview = calls.length;
+    holdCandidateStatus = () => { candidateEntered.resolve(); return releaseCandidate.promise; };
+    const cancelledPreview = verifyCandidate(custom.id, previewLifetime.signal);
+    const failedPreview = assert.rejects(cancelledPreview);
+    try {
+      await Promise.race([candidateEntered.promise, cancelledPreview]);
+      previewLifetime.abort();
+    } finally {
+      releaseCandidate.resolve();
+      holdCandidateStatus = undefined;
+    }
+    await failedPreview;
+    assert.deepEqual(calls.slice(beforeCancelledPreview), ['GET /api/v2/']);
+    assert.equal(owner.getCatalogue(), beforePreview);
+    const beforeForbiddenEdit = calls.length;
+    await assert.rejects(verifyCandidate('bitcoin'), { code: 'INVALID_INPUT' });
+    const unauthorizedEdit = { kind: 'rename-utxo-network', id: custom.id, name: custom.name, endpoint: candidateEndpoint } as const;
+    await assert.rejects(owner.manageNetwork(unauthorizedEdit, contextRevision, beforePreview.revision), { code: 'INVALID_INPUT' });
+    await assert.rejects(owner.manageNetwork({ kind: 'rename-utxo-network', id: 'bitcoin', name: 'Other' },
+      contextRevision, beforePreview.revision), { code: 'INVALID_INPUT' });
+    assert.equal(calls.length, beforeForbiddenEdit);
+    assert.equal(owner.getCatalogue(), beforePreview);
     const beforeDuplicate = owner.getCatalogue()!;
     await assert.rejects(owner.addUtxoNetwork({ endpoint, name: 'Duplicate', explorer: '' },
       owner.getSnapshot().revision, beforeDuplicate.revision, new AbortController().signal));
@@ -834,6 +889,24 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
           assert.equal(retained.accepted, false);
           txid = retained.txid;
           blockBroadcast = false;
+          if (index === 0) {
+            const savedJournal = (await storage.recovery.readSnapshot()).records
+              .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value;
+            const beforeRename = owner.getCatalogue()!;
+            const beforeRequests = calls.length;
+            await owner.manageNetwork({ kind: 'rename-utxo-network', id: custom.id, name: 'Renamed Litecoin' },
+              owner.getSnapshot().revision, beforeRename.revision);
+            const afterRename = owner.getCatalogue()!;
+            assert.deepEqual(afterRename.active, beforeRename.active);
+            assert.deepEqual(afterRename.accounts, beforeRename.accounts);
+            const renamed = afterRename.utxoNetworks.find((entry) => entry.id === custom.id)!;
+            assert.equal(renamed.name, 'Renamed Litecoin');
+            assert.equal(renamed.endpoint, custom.endpoint);
+            assert.equal(renamed.genesisHash, custom.genesisHash);
+            assert.equal(calls.length, beforeRequests);
+            assert.equal((await storage.recovery.readSnapshot()).records
+              .find((row) => row.key === UTXO_SIGNED_RECORD_KEY)?.value, savedJournal);
+          }
         } else {
           ({ txid } = await send.confirm(review));
           raw = posts.at(-1)!;
