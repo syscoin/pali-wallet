@@ -603,7 +603,9 @@ export class WatchOnlyAuthority implements WalletAuthority {
       assertDetailCurrent();
       const readNode = result.readSentryNode;
       return readNode ? Object.freeze({ ...result,
-        readSentryNode: (signal: AbortSignal, guard: () => void) => readNode(signal, () => { assertDetailCurrent(); guard(); }),
+        readSentryNode: (signal: AbortSignal, guard: () => void) =>
+          this.withActivityRead('utxo', signal, () => { assertDetailCurrent(); return guard(); },
+            (_owner, ownedSignal, check) => readNode(ownedSignal, check)),
       }) : result;
     } finally {
       external.removeEventListener('abort', abort); requests.delete(operation);

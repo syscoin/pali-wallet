@@ -3,6 +3,7 @@ import test from 'node:test';
 import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
@@ -460,8 +461,8 @@ test('oversized SPT text never reaches arbitrary-precision conversion', async ()
   } finally { BigNumber.from = original; }
 });
 
-test('only an exact confirmed v80 Syscoin detail can explicitly request public node information', async () => {
-  for (const mode of ['healthy', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin'] as const) {
+test('only an owned exact confirmed v80 Syscoin detail can request public node information', async () => {
+  for (const mode of ['healthy', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin', 'changed-saved-scope'] as const) {
     const network = getUtxoNetwork(mode === 'bitcoin' ? 'bitcoin' : 'syscoin');
     const address = mode === 'bitcoin' ? BTC : SYS;
     const f = fixture({ network: mode === 'bitcoin' ? 'bitcoin' : 'syscoin', count: 1, replace(path, body) {
@@ -482,8 +483,14 @@ test('only an exact confirmed v80 Syscoin detail can explicitly request public n
       }
       return f.fetch(url, init);
     } });
-    const a = new WatchOnlyAuthority([{ id: 'watch', name: 'Watch', addresses: { [network.id]: address } }],
-      { async readBalance() { throw Error(); } }, undefined, undefined, reader);
+    let saved = JSON.stringify({ version: 1, records: [{ kind: 'address', id: 'watch', name: 'Watch', addresses: { [network.id]: address } }] });
+    const repository = createPublicAccountStorage({
+      async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : null; },
+      async set() { assert.fail('Lookup is read-only'); },
+    }).records;
+    const a = await WatchOnlyAuthority.openRecords({
+      repository, historyReader: reader, reader: { async readBalance() { throw Error(); } }, signal: signal(),
+    });
     a.unlock();
     const c = new UtxoWatchActivity(a, () => true);
     try {
@@ -494,8 +501,16 @@ test('only an exact confirmed v80 Syscoin detail can explicitly request public n
       assert.equal(c.getSnapshot().detail?.status, 'ready');
       assert.deepEqual(serviceCalls, []);
       const lookup = c.getSnapshot().detail?.readSentryNode;
-      if (mode !== 'healthy') { assert.equal(lookup, undefined, mode); continue; }
+      if (mode !== 'healthy' && mode !== 'changed-saved-scope') { assert.equal(lookup, undefined, mode); continue; }
       assert.ok(lookup);
+      if (mode === 'changed-saved-scope') {
+        saved = JSON.stringify({ version: 1, records: [] });
+        assert.equal(a.getSnapshot().status, 'ready');
+        assert.equal(c.getSnapshot().detail?.txid, SENTRY_TXID);
+        await assert.rejects(lookup(signal(), () => undefined));
+        assert.deepEqual(serviceCalls, []);
+        continue;
+      }
       const result = await lookup(signal(), () => undefined);
       assert.equal(result.node.proTxHash, SENTRY_TXID);
       assert.deepEqual(serviceCalls, [`https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`]);
