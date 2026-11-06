@@ -4,6 +4,7 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.AEADBadTagException
 import javax.crypto.Cipher
+import javax.crypto.Mac
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
 import org.bouncycastle.crypto.digests.SHA256Digest
@@ -33,6 +34,14 @@ internal object PaliCryptoPrimitives {
   fun digest(data: ByteArray): ByteArray {
     require(data.size <= MAX_DIGEST_DATA)
     return MessageDigest.getInstance("SHA-256").digest(data)
+  }
+
+  fun signHmacSha512(key: ByteArray, data: ByteArray): ByteArray {
+    require(key.isNotEmpty() && key.size <= 4_096 && data.size <= MAX_DIGEST_DATA)
+    return Mac.getInstance("HmacSHA512").run {
+      init(SecretKeySpec(key, "HmacSHA512"))
+      doFinal(data)
+    }
   }
 
   fun pbkdf2(password: ByteArray, salt: ByteArray, iterations: Int, hash: String, length: Int): ByteArray {

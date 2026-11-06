@@ -29,6 +29,9 @@ class PaliCryptoKey internal constructor(
     return checkNotNull(material).copyOf()
   }
 
+  @Synchronized internal fun isUsable(context: PaliCryptoContext, kind: String, usage: String): Boolean =
+    owner === context && this.kind == kind && usages.contains(usage) && material != null
+
   @Synchronized internal fun destroy() { material?.fill(0); material = null }
   override fun sharedObjectDidRelease() { destroy() }
   @Synchronized override fun getAdditionalMemoryPressure(): Int = material?.size ?: 0
@@ -42,12 +45,27 @@ class PaliCryptoContext : SharedObject() {
 
   @Synchronized internal fun importKey(kind: String, usages: List<String>, data: ByteArray): PaliCryptoKey {
     ensureOpen()
-    val allowed = if (kind == "AES-GCM") setOf("encrypt", "decrypt") else setOf("deriveBits", "deriveKey")
-    require(kind in setOf("AES-GCM", "PBKDF2", "HKDF"))
+    val allowed = when (kind) {
+      "AES-GCM" -> setOf("encrypt", "decrypt")
+      "HMAC-SHA512" -> setOf("sign")
+      else -> setOf("deriveBits", "deriveKey")
+    }
+    require(kind in setOf("AES-GCM", "PBKDF2", "HKDF", "HMAC-SHA512"))
     require(usages.isNotEmpty() && usages.size <= 2 && usages.toSet().size == usages.size && allowed.containsAll(usages))
-    require(data.size <= 4_096 && (kind != "AES-GCM" || data.size == 32) && (kind != "HKDF" || data.isNotEmpty()))
+    require(data.size <= 4_096 && (kind != "AES-GCM" || data.size == 32) &&
+      (kind !in setOf("HKDF", "HMAC-SHA512") || data.isNotEmpty()))
+    return registerKey(kind, usages.toSet(), data)
+  }
+
+  @Synchronized internal fun registerPublicSlhFixtureSeed(data: ByteArray): PaliCryptoKey {
+    ensureOpen()
+    require(data.size == 48)
+    return registerKey("SLH-DSA-SEED", setOf("derivePublic"), data)
+  }
+
+  private fun registerKey(kind: String, usages: Set<String>, data: ByteArray): PaliCryptoKey {
     keys.removeAll { it.get() == null }
-    return PaliCryptoKey(this, kind, usages.toSet(), data).also { keys.add(WeakReference(it)) }
+    return PaliCryptoKey(this, kind, usages, data).also { keys.add(WeakReference(it)) }
   }
 
   internal fun <T> usingKey(key: PaliCryptoKey, kind: String, usage: String, body: (ByteArray) -> T): T {
@@ -76,6 +94,8 @@ class PaliWalletCryptoModule : Module() {
     Thread(task, "PaliWalletCrypto").apply { isDaemon = true }
   }.asCoroutineDispatcher()
   private val queue = CoroutineScope(SupervisorJob() + dispatcher)
+  private val publicMerkleOwner = PaliPublicMerkleBatchOwner()
+  private val slhOwner = PaliSlhOperationOwner()
 
   private inline fun <T> operation(body: () -> T): T =
     try { body() } catch (_: Exception) { throw CryptoOperationException() }
@@ -84,20 +104,48 @@ class PaliWalletCryptoModule : Module() {
     Name("PaliWalletCrypto")
     Function("info") { mapOf("apiVersion" to 1, "implementation" to "android-jca-bc") }
     Function("createContext") { PaliCryptoContext() }
-    OnDestroy { queue.cancel(); dispatcher.close() }
+    OnDestroy {
+      publicMerkleOwner.retired.set(true)
+      slhOwner.retired.set(true)
+      queue.cancel()
+      dispatcher.close()
+    }
+    AsyncFunction("publicMerkleBatch") { program: ByteArray, promise: expo.modules.kotlin.Promise ->
+      PaliPublicMerkleBatch.execute(program, publicMerkleOwner, promise)
+    }
     Class("Key", PaliCryptoKey::class) {
       // Expo requires a constructor declaration even for factory-only handles.
       Constructor { throw CryptoOperationException() }
     }
+    Class("SlhLeafOperation", PaliSlhLeafOperation::class) {
+      Constructor { throw CryptoOperationException() }
+      Function("cancel") { operation: PaliSlhLeafOperation -> operation.cancel() }
+      AsyncFunction("run") { operation: PaliSlhLeafOperation, promise: expo.modules.kotlin.Promise ->
+        operation.execute(promise)
+      }
+    }
     Class("Context", PaliCryptoContext::class) {
       Constructor { throw CryptoOperationException() }
       Function("close") { context: PaliCryptoContext -> context.close() }
+      Function("importPublicSlhFixtureSeed") { context: PaliCryptoContext ->
+        operation {
+          check(appContext.reactContext?.packageName == "com.paliwallet.qualification")
+          val seed = checkNotNull(PaliSlhNative.publicFixtureSeed())
+          try { context.registerPublicSlhFixtureSeed(seed) } finally { seed.fill(0) }
+        }
+      }
+      Function("prepareSlhLeafChunk") { context: PaliCryptoContext, key: PaliCryptoKey, start: Double, count: Double ->
+        operation { PaliSlhLeafOperation(context, key, slhOwner, start, count) }
+      }
       Function("importKey") { context: PaliCryptoContext, kind: String, usages: List<String>, bytes: ByteArray ->
         operation { context.importKey(kind, usages, bytes) }
       }
       Function("randomBytes") { context: PaliCryptoContext, count: Int ->
         operation { context.ensureOpen(); PaliCryptoPrimitives.randomBytes(count) }
       }
+      AsyncFunction("signHmacSha512") { context: PaliCryptoContext, key: PaliCryptoKey, data: ByteArray ->
+        operation { context.usingKey(key, "HMAC-SHA512", "sign") { PaliCryptoPrimitives.signHmacSha512(it, data) } }
+      }.runOnQueue(queue)
       AsyncFunction("digestSha256") { context: PaliCryptoContext, data: ByteArray ->
         operation { context.ensureOpen(); PaliCryptoPrimitives.digest(data).also { context.ensureOpen() } }
       }.runOnQueue(queue)

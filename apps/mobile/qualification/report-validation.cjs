@@ -1,4 +1,7 @@
-const EXPECTED_SDK_VERSION = require('../package.json').dependencies['@sidhujag/sysweb3-keyring'];
+const { readQualificationSdkPin } = require('../scripts/qualification-sdk.cjs');
+const EXPECTED_SDK_VERSION = readQualificationSdkPin(
+  require('node:path').dirname(require.resolve('../package.json'))
+).identity;
 const { isImportedQualificationReport, matchesImportedRestartEvidence, IMPORTED_REPORT_FIELDS } = require('./imported-evm.ts');
 const { isCryptoDiagnostic } = require('../src/crypto/diagnostics.ts');
 const { Buffer } = require('node:buffer');
@@ -249,6 +252,7 @@ function assertPhysicalRestart(created, restored) {
 }
 
 module.exports = {
+  expectedQualificationSdkVersion: EXPECTED_SDK_VERSION,
   decodeNativeReport,
   assertFullNativeReport,
   decodePhysicalReport,

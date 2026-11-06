@@ -68,7 +68,13 @@ test('generic contract creation, access lists and replacement records keep every
   const rawTransaction = await signer.signTransaction({type:2,chainId:7654321,nonce:4,value:0,data:'0x60006000',gasLimit:100000,maxFeePerGas:5,maxPriorityFeePerGas:2});
   const replacement = {...initial,rawTransaction,hash:Transaction.from(rawTransaction).hash!,type:2,
     context:{...initial.context,operation:'speed-up' as const,originalHash:initial.hash}};
-  await f.store.append(f.session(),replacement);
+  const session = f.session();
+  await assert.rejects(f.store.append(session, replacement), /ORIGINAL_CHANGED/);
+  const binding = await f.store.captureVerifiedReplacement(session, {
+    chainId: initial.chainId, from: initial.from, nonce: initial.nonce,
+    operation: 'speed-up', originalHash: initial.hash,
+  });
+  await f.store.append(session, replacement, undefined, binding);
   const all=await f.store.listSender(f.session(),'7654321',signer.address);
   assert.equal(all.length,2);assert.equal(all[1]!.originalHash,initial.hash);
   assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,replacement.hash))!.rawTransaction,rawTransaction);

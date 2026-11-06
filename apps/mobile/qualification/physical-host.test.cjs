@@ -15,6 +15,7 @@ const {
 const { PHYSICAL_BUNDLES } = require('./physical-contract.ts');
 const { TIMED_CRYPTO_CASES, CHECKS } = require('./simulator-contract.cjs');
 const {
+  expectedQualificationSdkVersion,
   decodePhysicalReport,
   assertPhysicalRestart,
 } = require('./report-validation.cjs');
@@ -57,7 +58,7 @@ function report(phase, scenario, runId) {
     fingerprint: 'f'.repeat(64),
     networkCalls: 0,
     nativeBridgeExercised: true,
-    sdkVersion: require('../package.json').dependencies['@sidhujag/sysweb3-keyring'],
+    sdkVersion: expectedQualificationSdkVersion,
     nativeSigningVerified: true,
     ...importedEvidence(phase),
     nativeHdAccountsVerified: true, nativeHdKeyRevealVerified: true,
