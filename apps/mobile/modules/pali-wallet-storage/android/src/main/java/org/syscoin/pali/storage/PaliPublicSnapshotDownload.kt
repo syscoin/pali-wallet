@@ -15,7 +15,6 @@ import okhttp3.ConnectionPool
 import okhttp3.CookieJar
 import okhttp3.EventListener
 import okhttp3.HttpUrl
-import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -188,17 +187,22 @@ internal object PaliPublicSnapshotDownloader {
       .build()
   }
 
-  fun endpoint(pool: String): HttpUrl? = when (pool) {
-    "eth-0.1", "eth-1", "eth-10", "eth-100" -> "https://sysnode.info/api/privacy/v1/pools/$pool/snapshot".toHttpUrl()
-    else -> null
+  fun endpoint(pool: String, serviceOrigin: String): HttpUrl? {
+    if (pool !in setOf("eth-0.1", "eth-1", "eth-10", "eth-100")) return null
+    val origin = serviceOrigin.toHttpUrlOrNull() ?: return null
+    if ((!origin.isHttps && !(origin.scheme == "http" && origin.host in setOf("localhost", "127.0.0.1"))) ||
+        origin.username.isNotEmpty() || origin.password.isNotEmpty() ||
+        origin.query != null || origin.fragment != null || origin.encodedPath != "/") return null
+    return origin.newBuilder().encodedPath("/api/privacy/v1/pools/$pool/snapshot").build()
   }
 
   /** The caller receives the exact cancellation handle before starting any I/O. */
   fun prepare(
     pool: String,
+    serviceOrigin: String,
     completion: (Result<Unit>) -> Unit
   ): PaliPublicSnapshotOperation = reserve(
-    endpoint(pool) ?: fail(PaliPublicSnapshotError.INVALID),
+    endpoint(pool, serviceOrigin) ?: fail(PaliPublicSnapshotError.INVALID),
     TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS), SNAPSHOT_BYTES, completion
   )
 

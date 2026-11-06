@@ -65,15 +65,36 @@ private val ANCHOR_WIRE = listOf(
 class PaliPublicSnapshotDownloadTest {
   @Test
   fun boundedOwnedDownloadOverRealOkHttp() {
-    for (pool in listOf("eth-0.1", "eth-1", "eth-10", "eth-100")) {
-      assertEquals("https://sysnode.info/api/privacy/v1/pools/$pool/snapshot", PaliPublicSnapshotDownloader.endpoint(pool).toString())
+    val origins = listOf("https://snapshot.example", "https://snapshot.example:8443/",
+      "http://localhost:8800", "http://127.0.0.1:8800")
+    for (origin in origins) {
+      for (pool in listOf("eth-0.1", "eth-1", "eth-10", "eth-100")) {
+        assertEquals(origin.trimEnd('/') + "/api/privacy/v1/pools/$pool/snapshot",
+          PaliPublicSnapshotDownloader.endpoint(pool, origin).toString())
+      }
     }
     for (pool in listOf("", "eth-0.10", "../eth-1", "eth-1?x=y", "ETH-1")) {
       expectThrow(PaliPublicSnapshotError.INVALID) {
-        PaliPublicSnapshotDownloader.prepare(pool) { error("invalid pool dispatched") }
+        PaliPublicSnapshotDownloader.prepare(pool, origins[0]) { error("invalid pool dispatched") }
+      }
+    }
+    for (origin in listOf("", "/relative", "http://snapshot.example", "http://192.168.1.2:8800",
+      "http://[::1]:8800", "https://a:b@snapshot.example", "https://snapshot.example/path",
+      "https://snapshot.example/?key=x", "https://snapshot.example/#x", "javascript:alert(1)",
+      "https://snapshot.example:65536")) {
+      check(PaliPublicSnapshotDownloader.endpoint("eth-1", origin) == null)
+      expectThrow(PaliPublicSnapshotError.INVALID) {
+        PaliPublicSnapshotDownloader.prepare("eth-1", origin) { error("invalid origin dispatched") }
       }
     }
     SnapshotLoopback().use { server ->
+      val selectedResult = CompletableFuture<Result<Unit>>()
+      val selected = PaliPublicSnapshotDownloader.prepare("eth-1", server.url("/").toString()) {
+        check(selectedResult.complete(it))
+      }
+      selected.start()
+      selectedResult.get(FIXTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS).getOrThrow()
+      checkSmall(selected)
       expectThrow(PaliPublicSnapshotError.TIMEOUT) { reserve(server, "/must-not-hit", 0) }
       val (beforeStart, notDispatched) = reserve(server, "/must-not-hit")
       expectThrow(PaliPublicSnapshotError.UNAVAILABLE) { beforeStart.info() }
@@ -204,7 +225,7 @@ class PaliPublicSnapshotDownloadTest {
         handle.start()
         await(pending).getOrThrow()
         expectThrow(PaliPublicSnapshotError.BUSY) {
-          PaliPublicSnapshotDownloader.prepare("eth-1") { error("GET competed with retained anchor") }
+          PaliPublicSnapshotDownloader.prepare("eth-1", "https://snapshot.example") { error("GET competed with retained anchor") }
         }
         val prefix = anchorReply(id)
         checkBody(handle, if (id == 1) 202 else 200, if (read == AnchorRead.BLOCK) BLOCK_CAP else SCALAR_CAP) {
@@ -366,6 +387,7 @@ private class SnapshotLoopback : Closeable {
   val framingClosed = ConcurrentHashMap.newKeySet<String>()
   val framingFinished = CountDownLatch(refusedFraming.size)
   val paths = setOf(
+    "/api/privacy/v1/pools/eth-1/snapshot",
     "/exact", "/progress", "/short-fixed", "/empty", "/oversize-length", "/oversize-progress",
     "/encoded", "/duplicate-encoding", "/duplicate-length", "/redirect", "/retry", "/challenge", "/partial",
     "/truncated", "/held", "/reopened", "/deadline", "/after-deadline",
