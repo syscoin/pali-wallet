@@ -19,6 +19,8 @@ let catalogue = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 1, netw
 const listeners = new Set<(value: CustodySnapshot) => void>();
 const reads: string[] = [];
 let sends = 0;
+type SysxFixture = 'held' | 'unavailable' | 'empty';
+let sysxFixture: SysxFixture = 'held';
 const publish = () => { for (const listener of listeners) listener(state); };
 const authority = {
   getSnapshot: () => state,
@@ -52,13 +54,16 @@ const reader: BalanceReader = {
     const network = getUtxoNetwork(id);
     reads.push(id);
     return { kind: 'utxo', networkId: id, chainId: network.chainId, genesisHash: network.genesisHash,
-      confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123 };
+      confirmedUnits: '123400000', pendingDeltaUnits: '-123', unconfirmedTransactions: 1, observedHeight: 123,
+      ...(id === 'syscoin' && sysxFixture !== 'unavailable' ? { sysx: sysxFixture === 'held'
+        ? { confirmedUnits: '9007199254740995', pendingDeltaUnits: '-1' }
+        : { confirmedUnits: '0', pendingDeltaUnits: '0' } } : {}) };
   },
 };
 
-declare global { interface Window { __nativeNetworkPortfolio: { reads(): readonly string[]; sends(): number; select(id: EvmNetworkId): Promise<void> }; } }
+declare global { interface Window { __nativeNetworkPortfolio: { reads(): readonly string[]; sends(): number; select(id: EvmNetworkId): Promise<void>; setSysx(value: SysxFixture): void }; } }
 window.__nativeNetworkPortfolio = { reads: () => [...reads], sends: () => sends,
-  select: (id) => authority.selectNetwork(id, state.revision, catalogue.revision) };
+  select: (id) => authority.selectNetwork(id, state.revision, catalogue.revision), setSysx: (value) => { sysxFixture = value; } };
 export function NativeNetworkPortfolioFixture() {
   const [view, setView] = useState<'portfolio' | 'networks'>('portfolio');
   return view === 'networks' ? <NativeNetworks controller={networks} onBack={() => setView('portfolio')} /> :

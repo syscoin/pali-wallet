@@ -80,7 +80,10 @@ const refresh = () =>
 const reply = (...rows: any[]) =>
   fetchSpy.mockResolvedValue({
     ok: true,
-    json: async () => JSON.parse(JSON.stringify({ tokensAsset: rows })),
+    json: async () =>
+      JSON.parse(
+        JSON.stringify({ address: 'zpub-fixture', tokensAsset: rows })
+      ),
   });
 
 beforeEach(() => {

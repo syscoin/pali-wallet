@@ -90,6 +90,49 @@ test('SDK address codec preserves supported P2PKH, P2SH and P2WSH scripts', () =
   for (const address of ['1BoatSLRHtKNngkdXEeobR76b53LETtpyT', '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy', bech32.encode('bc', [0, ...bech32.toWords(new Uint8Array(32))])]) assert.equal(normalizeUtxoAddress(address, 'bitcoin'), address);
 });
 
+test('owned UTXO balance reads exact SYSX from the same verified account response', async () => {
+  for (const id of ['syscoin', 'utxo:5700', 'bitcoin'] as const) {
+    const network = getUtxoNetwork(id);
+    const fixture = responses(id, [statusFor(id), { blockHash: network.genesisHash }, {
+      ...balanceFor(id),
+      tokensAsset: [
+        { assetGuid: '123456', decimals: 8, balance: '9007199254740993', unconfirmedBalance: '-2' },
+        { assetGuid: '123456', decimals: 8, balance: '9', unconfirmedBalance: '1' },
+        { assetGuid: '123457', decimals: 8, balance: '900', symbol: 'SYSX' },
+      ],
+    }]);
+    const result = await createUtxoBalanceReader(fixture).readBalance(id, addressFor(id), signal());
+    assert.equal(result.confirmedUnits, '9007199254740993');
+    assert.deepEqual(result.sysx, id === 'bitcoin' ? undefined : {
+      confirmedUnits: '9007199254741002', pendingDeltaUnits: '-1',
+    });
+    assert.equal(fixture.calls.length, 3);
+  }
+});
+
+test('an unavailable SYSX inventory stays distinct from verified zero and does not erase SYS balance', async () => {
+  const id = 'syscoin';
+  const { genesisHash } = getUtxoNetwork(id);
+  for (const [assetResponse, expected] of [
+    [{ tokensAsset: [] }, undefined],
+    [{ txs: 0, tokensAsset: [] }, { confirmedUnits: '0', pendingDeltaUnits: '0' }],
+    [{ txs: 0 }, { confirmedUnits: '0', pendingDeltaUnits: '0' }],
+    [{}, undefined],
+    [{ tokensAsset: null }, undefined],
+    [{ tokensAsset: [{ assetGuid: '123456', decimals: 3, balance: '1' }] }, undefined],
+    [{ tokensAsset: [{ assetGuid: '123456\n', decimals: 8, balance: '1' }] }, undefined],
+    [{ tokensAsset: [{ assetGuid: '123456', decimals: 8, balance: '9'.repeat(79) }] }, undefined],
+  ] as const) {
+    const fixture = responses(id, [statusFor(id), { blockHash: genesisHash }, {
+      ...balanceFor(id), ...assetResponse,
+    }]);
+    const result = await createUtxoBalanceReader(fixture).readBalance(id, addressFor(id), signal());
+    assert.equal(result.confirmedUnits, '9007199254740993');
+    assert.deepEqual(result.sysx, expected);
+    assert.equal(fixture.calls.length, 3);
+  }
+});
+
 test('parser rejects Unicode before Bech32 case conversion', () => {
   const kelvin = 'BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4';
   assert.equal(kelvin.toLowerCase(), BTC);

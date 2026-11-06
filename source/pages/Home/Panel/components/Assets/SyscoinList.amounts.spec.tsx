@@ -132,6 +132,7 @@ it.each([
   'preserves a normal SPT balance: $units at $decimals decimals',
   async ({ units, decimals, exact, label }) => {
     mockRead.mockResolvedValue({
+      address: 'zpub-public',
       tokensAsset: [
         {
           assetGuid: '123456',

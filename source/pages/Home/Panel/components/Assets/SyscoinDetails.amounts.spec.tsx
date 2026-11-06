@@ -146,6 +146,7 @@ describe.each([
     async (direction) => {
       // Both are ordinary histories: an unspent receipt or a fully spent one.
       mockRead.mockResolvedValue({
+        address: 'zpub-public',
         tokensAsset: [
           {
             assetGuid: '123456',
@@ -235,6 +236,7 @@ describe.each(['TSPT', 'W'.repeat(32)])(
       'retains exact amounts and local wrapping constraints for $units',
       async (fixture) => {
         mockRead.mockResolvedValue({
+          address: 'zpub-public',
           tokensAsset: [
             {
               assetGuid: '223456',
