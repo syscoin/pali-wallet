@@ -30,30 +30,41 @@ export function supportsUtxoSoftwareCustody(
   );
 }
 
-const scriptWitnessVersion = (script: Uint8Array) => {
-  const version = script[0] - 0x50;
-  return version >= 1 &&
-    version <= 16 &&
-    script.length >= 4 &&
-    script.length <= 42 &&
-    script[1] === script.length - 2
-    ? version
-    : 0;
+const supportsSpendScript = (
+  registration: Registration,
+  script: Uint8Array
+) => {
+  const [opcode, length] = script;
+  // A direct witness program uses OP_0 or OP_1..OP_16 and pushes 2–40 bytes.
+  if (
+    script.length < 4 ||
+    script.length > 42 ||
+    length !== script.length - 2 ||
+    (opcode !== 0 && (opcode < 0x51 || opcode > 0x60))
+  )
+    return true;
+  if (opcode === 0) return length === 20 || length === 32;
+  return (
+    opcode === 0x51 && length === 32 && supportsWitnessVersion(registration, 1)
+  );
 };
 
-/** Legacy and v0 scripts use the ordinary signer. Other rules require qualification. */
+/** Match the chain's signing rules and the exact witness program in each script. */
+export function supportsUtxoSoftwareSpend(
+  registration: Registration,
+  scripts: readonly Uint8Array[]
+): boolean {
+  return (
+    hasStandardSigningRules(findUtxoCoinByRegistration(registration)) &&
+    scripts.every((script) => supportsSpendScript(registration, script))
+  );
+}
+
 export function assertUtxoSoftwareSpend(
   registration: Registration,
   scripts: readonly Uint8Array[]
 ): void {
-  const coin = findUtxoCoinByRegistration(registration);
-  if (
-    !hasStandardSigningRules(coin) ||
-    scripts.some(
-      (script) =>
-        !supportsWitnessVersion(registration, scriptWitnessVersion(script))
-    )
-  ) {
+  if (!supportsUtxoSoftwareSpend(registration, scripts)) {
     throw Object.assign(
       new Error(
         'This network or address type is unsupported for software sends.'

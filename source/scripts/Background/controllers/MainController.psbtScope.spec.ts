@@ -151,6 +151,39 @@ describe('PSBT approval context', () => {
       release();
     }
   };
+  const prepareScriptPsbt = (
+    script: Uint8Array,
+    location: 'recipient' | 'prevout' | 'data'
+  ) => {
+    const bitcoin = syscoinUtils.bitcoinjs;
+    const v0 = Buffer.from('0014' + '01'.repeat(20), 'hex');
+    const previous = new bitcoin.Transaction();
+    previous.addInput(Buffer.alloc(32, 3), 0);
+    previous.addOutput(location === 'prevout' ? script : v0, BigInt(100000));
+    const psbt = new bitcoin.Psbt();
+    psbt.addInput({
+      hash: previous.getId(),
+      index: 0,
+      nonWitnessUtxo: previous.toBuffer(),
+    });
+    psbt.addOutput({
+      script: location === 'recipient' ? script : v0,
+      value: BigInt(99000),
+    });
+    if (location === 'data') psbt.addOutput({ script, value: BigInt(0) });
+    psbt.updateInput(0, {
+      finalScriptWitness: Buffer.concat([
+        Buffer.from([1, 64]),
+        Buffer.alloc(64),
+      ]),
+    });
+    wallet.verifySyscoinPsbt.mockImplementation(async () => ({
+      psbt,
+      summary: await getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn()),
+    }));
+    (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
+    return psbt;
+  };
   const defaultTxid = syntheticPsbt(BigInt(1000)).extractTransaction().getId();
   const dispatch = async (raw: string, port: any) => {
     const url = 'https://rpc-a.invalid/api/v2/sendtx/';
@@ -312,33 +345,8 @@ describe('PSBT approval context', () => {
     'refuses an unqualified custom witness-v1 %s during %s',
     async (location, operation) => {
       selectUtxoNetwork(2, 2, 'ltc');
-      const bitcoin = syscoinUtils.bitcoinjs;
-      const v0 = Buffer.from('0014' + '01'.repeat(20), 'hex');
       const v1 = Buffer.from('5120' + '02'.repeat(32), 'hex');
-      const previous = new bitcoin.Transaction();
-      previous.addInput(Buffer.alloc(32, 3), 0);
-      previous.addOutput(location === 'prevout' ? v1 : v0, BigInt(100000));
-      const psbt = new bitcoin.Psbt();
-      psbt.addInput({
-        hash: previous.getId(),
-        index: 0,
-        nonWitnessUtxo: previous.toBuffer(),
-      });
-      psbt.addOutput({
-        script: location === 'recipient' ? v1 : v0,
-        value: BigInt(99000),
-      });
-      psbt.updateInput(0, {
-        finalScriptWitness: Buffer.concat([
-          Buffer.from([1, 64]),
-          Buffer.alloc(64),
-        ]),
-      });
-      wallet.verifySyscoinPsbt.mockImplementation(async () => ({
-        psbt,
-        summary: await getVerifiedSyscoinPsbtValueSummary(psbt, jest.fn()),
-      }));
-      (PsbtUtils.fromPali as jest.Mock).mockReturnValue(psbt);
+      const psbt = prepareScriptPsbt(v1, location);
       let result: Promise<unknown>;
       if (operation === 'quote') {
         result = wallet.getEstimateSysTransactionFee({ amount: '0.00099' });
@@ -356,6 +364,53 @@ describe('PSBT approval context', () => {
       });
       expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
       expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    [0, 21, 'recipient', 'signSyscoinPsbt'],
+    [0, 33, 'prevout', 'signSendAndSaveTransaction'],
+    [1, 31, 'recipient', 'signSendAndSaveTransaction'],
+    [1, 33, 'prevout', 'signSyscoinPsbt'],
+  ] as const)(
+    'refuses an invalid built-in v%i %i-byte witness program in a %s via %s',
+    async (version, length, location, method) => {
+      selectUtxoNetwork(0, 0, 'btc');
+      const script = Buffer.concat([
+        Buffer.from([version === 0 ? 0 : 0x51, length]),
+        Buffer.alloc(length, 2),
+      ]);
+      await expect(
+        approveExternalPsbt(method, prepareScriptPsbt(script, location))
+      ).rejects.toMatchObject({ code: 'UTXO_SOFTWARE_SPEND_UNSUPPORTED' });
+      expect(keyring.syscoinTransaction.signPSBT).not.toHaveBeenCalled();
+      expect(keyring.syscoinTransaction.sendTransaction).not.toHaveBeenCalled();
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    ['Legacy', '76a914' + '01'.repeat(20) + '88ac', 'recipient'],
+    ['OP_RETURN', '6a01ff', 'data'],
+    ['P2WPKH', '0014' + '01'.repeat(20), 'recipient'],
+    ['P2WSH', '0020' + '01'.repeat(32), 'recipient'],
+    [
+      'Taproot',
+      '512079be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798',
+      'recipient',
+    ],
+  ] as const)(
+    'keeps the standard %s output in the built-in software signing lane',
+    async (_name, hex, location) => {
+      selectUtxoNetwork(0, 0, 'btc');
+      await expect(
+        approveExternalPsbt(
+          'signSyscoinPsbt',
+          prepareScriptPsbt(Buffer.from(hex, 'hex'), location)
+        )
+      ).resolves.toBe('signed');
+      expect(keyring.syscoinTransaction.signPSBT).toHaveBeenCalledTimes(1);
       expect(globalThis.fetch).not.toHaveBeenCalled();
     }
   );
