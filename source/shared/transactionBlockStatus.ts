@@ -1,41 +1,29 @@
-/**
- * Helper function to check if a transaction is in a block (confirmed)
- * Works for both EVM (blockNumber) and UTXO (blockHeight/height) transactions
- *
- * This is more reliable than checking confirmations field which can be buggy
- * (some APIs return confirmations: 0 even for confirmed transactions)
- */
-export const isTransactionInBlock = (tx: any): boolean => {
-  const blockNumber = tx?.blockNumber;
-  const blockHeight = tx?.blockHeight;
-  const height = tx?.height;
+type BlockPlacement = Readonly<{
+  blockHeight?: unknown;
+  blockNumber?: unknown;
+  height?: unknown;
+}>;
 
-  // Check if any block field exists and is a valid positive number
+function positiveBlock(value: unknown): number | null {
+  if (typeof value === 'string') {
+    if (value.length > 32 || !/^(?:\d+|0x[0-9a-f]+)$/i.test(value)) return null;
+  } else if (typeof value !== 'number' && typeof value !== 'bigint') {
+    return null;
+  }
+  const height = Number(value);
+  return Number.isSafeInteger(height) && height > 0 ? height : null;
+}
+
+/** Prefer observed block placement to an explorer's confirmation counter. */
+export const getTransactionBlockInfo = (value: unknown): number | null => {
+  if (!value || typeof value !== 'object') return null;
+  const tx = value as BlockPlacement;
   return (
-    (blockNumber !== null && blockNumber !== undefined && blockNumber > 0) ||
-    (blockHeight !== null && blockHeight !== undefined && blockHeight > 0) ||
-    (height !== null && height !== undefined && height > 0)
+    positiveBlock(tx.blockNumber) ??
+    positiveBlock(tx.blockHeight) ??
+    positiveBlock(tx.height)
   );
 };
 
-/**
- * Get the block identifier from a transaction
- * Returns the block number/height or null if not in a block
- */
-export const getTransactionBlockInfo = (tx: any): number | null => {
-  const blockNumber = tx?.blockNumber;
-  const blockHeight = tx?.blockHeight;
-  const height = tx?.height;
-
-  // Return the block number only if it's a valid positive number
-  if (blockNumber !== null && blockNumber !== undefined && blockNumber > 0) {
-    return blockNumber;
-  }
-  if (blockHeight !== null && blockHeight !== undefined && blockHeight > 0) {
-    return blockHeight;
-  }
-  if (height !== null && height !== undefined && height > 0) {
-    return height;
-  }
-  return null;
-};
+export const isTransactionInBlock = (tx: unknown): boolean =>
+  getTransactionBlockInfo(tx) !== null;

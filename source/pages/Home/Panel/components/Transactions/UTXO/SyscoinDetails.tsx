@@ -51,6 +51,7 @@ import {
   getSyscoinNativeTransferAmount,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
+  hasNonReplaceableUtxoSequences,
 } from 'utils/syscoinTransactionUtils';
 import { getTokenLogo } from 'utils/tokens';
 import {
@@ -312,13 +313,13 @@ export const SyscoinTransactionDetails = ({
   });
   const tokenType = rawTransaction?.tokenType;
 
-  // Simple extraction of first asset from vout for single clear intent
-  const firstAssetInfo = rawTransaction?.vout?.find(
-    (v: any) => v.assetInfo
-  )?.assetInfo;
-  const hasAssetInfo = Boolean(firstAssetInfo);
+  const hasAssetInfo =
+    Array.isArray(rawTransaction?.vout) &&
+    rawTransaction.vout.some((output) =>
+      parseSyscoinAssetGuid(output?.assetInfo?.assetGuid)
+    );
 
-  const hasTokenInfo = tokenTransfers.length > 0 || tokenType || hasAssetInfo;
+  const hasTokenInfo = tokenGuids.length > 0 || tokenType || hasAssetInfo;
 
   if (rawTransaction) {
     const vettedCompact =
@@ -501,24 +502,9 @@ export const SyscoinTransactionDetails = ({
           const normalizedType = getSyscoinTransactionTypeLabel(tokenType);
           const isSptTx = hasTokenInfo || normalizedType !== 'Transaction';
 
-          // Heuristic RBF detection from input sequences:
-          // If any input sequence is < 0xfffffffe, opt-in RBF is enabled
-          const MAX_SEQ_MINUS_ONE = 0xfffffffe;
-          const hasSequenceData =
-            Array.isArray(rawTransaction?.vin) &&
-            rawTransaction.vin.some((v: any) => typeof v.sequence === 'number');
-          const rbfEnabled = Array.isArray(rawTransaction?.vin)
-            ? rawTransaction.vin.some(
-                (v: any) =>
-                  typeof v.sequence === 'number' &&
-                  v.sequence < MAX_SEQ_MINUS_ONE
-              )
-            : false;
-
           const showZdagConfirmed =
             isSptTx &&
-            hasSequenceData &&
-            !rbfEnabled &&
+            hasNonReplaceableUtxoSequences(rawTransaction?.vin) &&
             !isTxCanceled &&
             !isConfirmed;
 

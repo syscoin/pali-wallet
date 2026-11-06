@@ -28,6 +28,7 @@ let mockHash = '';
 let sequence = 0;
 const mockCopy = jest.fn();
 const mockEmitter = jest.fn();
+const originalFetch = globalThis.fetch;
 
 jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('syscoinjs-lib', () => {
@@ -40,6 +41,15 @@ jest.mock('syscoinjs-lib', () => {
 jest.mock(
   'scripts/Background/controllers/utils/fetchBackendAccountWrapper',
   () => ({ fetchBackendAccountCached: jest.fn() })
+);
+jest.mock(
+  'scripts/Background/controllers/providers/walletHttpIdentity',
+  () => ({
+    withWalletBackend: async (
+      _url: string,
+      operation: () => Promise<unknown>
+    ) => operation(),
+  })
 );
 jest.mock('react-redux', () => ({
   useSelector: (selector: any) => selector(mockState),
@@ -91,6 +101,7 @@ jest.mock('utils/index', () => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  globalThis.fetch = jest.fn();
   mockHash = (++sequence).toString(16).padStart(64, 'a');
   mockState = {
     scope: { account: 'synthetic-account', network: 'synthetic-network' },
@@ -106,12 +117,18 @@ beforeEach(() => {
     value: { writeText: mockCopy.mockResolvedValue(undefined) },
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  globalThis.fetch = originalFetch;
+});
 
 const mountFromBlockbook = async (
   inputs: Array<string[] | { addresses?: unknown; isAddress?: boolean }>,
   options: {
+    deepRaw?: boolean;
     invalidScalars?: string;
+    malformedRawEntries?: boolean;
+    malformedScript?: boolean;
     participantAlias?: string;
     rawFields?: Record<string, unknown>;
     rawUnavailable?: boolean;
@@ -174,6 +191,32 @@ const mountFromBlockbook = async (
     ...accountRow,
     vin: accountRow.vin.map(withoutOwnership),
     vout: accountRow.vout.map(withoutOwnership),
+    ...(options.malformedRawEntries && {
+      confirmations: 0,
+      blockHeight: 0,
+      blockHash: undefined,
+      blockNumber: { valueOf: null, toString: null },
+      tokenType: 'assetAllocationSend',
+      vin: [...accountRow.vin.map(withoutOwnership), null],
+      vout: [...accountRow.vout.map(withoutOwnership), null],
+    }),
+    ...(options.deepRaw && {
+      unknown: Array.from({ length: 33 }).reduce<object>(
+        (child) => ({ child }),
+        {}
+      ),
+    }),
+    ...(options.malformedScript && {
+      vout: [
+        ...accountRow.vout.map(withoutOwnership),
+        {
+          addresses: [FROM_B],
+          hex: { valueOf: null, toString: null },
+          isAddress: true,
+          value: '1',
+        },
+      ],
+    }),
     ...options.rawFields,
   };
   const controller = SysTransactionController();
@@ -205,7 +248,14 @@ const mountFromBlockbook = async (
     <SyscoinTransactionDetails hash={mockHash} tx={summary} />
   );
   await waitFor(() =>
-    expect(sys.utils.fetchBackendRawTx).toHaveBeenCalledWith(URL, mockHash)
+    expect(sys.utils.fetchBackendRawTx).toHaveBeenCalledWith(
+      URL,
+      mockHash,
+      expect.objectContaining({
+        fetch: expect.any(Function),
+        signal: expect.any(AbortSignal),
+      })
+    )
   );
   await waitFor(() =>
     expect(
@@ -223,6 +273,31 @@ const copyFrom = () => {
   );
   return mockCopy.mock.calls.at(-1)?.[0];
 };
+
+it('keeps vetted detail visible without showing Z-DAG for malformed inputs', async () => {
+  await mountFromBlockbook([[FROM_A]], { malformedRawEntries: true });
+  await waitFor(() => expect(copyFrom()).toBe(FROM_A));
+  expect(screen.queryByText('transactions.zdagConfirmed')).toBeNull();
+});
+
+it('ignores an output with malformed script data without hiding valid destinations', async () => {
+  await mountFromBlockbook([[FROM_A]], { malformedScript: true });
+  await waitFor(() => {
+    fireEvent.click(
+      within(screen.getByText('To').parentElement!).getByRole('button')
+    );
+    expect(mockCopy).toHaveBeenLastCalledWith(`${TO}, ${CHANGE}`);
+  });
+});
+
+it('keeps vetted compact participants when the raw reply exceeds the shared JSON work budget', async () => {
+  await mountFromBlockbook([[FROM_A]], { deepRaw: true });
+  await waitFor(() => expect(copyFrom()).toBe(FROM_A));
+  await expect(mockEmitter.mock.results[0]?.value).resolves.toMatchObject({
+    transaction: null,
+    compact: { from: [FROM_A] },
+  });
+});
 
 it('healthy one-input transaction preserves its sender and exact atomic fee', async () => {
   await mountFromBlockbook([[FROM_A]]);

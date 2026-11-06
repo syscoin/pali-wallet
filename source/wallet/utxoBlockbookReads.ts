@@ -4,9 +4,11 @@ import {
   cancelResponseBody,
   ResponseSizeLimitError,
 } from '../shared/boundedHttp.ts';
+import { UTXO_DETAIL_RESPONSE_BYTES } from '../shared/utxoTransactionDetailCache.ts';
 
 export type UtxoBlockbookReadScope =
   | Readonly<{ kind: 'fee'; url: string }>
+  | Readonly<{ kind: 'detail'; txid: string; url: string }>
   | Readonly<{
       address: string;
       kind: 'wallet';
@@ -20,7 +22,7 @@ const OPERATION_BYTES = RESPONSE_BYTES * 2;
 const READ_TIMEOUT_MS = 12_000;
 const FEE = '/api/v2/estimatefee/1';
 
-/** A background-owned Blockbook GET port for one captured approval or fee read. */
+/** A background-owned Blockbook GET port for one captured wallet read. */
 export function createOwnedUtxoBlockbookRead(
   scope: UtxoBlockbookReadScope,
   signal: AbortSignal,
@@ -36,7 +38,14 @@ export function createOwnedUtxoBlockbookRead(
   )
     throw new Error('Invalid owned Blockbook endpoint');
   const base = endpoint.href.replace(/\/$/, '');
-  const allowed = new Set([FEE]);
+  const allowed = new Set<string>();
+  if (scope.kind === 'detail') {
+    if (!/^[a-f0-9]{64}$/.test(scope.txid))
+      throw new Error('Invalid owned Blockbook transaction');
+    allowed.add(`/api/v2/tx/${scope.txid}`);
+  } else {
+    allowed.add(FEE);
+  }
   let addressDiscovery: string | undefined;
   if (scope.kind === 'wallet') {
     if (scope.address)
@@ -85,10 +94,17 @@ export function createOwnedUtxoBlockbookRead(
         cancelResponseBody(response);
         return { body: null, status: response.status };
       }
+      if (
+        scope.kind === 'detail' &&
+        (!response.body?.getReader || typeof TextDecoder === 'undefined')
+      ) {
+        cancelResponseBody(response);
+        throw new Error('Blockbook transaction requires a readable stream');
+      }
       const body = await boundedResponseText(
         response,
         controller.signal,
-        RESPONSE_BYTES,
+        scope.kind === 'detail' ? UTXO_DETAIL_RESPONSE_BYTES : RESPONSE_BYTES,
         (bytes) => {
           consumed += bytes;
           if (consumed > OPERATION_BYTES) throw new ResponseSizeLimitError();
@@ -126,10 +142,8 @@ export function createOwnedUtxoBlockbookRead(
       if (!url.startsWith(base + '/'))
         throw new Error('Invalid owned Blockbook endpoint');
       const path = url.slice(base.length);
-      const txid = wallet
-        ? /^\/api\/v2\/tx\/([0-9a-f]{64})$/.exec(path)?.[1]
-        : undefined;
-      if (!allowed.has(path) && !txid)
+      const txid = /^\/api\/v2\/tx\/([0-9a-f]{64})$/.exec(path)?.[1];
+      if (!allowed.has(path) && !(wallet && txid))
         throw new Error('Invalid owned Blockbook route');
 
       const reusable = !!txid || path === addressDiscovery;

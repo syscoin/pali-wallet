@@ -12516,9 +12516,16 @@ class MainController {
           })
         : null
     );
-    const transaction = await this.transactionsManager.sys
-      .fetchTransactionDetailsFromBlockbook(txid, url)
-      .catch(() => null);
+    const transaction = await this.withOwnedUtxoRead(
+      { kind: 'detail', url, txid: hash },
+      assertCurrent,
+      (read) =>
+        this.transactionsManager.sys.fetchTransactionDetailsFromBlockbook(
+          hash,
+          url,
+          read
+        )
+    ).catch(() => null);
     assertCurrent();
     return {
       txid: hash,

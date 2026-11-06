@@ -151,8 +151,13 @@ describe('SysTransactionController rapid polling', () => {
         'test-xpub',
         URL
       );
-      const raw = controller.fetchTransactionDetailsFromBlockbook(txid, URL);
-      expect(utils.fetchBackendRawTx).toHaveBeenCalledWith(URL, txid);
+      const read = { fetch: jest.fn(), signal: new AbortController().signal };
+      const raw = controller.fetchTransactionDetailsFromBlockbook(
+        txid,
+        URL,
+        read
+      );
+      expect(utils.fetchBackendRawTx).toHaveBeenCalledWith(URL, txid, read);
       const [next] = await controller.getInitialUserTransactionsByXpub(
         'test-xpub',
         URL

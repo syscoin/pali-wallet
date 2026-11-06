@@ -1,7 +1,22 @@
-import { measureJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
+import {
+  assertJsonWorkBudget,
+  measureJsonWorkBudget,
+} from '../utils/requestPayloadBudget.ts';
 
 // Shared retention budget, independent of provider response limits.
 export const UTXO_DETAIL_CACHE_BYTES = 8 * 1024 * 1024;
+export const UTXO_DETAIL_RESPONSE_BYTES = 1024 * 1024;
+export const UTXO_DETAIL_RESPONSE_NODES = 20_000;
+
+export function assertUtxoDetailPayloadBudget(value: unknown): void {
+  assertJsonWorkBudget(
+    value,
+    UTXO_DETAIL_RESPONSE_BYTES,
+    16,
+    UTXO_DETAIL_RESPONSE_NODES
+  );
+}
+
 class HistoryReadQueueFullError extends Error {}
 
 // Account history and the raw transaction have the same input/output ordering.

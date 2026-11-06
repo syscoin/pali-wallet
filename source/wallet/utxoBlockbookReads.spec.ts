@@ -101,6 +101,78 @@ it('refuses a different response URL or an oversized response before JSON parsin
   });
 });
 
+it('binds detail reads to one txid and bounds the decoded body', async () => {
+  const { signal } = new AbortController();
+  const fetch = jest
+    .fn(async (request: string) => reply(request, '{"hex":"abc123"}'))
+    .mockResolvedValueOnce(reply(raw('a'), 'x'.repeat(1024 * 1024 + 1)));
+  const read = createOwnedUtxoBlockbookRead(
+    { kind: 'detail', txid: 'a'.repeat(64), url },
+    signal,
+    () => undefined,
+    fetch
+  );
+  const request = (endpoint: string) =>
+    read.fetch(endpoint, { method: 'GET', signal });
+  await expect(request(funding)).rejects.toThrow('route');
+  await expect(request(`${url}/api/v2/estimatefee/1`)).rejects.toThrow('route');
+  await expect(request(raw('b'))).rejects.toThrow('route');
+  expect(fetch).not.toHaveBeenCalled();
+  await expect(request(raw('a'))).rejects.toMatchObject({
+    name: 'ResponseSizeLimitError',
+  });
+  const response = await request(raw('a'));
+  await expect(response.json()).resolves.toEqual({ hex: 'abc123' });
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+it('cancels an in-flight detail body when its wallet operation is retired', async () => {
+  const controller = new AbortController();
+  let started!: () => void;
+  const firstRead = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const cancel = jest.fn();
+  const response = new Response(
+    new ReadableStream<Uint8Array>(
+      {
+        cancel,
+        pull() {
+          started();
+          return new Promise<void>((resolve) => {
+            controller.signal.addEventListener('abort', () => resolve(), {
+              once: true,
+            });
+          });
+        },
+      },
+      { highWaterMark: 0 }
+    )
+  );
+  Object.defineProperty(response, 'url', { value: raw('a') });
+  const fetch = jest.fn<Promise<Response>, [string, RequestInit]>(
+    async () => response
+  );
+  const read = createOwnedUtxoBlockbookRead(
+    { kind: 'detail', txid: 'a'.repeat(64), url },
+    controller.signal,
+    () => undefined,
+    fetch
+  );
+  const pending = read.fetch(raw('a'), {
+    method: 'GET',
+    signal: controller.signal,
+  });
+  const rejected = expect(pending).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  await firstRead;
+  controller.abort();
+  await rejected;
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(fetch.mock.calls[0][1].signal?.aborted).toBe(true);
+});
+
 it('shares overlapping raw responses and refuses all cache use once authority changes', async () => {
   const { signal } = new AbortController();
   const options = { method: 'GET', signal };
