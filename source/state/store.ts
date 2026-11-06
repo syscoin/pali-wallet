@@ -288,6 +288,18 @@ type MainMutationAction =
   | ReturnType<typeof setPrices>
   | ReturnType<typeof setNetwork>;
 
+function failMainStateRepair(
+  repairError: unknown,
+  revoked: unknown,
+  ownsWallet: boolean
+): never {
+  if (!ownsWallet) throw revoked;
+  walletPersistenceGate.blocked = true;
+  throw new Error('Could not restore wallet storage. Close and reopen Pali.', {
+    cause: repairError,
+  });
+}
+
 /** Stage only the requested action; publish it after a guarded durable write. */
 function persistMainMutation(
   action: MainMutationAction,
@@ -315,13 +327,10 @@ function persistMainMutation(
       try {
         await chromeStorage.setItem('state', currentState);
       } catch (repairError) {
-        if (isSameWallet && !isSameWallet()) throw error;
-        walletPersistenceGate.blocked = true;
-        throw new Error(
-          'Could not restore wallet storage. Close and reopen Pali.',
-          {
-            cause: repairError,
-          }
+        failMainStateRepair(
+          repairError,
+          error,
+          !isSameWallet || isSameWallet()
         );
       }
       lastPersistedState = currentState;
@@ -395,6 +404,14 @@ export function persistNetworkRemoval(
         : [vaultKey, `${vaultKey}-passkey-profile`];
     const previous = keys.length ? await chromeStorage.getItems(keys) : {};
     assertAdmitted();
+    const retiredVault = previous[vaultKey] as IVaultState | null | undefined;
+    if (Object.keys(retiredVault?.accounts?.Imported ?? {}).length)
+      throw Object.assign(
+        new Error('Keep this network while it has imported accounts.'),
+        {
+          code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
+        }
+      );
     const action = removeNetwork(network);
     const mainState = getMainStateForStorage(
       reducers(store.getState(), action)
@@ -412,10 +429,11 @@ export function persistNetworkRemoval(
       assertWalletPersistenceAllowed();
       if (!isSameWallet()) throw error;
       const current = getMainStateForStorage(store.getState());
-      await chromeStorage.setItems({
-        state: current,
-        ...previous,
-      });
+      try {
+        await chromeStorage.setItems({ state: current, ...previous });
+      } catch (repairError) {
+        failMainStateRepair(repairError, error, isSameWallet());
+      }
       lastPersistedState = current;
       throw error;
     }

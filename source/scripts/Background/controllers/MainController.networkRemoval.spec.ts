@@ -130,8 +130,16 @@ describe('network removal cannot delete a switching or active vault', () => {
           persisted.delete(item);
       });
     wallet = Object.create(MainController.prototype);
-    sourceKeyring = { id: 'source-keyring' };
-    targetKeyring = { id: 'target-keyring' };
+    sourceKeyring = {
+      id: 'source-keyring',
+      isUnlocked: () => true,
+      getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+    };
+    targetKeyring = {
+      id: 'target-keyring',
+      isUnlocked: () => true,
+      getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+    };
     wallet.keyrings = new Map([
       [57, sourceKeyring],
       [1, targetKeyring],

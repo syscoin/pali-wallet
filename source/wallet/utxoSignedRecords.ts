@@ -640,6 +640,40 @@ export class UtxoSignedRecords {
     });
   }
 
+  /** A registration can own retained bytes from more than one endpoint. */
+  removeRegistration<T>(
+    session: UtxoRecordSession,
+    registration: Readonly<Pick<UtxoRecordChain, 'chainId' | 'slip44'>>,
+    commit: () => Promise<T>
+  ): Promise<T> {
+    const { chainId, slip44 } = registration;
+    if (
+      !Number.isSafeInteger(chainId) ||
+      chainId < 0 ||
+      !Number.isSafeInteger(slip44) ||
+      slip44 < 0
+    )
+      return corrupt();
+    return this.exclusive(async () => {
+      const { entries } = await this.load(session);
+      const checked = new Set<string>();
+      for (const entry of entries) {
+        if (entry.phase === 'confirmed' || checked.has(entry.chain)) continue;
+        const { owner } = await this.readEntry(session, entry);
+        if (owner.chainId === chainId && owner.slip44 === slip44)
+          throw Object.assign(
+            new Error(
+              'Check your saved transfers before removing this network.'
+            ),
+            { code: 'UTXO_NETWORK_HAS_SAVED_TRANSFER' }
+          );
+        checked.add(entry.chain);
+      }
+      guard(session);
+      return commit();
+    });
+  }
+
   /** Wait for admission already in progress across the account group's networks. */
   hasUnresolvedForAccount(
     session: UtxoRecordSession,

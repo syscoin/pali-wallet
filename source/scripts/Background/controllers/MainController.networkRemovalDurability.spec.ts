@@ -213,6 +213,13 @@ beforeEach(async () => {
   wallet.resetAutoLockTimer = jest.fn();
   wallet.keyrings = new Map([
     [111, { publicFixture: 'inactive keyring owner' }],
+    [
+      60,
+      {
+        isUnlocked: () => true,
+        getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+      },
+    ],
   ]);
   commits = [];
 });
@@ -239,6 +246,29 @@ it('durably removes a healthy inactive network together with its owned vault and
   expect(commits).toHaveLength(1);
   expect(commits[0]['state-vault-111']).toBeNull();
   expect(commits[0]['state-vault-111-passkey-profile']).toBeNull();
+});
+
+it('keeps the final network registration and vault while it has imported accounts', async () => {
+  await chromeStorage.setItem('state-vault-111', {
+    ...inactiveVault,
+    accounts: {
+      ...inactiveVault.accounts,
+      Imported: {
+        1: {
+          address: 'public imported address',
+          xpub: 'public imported key',
+          xprv: 'synthetic encrypted record',
+        },
+      },
+    },
+  });
+  const before = await projection();
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
+  });
+  expect(await projection()).toEqual(before);
+  expect(commits).toEqual([]);
 });
 
 it('retains an inactive UTXO network and its records after final registry persistence fails, then permits a fresh retry', async () => {
@@ -358,6 +388,38 @@ it.each(['session', 'network ABA', 'same-url replacement'] as const)(
     expect(removedKeys).toEqual([]);
   }
 );
+
+it('closes persistence if Chrome refuses to restore a retired removal', async () => {
+  const started = Promise.withResolvers<void>();
+  const acknowledge = Promise.withResolvers<void>();
+  const original = chrome.storage.local.set;
+  jest
+    .spyOn(chrome.storage.local, 'set')
+    .mockImplementation((items, callback) => {
+      if (items.state && items['state-vault-111'] === null) {
+        return original(items, () => {
+          void acknowledge.promise.then(() => callback?.());
+          started.resolve();
+        });
+      }
+      return original(items, callback);
+    });
+  const removing = result(remove());
+  await started.promise;
+  wallet.advanceWalletSession();
+  failRegistry = true;
+  acknowledge.resolve();
+  const outcome = await removing;
+  expect(walletPersistenceGate.blocked).toBe(true);
+  expect(outcome).toMatchObject({
+    success: false,
+    error: 'Could not restore wallet storage. Close and reopen Pali.',
+  });
+  expect(store.getState().vaultGlobal.networks.syscoin[target.chainId]).toEqual(
+    target
+  );
+  expect(commits).toHaveLength(2);
+});
 
 it('does not repair over a replacement wallet waiting behind the held commit', async () => {
   const held = holdCommit();

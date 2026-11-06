@@ -118,7 +118,11 @@ export const controllerErrorResponse = (error: any) => {
   } = {};
   if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
-  if (error?.code === 'HARDWARE_REQUEST_CANCELLED')
+  if (
+    error?.code === 'HARDWARE_REQUEST_CANCELLED' ||
+    error?.code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER' ||
+    error?.code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS'
+  )
     submission.code = error.code;
   if (
     (error?.code === 'UTXO_SUBMISSION_NOT_DISPATCHED' &&

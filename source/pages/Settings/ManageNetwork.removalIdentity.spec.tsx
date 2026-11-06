@@ -203,7 +203,15 @@ beforeEach(async () => {
   wallet.walletStateGeneration = 0;
   wallet.walletSessionGeneration = 0;
   wallet.isRemovingNetwork = false;
-  wallet.keyrings = new Map();
+  wallet.keyrings = new Map([
+    [
+      60,
+      {
+        isUnlocked: () => true,
+        getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+      },
+    ],
+  ]);
   wallet.resetAutoLockTimer = jest.fn();
   wallet.evmAssetsController = {
     detectCoinGeckoIds: jest.fn().mockResolvedValue(null),
@@ -258,6 +266,26 @@ it('healthy: ordinary current confirmation durably removes its inactive registra
   expect(await saved()).toBeUndefined();
   expect(mockAlert.error).not.toHaveBeenCalled();
   expect(store.getState().vault.activeNetwork).toEqual(source);
+});
+
+it.each([
+  [
+    'UTXO_NETWORK_HAS_SAVED_TRANSFER',
+    'settings.networkRemovalHasSavedTransfer',
+  ],
+  [
+    'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
+    'settings.networkRemovalHasImportedAccounts',
+  ],
+])('shows the actionable removal error for %s', async (code, message) => {
+  const dialog = await openConfirmation();
+  mockEmitter.mockRejectedValueOnce({ code });
+  fireEvent.click(
+    within(dialog).getByRole('button', { name: 'buttons.remove' })
+  );
+  await waitFor(() => expect(mockAlert.error).toHaveBeenCalledWith(message));
+  expect(current()).toEqual(target);
+  expect(await saved()).toEqual(target);
 });
 
 it('healthy: cancellation does not change the inactive registry', async () => {

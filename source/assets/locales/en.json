@@ -819,6 +819,8 @@
     "importedAccountRemovalWarning": "Back up the imported private key before removing this account. Its locally stored key will be deleted. Your wallet recovery phrase cannot restore this imported key.",
     "accountRemovalContextChanged": "Account context changed. Please confirm removal again.",
     "networkRemovalIncomplete": "Network removal did not complete. Check the network list and try again.",
+    "networkRemovalHasSavedTransfer": "Check your saved transfers before removing this network.",
+    "networkRemovalHasImportedAccounts": "Keep this network while it has imported accounts.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",
