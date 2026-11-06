@@ -193,7 +193,7 @@ const request = (calls: Call[], host = HOST, atomicRequired = false) =>
         ],
       },
     },
-    { url: `${host}/ordinary-page`, tab: { id: 50 } } as any
+    { url: `${host}/ordinary-page`, origin: host, tab: { id: 50 } } as any
   );
 const openReview = async (calls = [call()], host = HOST) => {
   expect(await request(calls, host)).toEqual({ id: '0x1234' });

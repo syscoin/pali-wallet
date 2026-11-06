@@ -5,7 +5,7 @@ import type { IDApp } from 'state/dapp/types';
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
-import { getDappOrigin } from 'utils/dappOrigin';
+import { matchAttestedDappOrigin } from 'utils/dappOrigin';
 import {
   getPersonalSignParams,
   isValidPersonalSignMessage,
@@ -38,7 +38,7 @@ export const watchConnectedPersonalSignGrant = ({
   if (
     method !== 'personal_sign' ||
     !sender?.documentId ||
-    getDappOrigin(sender.url || '') !== host ||
+    matchAttestedDappOrigin(sender.url, sender.origin) !== host ||
     getPersonalSignGrantReplacement(signal)
   )
     return;
@@ -92,7 +92,7 @@ export const capturePersonalSignApproval = ({
   if (
     sender?.tab?.id === undefined ||
     !sender.documentId ||
-    getDappOrigin(sender.url || '') !== host
+    matchAttestedDappOrigin(sender.url, sender.origin) !== host
   )
     throw personalSignApprovalExpired();
 

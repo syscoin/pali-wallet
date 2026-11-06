@@ -199,7 +199,7 @@ beforeEach(async () => {
     () => wallet.walletStateGeneration
   );
   jest.mocked(getController).mockReturnValue({ wallet, dapp } as any);
-  dapp.setup({ url: HOST } as chrome.runtime.MessageSender);
+  dapp.setup({ url: HOST, origin: HOST } as chrome.runtime.MessageSender);
   mockEmitter.mockImplementation(
     async ([namespace, method]: string[], params: any[] = []) => {
       const target = namespace === 'wallet' ? wallet : dapp;

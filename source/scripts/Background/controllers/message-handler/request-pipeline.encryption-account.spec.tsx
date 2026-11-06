@@ -168,6 +168,7 @@ const network = {
 const request = (method: string, params: any) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params } }, {
     url: `${HOST}/request`,
+    origin: HOST,
     tab: { id: 71 },
   } as any);
 const encryptedFor = (key = PRIVATE_KEY) =>

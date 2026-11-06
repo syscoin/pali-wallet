@@ -241,6 +241,7 @@ it.each([
         },
         {
           url: HOST + '/request',
+          origin: HOST,
           tab: { id: 50 },
         } as chrome.runtime.MessageSender
       )

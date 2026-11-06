@@ -41,6 +41,7 @@ const data = (tokenId: string | number) => ({
 const request = (tokenId: string | number) =>
   onMessage({ type: 'METHOD_REQUEST', data: data(tokenId) }, {
     url: HOST + '/',
+    origin: HOST,
     tab: { id: 50 },
   } as chrome.runtime.MessageSender);
 

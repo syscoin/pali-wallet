@@ -54,6 +54,7 @@ let requests: Array<{ method: string; params: unknown[] }>;
 const query = (host = HOST, method = 'wallet_getCallsStatus') =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [ID] } }, {
     url: `${host}/page`,
+    origin: host,
     tab: { id: 1 },
   } as chrome.runtime.MessageSender);
 

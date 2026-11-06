@@ -18,7 +18,7 @@ import {
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
-import { getDappOrigin } from 'utils/dappOrigin';
+import { getDappOrigin, matchAttestedDappOrigin } from 'utils/dappOrigin';
 
 import { clearProviderCache } from './message-handler/provider-cache';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -123,7 +123,7 @@ const DAppController = (
     }
 
     try {
-      const host = getDappOrigin(sender.url);
+      const host = matchAttestedDappOrigin(sender.url, sender.origin);
       if (!host) return;
       if (!isConnected(host)) {
         delete _dapps[host];
@@ -876,11 +876,11 @@ const DAppController = (
 
               return await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
-                world: 'MAIN',
+                world: 'ISOLATED',
                 func: (eventJson, approvedOrigin) => {
-                  // The tab can navigate after tabs.query returns. Check in
-                  // the receiving document before exposing account events.
-                  if (window.location.origin !== approvedOrigin) return;
+                  // A sandboxed document's URL can match the approved origin
+                  // even when its actual origin is opaque.
+                  if (self.origin !== approvedOrigin) return;
                   const event = new CustomEvent('paliNotification', {
                     detail: eventJson,
                   });

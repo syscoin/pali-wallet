@@ -72,7 +72,11 @@ const request = (method: string) =>
       type: 'METHOD_REQUEST',
       data: { method, params: [{ address: address('3') }] },
     },
-    { url: `${HOST}/dapp`, tab: { id: 101 } } as chrome.runtime.MessageSender
+    {
+      url: `${HOST}/dapp`,
+      origin: HOST,
+      tab: { id: 101 },
+    } as chrome.runtime.MessageSender
   );
 
 beforeEach(() => {
