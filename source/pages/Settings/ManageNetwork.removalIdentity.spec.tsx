@@ -277,6 +277,7 @@ it.each([
     'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
     'settings.networkRemovalHasImportedAccounts',
   ],
+  ['UTXO_NETWORK_HAS_SENTRY_KEYS', 'settings.networkRemovalHasSentryKeys'],
 ])('shows the actionable removal error for %s', async (code, message) => {
   const dialog = await openConfirmation();
   mockEmitter.mockRejectedValueOnce({ code });

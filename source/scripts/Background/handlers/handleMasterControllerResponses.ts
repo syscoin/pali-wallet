@@ -121,7 +121,8 @@ export const controllerErrorResponse = (error: any) => {
   if (
     error?.code === 'HARDWARE_REQUEST_CANCELLED' ||
     error?.code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER' ||
-    error?.code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS'
+    error?.code === 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS' ||
+    error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
   )
     submission.code = error.code;
   if (

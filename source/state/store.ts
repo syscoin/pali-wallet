@@ -388,7 +388,15 @@ export function persistNetworkRemoval(
   network: Parameters<typeof removeNetwork>[0],
   assertCurrent: () => void,
   isSameWallet: () => boolean,
-  removedSlip44: number | undefined,
+  retiringVault:
+    | Readonly<{
+        readSentryStores(
+          rootPublicIdentity: string,
+          assertRemovalCurrent: () => void
+        ): Promise<Record<string, unknown>>;
+        slip44: number;
+      }>
+    | undefined,
   onCommitted: () => void
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
@@ -397,6 +405,7 @@ export function persistNetworkRemoval(
       assertCurrent();
     };
     assertAdmitted();
+    const removedSlip44 = retiringVault?.slip44;
     const vaultKey = `state-vault-${removedSlip44}`;
     const keys =
       removedSlip44 === undefined
@@ -412,6 +421,20 @@ export function persistNetworkRemoval(
           code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
         }
       );
+    const rootPublicIdentity = retiredVault?.accounts?.HDAccount?.[0]?.xpub;
+    if (
+      retiringVault &&
+      typeof rootPublicIdentity === 'string' &&
+      rootPublicIdentity
+    ) {
+      const emptySentryStores = await retiringVault.readSentryStores(
+        rootPublicIdentity,
+        assertAdmitted
+      );
+      assertAdmitted();
+      keys.push(...Object.keys(emptySentryStores));
+      Object.assign(previous, emptySentryStores);
+    }
     const action = removeNetwork(network);
     const mainState = getMainStateForStorage(
       reducers(store.getState(), action)

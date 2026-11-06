@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "Network removal did not complete. Check the network list and try again.",
     "networkRemovalHasSavedTransfer": "Check your saved transfers before removing this network.",
     "networkRemovalHasImportedAccounts": "Keep this network while it has imported accounts.",
+    "networkRemovalHasSentryKeys": "Keep this network while it has saved Sentry keys.",
     "accountRemovedSuccessfully": "Account removed successfully",
     "failedToRemoveAccount": "Failed to remove account",
     "hardwareWalletSuccess": "Hardware wallet connected successfully!",

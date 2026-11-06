@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "Удаление сети не завершено. Проверьте список сетей и попробуйте ещё раз.",
     "networkRemovalHasSavedTransfer": "Проверьте сохранённые переводы перед удалением этой сети.",
     "networkRemovalHasImportedAccounts": "Сохраните эту сеть, пока в ней есть импортированные аккаунты.",
+    "networkRemovalHasSentryKeys": "Сохраните эту сеть, пока для неё сохранены ключи Sentry.",
     "accountRemovedSuccessfully": "Аккаунт успешно удален",
     "failedToRemoveAccount": "Не удалось удалить аккаунт",
     "hardwareWalletSuccess": "Аппаратный кошелек успешно подключен!",

@@ -12,6 +12,8 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
+import { webcrypto } from 'crypto';
+
 import {
   loadSlip44State,
   loadState,
@@ -28,12 +30,28 @@ import {
 import { INetwork, INetworkType, KeyringAccountType } from 'types/network';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
+import {
+  getSentryVaultId,
+  removeSentryKey,
+  saveSentryKey,
+} from 'utils/sentry/keyStore';
 import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
 
 const FAILURE = 'Synthetic network removal registry refusal';
 const originalChrome = global.chrome;
+const originalCrypto = Object.getOwnPropertyDescriptor(global, 'crypto');
+
+beforeAll(() => {
+  Object.defineProperty(global, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+  });
+});
+afterAll(() => {
+  if (originalCrypto) Object.defineProperty(global, 'crypto', originalCrypto);
+});
 const source: INetwork = {
   chainId: 1,
   kind: INetworkType.Ethereum,
@@ -269,6 +287,94 @@ it('keeps the final network registration and vault while it has imported account
   });
   expect(await projection()).toEqual(before);
   expect(commits).toEqual([]);
+});
+
+const sentryRecordForInactiveVault = async () => {
+  const vaultId = await getSentryVaultId(
+    inactiveVault.accounts.HDAccount[0].xpub
+  );
+  const network = 'testnet' as const;
+  const key = `sentry-operator-v1:${vaultId}:${network}`;
+  const assertCurrent = () => undefined;
+  const summary = await saveSentryKey({
+    vaultId,
+    network,
+    seed: 'synthetic seed for network retirement test',
+    label: 'Synthetic node',
+    key: {
+      role: 'operator',
+      scheme: 'bls-basic',
+      publicKey: '12'.repeat(48),
+      secretKey: '34'.repeat(32),
+    },
+    assertCurrent,
+  });
+  return { vaultId, network, key, summary, assertCurrent };
+};
+
+it('keeps the last UTXO vault while it owns Sentry keys even if the retiring co-owner is a different chain', async () => {
+  const { key } = await sentryRecordForInactiveVault();
+  const priorRecord = structuredClone(records[key]);
+  const before = await projection();
+  commits = [];
+  await expect(remove()).rejects.toMatchObject({
+    code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+  });
+  expect(await projection()).toEqual(before);
+  expect(records[key]).toEqual(priorRecord);
+  expect(commits).toEqual([]);
+});
+
+it.each([false, 'extra'])(
+  'preserves unrecognized Sentry records (%s)',
+  async (value) => {
+    const { key, vaultId, network } = await sentryRecordForInactiveVault();
+    const corrupt =
+      value === false
+        ? false
+        : { version: 1, vaultId, network, keys: [], futureData: true };
+    await chromeStorage.setItem(key, corrupt);
+    const before = await projection();
+    commits = [];
+    await expect(remove()).rejects.toMatchObject({
+      code: 'UTXO_NETWORK_HAS_SENTRY_KEYS',
+    });
+    expect(await projection()).toEqual(before);
+    expect(records[key]).toEqual(corrupt);
+    expect(commits).toEqual([]);
+  }
+);
+
+it('tombstones only an exact empty Sentry store in the same removal commit', async () => {
+  const { key, network, vaultId, summary, assertCurrent } =
+    await sentryRecordForInactiveVault();
+  await removeSentryKey(vaultId, network, summary.id, assertCurrent);
+  const unrelated = `sentry-operator-v1:${'0'.repeat(64)}:mainnet`;
+  await chromeStorage.setItem(unrelated, { some: 'unrelated data' });
+  commits = [];
+  await expect(remove()).resolves.toBeUndefined();
+  expect(commits).toHaveLength(1);
+  expect(commits[0][key]).toBeNull();
+  expect(commits[0]['state-vault-111']).toBeNull();
+  expect(records[unrelated]).toEqual({ some: 'unrelated data' });
+});
+
+it('restores the exact empty Sentry store if a lock retires the admitted removal', async () => {
+  const { key, network, vaultId, summary, assertCurrent } =
+    await sentryRecordForInactiveVault();
+  await removeSentryKey(vaultId, network, summary.id, assertCurrent);
+  const empty = structuredClone(records[key]);
+  const before = await projection();
+  commits = [];
+  const held = holdCommit();
+  const removing = result(remove());
+  await held.started;
+  wallet.advanceWalletSession();
+  held.release();
+  expect(await removing).toMatchObject({ success: false });
+  expect(await projection()).toEqual(before);
+  expect(commits.map((commit) => commit[key])).toEqual([null, empty]);
+  expect(records[key]).toEqual(empty);
 });
 
 it('retains an inactive UTXO network and its records after final registry persistence fails, then permits a fresh retry', async () => {

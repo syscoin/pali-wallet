@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "A remoção da rede não foi concluída. Verifique a lista de redes e tente novamente.",
     "networkRemovalHasSavedTransfer": "Verifique as transferências salvas antes de remover esta rede.",
     "networkRemovalHasImportedAccounts": "Mantenha esta rede enquanto ela tiver contas importadas.",
+    "networkRemovalHasSentryKeys": "Mantenha esta rede enquanto ela tiver chaves Sentry salvas.",
     "accountRemovedSuccessfully": "Conta removida com sucesso",
     "failedToRemoveAccount": "Falha ao remover conta",
     "hardwareWalletSuccess": "Carteira de hardware conectada com sucesso!",

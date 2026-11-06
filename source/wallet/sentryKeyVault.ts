@@ -11,8 +11,10 @@ const unhex = (value: string) => {
   return Uint8Array.from(value.match(/../g)!, (byte) => parseInt(byte, 16));
 };
 
-const storageKey = (vaultId: string, network: SentryNetwork) =>
-  `sentry-operator-v1:${vaultId}:${network}`;
+export const sentryKeyVaultStorageKey = (
+  vaultId: string,
+  network: SentryNetwork
+) => `sentry-operator-v1:${vaultId}:${network}`;
 
 interface ISentryKeyEnvelope {
   ciphertext: string;
@@ -24,6 +26,32 @@ interface ISentryKeyStore {
   network: SentryNetwork;
   vaultId: string;
   version: 1;
+}
+
+const hasSentryStoreHeader = (
+  value: ISentryKeyStore,
+  vaultId: string,
+  network: SentryNetwork
+) =>
+  value.version === 1 &&
+  value.vaultId === vaultId &&
+  value.network === network &&
+  Array.isArray(value.keys);
+
+/** Only the known empty record can be removed along with its wallet group. */
+export function isEmptySentryKeyStore(
+  value: unknown,
+  vaultId: string,
+  network: SentryNetwork
+): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const store = value as ISentryKeyStore;
+  return (
+    hasSentryStoreHeader(store, vaultId, network) &&
+    Object.keys(store).sort().join(',') === 'keys,network,vaultId,version' &&
+    store.keys.length === 0 &&
+    Object.keys(store.keys).length === 0
+  );
 }
 
 const deriveWrappingKey = async (
@@ -107,14 +135,11 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
     network: SentryNetwork
   ): Promise<ISentryKeyStore> => {
     const value = (await host.read(
-      storageKey(vaultId, network)
+      sentryKeyVaultStorageKey(vaultId, network)
     )) as ISentryKeyStore | null;
     if (!value) return { version: 1, vaultId, network, keys: [] };
     if (
-      value.version !== 1 ||
-      value.vaultId !== vaultId ||
-      value.network !== network ||
-      !Array.isArray(value.keys) ||
+      !hasSentryStoreHeader(value, vaultId, network) ||
       value.keys.length > 100 ||
       value.keys.some(
         (entry: ISentryKeyEnvelope) =>
@@ -260,7 +285,7 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
     }
     assertCurrent();
     await host.write(
-      storageKey(vaultId, network),
+      sentryKeyVaultStorageKey(vaultId, network),
       {
         ...store,
         keys: [...store.keys, ...encrypted],
@@ -328,7 +353,7 @@ export function createSentryKeyVault(host: ISentryKeyVaultHost) {
     if (!store.keys.some(({ summary }) => summary.id === id))
       throw new Error('Sentry operator key not found');
     await host.write(
-      storageKey(vaultId, network),
+      sentryKeyVaultStorageKey(vaultId, network),
       { ...store, keys: store.keys.filter(({ summary }) => summary.id !== id) },
       assertCurrent
     );

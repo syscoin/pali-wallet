@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "La suppression du réseau n’a pas abouti. Consultez la liste des réseaux et réessayez.",
     "networkRemovalHasSavedTransfer": "Vérifiez vos transferts enregistrés avant de supprimer ce réseau.",
     "networkRemovalHasImportedAccounts": "Conservez ce réseau tant qu’il contient des comptes importés.",
+    "networkRemovalHasSentryKeys": "Conservez ce réseau tant que des clés Sentry y sont enregistrées.",
     "accountRemovedSuccessfully": "Compte supprimé avec succès",
     "failedToRemoveAccount": "Échec de la suppression du compte",
     "hardwareWalletSuccess": "Portefeuille matériel connecté avec succès !",

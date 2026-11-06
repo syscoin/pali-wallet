@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "网络移除未完成。请检查网络列表后重试。",
     "networkRemovalHasSavedTransfer": "移除此网络前，请检查已保存的转账。",
     "networkRemovalHasImportedAccounts": "此网络中有导入的账户，请保留该网络。",
+    "networkRemovalHasSentryKeys": "此网络中有已保存的 Sentry 密钥，请保留该网络。",
     "accountRemovedSuccessfully": "账户删除成功",
     "failedToRemoveAccount": "删除账户失败",
     "hardwareWalletSuccess": "硬件钱包连接成功！",

@@ -6368,7 +6368,24 @@ class MainController {
                 );
             },
             () => walletStateGeneration === this.walletStateGeneration,
-            removedSlip44,
+            removedSlip44 === undefined
+              ? undefined
+              : {
+                  slip44: removedSlip44,
+                  async readSentryStores(
+                    rootPublicIdentity,
+                    assertRemovalCurrent
+                  ) {
+                    const { readSentryKeyStoresForRetirement } = await import(
+                      'utils/sentry/keyStore'
+                    );
+                    assertRemovalCurrent();
+                    return readSentryKeyStoresForRetirement(
+                      rootPublicIdentity,
+                      assertRemovalCurrent
+                    );
+                  },
+                },
             () => {
               if (removedSlip44 !== undefined)
                 this.keyrings.delete(removedSlip44);

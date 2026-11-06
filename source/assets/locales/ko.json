@@ -821,6 +821,7 @@
     "networkRemovalIncomplete": "네트워크 삭제가 완료되지 않았습니다. 네트워크 목록을 확인한 후 다시 시도해 주세요.",
     "networkRemovalHasSavedTransfer": "이 네트워크를 제거하기 전에 저장된 전송을 확인하세요.",
     "networkRemovalHasImportedAccounts": "가져온 계정이 있는 동안에는 이 네트워크를 유지하세요.",
+    "networkRemovalHasSentryKeys": "저장된 Sentry 키가 있는 동안에는 이 네트워크를 유지하세요.",
     "accountRemovedSuccessfully": "계정이 성공적으로 제거되었습니다",
     "failedToRemoveAccount": "계정 제거에 실패했습니다",
     "hardwareWalletSuccess": "하드웨어 지갑이 성공적으로 연결되었습니다!",
