@@ -599,8 +599,18 @@ export class WatchOnlyAuthority implements WalletAuthority {
           ...(registration ? { registration, assertCurrent: owner.assertNetworkCurrent } : {}) }, { row, txid: key }, signal, cache, current);
         current(); return value;
       });
-      if (operation.signal.aborted || this.getSnapshot().status !== 'ready' || this.generation !== generation || this.utxoDetails !== cache || !this.utxoRows.has(row)) throw new Error('Account activity cancelled');
-      return result;
+      const assertDetailCurrent = () => {
+        if (this.getSnapshot().status !== 'ready' || this.generation !== generation || this.utxoDetails !== cache || !this.utxoRows.has(row))
+          throw new Error('Account activity cancelled');
+      };
+      if (operation.signal.aborted) throw new Error('Account activity cancelled');
+      assertDetailCurrent();
+      const readNode = result.readSentryNode;
+      return readNode ? Object.freeze({ ...result,
+        readSentryNode: (signal: AbortSignal, guard: () => void) =>
+          this.withPublicRead('utxo', signal, () => { assertDetailCurrent(); return guard(); },
+            (_owner, ownedSignal, check) => readNode(ownedSignal, check)),
+      }) : result;
     } finally {
       external.removeEventListener('abort', abort); requests.delete(operation);
       if (!requests.size && this.utxoDetailRequests.get(row) === requests) this.utxoDetailRequests.delete(row);

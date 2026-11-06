@@ -1,6 +1,7 @@
 import isEqual from 'lodash/isEqual';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { readSentryNode } from '../../../shared/sentryNodeLookup';
 import { AsyncMutex } from 'utils/asyncMutex';
 import {
   captureSentryCollateralAdmission,
@@ -254,32 +255,19 @@ export class SentryController {
       throw new Error(
         'Configure a trusted Sentry data service in wallet settings first'
       );
-    const proTxHash = request.proTxHash.toLowerCase();
-    const query = new URLSearchParams({ network: settings.network, proTxHash });
-    const observation = await readJson(
-      `${settings.serviceUrl}/api/sentry/v1/context?${query}`,
-      65536
+    const { node } = await readSentryNode(
+      {
+        network: settings.network,
+        origin: settings.serviceUrl,
+        proTxHash: request.proTxHash.toLowerCase(),
+      },
+      {
+        fetch: (url, init) => fetch(url, init),
+        assertCurrent: () => this.assertCurrent(scope),
+        signal: new AbortController().signal,
+      }
     );
     this.assertCurrent(scope);
-    const node = observation?.node;
-    const collateral = node?.collateralOutpoint;
-    if (
-      observation?.chain?.genesisHash !==
-        SENTRY_NETWORKS[settings.network].genesisHash ||
-      node?.proTxHash !== proTxHash ||
-      !collateral ||
-      !/^[0-9a-f]{64}$/.test(collateral.txid) ||
-      !Number.isSafeInteger(collateral.vout) ||
-      collateral.vout < 0 ||
-      collateral.vout > 0xffffffff ||
-      typeof node.service !== 'string' ||
-      node.service.length > 128 ||
-      typeof node.nevmAddress !== 'string' ||
-      (node.nevmAddress !== '' && !/^0x[0-9a-fA-F]{40}$/.test(node.nevmAddress))
-    )
-      throw new Error(
-        'Unable to verify the registered Sentry node on this network'
-      );
     for (const [id, link] of this.links)
       if (
         !link.committing &&
@@ -297,12 +285,7 @@ export class SentryController {
         origin,
         network: settings.network,
         serviceUrl: settings.serviceUrl,
-        node: {
-          proTxHash,
-          service: node.service,
-          nevmAddress: node.nevmAddress,
-          collateralOutpoint: { ...collateral },
-        },
+        node,
       },
     });
     return id;

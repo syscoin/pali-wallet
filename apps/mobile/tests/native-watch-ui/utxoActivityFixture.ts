@@ -2,8 +2,9 @@
 // and WatchSession remain in use; no signing or live endpoint is available.
 import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import { UTXO_ADDRESSES } from '../publicWatchFixtures';
-export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max' | 'late';
-const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max', 'late'];
+import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from '../sentryNodeFixtures';
+export type ActivityMode = 'value' | 'empty' | 'error' | 'slow' | 'asset' | 'pending' | 'included' | 'unknown' | 'window' | 'asset-exact' | 'asset-owned' | 'asset-bridge' | 'asset-invalid' | 'asset-hostile' | 'asset-max' | 'late' | 'sentry';
+const modes: readonly string[] = ['value', 'empty', 'error', 'slow', 'asset', 'pending', 'included', 'unknown', 'window', 'asset-exact', 'asset-owned', 'asset-bridge', 'asset-invalid', 'asset-hostile', 'asset-max', 'late', 'sentry'];
 const initial = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('activity-mode');
 let mode: ActivityMode = modes.includes(initial ?? '') ? initial as ActivityMode : 'value';
 let release: (() => void) | null = null;
@@ -40,7 +41,7 @@ function assetData() {
 function transaction(n: number, network: ReturnType<typeof getUtxoNetwork>): Record<string, any> {
   const address = UTXO_ADDRESSES[network.id as keyof typeof UTXO_ADDRESSES];
   const pending = mode === 'pending' && n === 1;
-    return { txid: id(n + (mode.startsWith('asset') ? (modes.indexOf(mode) + 1) * 1000 : 0)), blockHeight: pending ? -1 : 190, blockHash: pending ? undefined : 'b'.repeat(64), confirmations: pending || mode === 'included' ? 0 : 11, blockTime: pending ? 0 : 1700000000,
+    return { txid: mode === 'sentry' && n === 1 ? SENTRY_TXID : id(n + (mode.startsWith('asset') ? (modes.indexOf(mode) + 1) * 1000 : 0)), blockHeight: pending ? -1 : 190, blockHash: pending ? undefined : 'b'.repeat(64), confirmations: pending || mode === 'included' ? 0 : 11, blockTime: pending ? 0 : 1700000000,
       valueIn: '1100000000', value: '1000000000', fees: '100000000',
       ...(mode === 'unknown' ? {} : { addressValueIn: '1100000000', addressValueOut: '100000000' }),
       ...(mode === 'asset' ? { tokenType: 'SPT', memo: '<img src=hostile>', tokenTransfers: [{ value: '999999999' }] } : {}),
@@ -49,7 +50,14 @@ function transaction(n: number, network: ReturnType<typeof getUtxoNetwork>): Rec
 }
 const json = (value: unknown) => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 export async function activityFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response | null> {
-  const url = String(input), network = UTXO_NETWORKS.find(n => url.startsWith(n.endpoint + '/'));
+  const url = String(input);
+  if (mode === 'sentry' && url === `https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`) {
+    if (init?.method !== 'GET' || init.credentials !== 'omit' || init.redirect !== 'error' || init.body)
+      throw Error('Unexpected Sentry wire request');
+    calls.push(url);
+    return json(sentryNodeResponse(getUtxoNetwork('syscoin').genesisHash));
+  }
+  const network = UTXO_NETWORKS.find(n => url.startsWith(n.endpoint + '/'));
   if (!network) return null;
   calls.push(url);
   const parsed = new URL(url), path = parsed.pathname;
@@ -67,12 +75,14 @@ export async function activityFetch(input: RequestInfo | URL, init?: RequestInit
       releaseDetail = resume; signal?.addEventListener('abort', abort, { once: true });
       if (signal?.aborted) abort();
     });
-    const txid = path.slice('/api/v2/tx/'.length), n = Number.parseInt(txid, 16);
+    const txid = path.slice('/api/v2/tx/'.length), sentry = mode === 'sentry' && txid === SENTRY_TXID;
+    const n = sentry ? 1 : Number.parseInt(txid, 16);
     const summary = transaction(n, network);
     const { addressValueIn: _in, addressValueOut: _out, accountAssetTransfers: _assets, ...body } = summary;
     const withoutOwnership = (entry: Record<string, unknown>) => { const { isOwn: _own, ...value } = entry; return value; };
     const full = { ...body, txid: observedMode === 'wrong' ? id(n + 1) : txid,
       vin: summary.vin.map(withoutOwnership), vout: summary.vout.map(withoutOwnership) };
+    if (sentry) Object.assign(full, { version: 80, hex: SENTRY_TX_HEX });
     if (mode === 'asset-bridge') full.vout.push({ n: 2, addresses: ['OP_RETURN synthetic'], isAddress: false, hex: '6a', value: '0', assetInfo: { assetGuid: '987654321', value: '9007199254740994' } });
     if (observedMode === 'reorg') Object.assign(full, { blockHeight: -1, blockHash: undefined, blockTime: 0, confirmations: 0 });
     return json(full);
