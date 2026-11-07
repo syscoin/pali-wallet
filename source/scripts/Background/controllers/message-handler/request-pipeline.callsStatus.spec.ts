@@ -64,6 +64,10 @@ beforeEach(async () => {
   updatedListeners.clear();
   Object.assign(chrome, {
     tabs: {
+      // The mocked popup owns no live browser tabs.
+      query: jest.fn((_query: unknown, callback: (tabs: any[]) => void) =>
+        callback([])
+      ),
       onRemoved: {
         addListener: (listener: (...args: any[]) => void) =>
           removedListeners.add(listener),
