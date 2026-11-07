@@ -69,6 +69,10 @@ test('offline native Send: edited fees survive Confirm, Cancel and Back', async 
       await expect(
         page.getByRole('button', { name: 'Confirm', exact: true })
       ).toBeEnabled();
+      await expect(
+        page.getByText('Total (Amount + network fee)')
+      ).toBeVisible();
+      await expect(page.getByText('Total (Amount + gas fee)')).toHaveCount(0);
       const value = page
         .locator('xpath=//div[text()[normalize-space(.)="Network Fee"]]')
         .locator('span')

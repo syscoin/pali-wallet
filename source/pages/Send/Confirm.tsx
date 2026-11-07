@@ -2682,7 +2682,13 @@ export const SendConfirm = () => {
             <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
               {!basicTxValues.token?.isNft ? (
                 <>
-                  {t('send.total')} ({t('send.amountAndFee')})
+                  {t('send.total')} (
+                  {t(
+                    isBitcoinBased
+                      ? 'send.amountAndNetworkFee'
+                      : 'send.amountAndFee'
+                  )}
+                  )
                   <span className="text-white text-xs">
                     {(() => {
                       // For ERC20 tokens, handle differently since we can't combine token amount + ETH fee into single fiat value
@@ -2696,7 +2702,11 @@ export const SendConfirm = () => {
                             <span>
                               {basicTxValues.amount}{' '}
                               {basicTxValues.token.symbol}
-                              {t('send.plusGasFee')}
+                              {t(
+                                isBitcoinBased
+                                  ? 'send.plusNetworkFee'
+                                  : 'send.plusGasFee'
+                              )}
                             </span>
                             {feeCalculationError ? (
                               <span className="text-xs flex items-center gap-1 mt-1">
@@ -2722,7 +2732,12 @@ export const SendConfirm = () => {
                               </span>
                             ) : gasFeeFiat ? (
                               <span className="text-brand-gray200 text-xs">
-                                {t('send.gasFeeApprox')} {gasFeeFiat}
+                                {t(
+                                  isBitcoinBased
+                                    ? 'send.networkFeeApprox'
+                                    : 'send.gasFeeApprox'
+                                )}{' '}
+                                {gasFeeFiat}
                               </span>
                             ) : null}
                           </div>

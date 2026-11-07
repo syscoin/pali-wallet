@@ -96,6 +96,10 @@ it('does not double-count the separate outer gas payer in verified tank mode', (
 
 it('retains the ordinary EOA fee calculation without any AA account-charge label', () => {
   show();
+  expect(screen.getByText('send.total (send.amountAndFee)')).toBeTruthy();
+  expect(
+    screen.queryByText('send.total (send.amountAndNetworkFee)')
+  ).toBeNull();
   expect(screen.getByText('send.maxFee')).toBeTruthy();
   expect(screen.getByText('0.0012699 TSYS')).toBeTruthy();
   expect(screen.queryByText('send.smartAccountFeeDetails')).toBeNull();
