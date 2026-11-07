@@ -26,6 +26,7 @@ export const WALLET_NETWORK_CATCHING_UP_MESSAGE =
   'The network is still updating your previous transaction. Please try again shortly.';
 
 // Locally classified asset-review failures do not include RPC error bodies.
+export const EVM_SIGNED_STORAGE_FULL = 'EVM_SIGNED_STORAGE_FULL';
 export const EVM_ASSET_REVIEW_REQUIRED = 'EVM_ASSET_REVIEW_REQUIRED';
 export const EVM_ASSET_REVIEW_MESSAGE =
   'Balance changed or could not be verified. Review the amount and try again.';

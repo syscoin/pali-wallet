@@ -398,6 +398,7 @@
     "hex": "Hex",
     "reduceFee": "Por favor, reduce las tarifas para enviar la transacción.",
     "cantCompleteTxs": "No se pueden completar las transacciones. Inténtalo de nuevo más tarde.",
+    "signedStorageFull": "Esta transacción no se envió porque Pali no pudo guardarla dentro del límite de almacenamiento local de transacciones. Revisa la actividad.",
     "savedNonceConflict": "Una transacción guardada ya usa este nonce. Consulta Actividad.",
     "legacyPendingNonce": "Hay una transacción anterior pendiente. Revisa Actividad antes de volver a intentarlo.",
     "legacyNonceVerificationUnavailable": "No se pudieron verificar las transacciones anteriores. Revisa tu conexión y Actividad y vuelve a intentarlo.",

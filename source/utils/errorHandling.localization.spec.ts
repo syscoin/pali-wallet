@@ -14,6 +14,7 @@ import { handleTransactionError, isBlacklistError } from './errorHandling';
 import {
   EVM_ASSET_REVIEW_MESSAGE,
   EVM_ASSET_REVIEW_REQUIRED,
+  EVM_SIGNED_STORAGE_FULL,
 } from './evmTransactionContext';
 import { sanitizeErrorMessage } from './syscoinErrorSanitizer';
 
@@ -55,6 +56,29 @@ describe.each(Object.keys(resources))(
       expect(i18n.exists('send.savedNonceConflict')).toBe(true);
     });
 
+    it('localizes verified storage capacity only for a definite no-broadcast response', () => {
+      const alert = { error: jest.fn() };
+      expect(
+        handleTransactionError(
+          { code: EVM_SIGNED_STORAGE_FULL, transactionNotBroadcast: true },
+          alert,
+          i18n.t
+        )
+      ).toBe(true);
+      expect(alert.error).toHaveBeenCalledWith(
+        i18n.t('send.signedStorageFull')
+      );
+      expect(i18n.exists('send.signedStorageFull')).toBe(true);
+      const rejected = { error: jest.fn() };
+      handleTransactionError(
+        { code: EVM_SIGNED_STORAGE_FULL, transactionNotBroadcast: false },
+        rejected,
+        i18n.t
+      );
+      expect(rejected.error).not.toHaveBeenCalledWith(
+        i18n.t('send.signedStorageFull')
+      );
+    });
     it('localizes asset review failures from typed and message-only IPC', () => {
       for (const error of [
         { code: EVM_ASSET_REVIEW_REQUIRED, transactionNotBroadcast: true },

@@ -2,6 +2,7 @@
 import {
   EVM_ASSET_REVIEW_MESSAGE,
   EVM_ASSET_REVIEW_REQUIRED,
+  EVM_SIGNED_STORAGE_FULL,
   isSavedEvmNonceConflict,
   legacyEvmNonceErrorKey,
   WALLET_NETWORK_CATCHING_UP_MESSAGE,
@@ -184,6 +185,13 @@ export const handleTransactionError = (
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
   const message = typeof error === 'string' ? error : error?.message;
+  if (
+    error?.code === EVM_SIGNED_STORAGE_FULL &&
+    error?.transactionNotBroadcast === true
+  ) {
+    alert.error(t('send.signedStorageFull'));
+    return true;
+  }
   if (
     error?.transactionNotBroadcast !== false &&
     ((error?.code === EVM_ASSET_REVIEW_REQUIRED &&

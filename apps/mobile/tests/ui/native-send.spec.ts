@@ -487,3 +487,20 @@ test('saved expired review keeps its accessible error alert', async ({ page }) =
   await expect(alert).toHaveAttribute('aria-live', 'polite');
   await expect(page.getByTestId('native-send-hash')).toBeVisible();
 });
+
+
+test('storage limit shows one actionable no-submission alert', async ({ page }) => {
+  await page.goto('/?storage-full');
+  await prepare(page);
+  await page.getByTestId('native-send-confirm').click();
+  await expect(page.getByRole('alert')).toHaveText('This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.');
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+});
+
+test('storage limit distinguishes a failed replacement from its earlier saved transaction', async ({ page }) => {
+  await page.goto('/?speed-up-transfer&storage-full');
+  await page.getByRole('button', { name: 'Submit Speed Up' }).click();
+  await expect(page.getByText('Check earlier transaction', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveText('This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.');
+  expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
+});

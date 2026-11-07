@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { webcrypto } from 'node:crypto';
+import { createHash, webcrypto } from 'node:crypto';
 import { Wallet, Transaction } from 'ethers';
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
+import { captureEvmSubmission, evmSubmissionFailure, submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, consumeSignedEvmCapacityRefusal, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
 function fixture(now: () => number = () => 1000) {
@@ -318,6 +319,105 @@ test('near-limit append reserves space for every phase and the largest supported
   assert.equal(f.value(),before,'refused append preserves the acknowledged bundle');
   await f.store.append(f.session(),second,metadataBytes(metadataAtHardLimit-64));
   assert.equal(Buffer.byteLength(f.value()!),limit-64);
+
+  // Submit through the installed SDK and production signed-record lifecycle,
+  // with a real authenticated full bundle and no network transport.
+  const third=await signed(2);
+  const digest=(value:string) => createHash('sha256').update(value).digest('hex');
+  const beforeCapacity=f.value()!, beforeCapacityDigest=digest(beforeCapacity);
+  const beforeCapacityWrites=f.writes();
+  let blockedBroadcasts=0;
+  const session=f.session();
+  const fullBoundary=captureEvmSubmission(third.context,session.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store,session));
+  const unsigned=Transaction.from(third.rawTransaction).unsignedSerialized;
+  let capacityError:unknown;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit}) => {
+      blockedBroadcasts++;
+      return admit(async () => third.hash);
+    },fullBoundary,undefined,unsigned);
+  } catch (error) { capacityError=error; }
+  assert(capacityError instanceof Error);
+  assert.equal(capacityError.message,'EVM_SIGNED_RECORD_CAPACITY');
+  assert.equal(consumeSignedEvmCapacityRefusal(capacityError,evmSubmissionFailure),true);
+  assert.equal(consumeSignedEvmCapacityRefusal(capacityError,evmSubmissionFailure),false);
+  assert.equal(consumeSignedEvmCapacityRefusal(Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'),{transactionNotBroadcast:true}),evmSubmissionFailure),false);
+  assert.deepEqual(evmSubmissionFailure(capacityError),{
+    transactionNotBroadcast:true,signedTransactionHash:third.hash,
+  });
+  assert.equal(blockedBroadcasts,0,'capacity refusal must precede broadcast');
+  assert.equal(f.writes(),beforeCapacityWrites);
+  assert.equal(digest(f.value()!),beforeCapacityDigest,'bundle must be unchanged');
+  assert.equal(await f.store.readExact(session,third.chainId,third.from,third.hash),null);
+  for(const entry of [first,second]) {
+    const retained=await f.store.readExact(session,entry.chainId,entry.from,entry.hash);
+    assert(retained?.rawTransaction===entry.rawTransaction,'existing signed bytes must remain recoverable');
+  }
+
+  // Healthy control uses the same signed envelope and SDK/lifecycle on a fresh
+  // isolated store, with a matching in-memory acknowledgement.
+  const healthy=fixture(), healthySession=healthy.session();
+  const healthyBoundary=captureEvmSubmission(third.context,healthySession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(healthy.store,healthySession));
+  let healthyBroadcasts=0, healthyAdmissions=0;
+  const result=await submitSignedEvmTransaction(third.rawTransaction,({admit}) => {
+    healthyBroadcasts++;
+    return admit(async () => {
+      assert(healthy.writes()>0,'persistence must precede wire initiation');
+      healthyAdmissions++;return third.hash;
+    });
+  },healthyBoundary,undefined,unsigned);
+  assert.equal(result,third.hash);assert.equal(healthyBroadcasts,1);assert.equal(healthyAdmissions,1);
+  const healthyRecord=await healthy.store.readExact(healthySession,third.chainId,third.from,third.hash);
+  assert(healthyRecord?.rawTransaction===third.rawTransaction,'healthy submission must persist before dispatch');
+
+  // The same genuine object reused as a later SDK broadcast failure receives
+  // fresh local dispatched-stage evidence and must not retain the refusal.
+  const reuse=fixture(), reuseSession=reuse.session();
+  const reuseBoundary=captureEvmSubmission(third.context,reuseSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(reuse.store,reuseSession));
+  let reusedError:unknown, dispatched=0;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>{dispatched++;throw capacityError;}),reuseBoundary,undefined,unsigned);
+  } catch(error) { reusedError=error; }
+  assert.equal(reusedError,capacityError);assert.equal(dispatched,1);
+  assert.equal(evmSubmissionFailure(reusedError).transactionNotBroadcast,false);
+  assert.equal(consumeSignedEvmCapacityRefusal(reusedError,evmSubmissionFailure),false);
+
+  // Even before its first classification, a real old capacity error cannot
+  // label a second same-envelope invocation whose persistence succeeded.
+  let stale:unknown;
+  const oldSession=f.session(), oldBoundary=captureEvmSubmission(third.context,oldSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store,oldSession));
+  try { await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>third.hash),oldBoundary,undefined,unsigned); }
+  catch(error) { stale=error; }
+  assert(stale instanceof Error);assert.equal(evmSubmissionFailure(stale).transactionNotBroadcast,true);
+  const next=fixture(), nextSession=next.session();
+  const nextBoundary=captureEvmSubmission(third.context,nextSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(next.store,nextSession));
+  let nextError:unknown, nextBroadcasts=0;
+  try { await submitSignedEvmTransaction(third.rawTransaction,()=>{nextBroadcasts++;throw stale;},nextBoundary,undefined,unsigned); }
+  catch(error) { nextError=error; }
+  assert.equal(nextError,stale);assert.equal(nextBroadcasts,1);
+  assert.equal(evmSubmissionFailure(nextError).transactionNotBroadcast,true);
+  assert.equal(consumeSignedEvmCapacityRefusal(nextError,evmSubmissionFailure),false);
+  assert((await next.store.readExact(nextSession,third.chainId,third.from,third.hash))?.rawTransaction===third.rawTransaction);
+
+  // Revocation wins even when the local append was capacity-refused.
+  const revokedSession=f.session(), realAppend=f.store.append.bind(f.store);
+  f.store.append=async (...args)=>{try{return await realAppend(...args);}catch(error){f.revoke();throw error;}};
+  const revokedBoundary=captureEvmSubmission(third.context,revokedSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store,revokedSession));
+  let revokedError:unknown, revokedBroadcasts=0;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit})=>{revokedBroadcasts++;return admit(async()=>third.hash);},revokedBoundary,undefined,unsigned);
+  } catch(error) { revokedError=error; }
+  f.store.append=realAppend;
+  assert(revokedError instanceof Error);assert.match(revokedError.message,/revoked/);
+  assert.equal(consumeSignedEvmCapacityRefusal(revokedError,evmSubmissionFailure),false);assert.equal(revokedBroadcasts,0);
+  assert.equal(digest(f.value()!),beforeCapacityDigest);
+
   const stored=JSON.parse(f.value()!),chunks=stored.entries.map((entry:any)=>JSON.stringify(entry.chunks));
   const phaseCases: Record<EvmSignedPhase, true> = { attempted:true, submitted:true, confirmed:true, reverted:true, 'nonce-consumed':true, signed:true };
   const phases=Object.keys(phaseCases) as EvmSignedPhase[];
@@ -431,4 +531,33 @@ test('concurrent automatic sends cannot persist and dispatch competing reviewed 
   const losing = settled.find((result) => result.status === 'rejected');
   assert.equal(losing?.reason?.code, 'EVM_SIGNED_RECORD_NONCE_CONFLICT');
   assert.equal(losing?.reason?.recoveryHash, wire[0]);
+});
+
+
+test('unreadable storage and exhausted revision are not local append capacity refusals', async () => {
+  const first=await signed(0), next=await signed(1);
+  const assertUnbranded = async (f: ReturnType<typeof fixture>) => {
+    const session=f.session(), before=f.value(), writes=f.writes();
+    const boundary=captureEvmSubmission(next.context,session.assertCurrent,()=>createEvmSignedRecordLifecycle(f.store,session));
+    let broadcasts=0, failure:unknown;
+    try {
+      await submitSignedEvmTransaction(next.rawTransaction,({admit})=>{broadcasts++;return admit(async()=>next.hash);},boundary,undefined,Transaction.from(next.rawTransaction).unsignedSerialized);
+    } catch(error) { failure=error; }
+    assert(failure instanceof Error);
+    assert.equal(consumeSignedEvmCapacityRefusal(failure,evmSubmissionFailure),false);
+    assert.equal(broadcasts,0);
+    assert.equal(f.writes(),writes);
+    assert.equal(createHash('sha256').update(f.value()!).digest('hex'),createHash('sha256').update(before!).digest('hex'));
+  };
+  const oversized=fixture(); oversized.replace('x'.repeat(16*1024*1024+1));
+  await assertUnbranded(oversized);
+  const exhausted=fixture(); await exhausted.store.append(exhausted.session(),first);
+  const stored=JSON.parse(exhausted.value()!);
+  const plain=await exhausted.session().keyring.decryptPrivateRecord({domain:stored.root.domain,recordId:'manifest',envelope:stored.root});
+  const root=JSON.parse(new TextDecoder().decode(plain));plain.fill(0);
+  root.revision=Number.MAX_SAFE_INTEGER;stored.revision=root.revision;
+  stored.root=await exhausted.session().keyring.encryptPrivateRecord({domain:stored.root.domain,recordId:'manifest',plaintext:new TextEncoder().encode(JSON.stringify(root))});
+  exhausted.replace(JSON.stringify(stored));
+  assert.equal(await exhausted.store.validate(exhausted.session()),1);
+  await assertUnbranded(exhausted);
 });

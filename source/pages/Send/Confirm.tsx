@@ -54,7 +54,10 @@ import {
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
-import { isSavedEvmNonceConflict } from 'utils/evmTransactionContext';
+import {
+  EVM_SIGNED_STORAGE_FULL,
+  isSavedEvmNonceConflict,
+} from 'utils/evmTransactionContext';
 import { formatGweiValue, formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
@@ -1597,7 +1600,10 @@ export const SendConfirm = () => {
           } catch (error: any) {
             if (isNativeSoftwareSend) {
               retireNativeFeeApproval();
-              if (error?.transactionNotBroadcast === true)
+              if (
+                error?.transactionNotBroadcast === true &&
+                error?.code !== EVM_SIGNED_STORAGE_FULL
+              )
                 setFeeCalculationError(
                   isSavedEvmNonceConflict(error)
                     ? t('send.savedNonceConflict')

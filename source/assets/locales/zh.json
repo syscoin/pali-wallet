@@ -398,6 +398,7 @@
     "hex": "十六进制",
     "reduceFee": "请减少费用以发送交易。",
     "cantCompleteTxs": "无法完成交易。请稍后再试。",
+    "signedStorageFull": "此交易未提交，因为 Pali 无法在本地交易存储限制内保存该交易。请查看活动记录。",
     "savedNonceConflict": "已有一笔已保存的交易使用此 nonce。请查看活动记录。",
     "legacyPendingNonce": "之前的交易仍在处理中。请先查看活动记录，再重试。",
     "legacyNonceVerificationUnavailable": "无法验证之前的交易。请检查网络连接和活动记录，然后重试。",

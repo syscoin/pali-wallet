@@ -12,7 +12,9 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   View,
   type TextInputProps,
@@ -29,7 +31,7 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, type NativeTransferView } from '../custody/transfers';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -55,6 +57,7 @@ const failure = (
   cancellation: boolean
 ) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
   if (code === 'CANCELLATION_QUEUED')
     return hasSavedTransaction
       ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
@@ -204,6 +207,8 @@ export function NativeSend({
   const [advanced, setAdvanced] = useState(false);
   const [nonce, setNonce] = useState('');
   const [error, setError] = useState('');
+  const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
+  const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
   const pickerIsCurrent = (session: RecipientPickerSession) =>
     lifetime.current.alive && activePicker.current === session && session.owner.current();
@@ -212,6 +217,9 @@ export function NativeSend({
     latestBack.current = onBack;
   }, [onBack]);
   const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
+    current.phase === 'submitting' && current.review === leavePrompt.review &&
+    (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
   const replacementHash = replacement?.hash;
   const replacementMode = replacement?.mode;
@@ -282,21 +290,39 @@ export function NativeSend({
       )}
     </Card>
   );
-  const close = () => {
+  const finishClose = useCallback(() => {
+    if (!lifetime.current.alive || leaving.current) return;
+    leaving.current = true;
     retirePicker();
     lifetime.current.epoch++;
     controller.cancel();
     Keyboard.dismiss();
-    onBack();
+    latestBack.current();
+  }, [controller, retirePicker]);
+  const close = useCallback(() => {
+    if (!lifetime.current.alive || leaving.current) return;
+    const current = controller.getSnapshot();
+    if (current.phase === 'submitting') {
+      Keyboard.dismiss();
+      setLeavePrompt({ review: current.review, fallback: current.review === null ? current : null });
+      return;
+    }
+    finishClose();
+  }, [controller, finishClose, setLeavePrompt]);
+  const leaveDuringSubmission = () => {
+    // If it completed while the dialog was open, retain the visible outcome.
+    if (!promptMatches(controller.getSnapshot())) {
+      setLeavePrompt(null);
+      return;
+    }
+    setLeavePrompt(null);
+    finishClose();
   };
   useLayoutEffect(() => {
     const current = lifetime.current;
     current.alive = true;
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      retirePicker();
-      controller.cancel();
-      Keyboard.dismiss();
-      latestBack.current();
+      close();
       return true;
     });
     return () => {
@@ -306,7 +332,7 @@ export function NativeSend({
       controller.cancel();
       back.remove();
     };
-  }, [controller, retirePicker]);
+  }, [controller, close]);
   const run = async (operation: () => Promise<void>) => {
     if (busy) return;
     const captured = lifetime.current.epoch;
@@ -576,7 +602,7 @@ export function NativeSend({
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
-                    ? snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
+                    ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? 'Check earlier transaction' : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
                     : snapshot.phase === 'unavailable'
                     ? 'Status unavailable'
                     : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transfer pending'}
@@ -585,8 +611,8 @@ export function NativeSend({
               {outcomeToken && tokenIdentity(outcomeToken)}
               {outcomeCollectible && collectibleIdentity(outcomeCollectible)}
               <View
-                accessibilityRole={snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'alert' : undefined}
-                accessibilityLiveRegion={snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'polite' : undefined}
+                accessibilityRole={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'alert' : undefined}
+                accessibilityLiveRegion={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'polite' : undefined}
               >
                 <Notice
                   title={
@@ -756,7 +782,7 @@ export function NativeSend({
               </Text>
             </View>
           )}
-          {!!error && !(hasOutcome && error === ASSET_STATE_SAVED_MESSAGE && error === snapshot.message) && (
+          {!!error && !(hasOutcome && [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(error) && error === snapshot.message) && (
             <Text
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
@@ -775,12 +801,35 @@ export function NativeSend({
           </Text>
         </Screen>
       </KeyboardAvoidingView>
+      <Modal
+        visible={promptMatches(snapshot)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLeavePrompt(null)}
+      >
+        <SafeAreaView style={s.leaveOverlay} accessibilityViewIsModal>
+          <ScrollView contentContainerStyle={s.leaveContent}>
+            <Card style={s.leaveCard}>
+              <Text accessibilityRole="header" style={s.leaveTitle}>Submission in progress</Text>
+              <Text accessibilityLiveRegion="polite" style={styles.muted}>
+                This transaction may already have been sent. Check Activity before sending again.
+              </Text>
+              <Button title="Stay" onPress={() => setLeavePrompt(null)} />
+              <Button title="Leave" variant="secondary" onPress={leaveDuringSubmission} />
+            </Card>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 const s = StyleSheet.create({
   recipientChoice: { minHeight: 48, justifyContent: 'center', gap: 2, paddingVertical: 6 },
   safeArea: { flex: 1, backgroundColor: colors.bg },
+  leaveOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
+  leaveContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  leaveCard: { padding: 24, gap: 20 },
+  leaveTitle: { fontSize: 24, fontWeight: '600' },
   flex: { flex: 1 },
   field: { gap: 10 },
   label: {

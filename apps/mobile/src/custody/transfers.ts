@@ -1,7 +1,7 @@
 import { Transaction } from 'ethers/transaction';
 import { assertSignedEvmTransactionMatches, type EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmReplayError, type EvmReplayReview, type EvmReplaySession, type EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay.ts';
-import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecordCancellationFence, EvmSignedRecordNonceConflict, consumeSignedEvmCapacityRefusal, type EvmReplacementRates, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
 import { assertEvmFeeApprovalCurrent, assertEvmFeeRefreshApproved, assertEvmSpeedUpFeeRefreshApproved, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
@@ -82,6 +82,7 @@ export interface NativeTransferJournalHandle {
 }
 export type NativeAutomaticNonceDispatch = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
+  evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>;
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
     options: { now: () => number; randomBytes: (length: number) => Uint8Array }): Pick<EvmSignedReplay, 'prepare' | 'confirm' | 'cancel' | 'list'>;
   token?(
@@ -124,6 +125,9 @@ type Source = {
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
   lock(): void;
 };
+const nativeCapacityRefusals = new WeakSet<object>();
+export const SIGNED_STORAGE_FULL_MESSAGE = 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.';
+export const SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE = 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.';
 export const ASSET_STATE_WAIT_MESSAGE = 'Network conditions changed while checking this transfer. Check Activity, then try again.';
 export const ASSET_STATE_SAVED_MESSAGE = 'Your signed transaction is saved and was not submitted. The network is still updating; check Activity before retrying.';
 
@@ -139,6 +143,7 @@ export class NativeTransferError extends Error {
     | 'NONCE_RETAINED'
     | 'EXPIRED'
     | 'ASSET_STATE_WAIT'
+    | 'SIGNED_STORAGE_FULL'
     | 'PENDING_TRANSFER'
     | 'FAILED'
     | 'INSUFFICIENT_BALANCE'
@@ -563,6 +568,11 @@ export class NativeTransfers {
         if (error instanceof EvmReplayError && ['EXPIRED', 'CONTEXT_CHANGED', 'NOT_FOUND'].includes(error.code)) {
           this.publish({ phase: 'idle', review: null, message: 'This review expired or changed. Review the saved transaction again.' });
           throw new NativeTransferError('EXPIRED');
+        }
+        if (error && typeof error === 'object' && nativeCapacityRefusals.has(error)) {
+          nativeCapacityRefusals.delete(error);
+          this.publish({ phase: this.snapshot.hash ? 'unknown' : 'idle', review: null, message: this.snapshot.hash ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE });
+          throw new NativeTransferError('SIGNED_STORAGE_FULL');
         }
         if (error instanceof NativeTransferError) throw error;
         if (!(error instanceof NativeTransferRpcError)) this.source.lock();
@@ -1037,6 +1047,20 @@ export class NativeTransfers {
         assertCurrent();
         if (error instanceof EvmSignedRecordCancellationFence ||
             error instanceof EvmSignedRecordNonceConflict) throw error;
+        if (consumeSignedEvmCapacityRefusal(error, runtime.evmSubmissionFailure)) {
+          if (!startedSubmission) {
+            // The new signed bytes were not committed. Keep the separately
+            // authenticated original visible for replacement recovery.
+            if (approved.replacement) this.publish({ hash: approved.replacement.original.hash });
+            const classified = new NativeTransferError('SIGNED_STORAGE_FULL');
+            nativeCapacityRefusals.add(classified);
+            throw classified;
+          }
+          // Once a POST started, do not rely on any no-broadcast marker.
+          this.publish({ phase: 'unknown', review: null, hash: transactionHash,
+            message: 'Submission may have completed. Check this transaction before sending again.' });
+          return;
+        }
         if (!startedSubmission) {
           // A signature alone does not prove the signed record was committed.
           // Check under the wallet owner, since the review may have expired.
@@ -1046,10 +1070,6 @@ export class NativeTransfers {
           if (saved?.hash === transactionHash && saved.rawTransaction === rawTransaction &&
               (!collectible || saved.collectible))
             this.publish({ hash: transactionHash });
-          throw error;
-        }
-        if (error && typeof error === 'object' && 'transactionNotBroadcast' in error && error.transactionNotBroadcast === true) {
-          this.publish({ hash: transactionHash });
           throw error;
         }
         this.publish({

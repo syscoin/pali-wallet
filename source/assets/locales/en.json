@@ -398,6 +398,7 @@
     "hex": "Hex",
     "reduceFee": "Please, reduce fees to send transaction.",
     "cantCompleteTxs": "Can't complete transaction. Try again later.",
+    "signedStorageFull": "This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.",
     "savedNonceConflict": "A saved transaction already uses this nonce. Check Activity.",
     "legacyPendingNonce": "A previous transaction is pending. Check Activity before trying again.",
     "legacyNonceVerificationUnavailable": "Unable to verify previous transactions. Check your connection and Activity, then try again.",

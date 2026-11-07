@@ -120,6 +120,11 @@ const controller: NativeTransferView = {
   },
   async confirm(id) {
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
+    if (route.has('storage-full')) {
+      clearTimeout(expiry);
+      publish({ ...snapshot, hash: route.has('speed-up-transfer') ? replacement!.hash : null, phase: route.has('speed-up-transfer') ? 'unknown' : 'idle', review: null, message: route.has('speed-up-transfer') ? 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.' : 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.' });
+      throw Error('SIGNED_STORAGE_FULL');
+    }
     const quoteFailure = new URLSearchParams(window.location.search).get(
       'quoteFailure'
     );

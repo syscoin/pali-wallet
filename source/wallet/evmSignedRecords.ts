@@ -219,8 +219,52 @@ const queues = new WeakMap<EvmSignedRecordStorage, Promise<unknown>>();
 const invalid = (): never => {
   throw new Error('EVM_SIGNED_RECORD_CORRUPT');
 };
+// A private identity proves this refusal arose while adding to an authenticated
+// journal, before its storage write and before signed-byte dispatch.
+const appendCapacityLimits = new WeakSet<object>();
+const signedCapacityRefusals = new WeakMap<
+  object,
+  { hash: string; token: object }
+>();
+let currentPersistToken: object | undefined;
+export function consumeSignedEvmCapacityRefusal(
+  error: unknown,
+  readFailure?: (error: unknown) => Readonly<{
+    signedTransactionHash?: string;
+    transactionNotBroadcast: boolean;
+  }>
+): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const refusal = signedCapacityRefusals.get(error);
+  if (!refusal || refusal.token !== currentPersistToken || !readFailure)
+    return false;
+  const { hash } = refusal;
+  // SDK 2.1.6's failure map is locally owned. Its default has no hash, so a
+  // refusal is recognized only after this exact envelope's SDK failure is
+  // recorded and the latest SDK stage still says no dispatch occurred.
+  let failure: ReturnType<NonNullable<typeof readFailure>>;
+  try {
+    failure = readFailure(error);
+  } catch {
+    return false;
+  }
+  const matches =
+    failure.transactionNotBroadcast === true &&
+    failure.signedTransactionHash === hash &&
+    'transactionNotBroadcast' in error &&
+    error.transactionNotBroadcast === true &&
+    'signedTransactionHash' in error &&
+    error.signedTransactionHash === hash;
+  if (matches) signedCapacityRefusals.delete(error);
+  return matches;
+}
 const limit = (): never => {
   throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+};
+const appendLimit = (): never => {
+  const error = new Error('EVM_SIGNED_RECORD_CAPACITY');
+  appendCapacityLimits.add(error);
+  throw error;
 };
 function exact(value: unknown, fields: readonly string[]): Record<string, any> {
   if (
@@ -561,11 +605,9 @@ export class EvmSignedRecords {
     reserveStatusGrowth: boolean,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
-    if (
-      entries.length > EVM_SIGNED_RECORD_LIMITS.transactions ||
-      !Number.isSafeInteger(revision)
-    )
-      return limit();
+    if (!Number.isSafeInteger(revision)) return limit();
+    if (entries.length > EVM_SIGNED_RECORD_LIMITS.transactions)
+      return reserveStatusGrowth ? appendLimit() : limit();
     const digest = await entriesHash(entries);
     guard(session);
     const bytes = encoder.encode(
@@ -594,6 +636,14 @@ export class EvmSignedRecords {
       root: envelope(root, id, ROOT_DOMAIN, 'manifest'),
       entries,
     });
+    // The prior bundle was already authenticated. Distinguish a newly
+    // generated over-limit append from an oversized/corrupt stored bundle.
+    if (
+      reserveStatusGrowth &&
+      (next.length > EVM_SIGNED_RECORD_LIMITS.bytes ||
+        encoder.encode(next).length > EVM_SIGNED_RECORD_LIMITS.bytes)
+    )
+      return appendLimit();
     const inspected = inspectEvmSignedBundle(next, id);
     if (reserveStatusGrowth) {
       // Entry fields other than the ASCII phase are immutable. For fixed entry
@@ -608,7 +658,7 @@ export class EvmSignedRecords {
       const headroom =
         phaseGrowth + revisionGrowth + 4 * Math.ceil(revisionGrowth / 3);
       if (inspected.bytes > EVM_SIGNED_RECORD_LIMITS.bytes - headroom)
-        return limit();
+        return appendLimit();
     }
     const assertFresh = verifyBeforeCommit
       ? await verifyBeforeCommit()
@@ -942,7 +992,7 @@ export class EvmSignedRecords {
           (previous.bundle?.entries.length ?? 0) >=
           EVM_SIGNED_RECORD_LIMITS.transactions
         )
-          return limit();
+          return appendLimit();
         // Bound added payload before allocating/encrypting its chunks. The final
         // canonical encoding below remains the exact capacity check.
         if (
@@ -950,7 +1000,7 @@ export class EvmSignedRecords {
             Math.ceil((((raw.length - 2) / 2) * 4) / 3) >
           EVM_SIGNED_RECORD_LIMITS.bytes
         )
-          return limit();
+          return appendLimit();
         const allBytes = getBytes(raw);
         const chunks: IEncryptedPrivateRecord[] = [];
         try {
@@ -1631,16 +1681,32 @@ export function createEvmSignedRecordLifecycle(
   }>
 ) {
   guard(session);
+  // Starting another lifecycle invalidates any unconsumed earlier refusal.
+  // Concurrent sends may fall back to generic guidance, never stale guidance.
+  currentPersistToken = undefined;
   return Object.freeze({
     assertCurrent: () => guard(session),
     persistSigned: async (record: EvmSignedSubmission) => {
+      const token = {};
+      currentPersistToken = token;
       const replacement = options?.replacement;
-      await records.append(
-        session,
-        record,
-        options?.metadata,
-        replacement && (await replacement)
-      );
+      try {
+        await records.append(
+          session,
+          record,
+          options?.metadata,
+          replacement && (await replacement)
+        );
+      } catch (error) {
+        guard(session);
+        if (
+          error &&
+          typeof error === 'object' &&
+          appendCapacityLimits.has(error)
+        )
+          signedCapacityRefusals.set(error, { hash: record.hash, token });
+        throw error;
+      }
       guard(session);
     },
     async dispatchSigned<T>(

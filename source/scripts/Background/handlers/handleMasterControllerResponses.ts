@@ -1,9 +1,15 @@
+import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+
 import { walletTokenReviewError } from '../../../shared/walletTokenReview';
-import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
+import {
+  EVM_SIGNED_RECORD_NONCE_CONFLICT,
+  consumeSignedEvmCapacityRefusal,
+} from '../../../wallet/evmSignedRecords';
 import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
   EVM_ASSET_REVIEW_REQUIRED,
+  EVM_SIGNED_STORAGE_FULL,
   EVM_LEGACY_PENDING,
   EVM_LEGACY_VERIFICATION_UNAVAILABLE,
 } from 'utils/evmTransactionContext';
@@ -116,7 +122,12 @@ export const controllerErrorResponse = (
   error: any,
   trustedBatchHash?: { hash?: string }
 ) => {
-  const message = normalizeControllerErrorMessage(error);
+  const capacityRefusal =
+    !trustedBatchHash?.hash &&
+    consumeSignedEvmCapacityRefusal(error, evmSubmissionFailure);
+  const message = capacityRefusal
+    ? EVM_SIGNED_STORAGE_FULL
+    : normalizeControllerErrorMessage(error);
   const submission: {
     code?: string;
     recipientBlockReason?: string;
@@ -125,7 +136,10 @@ export const controllerErrorResponse = (
     transactionNotBroadcast?: boolean;
     txid?: string;
   } = {};
-  if (trustedBatchHash?.hash) submission.transactionNotBroadcast = false;
+  if (capacityRefusal) {
+    submission.code = EVM_SIGNED_STORAGE_FULL;
+    submission.transactionNotBroadcast = true;
+  } else if (trustedBatchHash?.hash) submission.transactionNotBroadcast = false;
   else if (typeof error?.transactionNotBroadcast === 'boolean')
     submission.transactionNotBroadcast = error.transactionNotBroadcast;
   if (
@@ -498,6 +512,7 @@ export const handleMasterControllerResponses = (
               error &&
               typeof error === 'object' &&
               error.code &&
+              error.code !== EVM_SIGNED_STORAGE_FULL &&
               error.error === true
             ) {
               // Pass through structured errors as-is
@@ -525,6 +540,7 @@ export const handleMasterControllerResponses = (
         error &&
         typeof error === 'object' &&
         error.code &&
+        error.code !== EVM_SIGNED_STORAGE_FULL &&
         error.error === true
       ) {
         // Pass through structured errors as-is

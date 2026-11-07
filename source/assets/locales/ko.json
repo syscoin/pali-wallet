@@ -398,6 +398,7 @@
     "hex": "Hex",
     "reduceFee": "거래를 보내려면 수수료를 줄이세요.",
     "cantCompleteTxs": "거래를 완료할 수 없습니다. 나중에 다시 시도하세요.",
+    "signedStorageFull": "이 거래는 전송되지 않았습니다. Pali의 로컬 거래 저장 한도 내에 저장할 수 없었습니다. 활동을 확인하세요.",
     "savedNonceConflict": "저장된 거래에서 이미 이 논스를 사용하고 있습니다. 활동을 확인하세요.",
     "legacyPendingNonce": "이전 거래가 대기 중입니다. 다시 시도하기 전에 활동을 확인하세요.",
     "legacyNonceVerificationUnavailable": "이전 거래를 확인할 수 없습니다. 연결과 활동을 확인한 후 다시 시도하세요.",

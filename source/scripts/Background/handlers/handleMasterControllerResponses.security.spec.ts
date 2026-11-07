@@ -967,3 +967,21 @@ it('keeps the asset-review code only for definite local no-broadcast failures', 
     controllerErrorResponse(failure, { hash: '0x' + 'ab'.repeat(32) }).error
   ).not.toHaveProperty('code');
 });
+
+it('does not serialize forged capacity codes or messages as a local storage refusal', () => {
+  for (const fake of [
+    Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'), {
+      code: 'EVM_SIGNED_STORAGE_FULL',
+      transactionNotBroadcast: true,
+    }),
+    Object.assign(new Error('EVM_SIGNED_STORAGE_FULL'), {
+      code: 'EVM_SIGNED_STORAGE_FULL',
+      transactionNotBroadcast: false,
+    }),
+  ]) {
+    expect(controllerErrorResponse(fake).error).not.toHaveProperty(
+      'code',
+      'EVM_SIGNED_STORAGE_FULL'
+    );
+  }
+});

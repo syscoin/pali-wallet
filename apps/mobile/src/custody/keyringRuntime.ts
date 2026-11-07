@@ -1491,6 +1491,7 @@ export function createKeyringRuntimeFactory(
               void address;
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
+            evmSubmissionFailure: (error) => sdk.evmSubmissionFailure(error),
             submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement, verifyAutomaticNonce) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;

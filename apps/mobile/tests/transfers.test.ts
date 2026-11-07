@@ -1,11 +1,13 @@
+import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
-import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
@@ -49,6 +51,7 @@ function fixture() {
   let final = false;
   let receiptMissing = false;
   let observationUnavailable = false;
+  let payerIsEoa = false;
   let signatures = 0;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
@@ -83,6 +86,13 @@ function fixture() {
     },
   });
   const runtime = {
+    evmSubmissionFailure,
+    async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
+      const retained = await signedRecords.readReplacement(signedRecordTestSession(guard), '1', wallet.address, hash, mode);
+      guard();
+      if (!retained?.binding) return null;
+      return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
+    },
     replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
       return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
@@ -141,7 +151,8 @@ function fixture() {
           await beforeBroadcastChainResponse();
         result = '0x1';
       }
-      else if (body.method === 'eth_getCode') result = '0x6000';
+      else if (body.method === 'eth_getCode')
+        result = payerIsEoa && String(body.params[0]).toLowerCase() === wallet.address.toLowerCase() ? '0x' : '0x6000';
       else if (body.method === 'eth_call')
         result =
           '0x' +
@@ -238,6 +249,9 @@ function fixture() {
     loseAcknowledgment() {
       dropped = true;
     },
+    setPayerEoa() {
+      payerIsEoa = true;
+    },
     setObservationUnavailable(value: boolean) {
       observationUnavailable = value;
     },
@@ -280,6 +294,29 @@ function fixture() {
     },
   };
 }
+// Authenticated, deterministic capacity setup in an unrelated chain scope. No
+// network calls or production limits are changed; the same profile stores both.
+async function fillSyntheticJournal(f: ReturnType<typeof fixture>) {
+  const session=signedRecordTestSession();const profile=await session.keyring.getPrivateRecordProfileId();
+  const make=async(nonce:number)=>{
+    const rawTransaction=await wallet.signTransaction({type:2,chainId:7654321,nonce,to:wallet.address,value:1,gasLimit:21000,maxFeePerGas:3,maxPriorityFeePerGas:1});
+    const tx=Transaction.from(rawTransaction);
+    return {rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'7654321',nonce,type:2,
+      context:{account:{type:'HDAccount',id:0,address:wallet.address},network:{kind:'ethereum',chainId:7654321,slip44:60,url:'https://offline.invalid'},operation:'send' as const}};
+  };
+  const first=await make(0),second=await make(1),limit=16*1024*1024;
+  const maximum=Object.fromEntries(Array.from({length:1023},(_,i)=>[`k${String(i).padStart(4,'0')}`,'x'.repeat(8192)]));
+  const metadataBytes=(target:number)=>{const metadata=Object.fromEntries(Object.keys(maximum).map(key=>[key,'']));let remaining=target-Buffer.byteLength(JSON.stringify(metadata));
+    assert(remaining>=0&&remaining<=1023*8192);for(const key of Object.keys(metadata)){const n=Math.min(remaining,8192);metadata[key]='x'.repeat(n);remaining-=n;}assert.equal(remaining,0);return metadata;};
+  await f.signedRecords.append(session,first,maximum);
+  let probe=f.records[profile] as string|undefined;
+  const probeStore=new EvmSignedRecords({async read(){return probe;},async compareAndSet(_id,expected,next,guard){guard();if(probe!==expected)return false;probe=next;return true;}});
+  await probeStore.append(session,second,{});assert(probe);
+  const room=2+limit-Buffer.byteLength(probe);await f.signedRecords.append(session,second,metadataBytes(room-64));
+  const full=f.records[profile] as string;assert.equal(Buffer.byteLength(full),limit-64);
+  return {profile,full,first,second};
+}
+
 async function review(f: ReturnType<typeof fixture>) {
   await f.transfers.prepare(to, '0.001');
   const result = f.transfers.getSnapshot().review;
@@ -1136,4 +1173,76 @@ test('predecessor choices page locally without changing consent or making more R
   assert.equal(new Set(after.replay!.predecessors.map(row=>row.hash)).size,22);
   assert.equal(f.rpcMethods.length,requests);assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),0);
  } finally {f.close();}
+});
+
+
+test('real SDK and NativeTransfers report a genuine journal capacity refusal without POST', async () => {
+  let capturedCapacity:unknown;
+  const f=fixture();try {
+    const approved=await review(f);const {profile,full,first,second}=await fillSyntheticJournal(f);
+    const realSubmit=f.runtime.submit;f.runtime.submit=async (...args)=>{try{return await realSubmit(...args);}catch(error){capturedCapacity=error;throw error;}};
+    await assert.rejects(f.transfers.confirm(approved.id),{code:'SIGNED_STORAGE_FULL'});
+    assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),1);assert.equal(f.source.getSnapshot().phase,'ready');
+    assert.equal(f.transfers.getSnapshot().hash,null);assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
+    assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    const session=signedRecordTestSession();for(const entry of [first,second])assert((await f.signedRecords.readExact(session,entry.chainId,entry.from,entry.hash))?.rawTransaction===entry.rawTransaction);
+  } finally { f.close(); }
+  const healthy=fixture();try {const approved=await review(healthy);await healthy.transfers.confirm(approved.id);assert.equal(healthy.broadcasts.length,1);assert.equal(healthy.transfers.getSnapshot().phase,'pending');}finally{healthy.close();}
+  // A previously marked error delivered after a real local POST must never be
+  // presented as a no-broadcast capacity refusal.
+  assert(capturedCapacity instanceof Error);
+  const dispatched=fixture();try {
+    const approved=await review(dispatched);const realSubmit=dispatched.runtime.submit;
+    dispatched.runtime.submit=async (...args)=>{await realSubmit(...args);throw capturedCapacity;};
+    await dispatched.transfers.confirm(approved.id);
+    assert.equal(dispatched.broadcasts.length,1);assert.equal(dispatched.transfers.getSnapshot().phase,'unknown');
+    assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  }finally{dispatched.close();}
+});
+
+test('capacity refusal of a saved cancellation preserves the original exact record and sends no replacement', async () => {
+  const f=fixture();try {
+    const initial=await review(f);await f.transfers.confirm(initial.id);const original=f.transfers.getSnapshot().hash!;
+    const saved=await (await f.runtime.journal(()=>undefined)).load(original);assert(saved);
+    f.setPayerEoa();
+    await f.transfers.prepareSavedCancellation(original);const replacement=f.transfers.getSnapshot().review!;assert(replacement.replacement);
+    const {profile,full}=await fillSyntheticJournal(f);
+    await assert.rejects(f.transfers.confirm(replacement.id),{code:'SIGNED_STORAGE_FULL'});
+    assert.equal(f.broadcasts.length,1);assert.equal(f.source.getSnapshot().phase,'ready');assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
+    const retained=await (await f.runtime.journal(()=>undefined)).load(original);assert(retained?.rawTransaction===saved.rawTransaction);
+    assert.equal(f.transfers.getSnapshot().phase,'unknown');assert.equal(f.transfers.getSnapshot().hash,original);
+    assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  } finally {f.close();}
+});
+
+test('forged capacity text from a runtime is not classified as a local journal refusal', async () => {
+  const f=fixture();try {
+    const approved=await review(f);f.runtime.submit=async()=>{throw Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'),{transactionNotBroadcast:true,code:'EVM_SIGNED_STORAGE_FULL'});};
+    await assert.rejects(f.transfers.confirm(approved.id),{code:'FAILED'});assert.equal(f.broadcasts.length,0);
+    assert.equal(f.source.getSnapshot().phase,'locked');assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  }finally{f.close();}
+});
+
+test('a later attempt publishes a fresh review identity after submission is cancelled', async () => {
+  const f = fixture();
+  try {
+    const first = await review(f);
+    let submittingReview: typeof first | null = null;
+    const unsubscribe = f.transfers.subscribe((state) => {
+      if (state.phase === 'submitting') {
+        submittingReview = state.review;
+        f.transfers.cancel();
+      }
+    });
+    await assert.rejects(f.transfers.confirm(first.id), { code: 'CANCELLED' });
+    unsubscribe();
+    assert.strictEqual(submittingReview, first);
+    assert.equal(f.broadcasts.length, 0);
+    const second = await review(f);
+    assert.notStrictEqual(second, first);
+    assert.equal(f.transfers.getSnapshot().review, second);
+    assert.equal(f.broadcasts.length, 0);
+  } finally { f.close(); }
 });
