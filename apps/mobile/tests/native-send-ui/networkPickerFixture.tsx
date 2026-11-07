@@ -78,6 +78,8 @@ const controller: NativeNetworkView = {
       await new Promise<void>((resolve) => { releaseSave = resolve; });
       throw Error('CANCELLED');
     }
+    if (new URLSearchParams(window.location.search).has('failSaveOnce') && saveRequests === 1)
+      throw Error('UNAVAILABLE');
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1, networks: [...snapshot.networks.filter((network) => network.id !== registration.id),
       { id: registration.id, name: registration.name, symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }] });
     contextRevision++; notify();

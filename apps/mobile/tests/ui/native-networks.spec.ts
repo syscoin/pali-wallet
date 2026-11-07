@@ -106,6 +106,62 @@ test('custom EVM network form saves the supplied name and chain on a narrow scre
   await expect(page.getByRole('radio', { name: 'Custom EVM test, GAS, Chain ID 123456', exact: true })).toBeVisible();
 });
 
+for (const { viewport, scale } of [
+  { viewport: { width: 390, height: 844 }, scale: 1 },
+  { viewport: { width: 320, height: 740 }, scale: 1 },
+  { viewport: { width: 320, height: 740 }, scale: 1.6 },
+]) {
+  test(`failed network save is in view and can be retried at ${viewport.width}px and ${scale} text scale`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto('/?networks=1&failSaveOnce=1');
+    await page.getByRole('button', { name: 'Add network', exact: true }).click();
+    const name = page.getByLabel('Network name', { exact: true });
+    const rpc = page.getByLabel('RPC URL', { exact: true });
+    const chain = page.getByLabel('Chain ID', { exact: true });
+    const symbol = page.getByLabel('Currency symbol', { exact: true });
+    await name.fill('Local test');
+    await rpc.fill('https://custom.example/rpc');
+    await chain.fill('31337');
+    await symbol.fill('TST');
+    // RN Web does not apply native scaling; scale each node from its computed size.
+    const scaleText = async () => page.evaluate((factor) => {
+      const values = Array.from(document.querySelectorAll<HTMLElement>('[dir="auto"], input'))
+        .filter((element) => !element.hasAttribute('data-qa-font-scaled'))
+        .map((element) => { const style = getComputedStyle(element); return { element, font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) }; });
+      for (const { element, font, line } of values) {
+        element.setAttribute('data-qa-font-scaled', 'true');
+        if (Number.isFinite(font)) element.style.setProperty('font-size', `${font * factor}px`, 'important');
+        if (Number.isFinite(line)) element.style.setProperty('line-height', `${line * factor}px`, 'important');
+      }
+    }, scale);
+    if (scale !== 1) await scaleText();
+    await page.getByRole('button', { name: 'Save network', exact: true }).click();
+    const alert = page.getByRole('alert');
+    await expect(alert).toHaveText('Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.');
+    if (scale !== 1) await scaleText();
+    // Measure before any interaction with the alert, which could scroll it into view.
+    const bounds = await alert.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      let parent = element.parentElement;
+      while (parent && !(parent.scrollHeight > parent.clientHeight && /(auto|scroll)/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+      const clip = parent?.getBoundingClientRect();
+      return { top: box.top, bottom: box.bottom, visibleTop: Math.max(0, clip?.top ?? 0), visibleBottom: Math.min(window.innerHeight, clip?.bottom ?? window.innerHeight) };
+    });
+    expect(bounds.top).toBeGreaterThanOrEqual(bounds.visibleTop - 1);
+    expect(bounds.bottom).toBeLessThanOrEqual(bounds.visibleBottom + 1);
+    await expect(name).toHaveValue('Local test');
+    await expect(rpc).toHaveValue('https://custom.example/rpc');
+    await expect(chain).toHaveValue('31337');
+    await expect(symbol).toHaveValue('TST');
+    expect(await page.evaluate(() => window.__nativeNetworksFixture.saveRequests())).toBe(1);
+    await name.fill('Local test retry');
+    await expect(alert).toHaveCount(0);
+    await page.getByRole('button', { name: 'Save network', exact: true }).click();
+    expect(await page.evaluate(() => window.__nativeNetworksFixture.saveRequests())).toBe(2);
+    await expect(page.getByRole('radio', { name: 'Local test retry, TST, Chain ID 31337', exact: true })).toHaveCount(1);
+  });
+}
+
 test('long network labels and symbols retain padding at 320px with large text', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 740 });
   await page.goto('/?networks=1');

@@ -307,8 +307,9 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
             <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
-          </IdlePressable>
-          <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text></>}
+          </IdlePressable></>}
+          {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+          {!form.utxo && <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>}
           <Button title={form.utxo && form.id ? busy ? 'Saving…' : 'Save changes' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
           {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
           {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
@@ -341,7 +342,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
           }} />}
         </>}
-        {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+        {!form && !!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
       </Screen>
     </KeyboardAvoidingView>
