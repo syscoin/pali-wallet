@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { createInstance, i18n } from 'i18next';
 import React from 'react';
@@ -19,6 +20,12 @@ import fr from 'assets/locales/fr.json';
 import { SendConfirm } from './Confirm';
 
 const mockEmitter = jest.fn();
+const mockAlertError = jest.fn();
+const mockTokenReviewSubmit = jest.fn();
+const mockTokenReviewClose = jest.fn();
+let mockCapacityFailure: unknown;
+let mockAllowTokenBalanceRefresh = false;
+let mockCapacityPending: ReturnType<typeof deferred> | undefined;
 const mockAuth = {
   isUnlocked: true,
   isLoading: false,
@@ -74,7 +81,7 @@ jest.mock('react-redux', () => ({
 jest.mock('react-router-dom', () => ({ useLocation: () => mockLocation }));
 jest.mock('hooks/index', () => ({
   useUtils: () => ({
-    alert: { error: jest.fn(), success: jest.fn(), info: jest.fn() },
+    alert: { error: mockAlertError, success: jest.fn(), info: jest.fn() },
     navigate: jest.fn(),
     useCopyClipboard: () => [false, jest.fn()],
   }),
@@ -136,6 +143,14 @@ jest.mock('utils/navigationState', () => ({
 jest.mock('utils/errorHandling', () => ({
   handleTransactionError: () => false,
 }));
+jest.mock('./walletTokenReviewPort', () => ({
+  openWalletTokenReview: () => ({
+    ready: Promise.resolve(),
+    submit: mockTokenReviewSubmit,
+    close: mockTokenReviewClose,
+    isOpen: () => false,
+  }),
+}));
 jest.mock('utils/smartAccount', () => ({
   getSmartAccountLocalOwnerContexts: () => [],
   prepareSmartAccountFeeQuote: jest.fn(),
@@ -184,6 +199,11 @@ afterAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  mockCapacityFailure = undefined;
+  mockAllowTokenBalanceRefresh = false;
+  mockCapacityPending = undefined;
+  mockScope.account = 'fee-retry-account';
+  mockScope.network = 'fee-retry-network';
   window.history.replaceState(null, '', '/');
   mockLocation.key += '-next';
 });
@@ -191,13 +211,18 @@ afterEach(() => {
   cleanup();
   // No signing, publication, storage, account switch, or balance mutation.
   expect(
-    mockEmitter.mock.calls.every(([path]) =>
-      [
-        'getFeeDataWithDynamicMaxPriorityFeePerGas',
-        'getFreshNativeEvmGasLimit',
-        'reviewNativeEvmFee',
-        'discardNativeEvmFeeReview',
-      ].includes(path.at(-1))
+    mockEmitter.mock.calls.every(
+      ([path]) =>
+        [
+          'getFeeDataWithDynamicMaxPriorityFeePerGas',
+          'getFreshNativeEvmGasLimit',
+          'reviewNativeEvmFee',
+          'discardNativeEvmFeeReview',
+        ].includes(path.at(-1)) ||
+        (path.at(-1) === 'sendAndSaveEthTransaction' &&
+          mockCapacityFailure !== undefined) ||
+        (path.at(-1) === 'refreshActiveAccountBalances' &&
+          mockAllowTokenBalanceRefresh)
     )
   ).toBe(true);
 });
@@ -259,6 +284,20 @@ async function prepare(language: string, count = 1, token = false) {
         validForMs: 90000,
       });
     if (method === 'discardNativeEvmFeeReview') return Promise.resolve();
+    if (
+      method === 'refreshActiveAccountBalances' &&
+      mockAllowTokenBalanceRefresh
+    ) {
+      expect(params).toEqual([{ includeAssets: false }]);
+      return Promise.resolve({ nativeBalance: '100' });
+    }
+    if (
+      method === 'sendAndSaveEthTransaction' &&
+      mockCapacityFailure !== undefined
+    )
+      return mockCapacityPending
+        ? mockCapacityPending.promise
+        : Promise.reject(mockCapacityFailure);
     if (method === 'getFreshNativeEvmGasLimit') {
       expect(params[1]).toEqual(mockScope);
       expect(params[0]).toEqual(
@@ -272,13 +311,22 @@ async function prepare(language: string, count = 1, token = false) {
     }
     throw new Error(`Unexpected controller call: ${path.join('.')}`);
   });
-  render(
+  const view = render(
     <I18nextProvider i18n={instance}>
       <SendConfirm />
     </I18nextProvider>
   );
   await waitFor(() => expect(feeRequests()).toHaveLength(1));
-  return { instance, quotes };
+  return {
+    instance,
+    quotes,
+    rerender: () =>
+      view.rerender(
+        <I18nextProvider i18n={instance}>
+          <SendConfirm />
+        </I18nextProvider>
+      ),
+  };
 }
 const confirm = (instance: i18n) =>
   screen.getByRole('button', { name: String(instance.t('buttons.confirm')) });
@@ -410,6 +458,167 @@ describe.each(['en', 'de', 'fr'])(
         id: 0,
       });
       expect(mockState.vault.activeNetwork.chainId).toBe(5700);
+    });
+  }
+);
+
+describe.each(['en', 'de', 'fr'])(
+  'native storage capacity notice in %s',
+  (language) => {
+    it('retains a localized dismissible alert and does not send again', async () => {
+      mockCapacityFailure = {
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      };
+      const { instance, quotes } = await prepare(language);
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      const notice = await screen.findByText(
+        String(instance.t('send.signedStorageFull'))
+      );
+      expect(notice).toHaveAttribute('role', 'alert');
+      expect(mockAlertError).not.toHaveBeenCalled();
+      const close = within(notice.parentElement!).getByRole('button', {
+        name: String(instance.t('buttons.close')),
+      });
+      expect(close).toBeEnabled();
+      close.focus();
+      expect(close).toHaveFocus();
+      fireEvent.click(close);
+      expect(
+        screen.queryByText(String(instance.t('send.signedStorageFull')))
+      ).not.toBeInTheDocument();
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+        )
+      ).toHaveLength(1);
+    });
+    it('does not present capacity guidance for a contradictory no-broadcast flag', async () => {
+      mockCapacityFailure = {
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: false,
+      };
+      const { instance, quotes } = await prepare(language);
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+          )
+        ).toHaveLength(1)
+      );
+      await waitFor(() => expect(mockAlertError).toHaveBeenCalled());
+      expect(
+        screen.queryByText(String(instance.t('send.signedStorageFull')))
+      ).not.toBeInTheDocument();
+    });
+  }
+);
+
+describe.each(['account', 'network'] as const)(
+  'capacity notice on %s change',
+  (field) => {
+    it('does not follow a changed wallet scope', async () => {
+      mockCapacityFailure = {
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      };
+      const { instance, quotes, rerender } = await prepare('en');
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      await screen.findByText(String(instance.t('send.signedStorageFull')));
+      mockScope[field] = 'different-scope';
+      rerender();
+      await waitFor(() =>
+        expect(
+          screen.queryByText(String(instance.t('send.signedStorageFull')))
+        ).not.toBeInTheDocument()
+      );
+    });
+    it('does not adopt a late refusal into the changed scope', async () => {
+      mockCapacityFailure = {
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      };
+      mockCapacityPending = deferred();
+      const { instance, quotes, rerender } = await prepare('en');
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      await waitFor(() =>
+        expect(
+          mockEmitter.mock.calls.filter(
+            ([path]) => path.at(-1) === 'sendAndSaveEthTransaction'
+          )
+        ).toHaveLength(1)
+      );
+      mockScope[field] = 'different-scope';
+      rerender();
+      await act(async () =>
+        mockCapacityPending!.reject(mockCapacityFailure as Error)
+      );
+      expect(
+        screen.queryByText(String(instance.t('send.signedStorageFull')))
+      ).not.toBeInTheDocument();
+    });
+  }
+);
+
+describe.each(['en', 'de'])(
+  'ordinary ERC20 storage capacity notice in %s',
+  (language) => {
+    it('retains a localized alert after the token review port closes', async () => {
+      mockAllowTokenBalanceRefresh = true;
+      mockTokenReviewSubmit.mockRejectedValue({
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      });
+      const { instance, quotes } = await prepare(language, 1, true);
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      const notice = await screen.findByText(
+        String(instance.t('send.signedStorageFull'))
+      );
+      expect(notice).toHaveAttribute('role', 'alert');
+      expect(mockTokenReviewClose).toHaveBeenCalledTimes(1);
+      expect(mockTokenReviewSubmit).toHaveBeenCalledTimes(1);
+      expect(mockAlertError).not.toHaveBeenCalled();
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+        )
+      ).toHaveLength(1);
+      const close = within(notice.parentElement!).getByRole('button', {
+        name: String(instance.t('buttons.close')),
+      });
+      close.focus();
+      expect(close).toHaveFocus();
+      fireEvent.click(close);
+      expect(
+        screen.queryByText(String(instance.t('send.signedStorageFull')))
+      ).not.toBeInTheDocument();
+      expect(mockTokenReviewSubmit).toHaveBeenCalledTimes(1);
+    });
+    it('does not show local capacity guidance on a contradictory token failure', async () => {
+      mockAllowTokenBalanceRefresh = true;
+      mockTokenReviewSubmit.mockRejectedValue({
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: false,
+      });
+      const { instance, quotes } = await prepare(language, 1, true);
+      await succeedQuote(quotes[0], instance);
+      fireEvent.click(confirm(instance));
+      await waitFor(() => expect(mockAlertError).toHaveBeenCalled());
+      expect(mockTokenReviewSubmit).toHaveBeenCalledTimes(1);
+      expect(
+        mockEmitter.mock.calls.filter(
+          ([path]) => path.at(-1) === 'refreshActiveAccountBalances'
+        )
+      ).toHaveLength(1);
+      expect(
+        screen.queryByText(String(instance.t('send.signedStorageFull')))
+      ).not.toBeInTheDocument();
     });
   }
 );

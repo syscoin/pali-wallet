@@ -1,3 +1,16 @@
+const originalTabs = chrome.tabs;
+beforeEach(() => {
+  // These admission tests use fake openers, so no browser tab is created.
+  (chrome as any).tabs = {
+    query: jest.fn((_query: unknown, callback: (tabs: any[]) => void) =>
+      callback([])
+    ),
+  };
+});
+afterAll(() => {
+  (chrome as any).tabs = originalTabs;
+});
+
 const mockGetState = jest.fn();
 jest.mock('state/store', () => ({
   __esModule: true,

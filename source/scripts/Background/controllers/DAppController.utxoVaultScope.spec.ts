@@ -176,7 +176,11 @@ const originalFetch = globalThis.fetch;
 const providerRead = () =>
   onMessage(
     { type: 'METHOD_REQUEST', data: { method: 'wallet_getSysProviderState' } },
-    { url: `${HOST}/page`, tab: { id: 1 } } as chrome.runtime.MessageSender
+    {
+      url: `${HOST}/page`,
+      origin: HOST,
+      tab: { id: 1 },
+    } as chrome.runtime.MessageSender
   );
 const selection = () => {
   const { accounts, activeNetwork } = store.getState().vault;

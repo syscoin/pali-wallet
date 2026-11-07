@@ -1,5 +1,5 @@
-import { findUtxoNetwork } from '../core/utxoNetworks';
-import { findWifAddressType, UTXO_IMPORT_LABELS } from '../core/utxoAddresses';
+import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetworks';
+import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
 import { walletFetch } from '../platform/http';
 import { custodyIdle, securityPreferences } from '../platform/security';
 import { AutoLockSettings, type IdlePreferenceSave } from './AutoLockSettings';
@@ -8,6 +8,7 @@ import { isNativeNewPassword, NEW_PASSWORD_HELP } from '../custody/password';
 import { nativeAccountSelection } from '../core/accountDirectory';
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeRecoveryCoordinator, createNativeWalletControllers } from '../platform/nativeFactory';
 import { NativeControllerLifecycle } from '../custody/nativeControllerLifecycle';
 import { NativeRecoveryFlow, type RecoveryOutcome } from '../custody/recoveryFlow';
@@ -22,13 +23,15 @@ import type { CustodySnapshot } from '../custody/types';
 import type { SeedBackupPresentation } from '../custody/seedBackup';
 import { Button, colors, Header, Notice, PaliMark, Screen, styles, Text } from '../ui';
 import { NativePortfolio } from './NativePortfolio';
-import { NativeSend } from './NativeSend';
+import { NativeSend, type NativeRecipientPicker } from './NativeSend';
 import { NativeUtxoSendScreen } from './NativeUtxoSend';
 import { NativeSecurity } from './NativeSecurity';
 import { NativeWalletRemovalScreen, type RemovalScreenOutcome } from './NativeWalletRemoval';
 import { WalletRemovalError, type WalletRemovalTicket } from '../custody/walletRemoval';
 import { NativeImport } from './NativeImport';
 import type { NativeImportView } from '../custody/importedAccounts';
+import { supportsSptUtxoChain } from '../../../../source/shared/sptInventory';
+import { SYSX_ASSET_DECIMALS, SYSX_ASSET_GUID } from '../../../../source/shared/syscoinAssetIds';
 import { EVM_NETWORK_DEFINITIONS } from '../../../../source/shared/evmNetworks';
 import { NativeCustodyFeedback } from './NativeCustodyFeedback';
 import { NativeNetworks } from './NativeNetworks';
@@ -37,9 +40,11 @@ import { getNativeSendContext, nativeSigningEnabled, type EvmNetworkId } from '.
 import { NativeAccounts } from './NativeAccounts';
 import { WalletAccounts, type WatchWalletBridge } from './WalletAccounts';
 import { NativeActivityScreen } from './NativeActivity';
+import { UtxoActivityScreen } from './UtxoActivityScreen';
 import type { NativeWalletCatalogueSnapshot } from '../custody/walletCatalogue';
 import type { PublicCustodySource } from '../portfolio/nativePortfolio';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
+import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import { RealAppShell, UnavailableActivity, type RealTab } from './RealAppShell';
 import { RealTools } from './RealTools';
 import { RealSettings } from './RealSettings';
@@ -49,10 +54,21 @@ type Controllers = ReturnType<typeof createNativeWalletControllers>;
 const nativeLifecycle = new NativeControllerLifecycle({ create: createNativeWalletControllers, protect: ensurePrivacyShield, recovery: createNativeRecoveryCoordinator });
 // Nonsecret operation outcome survives route departure while cleanup is pending.
 let savedRecoveryOutcome: RecoveryOutcome | null = null;
-type RootOrigin = Readonly<{ tab: RealTab; context: string; identity: string; epoch: number }>;
+type RootOrigin = Readonly<{ tab: RealTab; stage: Stage; context: string; identity: string; epoch: number }>;
+const SYSX_SEND_ASSET = Object.freeze({ assetGuid: SYSX_ASSET_GUID, decimals: SYSX_ASSET_DECIMALS, symbol: 'SYSX' });
+type SendTarget = Readonly<
+  { kind: 'native' | 'spt' } | { kind: 'token'; token: Erc20Metadata } |
+  { kind: 'collectible'; collectible: SavedCollectible } | { kind: 'saved' | 'cancel' | 'cancel-saved' | 'speed-up'; hash: string }
+>;
 type RemovalScope = { local: Controllers; authority: CustodySnapshot; epoch: number; phase: 'reviewing' | 'working' | 'settled'; outcome?: RemovalScreenOutcome };
 type Stage = 'choose' | 'create' | 'import' | 'backup-auth' | 'words' | 'challenge' | 'send' | 'accounts' | 'manage-hd' | 'networks' | 'security' | 'remove-wallet' | 'import-key' | 'recovery' | 'auto-lock' | 'private-notes' | 'note-inventory' | 'note-capacity' | 'restore-notes' | 'backup-notes';
 const INITIAL: CustodySnapshot = { phase: 'opening', revision: 0, presence: 'unknown', backup: 'unknown', account: null, error: null };
+
+function custodyContext(state?: CustodySnapshot, catalogue?: NativeWalletCatalogueSnapshot | null) {
+  if (state?.phase !== 'ready' || !state.account || !catalogue) return null;
+  const identity = `${catalogue.active.accountId}:${state.account.network}`;
+  return { context: `${state.revision}:${identity}`, identity };
+}
 
 function message(error: unknown): string {
   const code = error instanceof Error ? error.message : '';
@@ -106,11 +122,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [openNoteCapacity, setOpenNoteCapacity] = useState<Controllers['openNoteCapacity'] | null>(null);
   const [readNoteInventory, setReadNoteInventory] = useState<Controllers['readNoteInventory'] | null>(null);
   const [activityView, setActivityView] = useState<Controllers['activity'] | null>(null);
-  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; token: number; imports: NativeImportView } | null>(null);
+  const [utxoActivityView, setUtxoActivityView] = useState<Controllers['utxoActivity'] | null>(null);
+  const [importScope, setImportScope] = useState<{ contextRevision: number; catalogueRevision: number; networkLabel: string; utxo: boolean; utxoAddressTypes?: readonly UtxoImportAddressType[]; token: number; imports: NativeImportView } | null>(null);
   const importRequest = useRef({ token: 0, active: false });
   const [importActiveToken, setImportActiveToken] = useState<number | null>(null);
-  const [sendToken, setSendToken] = useState<Erc20Metadata | null>(null);
-  const [savedTransfer, setSavedTransfer] = useState<Readonly<{ hash: string; action: 'replay' | 'cancel' }>>();
+  const [sendDraft, setSendDraft] = useState<Readonly<{ origin: RootOrigin; target: SendTarget; recipientPicker?: NativeRecipientPicker }> | null>(null);
   const mounted = useRef(false);
   const epoch = useRef(0);
   const submitting = useRef(false);
@@ -148,7 +164,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     rootOrigin.current = null;
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
-    Keyboard.dismiss(); clearSecrets(); setSendToken(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
+    Keyboard.dismiss(); clearSecrets(); setSendDraft(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore]);
   useLayoutEffect(() => {
     if (mounted.current && AppState.currentState === 'active' && securityPreferences.getSnapshot().status === 'ready') custodyIdle.begin(screenToken.current, revoke);
@@ -156,30 +172,57 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   useLayoutEffect(() => { const owner = screenToken.current; custodyIdle.begin(owner, revoke); return () => custodyIdle.stop(owner); }, [revoke]);
   const exit = useCallback(() => { cancelNoteRestore(); revoke(); onExit(); }, [cancelNoteRestore, onExit, revoke]);
   const readyContext = useCallback(() => {
-    const local = controllers.current, state = local?.authority.getSnapshot(), current = local?.authority.getCatalogue();
-    return state?.phase === 'ready' && state.account && current
-      ? { context: `${state.revision}:${current.active.accountId}:${state.account.network}`, identity: `${current.active.accountId}:${state.account.network}` } : null;
+    const local = controllers.current;
+    return custodyContext(local?.authority.getSnapshot(), local?.authority.getCatalogue());
   }, []);
   const currentShellScope = () => stage === 'choose' ? readyContext()?.context ?? null : null;
-  const utxo = findUtxoNetwork(snapshot.account?.network);
+  const utxo = findUtxoNetwork(snapshot.account?.network, catalogue?.utxoNetworks);
   const canSign = !!snapshot.account && nativeSigningEnabled(snapshot.account.network, catalogue?.networks);
-  const canSendUtxo = !!openUtxoSend && !!catalogue && utxo?.decimals === 8;
+  const canSendUtxo = !!openUtxoSend && !!utxo && supportsUtxoSoftwareCustody(utxo);
+  const canSendSpt = canSendUtxo && !!utxo && supportsSptUtxoChain(utxo.chainId);
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
-  const openStage = (next: Stage) => {
-    const current = readyContext();
+  const openStage = (next: Stage, sendTarget?: SendTarget) => {
+    const local = controllers.current;
+    const owner = local?.authority.getSnapshot();
+    const capturedCatalogue = local?.authority.getCatalogue();
+    const current = custodyContext(owner, capturedCatalogue);
     if (stage !== 'choose' || AppState.currentState !== 'active' || !current) return;
-    rootOrigin.current = { tab: shell.tab, ...current, epoch: epoch.current };
+    const origin = { tab: shell.tab, stage: next, ...current, epoch: epoch.current };
+    if (next === 'send') {
+      if (!sendTarget || (sendTarget.kind === 'spt' ? !canSendSpt :
+        !canSign && !(canSendUtxo && sendTarget.kind === 'native'))) return;
+      const sender = owner?.account?.address.toLowerCase();
+      const recipientPicker = sendTarget.kind === 'native' && canSign && local && sender &&
+        capturedCatalogue?.accounts.some(({ address }) => address.toLowerCase() !== sender)
+        ? {
+          current: () => {
+            if (AppState.currentState !== 'active' || controllers.current !== local ||
+                rootOrigin.current !== origin || epoch.current !== origin.epoch) return false;
+            const latest = local.authority.getCatalogue();
+            return latest?.revision === capturedCatalogue.revision &&
+              custodyContext(local.authority.getSnapshot(), latest)?.context === origin.context;
+          },
+          accounts: () => capturedCatalogue.accounts.flatMap(({ address, label }) =>
+            address.toLowerCase() === sender ? [] : [{ address, label }]),
+        } : undefined;
+      setSendDraft({ origin, target: sendTarget, recipientPicker });
+    }
+    rootOrigin.current = origin;
     setStage(next);
   };
   const closeStage = () => {
     const origin = rootOrigin.current; rootOrigin.current = null;
     const current = readyContext();
+    setSendDraft(null);
     setStage('choose');
     if (origin && current && AppState.currentState === 'active' && origin.context === current.context && origin.identity === current.identity && origin.epoch === epoch.current)
       shell.restoreRoot(origin.tab, origin.identity);
   };
+  const sendTarget = stage === 'send' && sendDraft &&
+    sendDraft.origin.context === custodyContext(snapshot, catalogue)?.context
+    ? sendDraft.target : undefined;
   const latestBack = useRef<() => boolean>(() => true);
   useLayoutEffect(() => {
     latestBack.current = () => {
@@ -202,9 +245,14 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     cancelNoteRestore();
     detachSubscriptions.current(); detachSubscriptions.current = () => undefined;
     controllers.current = null;
+    if (rootOrigin.current?.stage === 'send') {
+      rootOrigin.current = null;
+      setSendDraft(null);
+      setStage((current) => current === 'send' ? 'choose' : current);
+    }
     setCanRemoveWallet(false);
     setPublicSource(null); setBalanceReader(null); setAccountView(null); setNetworkView(null);
-    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null);
+    setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
   const attach = useCallback((local: Controllers) => {
@@ -218,9 +266,15 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     });
     const update = (state: CustodySnapshot) => {
       if (!mounted.current || controllers.current !== local) return;
-      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setKeyExportView(local.keyExport); setNetworkView(networks);
+      setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
       const nextCatalogue = local.authority.getCatalogue();
       setCatalogue(nextCatalogue); bridge.current?.onNativeCatalogue(nextCatalogue);
+      const origin = rootOrigin.current;
+      if (origin?.stage === 'send' && origin.context !== custodyContext(state, nextCatalogue)?.context) {
+        rootOrigin.current = null;
+        setSendDraft(null);
+        setStage((current) => current === 'send' ? 'choose' : current);
+      }
       if (nextCatalogue) selectedNative.current?.(nextCatalogue.active.accountId);
       setAccountView(local.authority.supportsAccountManagement() ? local.accounts : null);
       const removal = removalRef.current;
@@ -330,7 +384,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         local.authority.getSnapshot().phase !== 'locked' || nativeLifecycle.current(screenToken.current) !== local) return;
     cancelNoteRestore();
     rootOrigin.current = null; requestedAccount.current = undefined; feedbackRequest.current++;
-    clearSecrets(); setError(''); setSendToken(null); const captured = ++epoch.current;
+    clearSecrets(); setError(''); setSendDraft(null); const captured = ++epoch.current;
     let flow!: NativeRecoveryFlow, recoveryStarted = false;
     flow = new NativeRecoveryFlow({
       readInventory: () => local.readRecoveryInventory(),
@@ -413,8 +467,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
             now.phase === 'authenticating' && now.revision === context.revision + 1) local.imports.cancel();
       },
     });
-    const network = findUtxoNetwork(context.account.network);
+    const network = findUtxoNetwork(context.account.network, current.utxoNetworks);
     setImportScope({ contextRevision: context.revision, catalogueRevision: current.revision, utxo: !!network,
+      utxoAddressTypes: network && UTXO_IMPORT_TYPES.filter((type) => supportsUtxoSoftwareCustody(network, type === 'p2tr' ? 1 : 0)),
       networkLabel: network?.name ?? getNativeSendContext(context.account.network, current.networks).name, token, imports: scoped });
     setStage('import-key');
   };
@@ -452,7 +507,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   if (stage === 'import-key' && importScope && ['ready', 'authenticating'].includes(snapshot.phase) &&
       (snapshot.revision === importScope.contextRevision || importActiveToken === importScope.token && snapshot.revision === importScope.contextRevision + 1))
     return <NativeImport key={`${importScope.token}:${importScope.contextRevision}:${importScope.catalogueRevision}`} imports={importScope.imports} contextRevision={importScope.contextRevision} catalogueRevision={importScope.catalogueRevision}
-      networkLabel={importScope.networkLabel} utxo={importScope.utxo}
+      networkLabel={importScope.networkLabel} utxo={importScope.utxo} utxoAddressTypes={importScope.utxoAddressTypes}
       onSubmitStart={() => { if (mounted.current && importRequest.current.token === importScope.token) { importRequest.current.active = true; setImportActiveToken(importScope.token); } }}
       onSubmitEnd={() => { if (importRequest.current.token === importScope.token) importRequest.current.active = false; if (mounted.current) setImportActiveToken((value) => value === importScope.token ? null : value); }}
       onBack={() => { setImportScope(null); setStage('manage-hd'); }}
@@ -489,8 +544,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     onBack={() => { cancelNoteRestore(); setStage('private-notes'); }} />;
   if (stage === 'security' && snapshot.phase === 'ready' && catalogue && snapshot.account && keyExportView) {
     const selected = catalogue.accounts.find((account) => account.id === catalogue.active.accountId)!;
-    const script = utxo && selected.type === 'Imported' ? findWifAddressType(selected.address, utxo.id) : undefined;
-    const keyFormat = canSign ? 'evm' : utxo && selected.type === 'HDAccount'
+    const extended = selected.type === 'HDAccount' || selected.utxoExtended;
+    const script = utxo && !extended ? findWifAddressType(selected.address, utxo) : undefined;
+    const keyFormat = canSign ? 'evm' : utxo && extended
       ? { kind: 'extended' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS.p2wpkh }
       : utxo && script ? { kind: 'wif' as const, networkLabel: utxo.name, addressType: UTXO_IMPORT_LABELS[script] } : null;
     return <NativeSecurity key={`${snapshot.revision}:${catalogue.active.accountId}:${snapshot.account.network}`}
@@ -586,8 +642,17 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     }} />
     <Button title="Lock wallet" variant="quiet" onPress={revoke} />
   </>;
-  else if (snapshot.phase === 'ready' && stage === 'send' && transferView && snapshot.account && canSign) return <NativeSend controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)} token={sendToken ?? undefined} savedHash={savedTransfer?.action === 'replay' ? savedTransfer.hash : undefined} cancellationHash={savedTransfer?.action === 'cancel' ? savedTransfer.hash : undefined} accountLabel={accountLabel} onBack={() => { setSendToken(null); setSavedTransfer(undefined); closeStage(); }} />;
-  else if (snapshot.phase === 'ready' && stage === 'send' && utxo && canSendUtxo && openUtxoSend) return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend} accountLabel={accountLabel} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && sendTarget && sendTarget.kind !== 'spt' && canSign && transferView && snapshot.account) return <NativeSend
+    controller={transferView} context={getNativeSendContext(snapshot.account.network, catalogue?.networks)}
+    recipientPicker={sendDraft?.recipientPicker}
+    token={sendTarget.kind === 'token' ? sendTarget.token : undefined}
+    collectible={sendTarget.kind === 'collectible' ? sendTarget.collectible : undefined}
+    savedHash={sendTarget.kind === 'saved' ? sendTarget.hash : undefined}
+    replacement={sendTarget.kind === 'cancel' || sendTarget.kind === 'cancel-saved' || sendTarget.kind === 'speed-up' ? { hash: sendTarget.hash, mode: sendTarget.kind } : undefined}
+    accountLabel={accountLabel} onBack={closeStage} />;
+  else if (snapshot.phase === 'ready' && (sendTarget?.kind === 'native' || sendTarget?.kind === 'spt' && canSendSpt) && utxo && canSendUtxo && openUtxoSend)
+    return <NativeUtxoSendScreen key={snapshot.revision} network={utxo} open={openUtxoSend}
+      asset={sendTarget.kind === 'spt' ? SYSX_SEND_ASSET : undefined} accountLabel={accountLabel} onBack={closeStage} />;
   else if (snapshot.phase === 'ready' && publicSource) {
     const onAccounts = () => openStage(accounts ? 'accounts' : 'manage-hd');
     let content: React.ReactNode;
@@ -595,17 +660,24 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     reader={balanceReader ?? undefined}
     tokenView={tokenView ?? undefined}
     source={publicSource} accountLabel={accountLabel} onManageAccounts={accounts || accountView ? onAccounts : undefined} onExit={exit} onLock={revoke}
-    onSend={canSign || canSendUtxo ? () => { setSendToken(null); setSavedTransfer(undefined); openStage('send'); } : undefined}
-    onSendToken={canSign ? (token) => { setSendToken(token); setSavedTransfer(undefined); openStage('send'); } : undefined}
+    onSend={canSign || canSendUtxo ? () => openStage('send', { kind: 'native' }) : undefined}
+    onSendSysx={canSendSpt ? () => openStage('send', { kind: 'spt' }) : undefined}
+    onSendToken={canSign ? (token) => openStage('send', { kind: 'token', token }) : undefined}
+    onSendCollectible={canSign ? (collectible) => openStage('send', { kind: 'collectible', collectible }) : undefined}
     onManageNetworks={networkView ? () => openStage('networks') : undefined}
     onViewRecovery={() => openStage('backup-auth')} onSecurity={() => openStage('security')}
-    onActivity={utxo ? undefined : () => shell.select('activity')}
+    onActivity={(utxo ? utxoActivityView : activityView) ? () => shell.select('activity') : undefined}
     navigation={shell.navigation}
   />;
-    else if (shell.tab === 'activity') content = activityView && !utxo
+    else if (shell.tab === 'activity') content = utxo && utxoActivityView
+      ? <UtxoActivityScreen authority={utxoActivityView} selectedNetwork={utxo} accountLabel={accountLabel}
+          onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
+      : activityView && !utxo
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
-          onReplay={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'replay' }); openStage('send'); } : undefined}
-          onCancelPending={canSign ? (hash) => { setSendToken(null); setSavedTransfer({ hash, action: 'cancel' }); openStage('send'); } : undefined}
+          onReplay={canSign ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
+          onCancelPending={canSign ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
+          onCancelSaved={canSign ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
+          onSpeedUpPending={canSign ? (hash) => openStage('send', { kind: 'speed-up', hash }) : undefined}
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel}
@@ -618,19 +690,24 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
 
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-    <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
-      {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
-      {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
-      {body}
-      {snapshot.error && <NativeCustodyFeedback error={snapshot.error} />}
-      {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
-      {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
-    </Screen>
-  </KeyboardAvoidingView>;
+  const duplicateAuthenticationError = (snapshot.error === 'INVALID_CREDENTIAL' || snapshot.error === 'AUTH_THROTTLED') &&
+    error === message(new Error(snapshot.error));
+  return <SafeAreaView edges={['top', 'bottom']} style={s.safeArea}>
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
+        {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
+        {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
+        {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
+        {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+        {body}
+        {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
+      </Screen>
+    </KeyboardAvoidingView>
+  </SafeAreaView>;
 }
 
 const s = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: colors.bg },
   field: { gap: 10 }, label: { color: colors.muted, fontSize: 12, fontWeight: '600', letterSpacing: 0.8 },
   input: { color: colors.text, backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1, borderRadius: 16, padding: 17, minHeight: 56, fontSize: 16 },
   phraseInput: { minHeight: 120, textAlignVertical: 'top', lineHeight: 26 }, center: { gap: 18, alignItems: 'center', paddingVertical: 50 },

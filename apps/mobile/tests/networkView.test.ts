@@ -7,9 +7,9 @@ import type { NativeWalletCatalogueSnapshot } from '../src/custody/walletCatalog
 import type { CustodySnapshot } from '../src/custody/types.ts';
 
 const address = '0x52908400098527886E0F7030069857D2E4169EE7';
-function fixture(utxoSendAvailable = false) {
+function fixture(utxoSendAvailable = false, removeUtxoNetwork?: (id: string, context: number, revision: number, signal: AbortSignal) => Promise<void>) {
   let state: CustodySnapshot = { phase: 'ready', revision: 12, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
-  let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
+  let catalogue: NativeWalletCatalogueSnapshot | null = Object.freeze<NativeWalletCatalogueSnapshot>({ revision: 3, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } });
   const listeners = new Set<(value: CustodySnapshot) => void>();
   const requests: unknown[][] = [];
   let cancels = 0;
@@ -19,6 +19,7 @@ function fixture(utxoSendAvailable = false) {
     subscribe(listener: (value: CustodySnapshot) => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
     async selectNetwork(...args: [string, number, number]) { requests.push(args); },
     cancelAccountOperation() { cancels++; },
+    ...(removeUtxoNetwork && { removeUtxoNetwork }),
   };
   const view = createNativeNetworkView(authority, { utxoSendAvailable });
   return { view, requests, listeners, cancels: () => cancels,
@@ -62,6 +63,26 @@ test('network selection forwards both captured revisions and teardown removes ob
   stop(); assert.equal(f.listeners.size, 0);
 });
 
+test('custom UTXO removal is capability-gated and owned by the Settings lifetime', async () => {
+  const request = Promise.withResolvers<readonly [string, number, number, AbortSignal]>();
+  const finish = Promise.withResolvers<void>();
+  const remove = async (id: string, context: number, revision: number, signal: AbortSignal) => {
+    request.resolve([id, context, revision, signal]);
+    await finish.promise;
+  };
+  assert.equal(fixture(false, remove).view.removeUtxo, undefined);
+  assert.equal(fixture(true).view.removeUtxo, undefined);
+  const f = fixture(true, remove);
+  const pending = f.view.removeUtxo!('custom:test', 12, 3);
+  const [id, context, revision, signal] = await request.promise;
+  assert.deepEqual([id, context, revision], ['custom:test', 12, 3]);
+  assert.equal(signal.aborted, false);
+  f.view.cancel();
+  assert.equal(signal.aborted, true);
+  finish.resolve();
+  await pending;
+});
+
 test('network verification and persistence share one detached registration snapshot', async () => {
   const { createNativeNetwork } = await import('../src/custody/networkContext.ts');
   const original = createNativeNetwork({ id: 'custom:4444', name: 'Custom', kind: 'evm', chainId: '4444', slip44: 60, rpcUrl: 'https://first.example', symbol: 'T', decimals: 18, testnet: true });
@@ -70,7 +91,7 @@ test('network verification and persistence share one detached registration snaps
   const entered = new Promise<void>((resolve) => { started = resolve; });
   const held = new Promise<void>((resolve) => { finish = resolve; });
   const state: CustodySnapshot = { phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null };
-  const catalogue = { revision: 1, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
+  const catalogue = { revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } };
   const saved: unknown[] = [];
   const view = createNativeNetworkView({ getSnapshot: () => state, getCatalogue: () => catalogue, subscribe: () => () => undefined,
     selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
@@ -93,7 +114,7 @@ test('long padded network text reaches the verified endpoint unchanged and stale
     const saved: unknown[] = [], urls: string[] = [];
     const view = createNativeNetworkView({
       getSnapshot: () => ({ phase: 'ready', revision, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
-      getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
+      getCatalogue: () => ({ revision: catalogueRevision, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
       subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
       manageNetwork: async (request) => { saved.push(request); },
     }, { utxoSendAvailable: false, fetch: async (url, init) => {
@@ -124,7 +145,7 @@ test('catalogue is lazy and verified Save rejects unexpected endpoints before re
   let redirected = false;
   const view = createNativeNetworkView({
     getSnapshot: () => ({ phase: 'ready', revision: 1, presence: 'existing', backup: 'confirmed', account: { network: 'ethereum', address }, error: null }),
-    getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
+    getCatalogue: () => ({ revision: 1, accounts: [], networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS, active: { accountId: 'hd:60:0', networkId: 'ethereum' } }),
     subscribe: () => () => undefined, selectNetwork: async () => undefined, cancelAccountOperation: () => undefined,
     manageNetwork: async (request) => { saved.push(request); },
   }, { utxoSendAvailable: false, fetch: async (url, init) => {

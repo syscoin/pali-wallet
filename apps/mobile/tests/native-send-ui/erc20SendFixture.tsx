@@ -3,6 +3,7 @@ import { getNativeSendContext, getNativeNetwork } from '../../src/custody/networ
 import React, { useState, useSyncExternalStore } from 'react';
 import { Wallet } from 'ethers/wallet';
 import { Transaction } from 'ethers/transaction';
+import { Interface } from 'ethers/abi';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import type { CustodySnapshot } from '../../src/custody/types';
@@ -14,10 +15,10 @@ import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { EvmSignedReplay } from '../../../../source/wallet/evmSignedReplay';
 import { EvmSignedRecords } from '../../../../source/wallet/evmSignedRecords';
 import { createNativeSignedRecordView } from '../../src/custody/sharedSignedRecords';
-import { signedRecordTestSession } from '../signedRecordTestSession';
+import { historicalSignedBundle, signedRecordTestSession, submitFixtureEvmTransaction } from '../signedRecordTestSession';
 import { assertTransferIntentEnvelope } from '../../src/custody/transferIntent';
 import { NativeSend } from '../../src/screens/NativeSend';
-import { Text } from '../../src/ui';
+import { Button, Text } from '../../src/ui';
 import type { Erc20Metadata } from '../../../../source/shared/erc20';
 
 const wallet = Wallet.fromPhrase(
@@ -65,7 +66,9 @@ const signedRecords = new EvmSignedRecords({
   async read() { return localStorage.getItem(key('signed-records')) ?? undefined; },
   async compareAndSet(_profile, expected, value, guard) {
     guard(); if ((localStorage.getItem(key('signed-records')) ?? undefined) !== expected) return false;
-    localStorage.setItem(key('signed-records'), value); return true;
+    localStorage.setItem(key('signed-records'), value);
+    if (pendingAfterSigning) { pendingAfterSigning = false; pendingNonce = '0x1'; }
+    return true;
   },
 });
 const broadcasts: string[] = [];
@@ -73,7 +76,10 @@ const rpcMethods: string[] = [];
 let signatures = 0;
 let unlockChecks = 0;
 let finalized = false;
+let observationUnavailable = new URLSearchParams(window.location.search).has('observation-unavailable');
 let loseResponse = true;
+let pendingNonce = '0x0';
+let pendingAfterSigning = false;
 let heldQuote: Promise<void> | null = null;
 let releaseQuote: (() => void) | undefined;
 const word = (value: bigint | number) =>
@@ -89,13 +95,15 @@ const rpc = new NativeTransferRpc({
   fetch: async (_url, init) => {
     const request = JSON.parse(String(init.body));
     rpcMethods.push(request.method);
+    if (observationUnavailable && request.method === 'eth_getTransactionReceipt')
+      throw Error('Synthetic observation outage');
     if (request.method === 'eth_gasPrice' && heldQuote) await heldQuote;
     let result: unknown;
     if (request.method === 'eth_chainId') result = '0x1';
     else if (request.method === 'eth_getCode') result = '0x6000';
     else if (request.method === 'eth_getTransactionCount')
       result =
-        request.params[1] === 'pending' ? '0x0' : finalized ? '0x1' : '0x0';
+        request.params[1] === 'pending' ? pendingNonce : finalized ? '0x1' : '0x0';
     else if (request.method === 'eth_getBalance') result = '0xde0b6b3a7640000';
     else if (request.method === 'eth_gasPrice') result = '0x2';
     else if (request.method === 'eth_feeHistory')
@@ -116,8 +124,11 @@ const rpc = new NativeTransferRpc({
           ? '0x20'
           : request.params[0]
       );
+    else if (request.method === 'eth_getTransactionByHash') result = null;
     else if (request.method === 'eth_getTransactionReceipt') {
-      const entry = await (await runtime.journal(() => undefined)).load();
+      const entry = finalized
+        ? await signedRecords.readExact(signedRecordTestSession(), '1', wallet.address, request.params[0])
+        : null;
       const tx = entry ? Transaction.from(entry.rawTransaction) : undefined;
       result =
         finalized && entry && tx
@@ -153,10 +164,7 @@ const runtime: NativeTransferRuntime = {
     return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
       context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
   },
-  async submit(rawTransaction, _hash, guard, broadcast, intent) {
-    const journal = await runtime.journal(guard); await journal.saveSigned(rawTransaction,intent); guard();
-    await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
-  },
+  submit: submitFixtureEvmTransaction(signedRecords),
   async token(contract, guard) {
     guard();
     if (contract !== token.contractAddress) throw Error('Unknown token');
@@ -205,32 +213,52 @@ declare global {
       rpcMethods(): readonly string[];
       journal(): unknown;
       finalized(): void;
+      restoreObservation(): void;
       revise(): void;
       setRuntimePrecision(value: number): void;
       acceptBroadcasts(): void;
       holdQuote(): void;
       releaseQuote(): void;
       networkRoundTrip(): void;
-      seedPredecessor(count?: number): Promise<{ first: string; second: string }>;
+      acceptPendingNonce(): void;
+      raceAfterSigning(): void;
+      lock(): void;
+      unlock(): void;
+      seedPredecessor(count?: number, collectible?: boolean): Promise<{ first: string; second: string }>;
     };
   }
 }
 window.__erc20SendFixture = {
-  async seedPredecessor(count = 1) {
+  async seedPredecessor(count = 1, collectible = false) {
     const session = signedRecordTestSession();
-    const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation:'send' as const};
-    const save = async (nonce: number, value = 1) => {
-      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,to:nonce===0?wallet.address:null,value,gasLimit:100000,
-        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data:nonce===0?'0x':'0x6000'});
+    const nftAbi = new Interface(['function transferFrom(address,address,uint256)']);
+    const sign = async (nonce: number, value = 1, operation: 'send' | 'erc721' = 'send') => {
+      const context = {account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl},operation};
+      const nft = operation === 'erc721';
+      const data = nft
+        ? nftAbi.encodeFunctionData('transferFrom', [wallet.address, wallet.address, 0])
+        : nonce === 0 ? '0x' : '0x6000';
+      const rawTransaction = await wallet.signTransaction({type:nonce===0?2:1,chainId:1,nonce,
+        to:nft?token.contractAddress:nonce===0?wallet.address:null,value,gasLimit:100000,
+        ...(nonce===0?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:3,accessList:[{address:wallet.address,storageKeys:[]}]}),data});
       const tx=Transaction.from(rawTransaction);
-      await signedRecords.append(session,{rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'1',nonce,type:tx.type,context});return tx.hash!;
+      return { rawTransaction, hash: tx.hash!, from: wallet.address, chainId: '1', nonce, type: tx.type, context };
     };
-    const first=await save(0);await signedRecords.updatePhase(session,'1',wallet.address,first,'confirmed');
-    for (let i = 1; i < Math.min(count, 30); i++) {
-      const alternative = await save(0, i + 1);
-      await signedRecords.updatePhase(session, '1', wallet.address, alternative, 'confirmed');
+    const earliest = count > 0 ? await sign(0, collectible ? 0 : 1, collectible ? 'erc721' : 'send') : null;
+    const first = earliest?.hash ?? '';
+    if (earliest && collectible) {
+      await signedRecords.append(session, earliest);
+      await signedRecords.updatePhase(session, '1', wallet.address, first, 'confirmed');
+    } else if (earliest) {
+      // Old ordinary same-nonce variants remain readable after new admission tightens.
+      const alternatives = await Promise.all(Array.from({ length: Math.min(count, 30) - 1 }, (_, i) => sign(0, i + 2)));
+      localStorage.setItem(key('signed-records'), await historicalSignedBundle(session,
+        [earliest, ...alternatives].map(({ rawTransaction }) => rawTransaction)));
     }
-    const second=await save(1);await signedRecords.updatePhase(session,'1',wallet.address,second,'submitted');
+    const later = await sign(1);
+    const second = later.hash;
+    await signedRecords.append(session, later);
+    await signedRecords.updatePhase(session, '1', wallet.address, second, 'submitted');
     loseResponse=false;await controller.recover(true,second);return {first,second};
   },
   signatures: () => signatures,
@@ -240,6 +268,9 @@ window.__erc20SendFixture = {
   journal: () => localStorage.getItem(key('signed-records')),
   finalized: () => {
     finalized = true;
+  },
+  restoreObservation: () => {
+    observationUnavailable = false;
   },
   revise() {
     state = Object.freeze({ ...state, revision: state.revision + 1 });
@@ -260,6 +291,20 @@ window.__erc20SendFixture = {
     heldQuote = null;
     releaseQuote?.();
     releaseQuote = undefined;
+  },
+  acceptPendingNonce() {
+    pendingNonce = '0x1';
+  },
+  raceAfterSigning() {
+    pendingAfterSigning = true;
+  },
+  lock() {
+    source.lock();
+  },
+  unlock() {
+    state = Object.freeze({ ...state, phase: 'ready', revision: state.revision + 1,
+      account: { network: 'ethereum', address: wallet.address } });
+    publish();
   },
   networkRoundTrip() {
     state = Object.freeze<CustodySnapshot>({
@@ -282,16 +327,28 @@ export function Erc20SendFixture() {
     source.getSnapshot,
     source.getSnapshot
   );
-  const [visible, setVisible] = useState(true);
-  return visible && snapshot.phase === 'ready' ? (
-    <NativeSend
-      key={snapshot.revision}
-      controller={controller.view}
-      context={getNativeSendContext('ethereum')}
-      token={token}
-      onBack={() => setVisible(false)}
-    />
-  ) : (
-    <Text>Wallet closed</Text>
-  );
+  const query = new URLSearchParams(window.location.search);
+  const multi = query.has('multiple-pending');
+  const [route, setRoute] = useState<{ revision: number; open: boolean; hash?: string }>(() => ({
+    revision: snapshot.revision,
+    open: true,
+    hash: query.get('saved') ?? undefined,
+  }));
+  const open = route.open && (!multi || route.revision === snapshot.revision);
+  if (snapshot.phase !== 'ready') return <Text>Wallet closed</Text>;
+  if (!open) return multi ? <>
+    <Button title="Send token" onPress={() => setRoute({ revision: snapshot.revision, open: true })} />
+    <Button title="Open first saved transfer" onPress={() => {
+      const first = broadcasts[0];
+      if (first) setRoute({ revision: snapshot.revision, open: true, hash: keccak256(first) });
+    }} />
+  </> : <Text>Wallet closed</Text>;
+  return <NativeSend
+    key={snapshot.revision}
+    controller={controller.view}
+    context={getNativeSendContext('ethereum')}
+    token={token}
+    savedHash={route.hash}
+    onBack={() => setRoute({ revision: snapshot.revision, open: false })}
+  />;
 }

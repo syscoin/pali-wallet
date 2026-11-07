@@ -1,3 +1,8 @@
+import { activityFetch } from './utxoActivityFixture';
+import { createNativeUtxoActivity } from '../../src/custody/utxoActivity';
+import { createUtxoActivityReader } from '../../src/core/utxoActivity';
+import { createUtxoBalanceReader } from '../../src/core/utxoBalanceReader.ts';
+import { getUtxoNetwork, UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import { custodyIdle, securityPreferences } from './security';
 // Actual custody/transfer controllers, with deterministic in-memory runtime ports.
 import { NativeCustodyAuthority } from '../../src/custody/authority';
@@ -7,7 +12,7 @@ import { KeyringRuntimeError, type KeyringRuntime } from '../../src/custody/keyr
 import { NativeTransfers, type NativeTransferRuntime } from '../../src/custody/transfers';
 import { NativeTransferRpc } from '../../src/custody/transferRpc';
 import { createBalanceReader } from '../../src/platformRpc';
-import { importedKeyIdentity, normalizeImportedKey, type NativeImportView } from '../../src/custody/importedAccounts';
+import { importedKeyIdentity, normalizeImportedKey, type NativeImportView, type NativeUtxoImportDraft } from '../../src/custody/importedAccounts';
 import { NativeActivity } from '../../src/activity/nativeActivity';
 import { NativeTokens } from '../../src/portfolio/nativeTokens';
 import type { NativeAccountView } from '../../src/custody/accounts';
@@ -19,6 +24,8 @@ import { recoveryAudit, recoveryGate } from './recoveryState';
 import type { RecoveryInventory } from '../../src/custody/recoveryInventory';
 import type { NativeNoteInventory, NativeSavedNote } from '../../src/custody/noteBackupRuntime';
 import { createWalletRemovalFixture, fixtureWalletPresent, recreateFixtureWallet, removalFixtureEnabled } from './walletRemovalFixture';
+import { sysxSendFixture } from './sysxSendFixture';
+import { BITCOIN_BIP84_ADDRESS, BITCOIN_BIP84_KEY, BITCOIN_WIF_ADDRESS, BITCOIN_WIF_KEY } from './utxoImportVectors';
 
 const noteFixtureEnabled = new URLSearchParams(window.location.search).has('private-note-fixture');
 const recorded = Date.UTC(2024, 5, 15);
@@ -89,16 +96,13 @@ async function readFixtureNoteInventory(check: () => void): Promise<NativeNoteIn
 }
 
 const wifFixtureEnabled = new URLSearchParams(window.location.search).has('wif-fixture');
-// Public test vector for private scalar 1, never used by the native host.
-const fixtureWif = 'KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn';
-const fixtureWifAddress = '1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH';
 const needsInitialBackup = new URLSearchParams(window.location.search).has('backup-required');
 let backupConfirmed = !needsInitialBackup;
 const publicBackupWords = Object.freeze([...Array<string>(11).fill('abandon'), 'about']);
 const fingerprint = '1'.repeat(64);
 
 let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalogueSnapshot>({
-  revision: 0, networks: NATIVE_NETWORKS,
+  revision: 0, networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
   active: wifFixtureEnabled ? { accountId: 'hd:0:0', networkId: 'bitcoin' } : { accountId: 'hd:60:0', networkId: 'ethereum' },
   accounts: wifFixtureEnabled ? [
     { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
@@ -110,6 +114,15 @@ let catalogue: NativeWalletCatalogueSnapshot = Object.freeze<NativeWalletCatalog
     })) : []),
   ],
 });
+function fixtureUtxoImport(input: NativeUtxoImportDraft) {
+  if (!wifFixtureEnabled || catalogue.active.networkId !== 'bitcoin')
+    throw new KeyringRuntimeError('INVALID_INPUT');
+  if (input.privateKey === BITCOIN_WIF_KEY && input.utxoAddressType === 'p2pkh')
+    return { address: BITCOIN_WIF_ADDRESS };
+  if (input.privateKey === BITCOIN_BIP84_KEY && !Object.hasOwn(input, 'utxoAddressType'))
+    return { address: BITCOIN_BIP84_ADDRESS, utxoExtended: true as const };
+  throw new KeyringRuntimeError('INVALID_INPUT');
+}
 export let latestAuthority: NativeCustodyAuthority | null = null;
 export let latestTransfers: NativeTransfers | null = null;
 export const retiredAuthorities: NativeCustodyAuthority[] = [];
@@ -138,16 +151,30 @@ export function createNativeWalletControllers() {
       accounts: [{ id: 'hd:0:0', type: 'HDAccount' as const, index: 0, slip44: 0, label: 'Account 1',
         address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' }],
     });
+  if (sysxSendFixture.enabled)
+    catalogue = Object.freeze({
+      ...catalogue,
+      active: { accountId: 'hd:57:0', networkId: 'syscoin' },
+      accounts: [
+        { id: 'hd:57:0', type: 'HDAccount', index: 0, slip44: 57, label: 'Account 1', address: sysxSendFixture.owner },
+        { id: 'hd:57:1', type: 'HDAccount', index: 1, slip44: 57, label: 'Account 2', address: sysxSendFixture.second },
+        { id: 'hd:0:0', type: 'HDAccount', index: 0, slip44: 0, label: 'Account 1', address: 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4' },
+      ] as const,
+    });
   const runtime: CustodyRuntime = {
     security: { async reauthenticateIdlePolicy(password, check) { check(); events.push('idle:auth'); await unlockGate(); if (password !== fixturePassword) throw new KeyringRuntimeError('INVALID_CREDENTIAL'); check(); } },
     networks: {
       getSelectedId: () => catalogue.active.networkId,
       reserve(id, expectedRevision) {
-        const registration = NATIVE_NETWORKS.find((network) => network.id === id);
+        const registration = NATIVE_NETWORKS.find((network) => network.id === id) ??
+          (sysxSendFixture.enabled ? UTXO_NETWORKS.find((network) => network.id === id) : undefined);
         if (expectedRevision !== catalogue.revision || !registration) throw new KeyringRuntimeError('CANCELLED');
         return { cancel() {}, async execute(guard) {
           guard();
-          catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { ...catalogue.active, networkId: registration.id } });
+          const accountId = sysxSendFixture.enabled ? catalogue.accounts.find(({ slip44 }) =>
+            slip44 === ('slip44' in registration ? registration.slip44 : 60))?.id : catalogue.active.accountId;
+          if (!accountId) throw new KeyringRuntimeError('INVALID_INPUT');
+          catalogue = Object.freeze({ ...catalogue, revision: catalogue.revision + 1, active: { accountId, networkId: registration.id } });
           guard();
         } };
       },
@@ -189,21 +216,19 @@ export function createNativeWalletControllers() {
     imports: {
       async previewUtxo(input, expectedRevision, check) {
         check();
-        if (!wifFixtureEnabled || expectedRevision !== catalogue.revision ||
-            input.privateKey !== fixtureWif || input.utxoAddressType !== 'p2pkh')
-          throw new KeyringRuntimeError('INVALID_INPUT');
-        if (catalogue.accounts.some(({ address }) => address === fixtureWifAddress))
+        if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
+        const fixture = fixtureUtxoImport(input);
+        if (catalogue.accounts.some(({ address }) => address === fixture.address))
           throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
-        return fixtureWifAddress;
+        return fixture.address;
       },
       reserve(input, password, expectedRevision) {
         if (expectedRevision !== catalogue.revision) throw new KeyringRuntimeError('CANCELLED');
         const index = nextAccountIndex('Imported');
-        const key = wifFixtureEnabled ? fixtureWif : normalizeImportedKey(input.privateKey);
-        if (wifFixtureEnabled && (input.privateKey !== fixtureWif || input.utxoAddressType !== 'p2pkh'))
-          throw new KeyringRuntimeError('INVALID_INPUT');
-        const identity = wifFixtureEnabled
-          ? { id: `imported:0:${index}`, index, address: fixtureWifAddress }
+        const fixture = wifFixtureEnabled ? fixtureUtxoImport(input) : undefined;
+        const key = fixture ? input.privateKey : normalizeImportedKey(input.privateKey);
+        const identity = fixture
+          ? { id: `imported:0:${index}`, index, ...fixture }
           : importedKeyIdentity(key, index);
         if (input.expectedAddress !== identity.address || !input.label.trim()) throw new KeyringRuntimeError('INVALID_INPUT');
         if (catalogue.accounts.some((account) => account.address === identity.address)) throw new KeyringRuntimeError('DUPLICATE_ACCOUNT');
@@ -214,7 +239,8 @@ export function createNativeWalletControllers() {
           if (password !== 'public-password') throw new KeyringRuntimeError('INVALID_CREDENTIAL');
           guard();
           importedKeys.set(identity.id, key);
-          const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: wifFixtureEnabled ? 0 : 60, label: input.label, address: identity.address };
+          const account = { id: identity.id, type: 'Imported' as const, index: identity.index, slip44: fixture ? 0 : 60, label: input.label, address: identity.address,
+            ...(fixture?.utxoExtended && { utxoExtended: true as const }) };
           catalogue = Object.freeze({ ...catalogue, accounts: [...catalogue.accounts, account], revision: catalogue.revision + 1,
             active: { ...catalogue.active, accountId: account.id } });
           audit.imports++; events.push('import:committed'); guard();
@@ -252,7 +278,9 @@ export function createNativeWalletControllers() {
   const transferRuntime: NativeTransferRuntime = {
     replay() { throw Error("Fixture has no retained signed transactions"); },
     async submit(_raw, _hash, guard) { guard(); throw Error('Fixture does not submit signatures'); },
-    async journal(guard) { guard(); return { async load() { guard(); return null; },
+    async journal(guard) { guard(); return {
+      async planAutomaticNonce({ latest, pending }) { guard(); return { kind: 'ready', nonce: Math.max(latest, pending), additionalNativeCost: 0n }; },
+      async assertSpendingNonce() { guard(); }, async load() { guard(); return null; },
       async saveSigned() { throw Error('Fixture does not submit signatures'); },
       async transition() { throw Error('Fixture does not submit signatures'); } }; },
     assertUnlocked(guard) { guard(); },
@@ -262,6 +290,25 @@ export function createNativeWalletControllers() {
   latestTransfers = transfers;
   const tokens = new NativeTokens(authority, () => undefined);
   const activity = new NativeActivity(authority, () => undefined);
+  const activityRuntime: Pick<KeyringRuntime, 'withUtxoActivityRead'> = {
+    async withUtxoActivityRead(expected, signal, check, assertView, read) {
+      const current = () => {
+        check();
+        assertView();
+        if (!sessionUnlocked || signal.aborted) throw Error('Inactive fixture view');
+      };
+      current();
+      const result = await read({ context: expected, identifier: expected.address,
+        registration: getUtxoNetwork(expected.networkId), isAccount: false, assertCurrent: check }, signal, current);
+      current();
+      return result;
+    },
+  };
+  const utxoActivity = hdUtxoFixture ? createNativeUtxoActivity(authority, () => activityRuntime, createUtxoActivityReader({ async fetch(url, init) {
+    const response = await activityFetch(url, init);
+    if (!response) throw Error('Unexpected UTXO Activity route');
+    return response;
+  } })) : undefined;
   const accounts: NativeAccountView = {
     getSnapshot: () => authority.getCatalogue(), getContextRevision: () => authority.getSnapshot().revision,
     subscribe: (listener) => authority.subscribe(() => listener()),
@@ -305,7 +352,10 @@ export function createNativeWalletControllers() {
   const imports: NativeImportView = { previewUtxo: (...args) => authority.previewUtxoImport(...args), submit: (...args) => authority.importAccount(...args), cancel: () => authority.cancelAccountOperation() };
   return { authority, keyExport, imports,
     ...(wifFixtureEnabled ? { async openUtxoSend() { throw Error('Synthetic UI fixture does not sign'); } } : {}),
-    balanceReader: createBalanceReader({ fetch: fixtureFetch }), transfers: transfers.view, tokens: tokens.view, activity, accounts, backup,
+    balanceReader: {
+      ...createBalanceReader({ fetch: fixtureFetch }),
+      ...(sysxSendFixture.enabled ? { readUtxoBalance: createUtxoBalanceReader({ fetch: sysxSendFixture.fetch }).readBalance } : {}),
+    }, transfers: transfers.view, tokens: tokens.view, activity, utxoActivity, accounts, backup,
     ...(removalFixtureEnabled ? { removal: createWalletRemovalFixture(authority, { getSnapshot: () => sessionUnlocked ? catalogue : null }, (password) => password === fixturePassword) } : {}),
     ...(noteFixtureEnabled ? {
       readNoteInventory: readFixtureNoteInventory,
@@ -321,6 +371,7 @@ export function createNativeWalletControllers() {
       return { status: 'needs-matching-phrase-verification', reason: null, backup: backupConfirmed ? 'confirmed' : 'unconfirmed', privateNotes: 'not-supported',
         counts: { hdAccounts: catalogue.accounts.filter((a) => a.type === 'HDAccount').length, importedKeys: importedKeys.size, retainedSignedTransactions: 0, tokenEntries: 0, historySummaries: 0, cachedTransactions: 0, activityPreferences: 0 } };
     },
+    ...(sysxSendFixture.enabled ? { async openUtxoSend(check: () => void) { return sysxSendFixture.open(check); } } : {}),
     ...(hdUtxoFixture ? { async openUtxoSend(check: () => void) {
       check();
       const unused = async () => { throw Error('Synthetic route fixture does not sign'); };

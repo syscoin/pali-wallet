@@ -27,7 +27,7 @@ function evaluate(source: string, dependencies: Record<string, unknown>, flow = 
     plugins: [babelRequire.resolve('babel-plugin-syntax-hermes-parser'), babelRequire.resolve('@babel/plugin-transform-flow-strip-types'), babelRequire.resolve('@babel/plugin-transform-modules-commonjs')],
   }).code : ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
   const module = { exports: {} as Record<string, unknown> };
-  runInNewContext(code, { module, exports: module.exports, require(name: string) {
+  runInNewContext(code, { module, exports: module.exports, Error, require(name: string) {
     assert.ok(Object.hasOwn(dependencies, name), `Unexpected import ${name}`); return dependencies[name];
   } });
   return module.exports;
@@ -204,7 +204,7 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
   Object.assign(dependencies, {
     '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
-    react: root.hook, 'react-native': leaf.native, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
+    react: root.hook, 'react-native': leaf.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' }, '../ui': { ...leaf.ui, Header: 'Header', PaliMark: 'PaliMark' },
     '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('not used before verification'); } },
     '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
     '../core/utxoNetworks': { findUtxoNetwork },
@@ -234,4 +234,78 @@ for (const order of ['parent-first', 'child-first'] as const) test(`actual Nativ
   leaf.hardware(); await new Promise((resolve) => setImmediate(resolve));
   assert.equal(flow.getSnapshot().phase, 'closed'); assert.equal(exits, 0); assert.equal(leaf.defaults(), 0);
   installed.forEach((s) => s.remove()); leaf.dispose(); root.dispose();
+});
+
+async function walletFeedbackFixture() {
+  const root = setup();
+  let state: { phase: string; revision: number; presence: string; backup: string; account: null; error: string | null } =
+    { phase: 'locked', revision: 1, presence: 'existing', backup: 'confirmed', account: null, error: null };
+  let observer: (snapshot: typeof state) => void = () => {};
+  let nextError: string | null = null;
+  const publish = (patch: Partial<typeof state>) => { state = { ...state, ...patch }; observer(state); };
+  const controllers = {
+    authority: { getSnapshot: () => state, getCatalogue: () => null, supportsAccountManagement: () => false,
+      async initialize() {}, subscribe(fn: typeof observer) { observer = fn; return () => { observer = () => {}; }; },
+      lock() {}, async dispose() { state = { ...state, phase: 'disposed' }; },
+      async unlock() {
+        publish({ phase: 'authenticating', error: null });
+        if (nextError) { const code = nextError; publish({ phase: 'locked', error: code }); throw new Error(code); }
+        publish({ phase: 'backup-required', backup: 'unconfirmed', error: null });
+      } },
+    accounts: {}, balanceReader: {}, transfers: {}, tokens: {}, activity: {},
+    keyExport: { cancel() {}, dispose() {} }, backup: { cancel() {}, dispose() {}, onClear: () => () => {} },
+    disposeTokens() {}, disposeTransfers() {},
+  };
+  const source = readFileSync(new NodeURL('../src/screens/NativeWallet.native.tsx', import.meta.url), 'utf8');
+  const dependencies: Record<string, unknown> = Object.fromEntries([...source.matchAll(/from ['"]([^'"]+)['"]/g)].map((match) => [match[1]!, {}]));
+  const noteRestore = { cancel() {}, lock() {}, step: { phase: 'select' } };
+  Object.assign(dependencies, {
+    '../platform/security': root.idle.security, './IdleActivityBoundary': root.idle.components,
+    react: root.hook, 'react-native': root.native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
+    '../ui': { ...root.ui, Header: 'Header', PaliMark: 'PaliMark' },
+    '../platform/nativeFactory': { createNativeWalletControllers: () => controllers, createNativeRecoveryCoordinator: () => { throw Error('unused'); } },
+    '../platform/privacyShield.native': { async ensurePrivacyShield() {} },
+    '../core/utxoNetworks': { findUtxoNetwork }, '../custody/password': passwordPolicy,
+    '../custody/nativeControllerLifecycle': { NativeControllerLifecycle }, '../custody/recoveryFlow': { NativeRecoveryFlow },
+    './NativeCustodyFeedback': { NativeCustodyFeedback: 'NativeCustodyFeedback' },
+    './NativeRecovery': { NativeRecovery: 'NativeRecovery' }, './NativeNoteRestore': { NoteRestoreUnconfirmedNotice: 'NoteRestoreUnconfirmedNotice' },
+    '../custody/networkView': { createNativeNetworkView: () => ({}) },
+    './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
+    './useRealShell': { useRealShell: () => ({ tab: 'wallet', navigation: {}, goBack() {}, restoreRoot() {} }) },
+  });
+  const Root = evaluate(source, dependencies).NativeWalletScreen as (props: object) => Element;
+  const props = { onExit() {} };
+  const render = () => root.renderOwner(Root, props);
+  render(); await new Promise((resolve) => setImmediate(resolve));
+  const unlock = async (error: string | null) => {
+    nextError = error;
+    let tree = render();
+    const input = all(tree).find((node) => node.props.label === 'Password'); assert.ok(input);
+    (input.props.onChange as (value: string) => void)('public test password');
+    tree = render(); press(button(tree, 'Unlock wallet'));
+    await new Promise((resolve) => setImmediate(resolve));
+    return render();
+  };
+  return { render, unlock, publish, dispose: root.dispose };
+}
+
+for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wallet fallback renders one alert for duplicate ${code}, preserves distinct failures and clears on retry`, async () => {
+  const f = await walletFeedbackFixture();
+  let tree = f.render();
+  assert.equal(tree.type, 'SafeAreaView');
+  assert.deepEqual(Array.from(tree.props.edges as string[]), ['top', 'bottom']);
+  tree = await f.unlock(code);
+  assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback').length, 0);
+  assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 1);
+  assert.ok(all(tree).findIndex((node) => node.props.accessibilityRole === 'alert') < all(tree).findIndex((node) => node.props.label === 'Password'));
+  f.publish({ error: 'PENDING_TRANSFER' }); tree = f.render();
+  assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' && node.props.error === 'PENDING_TRANSFER').length, 1);
+  assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 1);
+  tree = await f.unlock(null);
+  assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' || node.props.accessibilityRole === 'alert').length, 0);
+  f.publish({ phase: 'locked', error: 'INVALID_CREDENTIAL' }); tree = f.render();
+  assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' && node.props.error === 'INVALID_CREDENTIAL').length, 1);
+  assert.ok(all(tree).findIndex((node) => node.type === 'NativeCustodyFeedback') < all(tree).findIndex((node) => node.props.label === 'Password'));
+  assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 0);
+  f.dispose();
 });

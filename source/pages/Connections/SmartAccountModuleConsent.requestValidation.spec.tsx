@@ -116,6 +116,10 @@ beforeEach(() => {
   jest.spyOn(console, 'error').mockImplementation();
   Object.assign(chrome, {
     tabs: {
+      // The mocked popup owns no live browser tabs.
+      query: jest.fn((_query: unknown, callback: (tabs: any[]) => void) =>
+        callback([])
+      ),
       onRemoved: { addListener: jest.fn(), removeListener: jest.fn() },
       onUpdated: { addListener: jest.fn(), removeListener: jest.fn() },
     },
@@ -215,6 +219,7 @@ afterEach(() => {
 const request = (method: string, module: unknown) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [module] } }, {
     url: `${HOST}/app`,
+    origin: HOST,
     tab: { id: 50 },
   } as chrome.runtime.MessageSender);
 

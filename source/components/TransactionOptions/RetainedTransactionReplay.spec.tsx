@@ -8,6 +8,7 @@ const HASH = `0x${'11'.repeat(32)}`;
 const PREVIOUS = `0x${'22'.repeat(32)}`;
 let mockScope = { account: 'account-a', network: 'network-a' };
 let mockRevision = 0;
+let mockAccountType = 'HDAccount';
 const mockSubscribers = new Set<() => void>();
 const mockEmitter = jest.fn();
 const messages = jest.requireActual('../../assets/locales/en.json');
@@ -32,6 +33,8 @@ jest.mock('react-redux', () => ({
     );
     return selector({
       vault: {
+        activeAccount: { id: 0, type: mockAccountType },
+        accounts: { Imported: {} },
         activeNetwork: {
           label: 'Test network',
           currency: 'SYS',
@@ -113,6 +116,7 @@ const changeScope = (account: string) =>
 beforeEach(() => {
   jest.useFakeTimers();
   mockScope = { account: 'account-a', network: 'network-a' };
+  mockAccountType = 'HDAccount';
   mockRevision++;
   mockEmitter.mockReset();
   mockEmitter.mockImplementation(([, method]: string[], args: any[]) => {
@@ -128,6 +132,120 @@ beforeEach(() => {
 afterEach(() => {
   jest.useRealTimers();
 });
+
+const savedCancellationQuote = {
+  id: 'cancel-1',
+  hash: HASH,
+  chainId: 57057,
+  from: `0x${'33'.repeat(20)}`,
+  nonce: 0,
+  maximumFee: '1234567890000000',
+  validForMs: 90000,
+};
+const exposeSavedCancellation = () =>
+  mockEmitter.mockImplementationOnce(() =>
+    Promise.resolve({
+      hash: HASH,
+      operation: 'erc721',
+      phase: 'signed',
+      type: 0,
+    })
+  );
+
+test('an explicit saved Cancel review sends only its opaque one-use approval', async () => {
+  exposeSavedCancellation();
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  const pending = deferred<{ hash: string; status: string }>();
+  mockEmitter
+    .mockResolvedValueOnce(savedCancellationQuote)
+    .mockImplementationOnce(() => pending.promise);
+  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  await flush();
+  expect(mockEmitter).toHaveBeenLastCalledWith(
+    ['wallet', 'prepareRetainedEvmCancellation'],
+    [HASH],
+    15000,
+    false
+  );
+  expect(
+    screen.getByText(/0\.00123456789 SYS.*original may still confirm first/)
+  ).toBeTruthy();
+  expect(screen.getByText('0')).toBeTruthy();
+  expect(screen.getByText(HASH)).toBeTruthy();
+  const confirm = screen.getByRole('button', { name: 'Confirm' });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+  expect(
+    mockEmitter.mock.calls.filter(
+      ([route]) => route[1] === 'confirmRetainedEvmCancellation'
+    )
+  ).toEqual([
+    [['wallet', 'confirmRetainedEvmCancellation'], ['cancel-1'], 30000, false],
+  ]);
+  pending.resolve({ status: 'submitted', hash: PREVIOUS });
+  await flush();
+  expect(screen.getByRole('status').textContent).toContain(
+    'Cancellation submitted.'
+  );
+  expect(screen.getByRole('status').textContent).toContain(PREVIOUS);
+  expect(
+    screen.queryByRole('button', { name: 'Review cancellation' })
+  ).toBeNull();
+});
+
+test('saved cancellation reports a verified fee shortfall before signing', async () => {
+  exposeSavedCancellation();
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  mockEmitter.mockRejectedValueOnce(
+    new Error('Insufficient funds for reviewed EVM transfer')
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  await flush();
+  expect(screen.getByRole('status').textContent).toContain(
+    'Insufficient funds to cover gas fees'
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(
+    mockEmitter.mock.calls.some(
+      ([route]) => route[1] === 'confirmRetainedEvmCancellation'
+    )
+  ).toBe(false);
+});
+
+test('an old account cannot use an arriving saved Cancel quote', async () => {
+  exposeSavedCancellation();
+  const pending = deferred<typeof savedCancellationQuote>();
+  render(<RetainedTransactionReplay hash={HASH} />);
+  await flush();
+  mockEmitter.mockImplementationOnce(() => pending.promise);
+  fireEvent.click(screen.getByRole('button', { name: 'Review cancellation' }));
+  changeScope('account-b');
+  pending.resolve(savedCancellationQuote);
+  await flush();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(mockEmitter).toHaveBeenCalledWith(
+    ['wallet', 'cancelRetainedEvmCancellationReview'],
+    ['cancel-1'],
+    10000,
+    false
+  );
+});
+
+test.each(['Ledger', 'Trezor', 'SmartAccount', 'Imported'])(
+  'does not expose the new software-only saved cancellation for %s',
+  async (type) => {
+    mockAccountType = type;
+    exposeSavedCancellation();
+    render(<RetainedTransactionReplay hash={HASH} />);
+    await flush();
+    expect(
+      screen.queryByRole('button', { name: 'Review cancellation' })
+    ).toBeNull();
+    expect(screen.getByRole('button', { name: 'Review resend' })).toBeTruthy();
+  }
+);
 
 test('shows saved collectible intent without preparing or changing generic replay', async () => {
   const amountUnits = ((BigInt(1) << BigInt(256)) - BigInt(1)).toString();
@@ -176,8 +294,16 @@ test('review shows exact amount, fee, contract creation and calldata before a si
   mockEmitter.mockImplementationOnce(() => Promise.resolve({ hash: HASH }));
   render(<RetainedTransactionReplay hash={HASH} />);
   await flush();
+  expect(
+    screen.queryByText(messages.transactions.replay.sameNonceWarning)
+  ).toBeNull();
   fireEvent.click(screen.getByText('Review resend'));
   await flush();
+  expect(
+    screen.getByText(
+      `${messages.transactions.replay.description} ${messages.transactions.replay.sameNonceWarning}`
+    )
+  ).toBeTruthy();
   expect(screen.getByText('1.000000000000000001 SYS')).toBeTruthy();
   expect(screen.getByText('0.00123456789 SYS')).toBeTruthy();
   expect(screen.getByText('Contract creation')).toBeTruthy();

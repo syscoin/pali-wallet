@@ -11,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 
+import { hasBip84UtxoPrivateKeyPrefix } from '../../shared/utxoPrivateKey';
 import { Button, PageActionFooter } from 'components/index';
 import { ImportedWalletSuccessfully } from 'components/Modal/WarningBaseModal';
 import { useUtils } from 'hooks/index';
@@ -138,7 +139,7 @@ const ImportAccountView = () => {
           : [
               inputValue,
               optionalLabel,
-              isBitcoinBased
+              isBitcoinBased && !hasBip84UtxoPrivateKeyPrefix(inputValue)
                 ? { utxoAddressType: selectedUtxoAddressType }
                 : undefined,
             ]
@@ -175,7 +176,8 @@ const ImportAccountView = () => {
     const value: string = form.getFieldValue('privKey') || '';
     if (!value) return false;
     const prefix = value.substring(0, 4);
-    const looksLikeExtended = ['zprv', 'vprv', 'xprv', 'tprv'].includes(prefix);
+    const looksLikeExtended =
+      hasBip84UtxoPrivateKeyPrefix(value) || ['xprv', 'tprv'].includes(prefix);
     const looksLikeHex =
       value.startsWith('0x') || /^[0-9a-fA-F]{64}$/.test(value);
     if (looksLikeExtended || looksLikeHex) return false;

@@ -1,4 +1,12 @@
 // Utility functions for handling transaction errors with specific messaging
+import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+  EVM_SIGNED_STORAGE_FULL,
+  isSavedEvmNonceConflict,
+  legacyEvmNonceErrorKey,
+  WALLET_NETWORK_CATCHING_UP_MESSAGE,
+} from 'utils/evmTransactionContext';
 import { truncate } from 'utils/index';
 import {
   isNativeGasError,
@@ -176,10 +184,35 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
+  const message = typeof error === 'string' ? error : error?.message;
+  if (
+    error?.code === EVM_SIGNED_STORAGE_FULL &&
+    error?.transactionNotBroadcast === true
+  ) {
+    alert.error(t('send.signedStorageFull'));
+    return true;
+  }
+  if (
+    error?.transactionNotBroadcast !== false &&
+    ((error?.code === EVM_ASSET_REVIEW_REQUIRED &&
+      error?.transactionNotBroadcast === true) ||
+      message === EVM_ASSET_REVIEW_MESSAGE)
+  ) {
+    alert.error(t('send.maxBalanceReviewRequired'));
+    return true;
+  }
+  const legacyNonceKey = legacyEvmNonceErrorKey(error);
+  if (legacyNonceKey) {
+    alert.error(t(legacyNonceKey));
+    return true;
+  }
+  if (isSavedEvmNonceConflict(error)) {
+    alert.error(t('send.savedNonceConflict'));
+    return true;
+  }
   if (
     error?.code === 'UTXO_NETWORK_CATCHING_UP' ||
-    error?.message ===
-      'The network is still updating your previous transaction. Please try again shortly.'
+    error?.message === WALLET_NETWORK_CATCHING_UP_MESSAGE
   ) {
     alert.error(t('send.networkCatchingUp'));
     return true;

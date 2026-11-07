@@ -1,4 +1,5 @@
 import * as sharedHistory from '../../../source/shared/evmHistory.ts';
+import * as syscoinAssetIds from '../../../source/shared/syscoinAssetIds.ts';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -9,6 +10,7 @@ import ts from 'typescript';
 import { createIdleComponentFixture, expandIdleElements } from './idleComponentFixture.ts';
 import * as core from '../src/core/index.ts';
 import { WatchAccounts } from '../src/core/watchAccounts.ts';
+import { canUseUtxoCustodyAddress } from '../src/core/utxoAddresses.ts';
 import { UTXO_NETWORKS, findUtxoNetwork, getUtxoNetwork, isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { TabDeparture } from '../src/navigation/tabDeparture.ts';
@@ -108,6 +110,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const native = { Platform: { OS: 'android' }, BackHandler: observedBack,
         AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) },
         StyleSheet: { create: (value: unknown) => value }, Share: {}, Linking: {},
+        useWindowDimensions: () => ({ width: 390, fontScale: 1 }),
         ...Object.fromEntries(['View', 'ActivityIndicator', 'FlatList', 'Modal', 'Pressable', 'ScrollView'].map((name) => [name, name])),
       };
       const ui = { ...Object.fromEntries(['Button', 'Card', 'Coin', 'Header', 'Notice', 'Row', 'Screen', 'Text'].map((name) => [name, name])), colors: {}, styles: {} };
@@ -116,12 +119,15 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const idle = createIdleComponentFixture(render.api, native);
       const dependencies = { '../../../../source/shared/evmHistory': sharedHistory, './IdleActivityBoundary': idle.components, react: render.api, 'react-native': native, 'react-native-safe-area-context': { SafeAreaView: 'SafeAreaView' },
         'expo-clipboard': {}, 'react-native-qrcode-svg': 'QRCode', '../ui': ui, '../core/amounts': core, '../core/networks': core,
+        '../core/utxoAddresses': { canUseUtxoCustodyAddress },
         '../core/utxoNetworks': { findUtxoNetwork, getUtxoNetwork }, '../core/watchOnlyAuthority': core,
         '../custody/networkContext': { getNativeNetwork: () => ({ id: 'ethereum' }), getNativeSendContext: () => ({ networkId: 'ethereum', name: 'Ethereum', symbol: 'ETH', decimals: 18 }), nativeSigningEnabled: () => false },
         '../custody/testnetFaucet': { getTestnetFaucet: () => null }, './TestnetFaucetCard': {},
+        './PortfolioQuote': evaluate(load('src/screens/PortfolioQuote.tsx'), { react: render.api, 'react-native': native, '../ui': ui }),
         './NativeTokens': {}, '../platformRpc': {}, '../platform/http': {}, '../portfolio/nativePortfolio': {},
-        '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => null },
+        '../portfolio/useNativeCoinQuote': { useNativeCoinQuote: () => ({ supported: false, quote: null }) },
         '../../../../source/shared/erc20': {},
+        '../../../../source/shared/syscoinAssetIds': syscoinAssetIds,
       };
       const source = kind === 'native' ? load('src/screens/NativePortfolio.tsx') + '\nexport { NativePortfolioContent };'
         : kind === 'activity' ? load('src/screens/NativeActivity.tsx') + '\nexport { NativeActivityContent };' : load('src/screens/WatchAccountPortfolio.tsx');
@@ -141,7 +147,7 @@ for (const kind of ['native', 'watch', 'activity'] as const) {
       const authority = new core.WatchOnlyAuthority([account], { async readBalance() { return { chainId: 1, units: '0' }; } });
       authority.unlock(); await authority.refresh();
       const props = () => kind === 'native' ? {
-        model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }) }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
+        model: { isCurrent: () => true, getNetworkRegistration: () => ({ id: 'ethereum' }), getUtxoNetwork: () => findUtxoNetwork('ethereum') }, snapshot: { account: { address: account.addresses.ethereum, network: 'ethereum', revision: 1 }, status: 'available', units: '0', updatedAt: 1 },
         accountLabel: 'Public account', onExit() { exits++; }, onLock() {}, onViewRecovery() {}, navigation: shell.navigation,
       } : kind === 'activity' ? { controller: { async setView() {} },
         snapshot: { status: 'ready', rows: [], accountAddress: account.addresses.ethereum, view: { filter: 'all', showZero: false, anchor: null, offset: 0 }, truncated: false },

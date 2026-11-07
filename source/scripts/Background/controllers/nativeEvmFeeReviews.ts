@@ -4,9 +4,11 @@ import {
   EVM_FEE_APPROVAL_LIFETIME_MS,
 } from '../../../shared/evmFeeApproval';
 
+import type { ExtensionReviewedNonce } from './evmAutoNonce';
 import type { captureReviewedNativeEvmTransfer } from './freshNativeGasEstimate';
 
-type Review = ReturnType<typeof captureReviewedNativeEvmTransfer>;
+type Review = ReturnType<typeof captureReviewedNativeEvmTransfer> &
+  Readonly<{ walletNonce: ExtensionReviewedNonce }>;
 type Pending = Readonly<{ assertCurrent: () => void; review: Review }>;
 const pendingByOwner = new WeakMap<object, Map<string, Pending>>();
 const MAX_PENDING_REVIEWS = 8;
@@ -21,6 +23,8 @@ export function issueNativeEvmFeeReview(
 ) {
   assertSynchronousEvmFeeGuard(assertCurrent);
   assertEvmFeeApprovalCurrent(review.approval, now);
+  if (review.nonce !== BigInt(review.walletNonce.nonce))
+    throw new Error('Native fee review nonce changed');
   let pending = pendingByOwner.get(owner);
   if (!pending) {
     pending = new Map();

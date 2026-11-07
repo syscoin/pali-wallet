@@ -26,6 +26,7 @@ import { KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { ellipsis } from 'utils/index';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 import { useConnectionFocusClearance } from './useConnectionFocusClearance';
 
@@ -124,6 +125,11 @@ export const ChangeAccount = () => {
         account,
         keyringAccountType || '',
         activeNetwork
+      ) &&
+      canPublishAccountAddress(
+        account,
+        keyringAccountType,
+        activeNetwork.chainId
       ),
     [activeNetwork]
   );

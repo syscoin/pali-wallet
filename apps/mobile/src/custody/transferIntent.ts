@@ -4,6 +4,11 @@ import {
   type Erc20Metadata,
 } from '../../../../source/shared/erc20.ts';
 import {
+  encodeNftTransferData,
+  snapshotNftTransferIntent,
+  type NftTransferIntent,
+} from '../../../../source/shared/nftTransfer.ts';
+import {
   normalizeErc20Address,
   parseErc20Metadata,
 } from '../portfolio/erc20Metadata.ts';
@@ -16,6 +21,17 @@ export type Erc20TransferIntent = Readonly<{
   recipient: string;
   amountUnits: string;
 }>;
+
+export type NativeAssetTransferIntent = Erc20TransferIntent | NftTransferIntent;
+
+export function snapshotNativeAssetTransferIntent(value: unknown): NativeAssetTransferIntent {
+  const kind = value && typeof value === 'object'
+    ? Object.getOwnPropertyDescriptor(value, 'kind')?.value
+    : undefined;
+  return kind === 'nft-transfer'
+    ? snapshotNftTransferIntent(value)
+    : snapshotErc20TransferIntent(value);
+}
 
 export function snapshotErc20TransferIntent(
   value: unknown
@@ -72,15 +88,16 @@ export function equalTransferIntent(
   );
 }
 
-/** This host permits only native transfers or the exact reviewed ERC20 call. */
+/** This host permits only native transfers or exact reviewed asset calls. */
 export function assertTransferIntentEnvelope(
   transaction: Readonly<{
     chainId: string;
+    from?: string;
     to: string;
     value: string;
     data: string;
   }>,
-  intent?: Erc20TransferIntent
+  intent?: NativeAssetTransferIntent
 ): void {
   if (
     !transaction ||
@@ -107,12 +124,16 @@ export function assertTransferIntentEnvelope(
     if (data !== '0x') throw new Error('Unsupported transfer data');
     return;
   }
-  const checked = snapshotErc20TransferIntent(intent);
+  const checked = snapshotNativeAssetTransferIntent(intent);
+  const nft = checked.kind === 'nft-transfer';
   if (
     chainId !== checked.chainId ||
-    to !== checked.token.contractAddress ||
+    to !== (nft ? checked.contractAddress : checked.token.contractAddress) ||
     value !== '0' ||
-    data !== encodeErc20Transfer(checked.recipient, checked.amountUnits)
+    (nft && own('from') !== checked.from) ||
+    data !== (nft
+      ? encodeNftTransferData(checked)
+      : encodeErc20Transfer(checked.recipient, checked.amountUnits))
   )
     throw new Error('Transfer differs from reviewed intent');
 }

@@ -63,12 +63,18 @@ const readEntry = async (
   return value;
 };
 
-const readNetworkEntry = async (context: InfrastructureNetworkContext) => {
+const readNetworkEntry = async (
+  context: InfrastructureNetworkContext,
+  assertCurrent: (() => void) | null
+) => {
+  if (assertCurrent !== null) assertCurrent();
   const legacy = await readEntry(legacyStorageKey(context.chainId));
+  if (assertCurrent !== null) assertCurrent();
   // A chain ID cannot identify which fork accepted an older attempt. Keep it
   // pending on every endpoint; never migrate or clear it using unrelated RPCs.
   if (legacy) return { ...legacy, rpcUrl: undefined };
   const current = await readEntry(infrastructureJournalStorageKey(context));
+  if (assertCurrent !== null) assertCurrent();
   if (current && current.rpcUrl === undefined)
     throw new Error(
       'Deployment journal is unreadable. Refresh status before retrying.'
@@ -83,15 +89,19 @@ export const infrastructurePendingIdentity = (
 // One unresolved deployment owns a chain ID across RPC aliases. Only its exact
 // RPC may reconcile it; failed reads and stale receipts never authorize a send.
 export const readInfrastructureJournal = (
-  context: InfrastructureNetworkContext
-) => mutexForNetwork(context).runExclusive(() => readNetworkEntry(context));
+  context: InfrastructureNetworkContext,
+  assertCurrent: () => void
+) =>
+  mutexForNetwork(context).runExclusive(() =>
+    readNetworkEntry(context, () => assertCurrent())
+  );
 
 export const writeInfrastructureJournal = (
   context: InfrastructureNetworkContext,
   entry: InfrastructureJournalEntry
 ) =>
   mutexForNetwork(context).runExclusive(async () => {
-    const current = await readNetworkEntry(context);
+    const current = await readNetworkEntry(context, null);
     if (
       entry.rpcUrl !== context.url ||
       (current &&
@@ -111,10 +121,12 @@ export const writeInfrastructureJournal = (
 
 export const clearInfrastructureJournal = (
   context: InfrastructureNetworkContext,
-  expected: InfrastructureJournalEntry
+  expected: InfrastructureJournalEntry,
+  // An admitted deployment can reconcile its exact attempt after retirement.
+  assertCurrent: (() => void) | null
 ) =>
   mutexForNetwork(context).runExclusive(async () => {
-    const current = await readNetworkEntry(context);
+    const current = await readNetworkEntry(context, assertCurrent);
     if (
       current &&
       current.rpcUrl === context.url &&
@@ -123,6 +135,7 @@ export const clearInfrastructureJournal = (
         infrastructurePendingIdentity(expected) &&
       current.contractId === expected.contractId
     ) {
+      if (assertCurrent !== null) assertCurrent();
       await chromeStorage.setItem(
         infrastructureJournalStorageKey(context),
         null

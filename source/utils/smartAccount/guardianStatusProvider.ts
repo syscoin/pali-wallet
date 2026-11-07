@@ -52,7 +52,7 @@ export const guardianStatusProvider = (provider: {
   };
   return {
     batch,
-    send: async (method: string, params: unknown[]) =>
+    send: async (method: GuardianRpcRequest['method'], params: unknown[]) =>
       (await batch([{ method, params }]))[0],
   };
 };

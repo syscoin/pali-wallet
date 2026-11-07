@@ -209,7 +209,8 @@ describe('fenced synthetic NEVM-origin SPT asset matrix', () => {
           sanitized,
           map,
           fixture.userAddress,
-          new sys.BN(rate)
+          new sys.BN(rate),
+          sys.syscoinNetworks.testnet
         );
       };
       const total = BigInt(c.balanceAtomic);

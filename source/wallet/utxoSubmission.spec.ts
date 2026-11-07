@@ -6,6 +6,7 @@ import {
   privateRecordProfileId,
 } from '@sidhujag/sysweb3-keyring/cjs/private-records.js';
 import { SyscoinTransactionsCore } from '@sidhujag/sysweb3-keyring/cjs/transactions/syscoin-core.js';
+import { verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
 import { webcrypto } from 'crypto';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
@@ -18,15 +19,21 @@ import {
   type UtxoDurableSubmission,
   type UtxoRecordSession,
 } from './utxoSignedRecords';
-import { submitReviewedUtxo } from './utxoSubmission';
+import {
+  observeRetainedUtxo,
+  submitRetainedUtxo,
+  submitReviewedUtxo,
+} from './utxoSubmission';
 
 const bitcoin = syscoinUtils.bitcoinjs;
 const endpoint = 'https://offline.invalid';
 const url = `${endpoint}/api/v2/sendtx/`;
+const btcGenesis =
+  '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f';
 const owner = {
   chainId: 0,
   slip44: 0,
-  genesisHash: 'a'.repeat(64),
+  genesisHash: btcGenesis,
   account: { id: 0, type: 'HDAccount', xpub: 'public-fixture-xpub' },
 };
 const guard = () => undefined;
@@ -119,6 +126,7 @@ function context() {
           slip44: 0,
           url: endpoint,
           currency: 'btc',
+          utxoBackendChain: 'main',
         },
       } as never),
     {},
@@ -131,6 +139,36 @@ function context() {
   };
   return { session, sender, records, cas, storage, response };
 }
+
+function replayFixtureFetch(
+  post: typeof globalThis.fetch
+): typeof globalThis.fetch {
+  return async (requestUrl, init) => {
+    if (init?.method !== 'GET') return post(requestUrl, init);
+    const status = `${endpoint}/api/v2/`;
+    if (requestUrl === status)
+      return identityResponse(status, {
+        blockbook: { coin: 'Bitcoin', network: 'BTC', decimals: 8 },
+        backend: { chain: 'main' },
+      });
+    const genesis = status + 'block-index/0';
+    if (requestUrl === genesis)
+      return identityResponse(genesis, { blockHash: btcGenesis });
+    throw new Error('Unexpected retry request');
+  };
+}
+
+it('requires the retained route even if an initial caller injects a replay mode', async () => {
+  const c = context();
+  const transaction = record();
+  await c.records.persist(c.session, transaction);
+  const fetch = jest.fn(async () => c.response(transaction.txid));
+  const request = { ...c, record: transaction, fetch, intent: 'replay' };
+  await expect(submitReviewedUtxo(request)).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  expect(fetch).not.toHaveBeenCalled();
+});
 
 it('persists before the first POST and returns the exact ACK while its marker is held', async () => {
   const c = context(),
@@ -154,7 +192,6 @@ it('persists before the first POST and returns the exact ACK while its marker is
   const sending = submitReviewedUtxo({
     ...c,
     record: transaction,
-    intent: 'initial',
     fetch,
   });
   await entered.promise;
@@ -182,7 +219,6 @@ it('retains a trusted acknowledgment for the same owner after reopening', async 
     submitReviewedUtxo({
       ...c,
       record: transaction,
-      intent: 'initial',
       fetch: async () => c.response(transaction.txid),
     })
   ).resolves.toEqual({ txid: transaction.txid });
@@ -227,7 +263,6 @@ it('never POSTs when authority is revoked before the durable commit', async () =
     ...c,
     session,
     record: transaction,
-    intent: 'initial',
     fetch,
   });
   const rejected = expect(pending).rejects.toMatchObject({
@@ -248,7 +283,7 @@ it('retains unknown bytes, fences ordinary overlap and permits separately author
     replacement = record(0xfffffffc);
   const fetch = jest.fn(async () => c.response('b'.repeat(64)));
   await expect(
-    submitReviewedUtxo({ ...c, record: transaction, intent: 'initial', fetch })
+    submitReviewedUtxo({ ...c, record: transaction, fetch })
   ).rejects.toMatchObject({
     code: 'UTXO_SUBMISSION_UNKNOWN',
     transactionNotBroadcast: false,
@@ -289,11 +324,10 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
   const c = context(),
     transaction = record();
   await c.records.persist(c.session, transaction);
-  await c.records.observe(
+  await c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => ({
       txid: transaction.txid,
       hex: transaction.rawTransaction,
@@ -306,7 +340,7 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     operation: 'external',
   } as const;
   await c.records.persist(c.session, another);
-  await c.records.observe(c.session, owner, another.txid, url, async () => ({
+  await c.records.observeRetained(c.session, owner, another.txid, async () => ({
     txid: another.txid,
     hex: another.rawTransaction,
     confirmations: 1,
@@ -317,12 +351,14 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     posted = deferred(),
     reply = deferred();
   const original = c.session.keyring.decryptPrivateRecord;
+  let reads = 0;
   const session = {
     ...c.session,
     keyring: {
       ...c.session.keyring,
       async decryptPrivateRecord(params: Parameters<typeof original>[0]) {
-        if (params.recordId.endsWith('/0')) {
+        // The first read reauthenticates before GET. Hold the second under admission.
+        if (params.recordId.endsWith('/0') && ++reads === 2) {
           entered.finish();
           await resume.promise;
         }
@@ -335,19 +371,18 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
     await reply.promise;
     return c.response('d'.repeat(64));
   });
-  const sending = submitReviewedUtxo({
+  const sending = submitRetainedUtxo({
     ...c,
     record: transaction,
     session,
-    intent: 'replay',
-    fetch,
+    fetch: replayFixtureFetch(fetch),
   });
   const unknown = expect(sending).rejects.toMatchObject({
     code: 'UTXO_SUBMISSION_UNKNOWN',
     transactionNotBroadcast: false,
     txid: transaction.txid,
   });
-  await entered.promise;
+  await Promise.race([entered.promise, sending]);
   const competing = new UtxoSignedRecords(c.storage, c.storage).persist(
     c.session,
     {
@@ -358,7 +393,7 @@ it('keeps the replay record through synchronous POST while confirmed-only reclai
   try {
     expect(c.cas).toHaveBeenCalledTimes(4);
     resume.finish();
-    await posted.promise;
+    await Promise.race([posted.promise, sending]);
     await expect(competing).resolves.toBeUndefined();
     expect(
       await c.records.readExact(c.session, owner, transaction.txid)
@@ -386,11 +421,10 @@ it('cannot restore terminal eviction authority from an observation held across r
   };
   const check = new UtxoSignedRecords(c.storage, c.storage);
   await c.records.persist(c.session, transaction);
-  await check.observe(
+  await check.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => result
   );
   const observed = deferred(),
@@ -398,34 +432,39 @@ it('cannot restore terminal eviction authority from an observation held across r
     posted = deferred(),
     reply = deferred();
   const stale = expect(
-    check.observe(c.session, owner, transaction.txid, url, async () => {
+    check.observeRetained(c.session, owner, transaction.txid, async () => {
       observed.finish();
       await finishObservation.promise;
       return result;
     })
   ).rejects.toThrow('UTXO observation changed');
   await observed.promise;
-  const sending = expect(
-    submitReviewedUtxo({
-      ...c,
-      record: transaction,
-      intent: 'replay',
-      fetch: async () => {
-        posted.finish();
-        await reply.promise;
-        return c.response('d'.repeat(64));
-      },
-    })
-  ).rejects.toMatchObject({ code: 'UTXO_SUBMISSION_UNKNOWN' });
+  const submitting = submitRetainedUtxo({
+    ...c,
+    record: transaction,
+    fetch: replayFixtureFetch(async () => {
+      posted.finish();
+      await reply.promise;
+      return c.response('d'.repeat(64));
+    }),
+  });
+  const sending = expect(submitting).rejects.toMatchObject({
+    code: 'UTXO_SUBMISSION_UNKNOWN',
+  });
   try {
-    await posted.promise;
+    await Promise.race([posted.promise, submitting]);
     finishObservation.finish();
     await stale;
     expect(
       (await c.records.fundingExclusions(c.session, owner)).outpoints
     ).toHaveLength(1);
     await expect(
-      check.observe(c.session, owner, transaction.txid, url, async () => result)
+      check.observeRetained(
+        c.session,
+        owner,
+        transaction.txid,
+        async () => result
+      )
     ).resolves.toBe('confirmed');
     expect(
       (await c.records.fundingExclusions(c.session, owner)).outpoints
@@ -452,24 +491,23 @@ it('uses only a matching exact-raw observation to mark a confirmation and can ob
     blockHash: 'f'.repeat(64),
   };
   await expect(
-    c.records.observe(c.session, owner, transaction.txid, url, async () => ({
+    c.records.observeRetained(c.session, owner, transaction.txid, async () => ({
       ...observed,
       hex: 'bad',
     }))
   ).resolves.toBe('unknown');
   expect(await storedPhase()).toBe('pending');
   await expect(
-    c.records.observe(
+    c.records.observeRetained(
       c.session,
       owner,
       transaction.txid,
-      url,
       async () => observed
     )
   ).resolves.toBe('confirmed');
   expect(await storedPhase()).toBe('confirmed');
   await expect(
-    c.records.observe(c.session, owner, transaction.txid, url, async () => ({
+    c.records.observeRetained(c.session, owner, transaction.txid, async () => ({
       ...observed,
       confirmations: 0,
     }))
@@ -489,11 +527,10 @@ it('cannot re-mark a later reorg as confirmed with an older held observation', a
     confirmations: 1,
     blockHash: 'f'.repeat(64),
   };
-  const older = c.records.observe(
+  const older = c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => {
       entered.finish();
       await finish.promise;
@@ -503,7 +540,7 @@ it('cannot re-mark a later reorg as confirmed with an older held observation', a
   const superseded = expect(older).rejects.toThrow('UTXO observation changed');
   await entered.promise;
   await expect(
-    c.records.observe(c.session, owner, transaction.txid, url, async () => ({
+    c.records.observeRetained(c.session, owner, transaction.txid, async () => ({
       ...observed,
       confirmations: 0,
     }))
@@ -527,30 +564,25 @@ it('retains previously confirmed bytes when their current owned observation is u
     const transaction = record();
     await c.records.persist(c.session, transaction);
     await expect(
-      c.records.observe(c.session, owner, transaction.txid, url, async () => ({
-        txid: transaction.txid,
-        hex: transaction.rawTransaction,
-        confirmations: 1,
-        blockHash: 'f'.repeat(64),
-      }))
+      c.records.observeRetained(
+        c.session,
+        owner,
+        transaction.txid,
+        async () => ({
+          txid: transaction.txid,
+          hex: transaction.rawTransaction,
+          confirmations: 1,
+          blockHash: 'f'.repeat(64),
+        })
+      )
     ).resolves.toBe('confirmed');
 
     const fetchMissing = jest.fn(async () => null);
     await expect(
-      c.records.observe(
-        c.session,
-        owner,
-        transaction.txid,
-        'https://another.invalid/api/v2/sendtx/',
-        fetchMissing
-      )
-    ).resolves.toBe('unknown');
-    await expect(
-      c.records.observe(
+      c.records.observeRetained(
         c.session,
         { ...owner, account: { ...owner.account, id: 1 } },
         transaction.txid,
-        url,
         fetchMissing
       )
     ).resolves.toBe('unknown');
@@ -560,7 +592,12 @@ it('retains previously confirmed bytes when their current owned observation is u
     ).toEqual([]);
 
     await expect(
-      c.records.observe(c.session, owner, transaction.txid, url, fetchMissing)
+      c.records.observeRetained(
+        c.session,
+        owner,
+        transaction.txid,
+        fetchMissing
+      )
     ).resolves.toBe('unknown');
     const reopened = new UtxoSignedRecords(c.storage, c.storage);
     await expect(
@@ -590,11 +627,10 @@ it('protects exact previously confirmed bytes after a current Blockbook read rej
     const c = context();
     const transaction = record();
     await c.records.persist(c.session, transaction);
-    await c.records.observe(
+    await c.records.observeRetained(
       c.session,
       owner,
       transaction.txid,
-      url,
       async () => ({
         txid: transaction.txid,
         hex: transaction.rawTransaction,
@@ -607,7 +643,7 @@ it('protects exact previously confirmed bytes after a current Blockbook read rej
       throw new TypeError('Blockbook network connection failed');
     });
     const observation = await c.records
-      .observe(c.session, owner, transaction.txid, url, fetch)
+      .observeRetained(c.session, owner, transaction.txid, fetch)
       .catch((error) => error);
     const reopened = new UtxoSignedRecords(c.storage, c.storage);
     await expect(
@@ -630,11 +666,10 @@ it('does not write an observation if its owner was revoked during a failed read'
   const c = context();
   const transaction = record();
   await c.records.persist(c.session, transaction);
-  await c.records.observe(
+  await c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => ({
       txid: transaction.txid,
       hex: transaction.rawTransaction,
@@ -652,7 +687,7 @@ it('does not write an observation if its owner was revoked during a failed read'
     },
   };
   await expect(
-    c.records.observe(session, owner, transaction.txid, url, async () => {
+    c.records.observeRetained(session, owner, transaction.txid, async () => {
       controller.abort();
       throw new Error('Request aborted');
     })
@@ -664,11 +699,10 @@ it('propagates a storage failure when retiring an unverifiable confirmation', as
   const c = context();
   const transaction = record();
   await c.records.persist(c.session, transaction);
-  await c.records.observe(
+  await c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => ({
       txid: transaction.txid,
       hex: transaction.rawTransaction,
@@ -678,7 +712,7 @@ it('propagates a storage failure when retiring an unverifiable confirmation', as
   );
   c.cas.mockRejectedValueOnce(new Error('STORAGE_REOPEN_REQUIRED'));
   await expect(
-    c.records.observe(c.session, owner, transaction.txid, url, async () => {
+    c.records.observeRetained(c.session, owner, transaction.txid, async () => {
       throw new Error('Network unavailable');
     })
   ).rejects.toThrow('UTXO_SIGNED_RECORD_REOPEN_REQUIRED');
@@ -692,7 +726,12 @@ it('does not erase an existing submission acknowledgment on an unknown observati
   await c.records.acknowledge(c.session, owner, transaction.txid);
   const writes = c.cas.mock.calls.length;
   await expect(
-    c.records.observe(c.session, owner, transaction.txid, url, async () => null)
+    c.records.observeRetained(
+      c.session,
+      owner,
+      transaction.txid,
+      async () => null
+    )
   ).resolves.toBe('unknown');
   expect(c.cas).toHaveBeenCalledTimes(writes);
   expect(await c.records.list(c.session, owner)).toEqual([
@@ -710,11 +749,10 @@ it('keeps a newer confirmation when an older unknown observation loses ownership
     blockHash: 'f'.repeat(64),
   };
   await c.records.persist(c.session, transaction);
-  await c.records.observe(
+  await c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => confirmed
   );
   const entered = deferred();
@@ -725,21 +763,19 @@ it('keeps a newer confirmation when an older unknown observation loses ownership
     await resume.promise;
     return commit(...args);
   });
-  const obsolete = c.records.observe(
+  const obsolete = c.records.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => null
   );
   const rejected = expect(obsolete).rejects.toThrow('UTXO observation changed');
   await entered.promise;
   const reopened = new UtxoSignedRecords(c.storage, c.storage);
-  const newer = reopened.observe(
+  const newer = reopened.observeRetained(
     c.session,
     owner,
     transaction.txid,
-    url,
     async () => confirmed
   );
   resume.finish();
@@ -748,4 +784,519 @@ it('keeps a newer confirmation when an older unknown observation loses ownership
   expect(
     (await reopened.fundingExclusions(c.session, owner)).outpoints
   ).toEqual([]);
+});
+
+type ReplaySender = Parameters<typeof submitRetainedUtxo>[0]['sender'];
+
+const savedBase = 'https://previous.invalid/wallet/chain';
+const savedStatus = savedBase + '/api/v2/';
+const savedGenesis = savedStatus + 'block-index/0';
+const savedPost = savedStatus + 'sendtx/';
+const noPost = {
+  code: 'UTXO_SUBMISSION_NOT_DISPATCHED',
+  transactionNotBroadcast: true,
+};
+
+function identityResponse(
+  responseUrl: string,
+  body: unknown,
+  redirected = false
+): Response {
+  const response = Response.json(body);
+  Object.defineProperties(response, {
+    url: { value: responseUrl },
+    redirected: { value: redirected },
+  });
+  return response;
+}
+
+async function retainedFixture() {
+  const c = context();
+  const transaction = {
+    ...record(),
+    owner: { ...owner, genesisHash: btcGenesis },
+    url: savedPost,
+  };
+  await c.records.persist(c.session, transaction);
+  const selected = {
+    ...transaction.owner,
+    account: { ...transaction.owner.account },
+  };
+  const transport: typeof globalThis.fetch = async (requestUrl, init) => {
+    if (requestUrl === savedStatus && init?.method === 'GET')
+      return identityResponse(savedStatus, {
+        blockbook: { coin: 'Bitcoin', network: 'BTC', decimals: 8 },
+        backend: { chain: 'main' },
+      });
+    if (requestUrl === savedGenesis && init?.method === 'GET')
+      return identityResponse(savedGenesis, { blockHash: btcGenesis });
+    if (
+      requestUrl === savedStatus + 'tx/' + transaction.txid &&
+      init?.method === 'GET'
+    )
+      return identityResponse(requestUrl, {
+        txid: transaction.txid,
+        hex: transaction.rawTransaction,
+        confirmations: 1,
+        blockHash: 'f'.repeat(64),
+      });
+    if (requestUrl === savedPost && init?.method === 'POST')
+      return identityResponse(savedPost, { result: transaction.txid });
+    throw new Error('Unexpected saved transfer request');
+  };
+  const fetch = jest.fn(transport);
+  // Exercise the real pinned Network verifier and SyscoinJS transport through
+  // the new SDK port contract before the candidate keyring package is adopted.
+  const sender: ReplaySender = {
+    async replayRetainedTransaction(txid, authority) {
+      const retained = await authority.readRetained(selected, txid);
+      if (!retained) throw new Error('Saved transaction changed');
+      const verified = await verifyOwnedUtxoRpc(savedBase, {
+        ...authority,
+        backendChain: 'main',
+        registration: selected,
+      });
+      const { result } = await syscoinUtils.sendRawTransaction(
+        savedBase,
+        retained.rawTransaction,
+        undefined,
+        {
+          ...authority,
+          assertCurrent: verified.assertCurrent,
+        }
+      );
+      return { txid: result };
+    },
+  };
+  return { ...c, sender, transaction, selected, fetch };
+}
+
+it('verifies the original prefixed route and dispatches exact bytes under the replay lease', async () => {
+  const c = await retainedFixture();
+  const checking = deferred(),
+    release = deferred();
+  const fetch = c.fetch.getMockImplementation()!;
+  c.fetch.mockImplementationOnce(async (...args) => {
+    checking.finish();
+    await release.promise;
+    return fetch(...args);
+  });
+  const submission = submitRetainedUtxo({ ...c, record: c.transaction });
+  await Promise.race([checking.promise, submission]);
+  expect(c.fetch).toHaveBeenCalledTimes(1);
+  expect(c.cas).toHaveBeenCalledTimes(1);
+  release.finish();
+  await expect(submission).resolves.toEqual({ txid: c.transaction.txid });
+  expect(
+    c.fetch.mock.calls.map(([requestUrl, init]) => [requestUrl, init?.method])
+  ).toEqual([
+    [savedStatus, 'GET'],
+    [savedGenesis, 'GET'],
+    [savedPost, 'POST'],
+  ]);
+  const [status, genesis, post] = c.fetch.mock.calls;
+  const readPolicy = {
+    credentials: 'omit',
+    redirect: 'error',
+    cache: 'no-store',
+    referrerPolicy: 'no-referrer',
+  };
+  expect(status[1]).toMatchObject(readPolicy);
+  expect(genesis[1]).toMatchObject(readPolicy);
+  expect(post[1]).toMatchObject({
+    ...readPolicy,
+    body: c.transaction.rawTransaction,
+  });
+});
+
+it.each(['wrong URL', 'redirect', 'wrong genesis', 'oversized body'] as const)(
+  'rejects %s during the saved route check before admission or POST',
+  async (failure) => {
+    const c = await retainedFixture();
+    if (failure === 'wrong genesis')
+      c.fetch
+        .mockImplementationOnce(c.fetch.getMockImplementation()!)
+        .mockResolvedValueOnce(
+          identityResponse(savedGenesis, { blockHash: '0'.repeat(64) })
+        );
+    else if (failure === 'oversized body')
+      c.fetch.mockResolvedValueOnce(
+        identityResponse(savedStatus, 'x'.repeat(32 * 1024))
+      );
+    else
+      c.fetch.mockResolvedValueOnce(
+        identityResponse(
+          failure === 'wrong URL' ? endpoint + '/api/v2/' : savedStatus,
+          {},
+          failure === 'redirect'
+        )
+      );
+    await expect(
+      submitRetainedUtxo({ ...c, record: c.transaction })
+    ).rejects.toMatchObject(noPost);
+    expect(c.fetch.mock.calls.map(([, init]) => init?.method)).toEqual(
+      failure === 'wrong genesis' ? ['GET', 'GET'] : ['GET']
+    );
+    expect(c.cas).toHaveBeenCalledTimes(1);
+  }
+);
+
+it('rejects a wrong selected owner before an authenticated journal or HTTP read', async () => {
+  const c = await retainedFixture();
+  c.selected.account.id++;
+  const read = jest.spyOn(c.records, 'readExact');
+  await expect(
+    submitRetainedUtxo({ ...c, record: c.transaction })
+  ).rejects.toMatchObject(noPost);
+  expect(read).not.toHaveBeenCalled();
+  expect(c.fetch).not.toHaveBeenCalled();
+});
+
+it('blocks genesis and POST when wallet authority expires during the status request', async () => {
+  const c = await retainedFixture();
+  const checking = deferred(),
+    release = deferred();
+  const fetch = c.fetch.getMockImplementation()!;
+  let active = true;
+  c.fetch.mockImplementationOnce(async (...args) => {
+    checking.finish();
+    await release.promise;
+    return fetch(...args);
+  });
+  const pending = submitRetainedUtxo({
+    ...c,
+    record: c.transaction,
+    session: {
+      ...c.session,
+      assertCurrent() {
+        if (!active) throw new Error('Wallet changed');
+      },
+    },
+  });
+  const rejected = expect(pending).rejects.toMatchObject(noPost);
+  try {
+    await Promise.race([checking.promise, pending]);
+    active = false;
+  } finally {
+    release.finish();
+  }
+  await rejected;
+  expect(c.fetch.mock.calls.map(([requestUrl]) => requestUrl)).toEqual([
+    savedStatus,
+  ]);
+  expect(c.cas).toHaveBeenCalledTimes(1);
+});
+
+it('ends a held original-route read at its deadline even if the transport does not settle', async () => {
+  const c = await retainedFixture();
+  const entered = deferred(),
+    release = deferred();
+  const transport = c.fetch.getMockImplementation()!;
+  c.fetch.mockImplementationOnce(async (...args) => {
+    entered.finish();
+    await release.promise;
+    return transport(...args);
+  });
+  jest.useFakeTimers();
+  try {
+    const pending = submitRetainedUtxo({ ...c, record: c.transaction });
+    const rejected = expect(pending).rejects.toMatchObject(noPost);
+    await Promise.race([entered.promise, pending]);
+    await jest.advanceTimersByTimeAsync(10_000);
+    await rejected;
+    expect(c.fetch).toHaveBeenCalledTimes(1);
+    expect(c.fetch.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(c.cas).toHaveBeenCalledTimes(1);
+  } finally {
+    release.finish();
+    jest.useRealTimers();
+  }
+});
+
+it.each([false, true])(
+  'rejects same-txid witness changes with an independently held review (stale journal read: %s)',
+  async (staleRead) => {
+    const c = await retainedFixture();
+    const altered = bitcoin.Transaction.fromHex(c.transaction.rawTransaction);
+    const witness = altered.ins[0].witness.map((item) => Buffer.from(item));
+    witness[0][0] ^= 1;
+    altered.setWitness(0, witness);
+    const reviewed = { ...c.transaction, rawTransaction: altered.toHex() };
+    expect(altered.getId()).toBe(c.transaction.txid);
+    expect(reviewed.rawTransaction).not.toBe(c.transaction.rawTransaction);
+    if (staleRead)
+      jest.spyOn(c.records, 'readExact').mockResolvedValueOnce(reviewed);
+    await expect(
+      submitRetainedUtxo({ ...c, record: reviewed })
+    ).rejects.toMatchObject(noPost);
+    expect(c.fetch.mock.calls.map(([requestUrl]) => requestUrl)).toEqual(
+      staleRead ? [savedStatus, savedGenesis] : []
+    );
+    expect(
+      await c.records.readExact(
+        c.session,
+        c.transaction.owner,
+        c.transaction.txid
+      )
+    ).toEqual(c.transaction);
+    expect(c.cas).toHaveBeenCalledTimes(1);
+  }
+);
+
+function savedStatusRequest(
+  c: Awaited<ReturnType<typeof retainedFixture>>,
+  signal = new AbortController().signal
+) {
+  return {
+    ...c,
+    backendChain: 'main',
+    owner: c.transaction.owner,
+    txid: c.transaction.txid,
+    signal,
+  };
+}
+
+it('reads a saved transfer only from its authenticated original route and never submits it', async () => {
+  const c = await retainedFixture();
+  const request = savedStatusRequest(c);
+  await expect(
+    observeRetainedUtxo({
+      ...request,
+      owner: { ...request.owner, account: { ...request.owner.account, id: 1 } },
+    })
+  ).resolves.toBe('unknown');
+  expect(c.fetch).not.toHaveBeenCalled();
+  await expect(observeRetainedUtxo(request)).resolves.toBe('confirmed');
+  expect(
+    c.fetch.mock.calls.map(([target, init]) => [target, init?.method])
+  ).toEqual([
+    [savedStatus, 'GET'],
+    [savedGenesis, 'GET'],
+    [savedStatus + 'tx/' + c.transaction.txid, 'GET'],
+  ]);
+  expect(
+    await c.records.fundingExclusions(c.session, c.transaction.owner)
+  ).toEqual({ outpoints: [], submitted: new Set() });
+});
+
+it('protects the confirmed record during an old-provider check and after an identity failure', async () => {
+  const c = await retainedFixture();
+  const request = savedStatusRequest(c);
+  await expect(observeRetainedUtxo(request)).resolves.toBe('confirmed');
+  const capacity = jest.replaceProperty(
+    signedBundle as { MAX_RECORDS: number },
+    'MAX_RECORDS',
+    1
+  );
+  const entered = deferred(),
+    release = deferred();
+  c.fetch.mockClear().mockImplementationOnce(async () => {
+    entered.finish();
+    await release.promise;
+    return identityResponse(savedStatus, {
+      blockbook: { coin: 'Bitcoin' },
+      backend: { chain: 'test' },
+    });
+  });
+  const pending = observeRetainedUtxo(request);
+  const competing = {
+    ...record(0xfffffffa),
+    owner: c.transaction.owner,
+    operation: 'external',
+  } as const;
+  try {
+    await Promise.race([entered.promise, pending]);
+    await expect(c.records.persist(c.session, competing)).rejects.toThrow(
+      'UTXO_SIGNED_RECORD_CAPACITY'
+    );
+    release.finish();
+    await expect(pending).resolves.toBe('unknown');
+    expect(c.fetch.mock.calls.map(([target]) => target)).toEqual([savedStatus]);
+    await expect(c.records.persist(c.session, competing)).rejects.toThrow(
+      'UTXO_SIGNED_RECORD_CAPACITY'
+    );
+    expect(
+      await c.records.readExact(
+        c.session,
+        c.transaction.owner,
+        c.transaction.txid
+      )
+    ).toEqual(c.transaction);
+  } finally {
+    release.finish();
+    capacity.restore();
+  }
+});
+
+it('keeps the prior confirmed state if the original route check loses its owner', async () => {
+  const c = await retainedFixture();
+  await expect(observeRetainedUtxo(savedStatusRequest(c))).resolves.toBe(
+    'confirmed'
+  );
+  const before = await c.storage.read();
+  const controller = new AbortController();
+  const entered = deferred(),
+    release = deferred();
+  const transport = c.fetch.getMockImplementation()!;
+  c.fetch.mockClear().mockImplementationOnce(async (...args) => {
+    entered.finish();
+    await release.promise;
+    return transport(...args);
+  });
+  const pending = observeRetainedUtxo(savedStatusRequest(c, controller.signal));
+  const rejected = expect(pending).rejects.toMatchObject({
+    name: 'AbortError',
+  });
+  try {
+    await Promise.race([entered.promise, pending]);
+    controller.abort();
+  } finally {
+    release.finish();
+  }
+  await rejected;
+  expect(c.fetch.mock.calls.map(([target]) => target)).toEqual([savedStatus]);
+  expect(await c.storage.read()).toBe(before);
+});
+
+it('refuses streamless saved-route metadata without buffering its text', async () => {
+  const c = await retainedFixture();
+  const response = identityResponse(savedStatus, {});
+  const text = jest.spyOn(response, 'text');
+  Object.defineProperty(response, 'body', { value: null });
+  c.fetch.mockResolvedValueOnce(response);
+  await expect(
+    submitRetainedUtxo({ ...c, record: c.transaction })
+  ).rejects.toMatchObject(noPost);
+  expect(text).not.toHaveBeenCalled();
+  expect(c.fetch).toHaveBeenCalledTimes(1);
+});
+
+it.each(['manifest', 'CAS'] as const)(
+  'preserves exact bytes when a status check starts after reclamation selection at %s',
+  async (barrier) => {
+    const c = await retainedFixture();
+    const request = savedStatusRequest(c);
+    await expect(observeRetainedUtxo(request)).resolves.toBe('confirmed');
+    const capacity = jest.replaceProperty(
+      signedBundle as { MAX_RECORDS: number },
+      'MAX_RECORDS',
+      1
+    );
+    const selected = deferred(),
+      resumeWrite = deferred(),
+      observing = deferred(),
+      resumeRead = deferred();
+    const hold = async () => {
+      selected.finish();
+      await resumeWrite.promise;
+    };
+    const encrypt = c.session.keyring.encryptPrivateRecord;
+    const session = {
+      ...c.session,
+      keyring: {
+        ...c.session.keyring,
+        async encryptPrivateRecord(input: Parameters<typeof encrypt>[0]) {
+          if (barrier === 'manifest' && input.recordId === 'manifest')
+            await hold();
+          return encrypt(input);
+        },
+      },
+    };
+    if (barrier === 'CAS') {
+      const commit = c.cas.getMockImplementation()!;
+      c.cas.mockImplementationOnce(async (...args) => {
+        await hold();
+        try {
+          return await commit(...args);
+        } catch {
+          // The native adapter normalizes a caller guard rejection after rollback.
+          throw new Error('STORAGE_UNAVAILABLE');
+        }
+      });
+    }
+    const competing = {
+      ...record(0xfffffffa),
+      owner: c.transaction.owner,
+      operation: 'external',
+    } as const;
+    const post = jest.fn(async () => c.response(competing.txid));
+    const send = submitReviewedUtxo({
+      ...c,
+      session,
+      sender: context().sender,
+      record: competing,
+      fetch: post,
+    });
+    const rejected = expect(send).rejects.toMatchObject({
+      code: 'UTXO_SIGNED_RECORD_CAPACITY',
+      transactionNotBroadcast: true,
+    });
+    try {
+      await Promise.race([selected.promise, send]);
+      c.fetch.mockClear().mockImplementationOnce(async () => {
+        observing.finish();
+        await resumeRead.promise;
+        return identityResponse(savedStatus, {
+          blockbook: { coin: 'Bitcoin' },
+          backend: { chain: 'test' },
+        });
+      });
+      const status = observeRetainedUtxo(request);
+      void status.catch(() => undefined);
+      await Promise.race([observing.promise, status]);
+      resumeWrite.finish();
+      await rejected;
+      expect(post).not.toHaveBeenCalled();
+      resumeRead.finish();
+      await expect(status).resolves.toBe('unknown');
+      expect(
+        await c.records.readExact(
+          c.session,
+          c.transaction.owner,
+          c.transaction.txid
+        )
+      ).toEqual(c.transaction);
+      expect(
+        await c.records.readExact(c.session, competing.owner, competing.txid)
+      ).toBeUndefined();
+    } finally {
+      resumeWrite.finish();
+      resumeRead.finish();
+      capacity.restore();
+    }
+  }
+);
+
+it('reclaims an unobserved confirmed record when the journal needs space', async () => {
+  const c = await retainedFixture();
+  await expect(observeRetainedUtxo(savedStatusRequest(c))).resolves.toBe(
+    'confirmed'
+  );
+  const capacity = jest.replaceProperty(
+    signedBundle as { MAX_RECORDS: number },
+    'MAX_RECORDS',
+    1
+  );
+  const competing = {
+    ...record(0xfffffffa),
+    owner: c.transaction.owner,
+    operation: 'external',
+  } as const;
+  try {
+    await expect(
+      c.records.persist(c.session, competing)
+    ).resolves.toBeUndefined();
+    expect(
+      await c.records.readExact(
+        c.session,
+        c.transaction.owner,
+        c.transaction.txid
+      )
+    ).toBeUndefined();
+    expect(
+      await c.records.readExact(c.session, competing.owner, competing.txid)
+    ).toEqual(competing);
+  } finally {
+    capacity.restore();
+  }
 });

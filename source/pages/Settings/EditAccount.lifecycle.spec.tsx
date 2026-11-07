@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
@@ -29,9 +30,9 @@ const initialState = () => ({
     accounts: {
       SmartAccount: {
         1: {
+          ...smartAccountAddressFixture(5700).account,
           id: 1,
           label: 'Family savings',
-          address: '0x1111111111111111111111111111111111111111',
           isSmartAccount: true,
         },
       },
@@ -171,7 +172,7 @@ it('preserves the exact account label mutation and returns to Accounts after a c
       {
         account: {
           address: mockState.vault.accounts.SmartAccount[1].address,
-          xpub: undefined,
+          xpub: mockState.vault.accounts.SmartAccount[1].xpub,
         },
         walletScope: getWalletNavigationScope(),
       },
@@ -380,8 +381,7 @@ it('does not carry a label draft into the same account slot in another UTXO vaul
   );
 });
 
-it('resets a smart-account label draft when its address changes even with the same owner xpub', async () => {
-  mockState.vault.accounts.SmartAccount[1].xpub = 'same-public-owner-key';
+it('resets a smart-account label draft and hides an unverifiable changed address even with the same xpub', async () => {
   const view = render(<Tree />);
   await act(async () => {
     fireEvent.change(screen.getByPlaceholderText('settings.accountLabel'), {
@@ -395,12 +395,26 @@ it('resets a smart-account label draft when its address changes even with the sa
   };
   view.rerender(<Tree />);
   expect(
-    screen.getByTitle('0x2222222222222222222222222222222222222222')
-  ).toBeVisible();
+    screen.queryByTitle('0x2222222222222222222222222222222222222222')
+  ).toBeNull();
+  expect(screen.getByText('receive.addressUnavailable')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'buttons.copy' })).toBeDisabled();
   expect(screen.getByPlaceholderText('settings.accountLabel')).toHaveValue(
     'Different smart account'
   );
 });
+
+it.each([false, true])(
+  'shows and allows copying the verified smart-account address when deployed=%s',
+  (isDeployed) => {
+    const account = mockState.vault.accounts.SmartAccount[1];
+    account.smartAccount = { ...account.smartAccount, isDeployed };
+    render(<Tree />);
+    expect(screen.getByTitle(account.address)).toBeVisible();
+    expect(screen.getByRole('button', { name: 'buttons.copy' })).toBeEnabled();
+    expect(screen.queryByText('receive.addressUnavailable')).toBeNull();
+  }
+);
 
 it('preserves an HD account label draft when only its receiving address advances', async () => {
   useHdAccountFixture();

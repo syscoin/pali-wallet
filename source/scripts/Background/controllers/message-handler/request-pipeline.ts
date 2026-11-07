@@ -4,6 +4,7 @@ import {
   getPersonalSignGrantReplacement,
   watchConnectedPersonalSignGrant,
 } from '../../handlers/personalSignApproval';
+import { waitForExternalWalletClosure } from '../externalWalletCreation';
 import { getController } from 'scripts/Background';
 import store from 'state/store';
 import type { IDAppAccountSelectionContext } from 'types/controllers';
@@ -194,8 +195,9 @@ class RequestCoordinator {
     popupFunction: () => Promise<any>
   ): Promise<any> {
     try {
-      // give it some time to ensure any previous popup is closed
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // A prior approved popup can respond before its window disappears.
+      // Wait inside the held slot, but do not delay terminal popup results.
+      await waitForExternalWalletClosure(context.originalRequest.signal);
       assertRequestActive(context.originalRequest.signal);
       // This trusted guard runs once, inside the held popup slot, only when the
       // request reaches an actual opening attempt. It may warn before approval

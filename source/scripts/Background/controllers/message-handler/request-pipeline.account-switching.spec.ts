@@ -19,7 +19,11 @@ jest.mock('./method-handlers', () => ({
   clearProviderCache: jest.fn(),
 }));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn(),
+}));
 
+import { waitForExternalWalletClosure } from '../externalWalletCreation';
 import { getController } from 'scripts/Background';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -73,6 +77,7 @@ describe('accountSwitchingMiddleware site-level account selection', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     changeAccount.mockResolvedValue(undefined);
+    jest.mocked(waitForExternalWalletClosure).mockResolvedValue(undefined);
     getDapp.mockReturnValue({
       accountId: accountA.id,
       accountType: KeyringAccountType.HDAccount,

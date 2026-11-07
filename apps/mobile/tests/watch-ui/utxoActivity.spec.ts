@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { SENTRY_COLLATERAL_TXID, SENTRY_TXID } from '../sentryNodeFixtures';
 const ID = (n: number) => n.toString(16).padStart(64, '0');
 declare global {
   interface Window {
@@ -79,6 +80,31 @@ test('actual WatchSession automatically loads account activity, preserves list a
   expect(await page.evaluate(() => window.__watchFixture.activity.calls().length)).toBeGreaterThanOrEqual(left);
   const audit = await page.evaluate(() => window.__watchFixture.audit());
   expect(audit.unlocks).toBe(0); expect(audit.signs).toBe(0); expect(audit.broadcasts).toBe(0);
+});
+
+test('seeded UTXO Activity uses the shared list and detail at 320 pixels', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?hd-utxo-send=1');
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Open wallet', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Password', exact: true }).fill('public-password');
+  await page.getByRole('button', { name: 'Unlock wallet', exact: true }).click();
+  await page.getByRole('tab', { name: 'Activity', exact: true }).click();
+  await load(page);
+  await expect(page.getByText('Account 1 · Bitcoin', { exact: true })).toBeVisible();
+  const calls = () => page.evaluate(() => window.__watchFixture.activity.calls());
+  expect((await calls()).some(url => /\/api\/v2\/tx\//.test(url))).toBe(false);
+  const row = page.getByRole('button', { name: 'Net change −10.0 BTC', exact: true }).first();
+  await row.focus();
+  await row.press('Enter');
+  await expect(page.getByRole('heading', { name: 'Transaction details', exact: true })).toBeVisible();
+  await expect(page.getByText('Whole transaction fee: 1.0 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByText('12ZEw5Hcv1hTb6YUQJ69y1V7uhcoDz92PH', { exact: true })).toBeVisible();
+  expect((await calls()).filter(url => /\/api\/v2\/tx\//.test(url))).toHaveLength(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath('seeded-utxo-activity-detail-320.png') });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await load(page);
 });
 
 test('unavailable, empty, stale and asset amounts remain distinct', async ({ page }) => {
@@ -530,4 +556,27 @@ for (const initiallyPending of [false, true]) test(`reopening keeps the detail o
   await expect(detail.getByText('FROM', { exact: true })).toBeVisible();
   await expect(detail.getByText(initiallyPending ? 'Pending' : '11 confirmations · Block 190', { exact: true })).toBeVisible();
   expect(await rawCalls()).toBe(1);
+});
+
+test('narrow Syscoin detail only looks up Sentry information after an explicit tap', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await open(page, 'syscoin', false, 'sentry');
+  await load(page);
+  const calls = () => page.evaluate(() => window.__watchFixture.activity.calls().filter(url => url.includes('/api/sentry/')));
+  await page.getByTestId(`watch-activity-row-${SENTRY_TXID}`).getByRole('button').click();
+  const lookup = page.getByRole('button', { name: 'Look up Sentry node', exact: true });
+  await expect(lookup).toBeVisible();
+  expect(await calls()).toEqual([]);
+  await lookup.click();
+  await expect(page.getByRole('heading', { name: 'Sentry node information', exact: true })).toBeVisible();
+  await expect(page.getByText('Reported by https://sysnode.info', { exact: true })).toBeVisible();
+  const outpoint = page.getByText(`${SENTRY_COLLATERAL_TXID}:1`, { exact: true });
+  await outpoint.scrollIntoViewIfNeeded();
+  await expect(outpoint).toBeInViewport();
+  expect(await calls()).toEqual([`https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`]);
+  await expect(page.getByRole('button', { name: /link|reserve|sign/i })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('sentry-node-information-320.png'), fullPage: true });
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(lookup).toHaveCount(0);
 });

@@ -19,7 +19,7 @@ const isRuntimeAvailable = (): boolean => {
 
 export async function controllerEmitter<
   T extends IMasterController,
-  P extends Methods<T>
+  P extends Methods<T> | ['wallet', 'authorizeDappManualNonce']
 >(methods: P, params?: any[], timeout = 10000, retryConnection = true) {
   // Add retry logic for service worker lifecycle issues
   const MAX_RETRIES = 3;

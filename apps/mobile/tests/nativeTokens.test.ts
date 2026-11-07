@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Interface } from 'ethers/abi';
@@ -204,7 +205,7 @@ test('manual collectible checks use the selected registered RPC without an explo
   });
   const f = fixture({
     getCatalogue: () => ({
-      revision: 0, accounts: [], networks: [selected],
+      revision: 0, accounts: [], utxoNetworks: UTXO_NETWORKS, networks: [selected],
       active: { accountId: 'hd:60:0', networkId: selected.id },
     }),
     async readHoldings() { assert.fail('Manual ownership must not use the explorer'); },
@@ -252,7 +253,7 @@ test('manual collectible checks reject stale account capabilities and cancel on 
     let reads = 0;
     const f = fixture({
       getCatalogue: () => hasCatalogue ? {
-        revision: 0, accounts: [], networks: [selected],
+        revision: 0, accounts: [], utxoNetworks: UTXO_NETWORKS, networks: [selected],
         active: { accountId: 'hd:60:0', networkId: selected.id },
       } : null,
       readNft(input, signal, current) {
@@ -414,7 +415,7 @@ test('retired reviews cannot save after edit, a newer check, Back, lock, ABA, al
       collectibles: [],
       async readNft({ tokenId }) { return { tokenId, units: '0' }; },
       getCatalogue: () => ({
-        revision: 0, accounts: [], networks: [network, alias], active: { accountId: 'hd:60:0', networkId: network.id },
+        revision: 0, accounts: [], utxoNetworks: UTXO_NETWORKS, networks: [network, alias], active: { accountId: 'hd:60:0', networkId: network.id },
       }),
     });
     const disconnect = f.model.connect();
@@ -534,7 +535,7 @@ test('saved collectibles reload on a same-chain alias, and checks use only the n
     collectibles: [zeroCollectible],
     async readNft({ networkId, tokenId }) { selected.push(networkId); return { tokenId, units: '0' }; },
     getCatalogue: () => ({
-      revision: 0, accounts: [], networks: [network, alias], active: { accountId: 'hd:60:0', networkId: alias.id },
+      revision: 0, accounts: [], utxoNetworks: UTXO_NETWORKS, networks: [network, alias], active: { accountId: 'hd:60:0', networkId: alias.id },
     }),
   });
   const disconnect = f.model.connect();
@@ -683,6 +684,7 @@ test('no explorer fallback for an edited endpoint or missing current catalogue',
   let catalogue: NativeWalletCatalogueSnapshot | null = {
     revision: 0,
     accounts: [],
+    utxoNetworks: UTXO_NETWORKS,
     networks: [getNativeNetwork('ethereum')],
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
   };

@@ -288,6 +288,18 @@ type MainMutationAction =
   | ReturnType<typeof setPrices>
   | ReturnType<typeof setNetwork>;
 
+function failMainStateRepair(
+  repairError: unknown,
+  revoked: unknown,
+  ownsWallet: boolean
+): never {
+  if (!ownsWallet) throw revoked;
+  walletPersistenceGate.blocked = true;
+  throw new Error('Could not restore wallet storage. Close and reopen Pali.', {
+    cause: repairError,
+  });
+}
+
 /** Stage only the requested action; publish it after a guarded durable write. */
 function persistMainMutation(
   action: MainMutationAction,
@@ -312,7 +324,15 @@ function persistMainMutation(
       assertWalletPersistenceAllowed();
       if (isSameWallet && !isSameWallet()) throw error;
       const currentState = getMainStateForStorage(store.getState());
-      await chromeStorage.setItem('state', currentState);
+      try {
+        await chromeStorage.setItem('state', currentState);
+      } catch (repairError) {
+        failMainStateRepair(
+          repairError,
+          error,
+          !isSameWallet || isSameWallet()
+        );
+      }
       lastPersistedState = currentState;
       throw error;
     }
@@ -368,7 +388,15 @@ export function persistNetworkRemoval(
   network: Parameters<typeof removeNetwork>[0],
   assertCurrent: () => void,
   isSameWallet: () => boolean,
-  removedSlip44: number | undefined,
+  retiringVault:
+    | Readonly<{
+        readSentryStores(
+          rootPublicIdentity: string,
+          assertRemovalCurrent: () => void
+        ): Promise<Record<string, unknown>>;
+        slip44: number;
+      }>
+    | undefined,
   onCommitted: () => void
 ): Promise<void> {
   return walletPersistenceMutex.runExclusive(async () => {
@@ -377,6 +405,7 @@ export function persistNetworkRemoval(
       assertCurrent();
     };
     assertAdmitted();
+    const removedSlip44 = retiringVault?.slip44;
     const vaultKey = `state-vault-${removedSlip44}`;
     const keys =
       removedSlip44 === undefined
@@ -384,6 +413,30 @@ export function persistNetworkRemoval(
         : [vaultKey, `${vaultKey}-passkey-profile`];
     const previous = keys.length ? await chromeStorage.getItems(keys) : {};
     assertAdmitted();
+    const retiredVault = previous[vaultKey] as IVaultState | null | undefined;
+    if (Object.keys(retiredVault?.accounts?.Imported ?? {}).length)
+      throw Object.assign(
+        new Error('Keep this network while it has imported accounts.'),
+        {
+          code: 'UTXO_NETWORK_HAS_IMPORTED_ACCOUNTS',
+        }
+      );
+    if (retiringVault && retiredVault != null) {
+      const rootPublicIdentity = retiredVault.accounts?.HDAccount?.[0]?.xpub;
+      if (
+        typeof rootPublicIdentity !== 'string' ||
+        !rootPublicIdentity ||
+        rootPublicIdentity !== rootPublicIdentity.trim()
+      )
+        throw new Error('Could not verify saved accounts for this network.');
+      const emptySentryStores = await retiringVault.readSentryStores(
+        rootPublicIdentity,
+        assertAdmitted
+      );
+      assertAdmitted();
+      keys.push(...Object.keys(emptySentryStores));
+      Object.assign(previous, emptySentryStores);
+    }
     const action = removeNetwork(network);
     const mainState = getMainStateForStorage(
       reducers(store.getState(), action)
@@ -401,10 +454,11 @@ export function persistNetworkRemoval(
       assertWalletPersistenceAllowed();
       if (!isSameWallet()) throw error;
       const current = getMainStateForStorage(store.getState());
-      await chromeStorage.setItems({
-        state: current,
-        ...previous,
-      });
+      try {
+        await chromeStorage.setItems({ state: current, ...previous });
+      } catch (repairError) {
+        failMainStateRepair(repairError, error, isSameWallet());
+      }
       lastPersistedState = current;
       throw error;
     }

@@ -412,7 +412,16 @@ export const EvmTransactionDetailsEnhanced = ({
   const displayTransaction = displayContext.transaction;
   let transactionTx: IEvmTransactionResponse | undefined = mergedTransaction;
   const decodeInput = transactionTx?.data || transactionTx?.input;
-  const decodeScope = JSON.stringify([scope, transactionTx?.to, decodeInput]);
+  const localSignedToken =
+    (transactionTx as any)?.historySource ===
+      EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+    Boolean((transactionTx as any)?.tokenTransfer);
+  const decodeScope = JSON.stringify([
+    scope,
+    transactionTx?.to,
+    decodeInput,
+    localSignedToken,
+  ]);
   const [decodedTxData, setDecodedTxData] =
     useContextualState<IDecodedTx | null>(decodeScope, null);
   const candidate = winnerLookup.settled
@@ -601,9 +610,11 @@ export const EvmTransactionDetailsEnhanced = ({
           // Always decode transactions with input data to get full parameter details
           // This ensures we show decoded data even if transactionDisplayInfo isn't ready yet
           if (!decodeInput || decodeInput === '0x') {
-            // Simple ETH transfers with no input data
+            // Retained summaries intentionally omit calldata. A decoded token
+            // intent still identifies a token transfer before display metadata
+            // arrives; plain native summaries remain Send.
             decodedData = {
-              method: 'Send',
+              method: localSignedToken ? 'Token Transfer' : 'Send',
               types: [],
               inputs: [],
               names: [],
@@ -658,6 +669,7 @@ export const EvmTransactionDetailsEnhanced = ({
     hash,
     scope,
     decodeScope,
+    localSignedToken,
     matchingTx,
     enhancedDetails,
     transactionDisplayInfo,

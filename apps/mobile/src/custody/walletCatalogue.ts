@@ -2,7 +2,8 @@ import { getAddress } from 'ethers/address';
 import { computeAddress } from 'ethers/transaction';
 import { parseUtxoPublicIdentifier } from '../core/utxoIdentifier.ts';
 import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
-import { findUtxoNetwork, getUtxoSdkNetwork, UTXO_NETWORKS } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, getUtxoSdkNetwork, isCustomUtxoNetworkId, projectUtxoRegistration, supportsUtxoSoftwareCustody, UTXO_NETWORKS, utxoRegistrationData,
+  type UtxoNetwork, type UtxoRegistration } from '../core/utxoNetworks.ts';
 import {
   NATIVE_NETWORKS,
   getNativeNetwork,
@@ -46,12 +47,14 @@ export type NativeCatalogueAccount = Readonly<{
   slip44: number;
   address: string;
   label: string;
+  utxoExtended?: true;
 }>;
 /** Public projection. Complete encrypted SDK records remain inside custody. */
 export type NativeWalletCatalogueSnapshot = Readonly<{
   revision: number;
   accounts: readonly NativeCatalogueAccount[];
   networks: readonly NativeNetworkRegistration[];
+  utxoNetworks: readonly UtxoNetwork[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
 export type NativeWalletCatalogueIdentity = Readonly<{
@@ -63,13 +66,15 @@ export type DerivedCatalogueIdentity = Readonly<{
   address: string;
   publicKey: string;
 }>;
+type SavedUtxoNetwork = UtxoRegistration & Readonly<{ kind: 'utxo' }>;
+type SavedNetwork = NativeNetworkRegistration | SavedUtxoNetwork;
 export type NativeAccountRecord = Readonly<{
   version: 1;
   revision: number;
   walletFingerprint: string;
   groups: readonly RecoveryAccountGroup[];
   recovery: readonly ImportedRecoveryEntry[];
-  networks: readonly NativeNetworkRegistration[];
+  networks: readonly SavedNetwork[];
   active: Readonly<{ accountId: string; networkId: EvmNetworkId }>;
 }>;
 export type CatalogueMutation =
@@ -82,6 +87,9 @@ export type CatalogueMutation =
   | Readonly<{ kind: 'select'; id: string }>
   | Readonly<{ kind: 'select-network'; id: EvmNetworkId; initialGroup?: RecoveryAccountGroup }>
   | Readonly<{ kind: 'save-network'; registration: NativeNetworkRegistration }>
+  | Readonly<{ kind: 'add-utxo-network'; registration: UtxoRegistration }>
+  | Readonly<{ kind: 'edit-utxo-network'; registration: UtxoRegistration }>
+  | Readonly<{ kind: 'remove-utxo-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'remove-network'; id: EvmNetworkId }>
   | Readonly<{ kind: 'rename'; id: string; label: string }>
   | Readonly<{ kind: 'remove'; id: string }>;
@@ -151,13 +159,28 @@ function softwareGroup(record: NativeAccountRecord): RecoveryAccountGroup {
   );
   return group ?? invalid();
 }
+export function catalogueEvmNetworks(record: NativeAccountRecord): readonly NativeNetworkRegistration[] {
+  return record.networks.filter((network) => network.kind === 'evm');
+}
+
+function savedUtxoNetwork({ kind: _kind, ...registration }: SavedUtxoNetwork): UtxoNetwork {
+  const network = projectUtxoRegistration(registration);
+  if (!isCustomUtxoNetworkId(network.id)) return invalid();
+  return network;
+}
+
+export function catalogueUtxoNetworks(networks: readonly SavedNetwork[]): readonly UtxoNetwork[] {
+  return Object.freeze([...UTXO_NETWORKS, ...networks.filter((network) => network.kind === 'utxo').map(savedUtxoNetwork)]);
+}
+
 export function catalogueAccountGroup(
   record: NativeAccountRecord,
   networkId = record.active.networkId
 ): RecoveryAccountGroup | undefined {
-  const network = findUtxoNetwork(networkId);
+  const network = findUtxoNetwork(networkId, catalogueUtxoNetworks(record.networks));
   return network
-    ? record.groups.find((group) => group.activeNetwork.slip44 === network.slip44)
+    ? record.groups.find(({ activeNetwork }) => activeNetwork.kind === 'syscoin' &&
+        activeNetwork.chainId === network.chainId && activeNetwork.slip44 === network.slip44)
     : softwareGroup(record);
 }
 
@@ -185,6 +208,18 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
     raw.networks.length > 256
   )
     return invalid();
+  const networks: SavedNetwork[] = raw.networks.map((entry: unknown) => {
+    if ((entry as SavedNetwork | null)?.kind !== 'utxo') return snapshotNativeNetwork(entry);
+    return Object.freeze({ kind: 'utxo', ...utxoRegistrationData(savedUtxoNetwork(entry as SavedUtxoNetwork)) });
+  });
+  const evm = networks.filter((entry) => entry.kind === 'evm');
+  const utxos = catalogueUtxoNetworks(networks);
+  const ids = [...evm, ...utxos].map(({ id }) => id);
+  if (!evm.length || new Set(ids).size !== ids.length ||
+      new Set(evm.map(({ chainId }) => chainId)).size !== evm.length ||
+      new Set(utxos.map(({ chainId }) => chainId)).size !== utxos.length ||
+      new Set(utxos.map(({ slip44 }) => slip44)).size !== utxos.length)
+    return invalid();
   const groupKeys = new Set<string>();
   const groups: RecoveryAccountGroup[] = [];
   for (const group of raw.groups as RecoveryAccountGroup[]) {
@@ -201,9 +236,9 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
       return invalid();
     groupKeys.add(group.key);
     const utxo = network.kind === 'syscoin'
-      ? UTXO_NETWORKS.find((registration) => registration.chainId === network.chainId && registration.slip44 === network.slip44)
+      ? utxos.find((registration) => registration.chainId === network.chainId && registration.slip44 === network.slip44)
       : undefined;
-    const currentNetwork = utxo && getUtxoSdkNetwork(utxo.id);
+    const currentNetwork = utxo && getUtxoSdkNetwork(utxo);
     if (network.kind === 'syscoin') {
       if (!currentNetwork || network.currency !== currentNetwork.currency ||
           typeof network.url !== 'string')
@@ -244,12 +279,15 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
         )
           publicIdentity({ address: account.address, publicKey: account.xpub });
         if (utxo) {
-          if (normalizeUtxoAddress(account.address, utxo.id) !== account.address)
+          if (normalizeUtxoAddress(account.address, utxo) !== account.address)
             return invalid();
-          if (type === 'HDAccount' && !/^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub))
+          const bip84 = /^(?:zpub|vpub)[1-9A-HJ-NP-Za-km-z]{107}$/.test(account.xpub);
+          if (type === 'HDAccount' && !bip84)
             return invalid();
           if (type === 'Imported' &&
-              (account.xpub !== account.address || !account.xprv || account.isImported !== true ||
+              ((account.xpub !== account.address &&
+                (!bip84 || !account.xpub.startsWith(utxo.testnet ? 'vpub' : 'zpub'))) ||
+               !account.xprv || account.isImported !== true ||
                account.isLedgerWallet || account.isTrezorWallet || account.isSmartAccount))
             return invalid();
         }
@@ -290,31 +328,22 @@ function decode(value: unknown, binding: string): NativeAccountRecord {
       )
         return invalid();
   }
-  const networks = raw.networks.map(
-    snapshotNativeNetwork
-  ) as NativeNetworkRegistration[];
-  if (
-    new Set(networks.map((network) => network.id)).size !== networks.length ||
-    new Set(networks.map((network) => network.chainId)).size !== networks.length ||
-    networks.some((network) => findUtxoNetwork(network.id))
-  )
-    return invalid();
-  const record = { ...(raw as NativeAccountRecord), groups };
+  const record = { ...(raw as NativeAccountRecord), groups, networks };
   if (!softwareGroup(record).accounts.HDAccount[0])
     return invalid();
   const active = object(raw.active, ['accountId', 'networkId']) as NativeAccountRecord['active'];
   const selected = parseNativeAccountId(active.accountId);
   const group = catalogueAccountGroup(record, active.networkId);
   const account = group?.accounts[selected.type]?.[selected.index];
-  const utxo = findUtxoNetwork(active.networkId);
+  const utxo = findUtxoNetwork(active.networkId, utxos);
   if (
     (!utxo && !networks.some((network) => network.id === active.networkId)) ||
     !group || selected.slip44 !== group.activeNetwork.slip44 || !account
   )
     return invalid();
   if (utxo) {
-    const identity = parseUtxoPublicIdentifier(account.xpub, utxo.id);
-    if (identity.kind !== (selected.type === 'Imported' ? 'address' : 'account') ||
+    const identity = parseUtxoPublicIdentifier(account.xpub, utxo);
+    if (identity.kind !== (account.xpub === account.address ? 'address' : 'account') ||
         identity.identifier !== account.xpub || identity.address !== account.address)
       return invalid();
   }
@@ -334,6 +363,8 @@ function publicAccounts(group: RecoveryAccountGroup): NativeCatalogueAccount[] {
       slip44,
       address: account.address,
       label: account.label,
+      ...(group.activeNetwork.kind === 'syscoin' && type === 'Imported' &&
+        account.xpub !== account.address ? { utxoExtended: true as const } : {}),
     }))
   );
 }
@@ -342,7 +373,8 @@ function projection(record: NativeAccountRecord): NativeWalletCatalogueSnapshot 
   return Object.freeze({
     revision: record.revision,
     accounts: Object.freeze(publicAccounts(group)),
-    networks: record.networks,
+    networks: Object.freeze(catalogueEvmNetworks(record)),
+    utxoNetworks: catalogueUtxoNetworks(record.networks),
     active: record.active,
   });
 }
@@ -515,10 +547,10 @@ export class NativeWalletCatalogue {
         const registration = snapshotNativeNetwork(mutation.registration),
           same = networks.find((network) => network.id === registration.id);
         if (
-          (same && same.chainId !== registration.chainId) ||
+          (same && (same.kind !== 'evm' || same.chainId !== registration.chainId)) ||
           networks.some(
             (network) =>
-              network.id !== registration.id &&
+              network.kind === 'evm' && network.id !== registration.id &&
               network.chainId === registration.chainId
           ) ||
           (!same && networks.length >= 256)
@@ -528,14 +560,37 @@ export class NativeWalletCatalogue {
           ...networks.filter((network) => network.id !== registration.id),
           registration,
         ];
-      } else if (mutation.kind === 'remove-network') {
-        if (mutation.id === active.networkId || networks.length <= 1)
+      } else if (mutation.kind === 'add-utxo-network') {
+        const network = projectUtxoRegistration(mutation.registration);
+        const existing = catalogueUtxoNetworks(networks);
+        if (!isCustomUtxoNetworkId(network.id) || !supportsUtxoSoftwareCustody(network) ||
+            networks.length >= 256 || networks.some(({ id }) => id === network.id) ||
+            existing.some(({ chainId, slip44 }) => chainId === network.chainId || slip44 === network.slip44))
           return invalid();
-        getNativeNetwork(mutation.id, networks);
+        networks.push(Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) }));
+      } else if (mutation.kind === 'edit-utxo-network') {
+        const network = projectUtxoRegistration(mutation.registration);
+        const index = networks.findIndex(({ id }) => id === network.id);
+        const saved = networks[index];
+        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(network.id) ||
+            saved.chainId !== network.chainId || saved.slip44 !== network.slip44 ||
+            saved.backendChain !== network.backendChain || saved.explorer !== network.explorer)
+          return invalid();
+        networks[index] = Object.freeze({ kind: 'utxo', ...utxoRegistrationData(network) });
+      } else if (mutation.kind === 'remove-utxo-network') {
+        const saved = networks.find(({ id }) => id === mutation.id);
+        if (!saved || saved.kind !== 'utxo' || !isCustomUtxoNetworkId(saved.id) ||
+            active.networkId === saved.id || catalogueAccountGroup(record, saved.id))
+          return invalid();
+        networks = networks.filter(({ id }) => id !== saved.id);
+      } else if (mutation.kind === 'remove-network') {
+        if (mutation.id === active.networkId || catalogueEvmNetworks(next).length <= 1)
+          return invalid();
+        getNativeNetwork(mutation.id, catalogueEvmNetworks(next));
         networks = networks.filter((network) => network.id !== mutation.id);
       } else if (mutation.kind === 'select-network') {
-        const utxo = findUtxoNetwork(mutation.id);
-        if (!utxo) getNativeNetwork(mutation.id, networks);
+        const utxo = findUtxoNetwork(mutation.id, catalogueUtxoNetworks(networks));
+        if (!utxo) getNativeNetwork(mutation.id, catalogueEvmNetworks(next));
         let target = catalogueAccountGroup(next, mutation.id);
         if (mutation.initialGroup) {
           if (target || !utxo || mutation.initialGroup.key !== String(utxo.slip44) ||

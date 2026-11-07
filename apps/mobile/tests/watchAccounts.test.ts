@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../src/core/utxoNetworks.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { accountIdentity, parseAccountSelection, projectAccounts } from '../src/core/accountDirectory.ts';
@@ -45,7 +46,7 @@ function storage(initial: readonly PublicAccount[] = [account], beforeWrite?: ()
 
 test('public chooser keeps authorities distinct even when local IDs and addresses collide', () => {
   const catalogue: NativeWalletCatalogueSnapshot = {
-    revision: 0, networks: NATIVE_NETWORKS,
+    revision: 0, networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
     accounts: [{ id: 'hd:60:0', type: 'HDAccount', slip44: 60, index: 0, label: 'Wallet', address: ADDRESS }],
   };

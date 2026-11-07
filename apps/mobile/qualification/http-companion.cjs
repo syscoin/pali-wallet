@@ -78,8 +78,9 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     pending.set(id, { resolve, reject, timer });
     child.send({ id, kind, token }, (error) => { if (error) { clearTimeout(timer); pending.delete(id); reject(Error('HTTP_FIXTURE_COMMAND_FAILED')); } });
   });
+  const childExited = () => child.exitCode !== null || child.signalCode !== null;
   const stopChild = async () => {
-    if (child.exitCode !== null || child.signalCode !== null) return;
+    if (childExited()) return;
     await new Promise((resolve) => {
       const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 3000);
       child.once('exit', () => { clearTimeout(timer); resolve(); });
@@ -160,41 +161,45 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
       active = undefined;
       return records.at(-1);
     },
-    async diagnostic(read = () => undefined) {
-      if (!active) return undefined;
-      try {
-        const text = read(`pali-native-http-${active.token}.json`);
-        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192)
-          failedCase = httpDiagnosticCase(JSON.parse(text), active) ?? failedCase;
-      } catch { /* Missing or malformed native evidence remains unavailable. */ }
-      let server = partialAudit(finalAudit, active.token, port);
-      if (!server) {
-        try {
-          const snapshot = await rpc('inspectAll', active.token, 1000);
-          server = partialAudit(snapshot?.get, active.token, port);
-        }
-        catch { /* Diagnostic loss must not replace the original failure. */ }
-      }
-      return { version: 1, kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true,
-        ...active, failedCase, server };
-    },
-    async postDiagnostic(read = () => undefined) {
-      if (!active) return undefined;
+    async diagnostics(read = () => undefined) {
+      const scope = active;
+      if (!scope) return undefined;
+      let failedGetCase = failedCase;
       let failedPostCase = 'unavailable', failureDetail = null;
       try {
-        const text = read(`pali-native-post-${active.token}.json`);
+        const text = read(`pali-native-http-${scope.token}.json`);
+        if (typeof text === 'string' && Buffer.byteLength(text) <= 8192)
+          failedGetCase = httpDiagnosticCase(JSON.parse(text), scope) ?? failedGetCase;
+      } catch { /* Missing or malformed native evidence remains unavailable. */ }
+      try {
+        const text = read(`pali-native-post-${scope.token}.json`);
         if (typeof text === 'string' && Buffer.byteLength(text) <= 8192) {
-          const value = JSON.parse(text), validCase = postDiagnosticCase(value, active);
+          const value = JSON.parse(text), validCase = postDiagnosticCase(value, scope);
           if (validCase) { failedPostCase = validCase; failureDetail = { ...value.failureDetail }; }
         }
       } catch { /* Missing sidecar remains unavailable. */ }
-      let server = partialPostAudit(finalPostAudit, active.token, port);
-      if (!server) {
-        try { server = partialPostAudit((await rpc('inspectAll', active.token, 1000))?.post, active.token, port); }
-        catch { /* Diagnostics never replace the primary failure. */ }
+      let get = partialAudit(finalAudit, scope.token, port);
+      let post = partialPostAudit(finalPostAudit, scope.token, port);
+      let unavailable = childExited() ? 'exited' : 'invalid';
+      if ((!get || !post) && unavailable !== 'exited') {
+        try {
+          const snapshot = await rpc('inspectAll', scope.token, 1000);
+          get ??= partialAudit(snapshot?.get, scope.token, port);
+          post ??= partialPostAudit(snapshot?.post, scope.token, port);
+        } catch (error) {
+          if (childExited() || error?.message === 'HTTP_FIXTURE_EXITED') unavailable = 'exited';
+          else if (error?.message === 'HTTP_FIXTURE_COMMAND_TIMEOUT') unavailable = 'timeout';
+          else unavailable = 'unavailable';
+        }
       }
-      return { version: 1, kind: 'native-post-diagnostic', status: 'failed', diagnosticOnly: true,
-        ...active, failedCase: failedPostCase, failureDetail, server };
+      if (active !== scope) return undefined;
+      const diagnostic = { version: 1, status: 'failed', diagnosticOnly: true, ...scope };
+      return {
+        http: { ...diagnostic, kind: 'native-http-diagnostic', failedCase: failedGetCase,
+          serverStatus: get ? 'available' : unavailable, server: get },
+        post: { ...diagnostic, kind: 'native-post-diagnostic', failedCase: failedPostCase, failureDetail,
+          serverStatus: post ? 'available' : unavailable, server: post },
+      };
     },
     assertComplete(expected) {
       const phases = expected === 1 ? ['import:create'] : expected === 4
@@ -207,4 +212,4 @@ async function startHttpCompanion({ platform, sourceRevision, run, spawn = fork 
     close,
   };
 }
-module.exports = { startHttpCompanion, assertAudit };
+module.exports = { startHttpCompanion, assertAudit, reverseMappings };

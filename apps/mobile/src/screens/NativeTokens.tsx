@@ -32,6 +32,7 @@ type Props = {
   controller: NativeTokenView;
   onReceive(): void;
   onSend?(token: Erc20Metadata): void;
+  onSendCollectible?(collectible: SavedCollectible): void;
   onBackHandlerChange?(handler: (() => boolean) | null): void;
   onModeChange?(title: string | null): void;
 };
@@ -73,6 +74,7 @@ function TokenContent({
   snapshot,
   onReceive,
   onSend,
+  onSendCollectible,
   onBackHandlerChange,
   onModeChange,
 }: Props & { snapshot: NativeTokenSnapshot }) {
@@ -450,6 +452,12 @@ function TokenContent({
                 if (!(await controller.removeCollectible(route.account, route.item)))
                   throw new Error('CHANGED');
               }, returnToCollectibles) : undefined}
+              onSend={route.source === 'saved' && onSendCollectible ? () => {
+                const current = controller.getSnapshot();
+                if (!lifetime.current.alive || lifetime.current.running || current.busy || current.account !== route.account ||
+                    !current.collectibles?.includes(route.item)) return;
+                onSendCollectible(route.item);
+              } : undefined}
               onLeaveChange={setCollectibleLeave}
             />
           ) : route.kind === 'import' ? (
@@ -743,7 +751,7 @@ function TokenContent({
 
 const collectibleStandards = ['ERC-721', 'ERC-1155'] as const;
 
-function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, onRemove, onLeaveChange }: {
+function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, onRemove, onSend, onLeaveChange }: {
   item: OwnedCollectibleSuggestion | SavedCollectible | null;
   network: string;
   busy: boolean;
@@ -751,6 +759,7 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
   check(query: CollectibleQuery, signal: AbortSignal): ReturnType<NativeTokenView['checkCollectible']>;
   onSave(ticket: CollectibleSaveTicket): Promise<void>;
   onRemove?(): Promise<void>;
+  onSend?(): void;
   onLeaveChange(leave: (() => void) | null): void;
 }) {
   const fixedId = item && 'tokenId' in item ? item.tokenId : undefined;
@@ -868,6 +877,13 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
         </View>
       </View>
     </>}
+    {!confirmRemove && onSend && <Button title="Send collectible" icon="arrow-up-right" disabled={busy || result.kind === 'loading'}
+      onPress={() => {
+        if (!alive.current || active.current || busy) return;
+        cancel();
+        setResult({ kind: 'idle' });
+        onSend();
+      }} />}
     {!confirmRemove && canCheck && fixedId === undefined && <View style={s.field}>
       <Text style={s.label}>TOKEN ID</Text>
       <IdleTextInput accessibilityLabel="Token ID" value={draft.tokenId} editable={!busy}
@@ -881,6 +897,7 @@ function CollectibleOwnership({ item, network, check, busy, canCheck, onSave, on
       {draft.tokenStandard === 'ERC-721' ? (result.units === '0' ? 'This account doesn’t own this item.' : 'This account owns this item.') : `Quantity on network: ${result.units}`}
     </Text>}
     {!confirmRemove && canCheck && <Button title={result.kind === 'loading' ? 'Checking ownership…' : 'Check ownership'}
+      variant={onSend ? 'secondary' : 'primary'}
       disabled={busy || !draft.contractAddress.trim() || !draft.tokenId.trim() || !draft.tokenStandard || result.kind === 'loading'}
       onPress={() => void read()} />}
     {result.kind === 'loading' && <ActivityIndicator color={colors.pink} accessibilityLabel="Checking ownership" />}

@@ -54,6 +54,7 @@ let requests: Array<{ method: string; params: unknown[] }>;
 const query = (host = HOST, method = 'wallet_getCallsStatus') =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params: [ID] } }, {
     url: `${host}/page`,
+    origin: host,
     tab: { id: 1 },
   } as chrome.runtime.MessageSender);
 
@@ -63,6 +64,10 @@ beforeEach(async () => {
   updatedListeners.clear();
   Object.assign(chrome, {
     tabs: {
+      // The mocked popup owns no live browser tabs.
+      query: jest.fn((_query: unknown, callback: (tabs: any[]) => void) =>
+        callback([])
+      ),
       onRemoved: {
         addListener: (listener: (...args: any[]) => void) =>
           removedListeners.add(listener),

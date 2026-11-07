@@ -245,6 +245,7 @@ type ButtonProps = {
   onPress: () => void | Promise<void>;
   variant?: 'primary' | 'secondary' | 'quiet' | 'danger';
   disabled?: boolean;
+  expanded?: boolean;
   icon?: string | React.ReactNode;
   style?: StyleProp<ViewStyle>;
   testID?: string;
@@ -255,6 +256,7 @@ export function Button({
   onPress,
   variant = 'primary',
   disabled = false,
+  expanded,
   icon,
   style,
   testID,
@@ -270,7 +272,8 @@ export function Button({
   return (
     <IdlePressable
       accessibilityRole="button"
-      accessibilityState={{ disabled }}
+      accessibilityState={{ disabled, expanded }}
+      aria-expanded={expanded}
       disabled={disabled}
       onPress={onPress}
       testID={testID}

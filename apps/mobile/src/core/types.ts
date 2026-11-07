@@ -1,4 +1,5 @@
 import type { EvmNetworkId } from '../custody/networkContext.ts';
+import type { UtxoSysxBalance } from './utxoBalanceReader.ts';
 import type { UtxoNetworkId } from './utxoNetworks.ts';
 export type { EvmNetworkId } from '../custody/networkContext.ts';
 
@@ -26,7 +27,7 @@ export type PublicBalance =
   | Readonly<{ status: 'loading' }>
   | Readonly<{ status: 'available'; units: string; updatedAt: number }>
   | Readonly<{ status: 'available'; kind: 'utxo'; units: string; updatedAt: number;
-      pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number }>
+      pendingDeltaUnits: string; unconfirmedTransactions: number; observedHeight: number; sysx?: UtxoSysxBalance }>
   | Readonly<{ status: 'error'; message: string }>;
 
 export type WalletCapabilities = Readonly<{

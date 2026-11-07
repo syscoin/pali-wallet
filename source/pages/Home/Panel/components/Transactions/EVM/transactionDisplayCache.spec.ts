@@ -84,3 +84,13 @@ describe('transaction display cache isolation', () => {
     }
   });
 });
+
+it('invalidates when the SDK data alias changes on the same hash', () => {
+  const transaction = { ...base.transaction, input: undefined, data: '0x00' };
+  expect(getTransactionDisplayCacheKey({ ...base, transaction })).not.toBe(
+    getTransactionDisplayCacheKey({
+      ...base,
+      transaction: { ...transaction, data: '0x01' },
+    })
+  );
+});

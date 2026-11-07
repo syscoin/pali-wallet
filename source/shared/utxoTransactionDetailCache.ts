@@ -1,7 +1,22 @@
-import { measureJsonWorkBudget } from '../utils/requestPayloadBudget.ts';
+import {
+  assertJsonWorkBudget,
+  measureJsonWorkBudget,
+} from '../utils/requestPayloadBudget.ts';
 
 // Shared retention budget, independent of provider response limits.
 export const UTXO_DETAIL_CACHE_BYTES = 8 * 1024 * 1024;
+export const UTXO_DETAIL_RESPONSE_BYTES = 1024 * 1024;
+export const UTXO_DETAIL_RESPONSE_NODES = 20_000;
+
+export function assertUtxoDetailPayloadBudget(value: unknown): void {
+  assertJsonWorkBudget(
+    value,
+    UTXO_DETAIL_RESPONSE_BYTES,
+    16,
+    UTXO_DETAIL_RESPONSE_NODES
+  );
+}
+
 class HistoryReadQueueFullError extends Error {}
 
 // Account history and the raw transaction have the same input/output ordering.
@@ -22,7 +37,9 @@ export const mergeAccountOwnershipFlags = (
 };
 
 /** One queue/cache implementation; each native authority owns its lifetime. */
-export const createUtxoTransactionDetailsCache = () => {
+export const createUtxoTransactionDetailsCache = (
+  shouldRetain: (data: any) => boolean = () => true
+) => {
   // Details fetches full transactions; list rows only reuse this bounded memory
   // cache. Never fetch a full body just to fill a compact history row.
   const cache = new Map<
@@ -161,12 +178,13 @@ export const createUtxoTransactionDetailsCache = () => {
             // Uncacheable full bodies still reach the selected Details consumer.
             let bytes: number | undefined;
             try {
-              bytes = measureJsonWorkBudget(
-                data,
-                UTXO_DETAIL_CACHE_BYTES,
-                32,
-                200_000
-              );
+              if (shouldRetain(data))
+                bytes = measureJsonWorkBudget(
+                  data,
+                  UTXO_DETAIL_CACHE_BYTES,
+                  32,
+                  200_000
+                );
             } catch {
               /* Display without retention. */
             }
@@ -286,11 +304,3 @@ export const createUtxoTransactionDetailsCache = () => {
     dispose,
   });
 };
-
-// Existing extension callers keep their process-owned singleton.
-export const {
-  getCachedUtxoTransactionDetails,
-  readUtxoTransactionDetails,
-  subscribeUtxoTransactionDetails,
-  watchUtxoTransactionDetails,
-} = createUtxoTransactionDetailsCache();

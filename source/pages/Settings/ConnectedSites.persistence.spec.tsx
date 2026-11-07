@@ -172,7 +172,7 @@ beforeEach(async () => {
     () => walletUnlocked,
     () => walletGeneration
   );
-  controller.setup({ url: HOST } as chrome.runtime.MessageSender);
+  controller.setup({ url: HOST, origin: HOST } as chrome.runtime.MessageSender);
   mockEmitter.mockImplementation((methods: string[], params: any[]) => {
     expect(methods).toEqual(['dapp', 'disconnect']);
     return controller.disconnect(...(params as [string, boolean?, any?]));

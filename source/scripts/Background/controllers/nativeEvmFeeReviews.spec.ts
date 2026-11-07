@@ -14,9 +14,10 @@ const params = {
   data: '0x',
   gasLimit: '25200',
   gasPrice: '10',
+  nonce: 0,
 };
-const capture = () =>
-  captureReviewedNativeEvmTransfer(
+const capture = () => ({
+  ...captureReviewedNativeEvmTransfer(
     params,
     true,
     '252000',
@@ -25,7 +26,9 @@ const capture = () =>
     {},
     'scope',
     0
-  );
+  ),
+  walletNonce: { nonce: 0, source: 'automatic' as const },
+});
 
 it('consumes the background-owned review once and rejects another owner', () => {
   const owner = {},

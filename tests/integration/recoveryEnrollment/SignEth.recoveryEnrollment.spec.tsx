@@ -254,6 +254,7 @@ async function sign(
       documentId: 'recovery-enrollment-dapp',
       tab: { id: 1 } as chrome.tabs.Tab,
       url: mockQuery.host,
+      origin: mockQuery.host,
     },
   });
   const original = { ...mockQuery };

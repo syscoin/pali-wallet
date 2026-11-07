@@ -10,6 +10,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import {
+  SYSX_ASSET_DECIMALS,
+  SYSX_ASSET_GUID,
+} from '../../../../source/shared/syscoinAssetIds';
+
 import { formatBaseUnits } from '../core/amounts';
 import {
   Button,
@@ -25,7 +30,11 @@ import {
 import { IdleTextInput } from './IdleActivityBoundary';
 
 import type { UtxoNetwork } from '../core/utxoNetworks';
-import type { NativeUtxoReview, NativeUtxoSend } from '../custody/utxoSend';
+import type {
+  NativeUtxoAsset,
+  NativeUtxoReview,
+  NativeUtxoSend,
+} from '../custody/utxoSend';
 
 type Outcome = Readonly<{
   txid: string;
@@ -38,23 +47,24 @@ function describe(error: unknown): string {
     return 'Enter a valid address and amount for this network.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'This review is no longer available. Open a new review to continue.';
-  if (
-    error &&
-    typeof error === 'object' &&
-    'code' in error &&
-    error.code === 'UTXO_SIGNED_OUTPOINT_PENDING'
-  )
-    return 'A saved transfer uses these funds. Check its status before sending again.';
+  if (error && typeof error === 'object' && 'code' in error) {
+    if (error.code === 'UTXO_SIGNED_OUTPOINT_PENDING')
+      return 'A saved transfer uses these funds. Check its status before sending again.';
+    if (error.code === 'UTXO_POSSIBLE_SENTRY_COLLATERAL')
+      return 'This transfer would spend a possible Sentry collateral output.';
+  }
   return 'Pali could not complete this request. Try again or check your saved transfers.';
 }
 
 export function NativeUtxoSendScreen({
   accountLabel,
+  asset,
   network,
   open,
   onBack,
 }: {
   accountLabel: string;
+  asset?: NativeUtxoAsset;
   network: UtxoNetwork;
   open(assertCurrent: () => void): Promise<NativeUtxoSend>;
   onBack(): void;
@@ -153,9 +163,23 @@ export function NativeUtxoSendScreen({
         if (current()) setBusy(false);
       });
   };
-  const symbol = network.symbol;
+  const symbol = asset?.symbol ?? network.symbol;
   const units = (value: string) =>
-    `${formatBaseUnits(value, network.decimals)} ${symbol}`;
+    `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
+  const assetUnits = ({
+    assetGuid,
+    rawAmount,
+  }: NonNullable<NativeUtxoReview['outputs'][number]['asset']>) => {
+    const display = review?.assetDisplay;
+    if (display?.assetGuid === assetGuid)
+      return `${formatBaseUnits(rawAmount, display.decimals)} ${
+        display.symbol
+      }`;
+    if (assetGuid === SYSX_ASSET_GUID)
+      return `${formatBaseUnits(rawAmount, SYSX_ASSET_DECIMALS)} SYSX`;
+    return `${rawAmount} base units · Asset ${assetGuid}`;
+  };
+  const recipient = review?.outputs[0];
   const subtitle = `${accountLabel} · ${network.name}${
     network.testnet ? ' · Test network' : ''
   }`;
@@ -172,7 +196,12 @@ export function NativeUtxoSendScreen({
       disabled={!send || busy || !address.trim() || !(amount || max)}
       onPress={() => {
         run(async (current) => {
-          const next = await send!.prepare({ recipient: address, amount, max });
+          const next = await send!.prepare({
+            recipient: address,
+            amount,
+            max,
+            asset,
+          });
           if (current()) setReview(next);
         });
       }}
@@ -271,12 +300,32 @@ export function NativeUtxoSendScreen({
           ) : review ? (
             <>
               <View style={s.hero}>
-                <Coin id={network.symbol} size={46} />
+                <Coin
+                  id={
+                    recipient?.asset
+                      ? review.assetDisplay?.symbol ??
+                        (recipient.asset.assetGuid === SYSX_ASSET_GUID
+                          ? 'SYSX'
+                          : 'asset')
+                      : network.symbol
+                  }
+                  fallbackSymbol={
+                    recipient?.asset
+                      ? review.assetDisplay?.symbol ??
+                        (recipient.asset.assetGuid === SYSX_ASSET_GUID
+                          ? 'SYSX'
+                          : 'SPT')
+                      : undefined
+                  }
+                  size={46}
+                />
                 <Text style={s.amount}>
-                  {units(review.outputs[0]!.amountSatoshis)}
+                  {recipient?.asset
+                    ? assetUnits(recipient.asset)
+                    : units(recipient!.amountSatoshis)}
                 </Text>
               </View>
-              <Card style={s.card}>
+              <Card style={s.insetCard}>
                 <Text style={styles.muted}>
                   {review.retryTxid ? 'Output 1' : 'Recipient'}
                 </Text>
@@ -285,8 +334,26 @@ export function NativeUtxoSendScreen({
                   style={s.address}
                   testID="native-utxo-recipient"
                 >
-                  {review.outputs[0]!.address}
+                  {recipient!.address}
                 </Text>
+                {recipient?.asset && (
+                  <>
+                    <Text style={styles.muted}>Asset ID</Text>
+                    <Text>{recipient.asset.assetGuid}</Text>
+                    <Text style={styles.muted}>
+                      Native amount sent with asset
+                    </Text>
+                    <Text>{units(recipient.amountSatoshis)}</Text>
+                  </>
+                )}
+                {review.retryProviderOrigin && (
+                  <>
+                    <Text style={styles.muted}>Original provider</Text>
+                    <Text selectable style={s.address}>
+                      {review.retryProviderOrigin}
+                    </Text>
+                  </>
+                )}
                 <Text style={styles.muted}>Network fee</Text>
                 <Text testID="native-utxo-fee">
                   {units(review.feeSatoshis)}
@@ -297,6 +364,7 @@ export function NativeUtxoSendScreen({
                       {review.retryTxid ? `Output ${index + 2}` : 'Change'} ·{' '}
                       {units(output.amountSatoshis)}
                     </Text>
+                    {output.asset && <Text>{assetUnits(output.asset)}</Text>}
                     <Text selectable style={s.address}>
                       {output.address}
                     </Text>
@@ -307,7 +375,7 @@ export function NativeUtxoSendScreen({
             </>
           ) : (
             <>
-              <Card style={s.card}>
+              <Card style={s.insetCard}>
                 <Text style={styles.muted}>Recipient address</Text>
                 <IdleTextInput
                   accessibilityLabel="Recipient address"
@@ -335,15 +403,17 @@ export function NativeUtxoSendScreen({
                   maxLength={40}
                   style={s.input}
                 />
-                <Button
-                  title={max ? 'Enter amount' : 'Use maximum'}
-                  variant="quiet"
-                  disabled={busy}
-                  onPress={() => setMax(!max)}
-                />
+                {!asset && (
+                  <Button
+                    title={max ? 'Enter amount' : 'Use maximum'}
+                    variant="quiet"
+                    disabled={busy}
+                    onPress={() => setMax(!max)}
+                  />
+                )}
               </Card>
               {saved.length > 0 && (
-                <Card style={s.card}>
+                <Card style={s.insetCard}>
                   <Text style={styles.muted}>Saved transfers</Text>
                   {saved.slice(0, savedLimit).map(({ txid, accepted }) => (
                     <Button
@@ -389,6 +459,7 @@ const s = StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   flex: { flex: 1 },
   card: { gap: 12 },
+  insetCard: { gap: 12, padding: 16 },
   hero: { alignItems: 'center', gap: 12, paddingVertical: 12 },
   amount: { textAlign: 'center', fontSize: 28, fontWeight: '700' },
   address: {

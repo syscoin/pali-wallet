@@ -150,8 +150,8 @@ const initializeSysFixture = async () => {
       },
     } as any)
   );
-  dapp.setup({ url: HOST + '/page' });
-  dapp.setup({ url: OTHER + '/page' });
+  dapp.setup({ url: HOST + '/page', origin: HOST });
+  dapp.setup({ url: OTHER + '/page', origin: OTHER });
   const provider = new PaliInpageProviderSys();
   await new Promise<void>((resolve) =>
     provider.once('_sysInitialized', resolve)
@@ -257,8 +257,8 @@ beforeEach(() => {
     () => wallet.walletStateGeneration
   );
   jest.mocked(getController).mockReturnValue({ wallet, dapp } as any);
-  dapp.setup({ url: HOST + '/page' });
-  dapp.setup({ url: OTHER + '/page' });
+  dapp.setup({ url: HOST + '/page', origin: HOST });
+  dapp.setup({ url: OTHER + '/page', origin: OTHER });
   listeners = [];
   const add = window.addEventListener.bind(window);
   jest

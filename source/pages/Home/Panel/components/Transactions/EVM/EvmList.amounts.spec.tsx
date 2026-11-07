@@ -347,3 +347,64 @@ it('renders a known ERC20 integer beyond Number precision exactly', async () => 
   );
   expect(await screen.findByText('9007199254740993 EXACT')).toBeTruthy();
 });
+
+it('renders a retained signed token transfer with saved metadata instead of 0 native', async () => {
+  mockRows = [
+    {
+      ...tokenEvent({ decimals: 6, value: '6000000', symbol: 'TST' }),
+      historySource: 'local-signed',
+      input: undefined,
+      dataBytes: 68,
+      blockNumber: undefined,
+      confirmations: 0,
+    },
+  ];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('6.0 TST')).toBeTruthy();
+  expect(screen.queryByText('0 ETH')).toBeNull();
+  expect(screen.getByText('send.sent')).toBeTruthy();
+});
+
+it('does not report a native amount when a retained token has unknown metadata', async () => {
+  mockRows = [
+    {
+      ...tokenEvent({ value: '6000000' }),
+      historySource: 'local-signed',
+      input: undefined,
+      dataBytes: 68,
+      blockNumber: undefined,
+      confirmations: 0,
+    },
+  ];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('? 0x3333...3333')).toBeTruthy();
+  expect(screen.queryByText('0 ETH')).toBeNull();
+  expect(screen.queryByText('6000000 ETH')).toBeNull();
+});
+
+it('renders an SDK data-only submitted ERC-20 row with imported metadata instead of 0 native', async () => {
+  mockVault.accountAssets.HDAccount[0].ethereum = [
+    { chainId: 1, contractAddress: CONTRACT, decimals: 6, tokenSymbol: 'TST' },
+  ] as any;
+  const data =
+    id('transfer(address,uint256)').slice(0, 10) +
+    defaultAbiCoder
+      .encode(['address', 'uint256'], [TARGET, '6000000'])
+      .slice(2);
+  mockRows = [
+    {
+      hash: `0x${'a'.repeat(64)}`,
+      chainId: 1,
+      from: ACCOUNT,
+      to: CONTRACT,
+      value: { type: 'BigNumber', hex: '0x00' },
+      data,
+      timestamp: 1791655200,
+      nonce: '7',
+      confirmations: 0,
+    },
+  ];
+  render(<EvmTransactionsList userTransactions={mockRows} />);
+  expect(await screen.findByText('6 TST')).toBeTruthy();
+  expect(screen.queryByText('0 ETH')).toBeNull();
+});

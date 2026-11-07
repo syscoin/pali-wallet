@@ -270,12 +270,13 @@ export const handleListeners = (masterController: IMasterController) => {
       const wallet = currentMasterController.wallet;
       watchWalletTokenReview(
         port,
-        (request, persistentTab) =>
-          wallet.captureWalletTokenReview(request, persistentTab),
+        (request, persistentTab, signal) =>
+          wallet.captureWalletTokenReview(request, persistentTab, signal),
         (payload, approval) =>
           wallet.sendAndSaveTokenTransaction(
             payload,
             Object.freeze({
+              nonce: approval.nonce,
               signal: approval.signal,
               assertCurrent: () => {
                 if (wallet !== currentMasterController.wallet)

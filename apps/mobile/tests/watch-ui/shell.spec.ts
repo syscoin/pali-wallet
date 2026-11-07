@@ -392,3 +392,207 @@ test('all four labels remain whole, operable and unclipped at 320px with large b
     }
   }
 });
+
+
+// RN Web does not apply native font scaling, so scale each rendered text node
+// from its own computed size. The fixture independently sets Dimensions before
+// this screen mounts to exercise the same responsive branch as native.
+async function scaleVisibleText(page: Page, scale = 1.6) {
+  await page.evaluate((factor) => {
+    const values = Array.from(document.querySelectorAll<HTMLElement>('[dir="auto"]'))
+      .filter((element) => !element.hasAttribute('data-qa-font-scaled'))
+      .map((element) => {
+        const style = getComputedStyle(element);
+        return { element, font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) };
+      });
+    for (const { element, font, line } of values) {
+      element.setAttribute('data-qa-font-scaled', 'true');
+      if (Number.isFinite(font)) element.style.setProperty('font-size', `${font * factor}px`, 'important');
+      if (Number.isFinite(line)) element.style.setProperty('line-height', `${line * factor}px`, 'important');
+    }
+  }, scale);
+}
+
+async function expectWholeLabel(page: Page, label: string) {
+  const text = page.getByRole('button', { name: label, exact: true }).getByText(label, { exact: true });
+  const lines = await text.evaluate((element) => {
+    const range = document.createRange(); range.selectNodeContents(element);
+    return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size;
+  });
+  expect(lines, `${label} should not split across lines`).toBe(1);
+}
+
+test('watch portfolio stacks controls and frees the header at 320px with font scale 1.6', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?font-scale=1.6');
+  expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1.6);
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  const subtitle = page.getByText('Shared address watch · Watch-only', { exact: true });
+  await expect(subtitle).toBeVisible();
+  await scaleVisibleText(page);
+
+  const heading = page.getByRole('heading', { name: 'Wallet', exact: true });
+  const headerBottom = await heading.evaluate((element) => element.parentElement!.parentElement!.getBoundingClientRect().bottom);
+  const accounts = page.getByRole('button', { name: 'Accounts', exact: true });
+  expect((await accounts.boundingBox())!.y).toBeGreaterThanOrEqual(headerBottom - 1);
+  const splitWords = await subtitle.evaluate((element) => {
+    const node = element.firstChild;
+    if (!node || node.nodeType !== Node.TEXT_NODE) return ['missing text'];
+    const content = node.textContent ?? '';
+    return Array.from(content.matchAll(/[A-Za-z]+/g)).filter((match) => {
+      const range = document.createRange(); range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
+      return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size !== 1;
+    }).map((match) => match[0]);
+  });
+  expect(splitWords).toEqual([]);
+  const receive = page.getByRole('button', { name: 'Receive', exact: true });
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
+  const receiveBox = (await receive.boundingBox())!; const refreshBox = (await refresh.boundingBox())!;
+  expect(receiveBox.width).toBeGreaterThan(250); expect(refreshBox.width).toBeGreaterThan(250);
+  expect(refreshBox.y).toBeGreaterThanOrEqual(receiveBox.y + receiveBox.height);
+  await expectWholeLabel(page, 'Receive'); await expectWholeLabel(page, 'Refresh');
+
+  await receive.click();
+  await expect(page.getByRole('heading', { name: 'Receive ETH', exact: true })).toBeVisible();
+  await scaleVisibleText(page);
+  const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+  const share = page.getByRole('button', { name: 'Share address', exact: true });
+  const copyBox = (await copy.boundingBox())!; const shareBox = (await share.boundingBox())!;
+  expect(copyBox.width).toBeGreaterThan(250); expect(shareBox.width).toBeGreaterThan(250);
+  expect(shareBox.y).toBeGreaterThanOrEqual(copyBox.y + copyBox.height);
+  await expectWholeLabel(page, 'Copy address'); await expectWholeLabel(page, 'Share address');
+});
+
+test('watch portfolio retains the side-by-side controls at normal font scale', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await openWatch(page);
+  expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1);
+  const accounts = (await page.getByRole('button', { name: 'Accounts', exact: true }).boundingBox())!;
+  const title = (await page.getByRole('heading', { name: 'Wallet', exact: true }).boundingBox())!;
+  expect(accounts.y).toBeLessThan(title.y + title.height + 30);
+  const receive = (await page.getByRole('button', { name: 'Receive', exact: true }).boundingBox())!;
+  const refresh = (await page.getByRole('button', { name: 'Refresh', exact: true }).boundingBox())!;
+  expect(Math.abs(receive.y - refresh.y)).toBeLessThanOrEqual(1);
+  expect(refresh.x).toBeGreaterThan(receive.x + receive.width - 1);
+  await page.getByRole('button', { name: 'Receive', exact: true }).click();
+  const copy = (await page.getByRole('button', { name: 'Copy address', exact: true }).boundingBox())!;
+  const share = (await page.getByRole('button', { name: 'Share address', exact: true }).boundingBox())!;
+  expect(Math.abs(copy.y - share.y)).toBeLessThanOrEqual(1);
+  expect(share.x).toBeGreaterThan(copy.x + copy.width - 1);
+});
+
+
+test('watch actions remain whole and side by side at 320px with font scale 1.3', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?font-scale=1.3');
+  expect(await page.evaluate(() => window.__watchFixture.fontScale())).toBe(1.3);
+  await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+  await expect(page.getByText('Shared address watch · Watch-only', { exact: true })).toBeVisible();
+  await scaleVisibleText(page, 1.3);
+  const receive = page.getByRole('button', { name: 'Receive', exact: true });
+  const refresh = page.getByRole('button', { name: 'Refresh', exact: true });
+  await expectWholeLabel(page, 'Receive'); await expectWholeLabel(page, 'Refresh');
+  const receiveBox = (await receive.boundingBox())!; const refreshBox = (await refresh.boundingBox())!;
+  expect(Math.abs(receiveBox.y - refreshBox.y)).toBeLessThanOrEqual(1);
+  expect(refreshBox.x).toBeGreaterThanOrEqual(receiveBox.x + receiveBox.width - 1);
+  // Capture a real scroll offset on the home view before changing modes.
+  // The following viewport assertions must precede any locator click, focus or
+  // scrollIntoView that could hide an inherited offset.
+  const previousScroll = await receive.evaluate((element) => {
+    let parent = element.parentElement;
+    while (parent && !(parent.scrollHeight > parent.clientHeight && /(auto|scroll)/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+    if (!parent) return 0;
+    parent.scrollTop = Math.min(180, parent.scrollHeight - parent.clientHeight);
+    return parent.scrollTop;
+  });
+  expect(previousScroll).toBeGreaterThan(0);
+  await receive.click();
+  await expect(page.getByRole('heading', { name: 'Receive ETH', exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+  await scaleVisibleText(page, 1.3);
+  const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+  const share = page.getByRole('button', { name: 'Share address', exact: true });
+  const copyBox = (await copy.boundingBox())!; const shareBox = (await share.boundingBox())!;
+  expect(Math.abs(copyBox.y - shareBox.y)).toBeLessThanOrEqual(1);
+  expect(shareBox.x).toBeGreaterThanOrEqual(copyBox.x + copyBox.width - 1);
+  for (const label of ['Copy address', 'Share address']) {
+    const text = page.getByRole('button', { name: label, exact: true }).getByText(label, { exact: true });
+    const splitWords = await text.evaluate((element) => {
+      const node = element.firstChild;
+      if (!node || node.nodeType !== Node.TEXT_NODE) return ['missing text'];
+      return Array.from((node.textContent ?? '').matchAll(/[A-Za-z]+/g)).filter((match) => {
+        const range = document.createRange();
+        range.setStart(node, match.index!); range.setEnd(node, match.index! + match[0].length);
+        return new Set(Array.from(range.getClientRects()).map((rect) => Math.round(rect.top))).size !== 1;
+      }).map((match) => match[0]);
+    });
+    expect(splitWords).toEqual([]);
+  }
+});
+
+for (const scale of [1, 1.6]) {
+  for (const outcome of ['success', 'failure'] as const) {
+    test(`watch Receive ${outcome} feedback stays beside actions at ${scale} text scale`, async ({ page }, testInfo) => {
+      await page.setViewportSize({ width: 320, height: 740 });
+      await page.goto(scale === 1 ? '/' : '/?font-scale=1.6');
+      await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      if (scale !== 1) await scaleVisibleText(page, scale);
+      await page.evaluate((fail) => {
+        navigator.clipboard.writeText = async () => { if (fail) throw Error('fixture denied'); };
+        if (fail) document.execCommand = () => { throw Error('fixture denied'); };
+      }, outcome === 'failure');
+      const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+      await copy.click();
+      const message = page.getByText(outcome === 'success' ? 'Ethereum address copied.' : 'Could not copy this address. Try again.', { exact: true });
+      await expect(message).toBeVisible();
+      if (scale !== 1) await scaleVisibleText(page, scale);
+      await expect(message).toHaveAttribute('aria-live', 'polite');
+      if (outcome === 'failure') await expect(message).toHaveAttribute('role', 'alert');
+      const status = (await message.boundingBox())!, button = (await copy.boundingBox())!;
+      expect(status.y).toBeGreaterThanOrEqual(0);
+      expect(status.y + status.height).toBeLessThanOrEqual(button.y);
+      await expect(message).toBeInViewport({ ratio: 1 });
+      await expect(copy).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: testInfo.outputPath(`watch-receive-${outcome}-${scale}.png`) });
+    });
+  }
+}
+
+for (const { width, height } of [{ width: 320, height: 360 }, { width: 844, height: 390 }]) {
+  for (const scale of [1, 1.6]) {
+    test(`watch Receive failure controls stay reachable at ${width}x${height} and ${scale} text scale`, async ({ page }, testInfo) => {
+
+      await page.setViewportSize({ width, height });
+      await page.goto(scale === 1 ? '/' : '/?font-scale=1.6');
+      await page.getByRole('button', { name: 'View my accounts', exact: true }).click();
+      await page.getByRole('button', { name: 'Receive', exact: true }).click();
+      const scaleText = async () => page.evaluate((factor) => {
+        const values = Array.from(document.querySelectorAll<HTMLElement>('[dir="auto"]'))
+          .filter((element) => !element.hasAttribute('data-qa-font-scaled'))
+          .map((element) => { const style = getComputedStyle(element); return { element, font: parseFloat(style.fontSize), line: parseFloat(style.lineHeight) }; });
+        for (const { element, font, line } of values) {
+          element.setAttribute('data-qa-font-scaled', 'true');
+          if (Number.isFinite(font)) element.style.setProperty('font-size', `${font * factor}px`, 'important');
+          if (Number.isFinite(line)) element.style.setProperty('line-height', `${line * factor}px`, 'important');
+        }
+      }, scale);
+      if (scale !== 1) await scaleText();
+      await page.evaluate(() => {
+        navigator.clipboard.writeText = async () => { throw Error('fixture denied'); };
+        document.execCommand = () => { throw Error('fixture denied'); };
+      });
+      const copy = page.getByRole('button', { name: 'Copy address', exact: true });
+      await copy.click();
+      const message = page.getByText('Could not copy this address. Try again.', { exact: true });
+      await expect(message).toBeVisible();
+      if (scale !== 1) await scaleText();
+      await expect(message).toBeInViewport({ ratio: 1 });
+      await expect(copy).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Share address', exact: true })).toBeInViewport({ ratio: 1 });
+      await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeInViewport({ ratio: 1 });
+      await page.screenshot({ path: testInfo.outputPath(`watch-receive-${width}x${height}-${scale}.png`) });
+    });
+  }
+}

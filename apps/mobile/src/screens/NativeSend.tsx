@@ -1,5 +1,6 @@
-import { IdleTextInput } from './IdleActivityBoundary';
+import { IdlePressable, IdleTextInput } from './IdleActivityBoundary';
 import React, {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -11,17 +12,28 @@ import {
   BackHandler,
   Keyboard,
   KeyboardAvoidingView,
+  Modal,
   Platform,
+  ScrollView,
   StyleSheet,
   View,
+  type TextInputProps,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
 import {
   formatTokenUnits,
+  parseErc20Units,
   type Erc20Metadata,
 } from '../../../../source/shared/erc20';
-import type { NativeTransferView } from '../custody/transfers';
+import {
+  findLocalEvmRecipientChoices,
+  type EvmRecipientChoice,
+} from '../../../../source/shared/evmRecipientChoices';
+import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE, type NativeTransferView } from '../custody/transfers';
+import type { NativeReplacementMode } from '../custody/transferRpc';
+import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
   type NativeSendContext,
 } from '../custody/networkContext';
@@ -37,27 +49,54 @@ import {
   Text,
 } from '../ui';
 
-const failure = (error: unknown, context: NativeSendContext, token = false, hasSavedTransaction = false, cancellation = false) => {
+const failure = (
+  error: unknown,
+  context: NativeSendContext,
+  asset: 'coin' | 'token' | 'collectible',
+  hasSavedTransaction: boolean,
+  cancellation: boolean
+) => {
   const code = error instanceof Error ? error.message : '';
+  if (code === 'SIGNED_STORAGE_FULL') return hasSavedTransaction ? SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE : SIGNED_STORAGE_FULL_MESSAGE;
+  if (code === 'CANCELLATION_QUEUED')
+    return hasSavedTransaction
+      ? 'Your signed transaction is saved. It must wait for earlier transactions. Check Activity before retrying.'
+      : 'This cancellation must wait for earlier transactions. Check Activity before trying again.';
+  if (code === 'INVALID_NONCE') return 'Enter a valid whole number for the nonce.';
+  if (code === 'NONCE_RETAINED') return 'A saved transaction uses this nonce. Choose another nonce or check Activity.';
+  if (code === 'NONCE_UNAVAILABLE')
+    return hasSavedTransaction ? 'Check the saved transaction in Activity.'
+      : 'This nonce has already been used on-chain. Choose another or leave it blank.';
   if (code === 'INVALID_INPUT')
-    return `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
-      context.name
-    } address and an amount greater than zero.`;
+    return asset === 'collectible'
+      ? `Enter a valid ${context.name} recipient address.`
+      : `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
+          context.name
+        } address and an amount greater than zero.`;
+  if (code === 'ASSET_STATE_WAIT')
+    return hasSavedTransaction
+      ? ASSET_STATE_SAVED_MESSAGE
+      : ASSET_STATE_WAIT_MESSAGE;
   if (code === 'EXPIRED')
     return hasSavedTransaction
-      ? 'A signed transaction was saved before the review expired. Check it before sending again.'
+      ? 'Your signed transaction is saved. Check it before sending again.'
       : cancellation ? 'This cancellation is unavailable. Check the original transaction or try again.'
       : 'Network conditions changed or this review expired. Review the transfer again.';
-  if (code === 'INSUFFICIENT_BALANCE')
-    return token || cancellation
+  if (code === 'INSUFFICIENT_BALANCE') {
+    if (asset === 'collectible')
+      return `Not enough ${context.symbol} for the execution fee limit.`;
+    return asset !== 'coin' || cancellation
       ? `Not enough ${context.symbol} for the maximum network fee.`
       : `Not enough ${context.symbol} for the amount and maximum network fee.`;
+  }
   if (code === 'INSUFFICIENT_TOKEN_BALANCE')
     return 'Not enough tokens for this transfer.';
   if (code === 'TOKEN_CHANGED')
     return 'Token precision changed. Review the token before sending again.';
   if (code === 'TOKEN_TRANSFER_REJECTED')
     return 'The token contract rejected this transfer.';
+  if (['COLLECTIBLE_CHANGED', 'INSUFFICIENT_NFT_BALANCE', 'NFT_TRANSFER_REJECTED'].includes(code))
+    return ''; // Show the controller's specific collectible error.
   if (code === 'BUSY') return 'Wait for the current request to finish.';
   if (code === 'CANCELLED' || code === 'NOT_READY')
     return 'Your wallet was locked. Unlock to continue.';
@@ -67,45 +106,136 @@ const failure = (error: unknown, context: NativeSendContext, token = false, hasS
     : 'This request could not be completed. Try again or check Activity for an existing transaction.';
 };
 
+export type NativeRecipientPicker = Readonly<{
+  accounts(): readonly EvmRecipientChoice[];
+  current(): boolean;
+}>;
+
+type RecipientPickerSession = Readonly<{
+  owner: NativeRecipientPicker;
+  accounts: readonly EvmRecipientChoice[];
+}>;
+
+function SendInput({ label, value, onChange, onEdit, busy, keyboardType = 'default', max = 1024, placeholder }: {
+  label: string;
+  value: string;
+  onChange(value: string): void;
+  onEdit?(): void;
+  busy: boolean;
+  keyboardType?: TextInputProps['keyboardType'];
+  max?: number;
+  placeholder?: string;
+}) {
+  return (
+    <View style={s.field}>
+      <Text style={s.label}>{label}</Text>
+      <IdleTextInput
+        accessibilityLabel={label}
+        value={value}
+        onChangeText={(next) => {
+          onChange(next);
+          onEdit?.();
+        }}
+        editable={!busy}
+        autoCapitalize="none"
+        autoCorrect={false}
+        spellCheck={false}
+        autoComplete="off"
+        importantForAutofill="noExcludeDescendants"
+        textContentType="none"
+        keyboardType={keyboardType}
+        maxLength={max}
+        placeholder={placeholder}
+        placeholderTextColor={colors.muted}
+        selectionColor={colors.pink}
+        style={s.input}
+      />
+    </View>
+  );
+}
+
 export function NativeSend({
   controller,
   onBack,
   accountLabel = 'Account 1',
   token,
+  collectible,
   context,
   savedHash,
-  cancellationHash,
+  replacement,
+  recipientPicker,
 }: {
   controller: NativeTransferView;
   onBack(): void;
   accountLabel?: string;
   token?: Erc20Metadata;
+  collectible?: SavedCollectible;
   context: NativeSendContext;
   savedHash?: string;
-  cancellationHash?: string;
+  recipientPicker?: NativeRecipientPicker;
+  replacement?: Readonly<{ hash: string; mode: NativeReplacementMode | 'cancel-saved' }>;
 }) {
   const snapshot = useSyncExternalStore(
     (listener) => controller.subscribe(listener),
     () => controller.getSnapshot(),
     () => controller.getSnapshot()
   );
-  const [recipient, setRecipient] = useState('');
-  const [amount, setAmount] = useState('');
+  const draftCollectible = savedHash || token ? undefined : collectible;
+  const initialAmount = draftCollectible?.tokenStandard === 'ERC-1155' ? '1' : '';
+  const [recipientDraft, setRecipientDraft] = useState<{
+    value: string;
+    owner?: NativeRecipientPicker;
+  }>({ value: '' });
+  const recipient = recipientDraft.owner && recipientDraft.owner !== recipientPicker
+    ? '' : recipientDraft.value;
+  const setRecipient = (value: string) => setRecipientDraft({ value });
+  const activePicker = useRef<RecipientPickerSession | null>(null);
+  const [openPicker, setOpenPicker] = useState<Readonly<{
+    session: RecipientPickerSession;
+    query: string;
+  }> | null>(null);
+  const picker = openPicker?.session.owner === recipientPicker ? openPicker : null;
+  const recipientChoices = picker
+    ? findLocalEvmRecipientChoices(picker.session.accounts, picker.query)
+    : [];
+  const retirePicker = useCallback(() => {
+    activePicker.current = null;
+    setOpenPicker(null);
+  }, []);
+  const [amount, setAmount] = useState(initialAmount);
+  const [tokenId, setTokenId] = useState('');
+  const [advanced, setAdvanced] = useState(false);
+  const [nonce, setNonce] = useState('');
   const [error, setError] = useState('');
+  const [leavePrompt, setLeavePrompt] = useState<{ review: typeof snapshot.review; fallback: typeof snapshot | null } | null>(null);
+  const leaving = useRef(false);
   const lifetime = useRef({ alive: true, epoch: 0 });
+  const pickerIsCurrent = (session: RecipientPickerSession) =>
+    lifetime.current.alive && activePicker.current === session && session.owner.current();
   const latestBack = useRef(onBack);
   useLayoutEffect(() => {
     latestBack.current = onBack;
   }, [onBack]);
   const busy = ['preparing', 'signing', 'submitting'].includes(snapshot.phase);
+  const promptMatches = (current: typeof snapshot) => !!leavePrompt &&
+    current.phase === 'submitting' && current.review === leavePrompt.review &&
+    (leavePrompt.review !== null || current === leavePrompt.fallback);
   const review = snapshot.review;
+  const replacementHash = replacement?.hash;
+  const replacementMode = replacement?.mode;
+  const cancellation = replacementMode === 'cancel' || replacementMode === 'cancel-saved';
+  const prepareReplacement = replacementMode === 'cancel-saved' ? controller.prepareSavedCancellation
+    : cancellation ? controller.prepareCancellation : controller.prepareSpeedUp;
+  const reviewCancellation = review?.replacement?.mode === 'cancel';
   const capturedContext = review?.context ?? snapshot.context ?? context;
   const networkLabel = `${capturedContext.name}${
     capturedContext.testnet ? ' · Test network' : ''
   }`;
   const reviewedToken = review?.intent?.token;
+  const reviewedCollectible = review?.collectible;
   const outcomeToken = snapshot.intent?.token;
-  const amountText = review
+  const outcomeCollectible = snapshot.collectible;
+  const amountText = review && !reviewedCollectible
     ? reviewedToken
       ? formatTokenUnits(review.amountUnits, reviewedToken.decimals)
       : formatBaseUnits(review.amountUnits, 18)
@@ -126,28 +256,83 @@ export function NativeSend({
       <Text style={s.hint}>Custom token · Unverified issuer metadata</Text>
     </Card>
   );
-  const close = () => {
+  const collectibleIdentity = (asset: {
+    contractAddress: string;
+    tokenStandard: SavedCollectible['tokenStandard'];
+    tokenId?: string;
+    amountUnits?: string;
+  }) => (
+    <Card style={s.summary}>
+      <Text style={s.label}>COLLECTIBLE CONTRACT · {asset.tokenStandard}</Text>
+      <Text selectable style={s.address} testID="native-send-collectible-contract">
+        {asset.contractAddress}
+      </Text>
+      {asset.tokenId !== undefined && (
+        <>
+          <Text style={s.label}>TOKEN ID</Text>
+          <Text selectable style={s.address} testID="native-send-collectible-id">
+            {asset.tokenId}
+          </Text>
+        </>
+      )}
+      {asset.amountUnits !== undefined && (
+        <>
+          <Text style={s.label}>QUANTITY</Text>
+          <Text
+            selectable
+            style={s.address}
+            accessibilityLabel={`${asset.amountUnits} ${asset.amountUnits === '1' ? 'collectible' : 'collectibles'}`}
+            testID="native-send-amount"
+          >
+            {asset.amountUnits}
+          </Text>
+        </>
+      )}
+    </Card>
+  );
+  const finishClose = useCallback(() => {
+    if (!lifetime.current.alive || leaving.current) return;
+    leaving.current = true;
+    retirePicker();
     lifetime.current.epoch++;
     controller.cancel();
     Keyboard.dismiss();
-    onBack();
+    latestBack.current();
+  }, [controller, retirePicker]);
+  const close = useCallback(() => {
+    if (!lifetime.current.alive || leaving.current) return;
+    const current = controller.getSnapshot();
+    if (current.phase === 'submitting') {
+      Keyboard.dismiss();
+      setLeavePrompt({ review: current.review, fallback: current.review === null ? current : null });
+      return;
+    }
+    finishClose();
+  }, [controller, finishClose, setLeavePrompt]);
+  const leaveDuringSubmission = () => {
+    // If it completed while the dialog was open, retain the visible outcome.
+    if (!promptMatches(controller.getSnapshot())) {
+      setLeavePrompt(null);
+      return;
+    }
+    setLeavePrompt(null);
+    finishClose();
   };
   useLayoutEffect(() => {
     const current = lifetime.current;
     current.alive = true;
     const back = BackHandler.addEventListener('hardwareBackPress', () => {
-      controller.cancel();
-      Keyboard.dismiss();
-      latestBack.current();
+      close();
       return true;
     });
     return () => {
+      activePicker.current = null;
       current.alive = false;
       current.epoch++;
       controller.cancel();
       back.remove();
     };
-  }, [controller]);
+  }, [controller, close]);
   const run = async (operation: () => Promise<void>) => {
     if (busy) return;
     const captured = lifetime.current.epoch;
@@ -155,55 +340,80 @@ export function NativeSend({
     try {
       await operation();
     } catch (cause) {
-      if (lifetime.current.alive && captured === lifetime.current.epoch)
-        setError(failure(cause, capturedContext, !!token || !!snapshot.intent, !!controller.getSnapshot().hash, !!cancellationHash));
+      if (lifetime.current.alive && captured === lifetime.current.epoch) {
+        const current = controller.getSnapshot();
+        if (cause instanceof Error && cause.message === 'EXPIRED' &&
+          current.phase === 'unknown' && current.hash &&
+          current.message === ASSET_STATE_SAVED_MESSAGE) return;
+        const asset = reviewedCollectible || (draftCollectible && !current.hash)
+          ? 'collectible'
+          : token || current.intent ? 'token' : 'coin';
+        setError(failure(cause, capturedContext, asset, !!current.hash, cancellation));
+      }
     }
   };
   useEffect(() => {
-    if (cancellationHash) {
+    if (replacementHash && replacementMode) {
       const captured = lifetime.current.epoch;
-      void controller.prepareCancellation(cancellationHash).catch((cause) => {
+      void prepareReplacement(replacementHash).catch((cause) => {
         if (lifetime.current.alive && captured === lifetime.current.epoch)
-          setError(cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
-            ? 'The account cannot cover the maximum network fee.'
-            : 'Pali could not verify that this transaction is still pending.');
+          setError(cause instanceof Error && cause.message === 'CANCELLATION_QUEUED'
+            ? 'This cancellation must wait for earlier transactions. Check Activity before trying again.'
+            : cause instanceof Error && cause.message === 'INSUFFICIENT_BALANCE'
+            ? 'The account cannot cover the replacement amount and maximum fee.'
+            : replacementMode === 'cancel-saved'
+              ? 'Pali could not verify that this saved transaction can still be cancelled.'
+              : 'Pali could not verify that this transaction is still pending.');
       });
       return;
     }
-    void controller.recover(!!savedHash, savedHash).catch(() => undefined);
-  }, [controller, savedHash, cancellationHash]);
+    if (savedHash) void controller.recover(true, savedHash).catch(() => undefined);
+  }, [controller, savedHash, replacementHash, replacementMode, prepareReplacement]);
   const submit = () => {
     if (!review || busy) return;
     Keyboard.dismiss();
     void run(() => controller.confirm(review.id));
   };
-  const input = (
-    label: string,
-    value: string,
-    change: (value: string) => void,
-    options: { decimal?: boolean; max?: number } = {}
-  ) => (
-    <View style={s.field}>
-      <Text style={s.label}>{label}</Text>
-      <IdleTextInput
-        accessibilityLabel={label}
-        value={value}
-        onChangeText={change}
-        editable={!busy}
-        autoCapitalize="none"
-        autoCorrect={false}
-        spellCheck={false}
-        autoComplete="off"
-        importantForAutofill="noExcludeDescendants"
-        textContentType="none"
-        keyboardType={options.decimal ? 'decimal-pad' : 'default'}
-        maxLength={options.max ?? 1024}
-        placeholderTextColor={colors.muted}
-        selectionColor={colors.pink}
-        style={s.input}
-      />
-    </View>
-  );
+  const prepare = () => {
+    retirePicker();
+    const chosenOwner = recipientDraft.owner;
+    if (chosenOwner && (chosenOwner !== recipientPicker || !chosenOwner.current())) {
+      setRecipient('');
+      setError('Choose an account again or enter a recipient address.');
+      return;
+    }
+    const nonceOverride = advanced ? nonce.trim() || undefined : undefined;
+    if (!draftCollectible) {
+      void run(() => token
+        ? controller.prepareToken(token.contractAddress, recipient.trim(), amount, nonceOverride)
+        : controller.prepare(recipient.trim(), amount, nonceOverride));
+      return;
+    }
+    let id: string;
+    try {
+      id = draftCollectible.tokenStandard === 'ERC-1155'
+        ? draftCollectible.tokenId
+        : normalizeNftTokenId(tokenId.trim());
+    } catch {
+      setError('Enter a valid token ID.');
+      return;
+    }
+    let quantity: string;
+    try {
+      quantity = draftCollectible.tokenStandard === 'ERC-1155'
+        ? parseErc20Units(amount.trim())
+        : '1';
+      if (quantity === '0') throw new Error('Quantity must be positive');
+    } catch {
+      setError('Enter a whole quantity greater than zero.');
+      return;
+    }
+    Keyboard.dismiss();
+    void run(() => controller.prepareCollectible(draftCollectible, recipient.trim(), id, quantity, nonceOverride));
+  };
+  const clearCollectibleError = () => {
+    if (draftCollectible && error) setError('');
+  };
   const terminal = ['confirmed', 'reverted', 'nonce-consumed'].includes(
     snapshot.phase
   );
@@ -217,21 +427,12 @@ export function NativeSend({
       'nonce-consumed',
       'unavailable',
     ].includes(snapshot.phase);
-  const footer = !review && !hasOutcome && !cancellationHash ? (
+  const footer = !review && !hasOutcome && !replacementHash ? (
     <Button
       title="Review transfer"
-      disabled={busy || !recipient.trim() || !amount}
-      onPress={() =>
-        void run(() =>
-          token
-            ? controller.prepareToken(
-                token.contractAddress,
-                recipient.trim(),
-                amount
-              )
-            : controller.prepare(recipient.trim(), amount)
-        )
-      }
+      disabled={busy || !recipient.trim() ||
+        (draftCollectible?.tokenStandard === 'ERC-721' ? !tokenId.trim() : !amount)}
+      onPress={prepare}
       testID="native-send-review"
     />
   ) : undefined;
@@ -244,12 +445,16 @@ export function NativeSend({
         <Screen footer={footer}>
           <Header
             title={
-              cancellationHash
+              cancellation
                 ? hasOutcome ? 'Cancellation status' : 'Review cancellation'
+                : replacementHash
+                ? hasOutcome ? 'Speed Up status' : 'Review Speed Up'
                 : review
-                ? (review.retry ? 'Review resend' : 'Review transfer')
+                ? (review.retry ? 'Review resend' : reviewedCollectible ? 'Review collectible' : 'Review transfer')
                 : hasOutcome
                 ? 'Transfer status'
+                : draftCollectible
+                ? 'Send collectible'
                 : token
                 ? `Send ${token.symbol}`
                 : `Send ${capturedContext.symbol}`
@@ -266,27 +471,28 @@ export function NativeSend({
           )}
           {review ? (
             <>
-              <View style={s.hero}>
-                <Coin
-                  id={
-                    reviewedToken ? 'custom-token' : capturedContext.networkId
-                  }
-                  size={46}
-                />
-                <Text
-                  style={[s.amount, amountText.length > 16 && s.preciseAmount]}
-                  testID="native-send-amount"
-                >
-                  {amountText}
-                </Text>
-                <Text style={styles.muted}>
-                  {reviewedToken?.symbol ?? capturedContext.symbol} ·{' '}
-                  {networkLabel}
-                </Text>
-              </View>
-              {!!review.replay?.predecessorCount && <Card style={s.summary}>
+              {reviewedCollectible ? collectibleIdentity(reviewedCollectible) : (
+                <View style={s.hero}>
+                  <Coin
+                    id={reviewedToken ? 'custom-token' : capturedContext.networkId}
+                    size={46}
+                  />
+                  <Text
+                    style={[s.amount, amountText.length > 16 && s.preciseAmount]}
+                    testID="native-send-amount"
+                  >
+                    {amountText}
+                  </Text>
+                  <Text style={styles.muted}>
+                    {reviewedToken?.symbol ?? capturedContext.symbol} ·{' '}
+                    {networkLabel}
+                  </Text>
+                </View>
+              )}
+              {review.replay?.missingNonce !== undefined && <Card style={s.summary}>
                 <Text style={s.label}>PREVIOUS TRANSACTION · NONCE {review.replay.missingNonce}</Text>
                 <Text style={s.hint}>This transaction is waiting for an earlier nonce.</Text>
+                {!review.replay.predecessorCount && <Text style={s.hint}>No earlier transaction is available to retry on this device.</Text>}
                 {review.replay.predecessors.map(candidate => <Button key={candidate.hash} variant="secondary"
                   title={`${candidate.operation === 'cancel' ? 'Cancellation' : candidate.operation === 'speed-up' ? 'Replacement' : 'Transaction'} ${candidate.hash.slice(0, 10)}…`}
                   onPress={() => void run(() => controller.recover(true, candidate.hash))} />)}
@@ -294,14 +500,20 @@ export function NativeSend({
                   onPress={() => void run(() => controller.loadMorePredecessors())} />}
               </Card>}
               <Card style={s.summary}>
-                <Text style={s.label}>{review.cancellation ? 'TO · YOUR ADDRESS' : 'TO'}</Text>
+                <Text style={s.label}>{reviewCancellation ? 'TO · YOUR ADDRESS' : reviewedCollectible ? 'RECIPIENT' : 'TO'}</Text>
                 <Text
                   selectable
                   style={s.address}
                   testID="native-send-recipient"
                 >
-                  {review.recipient}
+                  {reviewedCollectible?.recipient ?? review.recipient}
                 </Text>
+                {review.nonceOverride !== undefined && <>
+                  <View style={s.separator} />
+                  <Text style={s.label}>MANUAL NONCE</Text>
+                  <Text testID="native-send-reviewed-nonce">{review.nonce}</Text>
+                  <Text style={s.hint}>This can replace a pending transaction with the same nonce, including one sent from another wallet.</Text>
+                </>}
                 <View style={s.separator} />
                 <Text style={s.label}>EXECUTION FEE LIMIT</Text>
                 <Text testID="native-send-fee">
@@ -311,7 +523,7 @@ export function NativeSend({
                 <Text style={s.hint}>
                   The final fee depends on network execution. This review limits the gas price and gas used by this transaction.
                 </Text>
-                {!reviewedToken && !review.cancellation && (
+                {!reviewedToken && !reviewedCollectible && !reviewCancellation && (
                   <>
                     <View style={s.separator} />
                     <Text style={s.label}>AMOUNT + EXECUTION FEE LIMIT</Text>
@@ -330,10 +542,15 @@ export function NativeSend({
                   tone="amber"
                 />
               )}
-              {review.cancellation && <Card style={s.summary}>
+              {review.replacement && <Card style={s.summary}>
                 <Text style={s.label}>ORIGINAL TRANSACTION · NONCE {review.nonce}</Text>
-                <Text selectable style={s.address}>{review.cancellation.originalHash}</Text>
-                <Text style={s.hint}>This sends zero to your own address with a higher fee. The original can still confirm first.</Text>
+                <Text selectable style={s.address}>{review.replacement.originalHash}</Text>
+                {!reviewCancellation && <Text style={s.hint}>
+                  Original execution fee limit: {formatBaseUnits(review.replacement.originalMaximumFeeUnits, 18)} {capturedContext.symbol}
+                </Text>}
+                <Text style={s.hint}>{reviewCancellation
+                  ? 'This sends zero to your own address with a higher fee. The original can still confirm first.'
+                  : 'This sends the same payment with updated gas and fee limits. The original can still confirm first.'}</Text>
               </Card>}
               {review.replay && <Card style={s.summary}>
                 <Text style={s.label}>SAVED TRANSACTION · NONCE {review.nonce}</Text>
@@ -343,23 +560,27 @@ export function NativeSend({
                 {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? 'Contract data'} · {review.replay.dataBytes} bytes</Text>}
                 {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
                 {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
+                <Text style={s.hint} testID="native-replay-same-nonce-warning">
+                  If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.
+                </Text>
               </Card>}
-              {!review.cancellation && <Text style={s.hint}>
+              {!review.replacement && <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed
                 transfers cannot be reversed.
               </Text>}
               <Button
-                title={review.cancellation ? 'Submit cancellation' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
+                title={reviewCancellation ? 'Submit cancellation' : review.replacement ? 'Submit Speed Up' : review.retry ? 'Resend signed transaction' : 'Confirm and send'}
                 disabled={busy}
                 onPress={submit}
                 testID="native-send-confirm"
               />
               <Button
-                title={review.retry || review.cancellation ? 'Close review' : 'Edit transfer'}
+                title={review.retry || review.replacement ? 'Close review' : 'Edit transfer'}
                 variant="quiet"
                 disabled={busy}
                 onPress={() => {
-                  if (cancellationHash) close();
+                  if (replacementHash) close();
+                  else if (reviewedCollectible && review.replay) void run(() => controller.recover(false, review.replay?.hash));
                   else controller.cancel();
                 }}
               />
@@ -368,44 +589,54 @@ export function NativeSend({
             <>
               <View style={s.hero}>
                 <Coin
-                  id={outcomeToken ? 'custom-token' : capturedContext.networkId}
+                  id={outcomeToken || outcomeCollectible ? 'custom-token' : capturedContext.networkId}
                   size={46}
                 />
                 <Text style={s.title}>
                   {snapshot.phase === 'confirmed'
-                    ? cancellationHash
+                    ? cancellation
                       ? 'Cancellation confirmed'
-                      : outcomeToken
+                      : replacementHash ? 'Replacement confirmed'
+                      : outcomeToken || outcomeCollectible
                       ? 'Transaction confirmed'
                       : 'Transfer confirmed'
                     : snapshot.phase === 'reverted'
-                    ? cancellationHash ? 'Cancellation reverted' : 'Transfer reverted'
+                    ? cancellation ? 'Cancellation reverted' : replacementHash ? 'Replacement reverted' : 'Transfer reverted'
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
-                    ? 'Checking submission'
-                    : cancellationHash ? 'Cancellation submitted' : 'Transfer pending'}
+                    ? snapshot.message === SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE ? 'Check earlier transaction' : snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
+                    : snapshot.phase === 'unavailable'
+                    ? 'Status unavailable'
+                    : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transfer pending'}
                 </Text>
               </View>
               {outcomeToken && tokenIdentity(outcomeToken)}
-              <Notice
-                title={
-                  snapshot.phase === 'unknown'
-                    ? 'Keep this transaction'
-                    : `${capturedContext.name} transaction`
-                }
-                body={
-                  snapshot.message ??
-                  'Check the transaction status before sending again.'
-                }
-                tone={
-                  snapshot.phase === 'unknown' ||
-                  snapshot.phase === 'reverted' ||
-                  snapshot.phase === 'nonce-consumed'
-                    ? 'amber'
-                    : undefined
-                }
-              />
+              {outcomeCollectible && collectibleIdentity(outcomeCollectible)}
+              <View
+                accessibilityRole={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'alert' : undefined}
+                accessibilityLiveRegion={[ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(snapshot.message ?? '') ? 'polite' : undefined}
+              >
+                <Notice
+                  title={
+                    snapshot.phase === 'unknown'
+                      ? 'Keep this transaction'
+                      : `${capturedContext.name} transaction`
+                  }
+                  body={
+                    snapshot.message ??
+                    'Check the transaction status before sending again.'
+                  }
+                  tone={
+                    snapshot.phase === 'unknown' ||
+                    snapshot.phase === 'unavailable' ||
+                    snapshot.phase === 'reverted' ||
+                    snapshot.phase === 'nonce-consumed'
+                      ? 'amber'
+                      : undefined
+                  }
+                />
+              </View>
               <Card style={s.summary}>
                 <Text style={s.label}>TRANSACTION HASH</Text>
                 <Text selectable style={s.address} testID="native-send-hash">
@@ -416,52 +647,130 @@ export function NativeSend({
                 title="Check status"
                 variant={terminal ? 'secondary' : 'primary'}
                 disabled={busy}
-                onPress={() => void run(() => controller.recover(false, cancellationHash ? snapshot.hash! : undefined))}
+                onPress={() => void run(() => controller.recover(false, snapshot.hash ?? undefined))}
               />
-              {snapshot.phase === 'unknown' && (
+              {snapshot.phase === 'unknown' && !snapshot.inspectionOnly && (
                 <Button
                   title="Review retry"
                   variant="secondary"
                   disabled={busy}
-                  onPress={() => void run(() => controller.recover(true, cancellationHash ? snapshot.hash! : undefined))}
+                  onPress={() => void run(() => controller.recover(true, snapshot.hash ?? undefined))}
                 />
               )}
-              {!cancellationHash && ['confirmed', 'reverted', 'nonce-consumed'].includes(
+              {!replacementHash && ['confirmed', 'reverted', 'nonce-consumed'].includes(
                 snapshot.phase
               ) && (
                 <Button
                   title="New transfer"
                   onPress={() => {
                     setRecipient('');
-                    setAmount('');
+                    setAmount(initialAmount);
+                    setTokenId('');
+                    setAdvanced(false);
+                    setNonce('');
                     setError('');
                     controller.cancel();
                   }}
                 />
               )}
-              <Button title={cancellationHash ? 'Back to Activity' : 'Back to wallet'} variant="quiet" onPress={close} />
+              <Button title={replacementHash ? 'Back to Activity' : 'Back to wallet'} variant="quiet" onPress={close} />
             </>
-          ) : cancellationHash ? (
-            !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => controller.prepareCancellation(cancellationHash))} />
+          ) : replacementHash ? (
+            !busy && <Button title="Check again" variant="secondary" onPress={() => void run(() => prepareReplacement(replacementHash))} />
           ) : (
             <>
-              {input(
-                `${capturedContext.name} address`,
-                recipient,
-                setRecipient,
-                { max: 128 }
+              <SendInput
+                label={draftCollectible ? 'Recipient address' : `${capturedContext.name} address`}
+                value={recipient}
+                onChange={setRecipient}
+                onEdit={clearCollectibleError}
+                busy={busy}
+                max={128}
+              />
+              {recipientPicker && !savedHash && !replacementHash && !token && !draftCollectible && (
+                <>
+                  <Button
+                    title={picker ? 'Hide accounts' : 'Choose account'}
+                    variant="quiet"
+                    disabled={busy}
+                    onPress={() => {
+                      if (picker) {
+                        if (activePicker.current === picker.session) retirePicker();
+                        return;
+                      }
+                      if (!lifetime.current.alive || !recipientPicker.current() ||
+                          activePicker.current?.owner === recipientPicker) return;
+                      const session = { owner: recipientPicker, accounts: recipientPicker.accounts() };
+                      activePicker.current = session;
+                      setOpenPicker({ session, query: '' });
+                    }}
+                  />
+                  {picker && (
+                    <Card style={s.summary}>
+                      <SendInput
+                        label="Find account"
+                        value={picker.query}
+                        onChange={(query) => {
+                          const { session } = picker;
+                          if (pickerIsCurrent(session))
+                            setOpenPicker((current) => current?.session === session ? { session, query } : current);
+                        }}
+                        busy={busy}
+                        max={128}
+                      />
+                      {recipientChoices.length ? recipientChoices.map(({ address, label }) => (
+                        <IdlePressable
+                          key={address}
+                          accessibilityRole="button"
+                          accessibilityLabel={`${label}, ${address}`}
+                          disabled={busy}
+                          style={s.recipientChoice}
+                          onPress={() => {
+                            if (!pickerIsCurrent(picker.session)) return;
+                            retirePicker();
+                            setRecipientDraft({ value: address, owner: picker.session.owner });
+                            setError('');
+                            Keyboard.dismiss();
+                          }}
+                        >
+                          <Text>{label}</Text>
+                          <Text style={styles.muted}>{address.slice(0, 10)}…{address.slice(-8)}</Text>
+                        </IdlePressable>
+                      )) : <Text style={styles.muted}>No matching accounts.</Text>}
+                    </Card>
+                  )}
+                </>
               )}
-              {token && tokenIdentity(token)}
-              {input(
-                `Amount in ${token?.symbol ?? capturedContext.symbol}`,
-                amount,
-                setAmount,
-                {
-                  decimal: true,
-                  max: token ? 334 : 100,
-                }
+              {draftCollectible ? (
+                <>
+                  {collectibleIdentity(draftCollectible)}
+                  {draftCollectible.tokenStandard === 'ERC-721'
+                    ? <SendInput label="Token ID" value={tokenId} onChange={setTokenId}
+                        onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={257} />
+                    : <SendInput label="Quantity" value={amount} onChange={setAmount}
+                        onEdit={clearCollectibleError} busy={busy} keyboardType="number-pad" max={79} />}
+                </>
+              ) : (
+                <>
+                  {token && tokenIdentity(token)}
+                  <SendInput label={`Amount in ${token?.symbol ?? capturedContext.symbol}`} value={amount}
+                    onChange={setAmount} busy={busy} keyboardType="decimal-pad" max={token ? 334 : 100} />
+                </>
               )}
-
+              <Button title={advanced ? 'Hide advanced options' : 'Advanced options'} variant="quiet"
+                disabled={busy} expanded={advanced} onPress={() => {
+                  if (advanced) {
+                    setNonce('');
+                    setError('');
+                  }
+                  setAdvanced(!advanced);
+                }} />
+              {advanced && <>
+                <SendInput label="Transaction nonce" value={nonce} onChange={setNonce}
+                  busy={busy} keyboardType="number-pad" max={64} placeholder="Automatic"
+                  onEdit={() => { if (error) setError(''); }} />
+                <Text style={s.hint}>Leave blank for automatic selection. A higher nonce can wait for earlier transactions.</Text>
+              </>}
             </>
           )}
           {busy && (
@@ -476,7 +785,7 @@ export function NativeSend({
               </Text>
             </View>
           )}
-          {!!error && (
+          {!!error && !(hasOutcome && [ASSET_STATE_SAVED_MESSAGE, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE].includes(error) && error === snapshot.message) && (
             <Text
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"
@@ -495,11 +804,35 @@ export function NativeSend({
           </Text>
         </Screen>
       </KeyboardAvoidingView>
+      <Modal
+        visible={promptMatches(snapshot)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setLeavePrompt(null)}
+      >
+        <SafeAreaView style={s.leaveOverlay} accessibilityViewIsModal>
+          <ScrollView contentContainerStyle={s.leaveContent}>
+            <Card style={s.leaveCard}>
+              <Text accessibilityRole="header" style={s.leaveTitle}>Submission in progress</Text>
+              <Text accessibilityLiveRegion="polite" style={styles.muted}>
+                This transaction may already have been sent. Check Activity before sending again.
+              </Text>
+              <Button title="Stay" onPress={() => setLeavePrompt(null)} />
+              <Button title="Leave" variant="secondary" onPress={leaveDuringSubmission} />
+            </Card>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
 const s = StyleSheet.create({
+  recipientChoice: { minHeight: 48, justifyContent: 'center', gap: 2, paddingVertical: 6 },
   safeArea: { flex: 1, backgroundColor: colors.bg },
+  leaveOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)' },
+  leaveContent: { flexGrow: 1, justifyContent: 'center', padding: 24 },
+  leaveCard: { padding: 24, gap: 20 },
+  leaveTitle: { fontSize: 24, fontWeight: '600' },
   flex: { flex: 1 },
   field: { gap: 10 },
   label: {

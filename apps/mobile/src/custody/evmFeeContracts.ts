@@ -4,11 +4,28 @@ import { assertEvmCancellationEnvelope, type EvmCancellationEnvelopeIntent } fro
 import { assertBaseUnits } from '../core/amounts.ts';
 import { snapshotNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
 import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshApproved, type EvmFeeApproval } from '../../../../source/shared/evmFeeApproval.ts';
+import { encodeNftTransferData, snapshotNftTransferIntent, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 export class EvmTransferReadError extends Error {
-  readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' | 'INSUFFICIENT_BALANCE';
+  readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' |
+    'TOKEN_CHANGED' | 'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE' | 'CANCELLATION_QUEUED';
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
+export class EvmAutomaticNonceUnresolved extends EvmTransferReadError {
+  readonly nonce: number;
+  readonly reason?: 'asset-state';
+  constructor(nonce: number, reason?: 'asset-state') {
+    super('REVIEW_REQUIRED');
+    this.nonce = nonce;
+    this.reason = reason;
+  }
+}
 export const rejectRead = (code: EvmTransferReadError['code']): never => { throw new EvmTransferReadError(code); };
+// Automatic selection is tied to the pending count. A deliberate override may
+// replace an external pending transaction, but must clear the canonical count.
+export function matchesSendNonce(observed: bigint, nonce: bigint, manual: boolean): boolean {
+  return manual ? nonce >= observed : nonce === observed;
+}
+
 type EvmTransferFields = Readonly<{ from: string; to: string; chainId: string; nonce: string; value: string; gasLimit: string; data: string }>;
 export type EvmUnsignedTransfer = EvmTransferFields & Readonly<{ type: 0; gasPrice: string } | { type: 2; maxFeePerGas: string; maxPriorityFeePerGas: string }>;
 export type EvmSampledBlock = Readonly<{ number: string; hash: string }>;
@@ -45,11 +62,11 @@ export function checkedReadHash(value: unknown): string {
   if (typeof value !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(value)) return rejectRead('INVALID_RESPONSE');
   return value.toLowerCase();
 }
-function snapshotEvmEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration): EvmUnsignedTransfer {
+function snapshotEvmEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration, maxDataLength = 138): EvmUnsignedTransfer {
   try {
     const transaction = snapshotEvmFeeEnvelope(value);
     if (transaction.chainId !== network.chainId || transaction.nonce === undefined ||
-        transaction.data.length > 138 || BigInt(transaction.gasLimit) > BigInt(Number.MAX_SAFE_INTEGER))
+        transaction.data.length > maxDataLength || BigInt(transaction.gasLimit) > BigInt(Number.MAX_SAFE_INTEGER))
       return rejectRead('INVALID_INPUT');
     return transaction as EvmUnsignedTransfer;
   } catch { return rejectRead('INVALID_INPUT'); }
@@ -58,6 +75,16 @@ export function snapshotUnsignedTransfer(value: EvmUnsignedTransfer, network: Na
   const transaction = snapshotEvmEnvelope(value, network);
   if (transaction.data === '0x' && transaction.value === '0') return rejectRead('INVALID_INPUT');
   return transaction;
+}
+export function snapshotNftQuoteEnvelope(value: EvmUnsignedTransfer, network: NativeNetworkRegistration, input: NftTransferIntent): EvmUnsignedTransfer {
+  try {
+    const intent = snapshotNftTransferIntent(input);
+    const transaction = snapshotEvmEnvelope(value, network, 394);
+    if (transaction.chainId !== intent.chainId || transaction.from !== intent.from ||
+        transaction.to !== intent.contractAddress || transaction.value !== '0' ||
+        transaction.data !== encodeNftTransferData(intent)) return rejectRead('INVALID_INPUT');
+    return transaction;
+  } catch { return rejectRead('INVALID_INPUT'); }
 }
 export function snapshotCancellationTransfer(value: EvmUnsignedTransfer, network: NativeNetworkRegistration,
   payer: string, feePlan: EvmCancellationEnvelopeIntent['feePlan']): EvmUnsignedTransfer {

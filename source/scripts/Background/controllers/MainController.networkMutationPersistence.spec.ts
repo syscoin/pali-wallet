@@ -17,8 +17,16 @@ jest.mock('@trezor/connect-webextension', () => ({
   DEVICE_EVENT: 'device-event',
 }));
 
+import {
+  decryptPrivateRecordBytes,
+  encryptPrivateRecordBytes,
+  privateRecordProfileId,
+} from '@sidhujag/sysweb3-keyring/cjs/private-records.js';
 import { findUtxoCoinByRegistration } from '@sidhujag/sysweb3-network';
+import { webcrypto } from 'crypto';
+import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { utxoSubmissionUrl } from '../../../wallet/utxoSignedBinding';
 import { loadState, walletPersistenceGate } from 'state/paliStorage';
 import * as walletStore from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
@@ -33,6 +41,7 @@ import { INetwork, INetworkType } from 'types/network';
 import { networkRegistrationFingerprint } from 'utils/networkRegistration';
 
 import MainController from './MainController';
+import type { UtxoRecordSession } from '../../../wallet/utxoSignedRecords';
 
 const {
   default: store,
@@ -182,7 +191,15 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       wallet.walletStateGeneration = 0;
       wallet.walletSessionGeneration = 0;
       wallet.isRemovingNetwork = false;
-      wallet.keyrings = new Map([[source.slip44, { isUnlocked: () => true }]]);
+      wallet.keyrings = new Map([
+        [
+          source.slip44,
+          {
+            isUnlocked: () => true,
+            getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+          },
+        ],
+      ]);
       jest
         .spyOn(globalThis, 'fetch')
         .mockImplementation(async (input, init) => {
@@ -453,6 +470,208 @@ describe.each([INetworkType.Ethereum, INetworkType.Syscoin])(
       await expect(wallet.addCustomRpc(target)).resolves.toMatchObject(target);
       expect(await savedTarget()).toEqual(liveTarget());
     });
+
+    if (family === INetworkType.Syscoin) {
+      it('repairs the durable endpoint if the wallet locks before Chrome acknowledges the edit', async () => {
+        await wallet.addCustomRpc(target);
+        writeCount = 0;
+        const held = holdNextWrite();
+        const edit = wallet.editCustomRpc(
+          { ...target, url: 'https://edited-network.synthetic.invalid' },
+          networkRegistrationFingerprint(liveTarget())
+        );
+        const rejection = expect(edit).rejects.toThrow(
+          'Wallet session changed'
+        );
+        await held.started;
+        wallet.advanceWalletSession();
+        expect(liveTarget()).toMatchObject(target);
+        held.release();
+        await rejection;
+        expect(liveTarget()).toMatchObject(target);
+        expect(await savedTarget()).toMatchObject(target);
+        expect(writeCount).toBe(2);
+      });
+
+      it('blocks another wallet write if the endpoint rollback cannot be acknowledged', async () => {
+        await wallet.addCustomRpc(target);
+        const edited = {
+          ...target,
+          url: 'https://edited-network.synthetic.invalid',
+        };
+        const started = Promise.withResolvers<void>();
+        const acknowledge = Promise.withResolvers<void>();
+        const original = chrome.storage.local.set;
+        jest
+          .spyOn(chrome.storage.local, 'set')
+          .mockImplementation((items, callback) => {
+            if (
+              items.state?.vaultGlobal.networks.syscoin[target.chainId]?.url ===
+              edited.url
+            ) {
+              return original(items, () => {
+                void acknowledge.promise.then(() => callback?.());
+                started.resolve();
+              });
+            }
+            return original(items, callback);
+          });
+        const change = wallet.editCustomRpc(
+          edited,
+          networkRegistrationFingerprint(liveTarget())
+        );
+        const rejected = expect(change).rejects.toThrow(
+          'Close and reopen Pali'
+        );
+        await started.promise;
+        wallet.advanceWalletSession();
+        refuseNextCommit = true;
+        acknowledge.resolve();
+        await rejected;
+        expect(liveTarget()).toMatchObject(target);
+        expect(walletPersistenceGate.blocked).toBe(true);
+        const attempts = writeCount;
+        await expect(saveMainState()).resolves.toBe(false);
+        expect(writeCount).toBe(attempts);
+      });
+
+      const mutations = ['endpoint', 'network'] as const;
+      it.each(mutations)('keeps %s after lost ACK', async (mutation) => {
+        const originalCrypto = Object.getOwnPropertyDescriptor(
+          globalThis,
+          'crypto'
+        );
+        Object.defineProperty(globalThis, 'crypto', {
+          configurable: true,
+          value: webcrypto,
+        });
+        const secret = new Uint8Array(32).fill(17);
+        const guard = () => undefined;
+        const keyring: UtxoRecordSession['keyring'] & {
+          isUnlocked: () => boolean;
+        } = {
+          isUnlocked: () => true,
+          getPrivateRecordProfileId: () =>
+            privateRecordProfileId(secret, guard),
+          encryptPrivateRecord: (args) =>
+            encryptPrivateRecordBytes(secret, args, guard),
+          decryptPrivateRecord: (args) =>
+            decryptPrivateRecordBytes(secret, args, guard),
+        };
+        wallet.keyrings.set(source.slip44, keyring);
+        const entered = Promise.withResolvers<void>();
+        const held = Promise.withResolvers<void>();
+        let admission: Promise<unknown> | undefined;
+        try {
+          await wallet.addCustomRpc(target);
+          const coin = findUtxoCoinByRegistration(target)!;
+          const { bitcoinjs: bitcoin } = syscoinUtils;
+          const signingKey = bitcoin.ECPair.fromPrivateKey(Buffer.alloc(32, 3));
+          const script = bitcoin.payments.p2wpkh({
+            pubkey: signingKey.publicKey,
+          }).output!;
+          const prevout = new bitcoin.Transaction();
+          prevout.addInput(Buffer.alloc(32, 4), 0);
+          prevout.addOutput(script, BigInt(10_000));
+          const signed = new bitcoin.Psbt()
+            .addInput({
+              hash: prevout.getHash(),
+              index: 0,
+              witnessUtxo: { value: BigInt(10_000), script },
+            })
+            .addOutput({ script, value: BigInt(9_000) })
+            .signInput(0, signingKey)
+            .finalizeAllInputs()
+            .extractTransaction();
+          const owner = {
+            chainId: target.chainId,
+            slip44: target.slip44,
+            genesisHash: coin.hashGenesisBlock,
+            account: {
+              id: 0,
+              type: 'HDAccount',
+              xpub: 'public-fixture-xpub',
+            },
+          };
+          const signedRecord = {
+            owner,
+            rawTransaction: signed.toHex(),
+            txid: signed.getId(),
+            url: utxoSubmissionUrl(
+              mutation === 'endpoint'
+                ? target.url
+                : 'https://previous-network.synthetic.invalid'
+            ),
+            outpoints: [`${prevout.getId()}:0`],
+            feeSatoshis: '1000',
+            operation: 'wallet',
+            virtualSize: signed.virtualSize(),
+          };
+          const journal = wallet.getRetainedUtxoRecords();
+          admission = journal.admit(
+            { keyring, assertCurrent: guard },
+            signedRecord,
+            'initial',
+            async (prepare: () => Promise<void>, release: () => void) => {
+              entered.resolve();
+              await held.promise;
+              await prepare();
+              release();
+            }
+          );
+          await entered.promise;
+          const edited = {
+            ...target,
+            url: 'https://edited-network.synthetic.invalid',
+          };
+          const expectedRegistration = networkRegistrationFingerprint(
+            liveTarget()
+          );
+          const change =
+            mutation === 'endpoint'
+              ? wallet.editCustomRpc(edited, expectedRegistration)
+              : wallet.removeKeyringNetwork(
+                  target.kind,
+                  target.chainId,
+                  target.url,
+                  target.label,
+                  expectedRegistration
+                );
+          const rejection = expect(change).rejects.toMatchObject({
+            code:
+              mutation === 'endpoint'
+                ? 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER'
+                : 'UTXO_NETWORK_HAS_SAVED_TRANSFER',
+          });
+          held.resolve();
+          await admission;
+          await rejection;
+          expect(await savedTarget()).toMatchObject(target);
+          expect(
+            await journal.readExact(
+              { keyring, assertCurrent: guard },
+              owner,
+              signedRecord.txid
+            )
+          ).toEqual(signedRecord);
+          await expect(
+            wallet.editCustomRpc(
+              { ...target, label: 'Updated label' },
+              networkRegistrationFingerprint(liveTarget())
+            )
+          ).resolves.toMatchObject({
+            label: 'Updated label',
+            url: target.url,
+          });
+        } finally {
+          held.resolve();
+          await admission?.catch(() => undefined);
+          if (originalCrypto)
+            Object.defineProperty(globalThis, 'crypto', originalCrypto);
+          else Reflect.deleteProperty(globalThis, 'crypto');
+        }
+      });
+    }
 
     it('preserves CoinGecko/default metadata through an accepted edit', async () => {
       const metadata = {

@@ -38,6 +38,7 @@ import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { dispatchBackgroundEvent } from 'utils/browser';
 import { isTrustedDappOrigin } from 'utils/dappOrigin';
 import { ellipsis } from 'utils/index';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 import { useConnectionFocusClearance } from './useConnectionFocusClearance';
 
@@ -111,7 +112,8 @@ export const ConnectWallet = () => {
         kind,
         chainId: networkChainId,
         slip44,
-      }),
+      }) &&
+      canPublishAccountAddress(account, keyringAccountType, networkChainId),
     // Full background snapshots clone the network even for price-only updates.
     // Reinitialize consent only when its actual compatibility context changes.
     [kind, networkChainId, slip44]

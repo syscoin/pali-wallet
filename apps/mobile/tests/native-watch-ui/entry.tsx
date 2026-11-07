@@ -1,19 +1,26 @@
+import { sysxSendFixture } from './sysxSendFixture';
 import { idleFixture } from './security';
 // Synthetic adapters exercise the actual App and native screens. No live funds or RPC.
 import React from 'react';
 import { registerRootComponent } from 'expo';
-import { AppState, BackHandler, Linking, Platform, Share } from 'react-native';
+import { AppState, BackHandler, Dimensions, Linking, Platform, Share } from 'react-native';
 import { activityFetch, activityFixture } from './utxoActivityFixture';
 import { evmActivityFetch, evmActivityFixture } from './evmActivityFixture';
+import { createGuardianRecoveryFixture } from './guardianRecoveryFixture';
 import { WatchOnlyAuthority } from '../../src/core/watchOnlyAuthority';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks';
 import App from '../../App';
 import { latestAuthority, retiredAuthorities, latestTransfers, fixtureFetch, fixtureCatalogue, noteInventoryFixture, recreateRemovalWallet } from './nativeFactory';
-import { audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
+import { ADDRESS, audit, events, publicShares, setWatchBalanceMode, readAccounts, readSelection, setReadFailure, setDelayUnlock, setDelaySign, releaseUnlock, releaseSign, setDelayKeyRead, releaseKeyRead, setKeyFailure, setDelayImport, releaseImport, setImportFailure } from './state';
 import { recoveryAudit, holdRecovery, releaseRecovery } from './recoveryState';
 import { removalFixtureEnabled, walletRemovalFixture } from './walletRemovalFixture';
 
 Platform.OS = new URLSearchParams(window.location.search).has('android') ? 'android' : 'ios';
+// RN Web fixes fontScale at 1 and rejects Dimensions.set in a browser. Change
+// the fixture's current dimensions before the actual watch component mounts.
+const fixtureFontScale = new URLSearchParams(window.location.search).get('font-scale');
+if (fixtureFontScale === '1.3' || fixtureFontScale === '1.6')
+  Dimensions.get('window').fontScale = Number(fixtureFontScale);
 let appState = 'active';
 const listeners = new Map<string, Set<(state: string) => void>>();
 Object.defineProperty(AppState, 'currentState', { configurable: true, get: () => appState });
@@ -23,13 +30,17 @@ AppState.addEventListener = ((event: string, listener: (state: string) => void) 
   return { remove() { listeners.get(event)!.delete(listener); } };
 }) as typeof AppState.addEventListener;
 const backListeners = new Set<Parameters<typeof BackHandler.addEventListener>[1]>();
-if (removalFixtureEnabled) {
+const hasGuardianFixture = new URLSearchParams(window.location.search).has('guardian-fixture');
+if (removalFixtureEnabled || hasGuardianFixture || sysxSendFixture.enabled) {
   BackHandler.addEventListener = ((_event, listener) => {
     backListeners.add(listener);
     return { remove() { backListeners.delete(listener); } };
   }) as typeof BackHandler.addEventListener;
 }
 const quoteRequests: string[] = [];
+const quoteGate = new URLSearchParams(window.location.search).has('hold-quote')
+  ? Promise.withResolvers<void>() : undefined;
+const guardianFixture = createGuardianRecoveryFixture(ADDRESS);
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input), window.location.href);
   if ((url.origin === 'https://api.coingecko.com' && url.pathname === '/api/v3/simple/price') || url.pathname.endsWith('/api/v2/tickers/currency')) {
@@ -37,9 +48,11 @@ globalThis.fetch = async (input, init) => {
     if (init?.method !== 'GET' || init.body !== undefined || init.credentials !== 'omit' || init.redirect !== 'error')
       throw new Error('Unexpected quote request options');
     quoteRequests.push(url.href);
+    if (quoteGate) await quoteGate.promise;
     return Response.json(url.origin === 'https://api.coingecko.com' ? { ethereum: { usd: 100, eur: 200 } } : { rates: { usd: 100, eur: 200 } });
   }
-  return await activityFetch(input, init) ?? await evmActivityFetch(input, init) ?? fixtureFetch(input, init);
+  return (hasGuardianFixture ? await guardianFixture.fetch(input, init) : undefined) ??
+    await activityFetch(input, init) ?? await evmActivityFetch(input, init) ?? fixtureFetch(input, init);
 };
 const originalOpen = Linking.openURL;
 Linking.openURL = async (url) => { if (UTXO_NETWORKS.some(({ explorer }) => url.startsWith(new URL('tx/', explorer).href))) { activityFixture.open(url); return; } if (evmActivityFixture.open(url)) return; return originalOpen(url); };
@@ -56,12 +69,17 @@ WatchOnlyAuthority.openRecords = async (options) => {
 declare global {
   interface Window {
     __watchFixture: {
+      fontScale(): number;
       activity: typeof activityFixture;
+      sysx: typeof sysxSendFixture;
+      selectNativeNetwork(id: string): Promise<void>;
       evmActivity: typeof evmActivityFixture;
+      guardian: typeof guardianFixture;
       notes: typeof noteInventoryFixture;
       removal: typeof walletRemovalFixture & { recreate: typeof recreateRemovalWallet };
       idle: typeof idleFixture;
       quotes(): string[];
+      releaseQuote(): void;
       audit(): typeof audit;
       events(): string[];
       shares(): string[];
@@ -97,9 +115,16 @@ declare global {
   }
 }
 window.__watchFixture = {
+  fontScale: () => Dimensions.get('window').fontScale,
+  guardian: guardianFixture,
+  sysx: sysxSendFixture,
+  async selectNativeNetwork(id) {
+    const authority = latestAuthority!;
+    await authority.selectNetwork(id, authority.getSnapshot().revision, authority.getCatalogue()!.revision);
+  },
   activity: activityFixture, evmActivity: evmActivityFixture, idle: idleFixture, notes: noteInventoryFixture,
   removal: { ...walletRemovalFixture, recreate: recreateRemovalWallet },
-  quotes: () => [...quoteRequests], audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
+  quotes: () => [...quoteRequests], releaseQuote: () => quoteGate?.resolve(), audit: () => ({ ...audit }), events: () => [...events], shares: () => [...publicShares], watchBalance: setWatchBalanceMode, accounts: readAccounts, selection: readSelection,
   readFailure: setReadFailure, delayUnlock: setDelayUnlock, releaseUnlock, delaySign: setDelaySign, releaseSign,
   lifecycle(state) { appState = state; for (const listener of [...listeners.get('change') ?? []]) listener(state); },
   blur() { for (const listener of [...listeners.get('blur') ?? []]) listener('blur'); },

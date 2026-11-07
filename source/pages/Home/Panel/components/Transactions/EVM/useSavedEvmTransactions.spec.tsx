@@ -181,3 +181,36 @@ test('more than a page of new records cannot leave a permanent gap after a refre
       result.current.transactions.some((found) => found.hash === tx.hash)
     ).toBe(true);
 });
+
+test('projects signed ERC-20 units and recipient with or without token metadata without input', () => {
+  const tokenAddress = `0x${'22'.repeat(20)}`;
+  const recipient = `0x${'33'.repeat(20)}`;
+  for (const token of [
+    undefined,
+    {
+      contractAddress: tokenAddress,
+      decimals: 6,
+      symbol: 'TOK',
+      name: 'Token',
+    },
+  ]) {
+    const tx: any = savedTransactionHistoryRow({
+      ...row('3'),
+      to: tokenAddress,
+      operation: 'erc20',
+      tokenTransfer: {
+        amountUnits: '6000000',
+        recipient,
+        ...(token ? { token } : {}),
+      },
+    } as any);
+    expect(tx.input).toBeUndefined();
+    expect(tx.tokenTransfer).toMatchObject({
+      contractAddress: tokenAddress,
+      recipient,
+      value: '6000000',
+    });
+    expect(tx.tokenTransfer.decimals).toBe(token?.decimals);
+    expect(tx.tokenTransfer.symbol).toBe(token?.symbol);
+  }
+});

@@ -95,8 +95,8 @@ export function snapshotNftTransferIntent(value: unknown): NftTransferIntent {
   });
 }
 
-/** Ordinary software-wallet selectors from published sysweb3 keyring 2.1.2. */
-function encodeNftTransferData(intent: NftTransferIntent): string {
+/** Encode a validated intent with the published keyring's ordinary software-wallet selectors. */
+export function encodeNftTransferData(intent: NftTransferIntent): string {
   const args = [intent.from, intent.recipient, intent.tokenId];
   return intent.tokenStandard === 'ERC-721'
     ? abi.encodeFunctionData(erc721Method, args)
@@ -116,22 +116,56 @@ type RetainedNftContext = Readonly<{
   rawTransaction: string;
 }>;
 
-/** Inspection only. A shared selector cannot establish an NFT operation. */
+export function isRetainedNftReplayEnvelope(
+  tx: Pick<Transaction, 'type' | 'accessList'>
+): boolean {
+  return (tx.type === 0 || tx.type === 2) && !tx.accessList?.length;
+}
+
+/** Decode the canonical wallet transfer call shared by review and retained-byte verification. */
+export function decodeNftTransferData(
+  data: string,
+  context: Pick<
+    NftTransferIntent,
+    'chainId' | 'from' | 'contractAddress' | 'tokenStandard'
+  >
+): NftTransferIntent | undefined {
+  try {
+    const isErc721 = context.tokenStandard === 'ERC-721';
+    if (!isErc721 && context.tokenStandard !== 'ERC-1155') return undefined;
+    const method = isErc721 ? erc721Method : erc1155Method;
+    // Three static words, or five head words and one zero-length bytes tail.
+    if (data.length !== 2 + 2 * (4 + (isErc721 ? 3 : 6) * 32)) return undefined;
+    const from = normalizeNonzeroHexAddress(context.from);
+    const decoded = abi.decodeFunctionData(method, data);
+    if (decoded[0] !== from || (!isErc721 && decoded[4] !== '0x'))
+      return undefined;
+    const intent = snapshotNftTransferIntent({
+      kind: 'nft-transfer',
+      chainId: context.chainId,
+      from,
+      contractAddress: context.contractAddress,
+      recipient: decoded[1],
+      tokenStandard: context.tokenStandard,
+      tokenId: decoded[2].toString(),
+      amountUnits: isErc721 ? '1' : decoded[3].toString(),
+    });
+    return encodeNftTransferData(intent) === data ? intent : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Derive typed intent from authenticated retained bytes and operation. */
 export function decodeRetainedNftTransfer(
   entry: RetainedNftContext,
   tx: Transaction
 ): NftTransferIntent | undefined {
   if (entry.operation !== 'erc721' && entry.operation !== 'erc1155')
     return undefined;
-  const isErc721 = entry.operation === 'erc721';
-  const method = isErc721 ? erc721Method : erc1155Method;
-  // Three static words, or five head words and one zero-length bytes tail.
-  const dataLength = 2 + 2 * (4 + (isErc721 ? 3 : 6) * 32);
   try {
-    const { data, to } = tx;
     if (
-      data.length !== dataLength ||
-      !to ||
+      !tx.to ||
       tx.value !== BigInt(0) ||
       !tx.isSigned() ||
       tx.serialized !== entry.rawTransaction ||
@@ -142,20 +176,12 @@ export function decodeRetainedNftTransfer(
       return undefined;
     const from = tx.from;
     if (!from || from.toLowerCase() !== entry.from) return undefined;
-    const decoded = abi.decodeFunctionData(method, data);
-    if (decoded[0] !== from || (!isErc721 && decoded[4] !== '0x'))
-      return undefined;
-    const intent = snapshotNftTransferIntent({
-      kind: 'nft-transfer',
+    return decodeNftTransferData(tx.data, {
       chainId: entry.chainId,
       from,
-      contractAddress: to,
-      recipient: decoded[1],
-      tokenStandard: isErc721 ? 'ERC-721' : 'ERC-1155',
-      tokenId: decoded[2].toString(),
-      amountUnits: isErc721 ? '1' : decoded[3].toString(),
+      contractAddress: tx.to,
+      tokenStandard: entry.operation === 'erc721' ? 'ERC-721' : 'ERC-1155',
     });
-    return encodeNftTransferData(intent) === data ? intent : undefined;
   } catch {
     return undefined;
   }

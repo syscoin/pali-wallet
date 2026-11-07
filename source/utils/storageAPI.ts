@@ -1,5 +1,5 @@
 export const chromeStorage = {
-  getItems: (keys: string[]): Promise<Record<string, unknown>> =>
+  getItems: (keys: string[] | null): Promise<Record<string, unknown>> =>
     new Promise((resolve, reject) => {
       chrome.storage.local.get(keys, (result) => {
         if (chrome.runtime.lastError) reject(chrome.runtime.lastError);

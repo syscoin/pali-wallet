@@ -36,7 +36,7 @@ for (const mode of ['excess', 'out-of-order']) test(`real child retains per-requ
     const waitStarted = async n => {
       const deadline = Date.now() + 2000;
       while (Date.now() < deadline) {
-        const state = (await companion.postDiagnostic()).server;
+        const state = (await companion.diagnostics()).post.server;
         if (state.counts['post-balance'].started === n) return;
         await new Promise(resolve => setTimeout(resolve, 5));
       }
@@ -53,7 +53,7 @@ for (const mode of ['excess', 'out-of-order']) test(`real child retains per-requ
       first.finish(); assert.equal((await first.result).status, 200);
     }
     assert.equal(child.exitCode, null); assert.equal(child.signalCode, null);
-    const observed = (await companion.postDiagnostic()).server;
+    const observed = (await companion.diagnostics()).post.server;
     assert.deepEqual(observed.counts['post-balance'], { started: mode === 'excess' ? 3 : 2, completed: 2 });
     assert.deepEqual(observed.requests.map(row => row.ordinal), mode === 'excess' ? [1, 2] : [2, 1]);
     assert.equal(observed.requests.find(row => row.ordinal === 1).bodySha256, digest(POST_CHAIN_BODY));

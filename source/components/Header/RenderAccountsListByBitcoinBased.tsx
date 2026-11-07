@@ -25,6 +25,7 @@ import { selectActiveAccountRef } from 'state/vault';
 import { KeyringAccountType } from 'types/network';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { ellipsis } from 'utils/index';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 type RenderAccountsListByBitcoinBasedProps = {
   setActiveAccount: (
@@ -223,7 +224,8 @@ const RenderAccountsListByBitcoinBased =
         account: any,
         accountType: KeyringAccountType,
         index: number,
-        busy: boolean
+        busy: boolean,
+        address: string | undefined
       ) => {
         const badgeInfo = BADGE_INFO_MAP[accountType];
         const isSmartAccount = accountType === KeyringAccountType.SmartAccount;
@@ -233,6 +235,9 @@ const RenderAccountsListByBitcoinBased =
           ? t('components.imported')
           : badgeInfo.label;
         const key = `${accountType}-${account.id}`;
+        const accountName = address
+          ? `${account.label} (${address})`
+          : account.label;
         return (
           <li
             id={`account-${accountType}-${index}`}
@@ -248,7 +253,7 @@ const RenderAccountsListByBitcoinBased =
               {({ active, close }) => (
                 <button
                   type="button"
-                  aria-label={`${account.label} (${account.address})${
+                  aria-label={`${accountName}${
                     isSmartAccount ? `, ${badgeLabel}` : ''
                   }`}
                   aria-current={
@@ -279,7 +284,8 @@ const RenderAccountsListByBitcoinBased =
                     {getAccountIcon(accountType, account)}
                   </span>
                   <span className="truncate flex-1 min-w-0">
-                    {account.label} ({ellipsis(account.address, 4, 4)})
+                    {account.label}
+                    {address && ` (${ellipsis(address, 4, 4)})`}
                   </span>
                   {isAccountSwitching(account.id, accountType) ? (
                     <LoadingSvg
@@ -314,39 +320,41 @@ const RenderAccountsListByBitcoinBased =
                 </button>
               )}
             </Menu.Item>
-            <Menu.Item disabled={busy}>
-              {({ active }) => (
-                <button
-                  type="button"
-                  disabled={busy}
-                  title={`${t('buttons.copy')}: ${account.label} (${
-                    account.address
-                  })`}
-                  aria-label={`${t('buttons.copy')}: ${account.label} (${
-                    account.address
-                  })`}
-                  className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[38px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
-                    active
-                      ? 'bg-brand-blue500/30 text-white'
-                      : 'hover:bg-brand-blue500/20'
-                  }`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    void handleCopyAddress(key, account.address);
-                  }}
-                >
-                  {copiedKey === key ? (
-                    <Icon
-                      name="check"
-                      className="w-3.5 h-3.5"
-                      color="#8EC100"
-                    />
-                  ) : (
-                    <Icon name="copy" className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              )}
-            </Menu.Item>
+            {address && (
+              <Menu.Item disabled={busy}>
+                {({ active }) => (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    title={`${t('buttons.copy')}: ${
+                      account.label
+                    } (${address})`}
+                    aria-label={`${t('buttons.copy')}: ${
+                      account.label
+                    } (${address})`}
+                    className={`flex items-center justify-center flex-shrink-0 min-w-[44px] min-h-[38px] rounded-lg text-brand-gray300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-royalblue ${
+                      active
+                        ? 'bg-brand-blue500/30 text-white'
+                        : 'hover:bg-brand-blue500/20'
+                    }`}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      void handleCopyAddress(key, address);
+                    }}
+                  >
+                    {copiedKey === key ? (
+                      <Icon
+                        name="check"
+                        className="w-3.5 h-3.5"
+                        color="#8EC100"
+                      />
+                    ) : (
+                      <Icon name="copy" className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                )}
+              </Menu.Item>
+            )}
           </li>
         );
       },
@@ -375,6 +383,13 @@ const RenderAccountsListByBitcoinBased =
             .map((account, index) => ({
               account,
               accountType: accountType as KeyringAccountType,
+              address: canPublishAccountAddress(
+                account,
+                accountType,
+                activeNetwork.chainId
+              )
+                ? account.address
+                : undefined,
               index,
             }))
         ),
@@ -389,8 +404,8 @@ const RenderAccountsListByBitcoinBased =
         role="none"
         aria-busy={isAnySwitching}
       >
-        {accountsList.map(({ account, accountType, index }) =>
-          renderAccount(account, accountType, index, isAnySwitching)
+        {accountsList.map(({ account, accountType, address, index }) =>
+          renderAccount(account, accountType, index, isAnySwitching, address)
         )}
       </div>
     );

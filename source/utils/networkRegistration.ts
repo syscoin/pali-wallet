@@ -43,3 +43,13 @@ export function resolvePinnedUtxoBackendChain(
     return undefined;
   return registered.utxoBackendChain;
 }
+
+/** Project an older active copy into the SDK from its exact registered pin. */
+export function withPinnedUtxoBackendChain(
+  active: INetwork,
+  registered: INetwork | undefined
+): INetwork {
+  if (active.utxoBackendChain !== undefined) return active;
+  const pin = resolvePinnedUtxoBackendChain(active, registered);
+  return pin === undefined ? active : { ...active, utxoBackendChain: pin };
+}

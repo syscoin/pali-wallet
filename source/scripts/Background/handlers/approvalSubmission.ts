@@ -2,6 +2,10 @@ import {
   walletTokenReviewError,
   type WalletTokenReviewPayload,
 } from '../../../shared/walletTokenReview';
+import {
+  reviewedExtensionNonce,
+  type ExtensionReviewedNonce,
+} from '../controllers/evmAutoNonce';
 import type { IEvmTransactionContext } from 'utils/evmTransactionContext';
 import type {
   IUtxoSigningContext,
@@ -22,6 +26,7 @@ type DappEvmReview = TransactionApprovalDocument &
   Readonly<{
     batch?: EoaSendCallsReservation;
     context: IEvmTransactionContext;
+    originalNonce?: unknown;
   }>;
 
 export type DappUtxoReview = TransactionApprovalDocument &
@@ -44,8 +49,18 @@ type DappSmartAccountReview = TransactionApprovalDocument &
 
 type Watch = {
   attempts: Set<object>;
+  batchActive: boolean;
+  batchFloor?: number;
+  batchNonce?: number;
+  batchUncertain: boolean;
   evmSend?: DappEvmReview;
+  manualNonce?: Readonly<{ expires: number; nonce: number }>;
+  nonceClaimed: boolean;
+  nonceGeneration: number;
   notify: (possible: boolean) => void;
+  originalNonce?: number;
+  originallyExplicit: boolean;
+  recommendation?: Readonly<{ expires: number; nonce: number }>;
   smart?: DappSmartAccountReview;
   utxo?: DappUtxoReview;
 };
@@ -61,6 +76,15 @@ export const watchApprovalSubmission = (
 ): (() => void) => {
   const watch: Watch = {
     attempts: new Set(),
+    nonceGeneration: 0,
+    originalNonce:
+      evmSend?.originalNonce === undefined
+        ? undefined
+        : reviewedExtensionNonce(evmSend.originalNonce, 'manual').nonce,
+    originallyExplicit: evmSend?.originalNonce !== undefined,
+    nonceClaimed: false,
+    batchActive: false,
+    batchUncertain: false,
     evmSend:
       evmSend &&
       Object.freeze({
@@ -165,9 +189,11 @@ export const captureDappEvmSubmission = (
 ) => {
   if (!isTrustedExtensionPageSender(sender) || !sender.documentId) return;
   const { documentId } = sender;
-  const watch = [...(watches.get(documentId) || [])].find(
+  const matches = [...(watches.get(documentId) || [])].filter(
     (candidate) => candidate.evmSend
   );
+  if (matches.length > 1) throw transactionApprovalExpired();
+  const watch = matches[0];
   if (!watch?.evmSend) return;
   const { assertCurrent, checkDocument } = captureApprovalDocument(
     documentId,
@@ -179,6 +205,109 @@ export const captureDappEvmSubmission = (
     context: watch.evmSend.context,
     assertCurrent,
     checkDocument,
+    beginNonceRecommendation(address: unknown) {
+      assertCurrent();
+      if (watch.batchActive) throw transactionApprovalExpired();
+      if (
+        typeof address !== 'string' ||
+        address.toLowerCase() !==
+          watch.evmSend!.context.account.address.toLowerCase()
+      )
+        throw transactionApprovalExpired();
+      const generation = ++watch.nonceGeneration;
+      watch.recommendation = undefined;
+      return (value: unknown) => {
+        assertCurrent();
+        if (generation !== watch.nonceGeneration)
+          throw transactionApprovalExpired();
+        const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
+        watch.recommendation = {
+          nonce,
+          expires: performance.now() + WALLET_TOKEN_REVIEW_TTL_MS,
+        };
+      };
+    },
+    approveManualNonce(value: unknown) {
+      assertCurrent();
+      if (watch.evmSend!.batch || watch.nonceClaimed)
+        throw transactionApprovalExpired();
+      const nonce = reviewedExtensionNonce(value, 'manual').nonce;
+      watch.manualNonce = {
+        nonce,
+        expires: performance.now() + WALLET_TOKEN_REVIEW_TTL_MS,
+      };
+    },
+    claimNonce(value: unknown): {
+      approval: ExtensionReviewedNonce;
+      finish(error?: unknown): void;
+    } {
+      assertCurrent();
+      const nonce = reviewedExtensionNonce(value, 'automatic').nonce;
+      const valid = (entry?: Readonly<{ expires: number; nonce: number }>) =>
+        entry?.nonce === nonce && performance.now() < entry.expires;
+      if (watch.evmSend!.batch) {
+        if (
+          watch.batchActive ||
+          watch.batchUncertain ||
+          (watch.batchNonce === undefined
+            ? !valid(watch.recommendation) ||
+              (watch.batchFloor !== undefined && nonce < watch.batchFloor)
+            : watch.batchNonce !== nonce &&
+              (!valid(watch.recommendation) || nonce < watch.batchNonce))
+        )
+          throw transactionApprovalExpired();
+        watch.batchActive = true;
+        ++watch.nonceGeneration;
+        watch.recommendation = undefined;
+        let finished = false;
+        return {
+          approval: reviewedExtensionNonce(nonce, 'automatic'),
+          finish(error?: unknown) {
+            if (finished) return;
+            finished = true;
+            watch.batchActive = false;
+            if (!error) watch.batchNonce = nonce + 1;
+            else if (
+              (error as { transactionNotBroadcast?: unknown })
+                ?.transactionNotBroadcast === true
+            ) {
+              ++watch.nonceGeneration;
+              watch.batchFloor = nonce;
+              watch.batchNonce = undefined;
+              watch.recommendation = undefined;
+            } else watch.batchUncertain = true;
+          },
+        };
+      }
+      if (watch.nonceClaimed) throw transactionApprovalExpired();
+      let source: ExtensionReviewedNonce['source'];
+      if (valid(watch.manualNonce) || watch.originalNonce === nonce)
+        source = 'manual';
+      else if (!watch.originallyExplicit && valid(watch.recommendation))
+        source = 'automatic';
+      else throw transactionApprovalExpired();
+      watch.nonceClaimed = true;
+      watch.manualNonce = undefined;
+      watch.recommendation = undefined;
+      let finished = false;
+      return {
+        approval: reviewedExtensionNonce(nonce, source),
+        finish(error?: unknown) {
+          if (finished) return;
+          finished = true;
+          if (
+            (error as { transactionNotBroadcast?: unknown })
+              ?.transactionNotBroadcast === true
+          ) {
+            ++watch.nonceGeneration;
+            watch.nonceClaimed = false;
+            watch.originalNonce = undefined;
+            watch.manualNonce = undefined;
+            watch.recommendation = undefined;
+          }
+        },
+      };
+    },
     // A prior success or unknown dispatch remains in attempts. It may not
     // have a durable bundle hash yet, so a later failure cannot release it.
     isSoleRetiredAttempt: () =>
@@ -250,6 +379,7 @@ export const beginApprovalSubmission = (
 
 type WalletTokenReviewAdmission = Readonly<{
   assertCurrent: () => void;
+  nonce: number;
   payload: WalletTokenReviewPayload;
 }>;
 const WALLET_TOKEN_REVIEW_TTL_MS = 300_000;
@@ -258,8 +388,9 @@ export function watchWalletTokenReview(
   port: chrome.runtime.Port,
   capture: (
     request: unknown,
-    persistentTab: boolean
-  ) => WalletTokenReviewAdmission,
+    persistentTab: boolean,
+    signal: AbortSignal
+  ) => Promise<WalletTokenReviewAdmission>,
   submit: (
     payload: WalletTokenReviewPayload,
     approval: IReviewedEvmTokenApproval
@@ -281,7 +412,8 @@ export function watchWalletTokenReview(
     Number.isInteger(tabId) &&
     tabId >= 0 &&
     (sender.frameId === undefined || sender.frameId === 0);
-  let phase: 'review' | 'submit' | 'submitted' | 'closed' = 'review';
+  let phase: 'review' | 'capturing' | 'submit' | 'submitted' | 'closed' =
+    'review';
   let approved: WalletTokenReviewAdmission;
   let expires: number;
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -303,19 +435,28 @@ export function watchWalletTokenReview(
   port.onMessage.addListener((message: unknown) => {
     if (phase === 'closed') return;
     if (phase === 'review') {
-      try {
-        approved = capture(message, persistentTab);
-        expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
-        timeout = setTimeout(
-          () => authority.abort(),
-          WALLET_TOKEN_REVIEW_TTL_MS
-        );
-        phase = 'submit';
-        reply({ type: 'reviewed' });
-      } catch (error) {
-        reply({ type: 'failure', ...formatError(error) });
-        close();
-      }
+      phase = 'capturing';
+      void Promise.resolve()
+        .then(() => {
+          if (authority.signal.aborted) throw walletTokenReviewError();
+          return capture(message, persistentTab, authority.signal);
+        })
+        .then((admission) => {
+          if (phase !== 'capturing') return;
+          admission.assertCurrent();
+          approved = admission;
+          expires = performance.now() + WALLET_TOKEN_REVIEW_TTL_MS;
+          timeout = setTimeout(
+            () => authority.abort(),
+            WALLET_TOKEN_REVIEW_TTL_MS
+          );
+          phase = 'submit';
+          reply({ type: 'reviewed' });
+        })
+        .catch((error) => {
+          reply({ type: 'failure', ...formatError(error) });
+          close();
+        });
       return;
     }
     if (phase !== 'submit' || message !== 'submit') {
@@ -338,7 +479,11 @@ export function watchWalletTokenReview(
         assertCurrent();
         return submit(
           approved.payload,
-          Object.freeze({ assertCurrent, signal: authority.signal })
+          Object.freeze({
+            assertCurrent,
+            nonce: approved.nonce,
+            signal: authority.signal,
+          })
         );
       })
       .then(

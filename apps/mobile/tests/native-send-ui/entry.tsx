@@ -1,3 +1,4 @@
+import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
 // Isolated browser fixture: the production app never imports this entrypoint.
 import React, { useSyncExternalStore } from 'react';
@@ -8,6 +9,7 @@ import { NativeUtxoSendFixture } from './nativeUtxoSendFixture';
 import { Erc20SendFixture } from './erc20SendFixture';
 import { NetworkPickerFixture } from './networkPickerFixture';
 import { registerRootComponent } from 'expo';
+import { Dimensions } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import {
   getNativeSendContext,
@@ -22,7 +24,7 @@ import type {
   NativeAccountRequest,
 } from '../../src/custody/accounts';
 import type { NativeWalletCatalogueSnapshot } from '../../src/custody/walletCatalogue';
-import { NativeSend } from '../../src/screens/NativeSend';
+import { NativeSend, type NativeRecipientPicker } from '../../src/screens/NativeSend';
 import { parseDecimalAmount } from '../../src/core/amounts';
 import type {
   NativeTransferSnapshot,
@@ -31,7 +33,19 @@ import type {
 
 const recipient = '0x1111111111111111111111111111111111111111';
 const sender = '0x2222222222222222222222222222222222222222';
-const cancellationHash = new URLSearchParams(window.location.search).has('cancel-transfer') ? '0x' + '3'.repeat(64) : undefined;
+const route = new URLSearchParams(window.location.search);
+// RN Web sets fontScale to 1 and rejects Dimensions.set in a browser. This
+// fixture-only hook sets the dimensions before the actual component mounts.
+if (route.get('font-scale') === '1.6') Dimensions.get('window').fontScale = 1.6;
+const replacementMode = route.has('cancel-transfer') ? 'cancel' : route.has('speed-up-transfer') ? 'speed-up' : undefined;
+const replacement = replacementMode && { mode: replacementMode, hash: '0x' + '3'.repeat(64) } as const;
+const collectibleStandard = route.get('collectible');
+const collectibleAddress = '0x3333333333333333333333333333333333333333';
+const collectible = collectibleStandard === '721'
+  ? { tokenStandard: 'ERC-721' as const, contractAddress: collectibleAddress }
+  : collectibleStandard === '1155'
+  ? { tokenStandard: 'ERC-1155' as const, contractAddress: collectibleAddress, tokenId: ((1n << 256n) - 1n).toString() }
+  : undefined;
 let sendContext = getNativeSendContext(
   new URLSearchParams(window.location.search).has('zksys-send')
     ? 'zksys-testnet'
@@ -71,17 +85,60 @@ const controller: NativeTransferView = {
   async prepareToken() {
     throw Error('Token path uses its dedicated fixture');
   },
-  async prepareCancellation(hash) {
-    publishReview(sender, '0', hash);
+  async prepareCollectible(saved, to, tokenId, amountUnits) {
+    if (saved !== collectible) throw Error('Unexpected fixture draft');
+    const from = sender;
+    publish({
+      ...idle(),
+      phase: 'review',
+      review: {
+        context: sendContext, id: `fixture-review-${++sequence}`, from,
+        recipient: saved.contractAddress, amountUnits: '0', maximumFeeUnits: '63000',
+        totalUnits: '63000', gasLimit: '21000', maximumFeePerGas: '3',
+        priorityFeePerGas: '1', nonce: '0', retry: false,
+        collectible: {
+          kind: 'nft-transfer', chainId: '1', from, contractAddress: saved.contractAddress,
+          recipient: to, tokenId, amountUnits, tokenStandard: saved.tokenStandard,
+        },
+      },
+    });
   },
-  async prepare(to, amount) {
-    publishReview(to, parseDecimalAmount(amount, 18).toString());
+  async prepareCancellation(hash) {
+    if (route.has('cancel-queued')) throw Error('CANCELLATION_QUEUED');
+    publishReview(sender, '0', { mode: 'cancel', originalHash: hash, originalMaximumFeeUnits: '63000' });
+  },
+  async prepareSavedCancellation(hash) {
+    await this.prepareCancellation(hash);
+  },
+  async prepareSpeedUp(hash) {
+    publishReview('0x1111111111111111111111111111111111111111', '1000000000000000000', {
+      mode: 'speed-up', originalHash: hash, originalMaximumFeeUnits: '63000',
+    });
+  },
+  async prepare(to, amount, nonce) {
+    publishReview(to, parseDecimalAmount(amount, 18).toString(), undefined, nonce);
   },
   async confirm(id) {
     if (snapshot.review?.id !== id) throw Error('Invalid fixture confirmation');
+    if (route.has('storage-full')) {
+      clearTimeout(expiry);
+      publish({ ...snapshot, hash: route.has('speed-up-transfer') ? replacement!.hash : null, phase: route.has('speed-up-transfer') ? 'unknown' : 'idle', review: null, message: route.has('speed-up-transfer') ? 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.' : 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.' });
+      throw Error('SIGNED_STORAGE_FULL');
+    }
     const quoteFailure = new URLSearchParams(window.location.search).get(
       'quoteFailure'
     );
+    if (quoteFailure === 'saved-expired') {
+      clearTimeout(expiry);
+      publish({
+        ...snapshot,
+        phase: 'unknown',
+        review: null,
+        hash: '0x' + '1'.repeat(64),
+        message: 'Your signed transaction is saved. Check it before sending again.',
+      });
+      throw Error('EXPIRED');
+    }
     if (quoteFailure) {
       clearTimeout(expiry);
       const expired = quoteFailure === 'base-fee' || quoteFailure === 'nonce';
@@ -97,11 +154,12 @@ const controller: NativeTransferView = {
       throw Error(expired ? 'EXPIRED' : 'FAILED');
     }
     confirmations.push({ id });
-    const context = snapshot.review.context;
+    const { context, collectible } = snapshot.review;
     clearTimeout(expiry);
     publish({
       context,
       phase: 'pending',
+      collectible,
       review: null,
       hash: '0x' + '1'.repeat(64),
       message: null,
@@ -110,9 +168,10 @@ const controller: NativeTransferView = {
   },
 };
 
-function publishReview(to: string, amountUnits: string, originalHash?: string) {
+function publishReview(to: string, amountUnits: string,
+  replacement?: NonNullable<NativeTransferSnapshot['review']>['replacement'], nonce?: string) {
   clearTimeout(expiry);
-  const gas = originalHash ? 42000n : 21000n;
+  const gas = replacement ? 42000n : 21000n;
   const maximumFee = gas * 3n;
   publish({
     ...idle(),
@@ -128,13 +187,26 @@ function publishReview(to: string, amountUnits: string, originalHash?: string) {
       gasLimit: gas.toString(),
       maximumFeePerGas: '3',
       priorityFeePerGas: '1',
-      nonce: '0',
+      nonce: nonce ?? '0',
+      ...(nonce === undefined ? {} : { nonceOverride: Number(nonce) }),
       retry: false,
-      ...(originalHash ? { cancellation: { originalHash } } : {}),
+      ...(replacement ? { replacement } : {}),
     }),
   });
   expiry = setTimeout(() => publish(idle()), 90000);
 }
+
+function createRecipientPicker(name: string): NativeRecipientPicker {
+  const picker: NativeRecipientPicker = {
+    current: () => localRecipientPicker === picker,
+    accounts: () => [
+      { label: name, address: recipient },
+      { label: name, address: '0x' + '4'.repeat(40) },
+    ],
+  };
+  return picker;
+}
+let localRecipientPicker = route.has('local-recipient') ? createRecipientPicker('Savings account') : undefined;
 
 declare global {
   interface Window {
@@ -144,6 +216,8 @@ declare global {
       reviewId(): string | null;
       confirmations(): readonly { id: string }[];
       changeContext(): void;
+      replaceRecipientScope(name: string): void;
+      retireRecipientScope(): void;
       settle(status: 'confirmed' | 'reverted' | 'nonce-consumed'): void;
     };
   }
@@ -162,6 +236,11 @@ window.__nativeSendFixture = {
     sendContext = getNativeSendContext('ethereum');
     publish({ ...snapshot, context: sendContext });
   },
+  replaceRecipientScope(name) {
+    localRecipientPicker = createRecipientPicker(name);
+    publish(idle());
+  },
+  retireRecipientScope() { localRecipientPicker = undefined; },
   settle: (phase) => publish({ ...snapshot, phase }),
 };
 
@@ -171,7 +250,7 @@ let accountSnapshot: NativeWalletCatalogueSnapshot | null =
   Object.freeze<NativeWalletCatalogueSnapshot>({
     revision: 0,
     active: { accountId: 'hd:60:0', networkId: 'ethereum' },
-    networks: NATIVE_NETWORKS,
+    networks: NATIVE_NETWORKS, utxoNetworks: UTXO_NETWORKS,
     accounts: Array.from({length: new URLSearchParams(window.location.search).has('many-accounts') ? 1000 : 2}, (_, index) => ({
       id: `hd:60:${index}`,
       type: 'HDAccount' as const,
@@ -281,6 +360,11 @@ function Fixture() {
     () => accountFailure,
     () => accountFailure
   );
+  const recipientPicker = useSyncExternalStore(
+    controller.subscribe,
+    () => localRecipientPicker,
+    () => localRecipientPicker
+  );
   return (
     <SafeAreaProvider>
       {new URLSearchParams(window.location.search).has('faucet') ? (
@@ -313,7 +397,9 @@ function Fixture() {
         <NativeSend
           controller={controller}
           context={sendContext}
-          cancellationHash={cancellationHash}
+          replacement={replacement}
+          recipientPicker={recipientPicker}
+          collectible={collectible}
           onBack={() => undefined}
         />
       )}

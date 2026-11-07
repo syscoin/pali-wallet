@@ -37,7 +37,7 @@ export const savedTransactionHistoryRow = (
     isCancel: tx.operation === 'cancel',
     isSpeedUp: tx.operation === 'speed-up',
     ...(tx.originalHash ? { replacesHash: tx.originalHash } : {}),
-    ...(tx.tokenTransfer?.token
+    ...(tx.tokenTransfer
       ? {
           tokenRecipient: tx.tokenTransfer.recipient,
           tokenTransfer: {
@@ -45,8 +45,12 @@ export const savedTransactionHistoryRow = (
             contractAddress: tx.to,
             recipient: tx.tokenTransfer.recipient,
             value: tx.tokenTransfer.amountUnits,
-            decimals: tx.tokenTransfer.token.decimals,
-            symbol: tx.tokenTransfer.token.symbol,
+            ...(tx.tokenTransfer.token
+              ? {
+                  decimals: tx.tokenTransfer.token.decimals,
+                  symbol: tx.tokenTransfer.token.symbol,
+                }
+              : {}),
           },
         }
       : {}),

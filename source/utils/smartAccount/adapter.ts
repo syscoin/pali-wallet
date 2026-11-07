@@ -1,6 +1,5 @@
 import { getAddress } from 'utils/ethersV6Compat';
 import { hexConcat } from 'utils/ethersV6Compat';
-import type { Interface } from 'utils/ethersV6Compat';
 import type { Provider } from 'utils/ethersV6Compat';
 
 import {
@@ -15,6 +14,8 @@ import {
   getPaliSmartAccountFactoryAddress,
   paliSmartAccountInterface,
 } from './contracts';
+import { derivePaliSmartAccountDeployment } from './counterfactual';
+import type { TransactionRequest } from 'ethers/providers';
 
 type PaliSmartAccountFactoryLike = {
   'getAddress(bytes32,bytes)': (
@@ -25,8 +26,24 @@ type PaliSmartAccountFactoryLike = {
     validator: string,
     initData: string
   ) => Promise<string>;
-  interface: Pick<Interface, 'encodeFunctionData'>;
 };
+
+/** Bind both view calls to the owner's captured provider and request lifetime. */
+export function createOwnedPaliSmartAccountFactory(
+  chainId: number,
+  provider: { call(transaction: TransactionRequest): Promise<string> },
+  assertCurrent: () => void
+): PaliSmartAccountFactoryLike {
+  return getPaliSmartAccountFactory(chainId, {
+    provider: null,
+    async call(transaction: TransactionRequest) {
+      assertCurrent();
+      const value = await provider.call(transaction);
+      assertCurrent();
+      return value;
+    },
+  });
+}
 
 export type PaliSmartAccountCall = {
   data?: string;
@@ -88,11 +105,6 @@ const requireAuth = (auth?: PaliAuthConfig): PaliAuthConfig => {
   return auth;
 };
 
-const getValidatorInitData = async (
-  factory: PaliSmartAccountFactoryLike,
-  auth: PaliAuthConfig
-) => await factory['getInitData(address,bytes)'](auth.validator, auth.data);
-
 export const toPaliSmartAccount = async ({
   address,
   auth,
@@ -102,40 +114,50 @@ export const toPaliSmartAccount = async ({
   factoryAddress = getPaliSmartAccountFactoryAddress(chainId),
   provider,
 }: ToPaliSmartAccountParams): Promise<PaliSmartAccount> => {
-  const accountFactory: PaliSmartAccountFactoryLike = (factory ||
-    (() => {
-      if (!provider) {
-        throw new Error('Smart account factory requires a provider');
-      }
-      return getPaliSmartAccountFactory(chainId, provider);
-    })()) as PaliSmartAccountFactoryLike;
+  const deriveDeployment = () =>
+    derivePaliSmartAccountDeployment({
+      ...requireAuth(auth),
+      deploySalt,
+      factoryAddress,
+    });
+
+  let resolvedAddress: string;
+  if (address) {
+    resolvedAddress = getAddress(address);
+  } else {
+    const deployment = deriveDeployment();
+    if (!factory && !provider)
+      throw new Error('Smart account factory requires a provider');
+    const accountFactory: PaliSmartAccountFactoryLike =
+      factory || getPaliSmartAccountFactory(chainId, provider);
+    const deploymentAuth = requireAuth(auth);
+    const observedInitCode = await accountFactory['getInitData(address,bytes)'](
+      deploymentAuth.validator,
+      deploymentAuth.data
+    );
+    if (observedInitCode !== deployment.initCode)
+      throw new Error(
+        'Smart account factory initialization does not match local derivation'
+      );
+    const observedAddress = await accountFactory['getAddress(bytes32,bytes)'](
+      deploySalt,
+      deployment.initCode
+    );
+    if (getAddress(observedAddress) !== deployment.address)
+      throw new Error(
+        'Smart account factory address does not match local derivation'
+      );
+    resolvedAddress = deployment.address;
+  }
 
   const getFactoryArgs = async (): Promise<PaliSmartAccountFactoryArgs> => {
-    const deploymentAuth = requireAuth(auth);
-    const initCode = await getValidatorInitData(accountFactory, deploymentAuth);
-    const factoryData = accountFactory.interface.encodeFunctionData(
-      'createAccount',
-      [deploySalt, initCode]
-    );
-
-    return {
-      factory: getAddress(factoryAddress),
-      factoryData,
-    };
+    const deployment = deriveDeployment();
+    if (deployment.address !== resolvedAddress)
+      throw new Error(
+        'Stored smart account address does not match local derivation'
+      );
+    return { factory: deployment.factory, factoryData: deployment.factoryData };
   };
-
-  const resolvedAddress =
-    address ||
-    (await (async () => {
-      const deploymentAuth = requireAuth(auth);
-      const initCode = await getValidatorInitData(
-        accountFactory,
-        deploymentAuth
-      );
-      return getAddress(
-        await accountFactory['getAddress(bytes32,bytes)'](deploySalt, initCode)
-      );
-    })());
 
   const encodeExecutions = (calls: PaliSmartAccountCall[]) =>
     encodeERC7579Executions(normalizeCalls(calls));

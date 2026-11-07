@@ -52,6 +52,25 @@ const formatAmount = (value: BigNumber): string =>
     .replace(/\.$/, '');
 const positiveAmount = (value: string) =>
   BigNumber.from(parseUnits(value, 8)).gt(0);
+
+/** Classify script metadata separately from participant addresses. */
+export function isUtxoNullDataOutput(
+  output: Readonly<{ addresses?: unknown; hex?: unknown }> | null | undefined
+): boolean {
+  if (output?.hex !== undefined) {
+    return (
+      typeof output.hex === 'string' &&
+      output.hex.length <= 20002 &&
+      /^(?:0x)?6a(?:[a-f0-9]{2})*$/i.test(output.hex)
+    );
+  }
+  // Some Blockbook history responses omit script bytes and describe the output.
+  const label = Array.isArray(output?.addresses)
+    ? output.addresses[0]
+    : undefined;
+  return typeof label === 'string' && /^OP_RETURN(?:\s|$)/.test(label);
+}
+
 function parseAssetValue(info: IAssetInfo, precision?: number): BigNumber {
   const d = checkedDecimals(precision);
   if (info.valueStr) {
@@ -107,7 +126,10 @@ export const getSyscoinIntentAmount = (
     'accountAssetTransfers' | 'tokenTransfers' | 'tokenType'
   > & {
     vin?: Pick<ITransactionVin, 'assetInfo' | 'isOwn'>[];
-    vout?: Pick<ITransactionVout, 'addresses' | 'assetInfo' | 'isOwn'>[];
+    vout?: Array<
+      Pick<ITransactionVout, 'addresses' | 'assetInfo' | 'isOwn'> &
+        Partial<Pick<ITransactionVout, 'hex'>>
+    >;
   }
 ): {
   amount: string;
@@ -178,9 +200,7 @@ export const getSyscoinIntentAmount = (
 
     // SYSCOIN_BURN_TO_ALLOCATION: SYS amount from OP_RETURN (burning SYS to get SYSX)
     if (normalizedType === 'syscoinburntoallocation') {
-      const opReturn = vout.find((v: ITransactionVout) =>
-        v.addresses?.[0]?.startsWith('OP_RETURN')
-      );
+      const opReturn = vout.find(isUtxoNullDataOutput);
 
       if (opReturn?.value) {
         const formatted = formatAmount(rawAssetUnits(opReturn.value, 8));
@@ -199,9 +219,7 @@ export const getSyscoinIntentAmount = (
       normalizedType === 'assetallocationburntoethereum' ||
       normalizedType === 'assetallocationburntosyscoin'
     ) {
-      const opReturn = vout.find((v: ITransactionVout) =>
-        v.addresses?.[0]?.startsWith('OP_RETURN')
-      );
+      const opReturn = vout.find(isUtxoNullDataOutput);
 
       if (opReturn?.assetInfo) {
         const guid = opReturn.assetInfo.assetGuid;
@@ -346,9 +364,7 @@ export const getSyscoinOperationAmount = (
         assetBurn || nativeBurn
           ? outputs.filter(
               (output: any) =>
-                typeof output?.addresses?.[0] === 'string' &&
-                output.addresses[0].startsWith('OP_RETURN') &&
-                (!assetBurn || output.assetInfo)
+                isUtxoNullDataOutput(output) && (!assetBurn || output.assetInfo)
             )
           : outputs;
       if ((assetBurn || nativeBurn) && relevantOutputs.length !== 1)

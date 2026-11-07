@@ -1,6 +1,9 @@
 import { webcrypto } from 'crypto';
 
-import { createSentryKeyVault } from '../../wallet/sentryKeyVault';
+import {
+  createSentryKeyVault,
+  sentryKeyVaultStorageKey,
+} from '../../wallet/sentryKeyVault';
 import { chromeStorage } from 'utils/storageAPI';
 
 import {
@@ -13,7 +16,7 @@ import {
 } from './keyStore';
 
 jest.mock('utils/storageAPI', () => ({
-  chromeStorage: { getItem: jest.fn(), setItem: jest.fn() },
+  chromeStorage: { getItems: jest.fn(), setItem: jest.fn() },
 }));
 
 const records = new Map<string, unknown>();
@@ -33,9 +36,9 @@ beforeEach(() => {
   });
   records.clear();
   jest.clearAllMocks();
-  (chromeStorage.getItem as jest.Mock).mockImplementation(async (name) =>
-    records.get(name)
-  );
+  (chromeStorage.getItems as jest.Mock).mockImplementation(async ([name]) => ({
+    [name]: records.get(name),
+  }));
   (chromeStorage.setItem as jest.Mock).mockImplementation(async (name, value) =>
     records.set(name, JSON.parse(JSON.stringify(value)))
   );
@@ -73,8 +76,9 @@ it('shares the authenticated envelope with a host that owns an immutable snapsho
       const stored = records.get(name);
       return stored ? Object.freeze(structuredClone(stored)) : null;
     },
-    async write(name, value, current) {
+    async write(name, expected, value, current) {
       current();
+      expect(records.get(name) ?? null).toEqual(expected ?? null);
       records.set(name, structuredClone(value));
     },
   });
@@ -129,6 +133,57 @@ it('decrypts after Chrome storage reorders the authenticated summary properties'
       assertCurrent,
     })
   ).resolves.toEqual(key);
+});
+
+it('does not overwrite a replaced Chrome bucket after its first read', async () => {
+  const vaultId = await getSentryVaultId('xpub-one');
+  const scope = { vaultId, network: 'mainnet' as const, seed, assertCurrent };
+  await saveSentryKey({ ...scope, label: 'Existing key', key });
+  const [name, saved] = [...records.entries()][0]!;
+  const replacement = { ...(saved as object), keys: [] };
+  (chromeStorage.getItems as jest.Mock)
+    .mockResolvedValueOnce({ [name]: saved })
+    .mockImplementationOnce(async () => {
+      records.set(name, replacement);
+      return { [name]: replacement };
+    });
+  await expect(
+    saveSentryKey({
+      ...scope,
+      label: 'New key',
+      key: { ...key, publicKey: '56'.repeat(48) },
+    })
+  ).rejects.toThrow('Sentry key storage changed');
+  expect(records.get(name)).toEqual(replacement);
+  expect(chromeStorage.setItem).toHaveBeenCalledTimes(1);
+});
+
+it('preserves older stored metadata while rejecting newly disallowed role and scheme pairs', async () => {
+  const vaultId = await getSentryVaultId('xpub-one');
+  const scope = { vaultId, network: 'mainnet' as const, seed, assertCurrent };
+  await saveSentryKey({ ...scope, label: 'Stored key', key });
+  const stored = [...records.values()][0] as {
+    keys: Array<{ summary: { role: string } }>;
+  };
+  stored.keys[0]!.summary.role = 'voting';
+  await expect(listSentryKeys(vaultId, 'mainnet')).resolves.toEqual([
+    expect.objectContaining({ role: 'voting', scheme: 'bls-basic' }),
+  ]);
+  await expect(
+    saveSentryKey({
+      ...scope,
+      label: 'Invalid new key',
+      key: { ...key, role: 'voting' },
+    })
+  ).rejects.toThrow('invalid key metadata');
+  await expect(
+    saveSentryKey({
+      ...scope,
+      label: 'Valid new key',
+      key: { ...key, publicKey: '56'.repeat(48) },
+    })
+  ).resolves.toMatchObject({ role: 'operator' });
+  expect(await listSentryKeys(vaultId, 'mainnet')).toHaveLength(2);
 });
 
 it('isolates identical operator keys across networks and wallet vaults', async () => {
@@ -443,4 +498,76 @@ it('allows exactly 100 keys but never writes a self-invalidating 101-key store',
     })
   ).rejects.toThrow('limit');
   expect(JSON.stringify([...records.entries()])).toEqual(before);
+});
+
+it('fails closed when a stored Sentry bucket is a falsy malformed value', async () => {
+  const vaultId = await getSentryVaultId('synthetic-xpub');
+  const network = 'testnet';
+  const name = sentryKeyVaultStorageKey(vaultId, network);
+  records.set(name, false);
+  await expect(listSentryKeys(vaultId, network)).rejects.toThrow(
+    'Invalid Sentry key storage'
+  );
+  await expect(
+    saveSentryKey({
+      vaultId,
+      network,
+      label: 'New key',
+      key,
+      seed,
+      assertCurrent,
+    })
+  ).rejects.toThrow('Invalid Sentry key storage');
+  expect(records.get(name)).toBe(false);
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
+});
+
+it('rejects either SHAKE secret component in a protected-store label', async () => {
+  const vaultId = await getSentryVaultId('synthetic-xpub');
+  const network = 'testnet';
+  const secretKey =
+    '13'.repeat(16) + '24'.repeat(16) + '35'.repeat(16) + '46'.repeat(16);
+  const shakeKey = {
+    role: 'operator' as const,
+    scheme: 'slh-dsa-shake-128s' as const,
+    publicKey: secretKey.slice(64),
+    secretKey,
+  };
+  for (const label of [secretKey.slice(0, 32), secretKey.slice(32, 64)]) {
+    await expect(
+      saveSentryKey({
+        vaultId,
+        network,
+        label,
+        key: shakeKey,
+        seed,
+        assertCurrent,
+      })
+    ).rejects.toThrow('Key labels must not contain private keys');
+  }
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
+});
+
+it('refuses a falsy replacement while admitting a new bucket', async () => {
+  const vaultId = await getSentryVaultId('synthetic-xpub');
+  const network = 'testnet';
+  const name = sentryKeyVaultStorageKey(vaultId, network);
+  (chromeStorage.getItems as jest.Mock)
+    .mockResolvedValueOnce({})
+    .mockImplementationOnce(async () => {
+      records.set(name, false);
+      return { [name]: false };
+    });
+  await expect(
+    saveSentryKey({
+      vaultId,
+      network,
+      label: 'New key',
+      key,
+      seed,
+      assertCurrent,
+    })
+  ).rejects.toThrow('Sentry key storage changed');
+  expect(records.get(name)).toBe(false);
+  expect(chromeStorage.setItem).not.toHaveBeenCalled();
 });

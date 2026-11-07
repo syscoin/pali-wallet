@@ -1,6 +1,11 @@
 import { getAsset } from '@sidhujag/sysweb3-utils';
 import { cleanTokenSymbol } from '@sidhujag/sysweb3-utils';
 
+import {
+  parseSptInventory,
+  supportsSptUtxoChain,
+  type SptHolding,
+} from '../../../../shared/sptInventory';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { ITokenSysProps, ISysAssetMetadata } from 'types/tokens';
@@ -9,6 +14,38 @@ import { formatUnits } from 'utils/ethersV6Compat';
 import { ASSET_CACHE_DURATION, USER_TOKENS_CACHE_DURATION } from './constants';
 import { ISysAssetsController, ISysTokensAssetReponse } from './types';
 import { ensureTrailingSlash } from './utils';
+
+const projectHolding = (
+  holding: SptHolding,
+  chainId: number
+): ISysTokensAssetReponse => {
+  const {
+    assetGuid,
+    confirmedUnits,
+    decimals,
+    metadata,
+    pendingDeltaUnits,
+    receivedUnits,
+    sentUnits,
+    transfers,
+  } = holding;
+  return {
+    ...metadata,
+    assetGuid,
+    balance: formatUnits(
+      (confirmedUnits + pendingDeltaUnits).toString(),
+      decimals
+    ),
+    chainId,
+    confirmedBalance: formatUnits(confirmedUnits.toString(), decimals),
+    decimals,
+    totalReceived: formatUnits(receivedUnits.toString(), decimals),
+    totalSent: formatUnits(sentUnits.toString(), decimals),
+    transfers,
+    type: 'SPTAllocated',
+    unconfirmedBalance: formatUnits(pendingDeltaUnits.toString(), decimals),
+  } as ISysTokensAssetReponse;
+};
 
 const SysAssetsControler = (): ISysAssetsController => {
   // Cache for Syscoin asset metadata
@@ -73,6 +110,7 @@ const SysAssetsControler = (): ISysAssetsController => {
     const { activeNetwork } = store.getState().vault;
     const networkUrl = activeNetwork.url;
     const networkChainId = activeNetwork.chainId;
+    if (!supportsSptUtxoChain(networkChainId)) return [];
 
     const cacheKey = `${xpubOrAddress}::${networkUrl}::${networkChainId}`;
     const cached = userTokensCache.get(cacheKey);
@@ -86,106 +124,21 @@ const SysAssetsControler = (): ISysAssetsController => {
 
     const requestOptions = 'details=tokenBalances&tokens=nonzero';
 
-    const { tokensAsset } = await fetchBackendAccountCached(
+    const accountData = await fetchBackendAccountCached(
       ensureTrailingSlash(networkUrl),
       xpubOrAddress,
       requestOptions,
       true
     );
-
-    // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
-    // tokens array contains regular UTXO addresses without assetGuid
-    // tokensAsset array contains actual SPT tokens with assetGuid
-    const validTokens = tokensAsset || [];
-
-    const preventUndefined =
-      typeof validTokens === 'undefined' || validTokens === undefined
-        ? []
-        : validTokens;
-
-    // Group tokens by assetGuid to aggregate multiple UTXOs
-    const tokensByAssetGuid = new Map<string, any[]>();
-
-    preventUndefined
-      .filter((token: any) => token.assetGuid)
-      .forEach((tokenAsset: any) => {
-        const guid = String(tokenAsset.assetGuid);
-        if (!tokensByAssetGuid.has(guid)) {
-          tokensByAssetGuid.set(guid, []);
-        }
-        tokensByAssetGuid.get(guid)!.push(tokenAsset);
-      });
-
-    // Aggregate balances for each unique asset
-    const getOnlyTokensWithAssetGuid: ISysTokensAssetReponse[] = Array.from(
-      tokensByAssetGuid.entries()
-    ).map(([assetGuid, tokens]) => {
-      // Take the first token as the base (for metadata)
-      const firstToken = tokens[0];
-      const decimals = firstToken.decimals ?? 8;
-
-      // Sum up balances from all UTXOs for this asset
-      let totalConfirmedBalance = BigInt(0);
-      let totalUnconfirmedBalance = BigInt(0);
-      let totalSent = BigInt(0);
-      let totalReceived = BigInt(0);
-      let totalTransfers = 0;
-
-      tokens.forEach((token: any) => {
-        // Add confirmed balance
-        totalConfirmedBalance += BigInt(String(token.balance || 0));
-
-        // Add unconfirmed delta (can be positive or negative)
-        // Blockbook now provides per-address SPT unconfirmed deltas
-        const unconfirmedRaw =
-          token.unconfirmedBalance !== undefined ? token.unconfirmedBalance : 0;
-        totalUnconfirmedBalance += BigInt(String(unconfirmedRaw || 0));
-
-        // Sum up totals (using BigInt to avoid precision issues)
-        totalSent += BigInt(token.totalSent || 0);
-        totalReceived += BigInt(token.totalReceived || 0);
-        totalTransfers += token.transfers || 0;
-      });
-
-      // Real-time balance is confirmed + unconfirmed delta
-      const displayBalance = formatUnits(
-        (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
-        decimals
-      );
-
-      return {
-        ...firstToken,
-        assetGuid: assetGuid,
-        // Use aggregated balances
-        balance: displayBalance,
-        confirmedBalance: formatUnits(
-          totalConfirmedBalance.toString(),
-          decimals
-        ),
-        unconfirmedBalance: formatUnits(
-          totalUnconfirmedBalance.toString(),
-          decimals
-        ),
-        totalSent: formatUnits(totalSent.toString(), decimals),
-        totalReceived: formatUnits(totalReceived.toString(), decimals),
-        transfers: totalTransfers,
-        chainId: networkChainId,
-        // Include count of UTXOs for debugging
-        utxoCount: tokens.length,
-      };
-    });
-
-    console.log(
-      `[SysAssetsController] Found ${getOnlyTokensWithAssetGuid.length} SPT tokens for user (from ${preventUndefined.length} total entries)`
+    const tokens = Array.from(
+      parseSptInventory(accountData, xpubOrAddress).holdings.values(),
+      (holding) => ({
+        ...projectHolding(holding, networkChainId),
+        utxoCount: holding.utxoCount,
+      })
     );
-
-    // Cache the result
-    userTokensCache.set(cacheKey, {
-      tokens: getOnlyTokensWithAssetGuid,
-      timestamp: now,
-    });
-
-    return getOnlyTokensWithAssetGuid;
+    userTokensCache.set(cacheKey, { tokens, timestamp: now });
+    return tokens;
   };
 
   /**
@@ -197,6 +150,8 @@ const SysAssetsControler = (): ISysAssetsController => {
     xpubOrAddress: string,
     networkUrl: string
   ): Promise<ITokenSysProps | null> => {
+    const { chainId } = store.getState().vault.activeNetwork;
+    if (!supportsSptUtxoChain(chainId)) return null;
     try {
       console.log(`[SysAssetsController] Validating SPT token: ${assetGuid}`);
 
@@ -231,16 +186,19 @@ const SysAssetsControler = (): ISysAssetsController => {
           true
         );
 
-        const inventory = aggregateTokenInventory(
-          accountData,
-          store.getState().vault.activeNetwork.chainId
+        const holding = parseSptInventory(accountData, xpubOrAddress).lookup(
+          assetGuid
         );
-        const holding = inventory.get(assetGuid);
         if (holding && holding.decimals !== assetData.decimals) {
           throw new Error('SPT token balance decimals do not match metadata');
         }
         // Only a complete, valid inventory can establish an explicit zero.
-        balance = holding ? String(holding.balance) : '0';
+        balance = holding
+          ? formatUnits(
+              (holding.confirmedUnits + holding.pendingDeltaUnits).toString(),
+              holding.decimals
+            )
+          : '0';
       } catch (balanceError) {
         console.warn(
           '[SysAssetsController] Could not fetch balance:',
@@ -263,7 +221,7 @@ const SysAssetsControler = (): ISysAssetsController => {
         contract: assetData.contract || '', // NEVM contract if bridged
         originDecimals: assetData.originDecimals,
         tokenId: assetData.tokenId,
-        chainId: store.getState().vault.activeNetwork.chainId,
+        chainId,
         type: 'SPTAllocated',
       };
 
@@ -297,147 +255,13 @@ const SysAssetsControler = (): ISysAssetsController => {
     return sysAssetToAdd;
   };
 
-  // Share the strict complete-inventory contract between refresh and the
-  // optional balance lookup during metadata-only custom imports.
-  const aggregateTokenInventory = (
-    accountData: any,
-    networkChainId: number
-  ): Map<string, ISysTokensAssetReponse> => {
-    const invalidInventory = () =>
-      new Error('SPT token inventory is unavailable or invalid');
-    const readInteger = (
-      value: unknown,
-      fallback?: number,
-      signed = false
-    ): bigint => {
-      if (value === undefined && fallback !== undefined) value = fallback;
-      if (
-        !['string', 'number'].includes(typeof value) ||
-        !(signed ? /^-?\d+$/ : /^\d+$/).test(String(value)) ||
-        (typeof value === 'number' && !Number.isSafeInteger(value))
-      )
-        throw invalidInventory();
-      return BigInt(String(value));
-    };
-    const readCount = (value: unknown, fallback?: number): number => {
-      const count = Number(readInteger(value, fallback));
-      if (!Number.isSafeInteger(count)) throw invalidInventory();
-      return count;
-    };
-    // The SDK resolves failed reads as null. Only a valid account response
-    // can establish that an imported token has no remaining balance.
-    if (
-      !accountData ||
-      typeof accountData !== 'object' ||
-      Array.isArray(accountData) ||
-      'error' in accountData ||
-      (accountData.tokensAsset !== undefined &&
-        !Array.isArray(accountData.tokensAsset))
-    ) {
-      throw invalidInventory();
-    }
-    if (accountData.tokensAsset === undefined) {
-      const identifier = accountData.addressOrXpub ?? accountData.address;
-      // Blockbook omits empty token arrays. A complete account summary is
-      // still required to distinguish that case from an unknown response.
-      if (typeof identifier !== 'string' || !identifier.trim())
-        throw invalidInventory();
-      readInteger(accountData.balance);
-      readInteger(accountData.unconfirmedBalance, undefined, true);
-      readCount(accountData.txs);
-      readCount(accountData.unconfirmedTxs);
-    }
-    // IMPORTANT: For SPT tokens, we should ONLY use tokensAsset array
-    // tokens array contains regular UTXO addresses without assetGuid
-    // tokensAsset array contains actual SPT tokens with assetGuid
-    const tokensAsset = accountData.tokensAsset || [];
-    // Group tokens by assetGuid to aggregate multiple UTXOs
-    const tokensByAssetGuid = new Map<string, any[]>();
-
-    tokensAsset.forEach((tokenAsset: any) => {
-      // Never skip malformed rows: that would turn a partial response into
-      // apparent proof that an imported asset has a zero balance.
-      if (
-        !tokenAsset ||
-        typeof tokenAsset !== 'object' ||
-        Array.isArray(tokenAsset)
-      )
-        throw invalidInventory();
-      readInteger(tokenAsset.assetGuid);
-      const guid = String(tokenAsset.assetGuid);
-      if (!tokensByAssetGuid.has(guid)) {
-        tokensByAssetGuid.set(guid, []);
-      }
-      tokensByAssetGuid.get(guid)!.push(tokenAsset);
-    });
-
-    // Aggregate balances for each unique asset
-    const aggregatedTokensMap = new Map<string, ISysTokensAssetReponse>();
-
-    tokensByAssetGuid.forEach((tokens, assetGuid) => {
-      // Take the first token as the base (for metadata)
-      const firstToken = tokens[0];
-      const decimals = firstToken.decimals;
-      if (!Number.isSafeInteger(decimals) || decimals < 0)
-        throw invalidInventory();
-
-      // Sum up balances from all UTXOs for this asset
-      let totalConfirmedBalance = BigInt(0);
-      let totalUnconfirmedBalance = BigInt(0);
-      let totalSent = BigInt(0);
-      let totalReceived = BigInt(0);
-      let totalTransfers = 0;
-
-      tokens.forEach((token: any) => {
-        if (token.decimals !== decimals) throw invalidInventory();
-        totalConfirmedBalance += readInteger(token.balance);
-        // Optional deltas are signed; every present amount must remain exact.
-        totalUnconfirmedBalance += readInteger(
-          token.unconfirmedBalance,
-          0,
-          true
-        );
-        totalSent += readInteger(token.totalSent, 0);
-        totalReceived += readInteger(token.totalReceived, 0);
-        totalTransfers += readCount(token.transfers, 0);
-        if (!Number.isSafeInteger(totalTransfers)) throw invalidInventory();
-      });
-
-      // Real-time balance is confirmed + unconfirmed delta
-      const displayBalance = formatUnits(
-        (totalConfirmedBalance + totalUnconfirmedBalance).toString(),
-        decimals
-      );
-
-      aggregatedTokensMap.set(assetGuid, {
-        ...firstToken,
-        assetGuid: assetGuid,
-        balance: displayBalance,
-        confirmedBalance: formatUnits(
-          totalConfirmedBalance.toString(),
-          decimals
-        ),
-        unconfirmedBalance: formatUnits(
-          totalUnconfirmedBalance.toString(),
-          decimals
-        ),
-        totalSent: formatUnits(totalSent.toString(), decimals),
-        totalReceived: formatUnits(totalReceived.toString(), decimals),
-        transfers: totalTransfers,
-        chainId: networkChainId,
-        type: 'SPTAllocated',
-      });
-    });
-
-    return aggregatedTokensMap;
-  };
-
   const getSysAssetsByXpub = async (
     xpubOrAddress: string,
     networkUrl: string,
     networkChainId: number,
     existingAssets: ITokenSysProps[] = []
   ): Promise<ISysTokensAssetReponse[]> => {
+    if (!supportsSptUtxoChain(networkChainId)) return [];
     // Refresh persisted/imported assets from all used SPT entries so zero-balance
     // tokens still keep their historical sent/received counters.
     const requestOptions = 'details=tokenBalances&tokens=used';
@@ -448,24 +272,18 @@ const SysAssetsControler = (): ISysAssetsController => {
       requestOptions,
       true
     );
-    const blockchainTokensMap = aggregateTokenInventory(
-      accountData,
-      networkChainId
-    );
+    const inventory = parseSptInventory(accountData, xpubOrAddress);
 
     // Update all manually imported tokens
     const updatedTokens: ISysTokensAssetReponse[] = existingAssets
       .filter((asset: ITokenSysProps) => asset.assetGuid !== undefined)
       .map((asset: ITokenSysProps) => {
-        const blockchainToken = blockchainTokensMap.get(
-          String(asset.assetGuid)
-        );
-
-        if (blockchainToken) {
+        const holding = inventory.lookup(String(asset.assetGuid));
+        if (holding) {
           // Keep user-authored metadata while refreshing chain-derived values.
           return {
             ...asset,
-            ...blockchainToken,
+            ...projectHolding(holding, networkChainId),
             assetGuid: String(asset.assetGuid),
             chainId: networkChainId,
           } as ISysTokensAssetReponse;

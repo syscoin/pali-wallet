@@ -288,6 +288,32 @@ test('manual collectible check works without an explorer and cancels an edited s
   await page.screenshot({ path: testInfo.outputPath('manual-collectible-large.png') });
 });
 
+test('only a current saved collectible can open the Send draft', async ({ page }, testInfo) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?token-portfolio&collectible-check&collectible-send');
+  const send = page.getByRole('button', { name: 'Send collectible', exact: true });
+  await page.getByRole('button', { name: 'Collectibles', exact: true }).click();
+  await page.getByRole('button', { name: 'Check by contract', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Collectible contract address', exact: true }).fill(long);
+  await page.getByRole('button', { name: 'ERC-1155', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Token ID', exact: true }).fill('0');
+  await page.getByRole('button', { name: 'Check ownership', exact: true }).click();
+  await expect(send).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save collectible', exact: true }).click();
+  await page.getByRole('button', { name: `View saved token 0, ${long}`, exact: true }).click();
+  await expect(send).toBeEnabled();
+  const requests = await page.evaluate(() => window.__nativeTokenPortfolio.requests());
+  await send.press('Space');
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.collectibleSends())).toEqual([
+    { contractAddress: long, tokenStandard: 'ERC-1155', tokenId: '0' },
+  ]);
+  expect(await page.evaluate(() => window.__nativeTokenPortfolio.requests())).toEqual(requests);
+  await send.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath('saved-collectible-send-320.png') });
+  await page.evaluate(() => window.__nativeTokenPortfolio.lock());
+  await expect(send).toHaveCount(0);
+});
+
 test('saves only the checked collectible and removes just one saved item', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?token-portfolio&collectible-check');

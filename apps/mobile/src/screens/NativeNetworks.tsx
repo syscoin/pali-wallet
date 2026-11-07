@@ -20,7 +20,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
   selected: boolean;
   busy: boolean;
   onSelect(id: Id): Promise<void>;
-  onEdit?: (registration: NativeNetworkRegistration) => void;
+  onEdit?: (network: NativeNetworkSnapshot<Id>['networks'][number]) => void;
 }) {
   return <View style={[s.network, s.networkRow, selected && s.active]}><IdlePressable accessibilityRole="radio"
     accessibilityLabel={`${network.name}, ${network.symbol}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}${network.testnet ? ', test network' : ''}${network.canSign ? '' : ', balance and receive only'}`}
@@ -35,7 +35,7 @@ function NetworkOption<Id extends string>({ network, selected, busy, onSelect, o
     <View style={[s.check, selected && s.checked]}>
       {selected && <Text style={s.checkText}>✓</Text>}
     </View>
-  </IdlePressable>{network.registration && onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}, Chain ID ${network.registration.chainId}`} disabled={busy} onPress={() => onEdit(network.registration!)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
+  </IdlePressable>{onEdit && <IdlePressable accessibilityRole="button" accessibilityLabel={`Edit ${network.name}${network.registration ? `, Chain ID ${network.registration.chainId}` : ''}`} disabled={busy} onPress={() => onEdit(network)} style={s.editNetwork}><Text style={s.more}>⋯</Text></IdlePressable>}</View>;
 }
 
 type CatalogueResult =
@@ -111,8 +111,8 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
 }) {
   const [query, setQuery] = useState('');
   const [catalogueQuery, setCatalogueQuery] = useState('');
-  const [form, setForm] = useState<{ id?: string; name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
-
+  const [form, setForm] = useState<{ id?: string; utxo?: true; catalogueRevision?: number; contextRevision?: number;
+    name: string; chainId: string; rpcUrl: string; symbol: string; testnet: boolean } | null>(null);
   const [ui, setUi] = useState({ owner: controller, busy: false, error: '' });
   // Reset during a controller replacement before committing its rendered children.
   // Object equality alone is insufficient when a retired controller returns later.
@@ -169,6 +169,20 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setForm(registration ? { ...registration } : { name: '', chainId: '', rpcUrl: 'https://', symbol: '', testnet: false });
   };
 
+  const editUtxo = (network: NativeNetworkSnapshot<Id>['networks'][number]) => {
+    if (working.current || !snapshot || !network.customUtxoEndpoint) return;
+    setUi({ owner: controller, busy: false, error: '' });
+    setCatalogueQuery('');
+    setForm({ utxo: true, id: network.id, catalogueRevision: snapshot.revision, contextRevision: controller.getContextRevision(),
+      name: network.name, rpcUrl: network.customUtxoEndpoint,
+      chainId: '', symbol: network.symbol, testnet: network.testnet });
+  };
+
+  const editSaved = (network: NativeNetworkSnapshot<Id>['networks'][number]) => {
+    if (network.registration) edit(network.registration);
+    else editUtxo(network);
+  };
+
   const chooseSuggestion = (chain: NativeNetworkSuggestion) => {
     if (!form || form.id || working.current) return;
     setUi({ owner: controller, busy: false, error: '' });
@@ -204,7 +218,14 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
   }, [controller, snapshot]);
 
   const save = async (remove = false) => {
-    if (!form || !snapshot || working.current || !controller.save) return;
+    if (!form || !snapshot || working.current) return;
+    const remover = form.utxo ? controller.removeUtxo : controller.remove;
+    const saver = form.utxo ? (form.id ? controller.editUtxo : controller.addUtxo) : controller.save;
+    if (remove ? !form.id || !remover : !saver) return;
+    if (form.utxo && form.id && !isCurrentUtxoEdit()) {
+      setUi({ owner: controller, busy: false, error: 'This network changed. Reopen it to edit the current settings.' });
+      return;
+    }
     const contextRevision = controller.getContextRevision();
     const catalogueRevision = snapshot.revision;
     const epoch = lifetime.current.epoch, operation = {};
@@ -212,19 +233,38 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
     setUi({ owner: controller, busy: true, error: '' }); Keyboard.dismiss();
     try {
       if (remove) {
-        if (!form.id || !controller.remove) return;
-        await controller.remove(form.id as Id, contextRevision, catalogueRevision);
+        await remover!(form.id as Id, contextRevision, catalogueRevision);
+      } else if (form.utxo) {
+        const draft = { endpoint: form.rpcUrl.trim(), name: form.name.trim() };
+        if (form.id) await controller.editUtxo!(form.id as Id, draft, contextRevision, catalogueRevision);
+        else await controller.addUtxo!({ ...draft, explorer: '' }, contextRevision, catalogueRevision);
       } else {
         const chainId = form.chainId.trim();
         const registration = createNativeNetwork({ id: form.id ?? `custom:${chainId}`, name: form.name, kind: 'evm',
           chainId, slip44: 60, rpcUrl: form.rpcUrl.trim(), symbol: form.symbol, decimals: 18, testnet: form.testnet });
-        await controller.save(registration, contextRevision, catalogueRevision);
+        await controller.save!(registration, contextRevision, catalogueRevision);
       }
-      if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) setForm(null);
-    } catch {
+      if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch) {
+        setForm(null);
+      }
+    } catch (cause) {
       if (working.current === operation && lifetime.current.alive && epoch === lifetime.current.epoch &&
-          controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision)
-        setUi({ owner: controller, busy: false, error: 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.' });
+          controller.getContextRevision() === contextRevision && controller.getSnapshot()?.revision === catalogueRevision) {
+        const code = cause && typeof cause === 'object' && 'code' in cause ? cause.code : undefined;
+        let message = form.utxo ? form.id ? code === 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER'
+          ? 'Check your saved transfers before changing this endpoint.'
+          : 'Check the network name and use a Blockbook URL for this network.'
+          : 'Check the Blockbook URL and make sure this coin type is not already saved.'
+          : 'Check the network details and RPC connection. The chain ID must match the RPC, and each saved network must have a distinct chain ID.';
+        if (form.utxo && remove) {
+          message = code === 'ACCOUNT_NOT_REMOVABLE'
+            ? 'Keep this network while it has saved accounts.'
+            : code === 'UTXO_NETWORK_HAS_SAVED_TRANSFER'
+            ? 'Check your saved transfers before removing this network.'
+            : 'Could not remove this network. Reopen its settings and try again.';
+        }
+        setUi({ owner: controller, busy: false, error: message });
+      }
     } finally {
       if (working.current === operation) {
         working.current = null;
@@ -244,29 +284,37 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
       autoCapitalize="none" autoCorrect={false} spellCheck={false} keyboardType={key === 'chainId' ? 'number-pad' : key === 'rpcUrl' ? 'url' : 'default'}
       maxLength={key === 'rpcUrl' ? 2048 : key === 'chainId' ? 16 : undefined} style={s.search} /></View>;
 
+  const isCurrentUtxoEdit = () => form?.catalogueRevision !== undefined &&
+    form.catalogueRevision === controller.getSnapshot()?.revision &&
+    form.contextRevision === controller.getContextRevision();
   const search = query.trim().toLocaleLowerCase();
   const matches = snapshot?.networks.filter((network) =>
     !search || network.name.toLocaleLowerCase().includes(search) || network.symbol.toLocaleLowerCase().includes(search)) ?? [];
   return <SafeAreaView style={s.safeArea} edges={['top', 'bottom']}>
     <KeyboardAvoidingView style={s.safeArea} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
-        <Header title={form ? form.id ? "Edit network" : "Add network" : "Networks"} subtitle="Choose a network for this account" onBack={form ? discardForm : close} />
+      <Screen key={form ? 'network-form' : 'network-list'}>
+        <Header title={form ? form.utxo ? (form.id ? 'Edit UTXO network' : 'Add UTXO network') : form.id ? 'Edit network' : 'Add network' : 'Networks'} subtitle={form?.utxo && form.id ? undefined : 'Choose a network for this account'} onBack={form ? discardForm : close} />
         {form ? <>
-          {!form.id && snapshot && controller.loadCatalogue && (
+          {!form.utxo && !form.id && snapshot && controller.loadCatalogue && (
             <NetworkSuggestions query={catalogueQuery} onQuery={setCatalogueQuery}
               load={controller.loadCatalogue} networks={snapshot.networks} busy={busy}
               onChoose={chooseSuggestion} />
           )}
-          {field('name', 'Network name')}{field('rpcUrl', 'RPC URL')}{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
+          {field('name', form.utxo && !form.id ? 'Network name (optional)' : 'Network name')}
+          {field('rpcUrl', form.utxo ? 'Blockbook URL' : 'RPC URL')}
+          {!form.utxo && <>{field('chainId', 'Chain ID')}{field('symbol', 'Currency symbol')}
           <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
-            <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
-          </IdlePressable>
-          <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>
-          <Button title={busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
-          {form.id && controller.remove && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
-          {form.id === snapshot?.selectedId && <Text style={s.help}>Switch to another network before removing this one.</Text>}
+            <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}This is a test network</Text>
+          </IdlePressable></>}
+          {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+          {!form.utxo && <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>}
+          <Button title={form.utxo && form.id ? busy ? 'Saving…' : 'Save changes' : busy ? 'Checking network…' : 'Save network'} disabled={busy} onPress={() => { void save(); }} />
+          {form.id && (form.utxo ? controller.removeUtxo : controller.remove) && <Button title="Remove network" variant="quiet" disabled={busy || form.id === snapshot?.selectedId} onPress={() => { void save(true); }} />}
+          {form.id && form.id === snapshot?.selectedId && <Text style={s.help}>
+            {form.utxo ? 'Only unused custom UTXO networks can be removed.' : 'Switch to another network before removing this one.'}
+          </Text>}
           <Button title="Cancel" variant="quiet" disabled={busy} onPress={discardForm} />
         </> : <>
         <IdleTextInput accessibilityLabel="Search networks" placeholder="Search networks" placeholderTextColor={colors.muted}
@@ -281,13 +329,20 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
             return <View key={String(testnet)} style={s.section}>
               <Text style={s.sectionTitle}>{testnet ? 'Test networks' : 'Main networks'}</Text>
               {testnet && <Text style={s.help}>Test networks use tokens intended for testing.</Text>}
-              {networks.map((network) => <NetworkOption key={network.id} network={network}
-                selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={controller.save ? edit : undefined} />)}
+              {networks.map((network) => {
+                const canEdit = network.registration ? controller.save : controller.editUtxo && network.customUtxoEndpoint;
+                return <NetworkOption key={network.id} network={network}
+                  selected={network.id === snapshot?.selectedId} busy={busy} onSelect={handleSelect} onEdit={canEdit ? editSaved : undefined} />;
+              })}
             </View>;
           })}
           {controller.save && <Button title="Add network" variant="quiet" disabled={busy} onPress={() => edit()} />}
+          {controller.addUtxo && <Button title="Add UTXO network" variant="quiet" disabled={busy} onPress={() => {
+            setUi({ owner: controller, busy: false, error: '' });
+            setForm({ utxo: true, name: '', rpcUrl: 'https://', chainId: '', symbol: '', testnet: false });
+          }} />}
         </>}
-        {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+        {!form && !!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
         <Text style={s.buildLabel}>Development build · Use a test wallet</Text>
       </Screen>
     </KeyboardAvoidingView>

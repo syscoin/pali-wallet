@@ -1,3 +1,4 @@
+/* global __dirname */
 const { matchesImportedRestartEvidence } = require('./imported-evm.ts');
 const fs = require('fs');
 const path = require('path');
@@ -30,6 +31,9 @@ const mode = qualificationMode(platform, process.argv.slice(4));
 const simulatorContract = mode === 'ios-simulator-contract';
 let simulatorVersion;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
+const poolCi = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1' ? require('./public-pool-ci.cjs') : null;
+if (poolCi && platform === 'ios' && !simulatorContract) throw Error('Public pool qualification requires an owned simulator');
+const publicPoolBuild = poolCi?.readPublicPoolCiBuild(process.env, path.join(__dirname, '../.native-qualification.json'));
 if (httpEnabled && !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || ''))
   throw Error('Native HTTP qualification requires an immutable source revision');
 let httpCompanion;
@@ -68,14 +72,16 @@ const hash = (bytes) => crypto.createHash('sha256').update(bytes).digest('hex');
 async function captureHttpDiagnostic() {
   if (!httpCompanion || httpDiagnosticSaved) return;
   try {
-    for (const [kind, method] of [['http', 'diagnostic'], ['post', 'postDiagnostic']]) {
-      const diagnostic = await httpCompanion[method]?.(httpRead);
-      if (!diagnostic) continue;
-      const text = JSON.stringify(diagnostic, null, 2);
-      if (Buffer.byteLength(text) > 8192) continue;
-      fs.writeFileSync(path.join(output, `${platform}-${kind}-diagnostic.json`), `${text}\n`);
-    }
+    const diagnostics = await httpCompanion.diagnostics(httpRead);
     httpDiagnosticSaved = true;
+    for (const kind of ['http', 'post']) {
+      const diagnostic = diagnostics?.[kind];
+      if (!diagnostic) continue;
+      const text = `${JSON.stringify(diagnostic, null, 2)}\n`;
+      if (Buffer.byteLength(text) > 8192) continue;
+      try { fs.writeFileSync(path.join(output, `${platform}-${kind}-diagnostic.json`), text); }
+      catch { /* Keep the other diagnostic and the original failure. */ }
+    }
   } catch { /* Partial diagnostics never replace the original failure. */ }
 }
 const validateReport = (text, phase, scenario) => {
@@ -212,6 +218,8 @@ async function ios() {
         false,
         COLD_BOOT_TIMEOUT_MS
       ));
+      if (publicPoolBuild) await stage('public-pool-trust', () => run(
+        'xcrun', ['simctl', 'keychain', device, 'add-root-cert', publicPoolBuild.ca]));
       await stage('install', () => run('xcrun', ['simctl', 'install', device, artifact]));
       container = await stage('container', () => run('xcrun', [
         'simctl',
@@ -237,6 +245,22 @@ async function ios() {
       };
       await stage('readiness-create', () => prepareIosSimulator(run, device, runtime.identifier,
         (evidence) => fs.writeFileSync(path.join(output, `ios-${scenario}-create-readiness.json`), `${JSON.stringify(evidence, null, 2)}\n`)));
+      if (publicPoolBuild) {
+        const publicPool = await stage('report-create', () => poolCi.runHostedPublicPool({
+          platform, config: publicPoolBuild, output,
+          execute: async ({ uri, report, captureFailure }) => {
+            launchIos(run, device, uri, (evidence) => fs.writeFileSync(path.join(output, 'ios-public-pool-launch.json'),
+              `${JSON.stringify(evidence, null, 2)}\n`));
+            const documents = path.join(container, 'Documents');
+            const readPoolFile = (name) => fs.existsSync(path.join(documents, name)) ? readHttpSidecar(documents, name) : undefined;
+            return poolCi.waitPublicPoolReport(
+              () => readPoolFile(report),
+              () => captureFailure(readPoolFile) || ['create', 'startup'].some((phase) => fs.existsSync(path.join(documents, `pali-native-qualification-${phase}.json`))));
+          },
+        }));
+        return { platform, runtime: runtime.identifier, publicPool,
+          appExecutableSha256: hash(fs.readFileSync(path.join(artifact, executable))) };
+      }
       const httpCreate = httpCompanion ? await httpCompanion.begin('create', scenario) : '';
       await stage('launch-create', () => {
         try {
@@ -250,12 +274,17 @@ async function ios() {
           throw error;
         }
       });
-      const created = await stage('report-create', () => waitReport(
-        () => read('create'),
-        'create',
-        scenario,
-        () => read('startup')
-      ));
+      const created = await stage('report-create', async () => {
+        try {
+          return await waitReport(() => read('create'), 'create', scenario, () => read('startup'));
+        } catch (error) {
+          try {
+            captureIosLaunchReports(fs, container, scenario, (evidence) => fs.writeFileSync(
+              path.join(output, `ios-${scenario}-create-failure-reports.json`), `${JSON.stringify(evidence, null, 2)}\n`), 'report-create');
+          } catch { /* Report collection cannot replace the qualification error. */ }
+          throw error;
+        }
+      });
       if (httpCompanion) {
         const { post, ...evidence } = await httpCompanion.verify(httpRead, created.sessionId);
         fs.writeFileSync(path.join(output, `ios-${scenario}-create-http.json`), `${JSON.stringify(evidence, null, 2)}\n`);
@@ -420,8 +449,34 @@ async function android() {
         throw Error('Required JNI library missing from qualification APK');
     }
   }
-  prepareAndroidRoot(run, (evidence) => fs.writeFileSync(
-    path.join(output, 'android-root-readiness.json'), `${JSON.stringify(evidence, null, 2)}\n`));
+  const publicPoolSerial = publicPoolBuild ? poolCi.androidPublicPoolSerial(run) : undefined;
+  const deviceRun = publicPoolSerial
+    ? (command, args, ...options) => run(command, ['-s', publicPoolSerial, ...args], ...options)
+    : run;
+  prepareAndroidRoot(deviceRun, (evidence) => fs.writeFileSync(
+    path.join(output, 'android-root-readiness.json'), `${JSON.stringify(evidence, null, 2)}\n`), publicPoolSerial);
+  if (publicPoolSerial) {
+    const exists = (name) => deviceRun('adb', ['shell', 'test', '-f', `/data/user/0/${PACKAGE}/files/${name}`], true, 5000) !== null;
+    deviceRun('adb', ['uninstall', PACKAGE], true);
+    try {
+      deviceRun('adb', ['install', artifact]);
+      const publicPool = await poolCi.runHostedPublicPool({
+        platform, config: publicPoolBuild, output,
+        execute: ({ uri, report, ports, captureFailure }) => poolCi.withPublicPoolAndroidRoutes(run, publicPoolSerial, ports, async () => {
+          deviceRun('adb', ['shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${uri}'`,
+            '-n', `${PACKAGE}/.MainActivity`]);
+          const readPoolFile = (name) => exists(name) ? readAndroidHttpSidecar(deviceRun, name) : undefined;
+          return poolCi.waitPublicPoolReport(() => readPoolFile(report),
+            () => captureFailure(readPoolFile) || ['create', 'startup'].some((phase) => exists(`pali-native-qualification-${phase}.json`)));
+        }),
+      });
+      return { platform, apkSha256: hash(fs.readFileSync(artifact)), nativeLibraries, publicPool,
+        osVersion: deviceRun('adb', ['shell', 'getprop', 'ro.build.version.release']) };
+    } finally {
+      deviceRun('adb', ['shell', 'am', 'force-stop', PACKAGE], true);
+      deviceRun('adb', ['uninstall', PACKAGE], true);
+    }
+  }
   if (httpEnabled) {
     const { startHttpCompanion } = require('./http-companion.cjs');
     httpCompanion = await startHttpCompanion({ platform, sourceRevision: process.env.GITHUB_SHA, run });
@@ -743,6 +798,14 @@ async function android() {
       await httpCompanion?.close().catch(() => undefined);
     }
     else await httpCompanion?.close();
+  }
+  if (publicPoolBuild) {
+    fs.writeFileSync(path.join(output, `${platform}-public-pool.json`), `${JSON.stringify({
+      version: 1, status: 'passed', sourceRevision: process.env.GITHUB_SHA,
+      runnerImage: process.env.ImageVersion || null, ...report,
+    }, null, 2)}\n`, { flag: 'wx' });
+    console.log(`${platform}: Offline public pool verification passed`);
+    return;
   }
   fs.writeFileSync(
     path.join(output, simulatorContract ? 'ios-simulator-limited.json' : `${platform}-qualification.json`),

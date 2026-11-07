@@ -197,9 +197,13 @@ test('HD and Imported aliases share one sender-owned pending record with immutab
     const imported = createNativeSignedRecordView(records, session, f.root.walletFingerprint, { index: 0, type: 'Imported', address: signer.address }, network);
     const raw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: identity.address, value: 1, gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 });
     const signed = await hd.saveSigned(raw);
-    await imported.saveSigned(raw);
+    await assert.rejects(imported.saveSigned(raw), {
+      code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+      recoveryHash: signed.hash,
+      transactionNotBroadcast: true,
+    });
     const values = await records.listSender(session, '1', signer.address);
-    assert.equal(values.length, 1, 're-observing identical wire bytes cannot create a second alias record');
+    assert.equal(values.length, 1, 'a competing ordinary send cannot create a second alias record');
     assert.deepEqual(values[0]!.signer, { id: 0, type: 'HDAccount' });
     assert.equal((await imported.load())!.rawTransaction, raw);
     assert.equal((await hd.load())!.hash, signed.hash);

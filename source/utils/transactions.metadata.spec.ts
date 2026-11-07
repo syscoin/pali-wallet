@@ -126,3 +126,65 @@ it.each([7, { malformed: true }])(
     });
   }
 );
+
+it('interprets an SDK data-only ERC-20 transfer without mutating the source row', async () => {
+  (store.getState as jest.Mock).mockReturnValue({
+    vault: vault(1, [
+      {
+        chainId: 1,
+        contractAddress: tokenAddress,
+        decimals: 6,
+        tokenSymbol: 'TOK',
+      },
+    ]),
+  });
+  const { input, ...rest } = tx;
+  const submitted = {
+    ...rest,
+    data: input,
+    value: { type: 'BigNumber', hex: '0x00' },
+  };
+  const before = JSON.stringify(submitted);
+  await expect(
+    getTransactionDisplayInfo(submitted, 'ETH', true)
+  ).resolves.toMatchObject({
+    isErc20Transfer: true,
+    displaySymbol: 'TOK',
+    displayValue: '1',
+    actualRecipient: recipient,
+  });
+  expect(JSON.stringify(submitted)).toBe(before);
+});
+it('does not let a data alias override a present input, including explicit empty input', async () => {
+  (store.getState as jest.Mock).mockReturnValue({ vault: vault() });
+  const submitted = { ...tx, input: '0x', data: tx.input, value: '0' };
+  await expect(
+    getTransactionDisplayInfo(submitted, 'ETH', true)
+  ).resolves.toMatchObject({
+    isErc20Transfer: false,
+    displaySymbol: 'ETH',
+  });
+});
+it.each(['0xa9059cbb', '0xa9059cbb' + 'ff'.repeat(64), '0xzz', 'not-hex'])(
+  'does not infer a transfer from malformed or noncanonical data %#',
+  async (data) => {
+    (store.getState as jest.Mock).mockReturnValue({ vault: vault() });
+    await expect(
+      getTransactionDisplayInfo(
+        { chainId: 1, to: tokenAddress, data, value: '0' },
+        'ETH',
+        true
+      )
+    ).resolves.toMatchObject({ isErc20Transfer: false });
+  }
+);
+it('keeps a normal native data-only value native', async () => {
+  (store.getState as jest.Mock).mockReturnValue({ vault: vault() });
+  await expect(
+    getTransactionDisplayInfo(
+      { chainId: 1, to: recipient, data: '0x', value: '1000000000000000000' },
+      'ETH',
+      true
+    )
+  ).resolves.toMatchObject({ isErc20Transfer: false, displaySymbol: 'ETH' });
+});

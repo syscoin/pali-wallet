@@ -1,5 +1,6 @@
 import { findUtxoNetwork } from '../core/utxoNetworks.ts';
 import { utxoObservation } from '../core/utxoBalance.ts';
+import type { UtxoSysxBalance } from '../core/utxoBalanceReader.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { getNativeNetwork } from '../custody/networkContext.ts';
 import type { EvmNetworkId } from '../custody/networkContext.ts';
@@ -13,12 +14,16 @@ export type NativePortfolioAccount = Readonly<{
   revision: number;
 }>;
 
+type PortfolioSysx = Readonly<({ status: 'available' } & UtxoSysxBalance) | { status: 'unavailable' }>;
+const SYSX_UNAVAILABLE = Object.freeze({ status: 'unavailable' as const });
+
 export type NativePortfolioSnapshot = Readonly<{
   account: NativePortfolioAccount | null;
   status: 'unavailable' | 'unknown' | 'loading' | 'available' | 'error';
   units: string | null;
   updatedAt: number | null;
   pendingDeltaUnits?: string;
+  sysx?: PortfolioSysx;
 }>;
 
 /** Only the custody authority's public projection crosses this boundary. */
@@ -51,9 +56,10 @@ function snapshot(
   status: NativePortfolioSnapshot['status'],
   units: string | null = null,
   updatedAt: number | null = null,
-  pendingDeltaUnits?: string
+  pendingDeltaUnits?: string,
+  sysx?: PortfolioSysx
 ): NativePortfolioSnapshot {
-  return Object.freeze({ account, status, units, updatedAt, ...(pendingDeltaUnits === undefined ? {} : { pendingDeltaUnits }) });
+  return Object.freeze({ account, status, units, updatedAt, ...(pendingDeltaUnits === undefined ? {} : { pendingDeltaUnits }), ...(sysx ? { sysx } : {}) });
 }
 
 /** Public balance observations, bound to the exact ready custody revision. */
@@ -76,6 +82,7 @@ export class NativePortfolioController {
   }
 
   getNetworkRegistration(id: string) { return getNativeNetwork(id, this.source.getCatalogue?.()?.networks); }
+  getUtxoNetwork(id: unknown) { return findUtxoNetwork(id, this.source.getCatalogue?.()?.utxoNetworks); }
 
   private readAccount(): NativePortfolioAccount | null {
     try {
@@ -84,10 +91,10 @@ export class NativePortfolioController {
         current.phase !== 'ready' || !current.account ||
         !Number.isSafeInteger(current.revision) || current.revision < 0
       ) return null;
-      const network = findUtxoNetwork(current.account.network) ??
+      const network = this.getUtxoNetwork(current.account.network) ??
         getNativeNetwork(current.account.network, this.source.getCatalogue?.()?.networks);
       return Object.freeze({
-        address: normalizePublicAddress(current.account.address, network.id),
+        address: normalizePublicAddress(current.account.address, network.id, this.source.getCatalogue?.()?.utxoNetworks),
         network: network.id as EvmNetworkId,
         revision: current.revision,
       });
@@ -212,23 +219,29 @@ export class NativePortfolioController {
     this.synchronize(true);
     const account = this.state.account;
     if (!account || this.connection !== connection) return;
+    const previouslyObservedSysx = this.state.sysx ? SYSX_UNAVAILABLE : undefined;
     this.cancel();
     const request: Request = {
       account, connection, controller: new AbortController(), generation: this.generation,
     };
     this.pending = request;
-    this.replace(snapshot(account, 'loading'), true);
+    this.replace(snapshot(account, 'loading', null, null, undefined, previouslyObservedSysx), true);
     if (!this.current(request)) return;
     try {
-      const network = findUtxoNetwork(account.network);
+      const network = this.getUtxoNetwork(account.network);
       if (network) {
         const result = await this.reader.readUtxoBalance?.(network.id, account.address, request.controller.signal);
         if (!this.current(request)) return;
         if (!result) throw new Error('Invalid observation');
-        const balance = utxoObservation(result, network.id, this.now());
+        const balance = utxoObservation(result, network, this.now());
         if (!this.current(request)) return;
+        let sysx: PortfolioSysx | undefined = previouslyObservedSysx;
+        if (balance.sysx) {
+          sysx = balance.sysx.confirmedUnits === '0' && balance.sysx.pendingDeltaUnits === '0'
+            ? undefined : Object.freeze({ status: 'available', ...balance.sysx });
+        }
         this.pending = null;
-        this.replace(snapshot(account, 'available', balance.units, balance.updatedAt, balance.pendingDeltaUnits), true);
+        this.replace(snapshot(account, 'available', balance.units, balance.updatedAt, balance.pendingDeltaUnits, sysx), true);
         return;
       }
       const result = await this.reader.readBalance(account.network, account.address, request.controller.signal);
@@ -246,7 +259,7 @@ export class NativePortfolioController {
       if (!this.current(request)) return;
       this.pending = null;
       // Untrusted transport error text never reaches public state.
-      this.replace(snapshot(account, 'error'), true);
+      this.replace(snapshot(account, 'error', null, null, undefined, previouslyObservedSysx), true);
     }
   };
 }

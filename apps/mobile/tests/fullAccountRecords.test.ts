@@ -58,7 +58,7 @@ async function fixture() {
   }
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async ensureCryptoReady() {
       assert(globalThis.crypto.subtle);
     },

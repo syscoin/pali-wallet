@@ -30,6 +30,7 @@ const grant = {
 };
 const sender = {
   url: `${HOST}/page`,
+  origin: HOST,
   tab: { id: 1 },
 } as chrome.runtime.MessageSender;
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));

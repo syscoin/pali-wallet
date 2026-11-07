@@ -19,6 +19,7 @@ export const getTransactionDisplayCacheKey = ({
     transaction.value,
     transaction.to,
     transaction.input,
+    transaction.data,
     transaction.historySource,
     transaction.tokenRecipient,
     transaction.tokenTransfer,

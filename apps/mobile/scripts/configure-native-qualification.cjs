@@ -28,6 +28,19 @@ verifyInstalledQualificationSdk(root, sdk);
 const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
+const publicPoolEnabled = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1';
+let publicPool;
+if (publicPoolEnabled) {
+  if (httpEnabled || physicalScenario !== undefined || !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
+      app.expo.extra?.paliPublicPoolQualification || app.expo.extra?.paliHttpQualification)
+    throw Error('Public pool qualification requires a dedicated isolated build');
+  const { readPublicPoolCa } = require('../qualification/public-pool-ca.cjs');
+  publicPool = {
+    build: { version: 1, sourceRevision: process.env.GITHUB_SHA,
+      lockfileSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package-lock.json'))).digest('hex') },
+    caSha256: readPublicPoolCa(process.env.PALI_PUBLIC_POOL_FIXTURE_CA).sha256,
+  };
+}
 let http;
 if (httpEnabled) {
   if (physicalScenario !== undefined || !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
@@ -71,6 +84,7 @@ const receipt = {
   ...(sdk.archive ? { keyringIdentity: sdk.identity } : {}),
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
+  ...(publicPool ? { publicPool } : {}),
 };
 pkg.main = receipt.qualificationEntry;
 app.expo.extra = {
@@ -85,6 +99,10 @@ app.expo.ios.bundleIdentifier = receipt.identifier;
 app.expo.android.package = receipt.identifier;
 if (http) {
   app.expo.extra = { ...app.expo.extra, paliHttpQualification: http };
+  app.expo.plugins = [...(app.expo.plugins || []), './qualification/withHttpFixture.cjs'];
+}
+if (publicPool) {
+  app.expo.extra = { ...app.expo.extra, paliPublicPoolQualification: publicPool };
   app.expo.plugins = [...(app.expo.plugins || []), './qualification/withHttpFixture.cjs'];
 }
 if (physical) {

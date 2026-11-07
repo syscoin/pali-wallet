@@ -79,14 +79,16 @@ for (const type of [0, 2] as const) test(`type ${type} raw broadcasting validate
     const hash = keccak256(raw), methods: string[] = [];
     const rpc = new NativeTransferRpc({ networkId: network.id, registration: network, fetch: async (_url, init) => {
       const request = JSON.parse(String(init.body)); methods.push(request.method);
-      assert(['eth_chainId', 'eth_sendRawTransaction'].includes(request.method));
+      assert(['eth_chainId', 'eth_getTransactionCount', 'eth_sendRawTransaction'].includes(request.method));
+      if (request.method === 'eth_getTransactionCount')
+        assert.deepEqual(request.params, [wallet.address, 'pending']);
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id,
-        result: request.method === 'eth_chainId' ? `0x${BigInt(network.chainId).toString(16)}` : hash }),
+        result: request.method === 'eth_chainId' ? `0x${BigInt(network.chainId).toString(16)}` : request.method === 'eth_getTransactionCount' ? '0x0' : hash }),
       { headers: { 'content-type': 'application/json' } });
     } });
     if (accepted) {
       assert.equal(await rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), hash);
-      assert.deepEqual(methods, ['eth_chainId', 'eth_sendRawTransaction']);
+      assert.deepEqual(methods, ['eth_chainId', 'eth_getTransactionCount', 'eth_chainId', 'eth_sendRawTransaction']);
     } else {
       await assert.rejects(rpc.broadcast(raw, hash, signal(), { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); } }), { code: 'INVALID_RESPONSE' });
       assert.deepEqual(methods, []);

@@ -25,6 +25,7 @@ import {
   createBrowsingNavigationContext,
   navigateWithContext,
 } from 'utils/navigationState';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { buildExplorerUrl, selectExplorerUrl } from 'utils/strings';
 
 // A dialog/route may disappear while the device RPC is still pending. Keep
@@ -59,6 +60,11 @@ export const AccountHeader: React.FC = () => {
   );
   const activeAccount = useSelector(
     (state: RootState) => state.vault.activeAccount
+  );
+  const canPublishAddress = canPublishAccountAddress(
+    currentAccount,
+    activeAccount?.type,
+    activeNetwork.chainId
   );
   const location = useLocation();
   const { useCopyClipboard, alert, navigate } = useUtils();
@@ -166,7 +172,7 @@ export const AccountHeader: React.FC = () => {
     const accountAddress = currentAccount?.address;
     const xpub = (currentAccount as any)?.xpub as string | undefined;
     const isImported = Boolean((currentAccount as any)?.isImported);
-    if (!accountAddress || !explorer) return;
+    if (!accountAddress || !explorer || !canPublishAddress) return;
 
     // Prefer XPUB page for UTXO accounts when available, including imported extended-key accounts.
     // Fall back to /address for:
@@ -195,6 +201,7 @@ export const AccountHeader: React.FC = () => {
     (currentAccount as any)?.isImported,
     isBitcoinBased,
     explorer,
+    canPublishAddress,
   ]);
 
   const handleVerifyAddress = useCallback(async () => {
@@ -257,8 +264,8 @@ export const AccountHeader: React.FC = () => {
   }, [isLedger, isTrezor, isBitcoinBased]);
 
   const copyAddress = useCallback(() => {
-    copy(currentAccount?.address ?? '');
-  }, [copy, currentAccount?.address]);
+    if (canPublishAddress) copy(currentAccount?.address ?? '');
+  }, [canPublishAddress, copy, currentAccount?.address]);
 
   useEffect(() => {
     const placeholder = document.querySelector('.add-identicon');
@@ -294,7 +301,7 @@ export const AccountHeader: React.FC = () => {
       />
       <div className="flex min-w-0 flex-1 ml-[15px] items-center text-brand-white">
         <AccountExplorerAvatar
-          available={Boolean(explorer)}
+          available={Boolean(explorer) && canPublishAddress}
           onClick={openAccountInExplorer}
           header
         />
@@ -366,12 +373,15 @@ export const AccountHeader: React.FC = () => {
                   </button>
                 ) : (
                   <p className="min-w-0 truncate text-xs">
-                    {ellipsis(currentAccount?.address, 6, 14)}
+                    {canPublishAddress
+                      ? ellipsis(currentAccount?.address, 6, 14)
+                      : t('receive.addressUnavailable')}
                   </p>
                 )}
               </Tooltip>
               <IconButton
                 onClick={copyAddress}
+                disabled={!canPublishAddress}
                 aria-label={t('buttons.copy')}
                 type="primary"
                 shape="circle"

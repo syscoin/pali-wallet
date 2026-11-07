@@ -19,6 +19,8 @@ export type UtxoDetailTransaction = Omit<
   ITransactionInfoUtxo,
   'vin' | 'vout'
 > & {
+  blockNumber?: number | string;
+  height?: number | string;
   vin: Array<Omit<ITransactionVin, 'value'> & { value: string | number }>;
   vout: Array<Omit<ITransactionVout, 'value'> & { value: string | number }>;
 };
@@ -79,9 +81,12 @@ export const getReceivingAddresses = (
   for (const output of Array.isArray(transaction.vout)
     ? transaction.vout
     : []) {
+    const scriptHex = output?.hex;
     if (
       output?.isAddress === false ||
-      /^(?:0x)?6a/i.test(output?.hex ?? '') ||
+      (scriptHex !== undefined &&
+        scriptHex !== null &&
+        (typeof scriptHex !== 'string' || /^(?:0x)?6a/i.test(scriptHex))) ||
       (assetCredit && !positiveAtomic(output?.assetInfo?.assetGuid)) ||
       !(assetCredit
         ? positiveAsset(output?.assetInfo)
@@ -127,6 +132,8 @@ export const mergeAccountSummaryWithFullTransaction = <
     addressValueOut: accountTransaction.addressValueOut,
     blockHash: statusTransaction.blockHash,
     blockHeight: statusTransaction.blockHeight,
+    blockNumber: statusTransaction.blockNumber,
+    height: statusTransaction.height,
     blockTime: statusTransaction.blockTime,
     confirmations: statusTransaction.confirmations,
     confirmationETABlocks: statusTransaction.confirmationETABlocks,

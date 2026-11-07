@@ -276,6 +276,7 @@ beforeEach(() => {
   mockEmitter.mockImplementation(async ([, method]) => {
     if (method === 'refreshActiveAccountBalances')
       return { nativeBalance: '1' };
+    if (method === 'authorizeDappManualNonce') return true;
     if (method === 'sendAndSaveEthTransaction')
       return { hash: 'public-test-hash' };
     throw Error(`Unexpected method: ${method}`);
@@ -367,6 +368,13 @@ it.each(
       (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).value
     ).toBe(String(editedNonce ?? 2));
     await act(async () => mockButtonHandlers['buttons.confirm']());
+    await waitFor(() =>
+      expect(
+        mockEmitter.mock.calls.some(
+          ([path]) => path[1] === 'sendAndSaveEthTransaction'
+        )
+      ).toBe(true)
+    );
     const submitted = mockEmitter.mock.calls.find(
       ([path]) => path[1] === 'sendAndSaveEthTransaction'
     )![1][0];
@@ -519,6 +527,13 @@ it('unlocks fee and nonce edits for a retry after a known pre-submit failure', a
     JSON.parse(screen.getByTestId('reviewed-custom-fee').textContent!)
   ).toMatchObject({ isCustom: true, maxFeePerGas: 7 });
   await act(async () => mockButtonHandlers['buttons.confirm']());
+  await waitFor(() =>
+    expect(
+      mockEmitter.mock.calls.some(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      )
+    ).toBe(true)
+  );
   const submitted = mockEmitter.mock.calls.find(
     ([path]) => path[1] === 'sendAndSaveEthTransaction'
   )![1][0];
@@ -1549,6 +1564,9 @@ describe('SendTransaction error close lifetimes', () => {
   it.each(['insufficient funds', 'submission error'])(
     'invalidates a prior %s close while a retry is in flight',
     async (failure) => {
+      // Automatic dapp failures now keep the review open for a fresh nonce.
+      // The explicit-nonce control retains the prior error-close behavior.
+      if (failure === 'submission error') mockQuery.tx.nonce = 0;
       await prepare();
       let timer: ReturnType<typeof closeTimer>;
       if (failure === 'insufficient funds') {
@@ -1556,6 +1574,7 @@ describe('SendTransaction error close lifetimes', () => {
       } else {
         mockEmitter
           .mockResolvedValueOnce({ nativeBalance: '1' })
+          .mockResolvedValueOnce(true) // Explicit nonce re-confirmation.
           .mockRejectedValueOnce(
             Object.assign(Error('RPC refused'), {
               transactionNotBroadcast: true,
@@ -1577,6 +1596,41 @@ describe('SendTransaction error close lifetimes', () => {
       expect(clearTimeouts).toHaveBeenCalledWith(timer.id);
     }
   );
+
+  it('keeps an automatic known-failure review open and refreshes the nonce before retry', async () => {
+    const view = await prepare();
+    try {
+      let sends = 0;
+      mockEmitter.mockImplementation(async ([, method]) => {
+        if (method === 'refreshActiveAccountBalances')
+          return { nativeBalance: '1' };
+        if (method === 'getRecommendedEvmNonce') return 1;
+        if (method === 'sendAndSaveEthTransaction') {
+          if (++sends === 1)
+            throw Object.assign(Error('RPC refused'), {
+              transactionNotBroadcast: true,
+            });
+          return { hash: 'public-test-hash' };
+        }
+        throw Error(`Unexpected method: ${method}`);
+      });
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+      expect(mockClose).not.toHaveBeenCalled();
+      expect(timeouts.mock.calls.some(([, delay]) => delay === 4000)).toBe(
+        false
+      );
+      expect(
+        (screen.getByLabelText('reviewed-nonce') as HTMLInputElement).value
+      ).toBe('1');
+      await act(async () => mockButtonHandlers['buttons.confirm']());
+      const attempts = mockEmitter.mock.calls.filter(
+        ([path]) => path[1] === 'sendAndSaveEthTransaction'
+      );
+      expect(attempts.map(([, args]) => args[0].nonce)).toEqual([0, 1]);
+    } finally {
+      view.unmount();
+    }
+  });
 
   it('does not offer a second submission after a controller timeout', async () => {
     await prepare();

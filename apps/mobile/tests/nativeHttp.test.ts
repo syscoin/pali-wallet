@@ -13,6 +13,8 @@ import {
 import { createBalanceReader } from '../src/platformRpc.ts';
 import { ActivityExplorerReader } from '../src/activity/explorerReader.ts';
 import { createActivityScope } from '../src/activity/types.ts';
+import { isCustomUtxoNetworkId } from '../src/core/utxoNetworks.ts';
+import { exactUtxoResponseFetch } from '../src/core/utxoReadSession.ts';
 import { NativeTransfers } from '../src/custody/transfers.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 const require = createRequire(import.meta.url);
@@ -316,6 +318,18 @@ test('native factory explicitly wires one owned transport to all network consume
   const factory = evaluate('../src/platform/nativeFactory.native.ts', {
     './security': security,
     '../custody/authority.ts': { NativeCustodyAuthority: capture('authority') },
+    '../custody/utxoActivity.ts': {
+      createNativeUtxoActivity: (...args: unknown[]) => {
+        captures.utxoActivity = args;
+        return 'utxo-activity-owner';
+      },
+    },
+    '../core/utxoActivity.ts': {
+      createUtxoActivityReader: (options: unknown) => {
+        captures.utxoActivityReader = [options];
+        return 'utxo-activity-reader';
+      },
+    },
     '../custody/keyringRuntime.ts': {
       createKeyringRuntimeFactory: (options: unknown) => {
         captures.factory = [options];
@@ -368,6 +382,8 @@ test('native factory explicitly wires one owned transport to all network consume
         assert.fail('unexpected UTXO balance read');
       },
     },
+    '../core/utxoNetworks.ts': { isCustomUtxoNetworkId },
+    '../core/utxoReadSession.ts': { exactUtxoResponseFetch },
     '../platformRpc.ts': {
       createBalanceReader: (options: unknown) => {
         captures.balance = [options];
@@ -404,6 +420,10 @@ test('native factory explicitly wires one owned transport to all network consume
   assert.equal(captures.tokens![0][6], 'nft-reader');
   assert.equal(captures.nft![0], captures.erc20![0]);
   assert.equal(captures.activity![0].length, 4);
+  assert.equal(captures.utxoActivity![0], bundle.authority);
+  assert.equal(captures.utxoActivity![2], 'utxo-activity-reader');
+  assert.equal(bundle.utxoActivity, 'utxo-activity-owner');
+  assert.equal(typeof captures.utxoActivityReader![0].fetch, 'function');
   factory.createNativeRecoveryCoordinator(bundle);
   const recovery = captures.recovery![0][0];
   assert.equal(recovery.owner, bundle.authority);

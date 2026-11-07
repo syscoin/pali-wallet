@@ -1,5 +1,6 @@
 import { ethErrors } from 'helpers/errors';
 
+import { waitForExternalWalletClosure } from '../../externalWalletCreation';
 import { popupPromise } from '../popup-promise';
 import { Middleware, requestCoordinator } from '../request-pipeline';
 import {
@@ -102,8 +103,9 @@ export const spamFilterMiddleware: Middleware = async (context, next) => {
           store.dispatch(resetDappRequests({ host }));
         }
       }
-      // Give the warning window the same closing space as ordinary approvals.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // The warning response precedes window.close(); keep the coordinator
+      // slot until the live browser check permits the next approval.
+      await waitForExternalWalletClosure(context.originalRequest.signal);
       assertNotBlocked();
     }
   );

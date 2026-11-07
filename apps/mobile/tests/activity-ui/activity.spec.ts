@@ -1,4 +1,32 @@
 import { test, expect } from '@playwright/test';
+test('Saved pending pages exact hashes and opens the selected retry at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?saved-pending');
+  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
+  await expect(page.getByText('Submitted · waiting for confirmation', { exact: true })).toBeVisible();
+  const older = page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ });
+  await expect(older).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load more saved transfers' }).click();
+  await older.click();
+  await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Review resend', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Open Activity' })).toBeVisible();
+});
+
+test('older saved detail uses current nonce status over stale indexed confirmation at 320px', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 720 });
+  await page.goto('/?saved-pending=indexed');
+  await page.waitForFunction(() => window.__activityFixture?.rowState().some(row => row.indexedStatus === 'confirmed'));
+  await page.getByRole('button', { name: 'Saved pending', exact: true }).click();
+  await page.getByRole('button', { name: 'Load more saved transfers' }).click();
+  await page.getByRole('button', { name: /Submission unconfirmed.*View transaction details/ }).click();
+  await expect(page.getByText('Transaction details', { exact: true })).toBeVisible();
+  await expect(page.getByText('Nonce consumed · outcome unavailable', { exact: true }).last()).toBeVisible();
+  await expect(page.getByText('Confirmed', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('BLOCK', { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.__activityFixture!.receiptReads())).toBe(0);
+});
+
 test('retained collectible details show signed fields without a resend action at 320px', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 320, height: 720 });
   await page.goto('/?retained-collectible');
@@ -22,6 +50,23 @@ test('retained collectible details show signed fields without a resend action at
   await expect(page.getByText(`0x${'33'.repeat(20)}`, { exact: true }).last()).toBeVisible();
   await expect(page.getByRole('button', { name: 'Review resend', exact: true })).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath('retained-collectible-320.png') });
+});
+
+test('a retained collectible copies the signed recipient even when indexed history gives the contract', async ({ page }) => {
+  const signedRecipient = `0x${'22'.repeat(20)}`;
+  const contract = `0x${'33'.repeat(20)}`;
+  await page.goto('/?retained-collectible=indexed');
+  await page.waitForFunction(() => window.__activityFixture?.rowState().some(row => row.indexedStatus !== undefined));
+  await page.getByRole('button', { name: /Collectible transfer.*View transaction details/ }).click();
+  await expect(page.getByText('SIGNED RECIPIENT', { exact: true })).toBeVisible();
+  await expect(page.getByText(signedRecipient, { exact: true })).toBeVisible();
+  await expect(page.getByText(contract, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Copy recipient address' }).click();
+  await expect(page.getByText('Copy this address?', { exact: true })).toBeVisible();
+  const address = page.getByText(signedRecipient, { exact: true });
+  await expect(address).toHaveCount(2);
+  await expect(address.last()).toBeInViewport();
+  await expect(page.getByText(contract, { exact: true })).toHaveCount(1);
 });
 
 for (const decimals of [0, 18, 19, 255]) {

@@ -4,6 +4,8 @@ export {
   getSyscoinActivityOperationAmount,
   formatSyscoinTokenAmount,
 } from '../shared/utxoTokenAmounts';
+import { parseErc20Text } from '../shared/erc20';
+import { SYSX_ASSET_GUID } from '../shared/syscoinAssetIds';
 import {
   getSyscoinAccountDelta,
   getSyscoinAccountChange,
@@ -48,6 +50,34 @@ export const formatSyscoinConfirmationETA = (transaction: {
   const days = Math.ceil(hours / 24);
   return `${days} day${days === 1 ? '' : 's'}`;
 };
+
+/** Require a sequence for every input before showing the non-RBF status. */
+export function hasNonReplaceableUtxoSequences(inputs: unknown): boolean {
+  return (
+    Array.isArray(inputs) &&
+    inputs.length > 0 &&
+    inputs.every(
+      (input) =>
+        input?.sequence === 0xfffffffe || input?.sequence === 0xffffffff
+    )
+  );
+}
+
+/** Render canonical SYSX or a bounded label from the matched local asset. */
+export function getSyscoinActivityAssetLabel(
+  guid: string | undefined,
+  localSymbol: unknown
+): string {
+  if (guid === SYSX_ASSET_GUID) return 'SYSX';
+  if (guid !== undefined && localSymbol !== undefined) {
+    try {
+      return parseErc20Text(localSymbol, 'symbol');
+    } catch {
+      // Missing or unsafe metadata uses the generic label.
+    }
+  }
+  return 'SPT';
+}
 
 /**
  * Gets a human-readable label for a normalized transaction type

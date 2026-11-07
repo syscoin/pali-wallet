@@ -196,7 +196,7 @@ const configureTarget = async (
   };
   await persistCommittedWalletState(true);
   if (connected && liveSession)
-    dapp.setup({ url: HOST } as chrome.runtime.MessageSender);
+    dapp.setup({ url: HOST, origin: HOST } as chrome.runtime.MessageSender);
 };
 
 beforeEach(() => {
@@ -365,7 +365,6 @@ const prepareUtxoRemoval = async () => {
   const send = () =>
     submitReviewedUtxo({
       fetch,
-      intent: 'initial',
       record: transaction,
       records: wallet.getRetainedUtxoRecords(),
       sender,
@@ -425,11 +424,10 @@ it('keeps an inactive UTXO sender while another network in its group has an unre
       },
     });
     await expect(
-      journal.observe(
+      journal.observeRetained(
         c.session,
         c.owner,
         c.transaction.txid,
-        c.transaction.url,
         async () => ({
           txid: c.transaction.txid,
           hex: c.transaction.rawTransaction,
@@ -617,7 +615,10 @@ it.each([false, true])(
     await write.entered;
     // A content-script setup on a reload recreates the runtime session while
     // the same persisted permission remains admitted by the pending write.
-    dapp.setup({ url: `${HOST}/reloaded` } as chrome.runtime.MessageSender);
+    dapp.setup({
+      url: `${HOST}/reloaded`,
+      origin: HOST,
+    } as chrome.runtime.MessageSender);
     dapp.setHasWindow(HOST, true);
     expect(dapp.hasWindow(HOST)).toBe(true);
     expect(dapp.getAccount(HOST)?.address).toBe(TARGET);
@@ -654,7 +655,10 @@ it('never retires a genuinely newly approved grant or its refreshed session', as
   const earlier = dapp.captureAccountSessionRetirement(1, targetType);
   await wallet.removeAccount(1, targetType, expected);
   await grantAnchor();
-  dapp.setup({ url: `${HOST}/new-approval` } as chrome.runtime.MessageSender);
+  dapp.setup({
+    url: `${HOST}/new-approval`,
+    origin: HOST,
+  } as chrome.runtime.MessageSender);
   dapp.setHasWindow(HOST, true);
   jest.mocked(notificationManager.notifyDappConnection).mockClear();
   earlier.retire();

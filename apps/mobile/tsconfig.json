@@ -22,11 +22,17 @@
       "@sidhujag/sysweb3-network": [
         "./node_modules/@sidhujag/sysweb3-network/types/index.d.ts"
       ],
+      "@sidhujag/sysweb3-network/cjs/coin-utils.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/coin-utils.d.ts"
+      ],
       "@sidhujag/sysweb3-network/cjs/coins.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/coins.d.ts"
       ],
       "@sidhujag/sysweb3-network/cjs/networks.js": [
         "./node_modules/@sidhujag/sysweb3-network/types/networks.d.ts"
+      ],
+      "@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js": [
+        "./node_modules/@sidhujag/sysweb3-network/types/ownedUtxoRpc.d.ts"
       ],
       "bitcoinjs-lib": ["./node_modules/bitcoinjs-lib"],
       "ethers/abi": ["./node_modules/ethers/lib.esm/abi/index.d.ts"],
@@ -37,7 +43,8 @@
       "ethers/transaction": [
         "./node_modules/ethers/lib.esm/transaction/index.d.ts"
       ],
-      "ethers/utils": ["./node_modules/ethers/lib.esm/utils/index.d.ts"]
+      "ethers/utils": ["./node_modules/ethers/lib.esm/utils/index.d.ts"],
+      "utils/ethersV6Compat": ["../../source/utils/ethersV6Compat.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx"],
