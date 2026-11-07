@@ -1,12 +1,13 @@
 import { id } from 'ethers/hash';
 import { parseNativeAccountId } from './accountIdentity.ts';
 import type { NativeCustodyAuthority } from './authority.ts';
-import { isUtxoWifText } from './importedAccounts.ts';
-import { getNativeNetwork, type NativeNetworkRegistration } from './networkContext.ts';
+import { isUtxoAccountPrivateKey, isUtxoWifText } from './importedAccounts.ts';
+import { getNativeNetwork } from './networkContext.ts';
+import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
 import { CustodyRuntimeError } from './types.ts';
 import { normalizePublicAddress } from '../core/addresses.ts';
 import { normalizeUtxoAddress } from '../core/utxoAddresses.ts';
-import { findUtxoNetwork, getUtxoSdkNetwork } from '../core/utxoNetworks.ts';
+import { findUtxoNetwork, getUtxoSdkNetwork, type UtxoNetwork } from '../core/utxoNetworks.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 
 /** Selected key expectation, never caller-granted SDK authority. */
@@ -31,20 +32,15 @@ export type HdKeyExportPresentation = Readonly<{
   privateKey: string;
 }>;
 
-export function isUtxoAccountPrivateKey(value: unknown, testnet: boolean): value is string {
-  return typeof value === 'string' && /^(zprv|vprv)[1-9A-HJ-NP-Za-km-z]{107}$/.test(value) &&
-    value.startsWith(testnet ? 'vprv' : 'zprv');
-}
-
-export function keyExportRegistrationHash(networkId: string, registrations: readonly NativeNetworkRegistration[]): string {
-  const utxo = findUtxoNetwork(networkId);
-  if (!utxo) return getNativeNetwork(networkId, registrations).registrationHash;
-  const sdk = getUtxoSdkNetwork(utxo.id);
+export function keyExportRegistrationHash(networkId: string, catalogue: Pick<NativeWalletCatalogueSnapshot, 'networks' | 'utxoNetworks'>): string {
+  const utxo = findUtxoNetwork(networkId, catalogue.utxoNetworks);
+  if (!utxo) return getNativeNetwork(networkId, catalogue.networks).registrationHash;
+  const sdk = getUtxoSdkNetwork(utxo);
   return id(JSON.stringify([utxo.id, sdk.kind, sdk.chainId, sdk.slip44, sdk.currency, sdk.utxoBackendChain, sdk.url, utxo.genesisHash]));
 }
 
 /** Reject accessors, extra fields and coercion before using a caller's expectation. */
-export function snapshotHdKeyExportScope(input: HdKeyExportScope): HdKeyExportScope {
+export function snapshotHdKeyExportScope(input: HdKeyExportScope, utxos: readonly UtxoNetwork[]): HdKeyExportScope {
   try {
     const value = decodeStorageValue(encodeStorageValue(input)) as HdKeyExportScope;
     const fields = ['authorityRevision', 'catalogueRevision', 'accountId', 'index', 'address', 'networkId', 'registrationHash'];
@@ -57,9 +53,9 @@ export function snapshotHdKeyExportScope(input: HdKeyExportScope): HdKeyExportSc
         !/^0x[0-9a-f]{64}$/.test(value.registrationHash))
       throw new Error('INVALID_INPUT');
     const selected = parseNativeAccountId(value.accountId);
-    const utxo = findUtxoNetwork(value.networkId);
+    const utxo = findUtxoNetwork(value.networkId, utxos);
     if (selected.index !== value.index || selected.slip44 !== (utxo?.slip44 ?? 60) ||
-        (utxo ? normalizeUtxoAddress(value.address, utxo.id) !== value.address
+        (utxo ? normalizeUtxoAddress(value.address, utxo) !== value.address
           : normalizePublicAddress(value.address, 'ethereum') !== value.address)) throw new Error('INVALID_INPUT');
     return Object.freeze(value);
   } catch { throw new CustodyRuntimeError('INVALID_INPUT'); }
@@ -69,14 +65,14 @@ function capture(authority: NativeCustodyAuthority): HdKeyExportScope {
   const state = authority.getSnapshot();
   const catalogue = authority.getCatalogue();
   const selected = catalogue?.accounts.find((account) => account.id === catalogue.active.accountId);
-  const utxo = findUtxoNetwork(catalogue?.active.networkId);
+  const utxo = catalogue && findUtxoNetwork(catalogue.active.networkId, catalogue.utxoNetworks);
   if (state.phase !== 'ready' || state.backup !== 'confirmed' || !state.account || !catalogue || !selected ||
       selected.type !== parseNativeAccountId(selected.id).type || selected.slip44 !== (utxo?.slip44 ?? 60) ||
       state.account.address !== selected.address ||
       state.account.network !== catalogue.active.networkId) throw new Error('NOT_READY');
   return snapshotHdKeyExportScope({ authorityRevision: state.revision, catalogueRevision: catalogue.revision,
     accountId: selected.id, index: selected.index, address: selected.address,
-    networkId: catalogue.active.networkId, registrationHash: keyExportRegistrationHash(catalogue.active.networkId, catalogue.networks) });
+    networkId: catalogue.active.networkId, registrationHash: keyExportRegistrationHash(catalogue.active.networkId, catalogue) }, catalogue.utxoNetworks);
 }
 
 /** Owns short-lived presentations only; no secret-bearing observable snapshot. */
@@ -151,10 +147,13 @@ export class HdKeyExportFlow {
       current();
       const privateKey = await owner.readSelected(expected, password, current);
       current();
-      const utxo = findUtxoNetwork(expected.networkId);
+      const catalogue = this.authority.getCatalogue();
+      const utxo = findUtxoNetwork(expected.networkId, catalogue?.utxoNetworks);
       const accountType = parseNativeAccountId(expected.accountId).type;
+      const selected = catalogue?.accounts.find(({ id }) => id === expected.accountId);
+      const extended = accountType === 'HDAccount' || selected?.utxoExtended === true;
       const keyMatchesFormat = utxo
-        ? accountType === 'HDAccount' ? isUtxoAccountPrivateKey(privateKey, utxo.testnet) : isUtxoWifText(privateKey)
+        ? extended ? isUtxoAccountPrivateKey(privateKey, utxo.testnet) : isUtxoWifText(privateKey)
         : typeof privateKey === 'string' && /^0x[0-9a-f]{64}$/.test(privateKey);
       if (!keyMatchesFormat) throw new Error('UNAVAILABLE');
       const id = globalThis.crypto.randomUUID();

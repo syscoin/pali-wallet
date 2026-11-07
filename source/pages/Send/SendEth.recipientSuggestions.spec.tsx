@@ -11,6 +11,7 @@ import {
 import userEvent from '@testing-library/user-event';
 import React from 'react';
 
+import { smartAccountAddressFixture } from '../../../tests/fixtures/smartAccountAddress';
 import de from 'assets/locales/de.json';
 import en from 'assets/locales/en.json';
 import es from 'assets/locales/es.json';
@@ -236,6 +237,66 @@ beforeEach(() => {
   mockSave.mockResolvedValue(undefined);
 });
 
+it('hides copy and disables the explorer for an unverified active smart address', async () => {
+  mockEmitter.mockResolvedValue({
+    maxFeePerGas: '1000000000',
+    maxPriorityFeePerGas: '100000000',
+  });
+  const { account } = smartAccountAddressFixture();
+  const activeAccount = { id: 0, type: KeyringAccountType.SmartAccount };
+  mockState.vault = {
+    ...mockState.vault,
+    activeAccount,
+    accounts: {
+      ...mockState.vault.accounts,
+      SmartAccount: {
+        0: {
+          ...initialActiveHdAccountState,
+          ...account,
+          id: 0,
+          label: 'Smart sending account',
+          isSmartAccount: true,
+        },
+      },
+    },
+  };
+  const view = render(<SendEth />);
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: en.home.viewAccountOnExplorer })
+    ).toBeEnabled()
+  );
+  expect(
+    screen.getByRole('button', { name: en.buttons.copy })
+  ).toHaveTextContent(ellipsis(account.address, 4, 4));
+
+  mockState = {
+    ...mockState,
+    vault: {
+      ...mockState.vault,
+      accounts: {
+        ...mockState.vault.accounts,
+        SmartAccount: {
+          0: {
+            ...mockState.vault.accounts.SmartAccount[0],
+            address: FIRST,
+            xpub: FIRST,
+          },
+        },
+      },
+    },
+  };
+  await act(async () => view.rerender(<SendEth />));
+  expect(screen.getByText('Smart sending account')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: en.buttons.copy })).toBeNull();
+  expect(screen.queryByText(ellipsis(FIRST, 4, 4))).toBeNull();
+  expect(
+    screen.getByRole('button', {
+      name: new RegExp(en.home.viewAccountOnExplorer),
+    })
+  ).toBeDisabled();
+});
+
 const receiver = () =>
   screen.getByPlaceholderText(mockLocale.send.receiver) as HTMLInputElement;
 const rows = () =>
@@ -289,7 +350,7 @@ const addRecent = () => {
             to: RECENT,
             input: '0x',
             historySource: EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTransaction,
-            txreceipt_status: '1',
+            ['txreceipt_status']: '1',
             blockNumber: 1,
             confirmations: 1,
           } as any,

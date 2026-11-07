@@ -7,6 +7,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { randomUUID } from 'crypto';
 import React from 'react';
 
+import { EvmSignedRecords } from '../../wallet/evmSignedRecords';
 import MainController from 'scripts/Background/controllers/MainController';
 import { BigNumber } from 'utils/ethersV6Compat';
 
@@ -256,10 +257,12 @@ beforeEach(() => {
     getGasPrice: jest.fn().mockResolvedValue(BigNumber.from(1000000000)),
     getBlock: jest.fn(async () => block()),
     estimateGas: jest.fn().mockResolvedValue(BigNumber.from(21000)),
+    verifyConfiguredChainId: jest.fn().mockResolvedValue(undefined),
     send: jest.fn(async (method: string) => {
       if (method === 'eth_getBlockByNumber')
         return capability?.promise ?? block();
       if (method === 'eth_maxPriorityFeePerGas') return '0x3b9aca00';
+      if (method === 'eth_getTransactionCount') return '0x0';
       throw new Error(`Unexpected RPC ${method}`);
     }),
   };
@@ -282,8 +285,19 @@ beforeEach(() => {
   );
   Object.defineProperty(sdk, 'web3Provider', { get: () => provider });
   wallet = Object.create(MainController.prototype);
-  const keyring = { ethereumTransaction: sdk, isUnlocked: () => true };
+  const keyring = {
+    ethereumTransaction: sdk,
+    getPrivateRecordProfileId: async () => '0x' + '55'.repeat(32),
+    isUnlocked: () => true,
+  };
+  const records = new EvmSignedRecords({
+    read: async () => undefined,
+    compareAndSet: async () => {
+      throw Error('A fee review cannot write a signed record');
+    },
+  });
   wallet.getActiveKeyring = () => keyring;
+  wallet.getRetainedEvmRecords = () => records;
   wallet.getWalletSetupStatus = () => undefined;
   wallet.isUnlocked = () => true;
   wallet.walletSessionGeneration = 0;
@@ -406,6 +420,15 @@ it('retains a fee transport error and recovers only after an explicit retry', as
       mockScope,
     ]
   );
-  expect(mockFreshProviders).toHaveLength(1);
-  expect(mockFreshProviders[0].destroy).toHaveBeenCalledTimes(1);
+  expect(provider.send).toHaveBeenCalledWith('eth_getTransactionCount', [
+    mockLocation.state.tx.sender,
+    'latest',
+  ]);
+  expect(provider.send).toHaveBeenCalledWith('eth_getTransactionCount', [
+    mockLocation.state.tx.sender,
+    'pending',
+  ]);
+  expect(mockFreshProviders).toHaveLength(2);
+  for (const reader of mockFreshProviders)
+    expect(reader.destroy).toHaveBeenCalledTimes(1);
 });

@@ -8,6 +8,7 @@ import { useUtils } from 'hooks/index';
 import { RootState } from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { isValidEthereumAddress, isValidSYSAddress } from 'utils/validations';
 
 const ADDRESS_WAIT_TIMEOUT_MS = 8000;
@@ -48,7 +49,12 @@ export const Receive = () => {
     : validatedAddress?.address === address &&
       validatedAddress?.scope === walletScope;
   const canReceive = isEthereum
-    ? isValidEthereumAddress(address)
+    ? isValidEthereumAddress(address) &&
+      canPublishAccountAddress(
+        activeAccount,
+        activeAccountMeta.type,
+        activeNetwork.chainId
+      )
     : isAddressReady && validatedAddress?.valid;
   const [isCopied, copyText, isCurrentCopy] = useCopyClipboard(
     1000,

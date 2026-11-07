@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createUtxoActivityReader, UtxoWatchActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
+import { createUtxoActivityReader, UtxoActivity, type UtxoActivityContext, type UtxoActivitySource } from '../src/core/utxoActivity.ts';
 import { getUtxoNetwork } from '../src/core/utxoNetworks.ts';
 import { WatchOnlyAuthority } from '../src/core/watchOnlyAuthority.ts';
+import { createPublicAccountStorage, PUBLIC_ACCOUNTS_KEY } from '../src/core/publicAccountStorage.ts';
 import { parseUtxoPublicIdentifier } from '../src/core/utxoIdentifier.ts';
 import { BigNumber } from '../../../source/utils/ethersV6Compat.ts';
 import { XPUB } from './publicWatchFixtures.ts';
+import { SENTRY_TX_HEX, SENTRY_TXID, sentryNodeResponse } from './sentryNodeFixtures.ts';
 const BTC = 'bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4', SYS = 'sys1qw508d6qejxtdg4y5r3zarvary0c5xw7kyhct58';
 const H = 'a'.repeat(64), BLOCK = 'b'.repeat(64), ID = (n: number) => n.toString(16).padStart(64, '0');
 const owner: UtxoActivityContext = { accountId: 'watch', networkId: 'bitcoin', address: BTC, generation: 1 };
@@ -41,7 +43,7 @@ function fixture(options: { count?: number; network?: 'bitcoin' | 'syscoin'; rep
 const signal = () => new AbortController().signal;
 const read = (f: ReturnType<typeof fixture>, page = 1, input = source) => createUtxoActivityReader(f).readPage(input, { page }, signal());
 const tick = () => new Promise<void>(r => setImmediate(r));
-async function settle(c: UtxoWatchActivity) { for (let i = 0; i < 100 && ['idle', 'loading'].includes(c.getSnapshot().status); i++) await tick(); }
+async function settle(c: UtxoActivity) { for (let i = 0; i < 100 && ['idle', 'loading'].includes(c.getSnapshot().status); i++) await tick(); }
 function authority(f: ReturnType<typeof fixture>) {
   return new WatchOnlyAuthority([{ id: 'watch', name: 'First', addresses: { bitcoin: BTC } }, { id: 'other', name: 'Second', addresses: { syscoin: SYS } }],
     { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
@@ -145,16 +147,16 @@ for(const address of ['1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa','3J98t1WpEZ73CNmQviec
   const f=fixture({count:1});const result=await read(f,1,{context:{...owner,address},identifier:address,isAccount:false});assert.equal(result.context.address,address);assert.ok(f.calls[2]?.includes(address));
 });
 test('screen auto-loads only when current/foreground and coalesces duplicate loads', async()=>{
-  const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoWatchActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
+  const f=fixture(), a=authority(f);a.unlock();let foreground=false;const c=new UtxoActivity(a,()=>foreground);c.activate();await c.load();assert.equal(f.calls.length,0);
   foreground=true;c.setFocused(true);await c.load();await settle(c);assert.equal(c.getSnapshot().rows.length,20);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();
 });
 test('older/newer windows stay at most100 rows while loading beyond page five',async()=>{
-  const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);
+  const f=fixture({count:160}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);
   for(let n=2;n<=6;n++)await c.loadMore();assert.equal(c.getSnapshot().page,6);assert.equal(c.getSnapshot().firstPage,2);assert.equal(c.getSnapshot().rows.length,100);assert.equal(c.getSnapshot().hasNewer,true);
   await c.loadNewer();assert.equal(c.getSnapshot().firstPage,1);assert.equal(c.getSnapshot().page,5);assert.equal(c.getSnapshot().rows.length,100);c.dispose();
 });
 test('fresh reorg and pending observations replace prior same-txid rows',async()=>{
-  let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
+  let pending=false;const f=fixture({count:1,replace(path,body){if(pending&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:-1,blockHash:undefined,confirmations:0});return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);pending=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block,null);c.dispose();
 });
 
 function pendingObservation(row: ReturnType<typeof tx>) {
@@ -168,7 +170,7 @@ test('an owned first-page confirmation produces one generic indication from the 
     return body;
   } });
   const a = authority(f); a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   assert.equal(c.getSnapshot().rows.filter((row) => row.block === null).length, 2);
   assert.equal(await c.refresh(), undefined);
@@ -208,7 +210,7 @@ test('paging, retained pending rows and an unsuccessful observation cannot seed 
     return body;
   } });
   const a = authority(f); a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   assert.equal(await c.loadMore(), undefined);
   assert.equal(c.getSnapshot().rows.find((row) => row.txid === ID(1))?.observedConfirmations, 11);
@@ -240,7 +242,7 @@ test('a positive confirmation count and block placement must occur together in t
       return body;
     } });
     const a = authority(f); a.unlock();
-    const c = new UtxoWatchActivity(a, () => true); c.activate();
+    const c = new UtxoActivity(a, () => true); c.activate();
     await settle(c);
     pending = false;
     assert.equal(await c.refresh(), undefined);
@@ -263,7 +265,7 @@ test('confirmation indications expire across scope changes and late account resp
     { id: 'other', name: 'Second', addresses: { bitcoin: '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa' } },
   ], { async readBalance() { throw Error(); } }, undefined, undefined, createUtxoActivityReader(f));
   a.unlock();
-  const c = new UtxoWatchActivity(a, () => true); c.activate();
+  const c = new UtxoActivity(a, () => true); c.activate();
   await settle(c);
   mined = true;
   const indication = await c.refresh();
@@ -288,10 +290,10 @@ test('confirmation indications expire across scope changes and late account resp
 });
 
 test('failed page keeps prior rows stale with no automatic retry',async()=>{
-  let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
+  let failing=false;const f=fixture({replace(path){if(failing&&path.includes('/address/'))return new Response('',{status:404});}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);failing=true;await c.loadMore();assert.equal(c.getSnapshot().status,'stale');assert.equal(c.getSnapshot().rows.length,20);const count=f.calls.length;await c.loadMore();await tick();assert.equal(f.calls.length,count);c.dispose();
 });
 test('lock and departing screen suppress ignored late reads and hidden reloads',async()=>{
-  for(const action of ['lock','screen','focus']) {const entered=gate(),pause=gate(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await entered.promise;
+  for(const action of ['lock','screen','focus']) {const entered=gate(),pause=gate(),f=fixture({async hold(path){if(path.includes('/address/')){entered.resolve();await pause.promise;}}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await entered.promise;
     if(action==='lock')a.lock();else if(action==='screen')c.dispose();else c.setFocused(false);pause.resolve();await tick();await tick();assert.equal(c.getSnapshot().rows.length,0);assert.equal(f.calls.filter(p=>p.includes('/address/')).length,1);c.dispose();}
 });
 test('cancelled account response cannot dispatch the txsummary fallback',async()=>{
@@ -313,14 +315,14 @@ test('oversized native integer observations stay unavailable instead of crashing
   await assert.rejects(read(f), { message: 'Account activity is unavailable' });
 });
 test('cross-page duplicates use the fresh observation and do not duplicate the list',async()=>{
-  const f=fixture({count:40,replace(path,body){if(path.includes('page=2'))body.transactions[0]={...body.transactions[0],txid:ID(1),blockHeight:-1,blockHash:undefined,confirmations:0};return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);await c.loadMore();
+  const f=fixture({count:40,replace(path,body){if(path.includes('page=2'))body.transactions[0]={...body.transactions[0],txid:ID(1),blockHeight:-1,blockHash:undefined,confirmations:0};return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);await c.loadMore();
   const rows=c.getSnapshot().rows;assert.equal(rows.length,39);assert.equal(rows.filter(r=>r.txid===ID(1)).length,1);assert.equal(rows.find(r=>r.txid===ID(1))?.block,null);c.dispose();
 });
 test('fresh moved block placement replaces an earlier block even with fewer confirmations',async()=>{
-  let moved=false;const f=fixture({count:1,replace(path,body){if(moved&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:191,blockHash:H,confirmations:10});return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);moved=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block?.height,191);assert.equal(c.getSnapshot().rows[0]?.block?.hash,H);assert.equal(c.getSnapshot().rows[0]?.observedConfirmations,10);c.dispose();
+  let moved=false;const f=fixture({count:1,replace(path,body){if(moved&&path.includes('/address/'))Object.assign(body.transactions[0],{blockHeight:191,blockHash:H,confirmations:10});return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);moved=true;await c.refresh();assert.equal(c.getSnapshot().rows[0]?.block?.height,191);assert.equal(c.getSnapshot().rows[0]?.block?.hash,H);assert.equal(c.getSnapshot().rows[0]?.observedConfirmations,10);c.dispose();
 });
 test('zero summary counts with a nonempty accepted page do not erase retained rows',async()=>{
-  let refresh=false;const f=fixture({replace(path,body){if(refresh&&path.includes('/address/')){body.txs=0;body.unconfirmedTxs=0;body.transactions=[body.transactions[0]];}return body;}}),a=authority(f);a.unlock();const c=new UtxoWatchActivity(a,()=>true);c.activate();await settle(c);assert.equal(c.getSnapshot().rows.length,20);refresh=true;await c.refresh();assert.equal(c.getSnapshot().rows.length,20);c.dispose();
+  let refresh=false;const f=fixture({replace(path,body){if(refresh&&path.includes('/address/')){body.txs=0;body.unconfirmedTxs=0;body.transactions=[body.transactions[0]];}return body;}}),a=authority(f);a.unlock();const c=new UtxoActivity(a,()=>true);c.activate();await settle(c);assert.equal(c.getSnapshot().rows.length,20);refresh=true;await c.refresh();assert.equal(c.getSnapshot().rows.length,20);c.dispose();
 });
 test('an included block with zero confirmations remains an included observation',async()=>{
   const f=fixture({count:1,replace(path,body){if(path.includes('/address/'))body.transactions[0].confirmations=0;return body;}});
@@ -457,4 +459,64 @@ test('oversized SPT text never reaches arbitrary-precision conversion', async ()
     const row = await readAsset(compactAsset('9'.repeat(100000)));
     assert.equal(row.assetAmount, null); assert.ok(lengths.every(length => length <= 78));
   } finally { BigNumber.from = original; }
+});
+
+test('only an owned exact confirmed v80 Syscoin detail can request public node information', async () => {
+  for (const mode of ['healthy', 'wrong-bytes', 'pending', 'summary-only', 'bitcoin', 'changed-saved-scope'] as const) {
+    const network = getUtxoNetwork(mode === 'bitcoin' ? 'bitcoin' : 'syscoin');
+    const address = mode === 'bitcoin' ? BTC : SYS;
+    const f = fixture({ network: mode === 'bitcoin' ? 'bitcoin' : 'syscoin', count: 1, replace(path, body) {
+      if (path.includes('/address/')) body.transactions[0] = { ...tx(SENTRY_TXID), version: 80 };
+      return body;
+    } });
+    const serviceCalls: string[] = [];
+    const reader = createUtxoActivityReader({ async fetch(url, init) {
+      if (url === `${network.endpoint}/api/v2/tx/${SENTRY_TXID}`) return json({
+        ...tx(SENTRY_TXID), version: mode === 'summary-only' ? undefined : 80,
+        hex: mode === 'wrong-bytes' ? SENTRY_TX_HEX.slice(0, -2) + '01' : SENTRY_TX_HEX,
+        ...(mode === 'pending' ? { blockHeight: -1, blockHash: undefined, confirmations: 0 } : {}),
+      });
+      if (url.startsWith('https://sysnode.info/')) {
+        serviceCalls.push(url);
+        assert.equal(init.method, 'GET');
+        return json(sentryNodeResponse(network.genesisHash));
+      }
+      return f.fetch(url, init);
+    } });
+    let saved = JSON.stringify({ version: 1, records: [{ kind: 'address', id: 'watch', name: 'Watch', addresses: { [network.id]: address } }] });
+    const repository = createPublicAccountStorage({
+      async get(key) { return key === PUBLIC_ACCOUNTS_KEY ? saved : null; },
+      async set() { assert.fail('Lookup is read-only'); },
+    }).records;
+    const a = await WatchOnlyAuthority.openRecords({
+      repository, historyReader: reader, reader: { async readBalance() { throw Error(); } }, signal: signal(),
+    });
+    a.unlock();
+    const c = new UtxoActivity(a, () => true);
+    try {
+      c.activate();
+      await settle(c);
+      assert.equal(c.getSnapshot().rows[0]?.txid, SENTRY_TXID);
+      await c.selectDetail(SENTRY_TXID);
+      assert.equal(c.getSnapshot().detail?.status, 'ready');
+      assert.deepEqual(serviceCalls, []);
+      const lookup = c.getSnapshot().detail?.readSentryNode;
+      if (mode !== 'healthy' && mode !== 'changed-saved-scope') { assert.equal(lookup, undefined, mode); continue; }
+      assert.ok(lookup);
+      if (mode === 'changed-saved-scope') {
+        saved = JSON.stringify({ version: 1, records: [] });
+        assert.equal(a.getSnapshot().status, 'ready');
+        assert.equal(c.getSnapshot().detail?.txid, SENTRY_TXID);
+        await assert.rejects(lookup(signal(), () => undefined));
+        assert.deepEqual(serviceCalls, []);
+        continue;
+      }
+      const result = await lookup(signal(), () => undefined);
+      assert.equal(result.node.proTxHash, SENTRY_TXID);
+      assert.deepEqual(serviceCalls, [`https://sysnode.info/api/sentry/v1/context?network=mainnet&proTxHash=${SENTRY_TXID}`]);
+      a.lock();
+      await assert.rejects(lookup(signal(), () => undefined));
+      assert.equal(serviceCalls.length, 1);
+    } finally { c.dispose(); }
+  }
 });

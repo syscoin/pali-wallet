@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { webcrypto } from 'node:crypto';
+import { createHash, webcrypto } from 'node:crypto';
 import { Wallet, Transaction } from 'ethers';
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import { EvmSignedRecords, inspectEvmSignedBundle, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
+import { captureEvmSubmission, evmSubmissionFailure, submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, consumeSignedEvmCapacityRefusal, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
 function fixture(now: () => number = () => 1000) {
@@ -29,25 +30,137 @@ test('actual SDK encryption retains aliases and type0/1/2 predecessor bytes afte
  for(const input of inputs)assert.equal((await reopened.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);
  assert.equal(await reopened.validate(f.session()),3);
 });
-test('duplicate append retains original attribution and exact ciphertext',async()=>{const f=fixture(),input=await signed();await f.store.append(f.session(),input);const before=f.value(),writes=f.writes();
- const result=await f.store.append(f.session(),{...input,context:{...input.context,account:{...input.context.account,type:'Imported',id:1}}});assert.equal(result.signer.type,'HDAccount');assert.equal(f.value(),before);assert.equal(f.writes(),writes);
+test('a new ordinary attempt cannot redispatch identical saved bytes under an account alias', async () => {
+  const f = fixture(), input = await signed();
+  await f.store.append(f.session(), input);
+  const before = f.value(), writes = f.writes();
+  await assert.rejects(f.store.append(f.session(), {
+    ...input, context: { ...input.context, account: { ...input.context.account, type: 'Imported', id: 1 } },
+  }), { code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: input.hash, transactionNotBroadcast: true });
+  const saved = await f.store.readExact(f.session(), input.chainId, signer.address, input.hash);
+  assert.equal(saved?.signer.type, 'HDAccount');
+  assert.equal(f.value(), before);
+  assert.equal(f.writes(), writes);
 });
 test('chunking retains large calldata beyond one private-record bound',async()=>{const f=fixture(),input=await signed(0,2,'0x'+'ab'.repeat(100000));await f.store.append(f.session(),input);assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);assert(JSON.parse(f.value()!).entries[0].chunks.length>1);});
 test('tampering or a different profile refuses without a write',async()=>{const f=fixture(),input=await signed();await f.store.append(f.session(),input);const saved=f.value()!,corrupt=JSON.parse(saved);corrupt.entries[0].nonce++;f.replace(JSON.stringify(corrupt));await assert.rejects(f.store.validate(f.session()));assert.equal(f.writes(),1);const other=fixture();other.replace(saved);(other.session().keyring as any).getDecryptedMnemonic=()=> 'different root';await assert.rejects(other.store.validate(other.session()));});
 test('caller identity is captured before the first encryption await',async()=>{const f=fixture(),input=await signed();const promise=f.store.append(f.session(),input);input.context.account.id=300;input.context.network.chainId=1;assert.equal((await promise).signer.id,0);assert.equal((await f.store.listSender(f.session(),'7654321',signer.address))[0]!.chainId,'7654321');});
 
-test('same-nonce alternatives and nonce-used observations never replace predecessor bytes',async()=>{
- const f=fixture(),first=await signed(0,2,'0x01'),alternative=await signed(0,2,'0x02'),next=await signed(1);
- for(const input of [first,alternative,next])await f.store.append(f.session(),input);
- await f.store.updatePhase(f.session(),'7654321',signer.address,first.hash,'nonce-consumed');
- const all=await f.store.listSender(f.session(),'7654321',signer.address);assert.equal(all.length,3);
- for(const input of [first,alternative,next])assert.equal((await f.store.readExact(f.session(),'7654321',signer.address,input.hash))!.rawTransaction,input.rawTransaction);
+test('ordinary nonce ownership survives terminal observations and keeps different nonces independent', async () => {
+  const f = fixture(), first = await signed(0, 2, '0x01'), alternative = await signed(0, 2, '0x02'), next = await signed(1);
+  const session = f.session();
+  await f.store.append(session, first);
+  await f.store.append(session, next);
+  for (const phase of ['signed', 'confirmed', 'reverted', 'nonce-consumed'] as const) {
+    if (phase !== 'signed') await f.store.updatePhase(session, first.chainId, signer.address, first.hash, phase);
+    const conflict = { code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: first.hash, transactionNotBroadcast: true };
+    await assert.rejects(f.store.assertSpendingNonce(session, first.chainId, signer.address, 0), conflict);
+    await assert.rejects(f.store.append(session, alternative), conflict);
+  }
+  assert.equal((await f.store.listSender(session, first.chainId, signer.address)).length, 2);
+  for (const input of [first, next])
+    assert.equal((await f.store.readExact(session, input.chainId, signer.address, input.hash))?.rawTransaction, input.rawTransaction);
+});
+test('an ordinary append rechecks ownership after a different journal instance wins the CAS', async () => {
+  const f = fixture(), winner = await signed(0, 2, '0x01'), loser = await signed(0, 2, '0x02');
+  const other = new EvmSignedRecords({ ...f.port });
+  const commit = f.port.compareAndSet;
+  f.port.compareAndSet = async (...args) => {
+    f.port.compareAndSet = commit;
+    await other.append(f.session(), winner);
+    return commit(...args);
+  };
+  await assert.rejects(f.store.append(f.session(), loser), {
+    code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT', recoveryHash: winner.hash, transactionNotBroadcast: true,
+  });
+  assert.equal(f.writes(), 1);
+  assert.equal(await f.store.readExact(f.session(), loser.chainId, signer.address, loser.hash), null);
+});
+test('pending pages use an append-order cursor even after the cursor becomes terminal', async () => {
+  const f = fixture(), session = f.session();
+  const [first, confirmed, cursor, latest, reverted, later] = await Promise.all([
+    signed(0), signed(1), signed(2), signed(3), signed(4), signed(5),
+  ] as const);
+  const write = (entry: typeof first, phase: EvmSignedPhase) =>
+    f.store.updatePhase(session, entry.chainId, signer.address, entry.hash, phase);
+  for (const input of [first, confirmed, cursor, latest, reverted]) await f.store.append(session, input);
+  await write(confirmed, 'confirmed');
+  await write(cursor, 'attempted');
+  await write(latest, 'submitted');
+  await write(reverted, 'reverted');
+  const options = { maximum: 2, pendingOnly: true } as const;
+  const read = (beforeHash?: string) => f.store.readPage(session, first.chainId, signer.address, { ...options, beforeHash });
+  const page = await read();
+  assert.deepEqual(page.entries.map(({ hash, phase }) => [hash, phase]), [[latest.hash, 'submitted'], [cursor.hash, 'attempted']]);
+  assert.equal(page.nextCursor, cursor.hash);
+  assert.equal(page.total, 3);
+  await write(cursor, 'confirmed');
+  await f.store.append(session, later);
+  const previous = await read(page.nextCursor!);
+  assert.deepEqual(previous.entries.map(({ hash, phase }) => [hash, phase]), [[first.hash, 'signed']]);
+  assert.equal(previous.nextCursor, null);
+  assert.deepEqual((await read()).entries.map(({ hash }) => hash), [later.hash, latest.hash]);
 });
 test('retries an exact CAS miss, while exhausting conflicts never acknowledges append',async()=>{
  const f=fixture(),input=await signed();const original=f.port.compareAndSet;let misses=1;
  f.port.compareAndSet=async(...args)=>misses-->0?false:original(...args);
  await f.store.append(f.session(),input);assert.equal(f.writes(),1);
  f.port.compareAndSet=async()=>false;await assert.rejects(f.store.append(f.session(),await signed(1)),/CONFLICT/);assert.equal(f.writes(),1);
+});
+test('a replacement rechecks its pending predecessor after a concurrent journal change', async () => {
+  const f = fixture();
+  const original = await signed(0, 2, '0x01');
+  const candidate = await signed(0, 2, '0x02');
+  await f.store.append(f.session(), original);
+  const binding = (await f.store.readReplacement(f.session(), original.chainId, signer.address, original.hash, 'speed-up'))!.binding!;
+  const concurrent = fixture();
+  concurrent.replace(f.value());
+  await concurrent.store.updatePhase(concurrent.session(), '7654321', signer.address, original.hash, 'confirmed');
+  f.port.compareAndSet = async () => {
+    f.replace(concurrent.value());
+    return false;
+  };
+  await assert.rejects(f.store.append(f.session(), {
+    ...candidate,
+    context: { ...candidate.context, operation: 'speed-up', originalHash: original.hash },
+  }, undefined, binding), /EVM_SIGNED_RECORD_ORIGINAL_CHANGED/);
+  assert.equal(await f.store.readExact(f.session(), '7654321', signer.address, candidate.hash), null);
+  assert.equal((await f.store.readExact(f.session(), '7654321', signer.address, original.hash))?.phase, 'confirmed');
+});
+test('a copied binding, changed tip or intervening cancellation blocks a retained replacement', async () => {
+  const f = fixture(), original = await signed();
+  const session = f.session();
+  const read = (operation: 'speed-up' | 'cancel' = 'speed-up') =>
+    f.store.readReplacement(session, original.chainId, signer.address, original.hash, operation);
+  const attempt = async (fee: number, data = '0x') => {
+    const rawTransaction = await signer.signTransaction({
+      type: 2, chainId: 7654321, nonce: 0, to: signer.address, value: 123,
+      gasLimit: 50_400, maxFeePerGas: fee, maxPriorityFeePerGas: 2, data,
+    });
+    return { ...original, rawTransaction, hash: Transaction.from(rawTransaction).hash!,
+      context: { ...original.context, operation: 'speed-up' as const, originalHash: original.hash } };
+  };
+  await f.store.append(session, original);
+  const initial = (await read())!.binding!;
+  const first = await attempt(5);
+  await assert.rejects(f.store.append(session, first, undefined, { ...initial }), /ORIGINAL_CHANGED/);
+  await f.store.append(session, first, undefined, initial);
+  await assert.rejects(f.store.append(session, await attempt(6), undefined, initial), /ORIGINAL_CHANGED/);
+  assert.equal((await read())!.binding!.expectedTipHash, first.hash);
+  assert.deepEqual((await read())!.rates, { type: 2, maxFeePerGas: 5n, maxPriorityFeePerGas: 2n });
+  await assert.rejects(f.store.append(session, await attempt(7, '0x01')), /ORIGINAL_CHANGED/);
+  assert.equal((await read())!.binding!.expectedTipHash, first.hash);
+  const rawTransaction = await signer.signTransaction({
+    type: 2, chainId: 7654321, nonce: 0, to: signer.address, value: 0,
+    gasLimit: 21_000, maxFeePerGas: 7, maxPriorityFeePerGas: 3,
+  });
+  const cancelHash = Transaction.from(rawTransaction).hash!;
+  const cancel = { ...original, rawTransaction, hash: cancelHash,
+    context: { ...original.context, operation: 'cancel' as const, originalHash: original.hash } };
+  await assert.rejects(f.store.append(session, cancel, undefined, (await read())!.binding!), /ORIGINAL_CHANGED/);
+  await f.store.append(session, cancel, undefined, (await read('cancel'))!.binding!);
+  assert.equal(await read(), null);
+  assert.equal((await f.store.readExact(session, original.chainId, signer.address, original.hash))!.rawTransaction, original.rawTransaction);
 });
 test('revocation after encryption prevents persistence and metadata accessors never execute',async()=>{
  const f=fixture(),session=f.session(),input=await signed();let getterCalls=0;
@@ -171,9 +284,9 @@ for (const phase of ['signed', 'attempted', 'submitted'] as const) {
   });
 }
 
-test('current selection follows committed append order across unresolved alternatives and later phase updates', async () => {
+test('current selection follows committed append order across unresolved nonces and later phase updates', async () => {
   let clock = 2000;
-  const f = fixture(() => clock), first = await signed(3, 2, '0x01'), second = await signed(3, 2, '0x02');
+  const f = fixture(() => clock), first = await signed(3, 2, '0x01'), second = await signed(4, 2, '0x02');
   assert.equal(await f.store.readCurrent(f.session(), '7654321', signer.address), null);
   await f.store.append(f.session(), first);
   clock = 1000;
@@ -206,6 +319,105 @@ test('near-limit append reserves space for every phase and the largest supported
   assert.equal(f.value(),before,'refused append preserves the acknowledged bundle');
   await f.store.append(f.session(),second,metadataBytes(metadataAtHardLimit-64));
   assert.equal(Buffer.byteLength(f.value()!),limit-64);
+
+  // Submit through the installed SDK and production signed-record lifecycle,
+  // with a real authenticated full bundle and no network transport.
+  const third=await signed(2);
+  const digest=(value:string) => createHash('sha256').update(value).digest('hex');
+  const beforeCapacity=f.value()!, beforeCapacityDigest=digest(beforeCapacity);
+  const beforeCapacityWrites=f.writes();
+  let blockedBroadcasts=0;
+  const session=f.session();
+  const fullBoundary=captureEvmSubmission(third.context,session.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null }));
+  const unsigned=Transaction.from(third.rawTransaction).unsignedSerialized;
+  let capacityError:unknown;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit}) => {
+      blockedBroadcasts++;
+      return admit(async () => third.hash);
+    },fullBoundary,undefined,unsigned);
+  } catch (error) { capacityError=error; }
+  assert(capacityError instanceof Error);
+  assert.equal(capacityError.message,'EVM_SIGNED_RECORD_CAPACITY');
+  assert.equal(consumeSignedEvmCapacityRefusal(capacityError,evmSubmissionFailure),true);
+  assert.equal(consumeSignedEvmCapacityRefusal(capacityError,evmSubmissionFailure),false);
+  assert.equal(consumeSignedEvmCapacityRefusal(Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'),{transactionNotBroadcast:true}),evmSubmissionFailure),false);
+  assert.deepEqual(evmSubmissionFailure(capacityError),{
+    transactionNotBroadcast:true,signedTransactionHash:third.hash,
+  });
+  assert.equal(blockedBroadcasts,0,'capacity refusal must precede broadcast');
+  assert.equal(f.writes(),beforeCapacityWrites);
+  assert.equal(digest(f.value()!),beforeCapacityDigest,'bundle must be unchanged');
+  assert.equal(await f.store.readExact(session,third.chainId,third.from,third.hash),null);
+  for(const entry of [first,second]) {
+    const retained=await f.store.readExact(session,entry.chainId,entry.from,entry.hash);
+    assert(retained?.rawTransaction===entry.rawTransaction,'existing signed bytes must remain recoverable');
+  }
+
+  // Healthy control uses the same signed envelope and SDK/lifecycle on a fresh
+  // isolated store, with a matching in-memory acknowledgement.
+  const healthy=fixture(), healthySession=healthy.session();
+  const healthyBoundary=captureEvmSubmission(third.context,healthySession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(healthy.store, healthySession, { retirementReadForChain: null }));
+  let healthyBroadcasts=0, healthyAdmissions=0;
+  const result=await submitSignedEvmTransaction(third.rawTransaction,({admit}) => {
+    healthyBroadcasts++;
+    return admit(async () => {
+      assert(healthy.writes()>0,'persistence must precede wire initiation');
+      healthyAdmissions++;return third.hash;
+    });
+  },healthyBoundary,undefined,unsigned);
+  assert.equal(result,third.hash);assert.equal(healthyBroadcasts,1);assert.equal(healthyAdmissions,1);
+  const healthyRecord=await healthy.store.readExact(healthySession,third.chainId,third.from,third.hash);
+  assert(healthyRecord?.rawTransaction===third.rawTransaction,'healthy submission must persist before dispatch');
+
+  // The same genuine object reused as a later SDK broadcast failure receives
+  // fresh local dispatched-stage evidence and must not retain the refusal.
+  const reuse=fixture(), reuseSession=reuse.session();
+  const reuseBoundary=captureEvmSubmission(third.context,reuseSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(reuse.store, reuseSession, { retirementReadForChain: null }));
+  let reusedError:unknown, dispatched=0;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>{dispatched++;throw capacityError;}),reuseBoundary,undefined,unsigned);
+  } catch(error) { reusedError=error; }
+  assert.equal(reusedError,capacityError);assert.equal(dispatched,1);
+  assert.equal(evmSubmissionFailure(reusedError).transactionNotBroadcast,false);
+  assert.equal(consumeSignedEvmCapacityRefusal(reusedError,evmSubmissionFailure),false);
+
+  // Even before its first classification, a real old capacity error cannot
+  // label a second same-envelope invocation whose persistence succeeded.
+  let stale:unknown;
+  const oldSession=f.session(), oldBoundary=captureEvmSubmission(third.context,oldSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store, oldSession, { retirementReadForChain: null }));
+  try { await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>third.hash),oldBoundary,undefined,unsigned); }
+  catch(error) { stale=error; }
+  assert(stale instanceof Error);assert.equal(evmSubmissionFailure(stale).transactionNotBroadcast,true);
+  const next=fixture(), nextSession=next.session();
+  const nextBoundary=captureEvmSubmission(third.context,nextSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(next.store, nextSession, { retirementReadForChain: null }));
+  let nextError:unknown, nextBroadcasts=0;
+  try { await submitSignedEvmTransaction(third.rawTransaction,()=>{nextBroadcasts++;throw stale;},nextBoundary,undefined,unsigned); }
+  catch(error) { nextError=error; }
+  assert.equal(nextError,stale);assert.equal(nextBroadcasts,1);
+  assert.equal(evmSubmissionFailure(nextError).transactionNotBroadcast,true);
+  assert.equal(consumeSignedEvmCapacityRefusal(nextError,evmSubmissionFailure),false);
+  assert((await next.store.readExact(nextSession,third.chainId,third.from,third.hash))?.rawTransaction===third.rawTransaction);
+
+  // Revocation wins even when the local append was capacity-refused.
+  const revokedSession=f.session(), realAppend=f.store.append.bind(f.store);
+  f.store.append=async (...args)=>{try{return await realAppend(...args);}catch(error){f.revoke();throw error;}};
+  const revokedBoundary=captureEvmSubmission(third.context,revokedSession.assertCurrent,
+    () => createEvmSignedRecordLifecycle(f.store, revokedSession, { retirementReadForChain: null }));
+  let revokedError:unknown, revokedBroadcasts=0;
+  try {
+    await submitSignedEvmTransaction(third.rawTransaction,({admit})=>{revokedBroadcasts++;return admit(async()=>third.hash);},revokedBoundary,undefined,unsigned);
+  } catch(error) { revokedError=error; }
+  f.store.append=realAppend;
+  assert(revokedError instanceof Error);assert.match(revokedError.message,/revoked/);
+  assert.equal(consumeSignedEvmCapacityRefusal(revokedError,evmSubmissionFailure),false);assert.equal(revokedBroadcasts,0);
+  assert.equal(digest(f.value()!),beforeCapacityDigest);
+
   const stored=JSON.parse(f.value()!),chunks=stored.entries.map((entry:any)=>JSON.stringify(entry.chunks));
   const phaseCases: Record<EvmSignedPhase, true> = { attempted:true, submitted:true, confirmed:true, reverted:true, 'nonce-consumed':true, signed:true };
   const phases=Object.keys(phaseCases) as EvmSignedPhase[];
@@ -226,4 +438,126 @@ test('near-limit append reserves space for every phase and the largest supported
   assert.deepEqual(last.entries.map((entry:any)=>JSON.stringify(entry.chunks)),chunks);
   const full=f.value();await assert.rejects(f.store.updatePhase(f.session(),'7654321',signer.address,first.hash,'submitted'),/CAPACITY/);
   assert.equal(f.value(),full);
+});
+
+
+test('automatic nonce advances only after an exact wire ACK and keeps that nonce in the held snapshot', async () => {
+  const f = fixture(), session = f.session();
+  const first = await signed(0), second = await signed(1);
+  const endpoint = first.context.network.url;
+  const scope = { chainId: first.chainId, from: first.from, endpoint, latest: 0, pending: 0 };
+  const readPending = async () => null;
+  const assertCurrent = session.assertCurrent;
+  const plan = async () => f.store.autoNonceAcceptance.plan({
+    ...scope, readPending, assertCurrent,
+    snapshot: await f.store.captureAutoNonceSnapshot(session, first.chainId, first.from),
+  });
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: endpoint });
+  await lifecycle.persistSigned(first);
+  assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
+  let ack!: (hash: string) => void, dispatching!: () => void;
+  const acknowledgement = new Promise<string>((resolve) => { ack = resolve; });
+  const started = new Promise<void>((resolve) => { dispatching = resolve; });
+  const submitted = lifecycle.dispatchSigned(first, () => {
+    dispatching();
+    return acknowledgement;
+  }, async () => undefined);
+  await started;
+  assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
+  ack(first.hash);
+  assert.equal(await submitted, first.hash);
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 1, additionalNativeCost: 126123n });
+
+  const next = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null,
+    automaticNonceEndpoint: endpoint,
+    async preflight(record, assertDispatchCurrent, snapshot) {
+      assert.deepEqual(snapshot.retained.map(({ hash }) => hash), [first.hash]);
+      const selection = await f.store.autoNonceAcceptance.plan({
+        ...scope, readPending, assertCurrent: assertDispatchCurrent, snapshot,
+      });
+      assert.equal(selection.kind, 'ready');
+      assert.equal(selection.nonce, record.nonce);
+    },
+  });
+  await next.persistSigned(second);
+  assert.equal(await next.dispatchSigned(second, async () => ({ hash: second.hash }), async () => undefined).then((response) => response.hash), second.hash);
+  assert.deepEqual(await plan(), { kind: 'ready', nonce: 2, additionalNativeCost: 252246n });
+});
+
+test('after reorg, a previously accepted phase needs new pending evidence, including on reopen', async () => {
+  const f = fixture(), session = f.session();
+  const record = await signed();
+  const endpoint = record.context.network.url;
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: endpoint });
+  await lifecycle.persistSigned(record);
+  await lifecycle.dispatchSigned(record, async () => record.hash, async () => undefined);
+  await f.store.updatePhase(session, record.chainId, record.from, record.hash, 'confirmed');
+  await f.store.updatePhase(session, record.chainId, record.from, record.hash, 'submitted');
+  const expected = {
+    chainId: '0x' + Number(record.chainId).toString(16), from: record.from, hash: record.hash, nonce: '0x0',
+    blockHash: null, blockNumber: null, transactionIndex: null,
+  };
+  for (const journal of [f.store, new EvmSignedRecords(f.port)]) {
+    const scope = {
+      chainId: record.chainId, from: record.from, endpoint, latest: 0, pending: 0,
+      snapshot: await journal.captureAutoNonceSnapshot(session, record.chainId, record.from),
+      assertCurrent: session.assertCurrent,
+    };
+    assert.deepEqual(await journal.autoNonceAcceptance.plan({
+      ...scope, readPending: async () => null,
+    }), { kind: 'unresolved', nonce: 0 });
+    assert.deepEqual(await journal.autoNonceAcceptance.plan({
+      ...scope, readPending: async (hash) => {
+        assert.equal(hash, record.hash);
+        return expected;
+      },
+    }), { kind: 'ready', nonce: 1, additionalNativeCost: 126123n });
+  }
+});
+
+test('concurrent automatic sends cannot persist and dispatch competing reviewed nonces', async () => {
+  const f = fixture(), session = f.session();
+  const candidates = await Promise.all([signed(0, 2, '0x01'), signed(0, 2, '0x02')]);
+  const wire: string[] = [];
+  const settled = await Promise.allSettled(candidates.map(async (record) => {
+    const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: record.context.network.url });
+    await lifecycle.persistSigned(record);
+    return lifecycle.dispatchSigned(record, async () => {
+      wire.push(record.hash);
+      return record.hash;
+    }, async () => undefined);
+  }));
+  assert.equal(wire.length, 1);
+  const losing = settled.find((result) => result.status === 'rejected');
+  assert.equal(losing?.reason?.code, 'EVM_SIGNED_RECORD_NONCE_CONFLICT');
+  assert.equal(losing?.reason?.recoveryHash, wire[0]);
+});
+
+
+test('unreadable storage and exhausted revision are not local append capacity refusals', async () => {
+  const first=await signed(0), next=await signed(1);
+  const assertUnbranded = async (f: ReturnType<typeof fixture>) => {
+    const session=f.session(), before=f.value(), writes=f.writes();
+    const boundary=captureEvmSubmission(next.context,session.assertCurrent,()=>createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null }));
+    let broadcasts=0, failure:unknown;
+    try {
+      await submitSignedEvmTransaction(next.rawTransaction,({admit})=>{broadcasts++;return admit(async()=>next.hash);},boundary,undefined,Transaction.from(next.rawTransaction).unsignedSerialized);
+    } catch(error) { failure=error; }
+    assert(failure instanceof Error);
+    assert.equal(consumeSignedEvmCapacityRefusal(failure,evmSubmissionFailure),false);
+    assert.equal(broadcasts,0);
+    assert.equal(f.writes(),writes);
+    assert.equal(createHash('sha256').update(f.value()!).digest('hex'),createHash('sha256').update(before!).digest('hex'));
+  };
+  const oversized=fixture(); oversized.replace('x'.repeat(16*1024*1024+1));
+  await assertUnbranded(oversized);
+  const exhausted=fixture(); await exhausted.store.append(exhausted.session(),first);
+  const stored=JSON.parse(exhausted.value()!);
+  const plain=await exhausted.session().keyring.decryptPrivateRecord({domain:stored.root.domain,recordId:'manifest',envelope:stored.root});
+  const root=JSON.parse(new TextDecoder().decode(plain));plain.fill(0);
+  root.revision=Number.MAX_SAFE_INTEGER;stored.revision=root.revision;
+  stored.root=await exhausted.session().keyring.encryptPrivateRecord({domain:stored.root.domain,recordId:'manifest',plaintext:new TextEncoder().encode(JSON.stringify(root))});
+  exhausted.replace(JSON.stringify(stored));
+  assert.equal(await exhausted.store.validate(exhausted.session()),1);
+  await assertUnbranded(exhausted);
 });

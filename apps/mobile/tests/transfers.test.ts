@@ -1,18 +1,19 @@
+import { evmSubmissionFailure } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { Wallet } from 'ethers/wallet';
+import { Transaction } from 'ethers/transaction';
 import { keccak256 } from 'ethers/crypto';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/software.js';
-import type { EvmSignedBroadcast } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import type { CustodySnapshot } from '../src/custody/types.ts';
-import { NativeTransfers } from '../src/custody/transfers.ts';
+import { NativeTransfers, SIGNED_STORAGE_FULL_MESSAGE, SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE } from '../src/custody/transfers.ts';
 import { EvmSignedReplay } from '../../../source/wallet/evmSignedReplay.ts';
 import { EvmSignedRecords } from '../../../source/wallet/evmSignedRecords.ts';
 import { createNativeSignedRecordView } from '../src/custody/sharedSignedRecords.ts';
-import { signedRecordTestSession, historicalSignedBundle } from './signedRecordTestSession.ts';
+import { signedRecordTestSession, historicalSignedBundle, submitFixtureEvmTransaction } from './signedRecordTestSession.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from '../src/custody/transferRpc.ts';
-import type { Erc20TransferIntent } from '../src/custody/transferIntent.ts';
 const wallet = Wallet.fromPhrase(
   'test test test test test test test test test test test junk'
 );
@@ -22,6 +23,12 @@ const token = Object.freeze({
   name: 'Public fixture token',
   symbol: 'FIX',
   decimals: 2,
+});
+const otherToken = Object.freeze({
+  ...token,
+  contractAddress: '0x4444444444444444444444444444444444444444',
+  name: 'Other public fixture token',
+  symbol: 'OTHER',
 });
 function fixture() {
   let state: CustodySnapshot = {
@@ -35,16 +42,27 @@ function fixture() {
   const listeners = new Set<(state: CustodySnapshot) => void>();
   const records: Record<string, unknown> = {};
   let availableBalance = '0x10000000000000000';
+  let canonicalBalance: string | undefined;
+  let expectedEstimateState: 'latest' | 'pending' | undefined;
   let nonce = '0x0';
+  let minedNonce = '0x0';
+  let tokenChanged = false;
+  let oldBlockReorganized = false;
+  const tokenReadsAfterChange: string[] = [];
+  const postChangeReads: string[] = [];
   let baseFee = '0x1';
   let dropped = false;
   let final = false;
   let receiptMissing = false;
+  let observationUnavailable = false;
+  let payerIsEoa = false;
   let signatures = 0;
   let altered: 'value' | 'signer' | 'hash' | 'oversized' | 'noncanonical' | null = null;
   let signGate: Promise<void> | null = null;
   let beforeCommit: (() => Promise<void>) | undefined;
   let beforeBroadcastChainResponse: (() => Promise<void>) | undefined;
+  let postJournalTokenRead: (() => Promise<void>) | undefined;
+  let postJournalNonceRead: (() => Promise<void>) | undefined;
   let failWrite = false;
   const broadcasts: string[] = [];
   const rpcMethods: string[] = [];
@@ -74,18 +92,21 @@ function fixture() {
     },
   });
   const runtime = {
+    evmSubmissionFailure,
+    async replacementOriginal(hash: string, mode: 'cancel' | 'speed-up', guard: () => void) {
+      const retained = await signedRecords.readReplacement(signedRecordTestSession(guard), '1', wallet.address, hash, mode);
+      guard();
+      if (!retained?.binding) return null;
+      return { rawTransaction: retained.original.rawTransaction, binding: retained.binding, rates: retained.rates };
+    },
     replay(guard: () => void, transport: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[1], options: Parameters<import('../src/custody/transfers.ts').NativeTransferRuntime['replay']>[2]) {
       return new EvmSignedReplay(signedRecords, () => ({recordSession:signedRecordTestSession(guard),assertCurrent:guard,
         context:{account:{id:0,type:'HDAccount',address:wallet.address},network:{kind:'ethereum',chainId:1,slip44:60,url:getNativeNetwork('ethereum').rpcUrl}},...transport}), options.now, options.randomBytes);
     },
-    async submit(rawTransaction: string, _hash: string, guard: () => void, broadcast: EvmSignedBroadcast<string>, intent?: Erc20TransferIntent) {
-      const journal = await runtime.journal(guard);
-      try { await journal.saveSigned(rawTransaction,intent); guard(); }
-      catch (error) { throw Object.assign(error as Error,{transactionNotBroadcast:true}); }
-      await broadcast({ rawTransaction, admit: async (send, preflight) => { await preflight?.(); return send(); } });
-    },
+    submit: submitFixtureEvmTransaction(signedRecords),
     async token(contractAddress: string, guard: () => void) {
       guard();
+      if (contractAddress === otherToken.contractAddress) return otherToken;
       assert.equal(contractAddress, token.contractAddress);
       return token;
     },
@@ -128,41 +149,54 @@ function fixture() {
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
+      if (Object.keys(records).length && body.method === 'eth_call' && String(body.params[0].data).startsWith('0x70a08231') && postJournalTokenRead) { const hook = postJournalTokenRead; postJournalTokenRead = undefined; await hook(); }
+      if (Object.keys(records).length && body.method === 'eth_getTransactionCount' && postJournalNonceRead) { const hook = postJournalNonceRead; postJournalNonceRead = undefined; await hook(); }
+      if (tokenChanged && (body.method === 'eth_getTransactionCount' || body.method === 'eth_getBlockByNumber' || body.method === 'eth_chainId')) postChangeReads.push(body.method + ':' + (body.method === 'eth_getTransactionCount' ? body.params[1] : body.method === 'eth_getBlockByNumber' ? body.params[0] : ''));
+      if (observationUnavailable && body.method === 'eth_getTransactionReceipt')
+        throw Error('Observation unavailable');
       let result: unknown;
       if (body.method === 'eth_chainId') {
         if (Object.keys(records).length > 0 && beforeBroadcastChainResponse)
           await beforeBroadcastChainResponse();
         result = '0x1';
       }
-      else if (body.method === 'eth_getCode') result = '0x6000';
-      else if (body.method === 'eth_call')
-        result =
-          '0x' +
-          (body.params[0].data === '0x313ce567'
-            ? 2n
-            : body.params[0].data.startsWith('0x70a08231')
-            ? 10000n
-            : 1n)
-            .toString(16)
-            .padStart(64, '0');
-      else if (body.method === 'eth_getBalance') result = availableBalance;
+      else if (body.method === 'eth_getCode')
+        result = payerIsEoa && String(body.params[0]).toLowerCase() === wallet.address.toLowerCase() ? '0x' : '0x6000';
+      else if (body.method === 'eth_call') {
+        const selector = String(body.params[0].data).slice(0, 10);
+        if (tokenChanged && (selector === '0x70a08231' || selector === '0xa9059cbb'))
+          tokenReadsAfterChange.push(`${selector}:${String(body.params[1])}`);
+        result = '0x' + (selector === '0x313ce567' ? 2n
+          : selector === '0x70a08231'
+          ? (tokenChanged && body.params[1] === '0x21' ? 0n : 10000n)
+          : selector === '0xa9059cbb' && tokenChanged && body.params[1] === '0x21' ? 0n
+          : 1n).toString(16).padStart(64, '0');
+      }
+      else if (body.method === 'eth_getBalance')
+        result = body.params[1] === 'latest' ? canonicalBalance ?? availableBalance : availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
-          body.params[1] !== 'pending' ? (final ? '0x1' : '0x0') : nonce;
+          body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
       else if (body.method === 'eth_getBlockByNumber')
-        result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
+        result = { number: body.params[0] === 'latest' ? (tokenChanged ? '0x21' : '0x20') : body.params[0],
+          hash: '0x' + ((body.params[0] === '0x21' || (body.params[0] === 'latest' && tokenChanged) ||
+            (body.params[0] === '0x20' && oldBlockReorganized)) ? '3' : '2').repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
       else if (body.method === 'eth_gasPrice') result = '0x2';
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
       else if (body.method === 'eth_maxPriorityFeePerGas') result = '0x1';
-      else if (body.method === 'eth_estimateGas') result = '0x5208';
+      else if (body.method === 'eth_estimateGas') {
+        if (expectedEstimateState) assert.equal(body.params[1], expectedEstimateState);
+        result = '0x5208';
+      }
       else if (body.method === 'eth_sendRawTransaction') {
         const record = (JSON.parse(Object.values(records)[0] as string) as { entries: { phase: string }[] }).entries[0]!;
         assert(['signed', 'submitted'].includes(record.phase));
         broadcasts.push(body.params[0]);
         if (dropped) throw Error('Acknowledgment lost');
         result = keccak256(body.params[0]);
-      } else if (body.method === 'eth_getTransactionReceipt')
+      } else if (body.method === 'eth_getTransactionByHash') result = null;
+      else if (body.method === 'eth_getTransactionReceipt')
         result =
           final && !receiptMissing
             ? {
@@ -198,11 +232,32 @@ function fixture() {
     runtime,
     source,
     signatures: () => signatures,
+    tokenReadsAfterChange,
+    holdPostJournalTokenRead(hook: () => Promise<void>) { postJournalTokenRead = hook; },
+    holdPostJournalNonceRead(hook: () => Promise<void>) { postJournalNonceRead = hook; },
+    postChangeReads,
+    changeTokenAtNextBlock() { tokenChanged = true; },
+    reorganizeQuotedBlock() { oldBlockReorganized = true; },
     nextNonce() {
       nonce = '0x1';
     },
+    consumeNonce() {
+      nonce = '0x1';
+      minedNonce = '0x1';
+    },
+    advanceCanonicalNonce() {
+      minedNonce = '0x1';
+    },
     insufficient() {
       availableBalance = '0x1';
+    },
+    setPendingBalance(balance: bigint) {
+      availableBalance = `0x${balance.toString(16)}`;
+    },
+    externalPendingBalance(state: 'latest' | 'pending') {
+      canonicalBalance = '0xde0b6b3a7640000';
+      availableBalance = '0x1';
+      expectedEstimateState = state;
     },
     lowerFeesWithReducedBalance() {
       baseFee = '0x0';
@@ -210,6 +265,12 @@ function fixture() {
     },
     loseAcknowledgment() {
       dropped = true;
+    },
+    setPayerEoa() {
+      payerIsEoa = true;
+    },
+    setObservationUnavailable(value: boolean) {
+      observationUnavailable = value;
     },
     finalize() {
       final = true;
@@ -250,6 +311,29 @@ function fixture() {
     },
   };
 }
+// Authenticated, deterministic capacity setup in an unrelated chain scope. No
+// network calls or production limits are changed; the same profile stores both.
+async function fillSyntheticJournal(f: ReturnType<typeof fixture>) {
+  const session=signedRecordTestSession();const profile=await session.keyring.getPrivateRecordProfileId();
+  const make=async(nonce:number)=>{
+    const rawTransaction=await wallet.signTransaction({type:2,chainId:7654321,nonce,to:wallet.address,value:1,gasLimit:21000,maxFeePerGas:3,maxPriorityFeePerGas:1});
+    const tx=Transaction.from(rawTransaction);
+    return {rawTransaction,hash:tx.hash!,from:wallet.address,chainId:'7654321',nonce,type:2,
+      context:{account:{type:'HDAccount',id:0,address:wallet.address},network:{kind:'ethereum',chainId:7654321,slip44:60,url:'https://offline.invalid'},operation:'send' as const}};
+  };
+  const first=await make(0),second=await make(1),limit=16*1024*1024;
+  const maximum=Object.fromEntries(Array.from({length:1023},(_,i)=>[`k${String(i).padStart(4,'0')}`,'x'.repeat(8192)]));
+  const metadataBytes=(target:number)=>{const metadata=Object.fromEntries(Object.keys(maximum).map(key=>[key,'']));let remaining=target-Buffer.byteLength(JSON.stringify(metadata));
+    assert(remaining>=0&&remaining<=1023*8192);for(const key of Object.keys(metadata)){const n=Math.min(remaining,8192);metadata[key]='x'.repeat(n);remaining-=n;}assert.equal(remaining,0);return metadata;};
+  await f.signedRecords.append(session,first,maximum);
+  let probe=f.records[profile] as string|undefined;
+  const probeStore=new EvmSignedRecords({async read(){return probe;},async compareAndSet(_id,expected,next,guard){guard();if(probe!==expected)return false;probe=next;return true;}});
+  await probeStore.append(session,second,{});assert(probe);
+  const room=2+limit-Buffer.byteLength(probe);await f.signedRecords.append(session,second,metadataBytes(room-64));
+  const full=f.records[profile] as string;assert.equal(Buffer.byteLength(full),limit-64);
+  return {profile,full,first,second};
+}
+
 async function review(f: ReturnType<typeof fixture>) {
   await f.transfers.prepare(to, '0.001');
   const result = f.transfers.getSnapshot().review;
@@ -301,21 +385,20 @@ for (const [kind, amount] of [
   });
 }
 
-test('invalid ERC20 amount cannot reset or replace an unresolved native journal', async () => {
+test('invalid ERC20 input makes no RPC or writes with a saved native transfer', async () => {
   const f = fixture();
   try {
     f.loseAcknowledgment();
     const approved = await review(f);
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
-    const hash = f.transfers.getSnapshot().hash;
     const calls = f.rpcMethods.length;
     await assert.rejects(
       f.transfers.prepareToken(token.contractAddress, to, '0'),
-      { code: 'PENDING_TRANSFER' }
+      { code: 'INVALID_INPUT' }
     );
-    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
-    assert.equal(f.transfers.getSnapshot().hash, hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.equal(f.transfers.getSnapshot().review, null);
     assert.deepEqual(f.records, before);
     assert.equal(f.rpcMethods.length, calls);
     assert.equal(f.signatures(), 1);
@@ -323,6 +406,101 @@ test('invalid ERC20 amount cannot reset or replace an unresolved native journal'
   } finally {
     f.close();
   }
+});
+
+test('ordinary coin and token sends preserve a deliberate override below the external pending count', async () => {
+  for (const asset of ['coin', 'token'] as const) {
+    const f = fixture();
+    try {
+      f.nextNonce();
+      f.externalPendingBalance('latest');
+      await (asset === 'coin'
+        ? f.transfers.view.prepare(to, '0.9', '0')
+        : f.transfers.view.prepareToken(token.contractAddress, to, '1.23', '0'));
+      const approved = f.transfers.getSnapshot().review!;
+      assert.equal(approved.nonce, '0');
+      assert.equal(approved.nonceOverride, 0);
+      assert.equal(f.signatures(), 0);
+      await f.transfers.confirm(approved.id);
+      assert.equal(f.broadcasts.length, 1);
+      assert.equal(Transaction.from(f.broadcasts[0]!).nonce, 0);
+      assert.equal((await (await f.runtime.journal(() => undefined)).load())?.nonce, 0);
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_RETAINED' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      f.externalPendingBalance('pending');
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', '4'), { code: 'INSUFFICIENT_BALANCE' });
+      assert.equal(f.transfers.getSnapshot().phase, 'idle');
+      assert.equal(f.broadcasts.length, 1);
+    } finally { f.close(); }
+  }
+});
+
+for (const manual of [false, true]) {
+  test(`ERC20 ${manual ? 'manual' : 'automatic'} final admission rechecks balance after journal persistence`, async () => {
+    const f = fixture();
+    try {
+      await f.transfers.view.prepareToken(token.contractAddress, to, '1.23', manual ? '0' : undefined);
+      const approved = f.transfers.getSnapshot().review!;
+      let held = false;
+      f.holdWrite(async () => { if (!held) { held = true; f.changeTokenAtNextBlock(); } });
+      await assert.rejects(f.transfers.confirm(approved.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+      assert.equal(f.signatures(), 1);
+      assert.equal(f.broadcasts.length, 0);
+      assert(f.tokenReadsAfterChange.includes('0x70a08231:0x21'));
+      const saved = await (await f.runtime.journal(() => undefined)).load();
+      assert(saved?.rawTransaction);
+      assert.equal(f.transfers.getSnapshot().hash, saved.hash);
+    } finally { f.close(); }
+  });
+}
+
+test('manual nonce rejects malformed inputs and accepts zero only while it is available', async () => {
+  const f = fixture();
+  try {
+    for (const input of ['-1', '1.5', '0x0', '1e2', '9007199254740992']) {
+      await assert.rejects(f.transfers.view.prepare(to, '0.001', input), { code: 'INVALID_NONCE' });
+    }
+    assert.equal(f.rpcMethods.length, 0);
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    assert.equal(approved.nonceOverride, 0);
+    f.consumeNonce();
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 0);
+    await assert.rejects(f.transfers.view.prepare(to, '0.001', '0'), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.deepEqual(f.records, {});
+  } finally { f.close(); }
+});
+
+test('a manual nonce claimed during durable append retains its exact signed bytes without posting', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.view.prepare(to, '0.001', '0');
+    const approved = f.transfers.getSnapshot().review!;
+    f.holdWrite(async () => f.consumeNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'NONCE_UNAVAILABLE' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved?.nonce, 0);
+    assert.equal(saved?.hash, f.transfers.getSnapshot().hash);
+  } finally { f.close(); }
+});
+
+test('a pending nonce change during durable append preserves the approved bytes without posting', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.holdWrite(async () => f.nextNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert.equal(saved?.nonce, 0);
+    assert.equal(saved?.hash, f.transfers.getSnapshot().hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+  } finally { f.close(); }
 });
 
 test('real signed bytes are journaled before one network submission and never exposed to UI', async () => {
@@ -344,6 +522,89 @@ test('real signed bytes are journaled before one network submission and never ex
     f.close();
   }
 });
+test('lagging pending balance reserves accepted predecessor value and fee until the count catches up', async () => {
+  const f = fixture();
+  try {
+    const first = await review(f);
+    await f.transfers.confirm(first.id);
+    f.setPendingBalance(BigInt(first.totalUnits) * 2n - 1n);
+    await assert.rejects(f.transfers.prepare(to, '0.001'), { code: 'INSUFFICIENT_BALANCE' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+
+    f.nextNonce();
+    f.setPendingBalance(BigInt(first.totalUnits));
+    const next = await review(f);
+    assert.equal(next.nonce, '1');
+    await f.transfers.confirm(next.id);
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+  } finally {
+    f.close();
+  }
+});
+
+test('same-token sends queue while reserving existing outgoing amounts', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.prepareToken(token.contractAddress, to, '1');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    await f.transfers.prepareToken(token.contractAddress, to, '2');
+    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '98'), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+    await f.transfers.prepareToken(otherToken.contractAddress, to, '2');
+    assert.equal(f.transfers.getSnapshot().review?.nonce, '2');
+  } finally { f.close(); }
+});
+
+test('asset state changes after signing retain recovery guidance without broadcast', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.prepareToken(token.contractAddress, to, '1');
+    const approved = f.transfers.getSnapshot().review!;
+    f.holdWrite(async () => f.nextNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    const snapshot = f.transfers.getSnapshot();
+    assert.equal(saved?.hash, snapshot.hash);
+    assert.equal(snapshot.phase, 'unknown');
+    assert.match(snapshot.message ?? '', /signed transaction is saved/);
+  } finally { f.close(); }
+});
+
+test('a pending count behind canonical uses latest affordability and the canonical nonce', async () => {
+  const f = fixture();
+  try {
+    f.advanceCanonicalNonce();
+    f.externalPendingBalance('latest');
+    const approved = await review(f);
+    assert.equal(approved.nonce, '1');
+    await f.transfers.confirm(approved.id);
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [1]);
+  } finally {
+    f.close();
+  }
+});
+
+test('a bridged nonce stays approved when pending catches up during the durable append', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.confirm((await review(f)).id);
+    const second = await review(f);
+    assert.equal(second.nonce, '1');
+    f.holdWrite(async () => f.nextNonce());
+    await f.transfers.confirm(second.id);
+    assert.equal(f.transfers.getSnapshot().phase, 'pending');
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+  } finally {
+    f.close();
+  }
+});
+
 test('an expired review and a changed nonce cannot produce a signature or broadcast', async () => {
   for (const expire of [true, false]) {
     const f = fixture();
@@ -472,6 +733,62 @@ test('lost acknowledgement retries the same bytes with fresh consent, without a 
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 2);
     assert.equal(f.broadcasts[0], f.broadcasts[1]);
+  } finally {
+    f.close();
+  }
+});
+test('a saved transaction stays visible when status observation is unavailable', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.loseAcknowledgment();
+    await f.transfers.confirm(approved.id);
+    const hash = f.transfers.getSnapshot().hash!;
+    assert(hash);
+    const retained = JSON.stringify(f.records);
+    f.transfers.cancel(); // Activity opens a fresh recovery screen.
+    f.setObservationUnavailable(true);
+    await assert.rejects(f.transfers.recover(true, hash), { code: 'FAILED' });
+    const unavailable = f.transfers.getSnapshot();
+    assert.equal(unavailable.phase, 'unavailable');
+    assert.equal(unavailable.hash, hash);
+    assert.equal(unavailable.review, null);
+    assert(!JSON.stringify(unavailable).includes(f.broadcasts[0]!));
+    assert.equal(JSON.stringify(f.records), retained);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+
+    f.setObservationUnavailable(false);
+    await f.transfers.recover(false, hash);
+    assert.equal(f.transfers.getSnapshot().phase, 'unknown');
+    assert.equal(f.transfers.getSnapshot().hash, hash);
+    await f.transfers.recover(true, hash);
+    assert.equal(f.transfers.getSnapshot().review?.replay?.hash, hash);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+  } finally {
+    f.close();
+  }
+});
+test('a reentrant lock cannot bring back a cancelled saved-transaction review', async () => {
+  const f = fixture();
+  try {
+    const approved = await review(f);
+    f.loseAcknowledgment();
+    await f.transfers.confirm(approved.id);
+    const hash = f.transfers.getSnapshot().hash;
+    assert(hash);
+    f.transfers.cancel();
+    f.transfers.subscribe((state) => {
+      if (state.hash === hash) f.source.lock();
+    });
+
+    await assert.rejects(f.transfers.recover(true, hash), { code: 'CANCELLED' });
+    assert.equal(f.transfers.getSnapshot().phase, 'idle');
+    assert.equal(f.transfers.getSnapshot().hash, null);
+    assert.equal(f.transfers.getSnapshot().review, null);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
   } finally {
     f.close();
   }
@@ -664,10 +981,10 @@ test('unexpected recovery journal failure does not claim an existing submitted t
     await f.transfers.confirm(approved.id);
     const before = structuredClone(f.records);
     f.finalize();
-    const transition = f.signedRecords.updatePhase.bind(f.signedRecords);
-    f.signedRecords.updatePhase = async (...args) => {
-      if (args[4] === 'confirmed') throw Error('Unexpected storage failure during recovery');
-      return transition(...args);
+    const updateObservedPhase = f.signedRecords.updateObservedPhase.bind(f.signedRecords);
+    f.signedRecords.updateObservedPhase = async (session, entry, revision, phase) => {
+      if (phase === 'confirmed') throw Error('Unexpected storage failure during recovery');
+      return updateObservedPhase(session, entry, revision, phase);
     };
     await assert.rejects(f.transfers.recover(), { code: 'FAILED' });
     assert.equal(f.source.getSnapshot().phase, 'locked');
@@ -681,8 +998,13 @@ test('unexpected recovery journal failure does not claim an existing submitted t
 
 
 test('expiry after a durable signed record preserves its recovery identity without broadcasting', async () => {
-  const f = fixture(); const original = f.runtime.journal;
-  f.runtime.journal = async (guard) => { const journal = await original(guard); const save = journal.saveSigned.bind(journal); journal.saveSigned = async (raw) => { const entry = await save(raw); f.expire(); return entry; }; return journal; };
+  const f = fixture();
+  const append = f.signedRecords.append.bind(f.signedRecords);
+  f.signedRecords.append = async (...args) => {
+    const entry = await append(...args);
+    f.expire();
+    return entry;
+  };
   try { const approved = await review(f); await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' }); assert.equal(f.broadcasts.length, 0); assert.equal(f.transfers.getSnapshot().phase, 'unknown'); assert(f.transfers.getSnapshot().hash); } finally { f.close(); }
 });
 
@@ -699,11 +1021,8 @@ test('a final chain probe that outlives the review retains the exact signed reco
     const pending = f.transfers.confirm(approved.id);
     const expired = assert.rejects(pending, { code: 'EXPIRED' });
     await Promise.race([entered, pending]);
-    const journal = await f.runtime.journal(() => undefined);
-    const saved = await journal.load();
-    assert(saved);
-    assert.equal(saved.phase, 'signed');
-    assert.equal(saved.hash, keccak256(saved.rawTransaction));
+    const durable = JSON.parse(Object.values(f.records)[0] as string).entries[0];
+    assert.equal(durable.phase, 'signed');
     assert.equal(f.rpcMethods.at(-1), 'eth_chainId');
     assert.deepEqual(f.broadcasts, []);
 
@@ -711,12 +1030,16 @@ test('a final chain probe that outlives the review retains the exact signed reco
     release();
     await expired;
     assert.deepEqual(f.broadcasts, []);
-    assert.deepEqual(await journal.load(), saved);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    assert(saved);
+    assert.equal(saved.hash, durable.hash);
+    assert.equal(saved.phase, 'signed');
+    assert.equal(saved.hash, keccak256(saved.rawTransaction));
     assert.equal(f.signatures(), 1);
     const outcome = f.transfers.getSnapshot();
     assert.equal(outcome.phase, 'unknown');
     assert.equal(outcome.hash, saved.hash);
-    assert.match(outcome.message ?? '', /saved before the review expired/i);
+    assert.equal(outcome.message, 'Your signed transaction is saved. Check it before sending again.');
   } finally {
     release();
     f.close();
@@ -850,11 +1173,11 @@ for (const type of [0, 2] as const) test(`current-format type ${type} terminal b
 test('predecessor choices page locally without changing consent or making more RPC reads',async()=>{
  const f=fixture();
  try {
-  const journal=await f.runtime.journal(()=>undefined);
-  for(let value=1;value<=23;value++){
-   const raw=await wallet.signTransaction({type:2,chainId:1,nonce:value===23?1:0,to,value,gasLimit:21000,maxFeePerGas:2,maxPriorityFeePerGas:1});
-   await journal.saveSigned(raw);
-  }
+  const raws = await Promise.all(Array.from({ length: 23 }, (_, index) =>
+    wallet.signTransaction({ type: 2, chainId: 1, nonce: index === 22 ? 1 : 0, to, value: index + 1,
+      gasLimit: 21000, maxFeePerGas: 2, maxPriorityFeePerGas: 1 })));
+  const session = signedRecordTestSession();
+  f.records[await session.keyring.getPrivateRecordProfileId()] = await historicalSignedBundle(session, raws, 'signed');
   await f.transfers.recover(true);
   const before=f.transfers.getSnapshot().review!;
   assert.equal(before.replay!.predecessorCount,22);assert.equal(before.replay!.predecessors.length,20);
@@ -865,4 +1188,76 @@ test('predecessor choices page locally without changing consent or making more R
   assert.equal(new Set(after.replay!.predecessors.map(row=>row.hash)).size,22);
   assert.equal(f.rpcMethods.length,requests);assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),0);
  } finally {f.close();}
+});
+
+
+test('real SDK and NativeTransfers report a genuine journal capacity refusal without POST', async () => {
+  let capturedCapacity:unknown;
+  const f=fixture();try {
+    const approved=await review(f);const {profile,full,first,second}=await fillSyntheticJournal(f);
+    const realSubmit=f.runtime.submit;f.runtime.submit=async (...args)=>{try{return await realSubmit(...args);}catch(error){capturedCapacity=error;throw error;}};
+    await assert.rejects(f.transfers.confirm(approved.id),{code:'SIGNED_STORAGE_FULL'});
+    assert.equal(f.broadcasts.length,0);assert.equal(f.signatures(),1);assert.equal(f.source.getSnapshot().phase,'ready');
+    assert.equal(f.transfers.getSnapshot().hash,null);assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
+    assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    const session=signedRecordTestSession();for(const entry of [first,second])assert((await f.signedRecords.readExact(session,entry.chainId,entry.from,entry.hash))?.rawTransaction===entry.rawTransaction);
+  } finally { f.close(); }
+  const healthy=fixture();try {const approved=await review(healthy);await healthy.transfers.confirm(approved.id);assert.equal(healthy.broadcasts.length,1);assert.equal(healthy.transfers.getSnapshot().phase,'pending');}finally{healthy.close();}
+  // A previously marked error delivered after a real local POST must never be
+  // presented as a no-broadcast capacity refusal.
+  assert(capturedCapacity instanceof Error);
+  const dispatched=fixture();try {
+    const approved=await review(dispatched);const realSubmit=dispatched.runtime.submit;
+    dispatched.runtime.submit=async (...args)=>{await realSubmit(...args);throw capturedCapacity;};
+    await dispatched.transfers.confirm(approved.id);
+    assert.equal(dispatched.broadcasts.length,1);assert.equal(dispatched.transfers.getSnapshot().phase,'unknown');
+    assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    assert.notEqual(dispatched.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  }finally{dispatched.close();}
+});
+
+test('capacity refusal of a saved cancellation preserves the original exact record and sends no replacement', async () => {
+  const f=fixture();try {
+    const initial=await review(f);await f.transfers.confirm(initial.id);const original=f.transfers.getSnapshot().hash!;
+    const saved=await (await f.runtime.journal(()=>undefined)).load(original);assert(saved);
+    f.setPayerEoa();
+    await f.transfers.prepareSavedCancellation(original);const replacement=f.transfers.getSnapshot().review!;assert(replacement.replacement);
+    const {profile,full}=await fillSyntheticJournal(f);
+    await assert.rejects(f.transfers.confirm(replacement.id),{code:'SIGNED_STORAGE_FULL'});
+    assert.equal(f.broadcasts.length,1);assert.equal(f.source.getSnapshot().phase,'ready');assert.equal(createHash('sha256').update(f.records[profile] as string).digest('hex'),createHash('sha256').update(full).digest('hex'));
+    const retained=await (await f.runtime.journal(()=>undefined)).load(original);assert(retained?.rawTransaction===saved.rawTransaction);
+    assert.equal(f.transfers.getSnapshot().phase,'unknown');assert.equal(f.transfers.getSnapshot().hash,original);
+    assert.equal(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  } finally {f.close();}
+});
+
+test('forged capacity text from a runtime is not classified as a local journal refusal', async () => {
+  const f=fixture();try {
+    const approved=await review(f);f.runtime.submit=async()=>{throw Object.assign(new Error('EVM_SIGNED_RECORD_CAPACITY'),{transactionNotBroadcast:true,code:'EVM_SIGNED_STORAGE_FULL'});};
+    await assert.rejects(f.transfers.confirm(approved.id),{code:'FAILED'});assert.equal(f.broadcasts.length,0);
+    assert.equal(f.source.getSnapshot().phase,'locked');assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_MESSAGE);
+    assert.notEqual(f.transfers.getSnapshot().message,SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE);
+  }finally{f.close();}
+});
+
+test('a later attempt publishes a fresh review identity after submission is cancelled', async () => {
+  const f = fixture();
+  try {
+    const first = await review(f);
+    let submittingReview: typeof first | null = null;
+    const unsubscribe = f.transfers.subscribe((state) => {
+      if (state.phase === 'submitting') {
+        submittingReview = state.review;
+        f.transfers.cancel();
+      }
+    });
+    await assert.rejects(f.transfers.confirm(first.id), { code: 'CANCELLED' });
+    unsubscribe();
+    assert.strictEqual(submittingReview, first);
+    assert.equal(f.broadcasts.length, 0);
+    const second = await review(f);
+    assert.notStrictEqual(second, first);
+    assert.equal(f.transfers.getSnapshot().review, second);
+    assert.equal(f.broadcasts.length, 0);
+  } finally { f.close(); }
 });

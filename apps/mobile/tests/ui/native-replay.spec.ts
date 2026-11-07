@@ -33,6 +33,8 @@ for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${
   await page.getByRole('button',{name:`Transaction ${hashes.first.slice(0,10)}…`,exact:true}).click();
   await expect(page.getByText(hashes.first,{exact:true})).toBeVisible();
   await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
+  await expect(page.getByTestId('native-replay-same-nonce-warning')).toHaveText('If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.');
+  await expect(page.getByTestId('native-replay-same-nonce-warning')).toBeVisible();
   expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
   await page.getByTestId('native-send-confirm').click();
   await expect(page.getByTestId('native-send-hash')).toHaveText(hashes.first);
@@ -51,4 +53,35 @@ test('older same-nonce alternatives remain reachable through local pagination',a
  expect(await page.evaluate(()=>window.__erc20SendFixture.rpcMethods().length)).toBe(before);
  await oldest.click();await expect(page.getByText(hashes.first,{exact:true})).toBeVisible();
  expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
+});
+
+test('a nonce gap stays visible when no previous transaction was saved', async ({ page }) => {
+  await page.goto('/?erc20-send');
+  await page.waitForFunction(() => !!window.__erc20SendFixture);
+  const { second } = await page.evaluate(() => window.__erc20SendFixture.seedPredecessor(0));
+  await expect(page.getByText('PREVIOUS TRANSACTION · NONCE 0')).toBeVisible();
+  await expect(page.getByText('No earlier transaction is available to retry on this device.')).toBeVisible();
+  await expect(page.getByText(second, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
+});
+
+test('checking an earlier collectible keeps the displayed hash', async ({ page }) => {
+  await page.goto('/?erc20-send');
+  await page.waitForFunction(() => !!window.__erc20SendFixture);
+  const { first, second } = await page.evaluate(() => window.__erc20SendFixture.seedPredecessor(1, true));
+  await expect(page.getByText(second, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: `Transaction ${first.slice(0, 10)}…`, exact: true }).click();
+  await expect(page.getByText(first, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Resend signed transaction' })).toBeVisible();
+  await expect(page.getByTestId('native-send-collectible-id')).toHaveText('0');
+  await page.getByRole('button', { name: 'Close review' }).click();
+  const hash = page.getByTestId('native-send-hash');
+  await expect(hash).toHaveText(first);
+  await expect(page.getByRole('button', { name: 'Review retry' })).toBeVisible();
+  await page.evaluate(() => window.__erc20SendFixture.finalized());
+  await page.getByRole('button', { name: 'Check status' }).click();
+  await expect(page.getByRole('button', { name: 'New transfer' })).toBeVisible();
+  await expect(hash).toHaveText(first);
+  await expect(page.getByText('Transaction confirmed.', { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
 });

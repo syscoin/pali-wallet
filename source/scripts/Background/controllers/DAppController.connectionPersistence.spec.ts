@@ -19,6 +19,7 @@ jest.mock('../notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
 }));
 
+import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import {
   getPersonalSignGrantReplacement,
@@ -182,7 +183,7 @@ it('continues a connected request through its exact durable account-selection su
   const scope = watchConnectedPersonalSignGrant({
     host,
     method: 'personal_sign',
-    sender: { documentId: 'site-document', url: host },
+    sender: { documentId: 'site-document', url: host, origin: host },
     type: 'METHOD_REQUEST',
   })!;
   try {
@@ -472,6 +473,7 @@ describe('connected personal-sign approval authority', () => {
           frameId,
           tab: { id: 7 },
           url: `${host}/page`,
+          origin: host,
         } as chrome.runtime.MessageSender,
         type: 'METHOD_REQUEST',
       },
@@ -686,7 +688,8 @@ describe('connected personal-sign approval authority', () => {
 
   const openSmartApproval = async (composite = false) => {
     const smartType = KeyringAccountType.SmartAccount;
-    const smartAddress = `0x${'33'.repeat(20)}`;
+    const { account: smart } = smartAccountAddressFixture(1, address);
+    const smartAddress = smart.address;
     const validator = `0x${'44'.repeat(20)}`;
     const activeValidator = composite ? `0x${'55'.repeat(20)}` : validator;
     const owner = { address, id: 0, type };
@@ -699,10 +702,11 @@ describe('connected personal-sign approval authority', () => {
           ...vault.accounts,
           [smartType]: {
             0: {
-              address: smartAddress,
+              ...smart,
               id: 0,
               isSmartAccount: true,
               smartAccount: {
+                ...smart.smartAccount,
                 auth: {
                   module: composite ? 'composite' : 'ecdsa',
                   validator: activeValidator,
@@ -740,6 +744,7 @@ describe('connected personal-sign approval authority', () => {
       { ...details(), accountType: smartType },
       {
         address: smartAddress,
+        xpub: smart.xpub,
         network: { ...vault.activeNetwork },
       }
     );
@@ -938,7 +943,8 @@ describe('connected personal-sign approval authority', () => {
     frameId = 0,
   } = {}) => {
     const smartType = KeyringAccountType.SmartAccount;
-    const smartAddress = `0x${'33'.repeat(20)}`;
+    const { account: smart } = smartAccountAddressFixture(1, address);
+    const smartAddress = smart.address;
     const slhAddress = `0x${'44'.repeat(20)}`;
     const activeValidator = composite ? `0x${'55'.repeat(20)}` : slhAddress;
     const keys = {
@@ -975,6 +981,7 @@ describe('connected personal-sign approval authority', () => {
     if (!cold) putRuntimeSLHDSAState(provisioned, getSLHDSASessionGeneration());
 
     const metadata = {
+      ...smart.smartAccount,
       auth: {
         module: composite ? 'composite' : 'slh-dsa',
         validator: activeValidator,
@@ -1013,7 +1020,7 @@ describe('connected personal-sign approval authority', () => {
           ...vault.accounts,
           [smartType]: {
             0: {
-              address: smartAddress,
+              ...smart,
               id: 0,
               isSmartAccount: true,
               smartAccount: metadata,
@@ -1025,7 +1032,11 @@ describe('connected personal-sign approval authority', () => {
     );
     await controller.connect(
       { ...details(), accountType: smartType },
-      { address: smartAddress, network: { ...vault.activeNetwork } }
+      {
+        address: smartAddress,
+        xpub: smart.xpub,
+        network: { ...vault.activeNetwork },
+      }
     );
     const approval = await openApproval(
       undefined,

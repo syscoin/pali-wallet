@@ -1,4 +1,5 @@
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
+import { hasBip84UtxoPrivateKeyPrefix } from '../shared/utxoPrivateKey.ts';
 
 import { isPublicExtendedKey } from './extendedPublicKey.ts';
 import {
@@ -109,6 +110,13 @@ export async function importAccountWithRecovery<T extends ImportedAccount>(
   const label = input.label;
   const options = optionsSnapshot(input.options);
   const network = data(input.network, ['kind', 'slip44']);
+  const script = options?.utxoAddressType;
+  if (
+    hasBip84UtxoPrivateKeyPrefix(secret) &&
+    script !== undefined &&
+    script !== 'p2wpkh'
+  )
+    return invalid();
   const account = await keyring.importAccount(
     secret,
     label,

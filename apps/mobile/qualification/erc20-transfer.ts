@@ -268,6 +268,7 @@ export async function qualifyNativeErc20Transfer(
     journal: (assertCurrent) => transfer.journal(assertCurrent),
     async sign(transaction, assertCurrent, intent) {
       signatures++;
+      expect(intent?.kind !== 'nft-transfer');
       expect(
         signatures <= 1 &&
           phase === 'create' &&
@@ -372,7 +373,14 @@ export async function qualifyNativeErc20Transfer(
         )
           result = word(123456789);
         else {
-          same([unsigned, '0x123']);
+          same([{
+            ...unsigned,
+            gas: '0xea60',
+            nonce: '0x0',
+            type: '0x2',
+            maxFeePerGas: '0x3',
+            maxPriorityFeePerGas: '0x1',
+          }, '0x123']);
           result = word(1);
         }
       } else if (body.method === 'eth_getTransactionReceipt') {

@@ -1,6 +1,7 @@
 import isEqual from 'lodash/isEqual';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
 
+import { readSentryNode } from '../../../shared/sentryNodeLookup';
 import { AsyncMutex } from 'utils/asyncMutex';
 import {
   captureSentryCollateralAdmission,
@@ -14,6 +15,7 @@ import {
   SentryFeeAuthorizations,
   type SentryFeeReview,
 } from 'utils/sentry/feeAuthorization';
+import { normalizeSentryKeyImportEntries } from 'utils/sentry/importBatch';
 import {
   getSentryVaultId,
   listSentryKeys,
@@ -254,32 +256,19 @@ export class SentryController {
       throw new Error(
         'Configure a trusted Sentry data service in wallet settings first'
       );
-    const proTxHash = request.proTxHash.toLowerCase();
-    const query = new URLSearchParams({ network: settings.network, proTxHash });
-    const observation = await readJson(
-      `${settings.serviceUrl}/api/sentry/v1/context?${query}`,
-      65536
+    const { node } = await readSentryNode(
+      {
+        network: settings.network,
+        origin: settings.serviceUrl,
+        proTxHash: request.proTxHash.toLowerCase(),
+      },
+      {
+        fetch: (url, init) => fetch(url, init),
+        assertCurrent: () => this.assertCurrent(scope),
+        signal: new AbortController().signal,
+      }
     );
     this.assertCurrent(scope);
-    const node = observation?.node;
-    const collateral = node?.collateralOutpoint;
-    if (
-      observation?.chain?.genesisHash !==
-        SENTRY_NETWORKS[settings.network].genesisHash ||
-      node?.proTxHash !== proTxHash ||
-      !collateral ||
-      !/^[0-9a-f]{64}$/.test(collateral.txid) ||
-      !Number.isSafeInteger(collateral.vout) ||
-      collateral.vout < 0 ||
-      collateral.vout > 0xffffffff ||
-      typeof node.service !== 'string' ||
-      node.service.length > 128 ||
-      typeof node.nevmAddress !== 'string' ||
-      (node.nevmAddress !== '' && !/^0x[0-9a-fA-F]{40}$/.test(node.nevmAddress))
-    )
-      throw new Error(
-        'Unable to verify the registered Sentry node on this network'
-      );
     for (const [id, link] of this.links)
       if (
         !link.committing &&
@@ -297,12 +286,7 @@ export class SentryController {
         origin,
         network: settings.network,
         serviceUrl: settings.serviceUrl,
-        node: {
-          proTxHash,
-          service: node.service,
-          nevmAddress: node.nevmAddress,
-          collateralOutpoint: { ...collateral },
-        },
+        node,
       },
     });
     return id;
@@ -458,81 +442,18 @@ export class SentryController {
     const scope = this.host.captureScope();
     return this.mutex.runExclusive(async () => {
       this.assertCurrent(scope);
-      if (
-        !Array.isArray(params.entries) ||
-        !params.entries.length ||
-        params.entries.length > 20
-      )
-        throw new Error('Import between 1 and 20 Sentry keys at a time');
-      const privateInputs = params.entries
-        .map((entry) =>
-          typeof entry?.secretKey === 'string'
-            ? entry.secretKey.replace(/^0x/i, '').toLowerCase()
-            : ''
-        )
-        .filter((value) => value.length >= 50);
-      if (
-        params.entries.some(
-          (entry) =>
-            typeof entry?.label === 'string' &&
-            privateInputs.some((value) =>
-              entry.label.toLowerCase().includes(value)
-            )
-        )
-      )
-        throw new Error('Key labels must not contain private keys');
-      if (
-        !['bls-basic', 'slh-dsa-shake-128s', 'secp256k1'].includes(
-          params.scheme
-        )
-      )
-        throw new Error('Unsupported Sentry operator key scheme');
-      const entries = params.entries.map((entry, index) => {
-        if (
-          !entry ||
-          typeof entry.label !== 'string' ||
-          !entry.label.trim() ||
-          entry.label.trim().length > 80
-        )
-          throw new Error(
-            `Key ${index + 1}: enter a label of 1 to 80 characters`
+      const entries = normalizeSentryKeyImportEntries(
+        params.entries,
+        params.scheme,
+        (secretKey) => {
+          const pair = syscoinUtils.bitcoinjs.ECPair.fromWIF(
+            secretKey,
+            syscoinUtils.syscoinNetworks[getSentryNetwork(scope.network)]
           );
-        let secretKey = entry.secretKey;
-        if (
-          params.scheme === 'secp256k1' &&
-          typeof secretKey === 'string' &&
-          !/^(?:0x)?[0-9a-fA-F]{64}$/.test(secretKey)
-        ) {
-          try {
-            const pair = syscoinUtils.bitcoinjs.ECPair.fromWIF(
-              secretKey,
-              syscoinUtils.syscoinNetworks[getSentryNetwork(scope.network)]
-            );
-            if (!pair.privateKey) throw new Error('Unsupported key');
-            secretKey = Buffer.from(pair.privateKey).toString('hex');
-          } catch {
-            throw new Error(
-              `Key ${
-                index + 1
-              }: enter a voting/owner WIF for the selected network, or a 32-byte hexadecimal private key`
-            );
-          }
+          if (!pair.privateKey) throw new Error('Unsupported key');
+          return Buffer.from(pair.privateKey).toString('hex');
         }
-        if (
-          typeof secretKey !== 'string' ||
-          !new RegExp(
-            `^(?:0x)?[0-9a-fA-F]{${
-              params.scheme === 'slh-dsa-shake-128s' ? 128 : 64
-            }}$`
-          ).test(secretKey)
-        )
-          throw new Error(
-            `Key ${
-              index + 1
-            }: enter a complete hexadecimal Sentry operator private key`
-          );
-        return { label: entry.label.trim(), secretKey };
-      });
+      );
       const seed = await this.host.getSeed(params.password);
       this.assertCurrent(scope);
       const keys: Array<{ key: SentryAuthorityKey; label: string }> = [];

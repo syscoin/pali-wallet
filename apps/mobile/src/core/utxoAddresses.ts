@@ -1,5 +1,6 @@
 import { utils as syscoinUtils } from 'syscoinjs-lib';
-import { resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
+import { supportsUtxoSoftwareSpend } from '../../../../source/shared/utxoSoftwareCustody.ts';
+import { resolveUtxoNetwork, supportsUtxoSoftwareCustody, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
 export const UTXO_IMPORT_TYPES = ['p2wpkh', 'p2pkh', 'p2tr'] as const;
 export type UtxoImportAddressType = typeof UTXO_IMPORT_TYPES[number];
@@ -16,8 +17,17 @@ export function normalizeUtxoAddress(value: unknown, scope: UtxoNetworkId | Utxo
   } catch { throw new Error('Enter a valid public address for the selected network'); }
 }
 
+/** A new receive or send must only use a script the software wallet supports. */
+export function canUseUtxoCustodyAddress(address: string, network: UtxoNetwork): boolean {
+  if (!supportsUtxoSoftwareCustody(network)) return false;
+  try {
+    const script = syscoinUtils.bitcoinjs.address.toOutputScript(address, network.addressNetwork);
+    return supportsUtxoSoftwareSpend(network, [script]);
+  } catch { return false; }
+}
+
 /** Decode the existing public address; a WIF itself does not select a script. */
-export function findWifAddressType(address: string, networkId: UtxoNetworkId): UtxoImportAddressType | undefined {
+export function findWifAddressType(address: string, networkId: UtxoNetworkId | UtxoNetwork): UtxoImportAddressType | undefined {
   const network = resolveUtxoNetwork(networkId).addressNetwork;
   const { payments } = syscoinUtils.bitcoinjs;
   return UTXO_IMPORT_TYPES.find((type) => {

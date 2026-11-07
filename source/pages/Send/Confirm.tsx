@@ -54,6 +54,10 @@ import {
 import { BigNumber } from 'utils/ethersV6Compat';
 import { Interface } from 'utils/ethersV6Compat';
 import { getLocalEvmRecipients } from 'utils/evmRecipients';
+import {
+  EVM_SIGNED_STORAGE_FULL,
+  isSavedEvmNonceConflict,
+} from 'utils/evmTransactionContext';
 import { formatGweiValue, formatSyscoinValue } from 'utils/formatSyscoinValue';
 import {
   truncate,
@@ -73,6 +77,7 @@ import {
   signAndSubmitSmartAccountExecutions,
   type SmartAccountFeeOverrides,
 } from 'utils/smartAccount';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 import { sanitizeErrorMessage } from 'utils/syscoinErrorSanitizer';
 import { getTokenTypeBadgeColor } from 'utils/tokens';
 import { getErc20Abi, getErc721Abi, getErc1155Abi } from 'utils/validations';
@@ -152,7 +157,7 @@ export const SendConfirm = () => {
       ),
     [activeAccount?.address, currentEvmTransactions]
   );
-  const { addresses: localEvmAddresses, incompatibleSmartAddresses } = useMemo(
+  const { addresses: localEvmAddresses, getRecipientIssue } = useMemo(
     () => getLocalEvmRecipients(accounts, activeNetwork),
     [accounts, activeNetwork]
   );
@@ -187,6 +192,26 @@ export const SendConfirm = () => {
     if (!submission.isActive()) tokenReviewPort.current?.close();
   }, [location, state]);
 
+  // Bind this local, non-broadcast failure to the reviewed transaction and
+  // active wallet context. A later quote refresh alone does not dismiss it.
+  const capacityNoticeScope = JSON.stringify([
+    location.pathname,
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+    activeAccount?.address,
+    activeNetwork?.chainId,
+    activeNetwork?.url,
+    state?.walletScope,
+    state?.tx?.sender,
+    state?.tx?.receivingAddress,
+    state?.tx?.amount,
+    state?.tx?.nonce,
+    state?.tx?.transactionType,
+    state?.tx?.token?.contractAddress,
+    state?.tx?.token?.tokenId,
+    state?.tx?.tokenAmountUnits,
+  ]);
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [isPqSigning, setIsPqSigning] = useState(false);
@@ -274,9 +299,9 @@ export const SendConfirm = () => {
     ]
   );
 
-  const recipientWrongNetwork =
-    !isBitcoinBased &&
-    incompatibleSmartAddresses.has((resolvedToAddress || toRaw).toLowerCase());
+  const recipientIssue = isBitcoinBased
+    ? null
+    : getRecipientIssue(resolvedToAddress || toRaw);
 
   // We always display addresses; ENS names are only used as input and resolved to addresses
 
@@ -769,11 +794,15 @@ export const SendConfirm = () => {
         }, remaining);
         nativeFeeExpiry.current = expiry;
       })
-      .catch(() => {
+      .catch((error) => {
         if (!cancelled) {
           discard();
           if (fresh) setRefreshingCustomNativeFee(false);
-          setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+          setFeeCalculationError(
+            isSavedEvmNonceConflict(error)
+              ? t('send.savedNonceConflict')
+              : t('send.feeCalculationFailedRetry')
+          );
         }
       });
     return () => {
@@ -795,7 +824,7 @@ export const SendConfirm = () => {
     if (
       !isSmartAccountSend ||
       !basicTxValues ||
-      recipientWrongNetwork ||
+      recipientIssue ||
       !smartAccountFeeOverrides ||
       smartAccountQuoteNeedsRefresh ||
       tokenReviewInvalid
@@ -1124,6 +1153,21 @@ export const SendConfirm = () => {
   }, [navigate, alert, t, getLegacyGasPrice]);
 
   const handleTokenSendError = (error: any, label: string) => {
+    if (
+      isOrdinaryTokenSend &&
+      !activeAccount?.isLedgerWallet &&
+      !activeAccount?.isTrezorWallet &&
+      (activeAccountMeta.type === KeyringAccountType.HDAccount ||
+        activeAccountMeta.type === KeyringAccountType.Imported) &&
+      !location.pathname.startsWith('/external') &&
+      state?.external !== true &&
+      error?.code === EVM_SIGNED_STORAGE_FULL &&
+      error?.transactionNotBroadcast === true
+    ) {
+      if (submission.isActive()) setCapacityNotice(capacityNoticeScope);
+      setLoading(false);
+      return true;
+    }
     const handled = handleTransactionError(
       error,
       alert,
@@ -1190,8 +1234,8 @@ export const SendConfirm = () => {
           { transactionNotBroadcast: true }
         );
     };
-    if (recipientWrongNetwork) {
-      alert.error(t('send.smartAccountWrongNetwork'));
+    if (recipientIssue) {
+      alert.error(t(recipientIssue));
       return;
     }
     if (recipientPoisoningCollision) {
@@ -1591,8 +1635,21 @@ export const SendConfirm = () => {
           } catch (error: any) {
             if (isNativeSoftwareSend) {
               retireNativeFeeApproval();
+              if (
+                error?.transactionNotBroadcast === true &&
+                error?.code === EVM_SIGNED_STORAGE_FULL
+              ) {
+                if (submission.isActive())
+                  setCapacityNotice(capacityNoticeScope);
+                setLoading(false);
+                return;
+              }
               if (error?.transactionNotBroadcast === true)
-                setFeeCalculationError(t('send.feeCalculationFailedRetry'));
+                setFeeCalculationError(
+                  isSavedEvmNonceConflict(error)
+                    ? t('send.savedNonceConflict')
+                    : t('send.feeCalculationFailedRetry')
+                );
             }
             // Handle specific errors (blacklist, cancellation, etc.) with detailed messages
             const wasHandledSpecifically = handleTransactionError(
@@ -1774,8 +1831,8 @@ export const SendConfirm = () => {
       alert.error(sptReviewMessage);
       return;
     }
-    if (recipientWrongNetwork) {
-      alert.error(t('send.smartAccountWrongNetwork'));
+    if (recipientIssue) {
+      alert.error(t(recipientIssue));
       return;
     }
     // A queued handler must retain the quote it rendered, including readiness
@@ -1786,6 +1843,7 @@ export const SendConfirm = () => {
       (!isBitcoinBased && renderedFeeSelection !== feeSelectionRef.current)
     )
       return;
+    setCapacityNotice(null);
     return submission
       .run(() => performConfirm(renderedFeeSelection))
       .catch((error) => {
@@ -1814,7 +1872,7 @@ export const SendConfirm = () => {
     if (
       !basicTxValues ||
       isBitcoinBased ||
-      recipientWrongNetwork ||
+      recipientIssue ||
       isEIP1559Compatible === undefined
     )
       return;
@@ -2063,7 +2121,7 @@ export const SendConfirm = () => {
     isBitcoinBased,
     isEIP1559Compatible,
     activeNetwork.chainId,
-    recipientWrongNetwork,
+    recipientIssue,
     resolvedToAddress,
     customFee.isCustom,
     customFee.gasLimit,
@@ -2258,25 +2316,30 @@ export const SendConfirm = () => {
   const renderAddress = (
     label: string,
     address: string,
-    display: React.ReactNode
+    display: React.ReactNode,
+    publishable = true
   ) => (
     <div className="flex flex-col w-full text-xs text-brand-gray200 font-poppins font-normal">
       {t(label)}
       <span className="text-white text-xs">
-        <Tooltip content={address} childrenClassName="flex">
-          {display}
-          <IconButton
-            aria-label={t('buttons.copy')}
-            onClick={() => copy(address ?? '')}
-          >
-            <Icon
-              wrapperClassname="flex items-center justify-center"
-              name="Copy"
-              isSvg
-              className="px-1 text-brand-white hover:text-fields-input-borderfocus"
-            />
-          </IconButton>
-        </Tooltip>
+        {publishable ? (
+          <Tooltip content={address} childrenClassName="flex">
+            {display}
+            <IconButton
+              aria-label={t('buttons.copy')}
+              onClick={() => copy(address ?? '')}
+            >
+              <Icon
+                wrapperClassname="flex items-center justify-center"
+                name="Copy"
+                isSvg
+                className="px-1 text-brand-white hover:text-fields-input-borderfocus"
+              />
+            </IconButton>
+          </Tooltip>
+        ) : (
+          t('receive.addressUnavailable')
+        )}
       </span>
     </div>
   );
@@ -2286,7 +2349,9 @@ export const SendConfirm = () => {
       <div className="flex items-center gap-1 px-2 py-1 bg-warning-error bg-opacity-10 rounded">
         <Icon name="warning" className="w-3 h-3 text-warning-error" />
         <span className="text-warning-error text-xs">
-          {t('send.unableToLoad')}
+          {feeCalculationError === t('send.savedNonceConflict')
+            ? feeCalculationError
+            : t('send.unableToLoad')}
         </span>
       </div>
       <Tooltip content={feeCalculationError}>
@@ -2469,7 +2534,12 @@ export const SendConfirm = () => {
             {renderAddress(
               'send.from',
               basicTxValues.sender,
-              ellipsis(basicTxValues.sender, 7, 15)
+              ellipsis(basicTxValues.sender, 7, 15),
+              canPublishAccountAddress(
+                activeAccount,
+                activeAccountMeta.type,
+                activeNetwork.chainId
+              )
             )}
             {transactionReviewDivider}
             {renderAddress(
@@ -2477,12 +2547,12 @@ export const SendConfirm = () => {
               tooltipToAddress,
               <>{ellipsis(labelToDisplay, 7, 15)} </>
             )}
-            {recipientWrongNetwork && (
+            {recipientIssue && (
               <p
                 role="alert"
                 className="w-full mt-3 p-3 rounded-lg border border-warning-error text-warning-error text-xs"
               >
-                {t('send.smartAccountWrongNetwork')}
+                {t(recipientIssue)}
               </p>
             )}
             {recipientPoisoningCollision && (
@@ -2854,6 +2924,20 @@ export const SendConfirm = () => {
             </div>
           )}
 
+          {capacityNotice === capacityNoticeScope && submission.isActive() && (
+            <div className="w-full max-w-md mx-auto mt-4 p-3 rounded-lg border border-warning-error bg-warning-error bg-opacity-10">
+              <p role="alert" className="text-warning-error text-sm">
+                {t('send.signedStorageFull')}
+              </p>
+              <button
+                type="button"
+                className="mt-2 text-white text-sm underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+                onClick={() => setCapacityNotice(null)}
+              >
+                {t('buttons.close')}
+              </button>
+            </div>
+          )}
           <DeviceWaitingBanner account={activeAccount} show={loading} />
           <PqSigningOverlay
             expectedSeconds={90}
@@ -2879,7 +2963,7 @@ export const SendConfirm = () => {
                 confirmed ||
                 submission.blocked ||
                 Boolean(recipientPoisoningCollision) ||
-                recipientWrongNetwork ||
+                Boolean(recipientIssue) ||
                 Boolean(sptReviewError) ||
                 tokenReviewInvalid ||
                 !confirmationFeeReady ||

@@ -35,6 +35,9 @@ test('narrow UTXO review puts the exact recipient and fee before consent', async
       text.style.lineHeight = '1.15';
     }
   });
+  await expect(
+    page.getByText('Original provider', { exact: true })
+  ).toHaveCount(0);
   const confirm = page.getByTestId('native-utxo-confirm');
   await expect(confirm).not.toBeInViewport();
   await confirm.scrollIntoViewIfNeeded();
@@ -46,10 +49,11 @@ test('narrow UTXO review puts the exact recipient and fee before consent', async
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });
 
-test('a saved UTXO retry reviews each exact output before resubmission', async ({
+test('a saved UTXO retry reviews each output and the original provider before resubmission', async ({
   page,
 }) => {
-  await page.goto('/?utxo-send');
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.goto('/?utxo-send&alternate-provider');
   await page.getByRole('button', { name: 'Check transfer aaaaaaaa…' }).click();
   await expect(page.getByText('Submission unverified')).toBeVisible();
   await page.getByRole('button', { name: 'Review saved transfer' }).click();
@@ -57,6 +61,17 @@ test('a saved UTXO retry reviews each exact output before resubmission', async (
   await expect(
     page.getByText('Output 2 · 0.000005 BTC', { exact: true })
   ).toBeVisible();
+  await expect(
+    page.getByText('Original provider', { exact: true })
+  ).toBeVisible();
+  await expect(
+    page.getByText('https://previous-provider.example:8443', { exact: true })
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth
+    )
+  ).toBe(true);
   await page.getByRole('button', { name: 'Resend saved transfer' }).click();
   await expect(page.getByText('Submitted', { exact: true })).toBeVisible();
 });

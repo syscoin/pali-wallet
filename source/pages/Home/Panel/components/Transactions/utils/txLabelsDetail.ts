@@ -1,14 +1,3 @@
-export const UtxoTxDetailsLabelsToKeep = [
-  'Txid',
-  'From',
-  'To',
-  'Block Hash',
-  'Confirmations',
-  'Estimated Confirmation',
-  'Block Time',
-  'Fees',
-];
-
 export const EnhancedEvmTxDetailsLabelsToKeep = [
   'Hash',
   'From',

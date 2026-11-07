@@ -10,6 +10,15 @@ export const getDappOrigin = (url: string): string | null => {
   }
 };
 
+/** A browser or verified transport must attest the exact HTTP(S) principal. */
+export const matchAttestedDappOrigin = (
+  url: string | undefined,
+  assertedOrigin: string | undefined
+): string | null => {
+  const origin = url && getDappOrigin(url);
+  return origin && assertedOrigin === origin ? origin : null;
+};
+
 export const MAX_DAPP_SITE_LOOKUP_LENGTH = 200;
 
 /** Mark an overlong paste after reading it, without keeping its entire text. */

@@ -30,6 +30,8 @@ jest.mock('state/store', () => ({
   }),
 }));
 
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+
 import { attachImportedRecoveryCryptoFixture } from '../../../../tests/fixtures/importedRecoveryCrypto';
 import store, { persistAccountCreation } from 'state/store';
 import { KeyringAccountType } from 'types/network';
@@ -46,7 +48,7 @@ const flows: [string, any[], string, KeyringAccountType][] = [
   ],
   [
     'createSmartAccount',
-    [{ address: '0x-public-smart-address', metadata: {} }],
+    [{ label: 'smart' }],
     'createSmartAccount',
     KeyringAccountType.SmartAccount,
   ],
@@ -92,7 +94,7 @@ describe('account mutation wallet setup reservation', () => {
     jest.useFakeTimers();
     mockState = {
       vault: {
-        activeNetwork: { kind: 'syscoin', slip44: 57 },
+        activeNetwork: { kind: 'syscoin', slip44: 57, chainId: 1 },
         accounts: {
           HDAccount: {},
           Imported: {},
@@ -109,6 +111,7 @@ describe('account mutation wallet setup reservation', () => {
       importWatchOnly: jest.fn(async () => account),
       importTrezorAccount: jest.fn(async () => account),
       importLedgerAccount: jest.fn(async () => account),
+      isUnlocked: jest.fn(() => true),
     };
     attachImportedRecoveryCryptoFixture(keyring);
     wallet = Object.create(MainController.prototype);
@@ -119,7 +122,12 @@ describe('account mutation wallet setup reservation', () => {
     wallet.getActiveKeyring = jest.fn(() => keyring);
     wallet.saveWalletState = jest.fn(async () => undefined);
     wallet.getLatestUpdateForCurrentAccount = jest.fn(async () => undefined);
-    wallet.smartAccount = { deriveSmartAccountRecord: jest.fn() };
+    wallet.smartAccount = {
+      captureSmartAccountBootstrap: (assertCurrent: () => void) => ({
+        assertCurrent,
+        deriveAccount: jest.fn(),
+      }),
+    };
   });
 
   afterEach(() => jest.useRealTimers());
@@ -139,6 +147,8 @@ describe('account mutation wallet setup reservation', () => {
       const expected =
         sdkMethod === 'importAccount'
           ? { ...account, isImported: true, xprv: 'encrypted-fixture' }
+          : sdkMethod === 'createSmartAccount'
+          ? { ...account, ...smartAccountAddressFixture().account }
           : account;
       keyring[sdkMethod].mockResolvedValueOnce(expected);
       await expect(wallet[method](...args)).resolves.toEqual(expected);

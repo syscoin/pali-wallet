@@ -181,7 +181,8 @@ describe('native Syscoin available balance', () => {
             ...(isMax ? { subtractFeeFrom: true } : {}),
           },
         ],
-        new BN(2)
+        new BN(2),
+        network
       );
     const staleMax = prepare('9889168', true);
     expect(staleMax.error).toBe('INSUFFICIENT_FUNDS');

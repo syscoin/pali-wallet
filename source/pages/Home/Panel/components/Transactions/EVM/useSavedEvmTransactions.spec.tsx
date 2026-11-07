@@ -55,14 +55,16 @@ test('local projection retains exact money, null creation target and a call hint
   expect(result.confirmations).toBeUndefined();
 });
 
-test('bounded pages append and a focus refresh keeps already loaded older records', async () => {
-  mockEmitter.mockImplementation((_: unknown, [cursor]: any[]) =>
-    Promise.resolve(
+test('bounded pages cross the JSON message boundary and preserve older records on refresh', async () => {
+  mockEmitter.mockImplementation((_: unknown, params: unknown[]) => {
+    const [cursor] = JSON.parse(JSON.stringify(params));
+    if (cursor === null) return Promise.reject(new Error('Invalid cursor'));
+    return Promise.resolve(
       cursor
         ? { transactions: [row('2')], nextCursor: null }
         : { transactions: [row('1')], nextCursor: hash('1') }
-    )
-  );
+    );
+  });
   const { result } = renderHook(() =>
     useSavedEvmTransactions(true, 'a:network')
   );
@@ -70,7 +72,7 @@ test('bounded pages append and a focus refresh keeps already loaded older record
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([hash('1')]);
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSavedEvmTransactions'],
-    [undefined, 30]
+    []
   );
   await act(async () => result.current.loadMore());
   expect(result.current.transactions.map((tx) => tx.hash)).toEqual([
@@ -178,4 +180,37 @@ test('more than a page of new records cannot leave a permanent gap after a refre
     expect(
       result.current.transactions.some((found) => found.hash === tx.hash)
     ).toBe(true);
+});
+
+test('projects signed ERC-20 units and recipient with or without token metadata without input', () => {
+  const tokenAddress = `0x${'22'.repeat(20)}`;
+  const recipient = `0x${'33'.repeat(20)}`;
+  for (const token of [
+    undefined,
+    {
+      contractAddress: tokenAddress,
+      decimals: 6,
+      symbol: 'TOK',
+      name: 'Token',
+    },
+  ]) {
+    const tx: any = savedTransactionHistoryRow({
+      ...row('3'),
+      to: tokenAddress,
+      operation: 'erc20',
+      tokenTransfer: {
+        amountUnits: '6000000',
+        recipient,
+        ...(token ? { token } : {}),
+      },
+    } as any);
+    expect(tx.input).toBeUndefined();
+    expect(tx.tokenTransfer).toMatchObject({
+      contractAddress: tokenAddress,
+      recipient,
+      value: '6000000',
+    });
+    expect(tx.tokenTransfer.decimals).toBe(token?.decimals);
+    expect(tx.tokenTransfer.symbol).toBe(token?.symbol);
+  }
 });

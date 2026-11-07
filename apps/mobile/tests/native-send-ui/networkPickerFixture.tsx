@@ -7,9 +7,15 @@ import type { NativeNetworkSnapshot, NativeNetworkView } from '../../src/custody
 import { NativeNetworks } from '../../src/screens/NativeNetworks';
 import { Text } from '../../src/ui';
 
-const networks = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
+const networks: NativeNetworkSnapshot['networks'][number][] = NATIVE_NETWORKS.map((registration) => ({ id: registration.id, name: getNativeSendContext(registration).name,
   symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }));
-let snapshot: NativeNetworkSnapshot | null = Object.freeze({ revision: 4, selectedId: 'ethereum', networks });
+const customUtxo = { id: 'custom-litecoin', name: 'Custom Litecoin', symbol: 'LTC', testnet: false,
+  canSign: true, customUtxoEndpoint: 'https://litecoin.example/blockbook' };
+if (new URLSearchParams(window.location.search).has('utxo')) networks.push(customUtxo);
+const activeCustomUtxo = new URLSearchParams(window.location.search).has('activeUtxo');
+let snapshot: NativeNetworkSnapshot | null = Object.freeze({
+  revision: 4, selectedId: activeCustomUtxo ? customUtxo.id : 'ethereum', networks,
+});
 let contextRevision = 19;
 let cancelled = 0;
 let release: (() => void) | undefined;
@@ -45,6 +51,26 @@ const controller: NativeNetworkView = {
   subscribe(listener) { listeners.add(listener); return () => listeners.delete(listener); },
   cancel() { cancelled++; contextRevision++; },
   loadCatalogue,
+  async editUtxo(id, { endpoint, name }, expectedContextRevision, expectedCatalogueRevision) {
+    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
+        snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
+    if (endpoint === 'https://unresolved.example/blockbook')
+      throw Object.assign(new Error('Saved transfer pending'), { code: 'UTXO_ENDPOINT_HAS_SAVED_TRANSFER' });
+    if (!['https://replacement.example/blockbook', customUtxo.customUtxoEndpoint].includes(endpoint))
+      throw Error('INVALID_INPUT');
+    snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
+      networks: snapshot.networks.map((network) => network.id === id ? { ...network, name, customUtxoEndpoint: endpoint } : network) });
+    contextRevision++; notify();
+  },
+  async removeUtxo(id, expectedContextRevision, expectedCatalogueRevision) {
+    if (id !== customUtxo.id || !snapshot || contextRevision !== expectedContextRevision ||
+        snapshot.revision !== expectedCatalogueRevision || snapshot.selectedId === id) throw Error('CANCELLED');
+    if (new URLSearchParams(window.location.search).has('usedUtxo'))
+      throw Object.assign(new Error('Saved accounts'), { code: 'ACCOUNT_NOT_REMOVABLE' });
+    snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1,
+      networks: snapshot.networks.filter((network) => network.id !== id) });
+    contextRevision++; notify();
+  },
   async save(registration, expectedContextRevision, expectedCatalogueRevision) {
     if (!snapshot || contextRevision !== expectedContextRevision || snapshot.revision !== expectedCatalogueRevision) throw Error('CANCELLED');
     saveRequests++;
@@ -52,6 +78,8 @@ const controller: NativeNetworkView = {
       await new Promise<void>((resolve) => { releaseSave = resolve; });
       throw Error('CANCELLED');
     }
+    if (new URLSearchParams(window.location.search).has('failSaveOnce') && saveRequests === 1)
+      throw Error('UNAVAILABLE');
     snapshot = Object.freeze({ ...snapshot, revision: snapshot.revision + 1, networks: [...snapshot.networks.filter((network) => network.id !== registration.id),
       { id: registration.id, name: registration.name, symbol: registration.symbol, testnet: registration.testnet, canSign: true, registration }] });
     contextRevision++; notify();

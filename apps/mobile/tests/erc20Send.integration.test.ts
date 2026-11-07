@@ -53,12 +53,14 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     decimals: 2,
     eth: 10n ** 18n,
     nonce: 0,
+    pendingNonce: undefined as number | undefined,
+    peerSeesPending: false,
     base: 1,
     gas: 50000,
     loseResponse: true,
     finalized: false,
   };
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -95,8 +97,10 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
             hash: '0x' + 'a'.repeat(64), baseFeePerGas: `0x${values.base.toString(16)}`, gasLimit: '0x1c9c380',
           };
         else if (b.method === 'eth_getCode') result = '0x6000';
-        else if (b.method === 'eth_getTransactionCount')
-          result = values.finalized ? '0x1' : `0x${values.nonce.toString(16)}`;
+        else if (b.method === 'eth_getTransactionCount') {
+          const nonce = b.params[1] === 'pending' ? values.pendingNonce ?? values.nonce : values.nonce;
+          result = values.finalized ? '0x1' : `0x${nonce.toString(16)}`;
+        }
         else if (b.method === 'eth_getBalance')
           result = `0x${values.eth.toString(16)}`;
         else if (b.method === 'eth_gasPrice') result = `0x${(values.base + 1).toString(16)}`;
@@ -118,11 +122,17 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
               : b.params[0].data.startsWith('0x70a08231')
               ? word(values.tokens)
               : word(1);
+        else if (b.method === 'eth_getTransactionByHash') {
+          const raw = sent.find((candidate) => keccak256(candidate) === b.params[0]);
+          const tx = raw && Transaction.from(raw);
+          result = values.peerSeesPending && tx ? { hash: tx.hash, from: tx.from, to: tx.to, value: '0x0', nonce: `0x${tx.nonce.toString(16)}`,
+            blockNumber: null, blockHash: null, transactionIndex: null } : null;
+        }
         else if (b.method === 'eth_getTransactionReceipt')
           result = values.finalized
             ? {
-                transactionHash: keccak256(sent[0]!),
-                from: Transaction.from(sent[0]!).from,
+                transactionHash: keccak256(sent.at(-1)!),
+                from: Transaction.from(sent.at(-1)!).from,
                 to: CONTRACT,
                 blockNumber: '0x100',
                 blockHash: '0x' + 'a'.repeat(64),
@@ -222,6 +232,25 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     await assert.rejects(transfers!.prepare(RECIPIENT, '0.001'), {
       code: 'PENDING_TRANSFER',
     });
+    await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
+      code: 'PENDING_TRANSFER',
+    });
+    assert.equal(transfers!.getSnapshot().hash, hash);
+
+    // Accepted local bytes fill a lagging nonce gap and reserve their token debit.
+    values.peerSeesPending = true;
+    await transfers!.prepare(RECIPIENT, '0.001');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
+    assert.equal(sent.length, 1);
+    await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
+
+    values.pendingNonce = 1;
+    await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
+    assert.equal(sent.length, 1);
+    transfers!.cancel();
+    values.pendingNonce = undefined;
     await runtime!.tokens!.remove(1, CONTRACT, () => undefined);
     await runtime!.tokens!.add(2, { ...TOKEN, decimals: 3 }, () => undefined);
     transfers!.dispose();
@@ -250,6 +279,27 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     assert.equal(sent[1], raw);
     assert.equal(transfers!.getSnapshot().hash, hash);
     assert.equal(transfers!.getSnapshot().phase, 'pending');
+    await transfers!.prepareSpeedUp(hash);
+    let replacement = transfers!.getSnapshot().review!;
+    assert.equal(replacement.replacement?.mode, 'speed-up');
+    assert.equal(replacement.intent!.amountUnits, '123');
+    assert.equal(replacement.intent!.token.decimals, 2);
+    values.tokens = 122n;
+    await assert.rejects(transfers!.confirm(replacement.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+    assert.equal(sent.length, 2);
+    values.tokens = 10000n;
+    await transfers!.prepareSpeedUp(hash);
+    replacement = transfers!.getSnapshot().review!;
+    await transfers!.confirm(replacement.id);
+    assert.equal(sent.length, 3);
+    const bumped = Transaction.from(sent[2]!);
+    assert.equal(bumped.data, Transaction.from(raw).data);
+    assert.equal(bumped.nonce, Transaction.from(raw).nonce);
+    assert.equal(bumped.to, CONTRACT);
+    assert.equal(bumped.value, 0n);
+    const records = JSON.parse((await storage!.signedRecords.read(profile))!).entries;
+    assert.equal(records[1].originalHash, hash);
+    assert.equal(records[1].operation, 'speed-up');
     values.finalized = true;
     await transfers!.recover();
     assert.equal(transfers!.getSnapshot().phase, 'confirmed');

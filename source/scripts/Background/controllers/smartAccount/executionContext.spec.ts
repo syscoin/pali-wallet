@@ -16,6 +16,8 @@ jest.mock('utils/smartAccount', () => ({
   ),
 }));
 
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
+
 import store from 'state/store';
 import { INetworkType, KeyringAccountType } from 'types/network';
 import { BigNumber, Contract, Interface } from 'utils/ethersV6Compat';
@@ -30,21 +32,22 @@ import {
 
 import SmartAccountController from './index';
 
-const ADDRESS = `0x${'11'.repeat(20)}`;
 const OWNER = `0x${'22'.repeat(20)}`;
+const identity = smartAccountAddressFixture(1, OWNER);
+const ADDRESS = identity.account.address;
 const TARGET = `0x${'33'.repeat(20)}`;
 const VALIDATOR = `0x${'44'.repeat(20)}`;
 const HASH = `0x${'55'.repeat(32)}`;
 const calls = [{ data: '0x', target: TARGET, value: '0x0' }];
 const payer = { address: OWNER, id: 0, type: KeyringAccountType.HDAccount };
 const metadata = {
+  ...identity.account.smartAccount,
   auth: {
     data: encodeEcdsaValidatorInitData([OWNER], 1),
     module: 'ecdsa',
     validator: VALIDATOR,
   },
   chainId: 1,
-  deploymentSalt: `0x${'00'.repeat(32)}`,
   installedModules: [
     {
       address: VALIDATOR,
@@ -120,7 +123,7 @@ describe('smart-account execution approval context', () => {
         accounts: {
           SmartAccount: {
             7: {
-              address: ADDRESS,
+              ...identity.account,
               id: 7,
               isSmartAccount: true,
               smartAccount: metadata,
@@ -246,16 +249,10 @@ describe('smart-account execution approval context', () => {
 
   describe('registration admission before execution preparation', () => {
     const registration = () => {
-      jest
-        .mocked(toPaliSmartAccount)
-        .mockResolvedValue({ address: ADDRESS } as any);
       jest.mocked(store.dispatch).mockClear();
       const gate = deferred<string>();
       provider.getCode = jest.fn(() => gate.promise);
-      const registeredMetadata = {
-        ...metadata,
-        descriptor: { deploymentSalt: `0x${'00'.repeat(32)}` },
-      };
+      const registeredMetadata = { ...metadata };
       controller.getSmartAccountById = jest.fn(() => ({
         account: state.vault.accounts.SmartAccount[7],
         metadata: registeredMetadata,
@@ -277,6 +274,21 @@ describe('smart-account execution approval context', () => {
       controller.deps.saveWalletState = jest.fn();
       return gate;
     };
+
+    it('does not read a substituted saved identity from the RPC as an already deployed account', async () => {
+      registration();
+      state.vault.accounts.SmartAccount[7].address = TARGET;
+      state.vault.accounts.SmartAccount[7].xpub = TARGET;
+      await expect(
+        controller.registerSmartAccountOnChain({ accountId: 7 })
+      ).rejects.toMatchObject({
+        message: 'Smart account address could not be verified',
+        transactionNotBroadcast: true,
+      });
+      expect(provider.getCode).not.toHaveBeenCalled();
+      expect(controller.hydrateSmartAccountMetadata).not.toHaveBeenCalled();
+      expect(controller.submitSmartAccountExecution).not.toHaveBeenCalled();
+    });
 
     it.each(['account', 'RPC', 'session'])(
       'does not sign registration after %s changes during the code read',

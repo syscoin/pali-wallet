@@ -1,9 +1,20 @@
 import { observeFirstUseUtxoRpc, verifyOwnedUtxoRpc } from '@sidhujag/sysweb3-network/cjs/ownedUtxoRpc.js';
 import { utxoRegistrationDisplayName } from '../../../../source/shared/utxoChainCatalogue.ts';
+import { createUtxoRegistrationPin } from '../../../../source/shared/utxoRegistration.ts';
 import { boundedResponseText, cancelResponseBody, ResponseSizeLimitError } from '../platformRpc.ts';
 import { canonicalUtxoEndpoint, isCustomUtxoNetworkId, newCustomUtxoNetworkId, projectUtxoRegistration, resolveUtxoNetwork, type UtxoNetwork, type UtxoNetworkId } from './utxoNetworks.ts';
 
 export type UtxoFetch = (url: string, init: RequestInit) => Promise<Response>;
+export function exactUtxoResponseFetch(fetch: UtxoFetch): UtxoFetch {
+  return async (url, init) => {
+    const response = await fetch(url, init);
+    if (response.redirected || response.url !== url) {
+      cancelResponseBody(response);
+      return utxoFailure('NETWORK_MISMATCH');
+    }
+    return response;
+  };
+}
 export type UtxoBalanceErrorCode = 'INVALID_INPUT' | 'NETWORK_MISMATCH' | 'UNAVAILABLE' | 'INVALID_RESPONSE' | 'RESPONSE_TOO_LARGE' | 'CANCELLED';
 export class UtxoBalanceError extends Error {
   readonly code: UtxoBalanceErrorCode;
@@ -119,6 +130,18 @@ function openUtxoTransport(endpoint: string, options: Readonly<{ fetch: UtxoFetc
   return { signal: controller.signal, check, read, close, identityPath, consumedBytes: () => consumed };
 }
 
+/** Recheck the exact saved endpoint before a custody read or dispatch. */
+export async function verifySavedUtxoEndpoint(
+  network: UtxoNetwork,
+  options: Readonly<{ fetch: UtxoFetch; timeoutMs: number }>,
+  signal: AbortSignal,
+  assertCurrent: () => void
+): Promise<void> {
+  await verifyUtxoRegistration({
+    endpoint: network.endpoint, name: network.name, explorer: network.explorer,
+  }, network, { ...options, fetch: exactUtxoResponseFetch(options.fetch) }, signal, assertCurrent);
+}
+
 /** Discover or reverify a registration without any address or account-key requests. */
 export async function verifyUtxoRegistration(
   draft: Readonly<{ endpoint: string; name: string; explorer: string }>,
@@ -138,10 +161,11 @@ export async function verifyUtxoRegistration(
   };
   try {
     if (selected) {
-      const { chainId, slip44, backendChain } = selected;
-      await verifyOwnedUtxoRpc(endpoint, { ...owner, registration: { chainId, slip44 }, backendChain });
+      const pin = createUtxoRegistrationPin(selected);
+      await verifyOwnedUtxoRpc(endpoint, { ...owner, ...pin });
       transport.check();
-      return projectUtxoRegistration({ id: selected.id, chainId, slip44, backendChain, endpoint, name: name || selected.name, explorer });
+      return projectUtxoRegistration({ id: selected.id, ...pin.registration, backendChain: pin.backendChain,
+        endpoint, name: name || selected.name, explorer });
     }
     const observed = await observeFirstUseUtxoRpc(endpoint, owner);
     observed.assertCurrent();
@@ -162,8 +186,7 @@ export async function openUtxoReadSession(scope: UtxoNetworkId | UtxoNetwork, op
     let validationFailure: UtxoBalanceError | undefined;
     try {
       await verifyOwnedUtxoRpc(network.endpoint, {
-        registration: { chainId: network.chainId, slip44: network.slip44 },
-        backendChain: network.backendChain,
+        ...createUtxoRegistrationPin(network),
         assertCurrent: check,
         signal,
         async readJson(url, ownerSignal) {

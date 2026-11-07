@@ -48,7 +48,7 @@ const paramsFor = (method: string) => [
 const request = (method = 'wallet_switchEthereumChain') =>
   onMessage(
     { type: 'METHOD_REQUEST', data: { method, params: paramsFor(method) } },
-    { url: `${HOST}/dapp`, tab: { id: 100 } } as any
+    { url: `${HOST}/dapp`, origin: HOST, tab: { id: 100 } } as any
   );
 
 function setup(kind: INetworkType, chainId = 57, hasTarget = true) {
@@ -118,6 +118,10 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation();
   Object.assign(chrome, {
     tabs: {
+      // The mocked popup owns no live browser tabs.
+      query: jest.fn((_query: unknown, callback: (tabs: any[]) => void) =>
+        callback([])
+      ),
       onRemoved: { addListener: jest.fn(), removeListener: jest.fn() },
       onUpdated: { addListener: jest.fn(), removeListener: jest.fn() },
     },

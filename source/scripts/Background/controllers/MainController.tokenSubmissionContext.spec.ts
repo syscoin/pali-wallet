@@ -20,6 +20,7 @@ jest.mock('utils/security/blacklistService', () => ({
 jest.mock('utils/navigationState', () => ({
   clearNavigationState: jest.fn(),
   clearTransactionNavigationState: jest.fn(),
+  getWalletNavigationScope: () => ({ account: 'account', network: 'network' }),
 }));
 
 import { getController, notificationManager } from '..';
@@ -53,12 +54,16 @@ describe.each([
   const params = {
     receiver: RECEIVER,
     tokenAddress: TOKEN,
+    gasLimit: '42000',
+    isLegacy: true,
+    gasPrice: '3000000000',
     ...(standard === 'ERC20'
       ? { tokenAmountUnits: '9007199254740993' }
       : { tokenAmount: '1' }),
   };
   const authority = {
     assertCurrent: () => undefined,
+    nonce: 7,
     signal: new AbortController().signal,
   };
   const send = () =>
@@ -103,6 +108,8 @@ describe.each([
     wallet = Object.create(MainController.prototype);
     wallet.walletSessionGeneration = 7;
     wallet.getActiveKeyring = jest.fn(() => keyring);
+    wallet.captureFreshEvmRead = jest.fn(() => ({}));
+    wallet.inspectOrdinaryEvmNonce = jest.fn(async () => undefined);
     wallet.saveWalletState = jest.fn(async () => undefined);
     wallet.startRapidTransactionPolling = jest.fn();
     (getController as jest.Mock).mockReturnValue({ wallet });

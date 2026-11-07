@@ -33,22 +33,30 @@ const scope = () => ({
       '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f',
   },
 });
-const request = { address: receiver.address, amountSatoshis: '90000' };
+const recipient = { address: receiver.address, amountSatoshis: '90000' };
+const request = { kind: 'native' as const, ...recipient };
 
-function fixture(witness = true) {
+function fixture(witness = true, inputScript?: Uint8Array) {
   const payer = bitcoin.payments[witness ? 'p2wpkh' : 'p2pkh']({
     pubkey: pair.publicKey,
     network,
   });
   const previous = new bitcoin.Transaction();
   previous.addInput(Buffer.alloc(32, 1), 2);
-  previous.addOutput(payer.output, BigInt(110_000));
+  previous.addOutput(inputScript ?? payer.output, BigInt(110_000));
   previous.addOutput(payer.output, BigInt(110_000));
   function makePsbt({
     index = 0,
     sequence = 0xfffffffd,
     value = BigInt(110_000),
     version = 2,
+    changeScript,
+  }: {
+    changeScript?: Uint8Array;
+    index?: number;
+    sequence?: number;
+    value?: bigint;
+    version?: number;
   } = {}) {
     const psbt = new bitcoin.Psbt({ network });
     psbt.setVersion(version);
@@ -57,11 +65,15 @@ function fixture(witness = true) {
       index,
       sequence,
       ...(witness
-        ? { witnessUtxo: { script: payer.output, value } }
+        ? { witnessUtxo: { script: inputScript ?? payer.output, value } }
         : { nonWitnessUtxo: previous.toBuffer() }),
     });
     psbt.addOutput({ address: receiver.address, value: BigInt(90_000) });
-    psbt.addOutput({ address: payer.address, value: BigInt(19_000) });
+    psbt.addOutput(
+      changeScript
+        ? { script: changeScript, value: BigInt(19_000) }
+        : { address: payer.address, value: BigInt(19_000) }
+    );
     return psbt;
   }
   const fetchPreviousTransaction = jest.fn(async () => ({
@@ -88,6 +100,29 @@ function fixture(witness = true) {
     signingScope,
   };
 }
+
+it.each(['input', 'change'])(
+  'refuses an unqualified future witness %s in the actual native quote',
+  async (position) => {
+    const futureAddress = bitcoin.address.toBech32(
+      Buffer.alloc(32, 9),
+      2,
+      network.bech32
+    );
+    const script = bitcoin.address.toOutputScript(futureAddress, network);
+    const f = fixture(true, position === 'input' ? script : undefined);
+    const quote = PsbtUtils.toPali(
+      f.makePsbt(position === 'change' ? { changeScript: script } : undefined)
+    );
+    await expect(
+      prepareUtxoSignedBinding(f.signingScope, quote, request, {
+        assertCurrent: () => undefined,
+        fetchPreviousTransaction: f.fetchPreviousTransaction,
+      })
+    ).rejects.toMatchObject({ code: 'UTXO_SOFTWARE_SPEND_UNSUPPORTED' });
+    expect(f.fetchPreviousTransaction).toHaveBeenCalledTimes(1);
+  }
+);
 
 it.each([true, false])(
   'shares the attested quote and final byte contract across hosts (witness %s)',
@@ -197,9 +232,9 @@ it.each([true, false])(
               ...descriptor,
               scope: f.signingScope,
               review: {
-                recipient: request,
+                recipient,
                 outputs: [
-                  request,
+                  recipient,
                   { address: f.payer.address, amountSatoshis: '19000' },
                 ],
                 outpoints: [`${f.previous.getId()}:0`],

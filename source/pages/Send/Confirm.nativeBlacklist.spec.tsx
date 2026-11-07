@@ -1,4 +1,6 @@
 /** @jest-environment jsdom */
+import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
+
 import '@testing-library/jest-dom';
 import {
   act,
@@ -78,6 +80,8 @@ const originalRandomUuid = Object.getOwnPropertyDescriptor(
 const mockMessages: any[] = [];
 let mockEIP1559 = true;
 let mockRefreshedBalance = '100';
+let mockPendingNonce: string;
+let mockRetainedNonce: boolean;
 let mockPendingBalanceWei = '100000000000000000000';
 const mockAlertError = jest.fn();
 const mockEmitter = jest.fn();
@@ -281,6 +285,8 @@ beforeEach(() => {
       );
     throw new Error(`Unexpected synthetic controller call: ${method}`);
   }) as any);
+  mockPendingNonce = '0x7';
+  mockRetainedNonce = false;
   mockWallet = Object.create(MainController.prototype);
   mockWallet.walletSessionGeneration = 7;
   const keyring = {
@@ -292,6 +298,25 @@ beforeEach(() => {
     },
   };
   mockWallet.getActiveKeyring = jest.fn(() => keyring);
+  mockWallet.getRetainedEvmRecords = () => ({
+    autoNonceAcceptance: new EvmAutoNonceAcceptance(),
+    captureAutoNonceSnapshot: async () => ({
+      owner: 'synthetic',
+      minimumNonce: 0,
+      retained: mockRetainedNonce
+        ? [
+            {
+              chainId: String(mockState.vault.activeNetwork.chainId),
+              from: mockState.vault.accounts.HDAccount[0].address,
+              hash: `0x${'aa'.repeat(32)}`,
+              nonce: 7,
+              phase: 'signed',
+            },
+          ]
+        : [],
+      readMaximumCost: jest.fn(),
+    }),
+  });
   mockWallet.withReceiptReadProvider = jest.fn(async (signal, _, read) =>
     read({
       signal,
@@ -300,8 +325,9 @@ beforeEach(() => {
         if (method === 'eth_getBlockByNumber')
           return { gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
         if (method === 'eth_getBalance') return mockPendingBalanceWei;
-        if (method === 'eth_getTransactionCount') return '0x7';
+        if (method === 'eth_getTransactionCount') return mockPendingNonce;
         if (method === 'eth_estimateGas') return '0x5208';
+        if (method === 'eth_getTransactionByHash') return null;
         throw new Error(`Unexpected native read ${method}`);
       },
     })
@@ -419,8 +445,9 @@ async function readyNative(blacklisted: boolean) {
 it('shows the real native pre-send blacklist refusal without unknown status', async () => {
   await readyNative(true);
   const issued = mockWallet.reviewNativeEvmFee.mock.results.length;
-  const firstReviewId =
-    mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
+  const firstReviewId = (
+    await mockWallet.reviewNativeEvmFee.mock.results.at(-1).value
+  ).id;
   await act(async () =>
     fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
   );
@@ -463,7 +490,7 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
   fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }));
   expect(mockNativeReplies).toHaveLength(1);
   expect(mockSdkSend).not.toHaveBeenCalled();
-  expect(mockWallet.withReceiptReadProvider).not.toHaveBeenCalled();
+  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
   expect(mockWallet.sendAndSaveTransaction).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'receive.retry' }));
   await waitFor(() =>
@@ -472,9 +499,9 @@ it('shows the real native pre-send blacklist refusal without unknown status', as
     ).toBeEnabled()
   );
   expect(mockWallet.reviewNativeEvmFee).toHaveBeenCalledTimes(issued + 1);
-  expect(mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id).not.toBe(
-    firstReviewId
-  );
+  expect(
+    (await mockWallet.reviewNativeEvmFee.mock.results.at(-1).value).id
+  ).not.toBe(firstReviewId);
   expect(mockNativeReplies).toHaveLength(1);
   expect(mockSdkSend).not.toHaveBeenCalled();
 });
@@ -494,7 +521,10 @@ it('accepts an unlisted native recipient through the same controller path', asyn
     maxFeePerGas: '3000000000',
     maxPriorityFeePerGas: '0',
   });
-  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
+  expect(mockSdkSend.mock.calls[0][2]).toMatchObject({
+    walletNonce: { nonce: 7, source: 'automatic' },
+  });
+  expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(3);
   await waitFor(() =>
     expect(mockWallet.sendAndSaveTransaction).toHaveBeenCalledTimes(1)
   );
@@ -502,6 +532,40 @@ it('accepts an unlisted native recipient through the same controller path', asyn
     screen.queryByText('send.submissionStatusUnknown')
   ).not.toBeInTheDocument();
 });
+it('shows Activity guidance when a retained transaction blocks the initial review', async () => {
+  mockRetainedNonce = true;
+  mockLocation.state.tx.transactionType = 'NATIVE_ETH';
+  mockLocation.state.tx.cachedGasData = {
+    maxFeePerGas: '0xb2d05e00',
+    maxPriorityFeePerGas: '0x00',
+  };
+  prepare();
+  expect(
+    await screen.findByText('send.savedNonceConflict')
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: 'buttons.confirm' })
+  ).toBeDisabled();
+  expect(mockSdkSend).not.toHaveBeenCalled();
+});
+
+it('requires another review if the automatic nonce changes before clicking Confirm', async () => {
+  await readyNative(false);
+  mockPendingNonce = '0x8';
+  await act(async () =>
+    fireEvent.click(screen.getByRole('button', { name: 'buttons.confirm' }))
+  );
+  await waitFor(() => expect(mockNativeReplies).toHaveLength(1));
+  expect(mockNativeReplies[0]).toMatchObject({
+    success: false,
+    error: {
+      message: expect.stringContaining('Review this transfer again'),
+      transactionNotBroadcast: true,
+    },
+  });
+  expect(mockSdkSend).not.toHaveBeenCalled();
+});
+
 it.each([
   ['101000000000000000000', true],
   ['99999999999999999999', false],
@@ -510,7 +574,9 @@ it.each([
   async (pendingBalance, affordable) => {
     mockLocation.state.tx.transactionType = 'NATIVE_ETH';
     await ready(true);
-    const reviewId = mockWallet.reviewNativeEvmFee.mock.results.at(-1).value.id;
+    const reviewId = (
+      await mockWallet.reviewNativeEvmFee.mock.results.at(-1).value
+    ).id;
     const reviewedValue = '99999937000000000000';
     mockPendingBalanceWei = pendingBalance;
     await act(async () =>
@@ -527,7 +593,7 @@ it.each([
     expect(data.params[4]).toEqual({
       nativeReview: { id: reviewId, scope: mockScope },
     });
-    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(1);
+    expect(mockWallet.withReceiptReadProvider).toHaveBeenCalledTimes(3);
     if (affordable) {
       expect(mockSdkSend).toHaveBeenCalledTimes(1);
       expect(mockSdkSend.mock.calls[0][0].value).toBe(reviewedValue);

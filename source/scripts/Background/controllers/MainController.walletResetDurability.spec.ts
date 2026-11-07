@@ -408,7 +408,7 @@ describe('wallet reset durable cleanup', () => {
     (chrome as any).scripting = {
       executeScript: jest.fn().mockResolvedValue([]),
     };
-    dapp.setup({ url: `${host}/page` });
+    dapp.setup({ url: `${host}/page`, origin: host });
     dapp.setHasWindow(host, true);
     return { dapp, host, address, reset: jest.spyOn(dapp, 'resetSessions') };
   };

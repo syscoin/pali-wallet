@@ -135,33 +135,38 @@ function passedReport() {
     ...importedEvidence() });
 }
 
-async function actualRunner({ created = report(), writeFailure = false, readFailure = false, http = false } = {}) {
+async function actualRunner({ created = report(), writeFailure = false, readFailure = false, http = false, reportFailure = false } = {}) {
   const events = [], writes = [];
-  let launchError, reportedError;
+  let launchError, validationError, reportedError;
   const files = filesFixture({ [filename('create')]: JSON.stringify(created) });
   const process = { env: { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', QUALIFICATION_ARTIFACTS: '/output',
-    ...(http ? { PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: 'e0919d07b33ae36be8b5100555703e5cb1c786cf' } : {}) },
-    argv: ['node', 'runner', 'ios', '/app'], exitCode: 0 };
+    ...(http ? { PALI_NATIVE_HTTP_QUALIFICATION: '1' } : {}),
+    ...((http || reportFailure) ? { GITHUB_SHA: 'e0919d07b33ae36be8b5100555703e5cb1c786cf' } : {}) },
+    argv: ['node', 'runner', 'ios', '/app', ...(reportFailure ? ['--ios-simulator-contract'] : [])], exitCode: 0 };
   await runInNewContext(readFileSync(require.resolve('./run-native.cjs'), 'utf8'), {
     require(name) {
-      if (name === 'fs') return { ...files.fs, existsSync: () => true, mkdirSync() {},
+      if (name === 'fs') return { ...files.fs, existsSync: (file) => !file.endsWith('/ios-qualification.json'), mkdirSync() {},
         openSync(file, mode) { events.push(['read', file]); if (readFailure) throw Error(SECRET); return files.fs.openSync(file, mode); },
-        readFileSync() { throw Error('fixture load errors absent'); },
+        readFileSync(file) {
+          if (reportFailure && file.endsWith('/' + filename('create'))) return JSON.stringify(created);
+          throw Error('fixture load errors absent');
+        },
         writeFileSync(file, data) {
           events.push(['write', file]);
-          if (writeFailure && file.endsWith('-launch-reports.json')) throw Error(SECRET);
+          if (writeFailure && /-(launch-reports|failure-reports)\.json$/.test(file)) throw Error(SECRET);
           writes.push({ file, data });
         } };
       if (name === 'child_process') return { spawnSync(command, args) {
         events.push(args); let stdout = '';
-        if (command === 'plutil') stdout = args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' : 'PaliQualification';
+        if (command === 'plutil') stdout = args.includes('CFBundleIdentifier') ? 'com.paliwallet.qualification' :
+          args.includes('DTPlatformName') ? 'iphonesimulator' : 'PaliQualification';
         else if (args.includes('runtimes')) stdout = JSON.stringify({ runtimes: [{ identifier: RUNTIME, version: '26.5', isAvailable: true }] });
         else if (args.includes('devicetypes')) stdout = JSON.stringify({ devicetypes: [{ identifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] });
         else if (args[1] === 'create') stdout = DEVICE;
         else if (args[1] === 'get_app_container') stdout = '/owned-container';
         else if (args.includes('devices')) stdout = JSON.stringify({ devices: { [RUNTIME]: [{ udid: DEVICE, isAvailable: true, state: 'Booted' }] } });
         else if (args.includes('launchctl')) stdout = '12\t0\tcom.apple.SpringBoard\n';
-        else if (args[1] === 'launch') return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch timeout'), { code: 'ETIMEDOUT' }) };
+        else if (args[1] === 'launch' && !reportFailure) return { status: null, signal: 'SIGTERM', error: Object.assign(Error('launch timeout'), { code: 'ETIMEDOUT' }) };
         return { status: 0, stdout };
       } };
       if (name === './http-companion.cjs') return { async startHttpCompanion({ platform, sourceRevision }) {
@@ -176,10 +181,17 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
           },
           async verify() { events.push(['http-verify']); assert.fail('a failed launch cannot verify HTTP qualification'); },
           assertComplete() { events.push(['http-complete']); assert.fail('a failed launch cannot complete HTTP qualification'); },
-          async diagnostic() { events.push(['http-diagnostic']); return undefined; },
+          async diagnostics() { events.push(['http-diagnostic']); return undefined; },
           async close() { events.push(['http-close']); },
         };
       } };
+      if (name === './report-validation.cjs') {
+        const original = require(name);
+        return { ...original, decodeNativeReport(...args) {
+          try { return original.decodeNativeReport(...args); }
+          catch (error) { validationError = error; throw error; }
+        } };
+      }
       if (name === './command-runner.cjs') {
         const original = require(name);
         return { ...original, createCommandRunner(...args) {
@@ -196,7 +208,7 @@ async function actualRunner({ created = report(), writeFailure = false, readFail
       return require(name);
     }, process, console: { log() {}, error() {} }, setTimeout,
   });
-  return { events, writes, process, launchError, reportedError, reportReads: files.reads, closedReports: files.closed };
+  return { events, writes, process, launchError, validationError, reportedError, reportReads: files.reads, closedReports: files.closed };
 }
 
 test('actual runner records an existing passed report without promoting its timed-out launch', async () => {
@@ -226,6 +238,37 @@ test('actual runner keeps launch failure and owned cleanup after read or diagnos
     assert.equal(result.events.filter((args) => args[1] === 'launch').length, 1);
     assert(result.events.some((args) => args[1] === 'delete' && args[2] === DEVICE));
     assert(!JSON.stringify(result.writes).includes(SECRET));
+  }
+});
+
+test('actual runner keeps a rejected HTTP-stage report diagnostic-only after a successful launch', async () => {
+  const created = report({ failedStage: 'native HTTP transport', checks: [{ name: SECRET, durationMs: 1 }] });
+  for (const options of [{}, { readFailure: true }, { writeFailure: true }]) {
+    const result = await actualRunner({ created, reportFailure: true, ...options });
+    assert.equal(result.process.exitCode, 1);
+    assert(result.validationError);
+    assert.equal(result.reportedError, result.validationError);
+    const failure = JSON.parse(result.writes.find(({ file }) => file.endsWith('/ios-failure.json')).data);
+    assert.equal(failure.failure.message, 'Unexpected iOS Simulator refusal evidence');
+    const suffix = '-create-failure-reports.json';
+    const evidence = result.writes.find(({ file }) => file.endsWith(suffix));
+    if (options.writeFailure) assert.equal(evidence, undefined);
+    else {
+      const diagnostic = JSON.parse(evidence.data);
+      assert.equal(diagnostic.diagnosticOnly, true);
+      assert.equal(diagnostic.kind, 'ios-create-failure-reports');
+      assert.deepEqual(diagnostic.reports[1], options.readFailure
+        ? { filePhase: 'create', availability: 'unavailable' }
+        : { filePhase: 'create', availability: 'available', reportedStatus: 'failed', reportedPhase: 'create',
+          reportedScenario: 'import', completedCheckCount: 1, failedStage: 'native HTTP transport',
+          cryptoDiagnostic: { bootstrap: 'unchecked' }, storageDiagnostic: {} });
+    }
+    const launch = result.events.findIndex((args) => args[1] === 'launch');
+    const capture = result.events.findIndex((args) => args[0] === 'write' && args[1].endsWith(suffix));
+    const cleanup = result.events.findIndex((args) => args[1] === 'delete');
+    assert(launch >= 0 && capture > launch && cleanup > capture);
+    assert(!JSON.stringify(result.writes).includes(SECRET));
+    assert(!result.writes.some(({ file }) => /ios-(?:qualification|simulator-limited|import-create)\.json$/.test(file)));
   }
 });
 

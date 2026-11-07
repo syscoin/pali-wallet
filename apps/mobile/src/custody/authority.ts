@@ -125,6 +125,63 @@ export class NativeCustodyAuthority {
     }, expectedRevision);
   }
 
+  async addUtxoNetwork(draft: import('./accounts.ts').NativeUtxoNetworkDraft, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    const { networks, check, checkRoute } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
+    if (!networks.prepareUtxo) throw new CustodyOperationError('NOT_READY');
+    const proof = await networks.prepareUtxo(draft, expectedCatalogueRevision, signal, check);
+    check();
+    return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
+  }
+
+  editUtxoNetwork(id: string, draft: import('./accounts.ts').NativeUtxoNetworkEditDraft, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    return this.changeUtxoNetwork({ kind: 'edit-utxo-network', id, draft }, expectedRevision, expectedCatalogueRevision, signal);
+  }
+
+  removeUtxoNetwork(id: string, expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    return this.changeUtxoNetwork({ kind: 'remove-utxo-network', id }, expectedRevision, expectedCatalogueRevision, signal);
+  }
+
+  private async changeUtxoNetwork(request: import('./accounts.ts').NativeUtxoNetworkChange, expectedRevision: number,
+    expectedCatalogueRevision: number, signal: AbortSignal): Promise<void> {
+    const { networks, check, checkRoute } = this.ownedUtxoNetworkSettings(expectedRevision, expectedCatalogueRevision, signal);
+    if (!networks.withUtxoChangeApproval) throw new CustodyOperationError('NOT_READY');
+    return networks.withUtxoChangeApproval(request, expectedCatalogueRevision, signal, check, (proof) => {
+      check();
+      return this.commitUtxoNetwork(networks, proof, expectedRevision, expectedCatalogueRevision, checkRoute);
+    });
+  }
+
+  private commitUtxoNetwork(networks: import('./accounts.ts').NativeNetworkRuntime,
+    proof: import('./accounts.ts').NativeUtxoNetworkApproval, expectedRevision: number,
+    expectedCatalogueRevision: number, checkRoute: () => void) {
+    return this.manageContext(() => {
+      const admitted = networks.reserve(proof, expectedCatalogueRevision);
+      return {
+        cancel: admitted.cancel,
+        execute: (assertCurrent) => admitted.execute(() => { checkRoute(); assertCurrent(); }),
+      };
+    }, expectedRevision);
+  }
+
+  private ownedUtxoNetworkSettings(expectedRevision: number, expectedCatalogueRevision: number, signal: AbortSignal) {
+    const runtime = this.runtime, networks = runtime?.networks;
+    if (!networks) throw new CustodyOperationError('NOT_READY');
+    const checkRoute = () => {
+      if (signal.aborted) throw new CustodyOperationError('CANCELLED');
+    };
+    const check = () => {
+      checkRoute();
+      const snapshot = this.getSnapshot();
+      if (runtime !== this.runtime || snapshot.phase !== 'ready' || snapshot.revision !== expectedRevision ||
+          this.getCatalogue()?.revision !== expectedCatalogueRevision)
+        throw new CustodyOperationError('CANCELLED');
+    };
+    check();
+    return { networks, check, checkRoute };
+  }
+
   manageNetwork(request: import('./accounts.ts').NativeNetworkRequest, expectedRevision: number, expectedCatalogueRevision: number): Promise<void> {
     return this.manageContext((runtime) => {
       if (!runtime.networks) throw new CustodyRuntimeError('NOT_READY');
@@ -168,7 +225,7 @@ export class NativeCustodyAuthority {
         await reservation.execute(current); current();
         await this.readState(true); current();
         const network = this.selectedNetwork(runtime);
-        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network);
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks);
         current();
         this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required', account: Object.freeze({ network, address }), error: null });
         current();
@@ -369,7 +426,7 @@ export class NativeCustodyAuthority {
       try {
         await this.drainLocks(); current();
         await this.readState(true); current();
-        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), account.network);
+        const address = normalizePublicAddress(await runtime.session.readSelectedAddress(), account.network, runtime.accounts?.getSnapshot()?.utxoNetworks);
         current();
         if (address !== account.address || this.selectedNetwork(runtime) !== account.network) throw new CustodyOperationError('UNAVAILABLE');
         this.publish({ phase: this.snapshot.backup === 'confirmed' ? 'ready' : 'backup-required' });
@@ -481,7 +538,7 @@ export class NativeCustodyAuthority {
         }
         const network = this.selectedNetwork(runtime);
         const address = normalizePublicAddress(
-          await runtime.session.readSelectedAddress(), network
+          await runtime.session.readSelectedAddress(), network, runtime.accounts?.getSnapshot()?.utxoNetworks
         );
         assertCurrent();
         this.publish({

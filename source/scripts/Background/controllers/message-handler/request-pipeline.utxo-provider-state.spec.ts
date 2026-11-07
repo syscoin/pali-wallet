@@ -65,6 +65,7 @@ const request = (
 ) =>
   onMessage({ type: 'METHOD_REQUEST', data: { method, params } }, {
     url: `${host}/dapp`,
+    origin: host,
     tab: { id: 100 },
   } as any);
 

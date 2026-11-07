@@ -19,6 +19,7 @@ import { getAddress } from 'utils/ethersV6Compat';
 import { BigNumber } from 'utils/ethersV6Compat';
 import { AddressZero } from 'utils/ethersV6Compat';
 import { Contract } from 'utils/ethersV6Compat';
+import { hexConcat } from 'utils/ethersV6Compat';
 import { getBlacklistTargetsForEvmCallWithContractType } from 'utils/evmCallBlacklist';
 import {
   EVM_TRANSACTION_CONTEXT_CHANGED,
@@ -40,6 +41,7 @@ import {
   buildHydratedP256WebAuthnAuthenticator,
   buildSLHDSAAuthenticator,
   buildSmartAccountGuardianRecoveryOperation,
+  createOwnedPaliSmartAccountFactory,
   getGuardianRecoveryDigestContext,
   getSmartAccountGuardianRecoveryHash,
   getPaliErc7739PersonalSignHash,
@@ -84,14 +86,19 @@ import {
   SmartAccountAuthenticatorBuildResult,
   toPaliSmartAccount,
 } from 'utils/smartAccount';
+import { requireSmartAccountAddressIdentity } from 'utils/smartAccount/addressIdentity';
 import {
   PALI_CREATE2_DEPLOYER_ADDRESS,
-  PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
   getPaliInfrastructureContracts,
   type PaliInfrastructureContractId,
 } from 'utils/smartAccount/deployment';
 import { readGuardianRecoveryObservation } from 'utils/smartAccount/guardianStatus';
 import { guardianStatusProvider } from 'utils/smartAccount/guardianStatusProvider';
+import {
+  projectSmartAccountInfrastructureObservation,
+  SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES,
+  type SmartAccountInfrastructureObservation,
+} from 'utils/smartAccount/infrastructureObservation';
 import { GuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
 
 import {
@@ -104,11 +111,6 @@ import {
 import type { ITxid } from '@sidhujag/sysweb3-utils';
 
 export interface ISmartAccountControllerDependencies {
-  createSmartAccountRecord: (params: {
-    address: string;
-    label?: string;
-    metadata: ISmartAccountMetadata;
-  }) => Promise<any>;
   getEthereumTransaction: () => any;
   getLatestUpdateForCurrentAccount: (
     isPolling?: boolean,
@@ -183,24 +185,10 @@ type InfrastructureDeploymentResult = {
   skipped: PaliInfrastructureContractId[];
 };
 
-type SmartAccountInfrastructureStatus = {
-  chainId: number;
-  contracts: Array<{
-    address: string;
-    deployed: boolean;
-    displayName: string;
-    externallyDeployed: boolean;
-    id: PaliInfrastructureContractId;
-    optional: boolean;
-  }>;
-  create2Deployer: {
-    address: string;
-    deployed: boolean;
+type SmartAccountInfrastructureStatus =
+  SmartAccountInfrastructureObservation & {
+    pending?: InfrastructurePending;
   };
-  missing: PaliInfrastructureContractId[];
-  pending?: InfrastructurePending;
-  ready: boolean;
-};
 
 const GUARDIAN_RECOVERY_NOT_READY_ERROR = 'PALI_GUARDIAN_RECOVERY_NOT_READY';
 const GUARDIAN_RECOVERY_NOT_READY_SELECTOR = '0x201b632a';
@@ -404,7 +392,11 @@ class SmartAccountController {
   >();
   private readonly infrastructureStatusCache = new Map<
     string,
-    { status: SmartAccountInfrastructureStatus; timestamp: number }
+    {
+      context: ReturnType<SmartAccountController['infrastructureContext']>;
+      status: SmartAccountInfrastructureStatus;
+      timestamp: number;
+    }
   >();
   private readonly infrastructureDeployments = new Map<
     number,
@@ -446,7 +438,22 @@ class SmartAccountController {
   }
 
   public async assertSmartAccountSupported(): Promise<boolean> {
-    const status = await this.getSmartAccountInfrastructureStatus();
+    const context = this.infrastructureContext();
+    return this.assertInfrastructureSupported(context, () =>
+      this.assertInfrastructureContext(context)
+    );
+  }
+
+  private async assertInfrastructureSupported(
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    assertCurrent: () => void
+  ): Promise<boolean> {
+    const status = await this.infrastructureStatus(
+      context,
+      false,
+      assertCurrent
+    );
+    assertCurrent();
     if (!status.create2Deployer.deployed) {
       throw new Error(
         'This network does not expose the canonical CREATE2 deployer required for deterministic Pali smart account deployment.'
@@ -659,20 +666,26 @@ class SmartAccountController {
   }
 
   private async readInfrastructureStatus(
-    context: ReturnType<SmartAccountController['infrastructureContext']>
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    assertCurrent: () => void
   ): Promise<SmartAccountInfrastructureStatus> {
     const deadline = Date.now() + 18000;
     const withinDeadline = <T>(
       operation: () => Promise<T>,
       maximumWait = 8000
     ): Promise<T> => {
+      assertCurrent();
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new Error(INFRASTRUCTURE_TIMEOUT_ERROR);
       return this.infrastructureDeadline(
         operation(),
         Math.min(maximumWait, remaining)
-      );
+      ).then((result) => {
+        assertCurrent();
+        return result;
+      });
     };
+    assertCurrent();
     // Capture pending identities before probing; later submissions must never
     // be settled using code/receipts read before their reservation existed.
     const observedMemory = this.pendingInfrastructure.get(context.chainId);
@@ -680,23 +693,10 @@ class SmartAccountController {
       context.chainId
     );
     const journal = await withinDeadline(() =>
-      readInfrastructureJournal(context)
+      readInfrastructureJournal(context, assertCurrent)
     );
-    const infrastructureContracts = getPaliInfrastructureContracts(
-      context.chainId
-    );
-    const addresses = [
-      PALI_CREATE2_DEPLOYER_ADDRESS,
-      ...infrastructureContracts.map((contract) => contract.address),
-    ];
-    const validCodes = (codes: unknown): codes is string[] =>
-      Array.isArray(codes) &&
-      codes.length === addresses.length &&
-      codes.every(
-        (code) =>
-          typeof code === 'string' && /^0x(?:[0-9a-fA-F]{2})*$/.test(code)
-      );
-    let codes: string[];
+    const addresses = SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES;
+    let status: SmartAccountInfrastructureStatus | undefined;
     try {
       const batched = await withinDeadline(
         () =>
@@ -706,47 +706,29 @@ class SmartAccountController {
           ),
         1800
       );
-      if (!validCodes(batched))
-        throw new Error('Invalid infrastructure code response');
-      codes = batched;
+      status = projectSmartAccountInfrastructureObservation(
+        context.chainId,
+        batched
+      );
     } catch {
+      // A failed batch can still be checked through individual reads.
+      assertCurrent();
+    }
+    if (!status) {
       const individual = await withinDeadline(() =>
         Promise.all(
           addresses.map((address) => context.provider.getCode(address))
         )
       );
-      if (!validCodes(individual)) throw new Error(INFRASTRUCTURE_CODE_ERROR);
-      codes = individual;
+      status = projectSmartAccountInfrastructureObservation(
+        context.chainId,
+        individual
+      );
+      if (!status) throw new Error(INFRASTRUCTURE_CODE_ERROR);
     }
-    const contracts = infrastructureContracts.map((contract, index) => ({
-      address: contract.address,
-      deployed: codes[index + 1] !== '0x',
-      displayName: contract.displayName,
-      externallyDeployed: Boolean(contract.externallyDeployed),
-      id: contract.id,
-      optional: Boolean(contract.optional),
-    }));
-    const status: SmartAccountInfrastructureStatus = {
-      chainId: context.chainId,
-      contracts,
-      create2Deployer: {
-        address: PALI_CREATE2_DEPLOYER_ADDRESS,
-        deployed:
-          (codes[0].length - 2) / 2 >=
-          PALI_CREATE2_DEPLOYER_MIN_RUNTIME_BYTE_LENGTH,
-      },
-      missing: contracts
-        .filter((contract) => !contract.deployed)
-        .map((contract) => contract.id),
-      ready: contracts.every(
-        (contract) => contract.deployed || contract.optional
-      ),
-    };
     if (
       journal &&
-      !infrastructureContracts.some(
-        (contract) => contract.id === journal.contractId
-      )
+      !status.contracts.some((contract) => contract.id === journal.contractId)
     )
       throw new Error(
         'Deployment journal contains an unknown contract. Refresh status before retrying.'
@@ -770,7 +752,7 @@ class SmartAccountController {
         break;
       }
       if (
-        !infrastructureContracts.some(
+        !status.contracts.some(
           (contract) => contract.id === candidate.contractId
         )
       )
@@ -817,7 +799,7 @@ class SmartAccountController {
           infrastructurePendingIdentity(journal)
       ) {
         await withinDeadline(() =>
-          clearInfrastructureJournal(context, candidate)
+          clearInfrastructureJournal(context, candidate, assertCurrent)
         );
         journalCleared = true;
       }
@@ -837,7 +819,9 @@ class SmartAccountController {
     )
       pending = latestPending;
     if (pending) status.pending = pending;
+    assertCurrent();
     this.infrastructureStatusCache.set(context.key, {
+      context,
       timestamp: Date.now(),
       status,
     });
@@ -848,16 +832,28 @@ class SmartAccountController {
     forceRefresh = false
   ): Promise<SmartAccountInfrastructureStatus> {
     const context = this.infrastructureContext();
+    return this.infrastructureStatus(context, forceRefresh, () =>
+      this.assertInfrastructureContext(context)
+    );
+  }
+
+  private async infrastructureStatus(
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    forceRefresh: boolean,
+    assertCurrent: () => void
+  ): Promise<SmartAccountInfrastructureStatus> {
+    assertCurrent();
     const cached = this.infrastructureStatusCache.get(context.key);
     if (
       !forceRefresh &&
       cached &&
+      this.sameInfrastructureContext(cached.context, context) &&
       Date.now() - cached.timestamp < 5000 &&
       !cached.status.pending &&
       !this.pendingInfrastructure.has(context.chainId)
     )
       return cached.status;
-    return this.readInfrastructureStatus(context);
+    return this.readInfrastructureStatus(context, assertCurrent);
   }
 
   public deploySmartAccountInfrastructure(): Promise<InfrastructureDeploymentResult> {
@@ -893,8 +889,9 @@ class SmartAccountController {
   ): Promise<InfrastructureDeploymentResult> {
     const deployed: PaliInfrastructureContractId[] = [];
     const skipped: PaliInfrastructureContractId[] = [];
-    const status = await this.readInfrastructureStatus(context);
-    this.assertInfrastructureContext(context);
+    const assertCurrent = () => this.assertInfrastructureContext(context);
+    const status = await this.readInfrastructureStatus(context, assertCurrent);
+    assertCurrent();
     if (status.pending) return { deployed, skipped, pending: status.pending };
     if (!status.create2Deployer.deployed)
       throw new Error(
@@ -960,7 +957,7 @@ class SmartAccountController {
           // No sender has been invoked. Storage may finish after its deadline;
           // release only this unsent attempt once the write actually settles.
           const clearUnsentAttempt = () =>
-            clearInfrastructureJournal(context, reservation);
+            clearInfrastructureJournal(context, reservation, null);
           void reservationWrite
             .then(clearUnsentAttempt, clearUnsentAttempt)
             .catch(() => undefined);
@@ -1064,7 +1061,8 @@ class SmartAccountController {
           ) {
             const releaseRejectedAttempt = clearInfrastructureJournal(
               context,
-              reservation
+              reservation,
+              null
             ).then(() => {
               // A successful clear may arrive after its deadline. Settle the
               // same unsent in-memory attempt then, without touching a retry.
@@ -1106,7 +1104,7 @@ class SmartAccountController {
           await new Promise((resolve) => setTimeout(resolve, 1000));
         } while (true);
         await this.infrastructureDeadline(
-          clearInfrastructureJournal(context, pending)
+          clearInfrastructureJournal(context, pending, null)
         );
         if (
           infrastructurePendingIdentity(
@@ -1122,7 +1120,7 @@ class SmartAccountController {
         if (contract.id === 'multicall3')
           clearMulticall3AddressCache(context.chainId);
       }
-      await this.readInfrastructureStatus(context);
+      await this.readInfrastructureStatus(context, assertCurrent);
       return { deployed, skipped };
     } finally {
       this.infrastructureStatusCache.delete(context.key);
@@ -1149,7 +1147,9 @@ class SmartAccountController {
     );
     const descriptor = this.deriveSmartAccountDescriptor(
       params.accountIndex ??
-        this.getNextRecoverableAccountIndex(activeNetwork.chainId)
+        this.getNextRecoverableAccountIndex(activeNetwork.chainId),
+      activeNetwork.chainId,
+      this.getWalletManagementAddress()
     );
     const metadata: ISmartAccountMetadata = {
       ...authenticator.metadata,
@@ -1157,6 +1157,10 @@ class SmartAccountController {
       availableModules: getAvailablePaliModules(activeNetwork.chainId),
       chainId: activeNetwork.chainId,
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
+      deploymentAuth: {
+        data: authenticator.auth.data,
+        validator: authenticator.auth.validator,
+      },
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
       factoryAddress,
@@ -1187,64 +1191,90 @@ class SmartAccountController {
     };
   }
 
-  public async deriveSmartAccountRecord(accountIndex?: number) {
-    await this.assertSmartAccountSupported();
-    const { activeNetwork } = store.getState().vault;
-    const provider = this.ethereumTransaction?.web3Provider;
-    if (!provider) {
-      throw new Error(PROVIDER_UNAVAILABLE_ERROR);
-    }
-    const descriptor = this.deriveSmartAccountDescriptor(
-      accountIndex ?? this.getNextRecoverableAccountIndex(activeNetwork.chainId)
-    );
+  public captureSmartAccountBootstrap(assertOwner: () => void) {
+    assertOwner();
+    const context = this.infrastructureContext();
     const managementOwner = this.getWalletManagementAddress();
-    const authenticator = this.buildAuthenticatorForCreation(
-      activeNetwork.chainId,
-      {
-        config: { owners: [managementOwner], threshold: 1 },
-        id: 'ecdsa',
-      }
+    const assertCurrent = () => {
+      assertOwner();
+      if (
+        !this.sameInfrastructureContext(
+          this.infrastructureContext(),
+          context
+        ) ||
+        this.getWalletManagementAddress() !== managementOwner
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    return {
+      assertCurrent,
+      deriveAccount: (accountIndex: number) =>
+        this.deriveSmartAccountRecord(
+          accountIndex,
+          context,
+          managementOwner,
+          assertCurrent
+        ),
+    };
+  }
+
+  private async deriveSmartAccountRecord(
+    accountIndex: number,
+    context: ReturnType<SmartAccountController['infrastructureContext']>,
+    managementOwner: string,
+    assertCurrent: () => void
+  ) {
+    const { chainId, provider } = context;
+    assertCurrent();
+    const configuredNetwork = await provider.getNetwork();
+    assertCurrent();
+    if (configuredNetwork.chainId !== BigInt(chainId))
+      throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    await provider.verifyConfiguredChainId(true);
+    assertCurrent();
+    await this.assertInfrastructureSupported(context, assertCurrent);
+    assertCurrent();
+    const descriptor = this.deriveSmartAccountDescriptor(
+      accountIndex,
+      chainId,
+      managementOwner
     );
+    const authenticator = this.buildAuthenticatorForCreation(chainId, {
+      config: { owners: [managementOwner], threshold: 1 },
+      id: 'ecdsa',
+    });
+    const factoryAddress = getPaliSmartAccountFactoryAddress(chainId);
     const smartAccount = await toPaliSmartAccount({
       auth: authenticator.auth,
-      chainId: activeNetwork.chainId,
+      chainId,
       deploySalt: descriptor.deploymentSalt,
-      factoryAddress: getPaliSmartAccountFactoryAddress(activeNetwork.chainId),
-      provider,
+      factoryAddress,
+      factory: createOwnedPaliSmartAccountFactory(
+        chainId,
+        provider,
+        assertCurrent
+      ),
     });
+    assertCurrent();
     const metadata: ISmartAccountMetadata = {
       ...authenticator.metadata,
       auth: authenticator.auth,
-      availableModules: getAvailablePaliModules(activeNetwork.chainId),
-      chainId: activeNetwork.chainId,
+      availableModules: getAvailablePaliModules(chainId),
+      chainId,
       contractVersion: PALI_SMART_ACCOUNT_VERSION,
+      deploymentAuth: {
+        data: authenticator.auth.data,
+        validator: authenticator.auth.validator,
+      },
       deploymentSalt: descriptor.deploymentSalt,
       descriptor,
-      factoryAddress: getPaliSmartAccountFactoryAddress(activeNetwork.chainId),
+      factoryAddress,
       isDeployed: false,
     };
     return {
       address: smartAccount.address,
       metadata: this.getDurableSmartAccountMetadata(metadata),
     };
-  }
-
-  public async createSmartAccount(params: {
-    address: string;
-    label?: string;
-    metadata: ISmartAccountMetadata;
-  }): Promise<any> {
-    const metadata = {
-      ...params.metadata,
-      availableModules: getAvailablePaliModules(params.metadata.chainId),
-      isDeployed: params.metadata.isDeployed,
-    };
-
-    return this.deps.createSmartAccountRecord({
-      address: params.address,
-      label: params.label,
-      metadata: this.getDurableSmartAccountMetadata(metadata),
-    });
   }
 
   public async registerSmartAccountOnChain(
@@ -1286,6 +1316,7 @@ class SmartAccountController {
           'Smart account descriptor is required for deterministic deployment'
         );
       }
+      requireSmartAccountAddressIdentity(active.account, context.chainId);
       const provider = this.ethereumTransaction?.web3Provider;
       if (!provider) {
         throw new Error(PROVIDER_UNAVAILABLE_ERROR);
@@ -1293,27 +1324,10 @@ class SmartAccountController {
 
       const code = await provider.getCode(accountAddress);
       assertCurrent();
-      const factoryAddress =
-        metadata.factoryAddress ||
-        getPaliSmartAccountFactoryAddress(metadata.chainId);
       if (code === '0x') {
         if (!metadata.auth) {
           throw new Error(
             'Smart account initial authenticator metadata is required for deployment'
-          );
-        }
-        const auth = this.requireAuthenticator(metadata);
-        const smartAccount = await toPaliSmartAccount({
-          auth,
-          chainId: metadata.chainId,
-          deploySalt: metadata.descriptor.deploymentSalt,
-          factoryAddress,
-          provider,
-        });
-        assertCurrent();
-        if (smartAccount.address !== accountAddress) {
-          throw new Error(
-            'Stored smart account authenticator does not match the deterministic account address.'
           );
         }
         // The factory gates createAccount on EntryPoint.senderCreator(), so
@@ -1514,18 +1528,16 @@ class SmartAccountController {
   }
 
   private deriveSmartAccountDescriptor(
-    accountIndex: number
+    accountIndex: number,
+    chainId: number,
+    managementAddress: string
   ): NonNullable<ISmartAccountMetadata['descriptor']> {
-    const { activeNetwork } = store.getState().vault;
-    const factoryAddress = getPaliSmartAccountFactoryAddress(
-      activeNetwork.chainId
-    );
     return getPaliSmartAccountDescriptor({
       accountIndex,
       accountVersion: PALI_SMART_ACCOUNT_VERSION,
-      anchor: this.getWalletRecoveryAnchor(activeNetwork.chainId),
-      chainId: activeNetwork.chainId,
-      factoryAddress,
+      anchor: `pali:eip155:${chainId}:${managementAddress.toLowerCase()}:smart-account-v1`,
+      chainId,
+      factoryAddress: getPaliSmartAccountFactoryAddress(chainId),
     });
   }
 
@@ -1807,7 +1819,7 @@ class SmartAccountController {
       active.metadata.isDeployed &&
       this.hasUsableSmartAccountAuthMetadata(active.metadata);
     if (!useDeployedCachedMetadata) {
-      await this.assertSmartAccountSupported();
+      await this.assertInfrastructureSupported(snapshot, assertContext);
       assertContext();
     }
     const accountContract = new Contract(
@@ -1846,6 +1858,10 @@ class SmartAccountController {
       ? 'cached-deployed'
       : await provider.getCode(active.account.address);
     assertContext();
+    const deployment =
+      code === '0x'
+        ? requireSmartAccountAddressIdentity(active.account, snapshot.chainId)
+        : null;
     if (code !== '0x' && !useDeployedCachedMetadata) {
       await this.assertSmartAccountExecutionModeSupported(
         accountContract,
@@ -1947,8 +1963,9 @@ class SmartAccountController {
       }),
       callData,
       gasFees,
-      initCode:
-        code === '0x' ? await smartAccount.getDeploymentInitCode() : '0x',
+      initCode: deployment
+        ? hexConcat([deployment.factory, deployment.factoryData])
+        : '0x',
       nonce,
       preVerificationGas: String(gasEstimate.preVerificationGas),
       sender: active.account.address,
@@ -2148,6 +2165,22 @@ class SmartAccountController {
         throw new Error(
           'Signed UserOperation does not match the active smart account'
         );
+      }
+      const initCode = params.userOperation.initCode;
+      if (initCode && initCode !== '0x') {
+        if (!params.executionContextId)
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        const deployment = requireSmartAccountAddressIdentity(
+          active.account,
+          store.getState().vault.activeNetwork.chainId
+        );
+        if (
+          initCode.toLowerCase() !==
+          hexConcat([deployment.factory, deployment.factoryData]).toLowerCase()
+        )
+          throw new Error(
+            'Signed UserOperation deployment does not match the smart account'
+          );
       }
       const gasPayer = await this.getWalletGasPayerAccount(
         params.gasPayer || active.metadata.deploymentGasPayer,
@@ -3839,18 +3872,6 @@ class SmartAccountController {
       accountIndex += 1;
     }
     return accountIndex;
-  }
-
-  private getWalletRecoveryAnchor(chainId: number): string {
-    const managementAddress = this.getWalletManagementAddress();
-
-    if (!managementAddress) {
-      throw new Error(RECOVERY_MANAGEMENT_ADDRESS_ERROR);
-    }
-
-    return `pali:eip155:${chainId}:${getAddress(
-      managementAddress
-    ).toLowerCase()}:smart-account-v1`;
   }
 
   private getWalletManagementAddress(): string {

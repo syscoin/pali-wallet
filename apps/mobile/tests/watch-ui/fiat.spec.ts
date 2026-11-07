@@ -49,3 +49,29 @@ test('display currency saves explicitly and quotes never relabel the exact balan
   const calls = await page.evaluate(() => window.__watchFixture.quotes());
   expect(calls).toEqual(['usd', 'eur'].map((code) => `https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=${code}&include_24hr_change=true`));
 });
+
+test('a held watch-only quote preserves Receive geometry at large text', async ({ page, baseURL }) => {
+  await page.setViewportSize({ width: 320, height: 740 });
+  await page.route('**/*', (route) =>
+    new URL(route.request().url()).origin === baseURL ? route.continue() : route.abort());
+  await page.goto('/?fiat-fixture&hold-quote');
+  await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.4 !important; }' });
+  await page.getByRole('button', { name: 'Accounts', exact: true }).click();
+  await page.getByRole('button', { name: 'Select Shared address watch (watch-only)', exact: true }).click();
+  await expect(page.getByLabel('Ethereum balance 2.5 ETH', { exact: true })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__watchFixture.quotes().length)).toBe(1);
+  const quote = page.getByTestId('watch-portfolio-quote');
+  const receive = page.getByRole('button', { name: 'Receive', exact: true });
+  await expect(quote).toHaveCount(0);
+  await receive.scrollIntoViewIfNeeded();
+  const before = await receive.boundingBox();
+  await page.evaluate(() => window.__watchFixture.releaseQuote());
+  await expect(quote).toHaveText('≈ 250 USD');
+  await expect(quote).toHaveAttribute('aria-label', '≈ 250 USD');
+  const after = await receive.boundingBox();
+  expect(before).not.toBeNull();
+  expect(after).not.toBeNull();
+  expect(after!.y).toBeCloseTo(before!.y, 1);
+  await receive.click();
+  await expect(page.getByRole('img', { name: /^QR code for Ethereum address/ })).toBeVisible();
+});

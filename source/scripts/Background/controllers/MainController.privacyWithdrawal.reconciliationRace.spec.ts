@@ -111,6 +111,17 @@ function setup() {
     }),
     getBalance: jest.fn(async () => BigInt(65000000)),
   };
+  (provider as any)._send = jest.fn(
+    async ({
+      id,
+      method,
+      params,
+    }: {
+      id: number;
+      method: string;
+      params: unknown[];
+    }) => [{ jsonrpc: '2.0', id, result: await provider.send(method, params) }]
+  );
   const vault = {
     getWithdrawalAttempt: jest.fn(async (_id, session) => {
       session.assertCurrent();

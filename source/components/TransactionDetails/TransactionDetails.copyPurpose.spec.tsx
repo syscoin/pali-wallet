@@ -235,12 +235,14 @@ function configure(kind: string, withEns = false) {
       },
     },
   };
-  mockEmitter.mockImplementation(async ([, method]) => {
-    if (
-      method === 'getSysTransactionFromBlockbook' ||
-      method === 'getEvmTransactionFromProvider'
-    )
-      return mockTx;
+  mockEmitter.mockImplementation(async ([, method], params) => {
+    if (method === 'getSysTransactionFromBlockbook')
+      return {
+        txid: params[0].toLowerCase(),
+        transaction: mockTx,
+        compact: null,
+      };
+    if (method === 'getEvmTransactionFromProvider') return mockTx;
     if (method === 'decodeEvmTransactionData')
       return {
         method: 'transfer',
@@ -285,6 +287,10 @@ async function mount(kind: string, locale: Locale, withEns = false) {
   );
   await waitFor(() => expect(mockEmitter).toHaveBeenCalled());
   await act(async () => undefined);
+  if (result.utxo)
+    await waitFor(() =>
+      expect(buttonFor(resources[locale].send.from)).toBeInTheDocument()
+    );
   return result;
 }
 const buttonFor = (label: string) =>

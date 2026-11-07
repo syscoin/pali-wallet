@@ -193,3 +193,72 @@ it('formats accepted leading-zero fungible units without changing their quantity
     })
   ).toMatchObject({ displayValue: '2', formattedValue: '2', isNft: false });
 });
+
+const savedToken = (overrides: Record<string, unknown> = {}) => ({
+  chainId: 1,
+  to: CONTRACT,
+  value: '0',
+  historySource: EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned,
+  tokenTransfer: {
+    chainId: 1,
+    contractAddress: CONTRACT,
+    recipient: RECIPIENT,
+    value: '6000000',
+    ...overrides,
+  },
+});
+it('displays retained ERC-20 units using captured metadata, without calldata', async () => {
+  const tx = savedToken({ decimals: 6, symbol: 'TOK' });
+  expect(await getEvmTransactionDisplayInfo(tx, 'ETH')).toMatchObject({
+    actualRecipient: RECIPIENT,
+    formattedValue: '6.0',
+    displaySymbol: 'TOK',
+    isErc20Transfer: true,
+    isNft: false,
+  });
+});
+it('uses same-chain imported metadata for a retained transfer lacking saved metadata', async () => {
+  expect(
+    await getEvmTransactionDisplayInfo(savedToken(), 'ETH', assetContext(6))
+  ).toMatchObject({
+    actualRecipient: RECIPIENT,
+    formattedValue: '6.0',
+    displaySymbol: 'TOK',
+    isErc20Transfer: true,
+  });
+});
+it('never renders retained token units as native when precision is unavailable or from another chain', async () => {
+  for (const context of [{}, { ...assetContext(6), chainId: 57 }]) {
+    const result = await getEvmTransactionDisplayInfo(
+      savedToken(),
+      'ETH',
+      context
+    );
+    expect(result).toMatchObject({
+      isErc20Transfer: true,
+      hasUnknownDecimals: true,
+      amountUnavailable: true,
+      formattedValue: '?',
+      displayValue: '?',
+    });
+    expect(result.displaySymbol).not.toBe('ETH');
+  }
+});
+it.each([
+  { contractAddress: RECIPIENT },
+  { chainId: 57 },
+  { recipient: 'bad' },
+  { value: '-1' },
+  { value: 'x' },
+  { value: '9'.repeat(78) },
+])(
+  'does not fall back to native for invalid retained token facts %#',
+  async (bad) => {
+    const result = await getEvmTransactionDisplayInfo(savedToken(bad), 'ETH');
+    expect(result).toMatchObject({
+      isErc20Transfer: true,
+      amountUnavailable: true,
+      formattedValue: '?',
+    });
+  }
+);

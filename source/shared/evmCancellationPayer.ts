@@ -1,3 +1,9 @@
+import {
+  observeEvmTransaction,
+  type EvmObservationMethod,
+  type EvmObservationRequest,
+} from './evmTransactionObservation.ts';
+
 export class EvmCancellationPayerCodeError extends Error {
   readonly code = 'EVM_CANCELLATION_PAYER_CODE';
 
@@ -10,9 +16,12 @@ export class EvmCancellationPayerCodeError extends Error {
 export class EvmCancellationNonceError extends Error {
   readonly code = 'EVM_CANCELLATION_NONCE';
 
-  constructor() {
+  readonly reason: 'queued' | 'unavailable';
+
+  constructor(reason: 'queued' | 'unavailable' = 'unavailable') {
     super('Unable to verify a ready cancellation nonce');
     this.name = 'EvmCancellationNonceError';
+    this.reason = reason;
   }
 }
 
@@ -30,8 +39,11 @@ export function assertEvmCancellationNonceReady(
   )
     throw new EvmCancellationNonceError();
   const expected = BigInt(nonce);
-  if (expected >= BigInt(1) << BigInt(256) || BigInt(latestNonce) !== expected)
+  if (expected >= BigInt(1) << BigInt(256))
     throw new EvmCancellationNonceError();
+  const latest = BigInt(latestNonce);
+  if (latest < expected) throw new EvmCancellationNonceError('queued');
+  if (latest !== expected) throw new EvmCancellationNonceError();
 }
 
 function checkCurrent(assertCurrent: () => void): void {
@@ -96,11 +108,50 @@ export async function assertEvmCancellationPayerReady(
   checkCurrent(assertCurrent);
 }
 
+/** The caller has already authenticated the exact retained original and owns its journal admission. */
+export async function assertRetainedEvmCancellationReady(
+  original: EvmObservationRequest,
+  read: (
+    method: EvmObservationMethod | 'eth_getCode',
+    params: readonly unknown[]
+  ) => Promise<unknown>,
+  assertCurrent: () => void
+): Promise<void> {
+  checkCurrent(assertCurrent);
+  const expected = Object.freeze({ ...original });
+  const observed = await observeEvmTransaction(expected, read, () =>
+    checkCurrent(assertCurrent)
+  );
+  checkCurrent(assertCurrent);
+  // Receipt absence permits an unobserved or pending original. Only the
+  // currently executable nonce can be cancelled through this recovery path.
+  if (observed.status !== 'missing') throw new EvmCancellationNonceError();
+  // Observation validates the latest nonce before returning its decimal form.
+  assertEvmCancellationNonceReady(
+    expected.nonce,
+    `0x${BigInt(observed.latestNonce).toString(16)}`
+  );
+  await assertEvmCancellationPayerHasNoCode(
+    expected.from,
+    (address, tag) => read('eth_getCode', [address, tag]),
+    assertCurrent
+  );
+  checkCurrent(assertCurrent);
+  const chainId = await read('eth_chainId', []);
+  checkCurrent(assertCurrent);
+  if (
+    typeof chainId !== 'string' ||
+    !/^0x[1-9a-f][0-9a-f]{0,63}$/i.test(chainId) ||
+    BigInt(chainId) !== BigInt(expected.chainId)
+  )
+    throw new EvmCancellationNonceError();
+}
+
 type EmptySelfEnvelope = Readonly<{
+  data: string;
   from: string | null;
   to: string | null;
   value: bigint;
-  data: string;
 }>;
 
 /** Fee-only replacements of an empty self-call can also invoke delegation. */
@@ -118,7 +169,7 @@ export function isEvmEmptySelfCall(transaction: EmptySelfEnvelope): boolean {
 /** Keep cancellation's fixed shape and the already-supported fee replacement types. */
 export function isEvmProtectedEmptySelfCall(
   transaction: EmptySelfEnvelope &
-    Readonly<{ type: number | null; accessList?: readonly unknown[] | null }>,
+    Readonly<{ accessList?: readonly unknown[] | null; type: number | null }>,
   operation: string
 ): boolean {
   if (!isEvmEmptySelfCall(transaction)) return false;

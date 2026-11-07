@@ -208,7 +208,15 @@ beforeEach(async () => {
   wallet.walletStateGeneration = 0;
   wallet.walletSessionGeneration = 0;
   wallet.isRemovingNetwork = false;
-  wallet.keyrings = new Map();
+  wallet.keyrings = new Map([
+    [
+      source.slip44,
+      {
+        isUnlocked: () => true,
+        getPrivateRecordProfileId: async () => `0x${'a'.repeat(64)}`,
+      },
+    ],
+  ]);
   wallet.isUnlocked = () => true;
   wallet.resetAutoLockTimer = jest.fn();
   wallet.evmAssetsController = {

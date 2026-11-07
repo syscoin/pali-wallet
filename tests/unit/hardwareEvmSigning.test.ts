@@ -403,6 +403,7 @@ describe.each(['Ledger', 'Trezor'] as const)(
           };
           const approval = {
             assertCurrent: () => undefined,
+            nonce: 7,
             signal: new AbortController().signal,
           };
           const sending =

@@ -1,13 +1,17 @@
-import { Interface, keccak256, toUtf8Bytes } from 'utils/ethersV6Compat';
-import { Contract } from 'utils/ethersV6Compat';
-import type { Provider } from 'utils/ethersV6Compat';
+import {
+  Contract,
+  Interface,
+  keccak256,
+  toUtf8Bytes,
+  type Provider,
+} from '../ethersV6Compat.ts';
 
 import {
   PALI_CANONICAL_ENTRYPOINT_ADDRESS,
   PALI_MODULE_CANONICAL_ADDRESSES,
   getPaliCanonicalEntryPointAddress,
   getPaliCanonicalFactoryAddress,
-} from './deploymentMetadata';
+} from './deploymentMetadata.ts';
 
 const VALIDATOR_IS_INITIALIZED_ABI =
   'function isInitialized(address account) view returns (bool)';

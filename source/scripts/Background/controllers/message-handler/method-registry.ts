@@ -44,7 +44,7 @@ export const METHOD_REGISTRY: MethodRegistry = {
   IS_UNLOCKED: {
     name: 'IS_UNLOCKED',
     handlerType: MethodHandlerType.Internal,
-    requiresTabId: false,
+    requiresTabId: true,
     requiresAuth: false,
     requiresConnection: false,
     allowHardwareWallet: true,

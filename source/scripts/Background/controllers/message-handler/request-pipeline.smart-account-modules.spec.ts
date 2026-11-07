@@ -1,4 +1,5 @@
 import { combineReducers, configureStore } from '@reduxjs/toolkit';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import DAppController from '../DAppController';
 import MainController from '../MainController';
@@ -33,25 +34,25 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('scripts/Provider/EthProvider', () => ({ EthProvider: jest.fn() }));
 jest.mock('scripts/Provider/SysProvider', () => ({ SysProvider: jest.fn() }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 const HOST = 'https://connected.example';
 const type = KeyringAccountType.SmartAccount;
 const address = (byte: string) => `0x${byte.repeat(40)}`;
 const accountA = {
+  ...smartAccountAddressFixture(57057, address('1')).account,
   id: 0,
   label: 'Site-connected smart account',
-  address: address('1'),
-  xpub: address('1'),
   isSmartAccount: true,
-  smartAccount: { chainId: 57057 },
 };
 const accountB = {
-  ...accountA,
+  ...smartAccountAddressFixture(57057, address('2')).account,
   id: 1,
   label: 'Globally active smart account',
-  address: address('2'),
-  xpub: address('2'),
+  isSmartAccount: true,
 };
 const methods = [
   'wallet_requestSmartAccountModuleInstall',
@@ -72,7 +73,11 @@ const request = (method: string) =>
       type: 'METHOD_REQUEST',
       data: { method, params: [{ address: address('3') }] },
     },
-    { url: `${HOST}/dapp`, tab: { id: 101 } } as chrome.runtime.MessageSender
+    {
+      url: `${HOST}/dapp`,
+      origin: HOST,
+      tab: { id: 101 },
+    } as chrome.runtime.MessageSender
   );
 
 beforeEach(() => {
@@ -144,6 +149,36 @@ beforeEach(() => {
   mockController = { wallet, dapp: DAppController(() => true) };
 });
 afterEach(() => jest.restoreAllMocks());
+
+it('does not resolve an invalid connected smart account as the globally active account', () => {
+  const invalidAccount = {
+    ...accountA,
+    address: address('4'),
+    xpub: address('4'),
+  };
+  const state = mockStore.getState();
+  mockStore = configureStore({
+    reducer: (
+      previous = {
+        ...state,
+        vault: {
+          ...state.vault,
+          accounts: {
+            ...state.vault.accounts,
+            [type]: { 0: invalidAccount, 1: accountB },
+          },
+        },
+      }
+    ) => previous,
+  });
+  expect(mockController.dapp.getAccount(HOST)).toBeNull();
+  expect(mockStore.getState().vault.activeAccount).toEqual({
+    id: accountB.id,
+    type,
+  });
+  expect(popupPromise).not.toHaveBeenCalled();
+  expect(mockController.wallet.saveWalletState).not.toHaveBeenCalled();
+});
 
 describe.each(methods)('%s connected-account admission', (method) => {
   it('awaits the explicit switch to site account A before opening module consent', async () => {

@@ -177,6 +177,33 @@ test('validates the entire fixed-pool snapshot, not a server-selected address', 
   ).toThrow();
 });
 
+test('checks every snapshot field word against the exact BN254 modulus', () => {
+  const modulus = BigInt(
+    '21888242871839275222246405745257275088548364400416034343698204186575808495617'
+  );
+  const encode = (value: bigint) => `0x${value.toString(16)}`;
+  const maximum = encode(modulus - BigInt(1));
+  const atBoundary = {
+    ...snapshot,
+    asOfBlockHash: '0x' + 'ff'.repeat(32),
+    root: maximum,
+    leaves: [hash(1), maximum],
+    withdrawnNullifiers: [maximum],
+  };
+  expect(validateSnapshot(id, atBoundary)).toEqual(atBoundary);
+  for (const outside of [encode(modulus), encode(modulus + BigInt(1))]) {
+    for (const invalid of [
+      { ...atBoundary, root: outside },
+      { ...atBoundary, leaves: [hash(1), outside] },
+      { ...atBoundary, withdrawnNullifiers: [outside] },
+    ]) {
+      expect(() => validateSnapshot(id, invalid)).toThrow(
+        'privacy_data_invalid'
+      );
+    }
+  }
+});
+
 test('server-added progress or endpoint fields cannot change snapshot interpretation', () => {
   const clean = validateSnapshot(id, {
     ...snapshot,

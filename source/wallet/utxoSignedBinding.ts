@@ -1,11 +1,18 @@
 import { PsbtUtils } from '@sidhujag/sysweb3-keyring/cjs/utils/psbt.js';
 import { getNetworkConfig } from '@sidhujag/sysweb3-network/cjs/networks.js';
 import { utils as syscoinUtils } from 'syscoinjs-lib';
+import { coinSelect } from 'syscointx-js';
 
+import { SENTRY_NETWORKS } from '../shared/sentryNetworks.ts';
+import { supportsSptUtxoChain } from '../shared/sptInventory.ts';
+import { assertUtxoSoftwareSpend } from '../shared/utxoSoftwareCustody.ts';
 import { assertPsbtWorkBudget } from '../utils/psbtWorkBudget.ts';
 import {
+  ALLOCATION_SEND_VERSION,
+  assertPlainAllocationSendData,
   createUtxoFeeReview,
   getVerifiedSyscoinPsbtValueSummary,
+  isPositiveSptAmount,
 } from '../utils/syscoinPsbtValues.ts';
 import { utxoInputOutpoints } from '../utils/utxoAcknowledgedInputs.ts';
 
@@ -31,11 +38,17 @@ export type UtxoSignedScope = Readonly<{
 
 type PsbtData = Readonly<{ assets: string; psbt: string }>;
 type UtxoAmount = Readonly<{ address: string; amountSatoshis: string }>;
+type SptAmount = Readonly<{ assetGuid: string; rawAmount: string }>;
+export type ReviewedUtxoOutput = UtxoAmount & Readonly<{ asset?: SptAmount }>;
+export type UtxoWalletPayment =
+  | (UtxoAmount & Readonly<{ kind: 'native' }>)
+  | (SptAmount &
+      Readonly<{ address: string; changeAddress: string; kind: 'spt' }>);
 type UtxoReview = Readonly<{
   feeSatoshis: string;
   outpoints: readonly string[];
-  outputs: readonly UtxoAmount[];
-  recipient: UtxoAmount;
+  outputs: readonly ReviewedUtxoOutput[];
+  recipient: ReviewedUtxoOutput;
 }>;
 type SubmissionDescriptor = Readonly<{
   rawTransaction: string;
@@ -159,11 +172,110 @@ export function createUtxoTransactionBinding(
   });
 }
 
+const MAX_SPT_GUID = BigInt('18446744073709551615');
+
+export const isPositiveSptGuid = (value: unknown): value is string =>
+  typeof value === 'string' &&
+  /^[1-9][0-9]{0,19}$/.test(value) &&
+  BigInt(value) <= MAX_SPT_GUID;
+
+function assertSptFunding(
+  network: UtxoSignedScope['network'],
+  inputValuesSatoshis: readonly string[]
+): void {
+  const registered = Object.values(SENTRY_NETWORKS).find(
+    ({ chainId, genesisHash }) =>
+      chainId === network.chainId && genesisHash === network.genesisHash
+  );
+  if (!registered) throw new Error('Unable to identify SPT collateral rules');
+  // Internal Sentry registrations can use more than the external key-hash scripts.
+  if (inputValuesSatoshis.includes(registered.collateralSatoshis))
+    throw Object.assign(
+      new Error(
+        'This asset transfer would spend a possible Sentry collateral output'
+      ),
+      {
+        code: 'UTXO_POSSIBLE_SENTRY_COLLATERAL',
+        transactionNotBroadcast: true,
+      }
+    );
+}
+
+function reviewSptPayment(
+  psbt: Psbt,
+  summary: Awaited<ReturnType<typeof getVerifiedSyscoinPsbtValueSummary>>,
+  payment: Extract<UtxoWalletPayment, { kind: 'spt' }>,
+  toScript: (address: string) => Buffer
+): readonly ReviewedUtxoOutput[] {
+  const invalid = () =>
+    new Error('PSBT does not match the ordinary SPT review');
+  const recipient = toScript(payment.address);
+  const change = toScript(payment.changeAddress);
+  if (
+    recipient.equals(change) ||
+    summary.inputAssets.some(({ assetGuid }) => assetGuid !== payment.assetGuid)
+  )
+    throw invalid();
+  const [allocation] = summary.assetAllocations;
+  if (
+    summary.assetAllocations.length !== 1 ||
+    allocation?.assetGuid !== payment.assetGuid
+  )
+    throw invalid();
+  const amounts = new Map<number, string>();
+  for (const { n, value } of allocation.values) {
+    if (amounts.has(n)) throw invalid();
+    amounts.set(n, value);
+  }
+  assertPlainAllocationSendData(
+    syscoinUtils.bitcoinjs.Transaction.fromHex(unsignedTransactionHex(psbt))
+  );
+
+  let paid: ReviewedUtxoOutput | undefined;
+  const changeOutputs: ReviewedUtxoOutput[] = [];
+  for (const [index, output] of psbt.txOutputs.entries()) {
+    const rawAmount = amounts.get(index);
+    const script = Buffer.from(output.script);
+    if (script[0] === syscoinUtils.bitcoinjs.opcodes.OP_RETURN) {
+      if (rawAmount !== undefined) throw invalid();
+      continue;
+    }
+    if (!output.address) throw invalid();
+    const amountSatoshis = summary.outputValuesSatoshis[index]!;
+    const asset =
+      rawAmount === undefined
+        ? undefined
+        : Object.freeze({ assetGuid: payment.assetGuid, rawAmount });
+    const projected = Object.freeze({
+      address: output.address,
+      amountSatoshis,
+      ...(asset ? { asset } : {}),
+    });
+    if (script.equals(recipient)) {
+      // This builder uses the shared destination-script dust policy for the
+      // recipient carrier. A native payment must have its own review.
+      if (
+        paid ||
+        rawAmount !== payment.rawAmount ||
+        amountSatoshis !==
+          coinSelect.utils.dustThreshold({ scriptPubKey: script }).toString()
+      )
+        throw invalid();
+      paid = projected;
+    } else {
+      if (!script.equals(change)) throw invalid();
+      changeOutputs.push(projected);
+    }
+  }
+  if (!paid) throw invalid();
+  return Object.freeze([paid, ...changeOutputs]);
+}
+
 /** Retain the verified quote for trusted custody. The host owns consent and durable commit. */
 export async function prepareUtxoSignedBinding(
   { profileId, account, network }: UtxoSignedScope,
   quote: PsbtData,
-  { address, amountSatoshis }: UtxoAmount,
+  payment: UtxoWalletPayment,
   ports: Readonly<{
     assertCurrent: () => void;
     fetchPreviousTransaction: (txid: string) => Promise<unknown>;
@@ -172,6 +284,7 @@ export async function prepareUtxoSignedBinding(
   const { assertCurrent, fetchPreviousTransaction } = ports;
   const check = () => assertBindingCurrent(assertCurrent);
   check();
+  const intent: UtxoWalletPayment = Object.freeze({ ...payment });
   const scope = Object.freeze({
     profileId,
     account: Object.freeze({
@@ -203,7 +316,12 @@ export async function prepareUtxoSignedBinding(
     scope.network.slip44 < 0 ||
     !scope.network.currency ||
     !/^[0-9a-f]{64}$/.test(scope.network.genesisHash) ||
-    !/^[1-9][0-9]{0,19}$/.test(amountSatoshis)
+    (intent.kind === 'native'
+      ? !/^[1-9][0-9]{0,19}$/.test(intent.amountSatoshis)
+      : intent.kind !== 'spt' ||
+        !supportsSptUtxoChain(scope.network.chainId) ||
+        !isPositiveSptGuid(intent.assetGuid) ||
+        !isPositiveSptAmount(intent.rawAmount))
   )
     throw new Error('Invalid ordinary UTXO review scope or amount');
 
@@ -214,21 +332,27 @@ export async function prepareUtxoSignedBinding(
     scope.network.slip44,
     scope.network.currency
   );
-  const script = syscoinUtils.bitcoinjs.address.toOutputScript(
-    address,
-    scope.network.slip44 === 1 ? networks.testnet : networks.mainnet
-  );
+  const addressNetwork =
+    scope.network.slip44 === 1 ? networks.testnet : networks.mainnet;
+  const toScript = (address: string) =>
+    Buffer.from(
+      syscoinUtils.bitcoinjs.address.toOutputScript(address, addressNetwork)
+    );
   const outputs = parsed.txOutputs;
   const recipient = outputs[0];
-  // The existing single-recipient SDK builder retains the explicit output first.
-  if (
-    parsed.version !== 2 ||
-    !recipient ||
-    !Buffer.from(recipient.script).equals(script) ||
-    recipient.value.toString() !== amountSatoshis ||
-    outputs.some((output) => !output.address)
-  )
-    throw new Error('PSBT does not match the ordinary UTXO review');
+  if (intent.kind === 'native') {
+    // The existing single-recipient native builder retains the explicit output first.
+    if (
+      parsed.version !== 2 ||
+      !recipient ||
+      !Buffer.from(recipient.script).equals(toScript(intent.address)) ||
+      recipient.value.toString() !== intent.amountSatoshis ||
+      outputs.some((output) => !output.address)
+    )
+      throw new Error('PSBT does not match the ordinary UTXO review');
+  } else if (parsed.version !== ALLOCATION_SEND_VERSION) {
+    throw new Error('PSBT does not match the ordinary SPT review');
+  }
 
   const summary = await getVerifiedSyscoinPsbtValueSummary(
     parsed,
@@ -242,8 +366,28 @@ export async function prepareUtxoSignedBinding(
     }
   );
   check();
-  if (summary.inputAssets.length || summary.assetAllocations.length)
+  assertUtxoSoftwareSpend(scope.network, [
+    ...summary.inputScripts,
+    ...outputs.map(({ script: outputScript }) => outputScript),
+  ]);
+  if (
+    intent.kind === 'native' &&
+    (summary.inputAssets.length || summary.assetAllocations.length)
+  )
     throw new Error('Asset-assisted UTXO send requires a separate review');
+  if (intent.kind === 'spt')
+    assertSptFunding(scope.network, summary.inputValuesSatoshis);
+  const reviewedOutputs =
+    intent.kind === 'spt'
+      ? reviewSptPayment(parsed, summary, intent, toScript)
+      : Object.freeze(
+          outputs.map((output, index) =>
+            Object.freeze({
+              address: output.address!,
+              amountSatoshis: summary.outputValuesSatoshis[index]!,
+            })
+          )
+        );
   const transactionBinding = createUtxoTransactionBinding(
     parsed,
     summary.feeSatoshis,
@@ -251,15 +395,8 @@ export async function prepareUtxoSignedBinding(
   );
 
   const review: UtxoReview = Object.freeze({
-    recipient: Object.freeze({ address, amountSatoshis }),
-    outputs: Object.freeze(
-      outputs.map((output, index) =>
-        Object.freeze({
-          address: output.address!,
-          amountSatoshis: summary.outputValuesSatoshis[index]!,
-        })
-      )
-    ),
+    recipient: reviewedOutputs[0]!,
+    outputs: reviewedOutputs,
     outpoints: transactionBinding.outpoints,
     feeSatoshis: summary.feeSatoshis,
   });

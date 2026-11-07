@@ -49,6 +49,25 @@ async function main() {
       return fields;
     }
   );
+  // Solidity embeds the ERC1967Proxy creation code in the canonical factory.
+  // The header includes its compiled length (0x026c), before constructor args.
+  const factory = deployment.PALI_INFRASTRUCTURE_CONTRACTS.find(
+    ({ id }) => id === 'factory'
+  );
+  if (!factory?.deployCalldata)
+    throw new Error('Missing canonical factory artifact');
+  const factoryDeployment = factory.deployCalldata.toLowerCase();
+  const proxyPrefix = '608060405261026c803803806100148161016e565b';
+  const start = factoryDeployment.indexOf(proxyPrefix);
+  const proxy = factoryDeployment.slice(start, start + 0x26c * 2);
+  if (
+    start < 0 ||
+    factoryDeployment.indexOf(proxyPrefix, start + 1) !== -1 ||
+    proxy.length !== 0x26c * 2 ||
+    !proxy.endsWith('3d5ffd')
+  ) {
+    throw new Error('Canonical factory proxy creation code changed');
+  }
   const constants = [
     'PALI_CREATE2_DEPLOYER_ADDRESS',
     'PALI_CANONICAL_ENTRYPOINT_ADDRESS',
@@ -67,6 +86,7 @@ export type PaliInfrastructureMetadata = Omit<PaliInfrastructureContract, 'deplo
 ${constants
   .map((key) => `export const ${key} = ${JSON.stringify(deployment[key])};`)
   .join('\n')}
+export const PALI_ACCOUNT_PROXY_CREATION_CODE = '0x${proxy}';
 export const PALI_INFRASTRUCTURE_METADATA: PaliInfrastructureMetadata[] = ${JSON.stringify(
     metadata
   )};

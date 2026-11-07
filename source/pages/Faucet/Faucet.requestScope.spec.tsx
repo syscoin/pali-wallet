@@ -18,6 +18,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { AppLayout } from 'components/Layout/AppLayout';
 import { useControllerStateSync } from 'hooks/useControllerStateSync';
@@ -33,6 +34,7 @@ import vaultGlobalReducer, {
   startSwitchNetwork,
 } from 'state/vaultGlobal';
 import { INetworkType } from 'types/network';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 let mockStore: any;
 let sendFastStatePatches: (...args: any[]) => boolean;
@@ -438,6 +440,198 @@ afterEach(() => {
   cleanup();
   global.chrome = originalChrome;
   expect(listeners.size).toBe(0);
+});
+
+const installSmartAccount = (isDeployed = false) => {
+  const preloaded = initialState();
+  const fixture = smartAccountAddressFixture(NETWORK.chainId, A).account;
+  const account = {
+    ...preloaded.vault.accounts.HDAccount[0],
+    ...fixture,
+    label: 'Verified smart account',
+    smartAccount: { ...fixture.smartAccount, isDeployed },
+  };
+  preloaded.vault.activeAccount = { id: 0, type: 'SmartAccount' as any };
+  preloaded.vault.accounts.SmartAccount = { 0: account } as any;
+  mockStore = makeStore(preloaded);
+  expect(
+    canPublishAccountAddress(account, 'SmartAccount', NETWORK.chainId)
+  ).toBe(true);
+  return account;
+};
+
+it.each([false, true])(
+  'allows a verified smart account with deployed=%s to claim its own address',
+  async (isDeployed) => {
+    const account = installSmartAccount(isDeployed);
+    await mount();
+    expect(screen.getByText(account.label)).toBeTruthy();
+    expect(
+      screen.getByText(
+        `${account.address.slice(0, 8)}...${account.address.slice(-8)}`
+      )
+    ).toBeTruthy();
+    const finish = deferred();
+    request();
+    expect(axios.get).toHaveBeenCalledWith(
+      `https://chains.tools/api/faucet/claim?networkKey=nevm-testnet&walletAddress=${account.address}`
+    );
+    await finish();
+    expect(screen.getByText(HASH)).toBeTruthy();
+  }
+);
+
+it('hides and rejects a previously poisoned deployed smart-account identity', async () => {
+  const account = installSmartAccount(true);
+  const poisoned = {
+    ...account,
+    address: B,
+    xpub: B,
+    smartAccount: { ...account.smartAccount, deploymentAuth: undefined },
+  };
+  mockStore.dispatch(
+    setAccounts({
+      ...mockStore.getState().vault.accounts,
+      SmartAccount: { 0: poisoned },
+    })
+  );
+  expect(
+    canPublishAccountAddress(poisoned, 'SmartAccount', NETWORK.chainId)
+  ).toBe(false);
+  await mount();
+  expect(screen.getByTestId('pathname').textContent).toBe('/home');
+  expect(screen.queryByText(poisoned.label)).toBeNull();
+  expect(screen.queryByText(`${B.slice(0, 8)}...${B.slice(-8)}`)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Request Now' })).toBeNull();
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+it.each([false, true])(
+  'retires a pending claim when same-address metadata loses verification with deployed=%s',
+  async (isDeployed) => {
+    const account = installSmartAccount(isDeployed);
+    await mount();
+    const finish = deferred();
+    request();
+    const invalid = {
+      ...account,
+      smartAccount: {
+        ...account.smartAccount,
+        deploymentSalt: `0x${'00'.repeat(32)}`,
+      },
+    };
+    expect(
+      canPublishAccountAddress(invalid, 'SmartAccount', NETWORK.chainId)
+    ).toBe(false);
+    await publish((background) => {
+      background.dispatch(
+        setAccounts({
+          ...background.getState().vault.accounts,
+          SmartAccount: { 0: invalid },
+        })
+      );
+    });
+    expect(mockStore.getState().vault.accounts.SmartAccount[0].address).toBe(
+      account.address
+    );
+    expect(screen.getByTestId('pathname').textContent).toBe('/home');
+    mockEmitter.mockClear();
+    await finish();
+    expect(screen.queryByText(HASH)).toBeNull();
+    expect(mockAlarms).not.toHaveBeenCalled();
+    expect(mockEmitter).not.toHaveBeenCalled();
+  }
+);
+
+it('does not revive a claim after smart-account verification is lost and restored in one batch', async () => {
+  const account = installSmartAccount(true);
+  await mount();
+  const finish = deferred();
+  request();
+  const previous = mockStore.getState();
+  const background = makeStore(previous);
+  background.dispatch(
+    setAccounts({
+      ...previous.vault.accounts,
+      SmartAccount: {
+        0: {
+          ...account,
+          smartAccount: { ...account.smartAccount, descriptor: undefined },
+        },
+      },
+    } as any)
+  );
+  const invalid = background.getState();
+  background.dispatch(setAccounts(previous.vault.accounts));
+  await act(async () => {
+    sendFastStatePatches(previous, invalid);
+    sendFastStatePatches(invalid, background.getState());
+  });
+  mockEmitter.mockClear();
+  await finish();
+  expect(screen.queryByText(HASH)).toBeNull();
+  expect(screen.getByRole('button', { name: 'Request Now' })).toBeTruthy();
+  expect(mockAlarms).not.toHaveBeenCalled();
+  expect(mockEmitter).not.toHaveBeenCalled();
+});
+
+it('rejects a retained claim callback when same-address metadata becomes invalid', async () => {
+  const account = installSmartAccount();
+  let actions: ReturnType<typeof useFaucetComponentStates>;
+  const Actions = () => {
+    actions = useFaucetComponentStates();
+    return null;
+  };
+  render(
+    <Provider store={mockStore}>
+      <MemoryRouter>
+        <Actions />
+      </MemoryRouter>
+    </Provider>
+  );
+  const retained = actions.handleRequestFaucet;
+  await act(async () => {
+    mockStore.dispatch(
+      setAccounts({
+        ...mockStore.getState().vault.accounts,
+        SmartAccount: {
+          0: {
+            ...account,
+            smartAccount: { ...account.smartAccount, descriptor: undefined },
+          },
+        },
+      })
+    );
+    await retained();
+  });
+  expect(axios.get).not.toHaveBeenCalled();
+});
+
+it('retires delayed balance refresh when the same smart-account address becomes unverified', async () => {
+  const account = installSmartAccount(true);
+  await mount();
+  const finish = deferred();
+  request();
+  await finish();
+  const refresh = mockAlarms.mock.calls[0][0].callback;
+  await publish((background) => {
+    background.dispatch(
+      setAccounts({
+        ...background.getState().vault.accounts,
+        SmartAccount: {
+          0: {
+            ...account,
+            smartAccount: { ...account.smartAccount, descriptor: undefined },
+          },
+        },
+      })
+    );
+  });
+  mockEmitter.mockClear();
+  await act(async () => {
+    await refresh();
+  });
+  expect(mockEmitter).not.toHaveBeenCalled();
 });
 
 it('healthy: matching network/address success keeps the exact hash, wording and copy target', async () => {

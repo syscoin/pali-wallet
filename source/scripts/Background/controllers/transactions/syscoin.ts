@@ -7,6 +7,7 @@ import {
   UTXO_DETAIL_OBSERVATION,
   UTXO_SUMMARY_OBSERVATION,
 } from '../../../../shared/utxoDetailFreshness';
+import { assertUtxoDetailPayloadBudget } from '../../../../shared/utxoTransactionDetailCache';
 import { fetchBackendAccountCached } from '../utils/fetchBackendAccountWrapper';
 import store from 'state/store';
 import { TransactionsType } from 'state/vault/types';
@@ -99,23 +100,26 @@ const storeActivitySnapshot = (
 };
 
 const SysTransactionController = (): ISysTransactionsController => {
-  const fetchTransactionDetailsFromBlockbook = async (
-    txid: string,
-    networkUrl: string
-  ): Promise<ISysTransaction | null> => {
-    if (!txid || !networkUrl) return null;
+  const fetchTransactionDetailsFromBlockbook: ISysTransactionsController['fetchTransactionDetailsFromBlockbook'] =
+    async (txid, networkUrl, read) => {
+      if (!txid || !networkUrl) return null;
 
-    const observation = nextObservation();
-    const transaction = await sys.utils.fetchBackendRawTx(networkUrl, txid);
+      const observation = nextObservation();
+      const transaction = await sys.utils.fetchBackendRawTx(
+        networkUrl,
+        txid,
+        read
+      );
 
-    if (
-      !transaction ||
-      typeof transaction !== 'object' ||
-      Array.isArray(transaction)
-    )
-      return null;
-    return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
-  };
+      if (
+        !transaction ||
+        typeof transaction !== 'object' ||
+        Array.isArray(transaction)
+      )
+        return null;
+      assertUtxoDetailPayloadBudget(transaction);
+      return { ...transaction, [UTXO_DETAIL_OBSERVATION]: observation };
+    };
 
   const getInitialUserTransactionsByXpub = async (
     xpubOrAddress: string,

@@ -27,7 +27,10 @@ import {
   encodeSmartAccountGasLimits,
   SMART_ACCOUNT_ZERO_GAS_FEES,
 } from './account';
-import { toPaliSmartAccount } from './adapter';
+import {
+  createOwnedPaliSmartAccountFactory,
+  toPaliSmartAccount,
+} from './adapter';
 import { buildHydratedSLHDSAAuthenticator } from './authenticators';
 import {
   ERC7579_MODULE_TYPE_VALIDATOR,
@@ -35,6 +38,11 @@ import {
   paliSmartAccountInterface,
   paliSmartAccountFactoryInterface,
 } from './contracts';
+import { derivePaliSmartAccountDeployment } from './counterfactual';
+import {
+  PALI_CANONICAL_FACTORY_ADDRESS,
+  PALI_INFRASTRUCTURE_METADATA_BY_ID,
+} from './deploymentMetadata';
 import { encodeSmartAccountAuthenticatorSignature } from './execution';
 
 describe('ERC-7579 smart account helpers', () => {
@@ -446,19 +454,35 @@ describe('ERC-7579 smart account helpers', () => {
     expect(`0x${userOperation.initCode.slice(42)}`).toBe(createAccountCalldata);
   });
 
-  it('builds a generic Pali smart account adapter over ERC-7579 factory and execute calls', async () => {
-    const factoryAddress = '0x3333333333333333333333333333333333333333';
-    const accountAddress = '0x4444444444444444444444444444444444444444';
-    const salt =
-      '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
-    const initCode = defaultAbiCoder.encode(
-      ['address', 'bytes'],
-      [auth.validator, auth.data]
+  it('checks the factory owner at provider admission after ethers populates the call', async () => {
+    let current = true;
+    const provider = { call: jest.fn() };
+    const factory = createOwnedPaliSmartAccountFactory(1, provider, () => {
+      if (!current) throw new Error('Factory context retired');
+    });
+    const reading = factory['getInitData(address,bytes)'](
+      auth.validator,
+      auth.data
     );
+    current = false;
+    await expect(reading).rejects.toThrow('Factory context retired');
+    expect(provider.call).not.toHaveBeenCalled();
+  });
+
+  it('builds a generic Pali smart account adapter over ERC-7579 factory and execute calls', async () => {
+    const salt = '0x' + 'bb'.repeat(32);
+    const {
+      address: accountAddress,
+      factory: factoryAddress,
+      initCode,
+    } = derivePaliSmartAccountDeployment({
+      ...auth,
+      deploySalt: salt,
+      factoryAddress: PALI_CANONICAL_FACTORY_ADDRESS,
+    });
     const factory = {
       'getAddress(bytes32,bytes)': jest.fn(async () => accountAddress),
       'getInitData(address,bytes)': jest.fn(async () => initCode),
-      interface: paliSmartAccountFactoryInterface,
     };
 
     const account = await toPaliSmartAccount({
@@ -489,6 +513,12 @@ describe('ERC-7579 smart account helpers', () => {
     );
     expect(await account.getDeploymentInitCode()).toBe(
       hexConcat([factoryAddress, factoryArgs.factoryData])
+    );
+    expect(factory['getInitData(address,bytes)']).toHaveBeenCalledTimes(1);
+    expect(factory['getAddress(bytes32,bytes)']).toHaveBeenCalledTimes(1);
+    expect(factory['getAddress(bytes32,bytes)']).toHaveBeenCalledWith(
+      salt,
+      initCode
     );
 
     const decodedExecution = paliSmartAccountInterface.decodeFunctionData(
@@ -526,6 +556,87 @@ describe('ERC-7579 smart account helpers', () => {
       sender: accountAddress,
       signature: '0xeeee',
     });
+  });
+
+  it.each([
+    [
+      '0xfFC854565ff83a49d3302821c0AD23822ca1A50C',
+      '0xe4897f193cd6a810057530a5163274f74470c450bdb1d329ebde0d4c7897a766',
+      '0x51A1459ad911dE3b4BD9ae8A8AD324480519f81F',
+      '0xc08f6ee4e88037b1a376908ac44004aacfe8cdccb1092652f4cfa2893f0232e2',
+    ],
+    [
+      '0x1111111111111111111111111111111111111111',
+      '0xe4897f193cd6a810057530a5163274f74470c450bdb1d329ebde0d4c7897a766',
+      '0x4e7CbEB3dA4e5ff8f1d927B161E0B4c23CAEf0Df',
+      '0xd9508ef507c2d63ed19a825e28b5858e52d13273eb4dbdb9f1383abe298f8d7f',
+    ],
+    [
+      '0xfFC854565ff83a49d3302821c0AD23822ca1A50C',
+      '0x1e136f70a7a4e1b5161304a375665d380b832103d742eab1b3fb4c2f400aac52',
+      '0xe2944dC461ecCda7a3589255EF68d7826847E1a8',
+      '0xc08f6ee4e88037b1a376908ac44004aacfe8cdccb1092652f4cfa2893f0232e2',
+    ],
+  ])(
+    'matches the canonical factory and deployed proxy for %s and salt %s',
+    (owner, deploySalt, address, initHash) => {
+      // Independent vectors from actual canonical factory calls and CREATE2 proxy deployments.
+      const deployment = derivePaliSmartAccountDeployment({
+        validator: PALI_INFRASTRUCTURE_METADATA_BY_ID.ecdsaValidator.address,
+        data: encodeEcdsaValidatorInitData([owner], 1),
+        deploySalt,
+        factoryAddress: PALI_CANONICAL_FACTORY_ADDRESS,
+      });
+      expect(deployment.address).toBe(address);
+      expect(keccak256(deployment.initCode)).toBe(initHash);
+    }
+  );
+
+  it.each(['initialization', 'address'])(
+    'rejects substituted factory %s before returning a new account',
+    async (kind) => {
+      const deploySalt = '0x' + 'ab'.repeat(32);
+      const factoryAddress = PALI_CANONICAL_FACTORY_ADDRESS;
+      const { initCode } = derivePaliSmartAccountDeployment({
+        ...auth,
+        deploySalt,
+        factoryAddress,
+      });
+      const getAddress = jest.fn(
+        async () => '0x4444444444444444444444444444444444444444'
+      );
+      const factory = {
+        'getAddress(bytes32,bytes)': getAddress,
+        'getInitData(address,bytes)': jest.fn(async () =>
+          kind === 'initialization' ? '0x1234' : initCode
+        ),
+      };
+
+      await expect(
+        toPaliSmartAccount({
+          auth: { ...auth, module: 'ecdsa' },
+          chainId: 57057,
+          deploySalt,
+          factory,
+          factoryAddress,
+        })
+      ).rejects.toThrow(
+        `Smart account factory ${kind} does not match local derivation`
+      );
+      if (kind === 'initialization') expect(getAddress).not.toHaveBeenCalled();
+    }
+  );
+
+  it('refuses deployment bytes for a substituted stored address', async () => {
+    const account = await toPaliSmartAccount({
+      address: '0x4444444444444444444444444444444444444444',
+      auth: { ...auth, module: 'ecdsa' },
+      chainId: 57057,
+      deploySalt: '0x' + 'ab'.repeat(32),
+    });
+    await expect(account.getDeploymentInitCode()).rejects.toThrow(
+      'Stored smart account address does not match local derivation'
+    );
   });
 
   it('treats P-256 WebAuthn as a standard ERC-7579 validator module', () => {

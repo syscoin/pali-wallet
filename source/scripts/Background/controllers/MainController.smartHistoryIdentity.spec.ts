@@ -18,17 +18,25 @@ jest.mock('./providers/patchFetchWithPaliHeaders', () => ({
 }));
 
 import { KeyringManager } from '@sidhujag/sysweb3-keyring';
+import { webcrypto } from 'crypto';
 import http from 'http';
 import https from 'https';
 
 import { getController } from '..';
 import { createTestKeyringManager } from '../../../../tests/fixtures/extensionKeyring';
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
-import store, { persistCommittedWalletState } from 'state/store';
+import store, {
+  persistAccountCreation,
+  persistCommittedWalletState,
+} from 'state/store';
 import { restoreVaultSnapshot } from 'state/vault';
 import vaultCache from 'state/vaultCache';
 import { setActiveSlip44 } from 'state/vaultGlobal';
-import { INetworkType, KeyringAccountType } from 'types/network';
+import {
+  INetworkType,
+  initialActiveHdAccountState,
+  KeyringAccountType,
+} from 'types/network';
 
 import DAppController from './DAppController';
 import MainController from './MainController';
@@ -43,19 +51,38 @@ const ANCHOR = `0x${'33'.repeat(20)}`;
 const CHAIN_ID = 10;
 const SMART = KeyringAccountType.SmartAccount;
 const originalChrome = global.chrome;
+const originalCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto')!;
 let wallet: any;
 let manager: KeyringManager;
 let records: Record<string, any>;
 let provider: any;
 const filters: any[] = [];
 const record = () => store.getState().vault.accounts[SMART][0] as any;
-const create = (address: string) =>
-  wallet.createSmartAccount({
+const create = async (address: string) => {
+  // Seed a historical record through the normal persistence queue. Account
+  // creation no longer accepts a caller-supplied address.
+  const account = {
+    ...initialActiveHdAccountState,
     address,
+    xpub: address,
+    isSmartAccount: true,
     label:
       address === A ? 'Old public smart account' : 'New public smart account',
-    metadata: { address, chainId: CHAIN_ID, isDeployed: true },
-  });
+    smartAccount: {
+      chainId: CHAIN_ID,
+      contractVersion: 'fixture',
+      deploymentSalt: '0x',
+      isDeployed: true,
+    },
+  };
+  await persistAccountCreation(
+    account,
+    SMART,
+    () => undefined,
+    () => true
+  );
+  return account;
+};
 const refresh = () =>
   wallet.updateUserTransactionsState({
     isBitcoinBased: false,
@@ -68,6 +95,10 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 beforeEach(async () => {
   jest.useFakeTimers({ doNotFake: ['setImmediate'] });
+  Object.defineProperty(globalThis, 'crypto', {
+    ...originalCrypto,
+    value: webcrypto,
+  });
   const deny = () => {
     throw new Error('History identity probe must remain offline');
   };
@@ -135,6 +166,10 @@ beforeEach(async () => {
   store.dispatch(setActiveSlip44(60));
   manager = createTestKeyringManager();
   manager.setVaultStateGetter(() => store.getState().vault as any);
+  await manager.initializeSession(
+    'test test test test test test test test test test test junk',
+    'synthetic-smart-history-password'
+  );
   provider = {
     getBlockNumber: jest.fn(async () => 100),
     getLogs: jest.fn(async (filter: any) => {
@@ -178,6 +213,7 @@ afterEach(async () => {
   vaultCache.clearCache();
   jest.restoreAllMocks();
   global.chrome = originalChrome;
+  Object.defineProperty(globalThis, 'crypto', originalCrypto);
 });
 
 it('advances and durably saves an unchanged smart account scan cursor', async () => {

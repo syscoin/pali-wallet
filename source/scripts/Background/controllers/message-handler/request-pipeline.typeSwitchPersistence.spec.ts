@@ -79,6 +79,9 @@ jest.mock('scripts/Background', () => ({
 jest.mock('../providers/patchFetchWithPaliHeaders', () => ({
   patchFetchWithPaliHeaders: jest.fn(),
 }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn().mockResolvedValue(undefined),
+}));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
 
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
@@ -163,7 +166,7 @@ describe.each([true, false])(
             params: [{ chainId: 5700 }],
           },
         },
-        { url: `${HOST}/page`, tab: { id: 101 } } as any
+        { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
       );
       // The real coordinator deliberately leaves a 100ms gap before each popup.
       await jest.advanceTimersByTimeAsync(500);
@@ -241,10 +244,10 @@ describe.each([true, false])(
       // Blockbook response is synthetic, including a complete empty inventory.
       jest
         .spyOn(sys.utils, 'fetchBackendAccount')
-        .mockImplementation(async (url: string) => {
+        .mockImplementation(async (url: string, identifier: string) => {
           expect(url).toMatch(/^https:\/\/utxo\.synthetic\.invalid\/?$/);
           return {
-            address: 'sys1synthetic',
+            address: identifier,
             balance: '0',
             unconfirmedBalance: '0',
             txs: 0,
@@ -398,7 +401,7 @@ describe.each([true, false])(
       // Public BIP39 fixture only; initialize an actual SDK session so the real
       // MainController transfers its secure session during the network switch.
       await wallet.getActiveKeyring().initializeSession(PHRASE, PASSWORD);
-      mockController.dapp.setup({ url: `${HOST}/page` });
+      mockController.dapp.setup({ url: `${HOST}/page`, origin: HOST });
       jest.mocked(popupPromise).mockImplementation(async (popup) => {
         if (popup.route === MethodRoute.SwitchUtxoEvm) {
           if (rejectSwitch) throw new Error('User rejected network switch');
@@ -510,7 +513,7 @@ describe.each([true, false])(
             params: [],
           },
         },
-        { url: `${HOST}/page`, tab: { id: 101 } } as any
+        { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
       );
       if (!fromUtxo && snapshot.accounts.length === 0)
         expect(snapshot.xpub).toBeNull();
@@ -520,7 +523,7 @@ describe.each([true, false])(
             type: 'METHOD_REQUEST',
             data: { method: 'eth_accounts', params: [] },
           },
-          { url: `${HOST}/page`, tab: { id: 101 } } as any
+          { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
         );
         expect(accounts).toEqual(snapshot.accounts);
       }
@@ -584,7 +587,7 @@ describe.each([true, false])(
         notices().find((data) => data.method === PaliEvents.lockStateChanged)
           .params
       ).toEqual({ isUnlocked: true, accounts: [], xpub: null });
-      mockController.dapp.setup({ url: `${HOST}/page` });
+      mockController.dapp.setup({ url: `${HOST}/page`, origin: HOST });
       (chrome.scripting.executeScript as jest.Mock).mockClear();
       await mockController.dapp.handleStateChange(PaliEvents.accountsChanged, {
         method: PaliEvents.accountsChanged,
@@ -725,7 +728,7 @@ describe.each([true, false])(
               params: fromUtxo ? [{ ['eth_accounts']: {} }] : [],
             },
           },
-          { url: `${HOST}/page`, tab: { id: 101 } } as any
+          { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
         );
       reconnect = 'reject';
       const rejected = requestPermission();
@@ -831,7 +834,7 @@ describe.each([true, false])(
             type: 'METHOD_REQUEST',
             data: { method: 'wallet_getPermissions', params: [] },
           },
-          { url: `${HOST}/page`, tab: { id: 101 } } as any
+          { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
         );
         expect(permissions).toEqual([]);
       }
@@ -844,7 +847,7 @@ describe.each([true, false])(
             params: [],
           },
         },
-        { url: `${HOST}/page`, tab: { id: 101 } } as any
+        { url: `${HOST}/page`, origin: HOST, tab: { id: 101 } } as any
       );
       await jest.advanceTimersByTimeAsync(500);
       await expect(connecting).resolves.toEqual([addressFor(targetNetwork)]);

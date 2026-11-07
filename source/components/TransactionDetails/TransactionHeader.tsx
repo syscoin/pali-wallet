@@ -5,9 +5,11 @@ import { translateTransactionType } from 'utils/transactionDisplay';
 
 interface ITransactionHeaderProps {
   displayInfo: {
+    amountUnavailable?: boolean;
     displaySymbol: string;
     displayValue: number | string;
     formattedValue?: string;
+    hasUnknownDecimals?: boolean;
     isNft: boolean;
     tokenId?: string;
   } | null;
@@ -28,6 +30,11 @@ export const TransactionHeader: React.FC<ITransactionHeaderProps> = ({
   const formatDisplayValue = () => {
     if (!displayInfo) return '...';
 
+    if (
+      !displayInfo.isNft &&
+      (displayInfo.hasUnknownDecimals || displayInfo.amountUnavailable)
+    )
+      return `? ${displayInfo.displaySymbol}`;
     const valueStr = displayInfo.formattedValue ?? '0';
 
     if (displayInfo.isNft && displayInfo.tokenId) {

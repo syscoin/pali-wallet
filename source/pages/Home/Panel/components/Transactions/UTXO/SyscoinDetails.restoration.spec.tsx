@@ -8,6 +8,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
+import { createHash } from 'crypto';
 import React from 'react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 
@@ -15,6 +16,7 @@ import { DetailsView } from '../../Details';
 import { clearTokenIconCache } from 'components/TokenIcon';
 import { ISysTransaction } from 'scripts/Background/controllers/transactions/types';
 import { selectActiveAccountAssets } from 'state/vault/selectors';
+import { ellipsis } from 'utils/format';
 import { getKnownTokenLogo, getTokenLogo } from 'utils/tokens';
 
 import {
@@ -23,6 +25,10 @@ import {
 } from './history.fixtures';
 import { SyscoinTransactionDetails } from './SyscoinDetails';
 
+const fixtureBlockHash = (label: string) =>
+  createHash('sha256').update(label).digest('hex');
+const visibleBlockHash = (label: string) =>
+  ellipsis(fixtureBlockHash(label), 2, 4);
 let mockState: any;
 let mockHash: string;
 let mockSequence = 0;
@@ -50,7 +56,16 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 jest.mock('hooks/useController', () => ({
-  useController: () => ({ controllerEmitter: mockEmitter }),
+  useController: () => ({
+    controllerEmitter: async (
+      method: unknown,
+      params: [string, string, unknown]
+    ) => ({
+      txid: params[0].toLowerCase(),
+      transaction: await mockEmitter(method, params),
+      compact: null,
+    }),
+  }),
 }));
 // Decorative icons do not affect transaction rendering and pull in browser-only antd ESM.
 jest.mock('components/Icon', () => ({ Icon: () => null }));
@@ -166,7 +181,7 @@ const mountHydratedDetails = async (transaction: ISysTransaction) => {
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'getSysTransactionFromBlockbook'],
-      [mockHash, mockState.vault.activeNetwork.url]
+      [mockHash, mockState.vault.activeNetwork.url, expect.any(Object)]
     )
   );
   // Hydration replaces the rendered details subtree. Finish that controlled
@@ -673,13 +688,13 @@ it.each([undefined, 5700])(
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
     await waitFor(() => {
-      const icon = screen.getByAltText('CUSTOM');
+      const icon = screen.getByAltText('SPT');
       expect(icon.getAttribute('src')).toBe(
-        getTokenLogo('CUSTOM', true, '900001')
+        getTokenLogo('SPT', true, '900001')
       );
-      expect(
-        screen.getByText('1.0000 CUSTOM').parentElement!.contains(icon)
-      ).toBe(true);
+      expect(screen.getByText('1.0000 SPT').parentElement!.contains(icon)).toBe(
+        true
+      );
     });
     expect(mockIconFetch).not.toHaveBeenCalled();
   }
@@ -706,7 +721,7 @@ it.each(['wrong-chain', 'other-account', 'same-symbol-other-guid'])(
 
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-    await screen.findByText('1.0000 CUSTOM');
+    await screen.findByText('1.0000 SPT');
     await act(async () => {
       await Promise.resolve();
     });
@@ -736,7 +751,7 @@ it.each([false, true])(
 
     render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-    await screen.findByText('1.0000 SYSX');
+    await screen.findByText(wrongChain ? '1.0000 SPT' : '1.0000 SYSX');
     await act(async () => {
       await Promise.resolve();
     });
@@ -759,7 +774,7 @@ it('does not infer the canonical GUID from a SYSX symbol or matching imported sy
 
   render(<SyscoinTransactionDetails hash={mockHash} tx={transaction} />);
 
-  await screen.findByText('1.0000 SYSX');
+  await screen.findByText('1.0000 SPT');
   await act(async () => {
     await Promise.resolve();
   });
@@ -965,7 +980,7 @@ it('restores hash-only details from a full Blockbook read without inventing an a
   ).toBeNull();
   expect(mockEmitter).toHaveBeenCalledWith(
     ['wallet', 'getSysTransactionFromBlockbook'],
-    [mockHash, 'https://blockbook.example']
+    [mockHash, 'https://blockbook.example', expect.any(Object)]
   );
 });
 
@@ -1023,12 +1038,12 @@ it('uses a new pending summary over an older confirmed cached body without leaki
     rawTransaction({
       confirmations: 6,
       blockHeight: 123,
-      blockHash: 'old-confirmed-block',
+      blockHash: fixtureBlockHash('old-confirmed-block'),
       blockTime: 123456,
     })
   );
   const first = render(<SyscoinTransactionDetails hash={mockHash} />);
-  await screen.findByText('old-confirmed-block');
+  await screen.findByText(visibleBlockHash('old-confirmed-block'));
   first.unmount();
   const summary = rawTransaction({
     confirmations: 0,
@@ -1039,7 +1054,9 @@ it('uses a new pending summary over an older confirmed cached body without leaki
   render(<SyscoinTransactionDetails hash={mockHash} tx={summary} />);
   await screen.findByText('raw-from');
   expect(confirmationValue().textContent).toBe('0');
-  expect(screen.queryByText('old-confirmed-block')).toBeNull();
+  expect(
+    screen.queryByText(visibleBlockHash('old-confirmed-block'))
+  ).toBeNull();
   expect(detailValue('Block Hash', 'send.pending')).toBeTruthy();
   expect(detailValue('Block Time', 'send.pending')).toBeTruthy();
   expect(screen.queryByText('send.confirmed')).toBeNull();
@@ -1050,7 +1067,7 @@ it.each([false, true])(
   'reopens the full observation over the unchanged summary (initially pending: %s)',
   async (initiallyPending) => {
     const confirmed = {
-      blockHash: 'observed-block',
+      blockHash: fixtureBlockHash('observed-block'),
       blockHeight: 123,
       confirmations: 6,
     };
@@ -1083,7 +1100,7 @@ it.each(['redux', 'paged-route'] as const)(
     const summary = rawTransaction({
       confirmations: 6,
       blockHeight: 123,
-      blockHash: 'old-confirmed-block',
+      blockHash: fixtureBlockHash('old-confirmed-block'),
       walletHistoryObservation: observation,
     });
     mockEmitter.mockResolvedValue(
@@ -1154,7 +1171,9 @@ it.each(['redux', 'paged-route'] as const)(
       fireEvent.click(screen.getByRole('button', { name: 'Open details' }));
       await screen.findByText('full-only-from');
       expect(confirmationValue().textContent).toBe('0');
-      expect(screen.queryByText('old-confirmed-block')).toBeNull();
+      expect(
+        screen.queryByText(visibleBlockHash('old-confirmed-block'))
+      ).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     }
     expect(mockEmitter).toHaveBeenCalledTimes(1);
@@ -1165,20 +1184,20 @@ it('uses a same-height replacement block from a current summary over the cached 
   const cached = rawTransaction({
     confirmations: 6,
     blockHeight: 123,
-    blockHash: 'old-block',
+    blockHash: fixtureBlockHash('old-block'),
   });
   mockEmitter.mockResolvedValue(cached);
   const first = render(<SyscoinTransactionDetails hash={mockHash} />);
-  await screen.findByText('old-block');
+  await screen.findByText(visibleBlockHash('old-block'));
   first.unmount();
   render(
     <SyscoinTransactionDetails
       hash={mockHash}
-      tx={{ ...cached, blockHash: 'new-block' }}
+      tx={{ ...cached, blockHash: fixtureBlockHash('new-block') }}
     />
   );
-  expect(await screen.findByText('new-block')).toBeTruthy();
-  expect(screen.queryByText('old-block')).toBeNull();
+  expect(await screen.findByText(visibleBlockHash('new-block'))).toBeTruthy();
+  expect(screen.queryByText(visibleBlockHash('old-block'))).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
@@ -1203,19 +1222,19 @@ it.each(['same', 'restarted'] as const)(
     const summary = rawTransaction({
       confirmations: 6,
       blockHeight: 123,
-      blockHash: 'older-page-block',
+      blockHash: fixtureBlockHash('older-page-block'),
       walletHistoryObservation: `${oldEpoch}:1`,
     });
     setVaultSummary({
       ...summary,
-      blockHash: 'active-summary-block',
+      blockHash: fixtureBlockHash('active-summary-block'),
       walletHistoryObservation: `${activeEpoch}:2`,
     });
     mockEmitter.mockResolvedValue({
       ...rawTransaction({
         confirmations: 7,
         blockHeight: 124,
-        blockHash: 'full-block',
+        blockHash: fixtureBlockHash('full-block'),
       }),
       walletDetailObservation: `${activeEpoch}:3`,
     });
@@ -1233,32 +1252,34 @@ it.each(['same', 'restarted'] as const)(
       </MemoryRouter>
     );
     const view = render(element());
-    expect(await screen.findByText('full-block')).toBeTruthy();
+    expect(
+      await screen.findByText(visibleBlockHash('full-block'))
+    ).toBeTruthy();
 
     setVaultSummary();
     view.rerender(element());
-    expect(screen.getByText('full-block')).toBeTruthy();
-    expect(screen.queryByText('older-page-block')).toBeNull();
+    expect(screen.getByText(visibleBlockHash('full-block'))).toBeTruthy();
+    expect(screen.queryByText(visibleBlockHash('older-page-block'))).toBeNull();
 
     const { walletHistoryObservation: _revision, ...restoredPage } = summary;
     void _revision;
     setVaultSummary(restoredPage);
     view.rerender(element());
-    expect(screen.getByText('full-block')).toBeTruthy();
-    expect(screen.queryByText('older-page-block')).toBeNull();
+    expect(screen.getByText(visibleBlockHash('full-block'))).toBeTruthy();
+    expect(screen.queryByText(visibleBlockHash('older-page-block'))).toBeNull();
 
     setVaultSummary(
       rawTransaction({
         confirmations: 1,
         blockHeight: 130,
-        blockHash: 'new-epoch-block',
+        blockHash: fixtureBlockHash('new-epoch-block'),
         walletHistoryObservation: `${'c'.repeat(32)}:1`,
       })
     );
     view.rerender(element());
     expect(confirmationValue().textContent).toBe('1');
-    expect(screen.getByText('new-epoch-block')).toBeTruthy();
-    expect(screen.queryByText('full-block')).toBeNull();
+    expect(screen.getByText(visibleBlockHash('new-epoch-block'))).toBeTruthy();
+    expect(screen.queryByText(visibleBlockHash('full-block'))).toBeNull();
     expect(mockEmitter).toHaveBeenCalledTimes(1);
   }
 );
@@ -1270,7 +1291,7 @@ it.each([false, true])(
     const mined = {
       confirmations: 7,
       blockHeight: 123,
-      blockHash: 'observed-block',
+      blockHash: fixtureBlockHash('observed-block'),
     };
     const savedSummary = rawTransaction({
       vin: [],
@@ -1317,11 +1338,11 @@ it.each([false, true])(
       ...savedSummary,
       confirmations: 1,
       blockHeight: 124,
-      blockHash: 'saved-block-2',
+      blockHash: fixtureBlockHash('saved-block-2'),
     });
     view.rerender(element());
     expect(confirmationValue().textContent).toBe('1');
-    expect(screen.getByText('saved-block-2')).toBeTruthy();
+    expect(screen.getByText(visibleBlockHash('saved-block-2'))).toBeTruthy();
 
     setVaultSummary({
       ...savedSummary,
@@ -1347,11 +1368,11 @@ it('uses a fresh body across an unrelated summary clone until a real identical-f
       rawTransaction({
         confirmations: 6,
         blockHeight: 123,
-        blockHash: 'fresh-block',
+        blockHash: fixtureBlockHash('fresh-block'),
       })
     )
   );
-  expect(await screen.findByText('fresh-block')).toBeTruthy();
+  expect(await screen.findByText(visibleBlockHash('fresh-block'))).toBeTruthy();
   expect(confirmationValue().textContent).toBe('6');
   view.rerender(
     <SyscoinTransactionDetails hash={mockHash} tx={{ ...summary }} />
@@ -1367,7 +1388,7 @@ it('uses a fresh body across an unrelated summary clone until a real identical-f
     />
   );
   expect(confirmationValue().textContent).toBe('0');
-  expect(screen.queryByText('fresh-block')).toBeNull();
+  expect(screen.queryByText(visibleBlockHash('fresh-block'))).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
@@ -1396,13 +1417,13 @@ it('uses a new summary admitted while the physical detail read is pending', asyn
       rawTransaction({
         confirmations: 6,
         blockHeight: 123,
-        blockHash: 'held-block',
+        blockHash: fixtureBlockHash('held-block'),
       })
     )
   );
   expect(await screen.findByText('raw-from')).toBeTruthy();
   expect(confirmationValue().textContent).toBe('0');
-  expect(screen.queryByText('held-block')).toBeNull();
+  expect(screen.queryByText(visibleBlockHash('held-block'))).toBeNull();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 });
 
@@ -1417,7 +1438,7 @@ it('uses the live viewer for a queued raw dispatch after the worker restarts', a
       ...rawTransaction({
         confirmations: 7,
         blockHeight: 124,
-        blockHash: 'queued-full-block',
+        blockHash: fixtureBlockHash('queued-full-block'),
       }),
       walletDetailObservation: `${'b'.repeat(32)}:1`,
     });
@@ -1448,7 +1469,9 @@ it('uses the live viewer for a queued raw dispatch after the worker restarts', a
       response.resolve(rawTransaction({ txid: blockers[index] }))
     )
   );
-  expect(await screen.findByText('queued-full-block')).toBeTruthy();
+  expect(
+    await screen.findByText(visibleBlockHash('queued-full-block'))
+  ).toBeTruthy();
   expect(
     mockEmitter.mock.calls.filter(([, [hash]]) => hash === mockHash)
   ).toHaveLength(1);
@@ -1463,7 +1486,7 @@ it('uses current summary confirmation and separate native change over pending ra
   const summary = rawTransaction({
     confirmations: 7,
     blockHeight: 123,
-    blockHash: 'current-block',
+    blockHash: fixtureBlockHash('current-block'),
     blockTime: 123456,
     direction: 'sent',
     addressValueIn: '1000000000',
@@ -1479,7 +1502,7 @@ it('uses current summary confirmation and separate native change over pending ra
   expect(screen.getByText('send.confirmed')).toBeTruthy();
   expect(screen.queryByText('send.pending')).toBeNull();
   expect(confirmationValue().textContent).toBe('7');
-  expect(screen.getByText('current-block')).toBeTruthy();
+  expect(screen.getByText(visibleBlockHash('current-block'))).toBeTruthy();
   expect(mockEmitter).toHaveBeenCalledTimes(1);
 
   view.rerender(
@@ -1530,13 +1553,15 @@ it('formats a confirmed block time using the selected language', async () => {
   const confirmed = rawTransaction({
     blockHeight: 1,
     confirmations: 1,
-    blockHash: 'confirmed-block',
+    blockHash: fixtureBlockHash('confirmed-block'),
     blockTime,
   });
   mockEmitter.mockResolvedValue(confirmed);
   render(<SyscoinTransactionDetails hash={mockHash} tx={confirmed} />);
   await screen.findByText('raw-from');
-  expect(detailValue('Block Hash', 'confirmed-block')).toBeTruthy();
+  expect(
+    detailValue('Block Hash', visibleBlockHash('confirmed-block'))
+  ).toBeTruthy();
   expect(
     detailValue('Block Time', new Date(blockTime * 1000).toLocaleString('en'))
   ).toBeTruthy();
@@ -1751,25 +1776,28 @@ it.each(
 it.each(['SPTAssetAllocationSend', 'SPTAssetAllocationBurnToNEVM'])(
   'renders the exact large asset quantity in hydrated %s details',
   async (tokenType) => {
+    const assetGuid = '900004';
     const value = '9007199254740993';
-    const transaction = tokenTransaction('123456', 'BIG');
+    setAccountAssets([{ assetGuid, chainId: 57, symbol: 'BIG' }]);
+    const transaction = tokenTransaction(assetGuid, 'UNTRUSTED');
     transaction.tokenType = tokenType;
     transaction.accountAssetTransfers = [
-      { assetGuid: '123456', symbol: 'BIG', decimals: 0, value },
+      { assetGuid, symbol: 'UNTRUSTED', decimals: 0, value },
     ];
     transaction.tokenTransfers = [
-      { token: '123456', symbol: 'BIG', decimals: 0 },
+      { token: assetGuid, symbol: 'UNTRUSTED', decimals: 0 },
     ];
     if (tokenType === 'SPTAssetAllocationBurnToNEVM')
       transaction.vout = [
         {
           addresses: ['OP_RETURN'],
           value: '0',
-          assetInfo: { assetGuid: '123456', value },
+          assetInfo: { assetGuid, value },
         },
       ] as any;
     await mountHydratedDetails(transaction);
     expect(screen.getByText(`${value} BIG`)).toBeTruthy();
     expect(screen.queryByText('9007199254740992 BIG')).toBeNull();
+    expect(screen.queryByText(`${value} UNTRUSTED`)).toBeNull();
   }
 );

@@ -1,13 +1,13 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
-const { EventEmitter } = require('node:events');
+const { EventEmitter, once } = require('node:events');
 const { Buffer } = require('node:buffer');
 const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { spawnSync } = require('node:child_process');
+const { fork, spawnSync } = require('node:child_process');
 const { HTTP_CASES, httpBuild, httpLaunch, assertHttpReport, httpDiagnosticCase } = require('./http-contract.ts');
 const { createCommandRunner } = require('./command-runner.cjs');
 const { createHttpFixture, ROUTES, HELD_ROUTES, snapshotFixtureControl } = require('./http-server.cjs');
@@ -207,7 +207,7 @@ test('final snapshot is authoritative when traffic changes after a clean inspect
     await assert.rejects(companion.verify(readBoth(value), value.sessionId), /AUDIT_FAILED/);
     assert.equal(child.lastSnapshot.counts.target, 1);
     assert.equal(companion.records.length, 0); assert.throws(() => companion.assertComplete(1));
-    assert.equal((await companion.diagnostic()).server.counts.target, 1);
+    assert.equal((await companion.diagnostics()).http.server.counts.target, 1);
   } finally { await companion.close(); }
 });
 test('a valid final snapshot is the exact audit recorded for qualification', async () => {
@@ -334,12 +334,63 @@ test('real child partial diagnostics are bounded, source-bound and never pass ev
     const failed = { ...build, lockfileSha256: createHash('sha256').update(readFileSync(require.resolve('../package-lock.json'))).digest('hex'),
       kind: 'native-http-diagnostic', status: 'failed', diagnosticOnly: true, failedCase: 'abort-stream',
       token: launch.token, phase: 'create', scenario: 'import', platform: 'ios', sessionId: report().sessionId };
-    const diagnostic = await companion.diagnostic(() => JSON.stringify(failed));
+    const { http: diagnostic } = await companion.diagnostics(() => JSON.stringify(failed));
     assert.equal(diagnostic.failedCase, 'abort-stream'); assert.equal(diagnostic.status, 'failed'); assert.equal(diagnostic.diagnosticOnly, true);
     assert.equal(diagnostic.server.counts.exact, 1); assert.equal(diagnostic.server.counts.target, 0); assert.equal(diagnostic.server.closed.body, false);
     assert(Buffer.byteLength(JSON.stringify(diagnostic)) < 8192);
     assert.throws(() => companion.assertComplete(1)); assert.throws(() => assertHttpReport(failed, expected));
     assert.equal(httpDiagnosticCase({ ...failed, failedCase: 'untrusted arbitrary text' }, { ...expected, token: launch.token }), undefined);
+  } finally { await companion.close(); }
+});
+test('one owned inspection distinguishes unavailable counters from confirmed zero requests', async () => {
+  const child = childControl();
+  const send = child.send;
+  let inspectCalls = 0, failInspect = false;
+  child.send = (message, callback) => {
+    if (message.kind !== 'inspectAll') { send(message, callback); return; }
+    inspectCalls++;
+    callback();
+    const value = { get: { ...audit(), token: message.token, counts: Object.fromEntries(ROUTES.map((route) => [route, 0])) },
+      post: { ...postAudit(message.token), counts: Object.fromEntries(POST_ROUTES.map((route) => [route, { started: 0, completed: 0 }])),
+        closed: { declared: false, stream: false, abort: false }, lostResponses: 0, requests: [] } };
+    queueMicrotask(() => child.emit('message', { id: message.id, ok: !failInspect, value }));
+  };
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); }, spawn: () => child });
+  try {
+    await companion.begin('create', 'import');
+    const zero = await companion.diagnostics();
+    assert.equal(inspectCalls, 1);
+    assert.equal(zero.http.serverStatus, 'available'); assert.equal(zero.http.server.counts.exact, 0);
+    assert.equal(zero.post.serverStatus, 'available'); assert.equal(zero.post.server.counts[POST_ROUTES[0]].started, 0);
+    failInspect = true;
+    const missing = await companion.diagnostics(() => { throw Error('private read failure'); });
+    assert.equal(inspectCalls, 2);
+    for (const diagnostic of [missing.http, missing.post]) {
+      assert.equal(diagnostic.diagnosticOnly, true);
+      assert.equal(diagnostic.serverStatus, 'unavailable');
+      assert.equal(diagnostic.server, null);
+      assert(!JSON.stringify(diagnostic).includes('private read failure'));
+    }
+    assert.throws(() => companion.assertComplete(1));
+  } finally { await companion.close(); }
+});
+test('diagnostics recognize a real fixture child that exited before inspection', async () => {
+  let child;
+  const companion = await startHttpCompanion({ platform: 'ios', sourceRevision: build.sourceRevision,
+    run() { throw Error('No device commands'); }, spawn: (...args) => (child = fork(...args)) });
+  try {
+    await companion.begin('create', 'import');
+    const exited = once(child, 'exit');
+    assert.equal(child.kill('SIGTERM'), true);
+    await exited;
+    const { http, post } = await companion.diagnostics();
+    for (const diagnostic of [http, post]) {
+      assert.equal(diagnostic.serverStatus, 'exited');
+      assert.equal(diagnostic.server, null);
+      assert.equal(diagnostic.diagnosticOnly, true);
+    }
+    assert.throws(() => companion.assertComplete(1));
   } finally { await companion.close(); }
 });
 test('late or wrong-token server evidence cannot satisfy a new native phase', () => {
@@ -363,11 +414,11 @@ test('HTTP build gate is source-bound, fixture-only and leaves production config
     fs.writeFileSync(path.join(root, 'package-lock.json'), '{}');
     fs.writeFileSync(path.join(root, 'app.json'), originalApp);
     fs.writeFileSync(path.join(root, 'index.ts'), 'public production entry');
-    const env = { ...process.env, CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: build.sourceRevision };
-    delete env.PALI_PHYSICAL_QUALIFICATION;
+    const env = { CI: 'true', PALI_NATIVE_QUALIFICATION: '1', PALI_NATIVE_HTTP_QUALIFICATION: '1', GITHUB_SHA: build.sourceRevision };
     const run = (extra) => spawnSync(process.execPath, [path.join(root, 'scripts/configure-native-qualification.cjs')], { env: { ...env, ...extra } });
     assert.notEqual(run({ GITHUB_SHA: '' }).status, 0);
     assert.notEqual(run({ PALI_PHYSICAL_QUALIFICATION: 'import' }).status, 0);
+    assert.notEqual(run({ PALI_NATIVE_PUBLIC_POOL_QUALIFICATION: '1' }).status, 0);
     assert.equal(run({}).status, 0);
     const configured = JSON.parse(readFileSync(path.join(root, 'app.json'))).expo;
     assert.equal(configured.android.package, 'com.paliwallet.qualification');

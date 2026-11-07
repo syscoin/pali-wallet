@@ -34,6 +34,9 @@ function fixture() {
         async load() {
           return null;
         },
+        async assertSpendingNonce(value: number) {
+          assert.equal(value, 0);
+        },
         async saveSigned() {
           writes++;
           throw Error('unexpected write');

@@ -100,6 +100,7 @@ afterAll(() => {
   globalThis.MessageChannel = originalMessageChannel;
 });
 beforeEach(() => {
+  jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
   jest.clearAllMocks();
   jest.spyOn(console, 'log').mockImplementation();
   jest.spyOn(console, 'error').mockImplementation();
@@ -112,7 +113,28 @@ beforeEach(() => {
       return undefined;
     });
 });
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.clearAllTimers();
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+});
+
+const expectDelayedClose = async () => {
+  await waitFor(() =>
+    expect(mockAlert.success).toHaveBeenCalledWith(
+      'settings.rpcSuccessfullyAdded'
+    )
+  );
+  expect(window.close).not.toHaveBeenCalled();
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(1999);
+  });
+  expect(window.close).not.toHaveBeenCalled();
+  await act(async () => {
+    await jest.advanceTimersByTimeAsync(1);
+  });
+  expect(window.close).toHaveBeenCalledTimes(1);
+};
 
 it('freezes the reviewed fields during submission and preserves their submitted values', async () => {
   const pending = deferred<any>();
@@ -121,7 +143,7 @@ it('freezes the reviewed fields during submission and preserves their submitted 
     path[1] === 'getRpc' ? pending.promise : normal(path, args)
   );
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   await user.click(screen.getByRole('button', { name: 'buttons.addNetwork' }));
   await waitFor(() => expect(calls('getRpc')).toHaveLength(1));
   const input = document.querySelector('#rpc_url')!;
@@ -131,9 +153,7 @@ it('freezes the reviewed fields during submission and preserves their submitted 
   expect(calls('addCustomRpc')[0][1][0].url).toBe(rpcA);
   expect(input).toHaveValue(calls('addCustomRpc')[0][1][0].url);
   expect(input).toBeDisabled();
-  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
-    timeout: 3000,
-  });
+  await expectDelayedClose();
 });
 
 const urlInput = (field: 'url' | 'explorer' | 'apiUrl') =>
@@ -148,7 +168,9 @@ describe.each(['url', 'explorer', 'apiUrl'] as const)(
       'rejects %s before adding or switching',
       async (value) => {
         mount();
-        const user = userEvent.setup();
+        const user = userEvent.setup({
+          advanceTimers: jest.advanceTimersByTime,
+        });
         const input = urlInput(field);
         await user.clear(input);
         await user.type(input, value);
@@ -171,7 +193,7 @@ it.each(['', '   ', '\u00a0\u00a0'])(
   'accepts blank optional URL fields %j without an API probe',
   async (value) => {
     mount();
-    const user = userEvent.setup();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     for (const field of ['explorer', 'apiUrl'] as const) {
       await user.clear(urlInput(field));
       if (value) await user.type(urlInput(field), value);
@@ -190,15 +212,13 @@ it.each(['', '   ', '\u00a0\u00a0'])(
     expect(urlInput('explorer')).toHaveValue(value);
     expect(urlInput('apiUrl')).toHaveValue(value);
     expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
-    await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
-      timeout: 3000,
-    });
+    await expectDelayedClose();
   }
 );
 
 it('keeps the RPC URL required while optional URL fields can be empty', async () => {
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   await user.clear(urlInput('url'));
   await user.click(addButton());
   expect(await screen.findByText('settings.rpcUrlRequired')).toBeVisible();
@@ -211,7 +231,7 @@ it('keeps the RPC URL required while optional URL fields can be empty', async ()
 
 it('accepts padded valid URLs and preserves the existing submission callbacks', async () => {
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   const values = {
     url: '  https://changed-rpc.invalid/path  ',
     explorer: '  https://changed-explorer.invalid/path  ',
@@ -243,14 +263,12 @@ it('accepts padded valid URLs and preserves the existing submission callbacks', 
   for (const field of ['url', 'explorer', 'apiUrl'] as const)
     expect(urlInput(field)).toHaveValue(values[field]);
   expect(screen.queryByText('settings.validUrlRequired')).toBeNull();
-  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
-    timeout: 3000,
-  });
+  await expectDelayedClose();
 });
 
 it('keeps RPC and API blur probes without adding or switching a network', async () => {
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   const rpc = '  https://blur-rpc.invalid/path  ';
   const api = '  https://blur-api.invalid/path  ';
   await user.clear(urlInput('url'));
@@ -288,7 +306,7 @@ it('unlocks fields after a rejected submission and saves the corrected retry', a
     return normal(path, args);
   });
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   await user.click(screen.getByRole('button', { name: 'buttons.addNetwork' }));
   expect(
     await screen.findByText('Current endpoint failed')
@@ -299,14 +317,12 @@ it('unlocks fields after a rejected submission and saves the corrected retry', a
   await user.click(screen.getByRole('button', { name: 'buttons.addNetwork' }));
   await waitFor(() => expect(calls('addCustomRpc')).toHaveLength(1));
   expect(calls('addCustomRpc')[0][1][0].url).toBe(rpcA + '/changed');
-  await waitFor(() => expect(window.close).toHaveBeenCalledTimes(1), {
-    timeout: 3000,
-  });
+  await expectDelayedClose();
 });
 
 it('keeps a deliberately entered same-RPC explorer available', async () => {
   mount();
-  const user = userEvent.setup();
+  const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
   await user.clear(urlInput('explorer'));
   await user.type(urlInput('explorer'), rpcA);
   await user.click(addButton());

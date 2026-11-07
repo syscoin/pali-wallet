@@ -61,7 +61,7 @@ async function fixture() {
       return result;
     }
   }
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedKeyring }),
     async openStorage() {

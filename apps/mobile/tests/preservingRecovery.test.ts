@@ -103,7 +103,7 @@ async function fixture(
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
@@ -1029,7 +1029,7 @@ test('failure to capture the original pair still closes its lease and returns no
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
     // A failed retirement remains failed; a fresh owner must qualify a new lease.
-    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
     try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }
@@ -1241,6 +1241,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
   let account!: NativeAccountRecord['groups'][number]['accounts']['HDAccount'][number];
   let posted: { raw: string; txid: string } | undefined;
   let confirmed = false;
+  const observationPaths: string[] = [];
   const fetcher: typeof globalThis.fetch = async (input, init) => {
     const url = String(input);
     assert(url.startsWith(network.endpoint));
@@ -1250,6 +1251,12 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
       Object.defineProperty(response, 'url', { value: url });
       return response;
     };
+    if (path === '/api/v2/' || path === '/api/v2/block-index/0') {
+      assert.equal(init?.method, 'GET');
+      observationPaths.push(path);
+      return reply(path === '/api/v2/'
+        ? utxoMetadata(network.id) : { blockHash: network.genesisHash });
+    }
     if (path === '/api/v2/estimatefee/1') return reply({ result: '0.00001024' });
     if (path === `/api/v2/xpub/${account.xpub}?tokens=used&details=tokens`) return reply({ tokens: [] });
     if (path === `/api/v2/utxo/${account.xpub}`) return reply([{
@@ -1263,9 +1270,12 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
       posted = { raw, txid: bitcoin.Transaction.fromHex(raw).getId() };
       return reply({ result: posted.txid });
     }
-    if (posted && path === `/api/v2/tx/${posted.txid}`)
+    if (posted && path === `/api/v2/tx/${posted.txid}`) {
+      assert.equal(init?.method, 'GET');
+      observationPaths.push(path);
       return reply({ txid: posted.txid, hex: posted.raw, confirmations: confirmed ? 1 : 0,
         ...(confirmed && { blockHash: 'a'.repeat(64) }) });
+    }
     throw Error(`Unexpected fixture route ${path}`);
   };
   const f = await fixture(undefined, true, undefined, undefined, fetcher);
@@ -1284,7 +1294,9 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     let send = await f.runtime.openUtxoSend!(current);
     const { txid } = await send.confirm(await send.prepare({ amount: '0.0004', recipient }));
     assert.equal(txid, posted?.txid);
+    const observation = ['/api/v2/', '/api/v2/block-index/0', `/api/v2/tx/${txid}`];
     assert.equal(await send.check(txid), 'seen');
+    assert.deepEqual(observationPaths, observation);
 
     await manage({ kind: 'select', id: primary });
     await assert.rejects(manage(remove), { code: 'PENDING_TRANSFER' });
@@ -1297,6 +1309,7 @@ test('nonprimary UTXO HD accounts keep unresolved saved transfers reachable unti
     assert.deepEqual((await send.list()).map((entry) => entry.txid), [txid]);
     confirmed = true;
     assert.equal(await send.check(txid), 'confirmed');
+    assert.deepEqual(observationPaths, [...observation, ...observation]);
     await manage({ kind: 'select', id: primary });
     await manage(remove);
     assert.equal(f.owner.getCatalogue()!.accounts.some(({ id }) => id === sending), false);
@@ -1391,14 +1404,14 @@ test('UTXO custody balance sends the selected account key only after verified Bl
       guard();
       calls.push(url);
       assert.equal(init.method, 'GET');
-      const network = getUtxoNetwork(id);
+      const network = id;
       if (url === `${network.endpoint}/api/v2/`) {
         if (holdStatus) {
           activeSignal = init.signal ?? undefined;
           hold.enter();
           await hold.gate;
         }
-        return Response.json(utxoMetadata(id));
+        return Response.json(utxoMetadata(id.id));
       }
       if (url === `${network.endpoint}/api/v2/block-index/0`)
         return Response.json({ blockHash: wrongGenesis ? 'a'.repeat(64) : network.genesisHash });
@@ -1547,7 +1560,7 @@ test('UTXO custody reopens and recovers using current defaults when saved endpoi
     createUtxoBalanceReader({ fetch: async (url) => {
       guard();
       requests.push(url);
-      if (url === `${bitcoin.endpoint}/api/v2/`) return Response.json(utxoMetadata(id));
+      if (url === `${bitcoin.endpoint}/api/v2/`) return Response.json(utxoMetadata(id.id));
       if (url === `${bitcoin.endpoint}/api/v2/block-index/0`)
         return Response.json({ blockHash: bitcoin.genesisHash });
       assert.equal(url, `${bitcoin.endpoint}/api/v2/xpub/${xpub}?details=tokenBalances&tokens=nonzero`);

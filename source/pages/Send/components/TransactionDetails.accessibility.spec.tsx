@@ -261,6 +261,9 @@ describe.each(locales)(
       const nonce = screen.getByRole('spinbutton');
       expect(nonce).toHaveValue(0);
       expect(nonce).toHaveAttribute('placeholder', '0');
+      expect(nonce).toHaveStyle({
+        scrollMarginBottom: 'var(--pali-toast-footer-clearance)',
+      });
       // This is the expected semantic contract, not a claim about Chromium's
       // current placeholder fallback. Root separately verifies actual browser AX.
       expect(nonce).toHaveAccessibleName(resources[locale].send.customNonce);

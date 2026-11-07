@@ -2271,19 +2271,24 @@ it('clear completed leaves unknown or no-hash journals untouched', async () => {
   expect(f.prepareCompletionProof).not.toHaveBeenCalled();
 });
 
+function holdCompletionProof(f: ReturnType<typeof fixture>) {
+  const entered = deferred();
+  const release = deferred();
+  f.prepareCompletionProof.mockImplementationOnce(async () => {
+    entered.resolve();
+    await release.promise;
+    return { revalidate: async () => undefined };
+  });
+  return { entered: entered.promise, release: release.resolve };
+}
+
 it('clear completed fails closed when the session changes while proof is pending', async () => {
   const { f, completed } = await completedClearFixture();
-  let release!: (value: { revalidate: () => Promise<void> }) => void;
-  const pending = new Promise<{ revalidate: () => Promise<void> }>(
-    (resolve) => {
-      release = resolve;
-    }
-  );
-  f.prepareCompletionProof.mockReturnValueOnce(pending);
+  const proof = holdCompletionProof(f);
   const action = f.controller.clearCompletedNotes([completed.id]);
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await proof.entered;
   f.lock();
-  release({ revalidate: async () => undefined });
+  proof.release();
   await expect(action).rejects.toThrow('privacy_vault_session_changed');
   f.unlock();
   expect(
@@ -2295,21 +2300,15 @@ it('clear completed fails closed when the session changes while proof is pending
 
 it('clear completed refuses a journal changed while proof is pending', async () => {
   const { f, completed, session, attempt } = await completedClearFixture();
-  let release!: (value: { revalidate: () => Promise<void> }) => void;
-  const pending = new Promise<{ revalidate: () => Promise<void> }>(
-    (resolve) => {
-      release = resolve;
-    }
-  );
-  f.prepareCompletionProof.mockReturnValueOnce(pending);
+  const proof = holdCompletionProof(f);
   const action = f.controller.clearCompletedNotes([completed.id]);
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await proof.entered;
   await f.controller.recordWithdrawalSubmission(
     attempt,
     { jobId: UUID },
     session
   );
-  release({ revalidate: async () => undefined });
+  proof.release();
   expect(await action).toEqual({ removed: [], unresolved: [completed.id] });
   expect(
     (await f.controller.getNotes()).notes.some(

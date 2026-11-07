@@ -20,6 +20,7 @@ import {
   navigateBack,
   navigateWithContext,
 } from 'utils/navigationState';
+import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 const EditAccountView = () => {
   const location = useLocation();
@@ -38,6 +39,14 @@ const EditAccountView = () => {
   const account = useSelector(
     (reduxState: RootState) =>
       reduxState.vault.accounts[accountType]?.[routeState.id]
+  );
+  const chainId = useSelector(
+    (reduxState: RootState) => reduxState.vault.activeNetwork?.chainId
+  );
+  const canPublishAddress = canPublishAccountAddress(
+    account,
+    accountType,
+    chainId
   );
   const state = { ...account, accountType };
   const { t } = useTranslation();
@@ -171,7 +180,7 @@ const EditAccountView = () => {
   };
 
   const handleCopyToClipboard = () => {
-    void copyText(state.address);
+    if (canPublishAddress) void copyText(state.address);
   };
 
   const openSmartAccountPolicy = () => {
@@ -197,18 +206,20 @@ const EditAccountView = () => {
         autoComplete="off"
         className="flex flex-col gap-3 items-center justify-center text-center w-full"
       >
-        <QRCodeSVG
-          value={state.address}
-          bgColor="#fff"
-          fgColor="#000"
-          style={{
-            height: '186px',
-            width: '186px',
-            padding: '6px',
-            backgroundColor: '#fff',
-            borderRadius: '10px',
-          }}
-        />
+        {canPublishAddress && (
+          <QRCodeSVG
+            value={state.address}
+            bgColor="#fff"
+            fgColor="#000"
+            style={{
+              height: '186px',
+              width: '186px',
+              padding: '6px',
+              backgroundColor: '#fff',
+              borderRadius: '10px',
+            }}
+          />
+        )}
         <div className="flex w-full items-center mb-3 mt-2 justify-between">
           <div className="flex min-w-0 items-center gap-2">
             <div
@@ -216,13 +227,19 @@ const EditAccountView = () => {
             >
               {getWalletType}
             </div>
-            <p className="truncate text-xs" title={state.address}>
-              ({ellipsis(state.address, 12, 14)})
+            <p
+              className="truncate text-xs"
+              title={canPublishAddress ? state.address : undefined}
+            >
+              {canPublishAddress
+                ? `(${ellipsis(state.address, 12, 14)})`
+                : t('receive.addressUnavailable')}
             </p>
           </div>
           <button
             type="button"
             aria-label={t('buttons.copy')}
+            disabled={!canPublishAddress}
             onClick={handleCopyToClipboard}
             className="flex min-h-[44px] shrink-0 items-center gap-1 rounded px-2 text-sm text-white transition-colors hover:bg-alpha-whiteAlpha100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue200"
           >

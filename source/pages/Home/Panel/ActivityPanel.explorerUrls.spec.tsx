@@ -11,9 +11,10 @@ import {
 import React from 'react';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { TxsPanel } from '../TxsPanel';
-import vaultReducer from 'state/vault';
+import vaultReducer, { setAccountPropertyByIdAndType } from 'state/vault';
 import globalReducer, { setNetwork } from 'state/vaultGlobal';
 import { INetworkType, KeyringAccountType } from 'types/network';
 
@@ -58,13 +59,17 @@ type AccountKind =
   | 'imported-xpub'
   | 'imported-address'
   | 'utxo-address';
-const openFromActivity = (
+type SmartIdentity = ReturnType<typeof smartAccountAddressFixture>['account'];
+const renderActivity = (
   kind: AccountKind,
   explorer?: string,
-  explorerExplicitlyAbsent = false
+  explorerExplicitlyAbsent = false,
+  smartIdentity?: SmartIdentity
 ) => {
   const isBitcoinBased = kind !== 'evm';
-  const type = kind.startsWith('imported')
+  const type = smartIdentity
+    ? KeyringAccountType.SmartAccount
+    : kind.startsWith('imported')
     ? KeyringAccountType.Imported
     : KeyringAccountType.HDAccount;
   const address = isBitcoinBased ? UTXO_ADDRESS : EVM_ADDRESS;
@@ -94,6 +99,7 @@ const openFromActivity = (
               address,
               xpub,
               isImported: type === KeyringAccountType.Imported,
+              ...smartIdentity,
             },
           },
         },
@@ -140,8 +146,16 @@ const openFromActivity = (
       isBitcoinBased ? 'Public UTXO history' : 'Public EVM history'
     )
   ).toBeVisible();
+  return open;
+};
+const openFromActivity = (
+  kind: AccountKind,
+  explorer?: string,
+  explorerExplicitlyAbsent = false
+) => {
+  const open = renderActivity(kind, explorer, explorerExplicitlyAbsent);
   const link = screen.queryByRole('button', { name: 'home.seeAllTxs' });
-  if (explorerExplicitlyAbsent && !isBitcoinBased) {
+  if (explorerExplicitlyAbsent && kind === 'evm') {
     expect(link).toBeNull();
     expect(open).not.toHaveBeenCalled();
   } else {
@@ -304,4 +318,101 @@ it('updates Activity for a saved explorer and API edit without changing the live
     '_blank'
   );
   expect(mockStore.getState().vault.activeNetwork).toBe(active);
+});
+
+it.each([false, true])(
+  'uses the verified smart account address for the Activity explorer, deployed=%s',
+  (isDeployed) => {
+    const { account } = smartAccountAddressFixture();
+    const open = renderActivity(
+      'evm',
+      'https://explorer.synthetic.invalid/',
+      false,
+      {
+        ...account,
+        smartAccount: { ...account.smartAccount, isDeployed },
+      }
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'home.seeAllTxs' }));
+    expect(open).toHaveBeenCalledWith(
+      `https://explorer.synthetic.invalid/address/${account.address}`,
+      '_blank'
+    );
+  }
+);
+
+it('hides the explorer for a substituted smart account address and xpub', () => {
+  const { account } = smartAccountAddressFixture();
+  const open = renderActivity(
+    'evm',
+    'https://explorer.synthetic.invalid/',
+    false,
+    {
+      ...account,
+      address: EVM_ADDRESS,
+      xpub: EVM_ADDRESS,
+      smartAccount: {
+        ...account.smartAccount,
+        deploymentAuth: undefined,
+        isDeployed: true,
+      },
+    }
+  );
+  expect(screen.queryByRole('button', { name: 'home.seeAllTxs' })).toBeNull();
+  expect(open).not.toHaveBeenCalled();
+});
+
+it('rechecks live smart metadata even when the rendered address and network did not change', () => {
+  const { account } = smartAccountAddressFixture();
+  const open = renderActivity(
+    'evm',
+    'https://explorer.synthetic.invalid/',
+    false,
+    account
+  );
+  const link = screen.getByRole('button', { name: 'home.seeAllTxs' });
+  const before = mockStore.getState();
+  const metadata = {
+    ...account.smartAccount,
+    descriptor: {
+      ...account.smartAccount.descriptor!,
+      anchorHash: `0x${'00'.repeat(32)}`,
+    },
+  };
+  const poisoned = {
+    ...before,
+    vault: {
+      ...before.vault,
+      accounts: {
+        ...before.vault.accounts,
+        SmartAccount: {
+          0: {
+            ...before.vault.accounts.SmartAccount[0],
+            smartAccount: metadata,
+          },
+        },
+      },
+    },
+  };
+  // Keep React's previous DOM mounted while the authoritative store has moved on.
+  const getState = jest.spyOn(mockStore, 'getState').mockReturnValue(poisoned);
+  fireEvent.click(link);
+  expect(open).not.toHaveBeenCalled();
+  getState.mockRestore();
+
+  act(() =>
+    mockStore.dispatch(
+      setAccountPropertyByIdAndType({
+        id: 0,
+        type: KeyringAccountType.SmartAccount,
+        property: 'smartAccount',
+        value: metadata,
+      })
+    )
+  );
+  expect(screen.queryByRole('button', { name: 'home.seeAllTxs' })).toBeNull();
+  expect(mockStore.getState().vault.accounts.SmartAccount[0].address).toBe(
+    account.address
+  );
+  expect(open).not.toHaveBeenCalled();
 });

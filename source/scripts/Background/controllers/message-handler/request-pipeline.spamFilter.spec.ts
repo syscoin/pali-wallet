@@ -11,7 +11,11 @@ jest.mock('scripts/Background', () => ({ getController: jest.fn() }));
 jest.mock('@sidhujag/sysweb3-keyring', () => ({ PsbtUtils: {} }));
 jest.mock('./method-handlers', () => ({ clearProviderCache: jest.fn() }));
 jest.mock('./popup-promise', () => ({ popupPromise: jest.fn() }));
+jest.mock('../externalWalletCreation', () => ({
+  waitForExternalWalletClosure: jest.fn(),
+}));
 
+import { waitForExternalWalletClosure } from '../externalWalletCreation';
 import reducer, { blockDapp } from 'state/spamFilter';
 import { isDappBlocked } from 'state/spamFilter/selectors';
 
@@ -67,6 +71,7 @@ describe('spam counting at the actual approval boundary', () => {
       return action;
     });
     jest.mocked(popupPromise).mockResolvedValue({ action: 'allow' });
+    jest.mocked(waitForExternalWalletClosure).mockResolvedValue(undefined);
     opening = jest.fn().mockRejectedValue({
       code: 4001,
       message: 'User closed popup',
@@ -128,6 +133,30 @@ describe('spam counting at the actual approval boundary', () => {
         data: { requestCount: 3 },
       })
     );
+    expect(opening).toHaveBeenCalledTimes(3);
+  });
+
+  it('holds the spam warning slot until the allowed warning has closed', async () => {
+    await rejectActualApproval();
+    await rejectActualApproval();
+    const abort = new AbortController();
+    let close!: () => void;
+    jest
+      .mocked(waitForExternalWalletClosure)
+      .mockResolvedValueOnce(undefined)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          close = resolve;
+        })
+      );
+    const rejected = expect(
+      pipeline.execute(createContext('personal_sign', abort.signal))
+    ).rejects.toMatchObject({ code: 4001 });
+    await jest.advanceTimersByTimeAsync(100);
+    expect(waitForExternalWalletClosure).toHaveBeenCalledWith(abort.signal);
+    expect(opening).toHaveBeenCalledTimes(2);
+    close();
+    await rejected;
     expect(opening).toHaveBeenCalledTimes(3);
   });
 
@@ -220,9 +249,14 @@ describe('spam counting at the actual approval boundary', () => {
     expect(requestCoordinator.isActive()).toBe(true);
     expect(opening).toHaveBeenCalledTimes(2);
     const blockedAt = Date.now();
+    const waitsBeforeBlock = jest.mocked(waitForExternalWalletClosure).mock
+      .calls.length;
     answerWarning({ action: 'block' });
     await assertion;
     expect(opening).toHaveBeenCalledTimes(2);
+    expect(waitForExternalWalletClosure).toHaveBeenCalledTimes(
+      waitsBeforeBlock
+    );
     expect(state.dapps[host].blockedUntil).toBe(blockedAt + 60_000);
     await expect(pipeline.execute(createContext())).rejects.toMatchObject({
       code: 4100,

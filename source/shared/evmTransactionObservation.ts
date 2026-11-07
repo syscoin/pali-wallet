@@ -12,6 +12,7 @@ export type EvmTransactionObservation = Readonly<
       block: Readonly<{ hash: string; number: string }>;
       outcome: 'confirmed' | 'reverted';
       status: 'mined';
+      transactionIndex?: number;
     }
   | { latestNonce: string; status: 'missing' }
 >;
@@ -139,6 +140,26 @@ export async function observeEvmTransaction(
     quantity(block.baseFeePerGas);
   if (quantity(block.number) !== number || hash(block.hash) !== blockHash)
     throw new EvmObservationError('CONTEXT_CHANGED');
+  // An ordinary receipt remains displayable when the provider omits its
+  // transaction index or the block's transaction list. Changing other saved
+  // transactions requires their competing hash to be located in that block.
+  const rawIndex = receipt.transactionIndex;
+  let transactionIndex: number | undefined;
+  if (
+    typeof rawIndex === 'string' &&
+    /^0x(?:0|[1-9a-f][0-9a-f]{0,13})$/i.test(rawIndex) &&
+    Array.isArray(block.transactions)
+  ) {
+    const index = Number(BigInt(rawIndex));
+    if (Number.isSafeInteger(index) && index < block.transactions.length) {
+      const transactionHash = block.transactions[index];
+      if (
+        typeof transactionHash === 'string' &&
+        transactionHash.toLowerCase() === wantedHash
+      )
+        transactionIndex = index;
+    }
+  }
   await checkChain();
   // Reading a receipt does not prove another hash with this nonce succeeded.
   void nonce;
@@ -146,5 +167,6 @@ export async function observeEvmTransaction(
     status: 'mined',
     outcome: status === BigInt(1) ? 'confirmed' : 'reverted',
     block: Object.freeze({ number: number.toString(), hash: blockHash }),
+    ...(transactionIndex === undefined ? {} : { transactionIndex }),
   });
 }

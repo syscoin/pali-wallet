@@ -8,6 +8,7 @@ import React from 'react';
 import { I18nextProvider, initReactI18next } from 'react-i18next';
 import { Provider } from 'react-redux';
 import { MemoryRouter } from 'react-router-dom';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import de from 'assets/locales/de.json';
 import en from 'assets/locales/en.json';
@@ -198,11 +199,10 @@ beforeEach(() => {
         },
         SmartAccount: {
           0: {
+            ...smartAccountAddressFixture().account,
             id: 0,
-            address: address('7'),
             label: 'Smart account',
             isSmartAccount: true,
-            smartAccount: { chainId: 1 },
           },
         },
       },

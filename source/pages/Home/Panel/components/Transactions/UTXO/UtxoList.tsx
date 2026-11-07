@@ -2,6 +2,7 @@ import React, { useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSelector } from 'react-redux';
 
+import { parseSyscoinAssetGuid } from '../../../../../../shared/syscoinAssetIds';
 import { getHomeBrowsingScope } from '../../../../useHomeBrowsingState';
 import { useHistoryBrowsingState } from '../useHistoryBrowsingState';
 import { useTransactionConfirmationToast } from '../useTransactionConfirmationToast';
@@ -32,12 +33,14 @@ import { getTokenLogo } from 'utils/index';
 import { ellipsis } from 'utils/index';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import {
+  getSyscoinActivityAssetLabel,
   getSyscoinTransactionTypeStyle,
   getSyscoinActivityOperationAmount,
   formatSyscoinTokenAmount,
   isSyscoinTokenOperation,
   getSyscoinAccountChange,
   formatSyscoinConfirmationETA,
+  hasNonReplaceableUtxoSequences,
   normalizeSyscoinTransactionType,
 } from 'utils/syscoinTransactionUtils';
 import {
@@ -104,20 +107,9 @@ const UtxoTransactionsListComponentBase = ({
 
   const isConfirmed = isTransactionInBlock(tx);
 
-  // Compute Z-DAG confirmed (SPT + RBF disabled + not canceled + not mined yet)
-  const MAX_SEQ_MINUS_ONE = 0xfffffffe;
-  const hasSequenceData =
-    Array.isArray(tx?.vin) &&
-    tx.vin.some((v: any) => typeof v.sequence === 'number');
-  const rbfEnabled = Array.isArray(tx?.vin)
-    ? tx.vin.some(
-        (v: any) =>
-          typeof v.sequence === 'number' && v.sequence < MAX_SEQ_MINUS_ONE
-      )
-    : false;
   const isSptTx = Boolean(displayTransaction.tokenType);
   const isZdagConfirmed =
-    isSptTx && hasSequenceData && !rbfEnabled && !isConfirmed;
+    isSptTx && hasNonReplaceableUtxoSequences(tx?.vin) && !isConfirmed;
   const confirmationETA = !isConfirmed
     ? formatSyscoinConfirmationETA(tx)
     : null;
@@ -127,28 +119,34 @@ const UtxoTransactionsListComponentBase = ({
 
   // Resolve the SPT asset guid involved in this tx (tokenTransfers first,
   // then vout/vin assetInfo) so we can show the imported asset's icon
+  const hasIntent = intent !== null;
+  const intentGuid = parseSyscoinAssetGuid(intent?.assetGuid);
   const txAssetGuid = useMemo(() => {
-    if (intent?.assetGuid) return String(intent.assetGuid);
+    if (hasIntent) return intentGuid ?? null;
 
     const transfers = Array.isArray((tx as any)?.tokenTransfers)
       ? (tx as any).tokenTransfers
       : [];
-    const fromTransfer = transfers[0]?.token || transfers[0]?.assetGuid;
-    if (fromTransfer) return String(fromTransfer);
+    const fromTransfer = parseSyscoinAssetGuid(
+      transfers[0]?.token || transfers[0]?.assetGuid
+    );
+    if (fromTransfer) return fromTransfer;
     const accountTransfers = Array.isArray((tx as any)?.accountAssetTransfers)
       ? (tx as any).accountAssetTransfers
       : [];
-    const fromAccountTransfer =
-      accountTransfers[0]?.token || accountTransfers[0]?.assetGuid;
-    if (fromAccountTransfer) return String(fromAccountTransfer);
+    const fromAccountTransfer = parseSyscoinAssetGuid(
+      accountTransfers[0]?.token || accountTransfers[0]?.assetGuid
+    );
+    if (fromAccountTransfer) return fromAccountTransfer;
     for (const list of [tx?.vout, tx?.vin]) {
       if (!Array.isArray(list)) continue;
       for (const item of list as any[]) {
-        if (item?.assetInfo?.assetGuid) return String(item.assetInfo.assetGuid);
+        const guid = parseSyscoinAssetGuid(item?.assetInfo?.assetGuid);
+        if (guid) return guid;
       }
     }
     return null;
-  }, [intent?.assetGuid, tx]);
+  }, [hasIntent, intentGuid, tx]);
 
   const sptAssetInfo = useMemo(() => {
     if (!txAssetGuid) return null;
@@ -156,7 +154,7 @@ const UtxoTransactionsListComponentBase = ({
     return (
       list.find(
         (asset: any) =>
-          String(asset?.assetGuid) === txAssetGuid &&
+          parseSyscoinAssetGuid(asset?.assetGuid) === txAssetGuid &&
           asset.chainId === activeNetwork.chainId
       ) || null
     );
@@ -167,10 +165,10 @@ const UtxoTransactionsListComponentBase = ({
   let sysAmountDisplay: string | null = null;
   if (intent) {
     const decimals = intent.decimals ?? (sptAssetInfo as any)?.decimals ?? 8;
-    const symbol =
-      intent.symbol ??
-      (sptAssetInfo as any)?.symbol ??
-      `SPT (${intent.assetGuid || '?'})`;
+    const symbol = getSyscoinActivityAssetLabel(
+      intentGuid,
+      sptAssetInfo?.symbol
+    );
     const amountText =
       formatSyscoinTokenAmount(intent.amount, decimals) ??
       t('settings.unavailable');

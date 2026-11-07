@@ -33,7 +33,16 @@ jest.mock('react-i18next', () => ({
   }),
 }));
 jest.mock('hooks/useController', () => ({
-  useController: () => ({ controllerEmitter: mockEmitter }),
+  useController: () => ({
+    controllerEmitter: async (
+      method: unknown,
+      params: [string, string, unknown]
+    ) => ({
+      txid: params[0].toLowerCase(),
+      transaction: await mockEmitter(method, params),
+      compact: null,
+    }),
+  }),
 }));
 jest.mock('hooks/index', () => ({
   useTransactionsListConfig: jest.requireActual(
@@ -157,7 +166,7 @@ it('keeps the keyboard-focused hash copy control when the ordinary full transact
   await waitFor(() =>
     expect(mockEmitter).toHaveBeenCalledWith(
       ['wallet', 'getSysTransactionFromBlockbook'],
-      [mockHash, mockState.vault.activeNetwork.url]
+      [mockHash, mockState.vault.activeNetwork.url, expect.any(Object)]
     )
   );
   await tabToHashCopy(user);
