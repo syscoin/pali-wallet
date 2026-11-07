@@ -244,15 +244,15 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     assert.equal(transfers!.getSnapshot().review?.nonce, '1');
     assert.equal(sent.length, 1);
     await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
-      code: 'EXPIRED',
+      code: 'ASSET_STATE_WAIT',
     });
-    assert.match(transfers!.getSnapshot().message ?? '', /network is still updating/);
+    assert.match(transfers!.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
 
     values.pendingNonce = 1;
     await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
-      code: 'EXPIRED',
+      code: 'ASSET_STATE_WAIT',
     });
-    assert.match(transfers!.getSnapshot().message ?? '', /network is still updating/);
+    assert.match(transfers!.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     assert.equal(sent.length, 1);
     transfers!.cancel();
     values.pendingNonce = undefined;

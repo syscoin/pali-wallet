@@ -1217,6 +1217,7 @@
       "original": "Transaction d’origine",
       "previousNeeded": "La transaction {{nonce}} doit être incluse en premier.",
       "previous": "Vérifier la transaction précédente",
+      "sameNonceWarning": "Si une autre transaction utilise ce nonce, le renvoi peut la remplacer ou être rejeté. L’une ou l’autre transaction peut être confirmée. Vérifiez l’activité et tout autre portefeuille utilisant ce compte avant de continuer.",
       "previousMissing": "La transaction précédente n’est pas enregistrée sur cet appareil.",
       "expired": "La vérification a expiré. Vérifiez à nouveau la transaction.",
       "unavailable": "Impossible de vérifier cette transaction. Réessayez.",

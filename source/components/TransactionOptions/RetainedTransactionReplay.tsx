@@ -450,7 +450,9 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
                   fee: formatUnits(cancellation.maximumFee, 18),
                   currency,
                 })
-              : t('transactions.replay.description')
+              : `${t('transactions.replay.description')} ${t(
+                  'transactions.replay.sameNonceWarning'
+                )}`
           }
           buttonText={t(
             cancellation ? 'buttons.confirm' : 'transactions.replay.resend'

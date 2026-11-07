@@ -1217,6 +1217,7 @@
       "original": "原始交易",
       "previousNeeded": "必须先包含交易 {{nonce}}。",
       "previous": "检查前一笔交易",
+      "sameNonceWarning": "如果另一笔交易使用此 nonce，重新发送可能会替换该交易，也可能被拒绝。两笔交易中的任意一笔都可能得到确认。继续之前，请检查活动记录以及使用此账户的其他钱包。",
       "previousMissing": "此设备未保存前一笔交易。",
       "expired": "检查已过期。请重新检查交易。",
       "unavailable": "无法检查此交易。请重试。",

@@ -294,8 +294,16 @@ test('review shows exact amount, fee, contract creation and calldata before a si
   mockEmitter.mockImplementationOnce(() => Promise.resolve({ hash: HASH }));
   render(<RetainedTransactionReplay hash={HASH} />);
   await flush();
+  expect(
+    screen.queryByText(messages.transactions.replay.sameNonceWarning)
+  ).toBeNull();
   fireEvent.click(screen.getByText('Review resend'));
   await flush();
+  expect(
+    screen.getByText(
+      `${messages.transactions.replay.description} ${messages.transactions.replay.sameNonceWarning}`
+    )
+  ).toBeTruthy();
   expect(screen.getByText('1.000000000000000001 SYS')).toBeTruthy();
   expect(screen.getByText('0.00123456789 SYS')).toBeTruthy();
   expect(screen.getByText('Contract creation')).toBeTruthy();

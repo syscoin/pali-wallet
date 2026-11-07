@@ -531,6 +531,9 @@ export function NativeSend({
                 {review.replay.dataBytes > 0 && <Text style={s.hint}>{review.replay.selector ?? 'Contract data'} · {review.replay.dataBytes} bytes</Text>}
                 {!!review.replay.accessListEntries && <Text style={s.hint}>{review.replay.accessListEntries} access-list entries</Text>}
                 {review.replay.tokenTransfer && !reviewedToken && <Text>Token base units: {review.replay.tokenTransfer.amountUnits}</Text>}
+                <Text style={s.hint} testID="native-replay-same-nonce-warning">
+                  If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.
+                </Text>
               </Card>}
               {!review.replacement && <Text style={s.hint}>
                 Confirm the full address and network before sending. Completed

@@ -1217,6 +1217,7 @@
       "original": "Transacción original",
       "previousNeeded": "La transacción {{nonce}} debe incluirse primero.",
       "previous": "Revisar transacción anterior",
+      "sameNonceWarning": "Si otra transacción usa este nonce, el reenvío puede reemplazarla o ser rechazado. Cualquiera de las dos transacciones puede confirmarse. Revisa Actividad y cualquier otra cartera que use esta cuenta antes de continuar.",
       "previousMissing": "La transacción anterior no está guardada en este dispositivo.",
       "expired": "La revisión ha caducado. Revisa la transacción de nuevo.",
       "unavailable": "No se pudo comprobar esta transacción. Inténtalo de nuevo.",

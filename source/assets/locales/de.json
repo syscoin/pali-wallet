@@ -1217,6 +1217,7 @@
       "original": "Ursprüngliche Transaktion",
       "previousNeeded": "Transaktion {{nonce}} muss zuerst aufgenommen werden.",
       "previous": "Vorherige Transaktion prüfen",
+      "sameNonceWarning": "Wenn eine andere Transaktion diese Nonce verwendet, kann das erneute Senden sie ersetzen oder abgelehnt werden. Jede der beiden Transaktionen kann bestätigt werden. Prüfen Sie die Aktivität und alle anderen Wallets, die dieses Konto verwenden, bevor Sie fortfahren.",
       "previousMissing": "Die vorherige Transaktion ist nicht auf diesem Gerät gespeichert.",
       "expired": "Prüfung abgelaufen. Prüfe die Transaktion erneut.",
       "unavailable": "Diese Transaktion konnte nicht geprüft werden. Versuche es erneut.",

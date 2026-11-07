@@ -33,6 +33,8 @@ for (const width of [390, 320]) test(`saved predecessor replay is explicit at ${
   await page.getByRole('button',{name:`Transaction ${hashes.first.slice(0,10)}…`,exact:true}).click();
   await expect(page.getByText(hashes.first,{exact:true})).toBeVisible();
   await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
+  await expect(page.getByTestId('native-replay-same-nonce-warning')).toHaveText('If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.');
+  await expect(page.getByTestId('native-replay-same-nonce-warning')).toBeVisible();
   expect(await page.evaluate(()=>window.__erc20SendFixture.broadcasts().length)).toBe(0);
   await page.getByTestId('native-send-confirm').click();
   await expect(page.getByTestId('native-send-hash')).toHaveText(hashes.first);

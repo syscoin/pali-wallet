@@ -213,7 +213,9 @@ export const ConfirmationModal = ({
             </div>
           ) : (
             <>
-              <p className="[overflow-wrap:anywhere]">{description}</p>
+              <DialogDescription className="[overflow-wrap:anywhere]">
+                {description}
+              </DialogDescription>
               {children}
             </>
           )}

@@ -87,6 +87,29 @@ it('keeps the default dialog named and its existing dismissal ID', async () => {
   expect(onClose).toHaveBeenCalledTimes(1);
 });
 
+it('associates ordinary confirmation description with the dialog without altering its paragraph or action layout', () => {
+  const description =
+    'Review the saved transaction. Another pending transaction could be replaced.';
+  render(
+    <ConfirmationModal
+      show
+      title="Resend transaction"
+      description={description}
+      buttonText="Resend"
+      onClose={jest.fn()}
+      onClick={jest.fn()}
+    />
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Resend transaction' });
+  expect(dialog).toHaveAccessibleDescription(description);
+  const paragraph = within(dialog).getByText(description, { exact: true });
+  expect(paragraph.tagName).toBe('P');
+  expect(paragraph).toHaveClass('[overflow-wrap:anywhere]');
+  expect(
+    within(dialog).getByRole('button', { name: 'Resend' }).closest('footer')
+  ).toBeTruthy();
+});
+
 it('prevents Cancel and Escape from dismissing a busy confirmation', async () => {
   const onClose = jest.fn();
   const onClick = jest.fn();

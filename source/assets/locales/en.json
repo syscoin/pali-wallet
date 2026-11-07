@@ -1217,6 +1217,7 @@
       "original": "Original transaction",
       "previousNeeded": "Transaction {{nonce}} must be included first.",
       "previous": "Review previous transaction",
+      "sameNonceWarning": "If another transaction uses this nonce, resending may replace it or be rejected. Either transaction may confirm. Check Activity and any other wallet using this account before continuing.",
       "previousMissing": "The previous transaction is not saved on this device.",
       "expired": "Review expired. Review the transaction again to resend it.",
       "unavailable": "Unable to check this transaction. Try again.",
