@@ -376,7 +376,7 @@ function QualificationApp() {
           import('../src/storage/native'),
           import('bip39'),
         ]);
-        const factory = createKeyringRuntimeFactory({
+        const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
           ensureCryptoReady: async () => {
             await ensureNativeCryptoReady();
           },

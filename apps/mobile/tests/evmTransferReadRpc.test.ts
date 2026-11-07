@@ -140,7 +140,7 @@ for (const mode of ['automatic', 'manual'] as const) test(`${mode} native gap fi
  const planner: Parameters<EvmTransferReadRpc['verifyForDispatch']>[3] = input => acceptance.plan({
   ...input, chainId: custom.chainId, endpoint: custom.rpcUrl, from,
   snapshot: {
-   owner: 'test-wallet',
+   owner: 'test-wallet', minimumNonce: 0,
    retained: [{ chainId: custom.chainId, from, hash, nonce: 1, phase: 'signed' }],
    readMaximumCost: async () => 200000n,
    readAssetDebit: async () => 0n,
@@ -152,4 +152,40 @@ for (const mode of ['automatic', 'manual'] as const) test(`${mode} native gap fi
  balance = 410100;
  await validate();
  assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
+});
+
+
+test('signed-record retirement exposes only bounded endpoint reads', async () => {
+ const f = fixture(custom);
+ assert.equal(await f.rpc.retirementRead('eth_chainId', [], signal(), () => undefined), '0x6ef91');
+ await f.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined);
+ assert.equal(await f.rpc.retirementRead('eth_getTransactionCount', [from, '0x64'], signal(), () => undefined), '0x1');
+ assert.deepEqual(f.calls.map(({ method }) => method), ['eth_chainId', 'eth_getBlockByNumber', 'eth_getTransactionCount']);
+ await assert.rejects(f.rpc.retirementRead('eth_sendRawTransaction' as Parameters<EvmTransferReadRpc['retirementRead']>[0], [], signal(), () => undefined), { code: 'INVALID_INPUT' });
+ assert.equal(f.calls.length, 3);
+ const oversized = fixture(custom, call => call.method === 'eth_getBlockByNumber'
+  ? { number: '0x64', hash: blockHash, padding: 'x'.repeat(512 * 1024) } : undefined);
+ await assert.rejects(oversized.rpc.retirementRead('eth_getBlockByNumber', ['finalized', false], signal(), () => undefined), { code: 'UNAVAILABLE' });
+});
+
+test('signed-record retirement refuses revoked authority before publishing a response', async () => {
+ let current = true;
+ const f = fixture(custom, () => { current = false; });
+ await assert.rejects(f.rpc.retirementRead('eth_chainId', [], signal(), () => {
+  if (!current) throw new Error('Revoked');
+ }), { code: 'CANCELLED' });
+ assert.equal(f.calls.length, 1);
+ const cancelled = new AbortController(); cancelled.abort();
+ await assert.rejects(f.rpc.retirementRead('eth_chainId', [], cancelled.signal, () => undefined), { code: 'CANCELLED' });
+ assert.equal(f.calls.length, 1);
+});
+
+test('signed-record retirement rejects a response from a changed endpoint', async () => {
+ const rpc = new EvmTransferReadRpc(custom, { fetch: async (_url, init) => {
+  const body = JSON.parse(String(init.body));
+  const response = new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: '0x6ef91' }));
+  Object.defineProperty(response, 'url', { value: 'https://other.example/rpc' });
+  return response;
+ } });
+ await assert.rejects(rpc.retirementRead('eth_chainId', [], signal(), () => undefined), { code: 'PROFILE_CHANGED' });
 });

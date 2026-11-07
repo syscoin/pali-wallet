@@ -151,7 +151,7 @@ const admission = (rpc: NativeTransferRpc, approval: EvmNftPreparedQuote, assert
   const acceptance = new EvmAutoNonceAcceptance();
   const planner: import('../src/custody/evmTransferReadRpc.ts').NativeAutomaticNoncePlanner = (input) => acceptance.plan({
     ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
-    snapshot: { owner: 'dispatch-fixture', retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
+    snapshot: { owner: 'dispatch-fixture', minimumNonce: 0, retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
   });
   return {
     mode: 'collectible' as const, approval, assertCurrent, inventorySignal, onDispatch,
@@ -523,7 +523,7 @@ test('NFT automatic nonce binds sampled ownership block during quote and held di
   const planner = (input: Parameters<EvmAutoNonceAcceptance['plan']>[0]) => acceptance.plan(input);
   const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => planner({
     ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
-    snapshot: { owner: 'fixture', retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
+    snapshot: { owner: 'fixture', minimumNonce: 0, retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
   });
   const quote = await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic);
   assert.equal(quote.envelope.nonce, '7');
@@ -557,7 +557,7 @@ for (const phase of ['quote', 'dispatch'] as const) test(`NFT late same-sender b
     const acceptance = new EvmAutoNonceAcceptance();
     const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => acceptance.plan({
       ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
-      snapshot: { owner: 'fixture', retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
+      snapshot: { owner: 'fixture', minimumNonce: 0, retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
     });
     const initial = phase === 'dispatch'
       ? await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic)
@@ -590,7 +590,7 @@ for (const phase of ['quote', 'dispatch'] as const) {
     const acceptance = new EvmAutoNonceAcceptance();
     const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => acceptance.plan({
       ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
-      snapshot: { owner: 'fixture', retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
+      snapshot: { owner: 'fixture', minimumNonce: 0, retained: [], readAssetDebit: async () => 0n, readMaximumCost: async () => 0n },
     });
     const quote = phase === 'dispatch'
       ? await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic)

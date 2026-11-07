@@ -404,6 +404,7 @@ beforeEach(() => {
     autoNonceAcceptance: new EvmAutoNonceAcceptance(),
     captureAutoNonceSnapshot: async () => ({
       owner: 'synthetic',
+      minimumNonce: 0,
       retained: mockRetainedAssetTransfer
         ? [
             {

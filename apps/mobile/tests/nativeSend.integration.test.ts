@@ -44,7 +44,7 @@ test('shared SDK and SQLite admit a different pending nonce and retain reorg pre
   let authority: NativeCustodyAuthority | undefined;
   let transfers: NativeTransfers | undefined;
   const submitted: string[] = [];
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },
@@ -252,7 +252,7 @@ async function cancellationFixture(type: 0 | 2 = 2) {
       return super.signPreparedEvmTransaction(...args);
     }
   }
-  const base = createKeyringRuntimeFactory({
+  const base = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async observeActivity(_network, expected, signal, guard) {
       guard();
       const result = await rpc.observation(

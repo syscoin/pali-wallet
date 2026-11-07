@@ -82,7 +82,7 @@ async function fixture() {
     },
   };
   const storage = await openWalletStorage(ports);
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: ObservedRing }),
     openStorage: async () => storage,

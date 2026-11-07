@@ -12,6 +12,7 @@ type NonceIdentity = Pick<
 type RetainedNonce = NonceIdentity & Pick<EvmSignedRecordSummary, 'phase'>;
 
 export type EvmAutoNonceSnapshot = Readonly<{
+  minimumNonce: number;
   owner: string;
   readAssetDebit(hash: string, asset: EvmTransferAsset): Promise<bigint>;
   readMaximumCost(hash: string): Promise<bigint>;
@@ -289,8 +290,14 @@ export class EvmAutoNonceAcceptance {
     snapshot: EvmAutoNonceSnapshot;
   }>): Promise<EvmAutoNoncePlan> {
     assertCurrent();
-    if (!validNonce(latest) || !validNonce(pending))
+    if (
+      !validNonce(latest) ||
+      !validNonce(pending) ||
+      !validNonce(snapshot.minimumNonce)
+    )
       throw new Error('Invalid EVM nonce counts');
+    if (latest < snapshot.minimumNonce)
+      throw new EvmAssetStateError('REVIEW_REQUIRED');
     if (
       assetState &&
       (assetState.nonce !== latest ||

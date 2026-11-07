@@ -597,7 +597,7 @@ test('native custody combines shared-default WIF and BIP84 accounts with verifie
   const sdk = await import('@sidhujag/sysweb3-keyring/cjs/software.js');
   let interceptExport: ((key: string) => Promise<string>) | undefined;
   let exports = 0;
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage,
     loadSdk: async () => ({ ...sdk, SoftwareKeyring: class extends sdk.SoftwareKeyring {

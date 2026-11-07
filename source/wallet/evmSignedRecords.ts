@@ -211,13 +211,69 @@ function retainedReplacementLineage(
   return lineage;
 }
 
-type Bundle = Readonly<{
+export type EvmSignedRetirementReadMethod =
+  | 'eth_chainId'
+  | 'eth_getBlockByNumber'
+  | 'eth_getTransactionCount';
+export type EvmSignedRetirementRead = (
+  method: EvmSignedRetirementReadMethod,
+  params: readonly unknown[]
+) => Promise<unknown>;
+type NonceFloor = Readonly<{ chainId: string; from: string; nonce: number }>;
+const ROOT_PLAINTEXT_LIMIT = 64 * 1024;
+const FINALITY_TIMEOUT_MS = 12_000;
+const floorKey = ({ chainId, from }: Pick<NonceFloor, 'chainId' | 'from'>) =>
+  `${chainId}:${from}`;
+function nonceFloors(value: unknown): readonly NonceFloor[] {
+  if (!Array.isArray(value)) return invalid();
+  let previous = '';
+  return Object.freeze(
+    value.map((item) => {
+      const floor = exact(item, ['chainId', 'from', 'nonce']);
+      if (
+        typeof floor.chainId !== 'string' ||
+        !/^[1-9][0-9]{0,77}$/.test(floor.chainId) ||
+        BigInt(floor.chainId) >= BigInt(1) << BigInt(256) ||
+        typeof floor.from !== 'string' ||
+        getAddress(floor.from).toLowerCase() !== floor.from ||
+        !Number.isSafeInteger(floor.nonce) ||
+        floor.nonce < 0
+      )
+        return invalid();
+      const key = floorKey(floor as NonceFloor);
+      if (key <= previous) return invalid();
+      previous = key;
+      return Object.freeze({
+        chainId: floor.chainId,
+        from: floor.from,
+        nonce: floor.nonce,
+      });
+    })
+  );
+}
+function minimumNonce(
+  bundle: Bundle | null,
+  scope: Pick<NonceFloor, 'chainId' | 'from'>
+): number {
+  return (
+    bundle?.nonceFloors.find((floor) => floorKey(floor) === floorKey(scope))
+      ?.nonce ?? 0
+  );
+}
+function assertNonceFloor(bundle: Bundle | null, scope: NonceFloor): void {
+  if (scope.nonce < minimumNonce(bundle, scope))
+    throw Object.assign(new Error('EVM_SIGNED_RECORD_NONCE_FINALIZED'), {
+      transactionNotBroadcast: true,
+    });
+}
+type ParsedBundle = Readonly<{
   entries: readonly Entry[];
   profileId: string;
   revision: number;
   root: IEncryptedPrivateRecord;
   version: 1;
 }>;
+type Bundle = ParsedBundle & Readonly<{ nonceFloors: readonly NonceFloor[] }>;
 const queues = new WeakMap<EvmSignedRecordStorage, Promise<unknown>>();
 const invalid = (): never => {
   throw new Error('EVM_SIGNED_RECORD_CORRUPT');
@@ -232,7 +288,7 @@ const signedCapacityRefusals = new WeakMap<
 let currentPersistToken: object | undefined;
 export function consumeSignedEvmCapacityRefusal(
   error: unknown,
-  readFailure?: (error: unknown) => Readonly<{
+  readFailure?: (failure: unknown) => Readonly<{
     signedTransactionHash?: string;
     transactionNotBroadcast: boolean;
   }>
@@ -261,8 +317,11 @@ export function consumeSignedEvmCapacityRefusal(
   if (matches) signedCapacityRefusals.delete(error);
   return matches;
 }
+const capacityLimits = new WeakSet<object>();
 const limit = (): never => {
-  throw new Error('EVM_SIGNED_RECORD_CAPACITY');
+  const error = new Error('EVM_SIGNED_RECORD_CAPACITY');
+  capacityLimits.add(error);
+  throw error;
 };
 const appendLimit = (): never => {
   const error = new Error('EVM_SIGNED_RECORD_CAPACITY');
@@ -367,7 +426,7 @@ function envelope(
     return invalid();
   return Object.freeze({ ...data }) as IEncryptedPrivateRecord;
 }
-function parse(raw: string, expectedProfile?: string): Bundle {
+function parse(raw: string, expectedProfile?: string): ParsedBundle {
   if (
     typeof raw !== 'string' ||
     raw.length > EVM_SIGNED_RECORD_LIMITS.bytes ||
@@ -394,7 +453,6 @@ function parse(raw: string, expectedProfile?: string): Bundle {
     !Number.isSafeInteger(value.revision) ||
     value.revision < 0 ||
     !Array.isArray(value.entries) ||
-    !value.entries.length ||
     value.entries.length > EVM_SIGNED_RECORD_LIMITS.transactions
   )
     return invalid();
@@ -574,28 +632,47 @@ export class EvmSignedRecords {
     const raw = await this.storage.read(id);
     guard(session);
     if (raw === undefined) return { raw, bundle: null };
-    const bundle = parse(raw, id);
+    const parsed = parse(raw, id);
     const plaintext = await session.keyring.decryptPrivateRecord({
       domain: ROOT_DOMAIN,
       recordId: 'manifest',
-      envelope: bundle.root,
+      envelope: parsed.root,
     });
+    let floors: readonly NonceFloor[];
     try {
       guard(session);
-      const root = exact(
-        JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(plaintext)),
-        ['version', 'revision', 'transactions', 'entriesHash']
+      if (plaintext.length > ROOT_PLAINTEXT_LIMIT) return invalid();
+      const value: unknown = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(plaintext)
       );
+      const hasFloors =
+        !!value &&
+        typeof value === 'object' &&
+        Object.hasOwn(value, 'nonceFloors');
+      const root = exact(value, [
+        'version',
+        'revision',
+        'transactions',
+        'entriesHash',
+        ...(hasFloors ? ['nonceFloors'] : []),
+      ]);
       if (
         root.version !== 1 ||
-        root.revision !== bundle.revision ||
-        root.transactions !== bundle.entries.length ||
-        root.entriesHash !== (await entriesHash(bundle.entries))
+        root.revision !== parsed.revision ||
+        root.transactions !== parsed.entries.length ||
+        root.entriesHash !== (await entriesHash(parsed.entries))
       )
         return invalid();
+      floors = nonceFloors(hasFloors ? root.nonceFloors : []);
     } finally {
       plaintext.fill(0);
     }
+    const bundle: Bundle = Object.freeze({ ...parsed, nonceFloors: floors });
+    const byScope = new Map(
+      floors.map((floor) => [floorKey(floor), floor.nonce])
+    );
+    for (const entry of bundle.entries)
+      if (entry.nonce < (byScope.get(floorKey(entry)) ?? 0)) return invalid();
     guard(session);
     return { raw, bundle };
   }
@@ -605,6 +682,7 @@ export class EvmSignedRecords {
     before: string | undefined,
     revision: number,
     entries: readonly Entry[],
+    floors: readonly NonceFloor[],
     reserveStatusGrowth: boolean,
     verifyBeforeCommit?: () => Promise<() => void>
   ): Promise<boolean> {
@@ -619,10 +697,16 @@ export class EvmSignedRecords {
         revision,
         transactions: entries.length,
         entriesHash: digest,
+        nonceFloors: nonceFloors(floors),
       })
     );
     let root: IEncryptedPrivateRecord;
     try {
+      if (
+        bytes.length + MAX_REVISION_DIGITS - String(revision).length >
+        ROOT_PLAINTEXT_LIMIT
+      )
+        return reserveStatusGrowth ? appendLimit() : limit();
       root = await session.keyring.encryptPrivateRecord({
         domain: ROOT_DOMAIN,
         recordId: 'manifest',
@@ -822,6 +906,7 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
+      assertNonceFloor(bundle, scope);
       await this.assertOrdinaryNonceAvailable(
         session,
         bundle?.entries ?? [],
@@ -850,6 +935,7 @@ export class EvmSignedRecords {
     return this.exclusive(async () => {
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
+      assertNonceFloor(bundle, original);
       return bindVerifiedReplacement(
         original,
         id,
@@ -962,6 +1048,7 @@ export class EvmSignedRecords {
       const id = await profile(session);
       for (let attempt = 0; attempt < 3; attempt++) {
         const previous = await this.load(session, id);
+        assertNonceFloor(previous.bundle, signedNonce);
         if (replacement) {
           if (
             id !== replacement.profileId ||
@@ -1061,6 +1148,7 @@ export class EvmSignedRecords {
             previous.raw,
             (previous.bundle?.revision ?? -1) + 1,
             entries,
+            previous.bundle?.nonceFloors ?? [],
             true
           )
         )
@@ -1162,10 +1250,165 @@ export class EvmSignedRecords {
       return bundle?.entries.length ?? 0;
     });
   }
+  /** Retire only nonces consumed in the endpoint's finalized canonical state.
+   * The encrypted floor survives record removal, so stale RPC views cannot
+   * reopen a previously consumed nonce after a restart. */
+  async retireFinalized(
+    session: EvmSignedRecordSession,
+    input: Readonly<{ chainId: string; from: string }>,
+    read: EvmSignedRetirementRead
+  ): Promise<number> {
+    const chainId = input.chainId;
+    const from = getAddress(input.from).toLowerCase();
+    if (
+      !/^[1-9][0-9]{0,77}$/.test(chainId) ||
+      BigInt(chainId) >= BigInt(1) << BigInt(256)
+    )
+      throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+    const id = await profile(session);
+    const deadline = performance.now() + FINALITY_TIMEOUT_MS;
+    const unavailable = new Error('EVM_SIGNED_RECORD_FINALITY_UNAVAILABLE');
+    const assertFresh = () => {
+      guard(session);
+      if (performance.now() >= deadline) throw unavailable;
+    };
+    const readCurrent = async (
+      method: EvmSignedRetirementReadMethod,
+      params: readonly unknown[]
+    ) => {
+      assertFresh();
+      const response = await read(method, params);
+      assertFresh();
+      return response;
+    };
+    const quantity = (value: unknown): bigint => {
+      if (
+        typeof value !== 'string' ||
+        !/^0x(?:0|[1-9a-f][0-9a-f]{0,63})$/i.test(value)
+      )
+        throw unavailable;
+      return BigInt(value);
+    };
+    let nonce: number;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      nonce = await Promise.race([
+        (async () => {
+          if (
+            quantity(await readCurrent('eth_chainId', [])) !== BigInt(chainId)
+          )
+            throw unavailable;
+          const block = await readCurrent('eth_getBlockByNumber', [
+            'finalized',
+            false,
+          ]);
+          if (!block || typeof block !== 'object' || Array.isArray(block))
+            throw unavailable;
+          const { number, hash } = block as Record<string, unknown>;
+          quantity(number);
+          if (typeof hash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(hash))
+            throw unavailable;
+          // EIP-1898 binds the account state to the exact finalized block and
+          // refuses a hash which the endpoint no longer considers canonical.
+          const count = quantity(
+            await readCurrent('eth_getTransactionCount', [
+              from,
+              { blockHash: hash, requireCanonical: true },
+            ])
+          );
+          if (count > BigInt(Number.MAX_SAFE_INTEGER)) throw unavailable;
+          if (
+            quantity(await readCurrent('eth_chainId', [])) !== BigInt(chainId)
+          )
+            throw unavailable;
+          return Number(count);
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(unavailable), FINALITY_TIMEOUT_MS);
+        }),
+      ]);
+    } catch {
+      guard(session);
+      return 0;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+    try {
+      return await this.exclusive(async () => {
+        assertFresh();
+        if ((await profile(session)) !== id)
+          throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+        for (let attempt = 0; attempt < 3; attempt++) {
+          assertFresh();
+          const previous = await this.load(session, id);
+          const floor = Math.max(
+            nonce,
+            minimumNonce(previous.bundle, { chainId, from })
+          );
+          const oldEntries = previous.bundle?.entries ?? [];
+          const entries = oldEntries.filter(
+            (entry) =>
+              entry.chainId !== chainId ||
+              entry.from !== from ||
+              entry.nonce >= floor
+          );
+          const removed = oldEntries.length - entries.length;
+          if (!removed) return 0;
+          const floors = [
+            ...(previous.bundle?.nonceFloors ?? []).filter(
+              (entry) => floorKey(entry) !== floorKey({ chainId, from })
+            ),
+            { chainId, from, nonce: floor },
+          ].sort((a, b) =>
+            floorKey(a) < floorKey(b) ? -1 : floorKey(a) > floorKey(b) ? 1 : 0
+          );
+          let committed: boolean;
+          try {
+            committed = await this.write(
+              session,
+              id,
+              previous.raw,
+              (previous.bundle?.revision ?? -1) + 1,
+              entries,
+              floors,
+              false,
+              async () => {
+                assertFresh();
+                return assertFresh;
+              }
+            );
+          } catch (error) {
+            // A new floor must fit the SDK's authenticated root limit. Keep
+            // every existing record if its replacement manifest cannot fit.
+            if (error && typeof error === 'object' && capacityLimits.has(error))
+              return 0;
+            throw error;
+          }
+          if (committed) {
+            for (const entry of oldEntries) {
+              if (
+                entry.chainId === chainId &&
+                entry.from === from &&
+                entry.nonce < floor
+              )
+                this.autoNonceAcceptance.retireNonce(id, entry);
+            }
+            return removed;
+          }
+        }
+        throw new Error('EVM_SIGNED_RECORD_CONFLICT');
+      });
+    } catch (error) {
+      guard(session);
+      if (error === unavailable) return 0;
+      throw error;
+    }
+  }
   private autoNonceSnapshot(
     session: EvmSignedRecordSession,
     owner: string,
-    entries: readonly Entry[]
+    entries: readonly Entry[],
+    nonceFloor: number
   ): EvmAutoNonceSnapshot {
     const byHash = new Map(entries.map((entry) => [entry.hash, entry]));
     const budgets = new Map<
@@ -1201,6 +1444,7 @@ export class EvmSignedRecords {
     };
     return Object.freeze({
       owner,
+      minimumNonce: nonceFloor,
       retained: Object.freeze(
         entries.map(({ chainId, from, hash, nonce, phase }) =>
           Object.freeze({ chainId, from, hash, nonce, phase })
@@ -1258,7 +1502,8 @@ export class EvmSignedRecords {
         id,
         (bundle?.entries ?? []).filter(
           (entry) => entry.chainId === chainId && entry.from === from
-        )
+        ),
+        minimumNonce(bundle, { chainId, from })
       );
     });
   }
@@ -1451,6 +1696,7 @@ export class EvmSignedRecords {
       preflight?.assertCurrent();
       const id = await profile(session);
       const { bundle } = await this.load(session, id);
+      assertNonceFloor(bundle, { chainId, from: address, nonce });
       const sender = (bundle?.entries ?? []).filter(
         (entry) => entry.chainId === chainId && entry.from === address
       );
@@ -1480,7 +1726,8 @@ export class EvmSignedRecords {
           this.autoNonceSnapshot(
             session,
             id,
-            sender.filter((entry) => entry.hash !== hash)
+            sender.filter((entry) => entry.hash !== hash),
+            minimumNonce(bundle, { chainId, from: address })
           )
         );
         guard(session);
@@ -1683,6 +1930,7 @@ export class EvmSignedRecords {
             previous.raw,
             previous.bundle.revision + 1,
             entries,
+            previous.bundle.nonceFloors,
             false,
             reconcile?.verify
           )
@@ -1698,7 +1946,7 @@ export class EvmSignedRecords {
 export function createEvmSignedRecordLifecycle(
   records: EvmSignedRecords,
   session: EvmSignedRecordSession,
-  options?: Readonly<{
+  options: Readonly<{
     automaticNonceEndpoint?: string;
     metadata?: Readonly<Record<string, unknown>>;
     preflight?: (
@@ -1711,9 +1959,17 @@ export function createEvmSignedRecordLifecycle(
       | Promise<EvmVerifiedReplacementBinding>;
     // Opt in only when the host can recheck the original token approval.
     retainAssetPreflightFailure?: boolean;
+    retirementRead: EvmSignedRetirementRead | null;
   }>
 ) {
   guard(session);
+  if (
+    !options ||
+    (options.retirementRead !== null &&
+      typeof options.retirementRead !== 'function')
+  )
+    throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
+  const retirementRead = options.retirementRead;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -1722,23 +1978,61 @@ export function createEvmSignedRecordLifecycle(
     persistSigned: async (record: EvmSignedSubmission) => {
       const token = {};
       currentPersistToken = token;
-      const replacement = options?.replacement;
+      // Capture the SDK's exact signed envelope before any asynchronous work.
+      // Capacity recovery retries these bytes once and never requests a signature.
+      const signed = Object.freeze({
+        ...record,
+        context: Object.freeze({
+          ...record.context,
+          account: Object.freeze({ ...record.context.account }),
+          network: Object.freeze({ ...record.context.network }),
+        }),
+      });
+      const metadata =
+        options.metadata === undefined
+          ? undefined
+          : snapshotMetadata(options.metadata);
+      const replacement = options.replacement && (await options.replacement);
       try {
-        await records.append(
-          session,
-          record,
-          options?.metadata,
-          replacement && (await replacement)
-        );
+        await records.append(session, signed, metadata, replacement);
       } catch (error) {
         guard(session);
         if (
-          error &&
-          typeof error === 'object' &&
-          appendCapacityLimits.has(error)
+          !error ||
+          typeof error !== 'object' ||
+          !appendCapacityLimits.has(error)
         )
-          signedCapacityRefusals.set(error, { hash: record.hash, token });
-        throw error;
+          throw error;
+        if (
+          retirementRead &&
+          (await records.retireFinalized(
+            session,
+            {
+              chainId: String(signed.context.network.chainId),
+              from: signed.context.account.address,
+            },
+            retirementRead
+          )) > 0
+        ) {
+          try {
+            await records.append(session, signed, metadata, replacement);
+          } catch (retryError) {
+            guard(session);
+            if (
+              retryError &&
+              typeof retryError === 'object' &&
+              appendCapacityLimits.has(retryError)
+            )
+              signedCapacityRefusals.set(retryError, {
+                hash: signed.hash,
+                token,
+              });
+            throw retryError;
+          }
+        } else {
+          signedCapacityRefusals.set(error, { hash: signed.hash, token });
+          throw error;
+        }
       }
       guard(session);
     },

@@ -82,6 +82,7 @@ import {
 import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
+  type EvmSignedRetirementRead,
 } from '../../../wallet/evmSignedRecords';
 import {
   assertImportedRecoveryAccount,
@@ -1443,6 +1444,23 @@ class MainController {
     assertCurrent();
     const records = this.getRetainedEvmRecords();
     const session = { keyring, assertCurrent };
+    let retirementRpc:
+      | ReturnType<MainController['captureFreshEvmRead']>
+      | undefined;
+    const retirementRead: EvmSignedRetirementRead = async (method, params) => {
+      assertCurrent();
+      retirementRpc ??= this.captureFreshEvmRead(navigation);
+      if (
+        retirementRpc.keyring !== keyring ||
+        retirementRpc.network.url !== context.network.url
+      )
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      const result = await retirementRpc.run((provider) =>
+        provider.send(method, [...params])
+      );
+      assertCurrent();
+      return result;
+    };
     if (
       replacementProvider === null ||
       (context.operation !== 'cancel' && context.operation !== 'speed-up')
@@ -1455,12 +1473,16 @@ class MainController {
         context.operation === 'erc1155';
       if (!reviewed) {
         if (assetOperation) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-        return createEvmSignedRecordLifecycle(records, session);
+        return createEvmSignedRecordLifecycle(records, session, {
+          retirementRead,
+        });
       }
       const read = this.captureFreshEvmRead(navigation);
       if (read.keyring !== keyring || read.network.url !== context.network.url)
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+      retirementRpc = read;
       return createEvmSignedRecordLifecycle(records, session, {
+        retirementRead,
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
@@ -1540,6 +1562,7 @@ class MainController {
         });
       void replacement.catch(() => undefined);
       return createEvmSignedRecordLifecycle(records, retainedSession, {
+        retirementRead,
         replacement,
         preflight: async (record, assertDispatchCurrent) => {
           const signed = Transaction.from(record.rawTransaction);
@@ -1587,6 +1610,7 @@ class MainController {
     void replacement.catch(() => undefined);
     const send = replacementProvider.send.bind(replacementProvider);
     return createEvmSignedRecordLifecycle(records, session, {
+      retirementRead,
       replacement,
       preflight: async (record, assertDispatchCurrent) => {
         if (context.operation === 'speed-up') {

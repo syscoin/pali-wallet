@@ -50,6 +50,9 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
   });
   return createKeyringRuntimeFactory({
     assertActive,
+    readEvmRetirement(network, method, params, signal, guard) {
+      return new EvmTransferReadRpc(network, { fetch: walletFetch }).retirementRead(method, params, signal, guard);
+    },
     observeActivity(network, expected, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).observation({ hash: expected.hash, from: expected.from, to: expected.to, nonce: expected.nonce }, signal, guard);
     },

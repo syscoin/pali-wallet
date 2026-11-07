@@ -14,10 +14,10 @@ import {
 import { randomUUID } from 'crypto';
 import React from 'react';
 
+import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
 import MainController from 'scripts/Background/controllers/MainController';
 import { BigNumber } from 'utils/ethersV6Compat';
 
-import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
 import { SendConfirm } from './Confirm';
 
 const { EthereumTransactions } = jest.requireActual(
@@ -297,6 +297,7 @@ beforeEach(() => {
     autoNonceAcceptance: new EvmAutoNonceAcceptance(),
     captureAutoNonceSnapshot: async () => ({
       owner: 'synthetic',
+      minimumNonce: 0,
       retained: [],
       readMaximumCost: jest.fn(),
     }),

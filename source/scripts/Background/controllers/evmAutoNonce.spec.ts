@@ -40,6 +40,7 @@ function fixture(latest: string, pending: string) {
     scope: { chainId, endpoint, from },
     snapshot: {
       owner: 'wallet',
+      minimumNonce: 0,
       retained: [] as (typeof retained)[],
       readMaximumCost: jest.fn(async () => BigInt(5)),
       readAssetDebit: jest.fn(async () => BigInt(0)),

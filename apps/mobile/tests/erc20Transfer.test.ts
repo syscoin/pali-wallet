@@ -251,7 +251,7 @@ test('token broadcast requires bound intent and completed held validation', asyn
   const acceptance = new EvmAutoNonceAcceptance();
   const planner: import('../src/custody/evmTransferReadRpc.ts').NativeAutomaticNoncePlanner = (input) => acceptance.plan({
     ...input, chainId: '1', from: signer.address, endpoint: 'fixture',
-    snapshot: { owner: 'fixture', retained: [], readMaximumCost: async () => 0n, readAssetDebit: async () => 0n },
+    snapshot: { owner: 'fixture', minimumNonce: 0, retained: [], readMaximumCost: async () => 0n, readAssetDebit: async () => 0n },
   });
   const quote = await rpc.prepareToken(signer.address, intent, new AbortController().signal, undefined, undefined, planner);
   let validated = false;

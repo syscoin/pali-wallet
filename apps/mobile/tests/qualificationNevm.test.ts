@@ -122,7 +122,7 @@ async function sqliteDisk() {
   let initialized = false;
   let storage!: SqliteWalletStorage;
   let runtime!: KeyringRuntime;
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => { assert(globalThis.crypto.subtle); },
     async openStorage() {
       storage = await SqliteWalletStorage.open(nodeConnection(file).connection, digest, INSTALLATION, !initialized);

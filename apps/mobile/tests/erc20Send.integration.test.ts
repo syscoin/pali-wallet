@@ -60,7 +60,7 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     loseResponse: true,
     finalized: false,
   };
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async ensureCryptoReady() {
       assert.ok(globalThis.crypto.subtle);
     },

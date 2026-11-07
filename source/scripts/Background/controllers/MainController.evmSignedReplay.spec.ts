@@ -82,6 +82,7 @@ const runReplayPreflight = async (
   const owner = '0x' + '55'.repeat(32);
   await preflight.run(owner, () => ({
     owner,
+    minimumNonce: 0,
     retained: [],
     readMaximumCost: async () => {
       throw Error('Unexpected predecessor read in replacement fixture');
@@ -1057,6 +1058,7 @@ describe('dapp automatic nonce recommendation', () => {
     records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
     records.captureAutoNonceSnapshot = jest.fn(async () => ({
       owner: 'nonce-review-fixture',
+      minimumNonce: 0,
       retained,
       readMaximumCost: async () => BigInt(21000),
       touchesContract: async () => false,
@@ -1398,6 +1400,7 @@ describe('legacy pending guard in the shared nonce inspector', () => {
     };
     const snapshot = {
       owner: 'legacy-test',
+      minimumNonce: 0,
       retained: [],
       readMaximumCost: async () => BigInt(0),
       readAssetDebit: async () => BigInt(0),
@@ -1531,6 +1534,7 @@ describe('worker-owned token state at review and initial held POST', () => {
     const good = rpcFixture();
     records.captureAutoNonceSnapshot = jest.fn(async () => ({
       owner: 'unit',
+      minimumNonce: 0,
       retained: [],
       readMaximumCost: async () => BigInt(0),
       readAssetDebit: async () => BigInt(0),
@@ -1573,6 +1577,7 @@ describe('worker-owned token state at review and initial held POST', () => {
     const rpc = rpcFixture({ advanceAfterBlock: true });
     records.captureAutoNonceSnapshot = jest.fn(async () => ({
       owner: 'unit',
+      minimumNonce: 0,
       retained: [],
       readMaximumCost: async () => BigInt(0),
       readAssetDebit: async () => BigInt(0),

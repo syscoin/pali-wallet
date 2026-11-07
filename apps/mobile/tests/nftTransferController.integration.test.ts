@@ -103,7 +103,7 @@ async function withController(
   let runtime!: KeyringRuntime;
   const committed = Promise.withResolvers<void>();
   const acknowledge = Promise.withResolvers<void>();
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     async ensureCryptoReady() { assert.ok(globalThis.crypto.subtle); },
     async openStorage() {
       let wroteSignedRecord = false;

@@ -18,7 +18,7 @@ import { evmEstimateRequest } from '../../../../source/shared/evmEstimateRequest
 import { assertEvmFeeEstimateApproved, bufferEvmFeeEstimate, captureEvmFeeApproval,
   EVM_FEE_APPROVAL_LIFETIME_MS, EvmFeeBalanceError } from '../../../../source/shared/evmFeeApproval.ts';
 import { assertEvmCancellationPayerReady, assertRetainedEvmCancellationReady, EvmCancellationNonceError, EvmCancellationPayerCodeError } from '../../../../source/shared/evmCancellationPayer.ts';
-import type { EvmReplacementRates } from '../../../../source/wallet/evmSignedRecords.ts';
+import type { EvmReplacementRates, EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import type { GuardianRecoveryObservation } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 const BLOCK_BYTES = 512 * 1024;
 const CODE_BYTES = 32 * 1024;
@@ -189,6 +189,12 @@ export class EvmTransferReadRpc {
     const current = block(await read('eth_getBlockByNumber', [hex(BigInt(expected.number)), false]));
     read.assertCurrent();
     if (current.number !== expected.number || current.hash !== expected.hash) rejectRead('PROFILE_CHANGED');
+  }
+  retirementRead(method: EvmSignedRetirementReadMethod, params: readonly unknown[],
+    signal: AbortSignal, guard: () => void): Promise<unknown> {
+    if (method !== 'eth_chainId' && method !== 'eth_getBlockByNumber' && method !== 'eth_getTransactionCount')
+      return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+    return this.operation(signal, guard, (read) => read(method, params), 'endpoint');
   }
   verifyNetwork(signal: AbortSignal, guard: () => void): Promise<void> {
     return this.operation(signal, guard, async (read) => { await this.checkChain(read); }, 'endpoint');

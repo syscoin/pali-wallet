@@ -103,7 +103,7 @@ async function fixture(
       readState: () => local.readState(), getWalletFingerprint: () => local.getWalletFingerprint(), confirmBackup: (fp) => local.confirmBackup(fp),
       async close() { if (!closed) { await local.close(); if (closeFailure) throw new Error('synthetic close acknowledgement failure'); closed = true; leased = false; } } };
   };
-  const factory = createKeyringRuntimeFactory({
+  const factory = createKeyringRuntimeFactory({ readEvmRetirement: null,
     ensureCryptoReady: async () => undefined,
     openStorage: open,
     readUtxoAccount,
@@ -1029,7 +1029,7 @@ test('failure to capture the original pair still closes its lease and returns no
     await assert.rejects(recovery.prepare(PHRASE, NEXT, () => undefined), { code: 'UNAVAILABLE', message: 'UNAVAILABLE' });
     assert.deepEqual(f.read(), before);
     // A failed retirement remains failed; a fresh owner must qualify a new lease.
-    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ ensureCryptoReady: async () => undefined, openStorage: f.open }));
+    const replacement = new NativeCustodyAuthority(createKeyringRuntimeFactory({ readEvmRetirement: null, ensureCryptoReady: async () => undefined, openStorage: f.open }));
     try { await replacement.initialize(); await replacement.unlock(OLD); assert.equal(replacement.getSnapshot().phase, 'ready'); }
     finally { await replacement.dispose(); }
   } finally { await recovery.dispose(); await f.close(); }

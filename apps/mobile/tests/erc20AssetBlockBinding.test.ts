@@ -40,7 +40,7 @@ function fixture(options: { holdBalance?: boolean } = {}) {
   let emptyBlock = false;
   const acceptance = new EvmAutoNonceAcceptance(() => 0);
   const snapshot = {
-    owner: 'owned-test',
+    owner: 'owned-test', minimumNonce: 0,
     retained: [],
     readAssetDebit: async () => 0n, readMaximumCost: async () => 0n,
   };

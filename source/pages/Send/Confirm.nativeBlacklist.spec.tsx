@@ -1,5 +1,6 @@
 /** @jest-environment jsdom */
 import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
+
 import '@testing-library/jest-dom';
 import {
   act,
@@ -301,6 +302,7 @@ beforeEach(() => {
     autoNonceAcceptance: new EvmAutoNonceAcceptance(),
     captureAutoNonceSnapshot: async () => ({
       owner: 'synthetic',
+      minimumNonce: 0,
       retained: mockRetainedNonce
         ? [
             {

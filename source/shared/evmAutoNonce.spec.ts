@@ -163,6 +163,7 @@ function acceptanceFixture(
   let now = 0;
   const acceptance = new EvmAutoNonceAcceptance(() => now);
   const snapshot = {
+    minimumNonce: 0,
     owner: 'authenticated owner',
     retained,
     readMaximumCost: jest.fn().mockResolvedValue(BigInt(10)),
@@ -762,3 +763,39 @@ it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])(
     expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
   }
 );
+
+it.each([undefined, -1, 0.5, Number.NaN])(
+  'requires an authenticated valid nonce floor %s',
+  async (minimumNonce) => {
+    const fixture = acceptanceFixture([]);
+    await expect(
+      fixture.select({
+        snapshot: { ...fixture.snapshot, minimumNonce: minimumNonce as number },
+      })
+    ).rejects.toThrow('Invalid EVM nonce counts');
+    expect(fixture.readPending).not.toHaveBeenCalled();
+  }
+);
+
+it('rejects stale latest below the authenticated floor even with higher pending or manual nonce', async () => {
+  const fixture = acceptanceFixture([]);
+  const snapshot = { ...fixture.snapshot, minimumNonce: 5 };
+  for (const override of [undefined, 4, 5, 10]) {
+    await expect(
+      fixture.select({
+        snapshot,
+        latest: 4,
+        pending: 10,
+        nonceOverride: override,
+      })
+    ).rejects.toMatchObject({ code: 'REVIEW_REQUIRED' });
+  }
+  expect(fixture.readPending).not.toHaveBeenCalled();
+  expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
+  await expect(
+    fixture.select({ snapshot, latest: 5, pending: 5 })
+  ).resolves.toMatchObject({ kind: 'ready', nonce: 5 });
+  await expect(
+    fixture.select({ snapshot, latest: 5, pending: 5, nonceOverride: 4 })
+  ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+});

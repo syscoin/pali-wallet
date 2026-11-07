@@ -1,7 +1,7 @@
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -72,6 +72,8 @@ export type KeyringRuntimeDependencies = Readonly<{
   openStorage(): Promise<OpenWalletStorage>;
   loadSdk?: () => Promise<SoftwareSdk>;
   assertActive?: () => void;
+  readEvmRetirement: ((network: NativeNetworkRegistration, method: EvmSignedRetirementReadMethod,
+    params: readonly unknown[], signal: AbortSignal, guard: () => void) => Promise<unknown>) | null;
   readUtxoBalance?: (network: UtxoNetwork, address: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
   readUtxoAccount?: (network: UtxoNetwork, xpub: string, signal: AbortSignal, guard: () => void) => Promise<UtxoBalance>;
   utxoFetch?: typeof globalThis.fetch;
@@ -141,6 +143,8 @@ function checkGuard(assertCurrent: () => void): void {
 export function createKeyringRuntimeFactory(
   dependencies: KeyringRuntimeDependencies
 ): CustodyRuntimeFactory {
+  if (dependencies.readEvmRetirement !== null && typeof dependencies.readEvmRetirement !== 'function')
+    throw new Error('A signed-record retirement capability is required');
   return {
     async open(): Promise<KeyringRuntime> {
       await dependencies.ensureCryptoReady();
@@ -180,10 +184,10 @@ export function createKeyringRuntimeFactory(
         );
         let catalogueSnapshot: NativeWalletCatalogueSnapshot | null = null;
         let generation = 0;
-        let collectibleLifetime: AbortController | undefined;
-        const retireCollectibleLifetime = () => {
-          const previous = collectibleLifetime;
-          collectibleLifetime = undefined;
+        let contextReadLifetime: AbortController | undefined;
+        const retireContextReadLifetime = () => {
+          const previous = contextReadLifetime;
+          contextReadLifetime = undefined;
           previous?.abort();
         };
         let pendingBalance: AbortController | null = null;
@@ -196,7 +200,7 @@ export function createKeyringRuntimeFactory(
         const requiresReopen = () => catalogue.requiresReopen || tokens.requiresReopen || signedRecords.requiresReopen || utxoRecords?.requiresReopen === true || noteStorageFault === 'reopen';
         const revokeGeneration = () => {
           const next = ++generation;
-          retireCollectibleLifetime();
+          retireContextReadLifetime();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -233,7 +237,7 @@ export function createKeyringRuntimeFactory(
           state.accounts = initialState().accounts;
           catalogueSnapshot = null;
           authenticatedPair = null; verifiedIdentity = null;
-          retireCollectibleLifetime();
+          retireContextReadLifetime();
           noteBackups?.invalidate();
           pendingBalance?.abort();
           pendingRegistration?.abort();
@@ -355,7 +359,7 @@ export function createKeyringRuntimeFactory(
           const changed = catalogueSnapshot !== next;
           Object.assign(state, stateFor(catalogue.privateRecords));
           catalogueSnapshot = next;
-          if (changed) retireCollectibleLifetime();
+          if (changed) retireContextReadLifetime();
         };
         // Transfer only inside an admitted mutation. No await separates the
         // ownership move from publishing the private instance used by lock().
@@ -404,7 +408,16 @@ export function createKeyringRuntimeFactory(
               (requiresAssetValidation && !verifyDispatch))
             throw new NativeTransferError('EXPIRED');
           const session = { keyring, assertCurrent: check };
+          const network = snapshotNativeNetwork(getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
+          const readRetirement = dependencies.readEvmRetirement;
+          const signal = (contextReadLifetime ??= new AbortController()).signal;
           return createEvmSignedRecordLifecycle(signedRecords, session, {
+            retirementRead: readRetirement === null ? null : async (method, params) => {
+              check();
+              const result = await readRetirement(network, method, params, signal, check);
+              check();
+              return result;
+            },
             metadata, replacement,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
             preflight: verifyDispatch ? (_record, assertCurrent, snapshot) => verifyDispatch(
@@ -1065,7 +1078,7 @@ export function createKeyringRuntimeFactory(
           try {
             check();
             // A write that later fails still retires earlier inventory proofs.
-            if (kind === 'registry-write') retireCollectibleLifetime();
+            if (kind === 'registry-write') retireContextReadLifetime();
           } catch (error) {
             return Promise.reject(error);
           } finally {
@@ -1458,12 +1471,12 @@ export function createKeyringRuntimeFactory(
               return tokenOperation(assertCurrent, async (scope, check) => {
                 const captured = generation;
                 const catalogue = catalogueSnapshot;
-                const signal = (collectibleLifetime ??= new AbortController()).signal;
+                const signal = (contextReadLifetime ??= new AbortController()).signal;
                 // This proof outlives the lookup. The invocation guard is
                 // used only for I/O and returning the result below.
                 const assertSavedCurrent = () => {
                   current(captured);
-                  if (collectibleLifetime?.signal !== signal || signal.aborted ||
+                  if (contextReadLifetime?.signal !== signal || signal.aborted ||
                       catalogueSnapshot !== catalogue || !keyring.isUnlocked())
                     throw new KeyringRuntimeError('CANCELLED');
                 };

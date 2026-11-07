@@ -181,7 +181,10 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
     const boundary = captureEvmSubmission(
       candidate.context,
       full.session.assertCurrent,
-      () => createEvmSignedRecordLifecycle(full.store, full.session)
+      () =>
+        createEvmSignedRecordLifecycle(full.store, full.session, {
+          retirementRead: null,
+        })
     );
     const unsigned = Transaction.from(
       candidate.rawTransaction
@@ -243,7 +246,10 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
       const b = captureEvmSubmission(
         candidate.context,
         full.session.assertCurrent,
-        () => createEvmSignedRecordLifecycle(full.store, full.session)
+        () =>
+          createEvmSignedRecordLifecycle(full.store, full.session, {
+            retirementRead: null,
+          })
       );
       try {
         await submitSignedEvmTransaction(
@@ -276,7 +282,10 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
       ok = captureEvmSubmission(
         candidate.context,
         clean.session.assertCurrent,
-        () => createEvmSignedRecordLifecycle(clean.store, clean.session)
+        () =>
+          createEvmSignedRecordLifecycle(clean.store, clean.session, {
+            retirementRead: null,
+          })
       );
     let posted = 0;
     const ack = await invoke(async () =>
@@ -309,7 +318,10 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
       reuseBoundary = captureEvmSubmission(
         candidate.context,
         reused.session.assertCurrent,
-        () => createEvmSignedRecordLifecycle(reused.store, reused.session)
+        () =>
+          createEvmSignedRecordLifecycle(reused.store, reused.session, {
+            retirementRead: null,
+          })
       );
     let reusedPost = 0;
     const uncertain = await invoke(async () =>
@@ -343,7 +355,11 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
         candidate.context,
         beforeAdmit.session.assertCurrent,
         () =>
-          createEvmSignedRecordLifecycle(beforeAdmit.store, beforeAdmit.session)
+          createEvmSignedRecordLifecycle(
+            beforeAdmit.store,
+            beforeAdmit.session,
+            { retirementRead: null }
+          )
       );
     let beforeAdmitCalls = 0;
     const stale = await invoke(async () =>
@@ -554,7 +570,10 @@ test('token review port forwards only the authenticated pre-POST capacity refusa
       const boundary = captureEvmSubmission(
         context,
         target.session.assertCurrent,
-        () => createEvmSignedRecordLifecycle(target.store, target.session)
+        () =>
+          createEvmSignedRecordLifecycle(target.store, target.session, {
+            retirementRead: null,
+          })
       );
       return submitSignedEvmTransaction(
         rawTransaction,
