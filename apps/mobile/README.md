@@ -34,7 +34,7 @@ UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation w
 
 The extension and mobile use the same retained signed-record policy. Exact signed bytes and reviewed intent are saved before broadcast. Replay, replacement and ordinary new sends have distinct admission checks, with ownership scoped to the wallet profile, chain and sender across account aliases.
 
-The EVM journal has limits of 4,096 records and 16 MiB. At a genuine capacity refusal, bounded maintenance checks available configured routes and retires eligible finalized nonce groups atomically with an encrypted nonce floor. It then retries saving the same signed bytes once. Pending or unverified recovery records remain retained, and insufficient reclaimable space refuses the new submission. Account removal and public-history pruning preserve recovery records.
+The EVM journal has limits of 4,096 records and 16 MiB. At a genuine capacity refusal, bounded maintenance checks available configured routes and retires eligible finalized nonce groups atomically with an encrypted nonce floor. It then retries saving the same signed bytes once. Records not proven consumed by finalized state remain retained, and insufficient reclaimable space refuses the new submission. Account removal and public-history pruning preserve recovery records.
 
 ### Recovery and device storage
 
@@ -42,13 +42,13 @@ Native custody starts after cryptographic checks and protected-storage initializ
 
 The account document has a 4 MiB budget. Public watch records separately allow 20 accounts within 32 KiB. The local asset registry has a 256-entry, 64 KiB budget. Missing, corrupt or ambiguous storage fails closed and offers the applicable recovery or retry flow.
 
-**Forgot password?** verifies the matching phrase, reviews preservation and uses the shared recovery coordinator to rewrap supported saved data. Imported keys require their retained encrypted recovery copy or an independent backup. A phrase alone cannot recreate missing independently imported keys or missing private notes on a lost device. A commit interrupted by cancellation can leave the new password durable, so the UI retains recovery guidance for an uncertain result.
+**Forgot password?** verifies the matching phrase, reviews preservation and uses shared recovery staging code to rewrap supported saved data. Imported keys require their retained encrypted recovery copy or an independent backup. A phrase alone cannot recreate missing independently imported keys or missing private notes on a lost device. A commit interrupted by cancellation can leave the new password durable, so the UI retains recovery guidance for an uncertain result.
 
 Settings → Auto-lock stores a device-local preference for custody and watch sessions. The default is five minutes, with Off or 5–120 whole minutes available. Increasing the custody timeout or choosing Off requires fresh password authentication. Background/inactive transitions and Android focus loss still lock the session. Asynchronous work does not extend the deadline. Repair of a permanently malformed idle-lock preference remains open scope.
 
 ## Remaining implementation and qualification
 
-Operational dapp sessions and approvals, native Ledger/Trezor transport, smart-account operations, privacy-pool operations and Sentry remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
+Operational dapp sessions and approvals, native Ledger/Trezor transport, smart-account operations, privacy-pool operations and Sentry management remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
 
 The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECURITY.md) and [native qualification contract](qualification/README.md) describe the host boundaries and release gates. Track live-network, physical-device and full user-journey acceptance separately from source implementation.
 
