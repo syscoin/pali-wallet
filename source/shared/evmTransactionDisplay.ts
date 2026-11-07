@@ -123,6 +123,80 @@ export const getEvmTransactionDisplayInfo = async (
   currency: string,
   context: EvmDisplayContext = {}
 ): Promise<EvmTransactionDisplayInfo> => {
+  // A retained ERC-20 summary contains facts decoded from the signed call,
+  // but deliberately has no input/calldata. Keep this path distinct from
+  // explorer events and never interpret its token units as native currency.
+  if (
+    tx?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+    tx.tokenTransfer
+  ) {
+    const event = tx.tokenTransfer;
+    const chainId = Number(tx.chainId);
+    const validAddress = (value: unknown): value is string =>
+      typeof value === 'string' && /^0x[0-9a-f]{40}$/i.test(value);
+    const unavailable: EvmTransactionDisplayInfo = {
+      actualRecipient: '',
+      displaySymbol: 'TOKEN',
+      displayValue: '?',
+      formattedValue: '?',
+      isErc20Transfer: true,
+      isNft: false,
+      amountUnavailable: true,
+    };
+    if (
+      !Number.isSafeInteger(chainId) ||
+      chainId <= 0 ||
+      Number(event.chainId) !== chainId ||
+      !validAddress(tx.to) ||
+      !validAddress(event.contractAddress) ||
+      event.contractAddress.toLowerCase() !== tx.to.toLowerCase() ||
+      !validAddress(event.recipient) ||
+      !(typeof event.value === 'string' && /^\d{1,78}$/.test(event.value)) ||
+      !(typeof tx.value === 'string' && /^0+$/.test(tx.value))
+    )
+      return unavailable;
+    let units: string;
+    try {
+      units = parseErc20Units(event.value);
+    } catch {
+      return unavailable;
+    }
+    const asset =
+      Number(context.chainId) === chainId
+        ? context.assets?.find(
+            (candidate) =>
+              Number(candidate.chainId) === chainId &&
+              candidate.contractAddress?.toLowerCase() ===
+                tx.to?.toLowerCase() &&
+              !candidate.isNft
+          )
+        : undefined;
+    const decimals =
+      knownPrecision(event.decimals) ?? knownPrecision(asset?.decimals);
+    const metadataSymbol =
+      typeof event.symbol === 'string' && event.symbol.trim()
+        ? event.symbol
+        : asset?.tokenSymbol || asset?.symbol;
+    const displaySymbol =
+      typeof metadataSymbol === 'string' && metadataSymbol.trim()
+        ? metadataSymbol.toUpperCase()
+        : `${event.contractAddress.slice(0, 6)}...${event.contractAddress.slice(
+            -4
+          )}`;
+    const formattedValue =
+      decimals === undefined ? '?' : formatTokenUnits(units, decimals);
+    return {
+      actualRecipient: event.recipient,
+      displaySymbol,
+      displayValue: formattedValue,
+      formattedValue,
+      isErc20Transfer: true,
+      isNft: false,
+      ...(decimals === undefined
+        ? { hasUnknownDecimals: true, amountUnavailable: true }
+        : {}),
+    };
+  }
   // A token endpoint returns event amounts and recipients. Its `value` is not
   // the outer transaction's native payment and its input may be unavailable.
   if (

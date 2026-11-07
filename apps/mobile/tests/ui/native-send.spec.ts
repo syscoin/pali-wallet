@@ -473,3 +473,17 @@ for (const kind of ['base-fee', 'nonce', 'malformed'] as const) {
     ).not.toBe(prior);
   });
 }
+
+// Existing saved errors must retain their alert even though the status Notice
+// also presents recovery guidance.
+test('saved expired review keeps its accessible error alert', async ({ page }) => {
+  await page.goto('/?quoteFailure=saved-expired');
+  await prepare(page);
+  await page.getByTestId('native-send-confirm').click();
+  const message = 'Your signed transaction is saved. Check it before sending again.';
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveCount(1);
+  await expect(alert).toHaveText(message);
+  await expect(alert).toHaveAttribute('aria-live', 'polite');
+  await expect(page.getByTestId('native-send-hash')).toBeVisible();
+});

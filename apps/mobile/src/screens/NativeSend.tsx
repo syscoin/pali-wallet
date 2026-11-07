@@ -29,7 +29,7 @@ import {
   type EvmRecipientChoice,
 } from '../../../../source/shared/evmRecipientChoices';
 import { normalizeNftTokenId } from '../../../../source/utils/nftTokenId';
-import type { NativeTransferView } from '../custody/transfers';
+import { ASSET_STATE_SAVED_MESSAGE, ASSET_STATE_WAIT_MESSAGE, type NativeTransferView } from '../custody/transfers';
 import type { NativeReplacementMode } from '../custody/transferRpc';
 import type { SavedCollectible } from '../portfolio/tokenRegistry';
 import {
@@ -70,6 +70,10 @@ const failure = (
       : `Enter ${context.networkId === 'ethereum' ? 'an' : 'a'} ${
           context.name
         } address and an amount greater than zero.`;
+  if (code === 'ASSET_STATE_WAIT')
+    return hasSavedTransaction
+      ? ASSET_STATE_SAVED_MESSAGE
+      : ASSET_STATE_WAIT_MESSAGE;
   if (code === 'EXPIRED')
     return hasSavedTransaction
       ? 'Your signed transaction is saved. Check it before sending again.'
@@ -569,7 +573,7 @@ export function NativeSend({
                     : snapshot.phase === 'nonce-consumed'
                     ? 'Check account history'
                     : snapshot.phase === 'unknown'
-                    ? 'Checking submission'
+                    ? snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'Saved, not submitted' : 'Checking submission'
                     : snapshot.phase === 'unavailable'
                     ? 'Status unavailable'
                     : cancellation ? 'Cancellation submitted' : replacementHash ? 'Replacement submitted' : 'Transfer pending'}
@@ -577,25 +581,30 @@ export function NativeSend({
               </View>
               {outcomeToken && tokenIdentity(outcomeToken)}
               {outcomeCollectible && collectibleIdentity(outcomeCollectible)}
-              <Notice
-                title={
-                  snapshot.phase === 'unknown'
-                    ? 'Keep this transaction'
-                    : `${capturedContext.name} transaction`
-                }
-                body={
-                  snapshot.message ??
-                  'Check the transaction status before sending again.'
-                }
-                tone={
-                  snapshot.phase === 'unknown' ||
-                  snapshot.phase === 'unavailable' ||
-                  snapshot.phase === 'reverted' ||
-                  snapshot.phase === 'nonce-consumed'
-                    ? 'amber'
-                    : undefined
-                }
-              />
+              <View
+                accessibilityRole={snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'alert' : undefined}
+                accessibilityLiveRegion={snapshot.message === ASSET_STATE_SAVED_MESSAGE ? 'polite' : undefined}
+              >
+                <Notice
+                  title={
+                    snapshot.phase === 'unknown'
+                      ? 'Keep this transaction'
+                      : `${capturedContext.name} transaction`
+                  }
+                  body={
+                    snapshot.message ??
+                    'Check the transaction status before sending again.'
+                  }
+                  tone={
+                    snapshot.phase === 'unknown' ||
+                    snapshot.phase === 'unavailable' ||
+                    snapshot.phase === 'reverted' ||
+                    snapshot.phase === 'nonce-consumed'
+                      ? 'amber'
+                      : undefined
+                  }
+                />
+              </View>
               <Card style={s.summary}>
                 <Text style={s.label}>TRANSACTION HASH</Text>
                 <Text selectable style={s.address} testID="native-send-hash">
@@ -744,7 +753,7 @@ export function NativeSend({
               </Text>
             </View>
           )}
-          {!!error && (
+          {!!error && !(hasOutcome && error === ASSET_STATE_SAVED_MESSAGE && error === snapshot.message) && (
             <Text
               accessibilityRole="alert"
               accessibilityLiveRegion="polite"

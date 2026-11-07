@@ -56,6 +56,7 @@ jest.mock('components/TransactionOptions/RetainedTransactionReplay', () => ({
 }));
 
 import { DetailsView } from 'pages/Home/Panel/components/Details';
+import { EvmTransactionDetailsEnhanced } from 'pages/Home/Panel/components/Transactions/EVM/EvmDetailsEnhanced';
 import { EvmTransactionsList } from 'pages/Home/Panel/components/Transactions/EVM/EvmList';
 import MainController from 'scripts/Background/controllers/MainController';
 import EvmTransactionsController from 'scripts/Background/controllers/transactions/evm';
@@ -545,3 +546,77 @@ it.each(cases)(
     expect(globalThis.fetch).not.toHaveBeenCalled();
   }
 );
+
+it('shows unknown retained token precision safely in real Details and invalidates the no-input method cache', async () => {
+  const hash = `0x${'8'.repeat(64)}`;
+  mockState.vault.accountAssets.HDAccount[0].ethereum = [];
+  mockRows = [];
+  mockReads.mockImplementation(async ([owner, method]: string[]) => {
+    expect(owner).toBe('wallet');
+    if (
+      method === 'getEvmTransactionFromAPI' ||
+      method === 'getEvmTransactionFromProvider'
+    )
+      return null;
+    throw new Error(`Forbidden controller action ${method}`);
+  });
+  const native = {
+    hash,
+    chainId: 1,
+    from: OWNER,
+    to: TOKEN,
+    value: '0',
+    dataBytes: 0,
+    historySource: 'local-signed',
+    timestamp: 1700000000,
+    nonce: '7',
+  };
+  const details = (tx: any) => (
+    <MemoryRouter>
+      <EvmTransactionDetailsEnhanced hash={hash} tx={tx} />
+    </MemoryRouter>
+  );
+  const view = render(details(native));
+  await waitFor(() =>
+    expect(screen.getByTestId('Method').textContent).toBe('buttons.send')
+  );
+  const token = {
+    ...native,
+    dataBytes: 68,
+    tokenTransfer: {
+      chainId: 1,
+      contractAddress: TOKEN,
+      recipient: OTHER,
+      value: '6000000',
+    },
+  };
+  view.rerender(details(token));
+  const header = await screen.findByTestId('details-header');
+  await waitFor(() =>
+    expect(within(header).getByText('? 0x4444...4444')).toBeTruthy()
+  );
+  await waitFor(() =>
+    expect(screen.getByTestId('Method').textContent).toBe(
+      'transactionDisplay.tokenTransfer'
+    )
+  );
+  expect(within(header).queryByText('6000000 0x4444...4444')).toBeNull();
+  expect(within(header).getByText('Sent')).toBeTruthy();
+  view.rerender(details(native));
+  await waitFor(() =>
+    expect(screen.getByTestId('Method').textContent).toBe('buttons.send')
+  );
+  view.rerender(
+    details({
+      ...token,
+      tokenTransfer: { ...token.tokenTransfer, decimals: 6, symbol: 'TOK' },
+    })
+  );
+  await waitFor(() => expect(within(header).getByText('6.0 TOK')).toBeTruthy());
+  await waitFor(() =>
+    expect(screen.getByTestId('Method').textContent).toBe(
+      'transactionDisplay.tokenTransfer'
+    )
+  );
+  expect(globalThis.fetch).not.toHaveBeenCalled();
+});

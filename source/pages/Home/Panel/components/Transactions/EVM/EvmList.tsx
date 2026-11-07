@@ -138,7 +138,12 @@ const EvmTransactionItem = React.memo(
     const transactionLabel = isCancel
       ? t('transactions.cancellation')
       : getTransactionTypeDisplayLabel(
-          getTransactionTypeLabel(displayTx, isTxSent),
+          'historySource' in tx &&
+            tx.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+            'tokenTransfer' in tx &&
+            tx.tokenTransfer
+            ? 'Sent'
+            : getTransactionTypeLabel(displayTx, isTxSent),
           t,
           currency
         );

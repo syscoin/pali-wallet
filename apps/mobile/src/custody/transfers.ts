@@ -124,6 +124,9 @@ type Source = {
   subscribe(listener: (snapshot: CustodySnapshot) => void): () => void;
   lock(): void;
 };
+export const ASSET_STATE_WAIT_MESSAGE = 'Network conditions changed while checking this transfer. Check Activity, then try again.';
+export const ASSET_STATE_SAVED_MESSAGE = 'Your signed transaction is saved and was not submitted. The network is still updating; check Activity before retrying.';
+
 export class NativeTransferError extends Error {
   readonly code:
     | 'CANCELLED'
@@ -135,6 +138,7 @@ export class NativeTransferError extends Error {
     | 'CANCELLATION_QUEUED'
     | 'NONCE_RETAINED'
     | 'EXPIRED'
+    | 'ASSET_STATE_WAIT'
     | 'PENDING_TRANSFER'
     | 'FAILED'
     | 'INSUFFICIENT_BALANCE'
@@ -442,10 +446,12 @@ export class NativeTransfers {
         }
         if (error instanceof EvmAutomaticNonceUnresolved && error.reason === 'asset-state') {
           this.publish({
-            phase: 'idle', review: null,
-            message: 'The network is still updating after a transfer involving this asset. Try again shortly.',
+            phase: this.snapshot.hash ? 'unknown' : 'idle', review: null,
+            message: this.snapshot.hash
+              ? ASSET_STATE_SAVED_MESSAGE
+              : ASSET_STATE_WAIT_MESSAGE,
           });
-          throw new NativeTransferError('EXPIRED');
+          throw new NativeTransferError('ASSET_STATE_WAIT');
         }
         if (error instanceof NativeTransferError && error.code === 'NONCE_RETAINED') {
           this.publish({ phase: 'idle', review: null });

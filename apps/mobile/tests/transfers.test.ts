@@ -475,22 +475,22 @@ test('a same-token predecessor blocks review until its nonce is canonical', asyn
   try {
     await f.transfers.prepareToken(token.contractAddress, to, '1');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'EXPIRED' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /network is still updating/);
+    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
+    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 1);
 
     // A pending count does not advance the canonical block used for token reads.
     f.nextNonce();
-    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'EXPIRED' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /network is still updating/);
+    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
+    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 1);
 
     // Any predecessor may affect a different asset indirectly, including
     // through a contract fallback; a native successor remains available.
-    await assert.rejects(f.transfers.prepareToken(otherToken.contractAddress, to, '2'), { code: 'EXPIRED' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /network is still updating/);
+    await assert.rejects(f.transfers.prepareToken(otherToken.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
+    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     await f.transfers.prepare(to, '0.001');
     assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
     assert.equal(f.signatures(), 1);
@@ -504,6 +504,23 @@ test('a same-token predecessor blocks review until its nonce is canonical', asyn
   } finally {
     f.close();
   }
+});
+
+test('asset state changes after signing retain recovery guidance without broadcast', async () => {
+  const f = fixture();
+  try {
+    await f.transfers.prepareToken(token.contractAddress, to, '1');
+    const approved = f.transfers.getSnapshot().review!;
+    f.holdWrite(async () => f.nextNonce());
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'ASSET_STATE_WAIT' });
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 0);
+    const saved = await (await f.runtime.journal(() => undefined)).load();
+    const snapshot = f.transfers.getSnapshot();
+    assert.equal(saved?.hash, snapshot.hash);
+    assert.equal(snapshot.phase, 'unknown');
+    assert.match(snapshot.message ?? '', /signed transaction is saved and was not submitted.*check Activity/);
+  } finally { f.close(); }
 });
 
 test('a pending count behind canonical uses latest affordability and the canonical nonce', async () => {

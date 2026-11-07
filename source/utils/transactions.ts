@@ -41,6 +41,15 @@ export const getTransactionDisplayInfo = async (
   skipUnknownTokenFetch = false,
   controller?: any
 ): Promise<EvmTransactionDisplayInfo> => {
+  // The SDK's submitted ERC-20 response uses `data` while explorer/RPC
+  // history uses `input`. Normalize only the exact transfer ABI shape and
+  // only when input is absent; a present input remains authoritative.
+  if (
+    (tx?.input === null || tx?.input === undefined) &&
+    typeof tx?.data === 'string' &&
+    /^0xa9059cbb0{24}[0-9a-f]{40}[0-9a-f]{64}$/i.test(tx.data)
+  )
+    tx = { ...tx, input: tx.data.toLowerCase() };
   const inner = getSmartAccountDisplayTransaction(tx);
   if (inner)
     return getTransactionDisplayInfo(
@@ -52,6 +61,10 @@ export const getTransactionDisplayInfo = async (
   if (
     tx?.historySource !==
       EVM_TRANSACTION_HISTORY_SOURCE.ExplorerTokenTransfer &&
+    !(
+      tx?.historySource === EVM_TRANSACTION_HISTORY_SOURCE.LocalSigned &&
+      tx.tokenTransfer
+    ) &&
     !isTokenTransfer(tx)
   ) {
     return getEvmTransactionDisplayInfo(tx, currency);

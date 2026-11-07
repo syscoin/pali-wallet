@@ -192,7 +192,7 @@ test('saved recovery remains actionable through an observation outage', async ({
   expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(0);
 });
 
-test('a fresh Send opens an editable form while the prior payment remains recoverable', async ({ page }, info) => {
+test('a fresh token send waits for the saved predecessor and succeeds after canonical confirmation', async ({ page }, info) => {
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/?erc20-send&multiple-pending');
   await prepare(page);
@@ -200,6 +200,7 @@ test('a fresh Send opens an editable form while the prior payment remains recove
   const hash = page.getByTestId('native-send-hash');
   await expect(hash).toBeVisible();
   const firstHash = await hash.textContent();
+  expect(firstHash).toBeTruthy();
   await page.getByRole('button', { name: 'Back to wallet', exact: true }).click();
   const callsBefore = await page.evaluate(() => {
     window.__erc20SendFixture.acceptPendingNonce();
@@ -207,28 +208,75 @@ test('a fresh Send opens an editable form while the prior payment remains recove
   });
 
   await page.getByRole('button', { name: 'Send token', exact: true }).click();
-  await expect(page.getByLabel('Amount in FIX', { exact: true })).toBeEditable();
+  const amount = page.getByLabel('Amount in FIX', { exact: true });
+  const address = page.getByLabel('Ethereum address', { exact: true });
+  await expect(amount).toBeEditable();
   await expect(hash).toHaveCount(0);
   expect(await page.evaluate(() => window.__erc20SendFixture.rpcMethods())).toEqual(callsBefore);
   await page.screenshot({ path: info.outputPath('fresh-send-320.png'), fullPage: true });
+  await address.fill(recipient);
+  await amount.fill('1');
+  await page.getByTestId('native-send-review').click();
+  await expect(page.getByText('Network conditions changed while checking this transfer. Check Activity, then try again.', { exact: true })).toBeVisible();
+  await expect(address).toBeEditable();
+  await expect(address).toHaveValue(recipient);
+  await expect(amount).toBeEditable();
+  await expect(amount).toHaveValue('1');
+  await expect(page.getByTestId('native-send-confirm')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(1);
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts().length)).toBe(1);
+
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+  await page.getByRole('button', { name: 'Open first saved transfer', exact: true }).click();
+  await expect(page.getByText(firstHash!, { exact: true })).toBeVisible();
+  await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(1);
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts().length)).toBe(1);
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
+
+  // The fixture advances both the canonical nonce and the matching receipt;
+  // pending nonce alone must not unblock asset review.
+  await page.evaluate(() => window.__erc20SendFixture.finalized());
+  await page.getByRole('button', { name: 'Open first saved transfer', exact: true }).click();
+  await expect(page.getByTestId('native-send-hash')).toHaveText(firstHash!);
+  await expect(page.getByText('Transaction confirmed', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Back to wallet', exact: true }).click();
+  await page.getByRole('button', { name: 'Send token', exact: true }).click();
   await prepare(page, '1');
   await page.getByTestId('native-send-confirm').click();
   await expect(hash).toBeVisible();
   await expect(hash).not.toHaveText(firstHash!);
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(2);
   expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts().length)).toBe(2);
 
-  await page.getByRole('button', { name: 'Back to wallet', exact: true }).click();
-  await page.getByRole('button', { name: 'Open first saved transfer', exact: true }).click();
-  await expect(page.getByText(firstHash!, { exact: true })).toBeVisible();
-  await expect(page.getByTestId('native-send-confirm')).toHaveText('Resend signed transaction');
   await page.evaluate(() => window.__erc20SendFixture.lock());
   await expect(page.getByText('Wallet closed', { exact: true })).toBeVisible();
-  await expect(page.getByText(firstHash!, { exact: true })).toHaveCount(0);
+  await expect(hash).toHaveCount(0);
   await page.evaluate(() => window.__erc20SendFixture.unlock());
   await page.getByRole('button', { name: 'Send token', exact: true }).click();
-  await expect(page.getByLabel('Amount in FIX', { exact: true })).toBeEditable();
+  await expect(amount).toBeEditable();
   await expect(page.getByTestId('native-send-confirm')).toHaveCount(0);
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(2);
   expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts().length)).toBe(2);
+});
+
+test('a post-sign asset-state change shows one saved no-broadcast message', async ({ page }) => {
+  await page.goto('/?erc20-send');
+  await prepare(page);
+  await page.evaluate(() => window.__erc20SendFixture.raceAfterSigning());
+  await page.getByTestId('native-send-confirm').click();
+  const message = 'Your signed transaction is saved and was not submitted. The network is still updating; check Activity before retrying.';
+  await expect(page.getByText(message, { exact: true })).toHaveCount(1);
+  await expect(page.getByRole('alert')).toHaveCount(1);
+  await expect(page.getByRole('alert')).toContainText(message);
+  await expect(page.getByRole('alert')).toHaveAttribute('aria-live', 'polite');
+  await expect(page.getByText('Saved, not submitted', { exact: true })).toBeVisible();
+  await expect(page.getByText('Checking submission', { exact: true })).toHaveCount(0);
+  await expect(page.getByTestId('native-send-hash')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check status', exact: true })).toBeVisible();
+  expect(await page.evaluate(() => window.__erc20SendFixture.signatures())).toBe(1);
+  expect(await page.evaluate(() => window.__erc20SendFixture.broadcasts())).toEqual([]);
+  expect(await page.evaluate(() => window.__erc20SendFixture.journal())).toBeTruthy();
 });
 
 test('ERC20 review expiry retires consent and its replacement never signs automatically', async ({

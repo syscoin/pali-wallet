@@ -123,6 +123,17 @@ const controller: NativeTransferView = {
     const quoteFailure = new URLSearchParams(window.location.search).get(
       'quoteFailure'
     );
+    if (quoteFailure === 'saved-expired') {
+      clearTimeout(expiry);
+      publish({
+        ...snapshot,
+        phase: 'unknown',
+        review: null,
+        hash: '0x' + '1'.repeat(64),
+        message: 'Your signed transaction is saved. Check it before sending again.',
+      });
+      throw Error('EXPIRED');
+    }
     if (quoteFailure) {
       clearTimeout(expiry);
       const expired = quoteFailure === 'base-fee' || quoteFailure === 'nonce';

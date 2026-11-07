@@ -444,14 +444,14 @@ test('a collectible waits for an earlier native send to become canonical', async
 
     // An acknowledged earlier nonce must block even when the endpoint's
     // pending count has not yet caught up.
-    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'EXPIRED' });
-    assert.match(transfers.getSnapshot().message ?? '', /network is still updating/);
+    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'ASSET_STATE_WAIT' });
+    assert.match(transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     assert.equal(posted.length, 1);
 
     // Pending progress alone is not canonical asset state.
     setPendingNonce('0x1');
-    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'EXPIRED' });
-    assert.match(transfers.getSnapshot().message ?? '', /network is still updating/);
+    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'ASSET_STATE_WAIT' });
+    assert.match(transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
     assert.equal(posted.length, 1);
 
     // The fixture advances both the sampled-block and latest account count.

@@ -167,6 +167,16 @@ test('an owned quote stays usable until the sender nonce advances before dispatc
   await assert.rejects(f.rpc.verifyAutomaticForDispatch(quote.transaction, new AbortController().signal, () => {}, f.automatic, undefined, quote));
 });
 
+test('asset-state pending at held dispatch retains its actionable reason', async () => {
+  const f = fixture();
+  const quote = await tokenQuote(f);
+  f.addPending();
+  await assert.rejects(
+    f.rpc.verifyAutomaticForDispatch(quote.transaction, new AbortController().signal, () => {}, f.automatic, undefined, quote),
+    { code: 'REVIEW_REQUIRED', reason: 'asset-state' }
+  );
+});
+
 test('a block mined during the held dispatch canonical check rejects preflight', async () => {
   const f = fixture();
   const quote = await tokenQuote(f);

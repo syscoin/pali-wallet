@@ -66,7 +66,9 @@ const signedRecords = new EvmSignedRecords({
   async read() { return localStorage.getItem(key('signed-records')) ?? undefined; },
   async compareAndSet(_profile, expected, value, guard) {
     guard(); if ((localStorage.getItem(key('signed-records')) ?? undefined) !== expected) return false;
-    localStorage.setItem(key('signed-records'), value); return true;
+    localStorage.setItem(key('signed-records'), value);
+    if (pendingAfterSigning) { pendingAfterSigning = false; pendingNonce = '0x1'; }
+    return true;
   },
 });
 const broadcasts: string[] = [];
@@ -77,6 +79,7 @@ let finalized = false;
 let observationUnavailable = new URLSearchParams(window.location.search).has('observation-unavailable');
 let loseResponse = true;
 let pendingNonce = '0x0';
+let pendingAfterSigning = false;
 let heldQuote: Promise<void> | null = null;
 let releaseQuote: (() => void) | undefined;
 const word = (value: bigint | number) =>
@@ -218,6 +221,7 @@ declare global {
       releaseQuote(): void;
       networkRoundTrip(): void;
       acceptPendingNonce(): void;
+      raceAfterSigning(): void;
       lock(): void;
       unlock(): void;
       seedPredecessor(count?: number, collectible?: boolean): Promise<{ first: string; second: string }>;
@@ -290,6 +294,9 @@ window.__erc20SendFixture = {
   },
   acceptPendingNonce() {
     pendingNonce = '0x1';
+  },
+  raceAfterSigning() {
+    pendingAfterSigning = true;
   },
   lock() {
     source.lock();

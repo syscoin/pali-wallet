@@ -429,6 +429,7 @@ export class NativeTransferRpc {
       assertCurrent();
     } catch (error) {
       assertCurrent();
+      if (error instanceof EvmAutomaticNonceUnresolved && error.reason === 'asset-state') throw error;
       if (error instanceof EvmAutomaticNonceUnresolved ||
           (error instanceof EvmTransferReadError && error.code === 'INSUFFICIENT_BALANCE'))
         throw new NativeTransferRpcError('REVIEW_REQUIRED');
