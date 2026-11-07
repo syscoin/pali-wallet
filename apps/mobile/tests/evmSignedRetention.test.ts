@@ -96,9 +96,9 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
 }
 function finality(nonce: number): {
   read: EvmSignedRetirementRead;
-  calls: Array<[string, readonly unknown[]]>;
+  calls: [string, readonly unknown[]][];
 } {
-  const calls: Array<[string, readonly unknown[]]> = [];
+  const calls: [string, readonly unknown[]][] = [];
   return {
     calls,
     async read(method, params) {
@@ -624,7 +624,7 @@ test('floor manifest expansion beyond the SDK plaintext limit retains every sign
   const f = fixture();
   await f.records.append(f.session(), await signed(0));
   const payload = await rootPayload(f);
-  const floors: Array<{ chainId: string; from: string; nonce: number }> = [];
+  const floors: { chainId: string; from: string; nonce: number }[] = [];
   payload.nonceFloors = floors;
   for (let address = 1; ; address++) {
     floors.push({
