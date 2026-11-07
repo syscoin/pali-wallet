@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy';
 import type { IdleMode, SecurityPreferenceSnapshot } from '../core/securityPreferences';
 import { securityPreferences } from '../platform/security';
@@ -29,7 +30,7 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     catch { if (owned.mounted && owned.generation === generation) setFeedback('The setting could not be verified. Reopen security settings before saving again.'); }
     finally { owned.pending = false; if (owned.mounted && owned.generation === generation) setBusy(false); }
   };
-  return <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
+  return <SafeAreaView edges={['top', 'bottom']} style={styles.screen}><KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}><Screen>
     <Header title="Auto-lock" subtitle={mode === 'custody' ? 'Native wallet' : 'Watch accounts'} onBack={back} />
     <Text style={styles.muted}>{mode === 'custody' ? 'Lock wallet' : 'Hide watch accounts'} after foreground inactivity. Current: {current === 0 ? 'Off while open' : `${current ?? '—'} minutes`}.</Text>
     <Notice title="Background locking stays on" body="Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock." />
@@ -47,7 +48,7 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     <Button title={busy ? 'Saving auto-lock…' : 'Save auto-lock'} disabled={busy || minutes === null || minutes === current || minutes === 0 && !confirmed || mode === 'custody' && weakening && !password} onPress={() => void submit()} />
     <Button title="Cancel" variant="secondary" onPress={back} />
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
-  </Screen></KeyboardAvoidingView>;
+  </Screen></KeyboardAvoidingView></SafeAreaView>;
 }
 
 const presetStyles = StyleSheet.create({
