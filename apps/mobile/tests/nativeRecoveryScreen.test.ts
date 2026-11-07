@@ -297,6 +297,7 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wall
   tree = await f.unlock(code);
   assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback').length, 0);
   assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 1);
+  assert.ok(all(tree).findIndex((node) => node.props.accessibilityRole === 'alert') < all(tree).findIndex((node) => node.props.label === 'Password'));
   f.publish({ error: 'PENDING_TRANSFER' }); tree = f.render();
   assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' && node.props.error === 'PENDING_TRANSFER').length, 1);
   assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 1);
@@ -304,6 +305,7 @@ for (const code of ['INVALID_CREDENTIAL', 'AUTH_THROTTLED'] as const) test(`wall
   assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' || node.props.accessibilityRole === 'alert').length, 0);
   f.publish({ phase: 'locked', error: 'INVALID_CREDENTIAL' }); tree = f.render();
   assert.equal(all(tree).filter((node) => node.type === 'NativeCustodyFeedback' && node.props.error === 'INVALID_CREDENTIAL').length, 1);
+  assert.ok(all(tree).findIndex((node) => node.type === 'NativeCustodyFeedback') < all(tree).findIndex((node) => node.props.label === 'Password'));
   assert.equal(all(tree).filter((node) => node.props.accessibilityRole === 'alert').length, 0);
   f.dispose();
 });

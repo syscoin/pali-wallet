@@ -697,10 +697,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       <Screen><Header title={title} onBack={exit} subtitle="Development build · Use a test wallet" />
         {recoveryOutcome && <Notice title={recoveryOutcome.kind === 'success' ? 'Password change completed' : recoveryOutcome.kind === 'uncertain' ? 'Check your password' : 'Recovery update'} body={recoveryOutcome.message + (recoveryOutcome.cleanupFailed ? ' The wallet could not be reopened. Close and reopen Pali to unlock.' : '')} tone={recoveryOutcome.kind === 'success' ? undefined : 'amber'} />}
         {noteRestore.step.phase === 'unconfirmed' && <Notice title="Restore could not be confirmed" body="Open this backup again after unlocking to see which notes are already saved." tone="amber" />}
-        {body}
         {snapshot.error && !duplicateAuthenticationError && <NativeCustodyFeedback error={snapshot.error} />}
-        {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
         {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
+        {body}
+        {busy && <ActivityIndicator accessibilityLabel="Working" color={colors.pink} />}
       </Screen>
     </KeyboardAvoidingView>
   </SafeAreaView>;
