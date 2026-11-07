@@ -30,3 +30,49 @@ test('changing the timeout clears the previous password and requires new entry',
  await password.fill('public-password');await save.click();await expect(page.getByText('Auto-lock setting saved.',{exact:true})).toBeVisible();
  expect((await page.evaluate(()=>window.__watchFixture.events())).filter(x=>x==='idle:auth')).toHaveLength(1);
 });
+
+for (const viewport of [{ width: 320, height: 640 }, { width: 393, height: 852 }]) {
+  test(`preset labels stay complete and stable at ${viewport.width} pixels`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await native(page);
+    await settings(page);
+    const titles = ['5 minutes', '15 minutes', '30 minutes', '60 minutes', '120 minutes', 'Off while open'];
+    const preset = (title: string) => page.getByRole('button', { name: title, exact: true });
+    const stored = await page.evaluate(() => window.__watchFixture.idle.value());
+
+    const verifyLabels = async () => {
+      const dimensions = [];
+      for (const title of titles) {
+        const button = preset(title);
+        await button.scrollIntoViewIfNeeded();
+        const label = button.getByText(title, { exact: true });
+        await expect(label).toBeVisible();
+        const bounds = await button.boundingBox();
+        const textBounds = await label.boundingBox();
+        expect(bounds).not.toBeNull();
+        expect(textBounds).not.toBeNull();
+        expect(textBounds!.width).toBeLessThanOrEqual(bounds!.width);
+        expect(textBounds!.height).toBeLessThanOrEqual(bounds!.height);
+        expect(textBounds!.y).toBeGreaterThanOrEqual(bounds!.y);
+        expect(textBounds!.y + textBounds!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
+        expect(await label.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);
+        expect(await label.evaluate(element => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(1);
+        dimensions.push({ width: bounds!.width, height: bounds!.height });
+      }
+      const widths = dimensions.map(dimension => dimension.width);
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+      return dimensions;
+    };
+
+    const initialDimensions = await verifyLabels();
+    await preset('15 minutes').click();
+    expect(await verifyLabels()).toEqual(initialDimensions);
+    await preset('5 minutes').click();
+    expect(await verifyLabels()).toEqual(initialDimensions);
+    await page.addStyleTag({ content: '[dir="auto"] { font-size: 22px !important; line-height: 1.45 !important; }' });
+    const largeTextDimensions = await verifyLabels();
+    await preset('15 minutes').click();
+    expect(await verifyLabels()).toEqual(largeTextDimensions);
+    expect(await page.evaluate(() => window.__watchFixture.idle.value())).toBe(stored);
+  });
+}

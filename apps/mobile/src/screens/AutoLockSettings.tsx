@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, View } from 'react-native';
+import { AppState, BackHandler, Keyboard, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { idleMinutes, weakensIdlePolicy } from '../../../../source/shared/idleLockPolicy';
 import type { IdleMode, SecurityPreferenceSnapshot } from '../core/securityPreferences';
 import { securityPreferences } from '../platform/security';
@@ -33,7 +33,13 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     <Header title="Auto-lock" subtitle={mode === 'custody' ? 'Native wallet' : 'Watch accounts'} onBack={back} />
     <Text style={styles.muted}>{mode === 'custody' ? 'Lock wallet' : 'Hide watch accounts'} after foreground inactivity. Current: {current === 0 ? 'Off while open' : `${current ?? '—'} minutes`}.</Text>
     <Notice title="Background locking stays on" body="Pali still locks or hides this session when you leave the app or it loses focus. This setting never enables automatic unlock." />
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{[5, 15, 30, 60, 120, 0].map(n => <Button key={n} title={n === 0 ? 'Off while open' : `${n} minutes`} variant={draft === String(n) ? 'primary' : 'secondary'} disabled={busy} onPress={() => change(String(n))} />)}</View>
+    <View style={presetStyles.group}>{[5, 15, 30, 60, 120, 0].map(n => {
+      const selected = draft === String(n);
+      return <Button key={n} title={n === 0 ? 'Off while open' : `${n} minutes`}
+        variant={selected ? 'primary' : 'secondary'}
+        style={[presetStyles.button, selected && presetStyles.selected]}
+        disabled={busy} onPress={() => change(String(n))} />;
+    })}</View>
     <Text>Custom minutes (5–120, or 0 for Off)</Text><IdleTextInput accessibilityLabel="Auto-lock minutes" value={draft} onChangeText={change} keyboardType="number-pad" maxLength={3} editable={!busy} style={{ borderWidth: 1, borderColor: colors.border, color: colors.text, borderRadius: 12, padding: 16 }} />
     {minutes === null && <Text accessibilityRole="alert">Enter 0 or a whole number from 5 to 120.</Text>}
     {minutes === 0 && <><Notice title="Off while the app is open" body="This session can remain visible indefinitely without interaction. Background locking and password confirmations still apply." tone="amber" /><Button title={confirmed ? 'Off consequence acknowledged' : 'I understand the Off setting'} variant="secondary" disabled={busy} onPress={() => setConfirmed(true)} /></>}
@@ -43,3 +49,9 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
     {!!feedback && <Text accessibilityLiveRegion="polite">{feedback}</Text>}
   </Screen></KeyboardAvoidingView>;
 }
+
+const presetStyles = StyleSheet.create({
+  group: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  button: { flexBasis: '45%', flexGrow: 1, borderWidth: 1 },
+  selected: { borderColor: colors.pink },
+});
