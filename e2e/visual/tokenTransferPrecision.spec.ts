@@ -118,8 +118,43 @@ test('token transfers retain exact verified MAX amounts and large NFT identifier
             asset.tokenId
           )
             result = abi.encode(['uint256'], [asset.tokenId]);
-          if (prefix === selector('ownerOf(uint256)') && asset.tokenId)
+          if (prefix === selector('ownerOf(uint256)') && asset.tokenId) {
+            const [tokenId] = abi.decode(['uint256'], `0x${data.slice(10)}`);
+            if (tokenId.toString() !== asset.tokenId)
+              return {
+                jsonrpc: '2.0',
+                id: call.id,
+                error: {
+                  code: 3,
+                  message: 'execution reverted: ERC721: invalid token ID',
+                  data:
+                    selector('Error(string)') +
+                    abi
+                      .encode(['string'], ['ERC721: invalid token ID'])
+                      .slice(2),
+                },
+              };
             result = abi.encode(['address'], [fixture.evmAddresses[0]]);
+          }
+          if (
+            prefix === selector('transferFrom(address,address,uint256)') &&
+            asset.tokenId
+          ) {
+            const [from, to, tokenId] = abi.decode(
+              ['address', 'address', 'uint256'],
+              `0x${data.slice(10)}`
+            );
+            expect(from.toLowerCase()).toBe(
+              fixture.evmAddresses[0].toLowerCase()
+            );
+            expect(to.toLowerCase()).toBe(
+              fixture.evmAddresses[1].toLowerCase()
+            );
+            expect(tokenId.toString()).toBe(asset.tokenId);
+            expect(call.params[0].from.toLowerCase()).toBe(from.toLowerCase());
+            expect(BigInt(call.params[0].value)).toBe(BigInt(0));
+            result = '0x';
+          }
           if (prefix === selector('supportsInterface(bytes4)')) {
             const [value] = abi.decode(['bytes4'], `0x${data.slice(10)}`);
             result = abi.encode(
