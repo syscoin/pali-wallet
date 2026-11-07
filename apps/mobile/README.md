@@ -26,7 +26,7 @@ Imported metadata, explorer suggestions, balances and NFT ownership are untruste
 
 Known queued asset debits are reserved once per nonce group. Exact-call simulation checks the reviewed transfer against the selected state. Token-specific fees, rebasing and other contract rules can affect the received amount even after successful execution.
 
-Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation; later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
+Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation. Later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
 
 UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.
 
@@ -54,7 +54,7 @@ The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECU
 
 ## Run
 
-Use Node **26.12.1**, as pinned in the repository's `.nvmrc`. The mobile package owns its npm lockfile; the extension uses the root Yarn dependency graph.
+Use Node **26.12.1**, as pinned in the repository's `.nvmrc`. The mobile package owns its npm lockfile. The extension uses the root Yarn dependency graph.
 
 ```sh
 cd apps/mobile
@@ -88,7 +88,7 @@ The [mobile lockfile](package-lock.json) pins the official npm releases below wi
 | `react-native-quick-crypto`  | 1.1.9   |
 | `react-native-nitro-modules` | 0.37.2  |
 
-QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph; unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
+QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph. Unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 
 ## Verification
 
@@ -102,7 +102,7 @@ npm run test:ui
 npm run test:activity-ui
 ```
 
-The mobile foundation workflow covers host behavior, browser component tests and JavaScript exports. `mobile-native-qualification.yml` builds isolated Android and iOS Simulator applications with native bridge and cryptographic checks. Android covers custody and process restart. The iOS Simulator contract expects protected-storage refusal and records `custodyQualified: false`; successful physical-iPhone custody and persistence remain release gates.
+The mobile foundation workflow covers host behavior, browser component tests and JavaScript exports. `mobile-native-qualification.yml` builds isolated Android and iOS Simulator applications with native bridge and cryptographic checks. Android covers custody and process restart. The iOS Simulator contract expects protected-storage refusal and records `custodyQualified: false`. Successful physical-iPhone custody and persistence remain release gates.
 
 At source `b64f434440a754bd3644246e0a471220499a2fed`, all 15 PR checks passed before [the integration into master](https://github.com/syscoin/pali-wallet/pull/1326). The [dedicated public-pool Release run](https://github.com/syscoin/pali-wallet/actions/runs/42389728107) passed on Android and iOS Simulator with exact-head, lockfile and artifact evidence. Its fixture covers 1,025 leaves, bounded synchronization and Merkle paths.
 
