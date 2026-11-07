@@ -29,8 +29,6 @@ import type {
 } from './types.ts';
 
 const TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE key WHEN '${ACCOUNT_RECORD_KEY}' THEN ${ACCOUNT_RECORD_LIMITS.valueBytes} WHEN '${UTXO_SIGNED_RECORD_KEY}' THEN ${UTXO_SIGNED_RECORD_BYTES} ELSE 65536 END))`;
-// Exact schema emitted before native UTXO journals were added.
-const LEGACY_TABLE = `CREATE TABLE keyring_records (key TEXT PRIMARY KEY NOT NULL CHECK(typeof(key) = 'text' AND length(CAST(key AS BLOB)) BETWEEN 1 AND 256), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= CASE WHEN key = 'native-wallet-catalogue-v1' THEN 4194304 ELSE 65536 END))`;
 const META = `CREATE TABLE wallet_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 1024))`;
 const NOTES = `CREATE TABLE private_note_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= 16777216))`;
 const SIGNED = `CREATE TABLE evm_signed_records (profile_id TEXT PRIMARY KEY NOT NULL CHECK(typeof(profile_id) = 'text' AND length(profile_id) = 66), wallet_binding TEXT NOT NULL CHECK(typeof(wallet_binding) = 'text' AND length(wallet_binding) = 64), value TEXT NOT NULL CHECK(typeof(value) = 'text' AND length(CAST(value AS BLOB)) <= ${EVM_SIGNED_RECORD_LIMITS.bytes}))`;
@@ -327,7 +325,6 @@ export class SqliteWalletStorage implements OpenWalletStorage {
       const version = await db.getFirstAsync<{ user_version: number }>(
         'PRAGMA user_version'
       );
-      const hasLegacyRecordTable = tables[1]?.sql === LEGACY_TABLE;
       if (initialize && tables.length === 0 && version?.user_version === 0) {
         await storage.transaction(async () => {
           await db.execAsync(TABLE);
@@ -341,7 +338,7 @@ export class SqliteWalletStorage implements OpenWalletStorage {
           await db.execAsync('PRAGMA user_version = 1');
         });
       } else if (version?.user_version !== 1 || tables.length !== 4 || tables[0]?.name !== 'evm_signed_records' || tables[0].sql !== SIGNED ||
-        tables[1]?.name !== 'keyring_records' || (tables[1].sql !== TABLE && !hasLegacyRecordTable) || tables[2]?.name !== 'private_note_records' || tables[2].sql !== NOTES ||
+        tables[1]?.name !== 'keyring_records' || tables[1].sql !== TABLE || tables[2]?.name !== 'private_note_records' || tables[2].sql !== NOTES ||
         tables[3]?.name !== 'wallet_metadata' || tables[3].sql !== META) throw failure();
       const installation = await db.getFirstAsync<{ value: unknown }>(
         "SELECT CASE WHEN typeof(value) = 'text' AND length(CAST(value AS BLOB)) = 32 THEN value ELSE NULL END AS value FROM wallet_metadata WHERE key = 'installation'"
@@ -380,20 +377,6 @@ export class SqliteWalletStorage implements OpenWalletStorage {
         const identity = readWalletIdentity(await storage.fingerprint(pair), pair.identity);
         if (!identity.root) throw failure();
         inspectUtxoSignedBundle(utxo, identity.root.profileId);
-      }
-      if (hasLegacyRecordTable) {
-        // Preserve validated records with an atomic, database-local table rebuild.
-        // The other table schemas and stored wallet state were checked above.
-        await storage.transaction(async () => {
-          await db.execAsync('ALTER TABLE keyring_records RENAME TO keyring_records_legacy');
-          await db.execAsync(TABLE);
-          await db.execAsync('INSERT INTO keyring_records (key, value) SELECT key, value FROM keyring_records_legacy');
-          await db.execAsync('DROP TABLE keyring_records_legacy');
-          const current = await db.getFirstAsync<{ sql: string }>(
-            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'keyring_records'"
-          );
-          if (current?.sql !== TABLE) throw failure();
-        });
       }
       return storage;
     } catch (error) {
