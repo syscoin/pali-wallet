@@ -1,10 +1,12 @@
 import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 
+import { EvmAssetStateError } from '../../../shared/evmAssetState';
 import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecords';
 import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
   EVM_LEGACY_PENDING,
   EVM_LEGACY_VERIFICATION_UNAVAILABLE,
-  WALLET_NETWORK_CATCHING_UP_MESSAGE,
 } from 'utils/evmTransactionContext';
 
 import {
@@ -38,7 +40,7 @@ const unavailable = (reason?: 'retained' | 'asset-state') =>
   Object.assign(
     new Error(
       reason === 'asset-state'
-        ? WALLET_NETWORK_CATCHING_UP_MESSAGE
+        ? EVM_ASSET_REVIEW_MESSAGE
         : reason === 'retained'
         ? 'A saved transaction needs attention. Check Activity before sending again.'
         : 'The account nonce changed. Review this transfer again.'
@@ -46,6 +48,7 @@ const unavailable = (reason?: 'retained' | 'asset-state') =>
     {
       transactionNotBroadcast: true,
       ...(reason === 'retained' && { code: EVM_SIGNED_RECORD_NONCE_CONFLICT }),
+      ...(reason === 'asset-state' && { code: EVM_ASSET_REVIEW_REQUIRED }),
     }
   );
 
@@ -175,8 +178,6 @@ export async function planExtensionEvmNonce({
   assertCurrent,
   reviewed,
   minimumBalance,
-  protectedAssetContract,
-  protectedAssetPolicy,
   assetBasis,
   beforeAssetFinal,
 }: Readonly<{
@@ -186,8 +187,6 @@ export async function planExtensionEvmNonce({
   // Legacy observation runs before the mandatory final basis check.
   beforeAssetFinal?: (nonce: number) => Promise<void>;
   minimumBalance?: bigint;
-  protectedAssetContract?: string;
-  protectedAssetPolicy?: 'all' | 'direct';
   provider: NonceProvider;
   reviewed?: ExtensionReviewedNonce;
   scope: NonceScope;
@@ -208,20 +207,14 @@ export async function planExtensionEvmNonce({
     await provider.verifyConfiguredChainId();
     check();
   };
-  let assetStateNonce: number | undefined;
+  let assetState: WorkerAssetBasis | undefined;
   if (assetBasis) {
-    if (
-      !protectedAssetContract ||
-      !beforeAssetFinal ||
-      reviewed?.source === 'manual'
-    )
-      throw unavailable();
-    assetStateNonce = claimWorkerAssetBasis(
+    if (!beforeAssetFinal) throw unavailable();
+    assetState = claimWorkerAssetBasis(
       provider,
       scope.from,
       scope.chainId,
       scope.endpoint,
-      protectedAssetContract,
       assertCurrent,
       assetBasis
     );
@@ -259,14 +252,15 @@ export async function planExtensionEvmNonce({
     if (assetBasis) {
       await beforeAssetFinal!(nonce);
       check();
-      if (nonce !== assetBasis.nonce) throw unavailable();
       // The planner owns the mandatory post-legacy canonical, nonce and
       // fresh-chain checks; no callback can suppress them.
       await assertWorkerAssetBasis(
         provider,
         scope.from,
         assetBasis,
-        assertCurrent
+        assertCurrent,
+        nonce,
+        reviewed?.source ?? 'automatic'
       );
       check();
     } else {
@@ -275,33 +269,27 @@ export async function planExtensionEvmNonce({
     return Object.freeze({ nonce, state, maximumPredecessorCost });
   };
 
-  if (reviewed?.source === 'manual') {
-    if (pending < latest || reviewed.nonce < latest) throw unavailable();
-    if (snapshot.retained.some((entry) => entry.nonce === reviewed.nonce))
-      throw unavailable('retained');
-    return finish(
-      reviewed.nonce,
-      reviewed.nonce < pending ? 'latest' : 'pending',
-      BigInt(0)
-    );
-  }
-
-  const plan = await acceptance.plan({
-    ...scope,
-    latest,
-    pending,
-    protectedAssetContract,
-    protectedAssetPolicy,
-    assetStateNonce,
-    snapshot,
-    readPending: (hash) => read('eth_getTransactionByHash', [hash]),
-    assertCurrent: check,
-  });
+  const plan = await acceptance
+    .plan({
+      ...scope,
+      latest,
+      pending,
+      assetState,
+      nonceOverride: reviewed?.source === 'manual' ? reviewed.nonce : undefined,
+      snapshot,
+      readPending: (hash) => read('eth_getTransactionByHash', [hash]),
+      assertCurrent: check,
+    })
+    .catch((error: unknown) => {
+      check();
+      if (error instanceof EvmAssetStateError) throw unavailable('asset-state');
+      throw error;
+    });
   if (plan.kind !== 'ready') throw unavailable(plan.reason ?? 'retained');
   if (reviewed && plan.nonce !== reviewed.nonce) throw unavailable();
   return finish(
     plan.nonce,
-    pending < latest ? 'latest' : 'pending',
+    pending < latest || plan.nonce < pending ? 'latest' : 'pending',
     plan.maximumPredecessorCost
   );
 }

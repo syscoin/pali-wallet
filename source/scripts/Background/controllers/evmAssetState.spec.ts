@@ -1,3 +1,4 @@
+import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
@@ -18,13 +19,17 @@ import {
   signedWorkerAsset,
 } from './evmAssetState';
 
-// Draft to copy beside evmAssetState.ts; no network or signed keys.
 const sender = '0x1111111111111111111111111111111111111111';
 const recipient = '0x2222222222222222222222222222222222222222';
 const token = '0x3333333333333333333333333333333333333333';
 const hash = '0x' + 'ab'.repeat(32);
 const block = { number: '0x12', hash };
 const asWord = (n: bigint) => `0x${n.toString(16).padStart(64, '0')}`;
+const nftAbi = new Interface([
+  'function ownerOf(uint256) view returns (address)',
+  'function balanceOf(address,uint256) view returns (uint256)',
+  'function balanceOfBatch(address[],uint256[]) view returns (uint256[])',
+]);
 function fixture(type: 'ERC20' | 'ERC721' | 'ERC1155') {
   const basic = {
     tokenAddress: token,
@@ -60,8 +65,22 @@ function fixture(type: 'ERC20' | 'ERC721' | 'ERC1155') {
       if (method === 'eth_getCode') return '0x01';
       if (method === 'eth_getTransactionCount')
         return args[1] === 'latest' ? latestNonce : sampledNonce;
-      if (method === 'eth_call')
-        return (args[0] as { from?: string }).from ? simulation : owner;
+      if (method === 'eth_call') {
+        const call = args[0] as { data: string; from?: string };
+        if (call.from) return simulation;
+        if (type !== 'ERC20') {
+          const decoded = nftAbi.parseTransaction({ data: call.data })!;
+          if (decoded.name === 'ownerOf' && decoded.args[0] !== BigInt(7))
+            throw { code: 3, message: 'execution reverted', data: '0x' };
+          if (decoded.name === 'balanceOf')
+            return decoded.args[1] === BigInt(7) ? owner : asWord(BigInt(0));
+          if (decoded.name === 'balanceOfBatch')
+            return nftAbi.encodeFunctionResult('balanceOfBatch', [
+              [BigInt(owner)],
+            ]);
+        }
+        return owner;
+      }
       throw Error(`Unexpected ${method}`);
     }),
   };
@@ -74,7 +93,22 @@ function fixture(type: 'ERC20' | 'ERC721' | 'ERC1155') {
       sender,
       check
     );
-    await assertWorkerAssetBasis(provider as any, sender, basis, check);
+    claimWorkerAssetBasis(
+      provider as any,
+      sender,
+      '1',
+      'https://test.invalid',
+      check,
+      basis
+    );
+    await assertWorkerAssetBasis(
+      provider as any,
+      sender,
+      basis,
+      check,
+      basis.nonce,
+      'automatic'
+    );
     return basis;
   };
   return {
@@ -105,7 +139,12 @@ describe.each(['ERC20', 'ERC721', 'ERC1155'] as const)('%s', (type) => {
   test('owns and simulates the exact transfer at one canonical sampled block', async () => {
     const f = fixture(type);
     const basis = await f.inspect();
-    expect(basis).toEqual({ number: '0x12', hash, nonce: 4 });
+    expect(basis).toMatchObject({
+      number: '0x12',
+      hash,
+      nonce: 4,
+      from: sender,
+    });
     expect(
       f.reads
         .filter(([method]) => method === 'eth_call')
@@ -162,22 +201,108 @@ describe.each(['ERC20', 'ERC721', 'ERC1155'] as const)('%s', (type) => {
         sender,
         '1',
         'https://test.invalid',
-        token,
         f.check,
         basis
       )
-    ).toBe(4);
+    ).toBe(basis);
     f.setLatest('0x5');
     const before = f.reads.length;
     await expect(
-      assertWorkerAssetBasis(f.provider as any, sender, basis, f.check)
+      assertWorkerAssetBasis(
+        f.provider as any,
+        sender,
+        basis,
+        f.check,
+        basis.nonce,
+        'automatic'
+      )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
-    expect(f.reads.slice(before)).toEqual([
-      ['eth_getBlockByNumber', [block.number, false]],
-      ['eth_getTransactionCount', [sender, 'latest']],
-    ]);
+    expect(f.reads.slice(before)).toEqual(
+      expect.arrayContaining([
+        ['eth_getBlockByNumber', [block.number, false]],
+        ['eth_getTransactionCount', [sender, 'latest']],
+      ])
+    );
     expect(f.provider.verifyConfiguredChainId).toHaveBeenCalledTimes(1);
   });
+});
+
+test.each(['ERC20', 'ERC721', 'ERC1155'] as const)(
+  'simulates the exact queued %s transfer against pending state',
+  async (type) => {
+    const f = fixture(type);
+    const basis = await inspectWorkerAssetState(
+      f.provider as any,
+      f.asset,
+      1,
+      sender,
+      f.check
+    );
+    claimWorkerAssetBasis(
+      f.provider as any,
+      sender,
+      '1',
+      'https://test.invalid',
+      f.check,
+      basis
+    );
+    await assertWorkerAssetBasis(
+      f.provider as any,
+      sender,
+      basis,
+      f.check,
+      5,
+      'automatic'
+    );
+    expect(f.provider.send).toHaveBeenCalledWith('eth_call', [
+      expect.objectContaining({ from: sender, nonce: '0x5' }),
+      'pending',
+    ]);
+  }
+);
+
+test('requires a claimed worker basis before final verification', async () => {
+  const f = fixture('ERC20');
+  const basis = await inspectWorkerAssetState(
+    f.provider as any,
+    f.asset,
+    1,
+    sender,
+    f.check
+  );
+  f.provider.send.mockClear();
+  await expect(
+    assertWorkerAssetBasis(
+      f.provider as any,
+      sender,
+      basis,
+      f.check,
+      basis.nonce,
+      'automatic'
+    )
+  ).rejects.toMatchObject({
+    code: EVM_ASSET_REVIEW_REQUIRED,
+    transactionNotBroadcast: true,
+  });
+  expect(f.provider.send).not.toHaveBeenCalled();
+  claimWorkerAssetBasis(
+    f.provider as any,
+    sender,
+    '1',
+    'https://test.invalid',
+    f.check,
+    basis
+  );
+  await expect(
+    assertWorkerAssetBasis(
+      f.provider as any,
+      sender,
+      basis,
+      f.check,
+      basis.nonce,
+      'automatic'
+    )
+  ).resolves.toBeUndefined();
 });
 
 test('ERC20 false transfer return does not count as success', async () => {
@@ -386,7 +511,22 @@ test('legacy simulation keeps the exact gas and gas price without dynamic fee fi
     sender,
     f.check
   );
-  await assertWorkerAssetBasis(f.provider as any, sender, basis, f.check);
+  claimWorkerAssetBasis(
+    f.provider as any,
+    sender,
+    '1',
+    'https://test.invalid',
+    f.check,
+    basis
+  );
+  await assertWorkerAssetBasis(
+    f.provider as any,
+    sender,
+    basis,
+    f.check,
+    basis.nonce,
+    'automatic'
+  );
   const call = f.reads.find(
     ([method, args]) =>
       method === 'eth_call' && Boolean((args[0] as { from?: string }).from)

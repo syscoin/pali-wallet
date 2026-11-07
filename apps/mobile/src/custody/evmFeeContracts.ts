@@ -7,7 +7,7 @@ import { captureEvmFeeApproval, snapshotEvmFeeEnvelope, assertEvmFeeRefreshAppro
 import { encodeNftTransferData, snapshotNftTransferIntent, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
 export class EvmTransferReadError extends Error {
   readonly code: 'INVALID_INPUT' | 'INVALID_RESPONSE' | 'CANCELLED' | 'UNAVAILABLE' | 'PROFILE_CHANGED' | 'REVIEW_REQUIRED' |
-    'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE' | 'CANCELLATION_QUEUED';
+    'TOKEN_CHANGED' | 'INSUFFICIENT_BALANCE' | 'INSUFFICIENT_NFT_BALANCE' | 'NFT_TRANSFER_REJECTED' | 'NONCE_UNAVAILABLE' | 'CANCELLATION_QUEUED';
   constructor(code: EvmTransferReadError['code']) { super(code); this.name = 'EvmTransferReadError'; this.code = code; }
 }
 export class EvmAutomaticNonceUnresolved extends EvmTransferReadError {

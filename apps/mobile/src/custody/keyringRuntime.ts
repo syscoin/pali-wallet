@@ -32,7 +32,7 @@ import { getNativeNetwork, snapshotNativeNetwork, nativeSigningEnabled } from '.
 import type { NativeAccountRequest, NativeAccountRuntime, NativeNetworkRuntime } from './accounts.ts';
 import { decodeStorageValue, encodeStorageValue } from '../storage/json.ts';
 import type { NativeWalletCatalogueSnapshot } from './walletCatalogue.ts';
-import { NativeTransferError, type NativeAutomaticNonceDispatch, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
+import { NativeTransferError, type NativeTransferDispatchValidation, type NativeReplacementApproval, type NativeTransferRuntime } from './transfers.ts';
 import { assertTransferIntentEnvelope, equalTransferIntent, snapshotErc20TransferIntent, snapshotNativeAssetTransferIntent, type NativeAssetTransferIntent } from './transferIntent.ts';
 import { assertSpeedUpEnvelope } from './transferRpc.ts';
 import { snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, unsignedTransferBytes } from './evmFeeContracts.ts';
@@ -386,7 +386,7 @@ export function createKeyringRuntimeFactory(
         };
         function captureSignedSubmission(context: EvmSubmissionContext, externalGuard: () => void,
           metadata?: Readonly<Record<string, unknown>>, replacement?: EvmVerifiedReplacementBinding,
-          verifyAutomaticNonce?: NativeAutomaticNonceDispatch) {
+          verifyDispatch?: NativeTransferDispatchValidation) {
           const captured = generation;
           const check = () => {
             current(captured); checkGuard(externalGuard);
@@ -399,13 +399,15 @@ export function createKeyringRuntimeFactory(
           };
           check();
           const requiresReplacement = context.operation === 'cancel' || context.operation === 'speed-up';
-          if (requiresReplacement !== (replacement !== undefined) || (replacement && verifyAutomaticNonce))
+          const requiresAssetValidation = ['erc20', 'erc721', 'erc1155'].includes(context.operation);
+          if (requiresReplacement !== (replacement !== undefined) || (replacement && verifyDispatch) ||
+              (requiresAssetValidation && !verifyDispatch))
             throw new NativeTransferError('EXPIRED');
           const session = { keyring, assertCurrent: check };
           return createEvmSignedRecordLifecycle(signedRecords, session, {
             metadata, replacement,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
-            preflight: verifyAutomaticNonce ? (_record, assertCurrent, snapshot) => verifyAutomaticNonce(
+            preflight: verifyDispatch ? (_record, assertCurrent, snapshot) => verifyDispatch(
               createNativeAutomaticNoncePlanner(signedRecords, session, String(context.network.chainId), context.account.address, context.network.url, snapshot),
               assertCurrent
             ) : undefined,
@@ -1492,7 +1494,7 @@ export function createKeyringRuntimeFactory(
               return signedView(captured,assertCurrent,fingerprint,selected);
             },
             evmSubmissionFailure: (error) => sdk.evmSubmissionFailure(error),
-            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement, verifyAutomaticNonce) => {
+            submit: (rawTransaction, hash, assertCurrent, broadcast, inputIntent, inputApproval, replacement, verifyDispatch) => {
               if (active || reserved || closed) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const captured = generation;
               let review: {
@@ -1532,7 +1534,7 @@ export function createKeyringRuntimeFactory(
                   context,
                   check,
                   () => captureSignedSubmission(context, check, intent?.kind === 'erc20-transfer' ? { intent } : undefined,
-                    replacement?.binding, verifyAutomaticNonce)
+                    replacement?.binding, verifyDispatch)
                 );
                 const tx = Transaction.from(rawTransaction);
                 if (tx.to === null || tx.hash !== hash)

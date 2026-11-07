@@ -1,3 +1,8 @@
+import {
+  EvmAssetStateError,
+  snapshotEvmTransferAsset,
+} from './evmAssetState.ts';
+import type { EvmAssetState, EvmTransferAsset } from './evmAssetState.ts';
 import type { EvmSignedRecordSummary } from '../wallet/evmSignedRecords';
 
 type NonceIdentity = Pick<
@@ -8,10 +13,56 @@ type RetainedNonce = NonceIdentity & Pick<EvmSignedRecordSummary, 'phase'>;
 
 export type EvmAutoNonceSnapshot = Readonly<{
   owner: string;
+  readAssetDebit(hash: string, asset: EvmTransferAsset): Promise<bigint>;
   readMaximumCost(hash: string): Promise<bigint>;
   retained: readonly RetainedNonce[];
-  touchesContract?(hash: string, contract: string): Promise<boolean>;
 }>;
+
+/** Reserve known outgoing transfers once per nonce from an authenticated, chain-scoped snapshot. */
+export async function assertEvmAssetReservations(
+  state: EvmAssetState,
+  candidateNonce: number,
+  snapshot: EvmAutoNonceSnapshot,
+  assertCurrent: () => void
+): Promise<void> {
+  assertCurrent();
+  const asset = snapshotEvmTransferAsset(state.asset);
+  const { nonce: basisNonce, balanceUnits } = state;
+  const from = state.from.toLowerCase();
+  if (
+    !Number.isSafeInteger(candidateNonce) ||
+    candidateNonce < basisNonce ||
+    !Number.isSafeInteger(basisNonce) ||
+    basisNonce < 0 ||
+    typeof balanceUnits !== 'bigint' ||
+    balanceUnits < BigInt(0)
+  )
+    throw new EvmAssetStateError('INVALID_INPUT');
+  const reserved = new Map<number, bigint>();
+  let total = BigInt(asset.amountUnits);
+  if (total > balanceUnits) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
+  for (const entry of snapshot.retained) {
+    if (
+      entry.from.toLowerCase() !== from ||
+      entry.nonce < basisNonce ||
+      entry.nonce >= candidateNonce
+    )
+      continue;
+    assertCurrent();
+    const debit = await snapshot.readAssetDebit(entry.hash, asset);
+    assertCurrent();
+    if (typeof debit !== 'bigint' || debit < BigInt(0))
+      throw new EvmAssetStateError('INVALID_RESPONSE');
+    const previous = reserved.get(entry.nonce) ?? BigInt(0);
+    if (debit > previous) {
+      total += debit - previous;
+      reserved.set(entry.nonce, debit);
+      if (total > balanceUnits)
+        throw new EvmAssetStateError('INSUFFICIENT_ASSET');
+    }
+  }
+  assertCurrent();
+}
 
 /** The host supplies fresh evidence from the same captured RPC endpoint. A
  * persisted `submitted` phase alone does not prove acknowledgement or sighting. */
@@ -192,34 +243,32 @@ export class EvmAutoNonceAcceptance {
     endpoint,
     latest,
     pending,
-    protectedAssetContract,
-    protectedAssetPolicy = 'all',
-    assetStateNonce,
+    assetState,
+    nonceOverride,
     snapshot,
     readPending,
     assertCurrent,
   }: Readonly<{
     assertCurrent(): void;
-    assetStateNonce?: number;
+    assetState?: EvmAssetState;
     chainId: string;
     endpoint: string;
     from: string;
     latest: number;
+    nonceOverride?: number;
     pending: number;
-    protectedAssetContract?: string;
-    protectedAssetPolicy?: 'all' | 'direct';
     readPending(hash: string): Promise<unknown>;
     snapshot: EvmAutoNonceSnapshot;
   }>): Promise<EvmAutoNoncePlan> {
     assertCurrent();
     if (!validNonce(latest) || !validNonce(pending))
       throw new Error('Invalid EVM nonce counts');
-    if (assetStateNonce !== undefined) {
-      if (!protectedAssetContract || !validNonce(assetStateNonce))
-        throw new Error('Invalid EVM asset state nonce');
-      if (assetStateNonce !== latest)
-        return { kind: 'unresolved', nonce: latest, reason: 'asset-state' };
-    }
+    if (
+      assetState &&
+      (assetState.nonce !== latest ||
+        assetState.from.toLowerCase() !== from.toLowerCase())
+    )
+      return { kind: 'unresolved', nonce: latest, reason: 'asset-state' };
     const sender = from.toLowerCase();
     const floor = Math.max(latest, pending);
     const { owner, retained } = snapshot;
@@ -231,14 +280,35 @@ export class EvmAutoNonceAcceptance {
       )
         this.acknowledgements.delete(key);
     }
-    // Any pending predecessor can call an asset indirectly (including through
-    // a contract fallback). Canonical asset reads cannot account for it yet.
-    if (
-      protectedAssetContract &&
-      protectedAssetPolicy === 'all' &&
-      pending > latest
-    )
-      return { kind: 'unresolved', nonce: latest, reason: 'asset-state' };
+    // An explicit nonce retains the same collision rules as ordinary admission.
+    if (nonceOverride !== undefined) {
+      if (!validNonce(nonceOverride) || nonceOverride < latest)
+        throw new EvmAssetStateError('INVALID_INPUT');
+      if (
+        retained.some(
+          (entry) =>
+            sameSender(entry, chainId, sender) && entry.nonce === nonceOverride
+        )
+      )
+        return { kind: 'unresolved', nonce: nonceOverride };
+      if (assetState)
+        await assertEvmAssetReservations(
+          assetState,
+          nonceOverride,
+          {
+            ...snapshot,
+            retained: retained.filter((entry) =>
+              sameSender(entry, chainId, sender)
+            ),
+          },
+          assertCurrent
+        );
+      return {
+        kind: 'ready',
+        nonce: nonceOverride,
+        maximumPredecessorCost: BigInt(0),
+      };
+    }
     let costReads = 0;
     const variants = new Map<number, RetainedNonce[]>();
     for (const entry of retained) {
@@ -289,10 +359,6 @@ export class EvmAutoNonceAcceptance {
         }
       }
       if (!proof) break;
-      // A locally acknowledged/observed predecessor can exist even when the
-      // endpoint's pending count is stale. It can affect any protected asset.
-      if (protectedAssetContract && protectedAssetPolicy === 'all')
-        return { kind: 'unresolved', nonce, reason: 'asset-state' };
       if (nonce === Number.MAX_SAFE_INTEGER)
         throw new Error('EVM nonce exceeds safe range');
       accepted.push(proof);
@@ -306,33 +372,12 @@ export class EvmAutoNonceAcceptance {
         assertCurrent();
         const cost = await snapshot.readMaximumCost(entry.hash);
         assertCurrent();
-        if (
-          protectedAssetContract &&
-          protectedAssetPolicy === 'direct' &&
-          (!snapshot.touchesContract ||
-            (await snapshot.touchesContract(
-              entry.hash,
-              protectedAssetContract
-            )))
-        ) {
-          assertCurrent();
-          return { kind: 'unresolved', nonce, reason: 'asset-state' };
-        }
-        assertCurrent();
         if (cost > maximumAtNonce) maximumAtNonce = cost;
       }
       maximumPredecessorCost += maximumAtNonce;
     }
 
     assertCurrent();
-    for (const { key, nonce, ticket } of usedAcknowledgements) {
-      if (
-        this.acknowledgements.get(key) !== ticket ||
-        ticket.expires === undefined ||
-        ticket.expires <= this.now()
-      )
-        return { kind: 'unresolved', nonce };
-    }
     const selection = planEvmAutoNonce({
       chainId,
       from,
@@ -342,6 +387,26 @@ export class EvmAutoNonceAcceptance {
       retained,
       accepted,
     });
+    if (selection.kind === 'ready' && assetState)
+      await assertEvmAssetReservations(
+        assetState,
+        selection.nonce,
+        {
+          ...snapshot,
+          retained: retained.filter((entry) =>
+            sameSender(entry, chainId, sender)
+          ),
+        },
+        assertCurrent
+      );
+    for (const { key, nonce, ticket } of usedAcknowledgements) {
+      if (
+        this.acknowledgements.get(key) !== ticket ||
+        ticket.expires === undefined ||
+        ticket.expires <= this.now()
+      )
+        return { kind: 'unresolved', nonce };
+    }
     return selection.kind === 'ready'
       ? { ...selection, maximumPredecessorCost }
       : selection;

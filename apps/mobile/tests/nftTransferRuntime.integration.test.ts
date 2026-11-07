@@ -6,6 +6,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { Interface } from 'ethers/abi';
+import { readEvmAssetState, assertEvmAssetStateCanonical, simulateEvmAssetTransfer, type EvmAssetRead } from '../../../source/shared/evmAssetState.ts';
+import type { NativeTransferDispatchValidation } from '../src/custody/transfers.ts';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
@@ -40,6 +43,43 @@ const fixture = (tokenStandard: 'ERC-721' | 'ERC-1155', nonce: string) => {
       : { type: 0 as const, gasPrice: '2' }),
   };
   return { intent, approved };
+};
+
+const validationFor = ({ intent, approved }: ReturnType<typeof fixture>): NativeTransferDispatchValidation => {
+  const abi = new Interface(['function ownerOf(uint256) view returns(address)',
+    'function balanceOf(address,uint256) view returns(uint256)',
+    'function balanceOfBatch(address[],uint256[]) view returns(uint256[])',
+    'error ERC721NonexistentToken(uint256)']);
+  const asset = { standard: intent.tokenStandard === 'ERC-721' ? 'ERC721' as const : 'ERC1155' as const,
+    contractAddress: intent.contractAddress, amountUnits: intent.amountUnits, tokenId: intent.tokenId };
+  const block = { number: '0x1', hash: `0x${'a'.repeat(64)}` };
+  const read: EvmAssetRead = async (method, params) => {
+    if (method === 'eth_getBlockByNumber') return block;
+    if (method === 'eth_getTransactionCount') return '0x0';
+    if (method === 'eth_getCode') return '0x6000';
+    const call = params[0] as { from?: string; data: string };
+    if (call.from) return '0x';
+    const { name, args } = abi.parseTransaction(call)!;
+    if (name === 'ownerOf') {
+      if (args[0].toString() !== intent.tokenId)
+        throw { code: 3, message: 'execution reverted', data: abi.encodeErrorResult('ERC721NonexistentToken', [args[0]]) };
+      return abi.encodeFunctionResult(name, [from]);
+    }
+    if (name === 'balanceOf') return abi.encodeFunctionResult(name, [0]);
+    assert.equal(name, 'balanceOfBatch');
+    return abi.encodeFunctionResult(name, [[intent.amountUnits]]);
+  };
+  return async (planner, assertCurrent) => {
+    assertCurrent();
+    const state = await readEvmAssetState(read, from, asset);
+    const plan = await planner({ latest: 0, pending: Number(approved.nonce), assetState: state,
+      readPending: async () => null, assertCurrent });
+    assert.equal(plan.kind, 'ready');
+    assert.equal(plan.nonce, Number(approved.nonce));
+    await simulateEvmAssetTransfer(read, state, approved, 'automatic');
+    await assertEvmAssetStateCanonical(read, state);
+    assertCurrent();
+  };
 };
 
 test('published SDK and real SQLite bind saved collectibles, exact envelopes and dispatch lifecycle', async () => {
@@ -207,24 +247,25 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     assert.equal(Transaction.from(signed.rawTransaction).from, from);
     assert.equal((await storage.recovery.readSnapshot()).signedRecords.length, 0);
 
+    await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, approved), { code: 'EXPIRED' });
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, undefined!));
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, undefined, undefined!));
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, {
       ...approved, nonce: '1',
-    }), /does not match expected unsigned envelope/);
+    }, undefined, validationFor({ intent, approved })), /does not match expected unsigned envelope/);
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, current, noBroadcast, intent, {
       ...approved, gasLimit: '160000',
-    }), /does not match expected unsigned envelope/);
+    }, undefined, validationFor({ intent, approved })), /does not match expected unsigned envelope/);
     const accessList = await wallet.signTransaction({ ...approved, nonce: 0, accessList: [
       { address: contractAddress, storageKeys: ['0x' + '1'.repeat(64)] },
     ] });
-    await assert.rejects(transfers.submit(accessList, Transaction.from(accessList).hash!, current, noBroadcast, intent, approved),
+    await assert.rejects(transfers.submit(accessList, Transaction.from(accessList).hash!, current, noBroadcast, intent, approved, undefined, validationFor({ intent, approved })),
       /does not match expected unsigned envelope/);
     const otherWallet = new Wallet('0x' + '01'.repeat(32));
     const otherSigned = await otherWallet.signTransaction({ ...approved, from: otherWallet.address, nonce: 0 });
-    await assert.rejects(transfers.submit(otherSigned, Transaction.from(otherSigned).hash!, current, noBroadcast, intent, approved));
+    await assert.rejects(transfers.submit(otherSigned, Transaction.from(otherSigned).hash!, current, noBroadcast, intent, approved, undefined, validationFor({ intent, approved })));
     await assert.rejects(transfers.submit(signed.rawTransaction, signed.hash, () => { throw Error('Stale review'); },
-      noBroadcast, intent, approved), /Stale review/);
+      noBroadcast, intent, approved, undefined, validationFor({ intent, approved })), /Stale review/);
     assert.equal((await storage.recovery.readSnapshot()).signedRecords.length, 0);
 
     let sent = 0;
@@ -242,7 +283,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
       assert.equal(Object.hasOwn(row, 'metadata'), false);
       sent++;
       return signed.hash;
-    }, async () => undefined), mutableIntent, mutableApproval);
+    }, async () => undefined), mutableIntent, mutableApproval, undefined, validationFor({ intent, approved }));
     mutableApproval.nonce = '17';
     mutableIntent.recipient = contractAddress;
     await dispatch;
@@ -253,7 +294,7 @@ test('published SDK and real SQLite bind saved collectibles, exact envelopes and
     assert.equal(signed1155.rawTransaction, await wallet.signTransaction({ ...multiple.approved, nonce: 1 }));
     const gate = { entered: Promise.withResolvers<string>(), release: Promise.withResolvers<void>() };
     held = gate;
-    const pending = transfers.submit(signed1155.rawTransaction, signed1155.hash, currentMulti, noBroadcast, multiple.intent, multiple.approved);
+    const pending = transfers.submit(signed1155.rawTransaction, signed1155.hash, currentMulti, noBroadcast, multiple.intent, multiple.approved, undefined, validationFor(multiple));
     const beforeDispatch = await Promise.race([
       gate.entered.promise,
       pending.then(() => assert.fail('Submission crossed the held acknowledgement')),

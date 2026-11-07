@@ -199,13 +199,17 @@ async function withController(
           break;
         case 'eth_call': {
           const callTx = call.params[0] as { from?: string; to: string; data: string };
-          assert.equal(call.params[1], block.number);
           assert.equal(callTx.to, contractAddress);
           if (callTx.from !== undefined) {
-            assert.deepEqual(callTx, { from: owner, to: contractAddress, value: '0x0', data: asset.data });
+            assert.ok(call.params[1] === block.number || call.params[1] === 'pending');
+            assert.deepEqual({ from: callTx.from, to: callTx.to, value: (callTx as any).value, data: callTx.data },
+              { from: owner, to: contractAddress, value: '0x0', data: asset.data });
+            assert.match(String((callTx as any).gas), /^0x[0-9a-f]+$/);
+            assert.match(String((callTx as any).nonce), /^0x[0-9a-f]+$/);
             result = '0x';
             break;
           }
+          assert.equal(call.params[1], block.number);
           const { name, args } = abi.parseTransaction(callTx)!;
           if (name === 'ownerOf') {
             assert.equal(asset.collectible.tokenStandard, 'ERC-721');
@@ -434,28 +438,14 @@ test('collectible review preserves an explicit override below the external pendi
   });
 });
 
-test('a collectible waits for an earlier native send to become canonical', async () => {
+test('a collectible queues behind an acknowledged native send before it is canonical', async () => {
   const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, setCanonicalNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
+  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
     await transfers.prepare(recipient, '0.000000000000000001');
     await transfers.confirm(transfers.getSnapshot().review!.id);
     assert.equal(posted.length, 1);
-
-    // An acknowledged earlier nonce must block even when the endpoint's
-    // pending count has not yet caught up.
-    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'ASSET_STATE_WAIT' });
-    assert.match(transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
-    assert.equal(posted.length, 1);
-
-    // Pending progress alone is not canonical asset state.
     setPendingNonce('0x1');
-    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'ASSET_STATE_WAIT' });
-    assert.match(transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
-    assert.equal(posted.length, 1);
-
-    // The fixture advances both the sampled-block and latest account count.
-    setCanonicalNonce('0x1');
     setExpectedEstimateNonce('0x1', 'pending');
     await transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units);
     const approved = transfers.getSnapshot().review!;
@@ -465,8 +455,7 @@ test('a collectible waits for an earlier native send to become canonical', async
     assert.deepEqual(posted.map((bytes) => Transaction.from(bytes).nonce), [0, 1]);
     assert.equal((await retained()).length, 2);
     assert.equal(calls.slice(firstConfirmCall).filter(({ method, params }) =>
-      method === 'eth_getTransactionCount' && params[1] === 'pending').length, 2,
-    'confirmation reads pending once to refresh the review and once at wire admission');
+      method === 'eth_getTransactionCount' && params[1] === 'pending').length, 2);
   });
 });
 

@@ -1,16 +1,16 @@
 import { getAddress } from 'ethers/address';
 import { getEvmFeeData, assertEvmGasLimit, planEvmCancellationFees, planEvmSpeedUpFees } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import type { Transaction } from 'ethers/transaction';
-import { normalizeNftExecutionRevert } from '../../../../source/scripts/Background/controllers/assets/nft-utils.ts';
 import { encodeNftTransferData, type NftTransferIntent } from '../../../../source/shared/nftTransfer.ts';
-import { readSelectedNftUnits } from '../portfolio/nftOwnershipReadRpc.ts';
-import type { ScopedCallOutcome } from '../portfolio/erc20ReadRpc.ts';
 import { snapshotNftTransferSelection, type NftTransferRequest, type NftTransferSelection } from './nftTransferAdmission.ts';
 import { boundedResponseText, cancelResponseBody, parseRpcQuantity } from '../platformRpc.ts';
 import { getNativeNetwork, snapshotNativeNetwork, type EvmNetworkId, type NativeNetworkRegistration } from './networkContext.ts';
 import { assembleFeeQuote, checkedReadHash, EvmTransferReadError, guardedRead, readOwnData,
   EvmAutomaticNonceUnresolved, matchesSendNonce, rejectRead, snapshotCancellationTransfer, snapshotNftQuoteEnvelope, snapshotUnsignedTransfer, units } from './evmFeeContracts.ts';
 import type { EvmAutoNonceAcceptance, EvmAutoNoncePlan } from '../../../../source/shared/evmAutoNonce.ts';
+import { EvmAssetStateError, readEvmAssetState, assertEvmAssetStateCanonical, simulateEvmAssetTransfer,
+  type EvmAssetState, type EvmTransferAsset } from '../../../../source/shared/evmAssetState.ts';
+import { parseErc20Decimals } from '../../../../source/shared/erc20.ts';
 import type { EvmFeeQuote, EvmSampledBlock, EvmUnsignedTransfer } from './evmFeeContracts.ts';
 import { observeEvmTransaction, EvmObservationError, type EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import { getEvmTransferCost } from '../../../../source/shared/evmTransferCost.ts';
@@ -26,16 +26,14 @@ type Method = 'eth_chainId' | 'eth_getBlockByNumber' | 'eth_getCode' | 'eth_call
   'eth_maxPriorityFeePerGas' | 'eth_feeHistory' | 'eth_getBalance' | 'eth_estimateGas' | 'eth_getTransactionReceipt' | 'eth_getTransactionCount' | 'eth_getTransactionByHash';
 const METHODS: readonly string[] = Object.freeze(['eth_chainId', 'eth_getBlockByNumber', 'eth_getCode', 'eth_call', 'eth_getStorageAt', 'eth_gasPrice',
   'eth_maxPriorityFeePerGas', 'eth_feeHistory', 'eth_getBalance', 'eth_estimateGas', 'eth_getTransactionReceipt', 'eth_getTransactionCount', 'eth_getTransactionByHash']);
-type NftCall = Readonly<{ to: string; data: string; from?: string; value?: string }>;
 type Reader = ((method: Method, params: readonly unknown[]) => Promise<unknown>) & {
   assertCurrent(): void;
-  nftCall(tx: NftCall, block: string): Promise<ScopedCallOutcome>;
 };
 type TransferRequest = Readonly<{ from: string; to: string; value: string; data: string }>;
 type ReadBlock = EvmSampledBlock & Readonly<{ baseFee: bigint | null; gasLimit: bigint }>;
 type ReceiptRequest = Readonly<{ hash: string; from: string; to: string | null; nonce: string }>;
 export type NativeAutomaticNoncePlanner = (
-  input: Pick<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'latest' | 'pending' | 'readPending' | 'assertCurrent' | 'protectedAssetContract' | 'assetStateNonce'>
+  input: Pick<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'latest' | 'pending' | 'readPending' | 'assertCurrent' | 'assetState' | 'nonceOverride'>
 ) => Promise<EvmAutoNoncePlan>;
 type SendNonceSample = Readonly<{
   nonce: bigint;
@@ -47,7 +45,7 @@ export type EvmReceiptObservation = Readonly<
   | { status: 'included'; outcome: 'succeeded' | 'reverted'; canonicalObserved: true; block: EvmSampledBlock }
   | { status: 'nonce-consumed' }
 >;
-export type EvmPreparedQuote = Readonly<{ transaction: EvmUnsignedTransfer; balanceUnits: string; maximumFeeUnits: string; totalUnits: string }>;
+export type EvmPreparedQuote = Readonly<{ transaction: EvmUnsignedTransfer; balanceUnits: string; maximumFeeUnits: string; totalUnits: string; assetBalanceUnits?: string }>;
 export type EvmNftPreparedQuote = Readonly<{
   intent: NftTransferIntent;
   envelope: EvmUnsignedTransfer;
@@ -74,6 +72,10 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 const hex = (value: bigint) => `0x${value.toString(16)}`;
+function nftAsset(intent: NftTransferIntent): EvmTransferAsset {
+  return { standard: intent.tokenStandard === 'ERC-721' ? 'ERC721' : 'ERC1155',
+    contractAddress: intent.contractAddress, amountUnits: intent.amountUnits, tokenId: intent.tokenId };
+}
 function block(value: unknown): ReadBlock {
   const raw = object(value);
   return Object.freeze({ number: quantity(raw.number).toString(), hash: checkedReadHash(raw.hash),
@@ -142,27 +144,19 @@ export class EvmTransferReadRpc {
     const read: Reader = Object.assign(async (method: Method, params: readonly unknown[]) => {
       const result = await request(method, params);
       if (Object.hasOwn(result, 'error')) {
+        if (Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
         const error = object(result.error);
         // Only an explicit unsupported priority-fee method reaches the SDK's bounded history fallback.
         if (method === 'eth_maxPriorityFeePerGas' && (error.code === -32601 || error.code === 4200))
           throw Object.assign(new Error('Unsupported priority fee RPC'), { code: error.code });
+        if (method === 'eth_call') throw error;
         return rejectRead('INVALID_RESPONSE');
       }
       if (!Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
       return result.result;
     }, {
       assertCurrent: () => { guardedRead(guard); if (controller.signal.aborted) rejectRead('CANCELLED'); },
-      async nftCall(tx: NftCall, block: string): Promise<ScopedCallOutcome> {
-        if (!nft) return rejectRead('INVALID_INPUT');
-        const result = await request('eth_call', [tx, block]);
-        if (Object.hasOwn(result, 'error')) {
-          if (Object.hasOwn(result, 'result')) return rejectRead('INVALID_RESPONSE');
-          return { kind: 'rpc-error', error: result.error };
-        }
-        if (!Object.hasOwn(result, 'result') || typeof result.result !== 'string' || !/^0x(?:[0-9a-fA-F]{2})*$/.test(result.result))
-          return rejectRead('INVALID_RESPONSE');
-        return { kind: 'result', data: result.result };
-      },
+
     });
     try {
       const result = await cancellable(work(read), controller.signal);
@@ -172,6 +166,13 @@ export class EvmTransferReadRpc {
       guardedRead(guard);
       if (controller.signal.aborted) return rejectRead('CANCELLED');
       if (error instanceof EvmTransferReadError) throw error;
+      if (error instanceof EvmAssetStateError) {
+        if (nft) return rejectRead(error.code === 'INSUFFICIENT_ASSET' ? 'INSUFFICIENT_NFT_BALANCE'
+          : error.code === 'TRANSFER_REJECTED' ? 'NFT_TRANSFER_REJECTED' : error.code);
+        throw error;
+      }
+      if (error && typeof error === 'object' && 'code' in error && typeof error.code === 'number')
+        return rejectRead('INVALID_RESPONSE');
       return rejectRead('UNAVAILABLE');
     } finally {
       controller.abort(); clearTimeout(timer); external.removeEventListener('abort', abort);
@@ -329,21 +330,31 @@ export class EvmTransferReadRpc {
 
   /** One SDK fee policy serves live native/token preparation and exact-envelope requotes. */
   prepare(input: TransferRequest, signal: AbortSignal,
-    guard: () => void, approved?: EvmUnsignedTransfer, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner, assetStateBlock?: string): Promise<EvmPreparedQuote> {
+    guard: () => void, approved?: EvmUnsignedTransfer, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner, asset?: EvmTransferAsset, expectedDecimals?: number): Promise<EvmPreparedQuote> {
     let request: TransferRequest;
     try {
       const raw = readOwnData(input, ['from', 'to', 'value', 'data']);
       request = { from: getAddress(raw.from as string), to: getAddress(raw.to as string), value: units(raw.value).toString(), data: raw.data as string };
       if (/^0x0{40}$/i.test(request.from) || /^0x0{40}$/i.test(request.to) || typeof request.data !== 'string' ||
           !/^0x(?:[0-9a-f]{2})*$/.test(request.data) || request.data.length > 138 || (request.data === '0x' && request.value === '0')) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
+      if (request.data !== '0x' && !asset) throw new EvmTransferReadError('INVALID_INPUT');
       if (approved) approved = snapshotUnsignedTransfer(approved, this.network);
     } catch { return Promise.reject(new EvmTransferReadError('INVALID_INPUT')); }
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
-      const quote = await this.prepareAtBlock(read, sampled, request, signal, approved, nonceOverride, automaticNonce, undefined, assetStateBlock);
-      await this.canonical(read, sampled); await this.checkChain(read); read.assertCurrent();
-      return quote;
+      const assetState = asset && await readEvmAssetState(read, request.from, asset, { number: hex(BigInt(sampled.number)), hash: sampled.hash });
+      if (assetState && expectedDecimals !== undefined) {
+        const precision = await read('eth_call', [{ to: assetState.asset.contractAddress, data: '0x313ce567' }, assetState.number]);
+        if (typeof precision !== 'string' || !/^0x[0-9a-f]{64}$/i.test(precision) || parseErc20Decimals(BigInt(precision)) !== expectedDecimals)
+          throw new EvmTransferReadError('TOKEN_CHANGED');
+      }
+      const quote = await this.prepareAtBlock(read, sampled, request, signal, approved, nonceOverride, automaticNonce, undefined, assetState);
+      if (assetState) await simulateEvmAssetTransfer(read, assetState, quote.transaction, nonceOverride === undefined ? 'automatic' : 'manual');
+      if (assetState) await assertEvmAssetStateCanonical(read, assetState);
+      else await this.canonical(read, sampled);
+      await this.checkChain(read); read.assertCurrent();
+      return assetState ? Object.freeze({ ...quote, assetBalanceUnits: assetState.balanceUnits.toString() }) : quote;
     }, automaticNonce ? 'endpoint' : undefined);
   }
 
@@ -370,22 +381,6 @@ export class EvmTransferReadRpc {
       return rejectRead('REVIEW_REQUIRED');
   }
 
-  private async verifyNftAtBlock(read: Reader, sampled: ReadBlock, intent: NftTransferIntent, data: string): Promise<string> {
-    const blockNumber = hex(BigInt(sampled.number));
-    const code = await read('eth_getCode', [intent.contractAddress, blockNumber]);
-    if (typeof code !== 'string' || code.length > 2 + CODE_BYTES * 2 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(code))
-      return rejectRead('INVALID_RESPONSE');
-    const ownershipUnits = await readSelectedNftUnits(intent.from, intent.contractAddress, intent.tokenId, intent.tokenStandard,
-      (probe) => read.nftCall({ to: intent.contractAddress, data: probe }, blockNumber));
-    if (units(ownershipUnits, 'INVALID_RESPONSE') < BigInt(intent.amountUnits)) return rejectRead('INSUFFICIENT_NFT_BALANCE');
-    const call = { from: intent.from, to: intent.contractAddress, value: '0x0', data };
-    const simulation = await read.nftCall(call, blockNumber);
-    if (simulation.kind === 'rpc-error')
-      return rejectRead(normalizeNftExecutionRevert(simulation.error, call) ? 'NFT_TRANSFER_REJECTED' : 'INVALID_RESPONSE');
-    if (simulation.data !== '0x') return rejectRead('NFT_TRANSFER_REJECTED');
-    return ownershipUnits;
-  }
-
   private async quoteNft(selection: NftTransferSelection, input: NftTransferRequest, signal: AbortSignal,
     guard: () => void, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner, approval?: EvmNftPreparedQuote): Promise<EvmNftPreparedQuote> {
     guardedRead(guard);
@@ -396,20 +391,14 @@ export class EvmTransferReadRpc {
     const result = await this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
-      const ownershipUnits = await this.verifyNftAtBlock(read, sampled, intent, request.data);
+      const assetState = await readEvmAssetState(read, intent.from, nftAsset(intent), { number: hex(BigInt(sampled.number)), hash: sampled.hash });
+      const ownershipUnits = assetState.balanceUnits.toString();
       if (approval) this.assertNftApproval(approval);
-      let assetStateNonce: bigint | undefined;
-      const { transaction, ...amounts } = await this.prepareAtBlock(read, sampled, request, signal, approved, nonceOverride, automaticNonce, intent, undefined,
-        (value) => { assetStateNonce = value; });
+      const { transaction, ...amounts } = await this.prepareAtBlock(read, sampled, request, signal, approved, nonceOverride, automaticNonce, intent, assetState);
+      await simulateEvmAssetTransfer(read, assetState, transaction, nonceOverride === undefined ? 'automatic' : 'manual');
       if (BigInt(amounts.totalUnits) > BigInt(amounts.balanceUnits))
         return rejectRead('INSUFFICIENT_BALANCE');
-      await this.canonical(read, sampled);
-      if (automaticNonce) {
-        if (assetStateNonce === undefined) return rejectRead('REVIEW_REQUIRED');
-        const latest = quantity(await read('eth_getTransactionCount', [intent.from, 'latest']));
-        read.assertCurrent();
-        if (latest !== assetStateNonce) throw new EvmAutomaticNonceUnresolved(Number(assetStateNonce), 'asset-state');
-      }
+      await assertEvmAssetStateCanonical(read, assetState);
       await this.checkChain(read);
       const expiresAtMonotonicMilliseconds = approval?.expiresAtMonotonicMilliseconds ?? this.feeQuoteExpiry();
       read.assertCurrent();
@@ -437,34 +426,28 @@ export class EvmTransferReadRpc {
 
 
   private async sampleSendNonce(read: Reader, from: string, nonceOverride?: number,
-    automaticNonce?: NativeAutomaticNoncePlanner, protectedAssetContract?: string, assetStateBlock?: string): Promise<SendNonceSample> {
+    automaticNonce?: NativeAutomaticNoncePlanner, assetState?: EvmAssetState): Promise<SendNonceSample> {
     const readCount = async (tag: 'latest' | 'pending') =>
       quantity(await read('eth_getTransactionCount', [from, tag]));
     if (nonceOverride === undefined && !automaticNonce) {
       const count = await readCount('pending');
       return { count, nonce: count, state: 'pending', maximumPredecessorCost: 0n };
     }
-    const [count, pending, assetCount] = await Promise.all([
-      readCount('latest'), readCount('pending'),
-      automaticNonce && assetStateBlock !== undefined
-        ? read('eth_getTransactionCount', [from, assetStateBlock]).then(quantity)
-        : Promise.resolve(undefined),
-    ]);
+    const [count, pending] = await Promise.all([readCount('latest'), readCount('pending')]);
     if (automaticNonce) {
-      if (nonceOverride !== undefined || count > BigInt(Number.MAX_SAFE_INTEGER) || pending > BigInt(Number.MAX_SAFE_INTEGER) ||
-          (assetCount !== undefined && assetCount > BigInt(Number.MAX_SAFE_INTEGER)))
+      if (count > BigInt(Number.MAX_SAFE_INTEGER) || pending > BigInt(Number.MAX_SAFE_INTEGER))
         return rejectRead('INVALID_RESPONSE');
       const plan = await automaticNonce({
         latest: Number(count), pending: Number(pending),
-        protectedAssetContract,
-        ...(assetCount === undefined ? {} : { assetStateNonce: Number(assetCount) }),
+        ...(assetState ? { assetState } : {}),
+        ...(nonceOverride === undefined ? {} : { nonceOverride }),
         readPending: (hash) => read('eth_getTransactionByHash', [hash]),
         assertCurrent: read.assertCurrent,
       });
       read.assertCurrent();
       if (plan.kind === 'unresolved') throw new EvmAutomaticNonceUnresolved(plan.nonce, plan.reason);
       return {
-        count, nonce: BigInt(plan.nonce), state: pending < count ? 'latest' : 'pending',
+        count, nonce: BigInt(plan.nonce), state: pending < count || (nonceOverride !== undefined && BigInt(nonceOverride) < pending) ? 'latest' : 'pending',
         maximumPredecessorCost: plan.maximumPredecessorCost,
       };
     }
@@ -475,37 +458,35 @@ export class EvmTransferReadRpc {
     return { count, nonce, state: nonce < pending ? 'latest' : 'pending', maximumPredecessorCost: 0n };
   }
 
-  /** Recompute the exact automatic nonce and affordability under held dispatch admission. */
-  verifyAutomaticForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal,
-    guard: () => void, automaticNonce: NativeAutomaticNoncePlanner,
-    assetStateBasis?: Readonly<{ number: string; hash: string; nonce: number }>): Promise<void> {
-    const envelope = snapshotUnsignedTransfer(input, this.network);
-    let basis: Readonly<{ number: string; hash: string; nonce: number }> | undefined;
-    if (assetStateBasis !== undefined) {
-      const raw = readOwnData(assetStateBasis, ['number', 'hash', 'nonce']);
-      if (!Number.isSafeInteger(raw.nonce) || (raw.nonce as number) < 0 || envelope.data === '0x')
-        return rejectRead('INVALID_INPUT');
-      basis = Object.freeze({ number: quantity(raw.number).toString(), hash: checkedReadHash(raw.hash), nonce: raw.nonce as number });
-    }
-    if (envelope.data !== '0x' && !basis) return rejectRead('REVIEW_REQUIRED');
+  /** Revalidate the selected nonce, spend budget and exact asset call under held admission. */
+  verifyForDispatch(input: EvmUnsignedTransfer, signal: AbortSignal,
+    guard: () => void, planner: NativeAutomaticNoncePlanner, asset?: EvmTransferAsset, nonceOverride?: number, nft?: NftTransferIntent): Promise<void> {
+    const envelope = nft ? snapshotNftQuoteEnvelope(input, this.network, nft) : snapshotUnsignedTransfer(input, this.network);
+    if (envelope.data !== '0x' && !asset) return Promise.reject(new EvmTransferReadError('INVALID_INPUT'));
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
-      const planner: NativeAutomaticNoncePlanner = basis
-        ? (input) => automaticNonce({ ...input, assetStateNonce: basis!.nonce })
-        : automaticNonce;
-      const nonceState = this.sampleSendNonce(read, envelope.from, undefined, planner,
-        envelope.data === '0x' ? undefined : envelope.to);
-      const [sample, rawBalance] = await Promise.all([nonceState, this.readSendBalance(read, envelope.from, nonceState, false)]);
+      const sampled = nft ? block(await read('eth_getBlockByNumber', ['latest', false])) : undefined;
+      const assetState = asset && await readEvmAssetState(read, envelope.from, asset,
+        sampled ? { number: hex(BigInt(sampled.number)), hash: sampled.hash } : undefined);
+      const nonceState = this.sampleSendNonce(read, envelope.from, nonceOverride, planner, assetState);
+      const [sample, rawBalance] = await Promise.all([nonceState, this.readSendBalance(read, envelope.from, nonceState, nonceOverride !== undefined)]);
       if (sample.nonce !== BigInt(envelope.nonce)) return rejectRead('REVIEW_REQUIRED');
       const fee = envelope.type === 0 ? envelope.gasPrice : envelope.maxFeePerGas;
       const cost = getEvmTransferCost(BigInt(envelope.value), BigInt(envelope.gasLimit), BigInt(fee));
       if (cost.total > this.availableAfterPredecessors(rawBalance, sample.maximumPredecessorCost))
         return rejectRead('INSUFFICIENT_BALANCE');
-      if (basis) {
-        await this.canonical(read, basis);
-        const latest = quantity(await read('eth_getTransactionCount', [envelope.from, 'latest']));
-        read.assertCurrent();
-        if (latest !== BigInt(basis.nonce)) return rejectRead('REVIEW_REQUIRED');
+      if (assetState) {
+        await simulateEvmAssetTransfer(read, assetState, envelope, nonceOverride === undefined ? 'automatic' : 'manual');
+        if (sampled) {
+          const estimatedGas = quantity(await read('eth_estimateGas', [evmEstimateRequest(envelope), sample.state]));
+          const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
+          try {
+            assertEvmFeeEstimateApproved(approval, { balance: this.availableAfterPredecessors(rawBalance, sample.maximumPredecessorCost),
+              estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
+              ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds());
+          } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
+        }
+        await assertEvmAssetStateCanonical(read, assetState);
       }
       await this.checkChain(read);
       read.assertCurrent();
@@ -536,11 +517,13 @@ export class EvmTransferReadRpc {
     return this.operation(signal, guard, async (read) => {
       await this.checkChain(read);
       const sampled = block(await read('eth_getBlockByNumber', ['latest', false]));
+      const assetState = await readEvmAssetState(read, intent.from, nftAsset(intent), { number: hex(BigInt(sampled.number)), hash: sampled.hash });
+      if (assetState.balanceUnits < BigInt(intent.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
       const nonceState = replay
         ? read('eth_getTransactionCount', [intent.from, 'latest']).then((value) => ({
           count: quantity(value), nonce: BigInt(envelope.nonce), state: 'pending' as const, maximumPredecessorCost: 0n,
         }))
-        : this.sampleSendNonce(read, intent.from, nonceOverride, automaticNonce, intent.contractAddress, hex(BigInt(sampled.number)));
+        : this.sampleSendNonce(read, intent.from, nonceOverride, automaticNonce, assetState);
       const state = manual || automaticNonce ? nonceState.then((sample) => sample.state) : Promise.resolve('pending');
       // Ownership reads can outlive a failed nonce check; observe its derived
       // promise immediately while preserving the rejection for the estimate.
@@ -548,7 +531,7 @@ export class EvmTransferReadRpc {
       const [sample, rawBalance, rawEstimate] = await Promise.all([
         nonceState,
         this.readSendBalance(read, intent.from, nonceState, manual),
-        this.verifyNftAtBlock(read, sampled, intent, envelope.data).then(async () =>
+        simulateEvmAssetTransfer(read, assetState, envelope, manual ? 'manual' : 'automatic').then(async () =>
           read('eth_estimateGas', [evmEstimateRequest(envelope), await state])),
       ]);
       const nonce = BigInt(envelope.nonce);
@@ -565,30 +548,24 @@ export class EvmTransferReadRpc {
       } catch (error) {
         return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED');
       }
-      await this.canonical(read, sampled); read.assertCurrent();
-      if (automaticNonce) {
-        const latest = quantity(await read('eth_getTransactionCount', [intent.from, 'latest']));
-        read.assertCurrent();
-        if (latest !== sample.count) throw new EvmAutomaticNonceUnresolved(Number(sample.count), 'asset-state');
-      }
+      await assertEvmAssetStateCanonical(read, assetState); read.assertCurrent();
       await this.checkChain(read); read.assertCurrent();
     }, 'nft-quote');
   }
 
   private async prepareAtBlock(read: Reader, sampled: ReadBlock, request: TransferRequest, signal: AbortSignal,
-    approved?: EvmUnsignedTransfer, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner, nft?: NftTransferIntent, assetStateBlock?: string, captureAssetStateNonce?: (value: bigint) => void): Promise<EvmPreparedQuote> {
+    approved?: EvmUnsignedTransfer, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner, nft?: NftTransferIntent, assetState?: EvmAssetState): Promise<EvmPreparedQuote> {
     const manual = nonceOverride !== undefined;
+    if (assetState && assetState.balanceUnits < BigInt(assetState.asset.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
     if (manual && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
       return rejectRead('INVALID_INPUT');
-    const nonceState = this.sampleSendNonce(read, request.from, nonceOverride, automaticNonce,
-      request.data === '0x' ? undefined : request.to, nft ? hex(BigInt(sampled.number)) : assetStateBlock);
+    const nonceState = this.sampleSendNonce(read, request.from, nonceOverride, automaticNonce, assetState);
     const [{ count: observed, nonce, state, maximumPredecessorCost }, rawBalance, fees] = await Promise.all([
       nonceState,
       this.readSendBalance(read, request.from, nonceState, manual),
       this.feeData(read, sampled, signal),
     ]);
     read.assertCurrent();
-    if (automaticNonce && nft) captureAssetStateNonce?.(observed);
     const balance = this.availableAfterPredecessors(rawBalance, maximumPredecessorCost);
     if (observed > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
     if (manual && !matchesSendNonce(observed, nonce, true))

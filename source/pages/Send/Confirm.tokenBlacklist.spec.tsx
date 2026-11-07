@@ -1,11 +1,4 @@
 /** @jest-environment jsdom */
-import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
-import {
-  EVM_ASSET_REVIEW_MESSAGE,
-  EVM_ASSET_REVIEW_REQUIRED,
-} from '../../utils/evmTransactionContext';
-import { EvmSignedRecordNonceConflict } from '../../wallet/evmSignedRecords';
-
 import '@testing-library/jest-dom';
 import {
   act,
@@ -14,8 +7,15 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { Interface } from 'ethers/abi';
 import React from 'react';
 
+import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
+import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+} from '../../utils/evmTransactionContext';
+import { EvmSignedRecordNonceConflict } from '../../wallet/evmSignedRecords';
 import { SendConfirm } from 'pages/Send/Confirm';
 import { getController } from 'scripts/Background';
 import { controllerEmitter as realControllerEmitter } from 'scripts/Background/controllers/controllerEmitter';
@@ -64,6 +64,13 @@ let mockOverwritePayload: boolean;
 let mockExpireBeforeSubmit: boolean;
 let mockRetainedAssetTransfer: boolean;
 const retainedHash = `0x${'bb'.repeat(32)}`;
+const nftReadAbi = new Interface([
+  'function ownerOf(uint256) view returns (address)',
+  'function balanceOf(address,uint256) view returns (uint256)',
+  'function balanceOfBatch(address[],uint256[]) view returns (uint256[])',
+]);
+const selectedNftId = BigInt('9007199254740993');
+const tokenBalanceUnits = BigInt('100000000000000000000');
 let mockStage: jest.SpyInstance;
 let mockCloseReview: () => void;
 let mockPostToBackground: (value: unknown) => void;
@@ -403,13 +410,14 @@ beforeEach(() => {
               chainId: String(mockState.vault.activeNetwork.chainId),
               from: mockState.vault.accounts.HDAccount[0].address,
               hash: retainedHash,
-              nonce: 7,
-              phase: 'signed',
+              nonce: 6,
+              phase: 'submitted',
             },
           ]
         : [],
       readMaximumCost: async () => BigInt(1),
-      touchesContract: async () => mockRetainedAssetTransfer,
+      readAssetDebit: async () =>
+        mockRetainedAssetTransfer ? tokenBalanceUnits : BigInt(0),
     }),
   });
   mockWallet.withReceiptReadProvider = jest.fn(async (signal, _, read) =>
@@ -459,8 +467,40 @@ beforeEach(() => {
               ).toBe(true);
               return '0x';
             }
-            if (tx.data.startsWith('0x6352211e'))
+            if (tx.data.startsWith('0x6352211e')) {
+              const requestedId = nftReadAbi.decodeFunctionData(
+                'ownerOf',
+                tx.data
+              )[0];
+              if (requestedId !== selectedNftId)
+                throw Object.assign(new Error('execution reverted'), {
+                  code: 3,
+                  data: '0x',
+                });
               return `0x${account.slice(2).toLowerCase().padStart(64, '0')}`;
+            }
+            if (tx.data.startsWith('0x00fdd58e')) {
+              const requestedId = nftReadAbi.decodeFunctionData(
+                'balanceOf',
+                tx.data
+              )[1];
+              return `0x${(requestedId === selectedNftId
+                ? tokenBalanceUnits
+                : BigInt(0)
+              )
+                .toString(16)
+                .padStart(64, '0')}`;
+            }
+            if (tx.data.startsWith('0x4e1273f4')) {
+              const [, ids] = nftReadAbi.decodeFunctionData(
+                'balanceOfBatch',
+                tx.data
+              );
+              expect([...ids]).toEqual([selectedNftId]);
+              return nftReadAbi.encodeFunctionResult('balanceOfBatch', [
+                [tokenBalanceUnits],
+              ]);
+            }
             expect(
               tx.data.startsWith('0x70a08231') ||
                 tx.data.startsWith('0x00fdd58e')
@@ -468,12 +508,15 @@ beforeEach(() => {
             // 10^20 fixture units, encoded as an ABI uint256 word.
             return `0x${'56bc75e2d63100000'.padStart(64, '0')}`;
           }
-          if (method === 'eth_getTransactionCount') return '0x7';
+          if (method === 'eth_getTransactionCount')
+            return mockRetainedAssetTransfer && params[1] !== 'pending'
+              ? '0x6'
+              : '0x7';
           if (method === 'eth_getTransactionByHash')
             return {
               hash: retainedHash,
               from: mockState.vault.accounts.HDAccount[0].address,
-              nonce: '0x7',
+              nonce: mockRetainedAssetTransfer ? '0x6' : '0x7',
               blockHash: null,
               blockNumber: null,
               transactionIndex: null,
@@ -482,6 +525,15 @@ beforeEach(() => {
         } catch (error) {
           // The worker intentionally sanitizes provider errors. Preserve fixture
           // assertion failures here so they remain visible to the test.
+          if (
+            error &&
+            typeof error === 'object' &&
+            'code' in error &&
+            error.code === 3 &&
+            'data' in error &&
+            error.data === '0x'
+          )
+            throw error;
           mockTokenRpcFailures.push(
             `${method}: ${
               error instanceof Error ? error.message : String(error)
@@ -737,12 +789,12 @@ it('keeps amount-review guidance for a pre-sign asset refusal without a saved re
   expect(mockSdkSend).not.toHaveBeenCalled();
 });
 
-it('shows localized wait guidance before signing a second transfer of the same asset', async () => {
+it('shows localized amount-review guidance before signing a known asset overcommit', async () => {
   mockRetainedAssetTransfer = true;
   await readyToken(false);
   fireEvent.click(confirmToken());
   await waitFor(() =>
-    expect(mockAlertError).toHaveBeenCalledWith('send.networkCatchingUp')
+    expect(mockAlertError).toHaveBeenCalledWith('send.maxBalanceReviewRequired')
   );
   expect(mockSdkSend).not.toHaveBeenCalled();
 });

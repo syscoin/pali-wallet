@@ -12,6 +12,7 @@ import {
   assertTransferIntentEnvelope,
 } from '../src/custody/transferIntent.ts';
 import { NativeTransferRpc } from '../src/custody/transferRpc.ts';
+import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
 
 const sender = '0x52908400098527886E0F7030069857D2E4169EE7';
 const recipient = '0x1111111111111111111111111111111111111111';
@@ -219,7 +220,7 @@ test('token quote rejects false returns, changed precision, insufficient balance
     [{ decimals: 3 }, 'TOKEN_CHANGED'],
     [{ tokens: 122n }, 'INSUFFICIENT_TOKEN_BALANCE'],
     [{ eth: 179999n }, 'INSUFFICIENT_BALANCE'],
-    [{ changedBlock: true }, 'INVALID_RESPONSE'],
+    [{ changedBlock: true }, 'REVIEW_REQUIRED'],
     [{ gas: 30000001n }, 'INVALID_RESPONSE'],
   ] as const) {
     await assert.rejects(
@@ -232,50 +233,42 @@ test('token quote rejects false returns, changed precision, insufficient balance
     );
   }
 });
-test('generic broadcast preserves signed bytes and enforces an explicitly supplied token intent', async () => {
-  const signer = Wallet.fromPhrase(
-    'test test test test test test test test test test test junk'
-  );
+test('token broadcast requires bound intent and completed held validation', async () => {
+  const signer = Wallet.fromPhrase('test test test test test test test test test test test junk');
   const raw = await signer.signTransaction({
-    type: 2,
-    chainId: 1,
-    nonce: 0,
-    to: contract,
-    value: 0,
-    data: encodeErc20Transfer(recipient, '123'),
-    gasLimit: 60000,
-    maxFeePerGas: 3,
-    maxPriorityFeePerGas: 1,
+    type: 2, chainId: 1, nonce: 0, to: contract, value: 0,
+    data: encodeErc20Transfer(recipient, '123'), gasLimit: 60000,
+    maxFeePerGas: 3, maxPriorityFeePerGas: 1,
   });
   const { rpc, requests } = fixture();
-  assert.equal(
-    await rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
-      mode: 'new-send',
-      admit: async (send, preflight) => { await preflight?.(); return send(); },
-    }),
-    keccak256(raw)
-  );
+  const bareAdmission = { mode: 'new-send' as const,
+    admit: async (send: () => Promise<string>, preflight?: () => Promise<void>) => { await preflight?.(); return send(); },
+  };
+  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, bareAdmission), { code: 'INVALID_RESPONSE' });
+  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal, { ...bareAdmission, intent }), { code: 'INVALID_RESPONSE' });
+  assert.equal(requests.length, 0);
+
+  const acceptance = new EvmAutoNonceAcceptance();
+  const planner: import('../src/custody/evmTransferReadRpc.ts').NativeAutomaticNoncePlanner = (input) => acceptance.plan({
+    ...input, chainId: '1', from: signer.address, endpoint: 'fixture',
+    snapshot: { owner: 'fixture', retained: [], readMaximumCost: async () => 0n, readAssetDebit: async () => 0n },
+  });
+  const quote = await rpc.prepareToken(signer.address, intent, new AbortController().signal, undefined, undefined, planner);
+  let validated = false;
+  const admission = {
+    mode: 'new-send' as const, intent,
+    assertDispatchAdmission() { assert(validated); },
+    async admit(send: () => Promise<string>, preflight?: () => Promise<void>) {
+      await rpc.verifyForDispatch(quote.transaction, new AbortController().signal, () => {}, planner, undefined, intent);
+      validated = true;
+      await preflight?.();
+      return send();
+    },
+  };
   const readsBeforeInvalidIntent = requests.length;
-  await assert.rejects(
-    rpc.broadcast(raw, keccak256(raw), new AbortController().signal, {
-      mode: 'new-send',
-      admit: async (send, preflight) => { await preflight?.(); return send(); },
-      intent: { ...intent, amountUnits: '124' },
-    }),
-    { code: 'INVALID_RESPONSE' }
-  );
+  await assert.rejects(rpc.broadcast(raw, keccak256(raw), new AbortController().signal,
+    { ...admission, intent: { ...intent, amountUnits: '124' } }), { code: 'INVALID_RESPONSE' });
   assert.equal(requests.length, readsBeforeInvalidIntent);
-  assert.equal(
-    await rpc.broadcast(
-      raw,
-      keccak256(raw),
-      new AbortController().signal,
-      { mode: 'new-send', admit: async (send, preflight) => { await preflight?.(); return send(); }, intent }
-    ),
-    keccak256(raw)
-  );
-  assert.deepEqual(
-    requests.filter((request) => request.method === 'eth_sendRawTransaction').map((request) => request.params),
-    [[raw], [raw]]
-  );
+  assert.equal(await rpc.broadcast(raw, keccak256(raw), new AbortController().signal, admission), keccak256(raw));
+  assert.deepEqual(requests.filter((request) => request.method === 'eth_sendRawTransaction').map((request) => request.params), [[raw]]);
 });

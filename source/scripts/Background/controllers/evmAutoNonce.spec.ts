@@ -42,6 +42,7 @@ function fixture(latest: string, pending: string) {
       owner: 'wallet',
       retained: [] as (typeof retained)[],
       readMaximumCost: jest.fn(async () => BigInt(5)),
+      readAssetDebit: jest.fn(async () => BigInt(0)),
     },
   };
   return { abort, input, provider, replies };
@@ -106,7 +107,7 @@ it('requires fresh review when the exact approved automatic nonce moved', async 
   });
 });
 
-async function assetFixture() {
+async function assetFixture(amountUnits = '1', balanceHex = '64') {
   const f = fixture('0x0', '0x0');
   const token = '0x' + '33'.repeat(20);
   const blockHash = '0x' + 'ab'.repeat(32);
@@ -120,7 +121,7 @@ async function assetFixture() {
         return '0x0';
       if (method === 'eth_call') {
         const call = params[0] as { from?: string };
-        return `0x${(call.from ? '1' : '64').padStart(64, '0')}`;
+        return `0x${(call.from ? '1' : balanceHex).padStart(64, '0')}`;
       }
       return original(method, params);
     }
@@ -131,7 +132,7 @@ async function assetFixture() {
       networkUrl: endpoint,
       tokenAddress: token,
       receiver: '0x' + '22'.repeat(20),
-      tokenAmountUnits: '1',
+      tokenAmountUnits: amountUnits,
       gasLimit: '42000',
       isLegacy: false as const,
       maxFeePerGas: '3',
@@ -171,7 +172,6 @@ it('awaits legacy work and enforces final asset checks before returning', async 
   });
   const operation = planExtensionEvmNonce({
     ...asset.input,
-    protectedAssetContract: asset.token,
     assetBasis: asset.basis,
     beforeAssetFinal,
   }).then((result) => {
@@ -191,11 +191,104 @@ it('awaits legacy work and enforces final asset checks before returning', async 
   );
 });
 
+it('queues a reviewed token transfer behind an accepted predecessor and reserves its known debit', async () => {
+  const f = await assetFixture('60');
+  f.replies.set('eth_getTransactionCount:pending', '0x1');
+  f.input.snapshot.retained.push({ ...retained, phase: 'submitted' as any });
+  f.input.snapshot.readAssetDebit.mockResolvedValue(BigInt(40));
+  await expect(
+    planExtensionEvmNonce({
+      ...f.input,
+      assetBasis: f.basis,
+      beforeAssetFinal: async () => {},
+    })
+  ).resolves.toMatchObject({ nonce: 1 });
+  expect(f.input.snapshot.readAssetDebit).toHaveBeenCalledWith(
+    hash,
+    f.basis.asset
+  );
+  expect(f.provider.send).toHaveBeenCalledWith('eth_call', [
+    expect.objectContaining({ from, nonce: '0x1' }),
+    'pending',
+  ]);
+});
+
+it('preserves an explicit asset nonce and simulates against the canonical state', async () => {
+  const f = await assetFixture('60');
+  f.replies.set('eth_getTransactionCount:pending', '0x2');
+  await expect(
+    planExtensionEvmNonce({
+      ...f.input,
+      reviewed: reviewedExtensionNonce(0, 'manual'),
+      assetBasis: f.basis,
+      beforeAssetFinal: async () => {},
+    })
+  ).resolves.toMatchObject({ nonce: 0 });
+  expect(f.provider.send).toHaveBeenCalledWith('eth_call', [
+    expect.objectContaining({ from, nonce: '0x0' }),
+    '0x1',
+  ]);
+});
+
+it('rejects known pending asset overcommit before simulating another send', async () => {
+  const f = await assetFixture('60');
+  f.replies.set('eth_getTransactionCount:pending', '0x1');
+  f.input.snapshot.retained.push({ ...retained, phase: 'submitted' as any });
+  f.input.snapshot.readAssetDebit.mockResolvedValue(BigInt(41));
+  await expect(
+    planExtensionEvmNonce({
+      ...f.input,
+      assetBasis: f.basis,
+      beforeAssetFinal: async () => {},
+    })
+  ).rejects.toMatchObject({
+    code: 'EVM_ASSET_REVIEW_REQUIRED',
+    transactionNotBroadcast: true,
+  });
+  expect(
+    f.provider.send.mock.calls.some(
+      ([method, params]) =>
+        method === 'eth_call' && Boolean((params[0] as any).from)
+    )
+  ).toBe(false);
+});
+
+it('rejects an indirect predecessor effect reported by pending-state simulation', async () => {
+  const f = await assetFixture('60');
+  f.replies.set('eth_getTransactionCount:pending', '0x1');
+  const original = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(async (method, params) => {
+    if (
+      method === 'eth_call' &&
+      (params[0] as any).from &&
+      params[1] === 'pending'
+    )
+      return `0x${'0'.repeat(64)}`;
+    return original(method, params);
+  });
+  await expect(
+    planExtensionEvmNonce({
+      ...f.input,
+      assetBasis: f.basis,
+      beforeAssetFinal: async () => {},
+    })
+  ).rejects.toMatchObject({
+    code: 'EVM_ASSET_REVIEW_REQUIRED',
+    transactionNotBroadcast: true,
+  });
+});
+
+it('rejects a stale form amount after the predecessor is included and leaves only forty units', async () => {
+  await expect(assetFixture('60', '28')).rejects.toMatchObject({
+    code: 'EVM_ASSET_REVIEW_REQUIRED',
+    transactionNotBroadcast: true,
+  });
+});
+
 it('rejects forged, copied, swapped and reused asset bases', async () => {
   const f = await assetFixture();
   const valid = {
     ...f.input,
-    protectedAssetContract: f.token,
     assetBasis: f.basis,
     beforeAssetFinal: async () => {},
   };
@@ -206,7 +299,12 @@ it('rejects forged, copied, swapped and reused asset bases', async () => {
     { scope: { ...f.input.scope, from: '0x' + '22'.repeat(20) } },
     { scope: { ...f.input.scope, chainId: '1' } },
     { scope: { ...f.input.scope, endpoint: 'https://other.invalid' } },
-    { protectedAssetContract: '0x' + '44'.repeat(20) },
+    {
+      assetBasis: {
+        ...f.basis,
+        asset: { ...f.basis.asset, contractAddress: '0x' + '44'.repeat(20) },
+      },
+    },
     { assertCurrent: () => undefined },
   ])
     await expect(
@@ -224,7 +322,6 @@ it('does not return a plan after a legacy callback abort or final chain failure'
   const aborted = await assetFixture();
   const input = {
     ...aborted.input,
-    protectedAssetContract: aborted.token,
     assetBasis: aborted.basis,
     beforeAssetFinal: async () => {
       aborted.abort.abort(new Error('cancelled'));
@@ -241,7 +338,6 @@ it('does not return a plan after a legacy callback abort or final chain failure'
   await expect(
     planExtensionEvmNonce({
       ...changed.input,
-      protectedAssetContract: changed.token,
       assetBasis: changed.basis,
       beforeAssetFinal: async () => {},
     })

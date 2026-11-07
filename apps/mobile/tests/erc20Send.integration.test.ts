@@ -237,22 +237,17 @@ test('real SDK and SQLite bind ERC20 intent, reject changed funding, and retry i
     });
     assert.equal(transfers!.getSnapshot().hash, hash);
 
-    // A hash-specific pending sighting fills the nonce gap even when the
-    // pending count lags. A second transfer of the same token needs its state.
+    // Accepted local bytes fill a lagging nonce gap and reserve their token debit.
     values.peerSeesPending = true;
     await transfers!.prepare(RECIPIENT, '0.001');
     assert.equal(transfers!.getSnapshot().review?.nonce, '1');
     assert.equal(sent.length, 1);
-    await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
-      code: 'ASSET_STATE_WAIT',
-    });
-    assert.match(transfers!.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
+    await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
 
     values.pendingNonce = 1;
-    await assert.rejects(transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24'), {
-      code: 'ASSET_STATE_WAIT',
-    });
-    assert.match(transfers!.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
+    await transfers!.prepareToken(CONTRACT, RECIPIENT, '1.24');
+    assert.equal(transfers!.getSnapshot().review?.nonce, '1');
     assert.equal(sent.length, 1);
     transfers!.cancel();
     values.pendingNonce = undefined;

@@ -8,7 +8,6 @@ import {
   type IReviewedEvmTokenFees,
   type IReviewedEvmTokenApproval,
 } from '@sidhujag/sysweb3-keyring';
-import { parseEvmFeeQuantity } from '@sidhujag/sysweb3-keyring/cjs/evm-fees.js';
 import {
   coins,
   findUtxoCoinByRegistration,
@@ -1450,16 +1449,20 @@ class MainController {
     ) {
       // The SDK freezes the approved nonce with the exact payer and endpoint.
       const reviewed = context.walletNonce;
-      if (!reviewed) return createEvmSignedRecordLifecycle(records, session);
+      const assetOperation =
+        context.operation === 'erc20' ||
+        context.operation === 'erc721' ||
+        context.operation === 'erc1155';
+      if (!reviewed) {
+        if (assetOperation) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        return createEvmSignedRecordLifecycle(records, session);
+      }
       const read = this.captureFreshEvmRead(navigation);
       if (read.keyring !== keyring || read.network.url !== context.network.url)
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       return createEvmSignedRecordLifecycle(records, session, {
         automaticNonceEndpoint: context.network.url,
-        retainAssetPreflightFailure:
-          context.operation === 'erc20' ||
-          context.operation === 'erc721' ||
-          context.operation === 'erc1155',
+        retainAssetPreflightFailure: assetOperation,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           const signed = Transaction.from(record.rawTransaction);
           const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
@@ -1476,15 +1479,7 @@ class MainController {
             currentSignedHash: record.hash,
             minimumBalance: total,
             assertCurrent: assertDispatchCurrent,
-            protectedAssetContract:
-              signed.data !== '0x' ? signed.to ?? undefined : undefined,
-            // Dapp calls retain the existing direct-target policy. Wallet
-            // asset sends must fence all pending predecessors.
-            protectedAssetPolicy:
-              context.operation === 'send' ? 'direct' : 'all',
-            ...(context.operation === 'erc20' ||
-            context.operation === 'erc721' ||
-            context.operation === 'erc1155'
+            ...(assetOperation
               ? {
                   asset: signedWorkerAsset(
                     {
@@ -9423,8 +9418,6 @@ class MainController {
       asset?: WorkerAsset;
       currentSignedHash?: string;
       minimumBalance?: bigint;
-      protectedAssetContract?: string;
-      protectedAssetPolicy?: 'all' | 'direct';
       reviewed?: ExtensionReviewedNonce;
       signal?: AbortSignal;
       snapshot?: EvmAutoNonceSnapshot;
@@ -9449,10 +9442,7 @@ class MainController {
       const scope = { chainId, endpoint: read.network.url, from };
       if (
         options.asset &&
-        (options.reviewed?.source === 'manual' ||
-          options.protectedAssetContract?.toLowerCase() !==
-            options.asset.transaction.tokenAddress.toLowerCase() ||
-          options.asset.transaction.networkUrl !== read.network.url)
+        options.asset.transaction.networkUrl !== read.network.url
       )
         throw walletTokenReviewError();
       const basis = options.asset
@@ -9690,7 +9680,6 @@ class MainController {
     const read = this.captureFreshEvmRead(scope);
     const { nonce } = await this.inspectOrdinaryEvmNonce(read, from, {
       assertCurrent,
-      protectedAssetContract: tokenAddress,
       asset: payload,
       signal,
     });
@@ -9790,26 +9779,8 @@ class MainController {
           transactionNotBroadcast: true,
         });
 
-      const read = this.captureFreshEvmRead(getWalletNavigationScope());
-      const reviewedNonce = reviewedExtensionNonce(
-        authority.nonce,
-        'automatic'
-      );
-      const maximumFee = getEvmTransferCost(
-        BigInt(0),
-        parseEvmFeeQuantity(params.gasLimit),
-        parseEvmFeeQuantity(
-          params.isLegacy ? params.gasPrice : params.maxFeePerGas
-        )
-      ).total;
-      await this.inspectOrdinaryEvmNonce(read, sourceAddress!, {
-        reviewed: reviewedNonce,
-        minimumBalance: maximumFee,
-        assertCurrent: authority.assertCurrent,
-        protectedAssetContract: params.tokenAddress,
-        asset: approval,
-        signal: authority.signal,
-      });
+      // The enrolled approval owns the exact intent. The SDK lifecycle checks
+      // fresh asset state and nonce under the journal's dispatch admission.
       authority.assertCurrent();
       switch (approval.type) {
         case 'ERC20':

@@ -1,4 +1,9 @@
-import { EvmAutoNonceAcceptance, planEvmAutoNonce } from './evmAutoNonce';
+import type { EvmAssetState } from './evmAssetState';
+import {
+  assertEvmAssetReservations,
+  EvmAutoNonceAcceptance,
+  planEvmAutoNonce,
+} from './evmAutoNonce';
 
 type Input = Parameters<typeof planEvmAutoNonce>[0];
 type Retained = Input['retained'][number];
@@ -161,6 +166,7 @@ function acceptanceFixture(
     owner: 'authenticated owner',
     retained,
     readMaximumCost: jest.fn().mockResolvedValue(BigInt(10)),
+    readAssetDebit: jest.fn().mockResolvedValue(BigInt(0)),
   };
   const input = {
     ...scope,
@@ -300,60 +306,6 @@ it('bounds missing-ACK queries and never jumps over a gap', async () => {
   expect(gap.readPending).not.toHaveBeenCalled();
 });
 
-it('blocks protected assets for remote pending progress without a journal record', async () => {
-  const fixture = acceptanceFixture([]);
-  const protectedAssetContract = '0x' + 'ef'.repeat(20);
-  expect(
-    await fixture.select({ protectedAssetContract, latest: 0, pending: 1 })
-  ).toEqual({
-    kind: 'unresolved',
-    nonce: 0,
-    reason: 'asset-state',
-  });
-  expect(
-    await fixture.select({ protectedAssetContract, latest: 1, pending: 1 })
-  ).toEqual({
-    kind: 'ready',
-    nonce: 1,
-    maximumPredecessorCost: BigInt(0),
-  });
-  expect(await fixture.select({ latest: 0, pending: 1 })).toEqual({
-    kind: 'ready',
-    nonce: 1,
-    maximumPredecessorCost: BigInt(0),
-  });
-});
-
-it.each(['acknowledged', 'observed-pending'] as const)(
-  'blocks a protected asset behind a %s predecessor when pending count lags',
-  async (source) => {
-    const predecessor = record(0, 'submitted');
-    const fixture = acceptanceFixture([predecessor]);
-    if (source === 'acknowledged') {
-      fixture.acceptance.track(
-        fixture.snapshot.owner,
-        scope.endpoint,
-        predecessor
-      )(predecessor.hash);
-    } else {
-      fixture.readPending.mockResolvedValue(pendingResponse(predecessor));
-    }
-    expect(
-      await fixture.select({ protectedAssetContract: '0x' + 'ef'.repeat(20) })
-    ).toEqual({
-      kind: 'unresolved',
-      nonce: 0,
-      reason: 'asset-state',
-    });
-    expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
-    expect(await fixture.select()).toEqual({
-      kind: 'ready',
-      nonce: 1,
-      maximumPredecessorCost: BigInt(10),
-    });
-  }
-);
-
 it('rechecks acknowledgement freshness after asynchronous budget reads', async () => {
   const predecessor = record(0);
   const fixture = acceptanceFixture([predecessor]);
@@ -369,120 +321,197 @@ it('rechecks acknowledgement freshness after asynchronous budget reads', async (
   expect(await fixture.select()).toEqual({ kind: 'unresolved', nonce: 0 });
 });
 
-it.each([
-  'signed',
-  'attempted',
-  'submitted',
-  'confirmed',
-  'reverted',
-  'nonce-consumed',
-] as const)(
-  'blocks a protected asset while RPC reports a %s predecessor below pending floor',
-  async (phase) => {
-    const fixture = acceptanceFixture([record(0, phase)]);
-    const protectedAssetContract = '0x' + 'ef'.repeat(20);
-    expect(
-      await fixture.select({ protectedAssetContract, latest: 0, pending: 1 })
-    ).toEqual({
-      kind: 'unresolved',
-      nonce: 0,
-      reason: 'asset-state',
-    });
-    expect(
-      await fixture.select({ protectedAssetContract, latest: 1, pending: 1 })
-    ).toEqual({
-      kind: 'ready',
-      nonce: 1,
-      maximumPredecessorCost: BigInt(0),
-    });
-  }
-);
-
-it('does not skip an unresolved retained predecessor or let a higher gap block the current nonce', async () => {
-  const protectedAssetContract = '0x' + 'ef'.repeat(20);
-  const pending = acceptanceFixture([record(0)]);
-  expect(await pending.select({ protectedAssetContract })).toEqual({
-    kind: 'unresolved',
-    nonce: 0,
-  });
-  const future = acceptanceFixture([record(2)]);
-  expect(await future.select({ protectedAssetContract })).toEqual({
+const assetState = (
+  amountUnits = '60',
+  balanceUnits = BigInt(100)
+): EvmAssetState => ({
+  from: scope.from,
+  asset: {
+    standard: 'ERC20',
+    contractAddress: '0x' + 'ef'.repeat(20),
+    amountUnits,
+  },
+  number: '0x8',
+  hash: '0x' + 'aa'.repeat(32),
+  nonce: 0,
+  balanceUnits,
+});
+it('allows an asset send behind external pending transactions', async () => {
+  const fixture = acceptanceFixture([]);
+  expect(
+    await fixture.select({ assetState: assetState(), pending: 1 })
+  ).toEqual({
     kind: 'ready',
-    nonce: 0,
+    nonce: 1,
     maximumPredecessorCost: BigInt(0),
   });
 });
-
-it.each(['below-pending', 'stale-pending'] as const)(
-  'ordinary dapp calls use the original direct-target rule with %s',
-  async (position) => {
-    const first = record(0, 'submitted');
-    const fixture = acceptanceFixture([first]);
-    const touchesContract = jest.fn().mockResolvedValue(false);
-    const snapshot = { ...fixture.snapshot, touchesContract };
-    const input = {
-      protectedAssetContract: '0x' + 'ef'.repeat(20),
-      protectedAssetPolicy: 'direct' as const,
-      snapshot,
-      latest: 0,
-      pending: position === 'below-pending' ? 1 : 0,
-    };
-    if (position === 'stale-pending')
+it.each(['acknowledged', 'observed-pending'] as const)(
+  'queues an affordable asset transfer behind a %s predecessor with lagging RPC counts',
+  async (source) => {
+    const predecessor = record(0, 'submitted');
+    const fixture = acceptanceFixture([predecessor]);
+    fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(30));
+    if (source === 'acknowledged')
       fixture.acceptance.track(
-        snapshot.owner,
+        fixture.snapshot.owner,
         scope.endpoint,
-        first
-      )(first.hash);
-    expect(await fixture.select(input)).toEqual({
+        predecessor
+      )(predecessor.hash);
+    else fixture.readPending.mockResolvedValue(pendingResponse(predecessor));
+    expect(await fixture.select({ assetState: assetState() })).toEqual({
       kind: 'ready',
       nonce: 1,
-      maximumPredecessorCost: BigInt(position === 'below-pending' ? 0 : 10),
+      maximumPredecessorCost: BigInt(10),
     });
-    touchesContract.mockResolvedValue(true);
-    if (position === 'below-pending') {
-      expect(await fixture.select(input)).toEqual({
-        kind: 'ready',
-        nonce: 1,
-        maximumPredecessorCost: BigInt(0),
-      });
-      expect(touchesContract).not.toHaveBeenCalled();
-    } else {
-      expect(await fixture.select(input)).toEqual({
-        kind: 'unresolved',
-        nonce: 0,
-        reason: 'asset-state',
-      });
-    }
+    await expect(
+      fixture.select({ assetState: assetState('80') })
+    ).rejects.toMatchObject({
+      code: 'INSUFFICIENT_ASSET',
+    });
   }
 );
-
-it('rejects an asset snapshot nonce that differs from the fresh latest nonce', async () => {
+it('reserves the maximum same-nonce sibling debit once and sums separate nonces', async () => {
+  const first = record(0),
+    sibling = { ...first, hash: record(9).hash },
+    second = record(1);
+  const fixture = acceptanceFixture([first, sibling, second]);
+  fixture.snapshot.readAssetDebit.mockImplementation(async (hash: string) =>
+    hash === first.hash
+      ? BigInt(30)
+      : hash === sibling.hash
+      ? BigInt(45)
+      : BigInt(10)
+  );
+  await expect(
+    fixture.select({ pending: 2, assetState: assetState('40') })
+  ).resolves.toMatchObject({ nonce: 2 });
+  await expect(
+    fixture.select({ pending: 2, assetState: assetState('50') })
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+});
+it('does not reserve predecessors already included in the canonical balance', async () => {
+  const fixture = acceptanceFixture([record(0, 'confirmed')]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(30));
+  const state = { ...assetState('60', BigInt(70)), nonce: 1 };
+  expect(
+    await fixture.select({ latest: 1, pending: 1, assetState: state })
+  ).toMatchObject({ kind: 'ready', nonce: 1 });
+  expect(fixture.snapshot.readAssetDebit).not.toHaveBeenCalled();
+});
+it('does not reserve another chain or sender through the shared planner', async () => {
+  const fixture = acceptanceFixture([
+    { ...record(0), chainId: '1' },
+    { ...record(0), from: '0x' + 'cd'.repeat(20) },
+  ]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(100));
+  expect(
+    await fixture.select({ pending: 1, assetState: assetState() })
+  ).toMatchObject({ kind: 'ready', nonce: 1 });
+  expect(fixture.snapshot.readAssetDebit).not.toHaveBeenCalled();
+});
+it('revalidates a manual nonce and checks its asset predecessors without forcing the automatic nonce', async () => {
+  const fixture = acceptanceFixture([record(0)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(30));
+  expect(
+    await fixture.select({
+      pending: 2,
+      nonceOverride: 1,
+      assetState: assetState(),
+    })
+  ).toMatchObject({ kind: 'ready', nonce: 1 });
+  expect(
+    await fixture.select({
+      pending: 2,
+      nonceOverride: 0,
+      assetState: assetState(),
+    })
+  ).toEqual({ kind: 'unresolved', nonce: 0 });
+  await expect(
+    fixture.select({ latest: 1, nonceOverride: 0 })
+  ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+});
+it('fails on invalid or unauthenticated debit reads and revocation during a read', async () => {
+  const fixture = acceptanceFixture([record(0)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(-1));
+  await expect(
+    fixture.select({ pending: 1, assetState: assetState() })
+  ).rejects.toMatchObject({ code: 'INVALID_RESPONSE' });
+  fixture.snapshot.readAssetDebit.mockRejectedValue(
+    new Error('corrupt journal')
+  );
+  await expect(
+    fixture.select({ pending: 1, assetState: assetState() })
+  ).rejects.toThrow('corrupt journal');
+  let current = true;
+  fixture.snapshot.readAssetDebit.mockImplementation(async () => {
+    current = false;
+    return BigInt(0);
+  });
+  await expect(
+    fixture.select({
+      pending: 1,
+      assetState: assetState(),
+      assertCurrent() {
+        if (!current) throw new Error('revoked');
+      },
+    })
+  ).rejects.toThrow('revoked');
+});
+it('counts a reorged terminal record while its nonce is again after the balance basis', async () => {
+  const fixture = acceptanceFixture([record(0, 'confirmed')]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(50));
+  await expect(
+    fixture.select({ pending: 1, assetState: assetState() })
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+});
+it('rejects a stale asset basis but does not equate selected nonce with basis nonce', async () => {
   const fixture = acceptanceFixture([]);
-  const input = {
-    protectedAssetContract: '0x' + 'ef'.repeat(20),
-    assetStateNonce: 0,
-  };
-  expect(await fixture.select({ ...input, latest: 1, pending: 1 })).toEqual({
+  expect(
+    await fixture.select({ latest: 1, pending: 1, assetState: assetState() })
+  ).toMatchObject({ kind: 'unresolved', reason: 'asset-state' });
+  expect(
+    await fixture.select({ latest: 0, pending: 3, assetState: assetState() })
+  ).toMatchObject({ kind: 'ready', nonce: 3 });
+});
+it('provides the same reservation check for an already selected nonce', async () => {
+  const fixture = acceptanceFixture([record(0)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(30));
+  await expect(
+    assertEvmAssetReservations(
+      assetState('80'),
+      1,
+      fixture.snapshot,
+      () => undefined
+    )
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+});
+
+it('rechecks acknowledgement expiry after asynchronous asset debit reads', async () => {
+  const first = record(0);
+  const fixture = acceptanceFixture([first]);
+  fixture.acceptance.track(
+    fixture.snapshot.owner,
+    scope.endpoint,
+    first
+  )(first.hash);
+  fixture.snapshot.readAssetDebit.mockImplementationOnce(async () => {
+    fixture.advance();
+    return BigInt(1);
+  });
+  expect(await fixture.select({ assetState: assetState() })).toEqual({
     kind: 'unresolved',
-    nonce: 1,
-    reason: 'asset-state',
-  });
-  expect(await fixture.select({ ...input, latest: 0, pending: 0 })).toEqual({
-    kind: 'ready',
     nonce: 0,
-    maximumPredecessorCost: BigInt(0),
   });
-  expect(await fixture.select({ latest: 1, pending: 1 })).toEqual({
-    kind: 'ready',
-    nonce: 1,
-    maximumPredecessorCost: BigInt(0),
+});
+it('uses a captured balance while debit reads are pending', async () => {
+  const fixture = acceptanceFixture([record(0)]);
+  const state = assetState('80');
+  fixture.snapshot.readAssetDebit.mockImplementation(async () => {
+    (state as { balanceUnits: bigint }).balanceUnits = BigInt(1000);
+    return BigInt(30);
   });
-  const invalidBasis = { ...input, assetStateNonce: -1 };
-  await expect(fixture.select(invalidBasis)).rejects.toThrow(
-    'Invalid EVM asset state nonce'
-  );
-  const noContract = { latest: 0, assetStateNonce: 0 };
-  await expect(fixture.select(noContract)).rejects.toThrow(
-    'Invalid EVM asset state nonce'
-  );
+  await expect(
+    fixture.select({ pending: 1, assetState: state })
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
 });

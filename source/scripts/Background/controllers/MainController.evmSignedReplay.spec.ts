@@ -86,6 +86,7 @@ const runReplayPreflight = async (
     readMaximumCost: async () => {
       throw Error('Unexpected predecessor read in replacement fixture');
     },
+    readAssetDebit: async () => BigInt(0),
   }));
 };
 
@@ -1127,14 +1128,28 @@ describe('dapp automatic nonce recommendation', () => {
   });
 });
 
-it.each([
-  ['send', 'direct'],
-  ['erc20', 'all'],
-  ['erc721', 'all'],
-  ['erc1155', 'all'],
-] as const)(
-  'uses the trusted %s submission operation for the held predecessor policy',
-  async (operation, policy) => {
+it.each(['erc20', 'erc721', 'erc1155'] as const)(
+  'refuses a %s submission boundary without an explicit reviewed nonce',
+  (operation) => {
+    expect(() =>
+      captureEvmSubmission(
+        { ...context, operation },
+        () => undefined,
+        () =>
+          wallet.captureEvmSignedSubmission(keyring, { ...context, operation })
+      )
+    ).toThrow('PALI_TRANSACTION_CONTEXT_CHANGED');
+    expect(records.append).not.toHaveBeenCalled();
+    expect(provider.send).not.toHaveBeenCalledWith(
+      'eth_sendRawTransaction',
+      expect.anything()
+    );
+  }
+);
+
+it.each(['send', 'erc20', 'erc721', 'erc1155'] as const)(
+  'uses the authenticated %s operation for held asset verification',
+  async (operation) => {
     const sdkKeyring = Object.assign(
       Object.create(SoftwareKeyring.prototype),
       keyring,
@@ -1222,11 +1237,16 @@ it.each([
     expect(inspect).toHaveBeenCalledWith(
       expect.anything(),
       signer.address,
-      expect.objectContaining({
-        protectedAssetContract: receiver,
-        protectedAssetPolicy: policy,
-      })
+      expect.objectContaining({ reviewed: { nonce: 0, source: 'automatic' } })
     );
+    const options = inspect.mock.calls[0][2];
+    if (operation === 'send') expect(options).not.toHaveProperty('asset');
+    else
+      expect(options).toMatchObject({
+        asset: { type: operation.toUpperCase() },
+      });
+    expect(options).not.toHaveProperty('protectedAssetContract');
+    expect(options).not.toHaveProperty('protectedAssetPolicy');
   }
 );
 
@@ -1380,6 +1400,7 @@ describe('legacy pending guard in the shared nonce inspector', () => {
       owner: 'legacy-test',
       retained: [],
       readMaximumCost: async () => BigInt(0),
+      readAssetDebit: async () => BigInt(0),
     };
     records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
     records.captureAutoNonceSnapshot = jest.fn(async () => snapshot);
@@ -1443,6 +1464,7 @@ describe('worker-owned token state at review and initial held POST', () => {
     options: {
       advanceAfterBlock?: boolean;
       onLatest?: () => void;
+      pendingPredecessor?: boolean;
       staleBalance?: boolean;
     } = {}
   ) {
@@ -1456,6 +1478,8 @@ describe('worker-owned token state at review and initial held POST', () => {
           return { number: '0x10', hash: blockHash };
         if (method === 'eth_getCode') return '0x6000';
         if (method === 'eth_getTransactionCount') {
+          if (params[1] === 'pending' && options.pendingPredecessor)
+            return '0x1';
           if (params[1] === 'latest') {
             options.onLatest?.();
             latestReads++;
@@ -1509,11 +1533,11 @@ describe('worker-owned token state at review and initial held POST', () => {
       owner: 'unit',
       retained: [],
       readMaximumCost: async () => BigInt(0),
+      readAssetDebit: async () => BigInt(0),
     }));
     records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
     const read = configuredRead(good, keyring);
     const result = await wallet.inspectOrdinaryEvmNonce(read, signer.address, {
-      protectedAssetContract: token,
       asset: tokenPayload(),
     });
     expect(result.nonce).toBe(0);
@@ -1541,7 +1565,7 @@ describe('worker-owned token state at review and initial held POST', () => {
       wallet.inspectOrdinaryEvmNonce(
         configuredRead(bad, keyring),
         signer.address,
-        { protectedAssetContract: token, asset: tokenPayload() }
+        { asset: tokenPayload() }
       )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
   });
@@ -1551,19 +1575,22 @@ describe('worker-owned token state at review and initial held POST', () => {
       owner: 'unit',
       retained: [],
       readMaximumCost: async () => BigInt(0),
+      readAssetDebit: async () => BigInt(0),
     }));
     records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
     await expect(
       wallet.inspectOrdinaryEvmNonce(
         configuredRead(rpc, keyring),
         signer.address,
-        { protectedAssetContract: token, asset: tokenPayload() }
+        { asset: tokenPayload() }
       )
     ).rejects.toMatchObject({ transactionNotBroadcast: true });
   });
   it.each([
     { scenario: 'healthy', staleBalance: false, fault: 'none' },
     { scenario: 'stale holdings', staleBalance: true, fault: 'saved' },
+    { scenario: 'queued sufficient', staleBalance: false, fault: 'none' },
+    { scenario: 'queued overcommit', staleBalance: false, fault: 'saved' },
     {
       scenario: 'plain nonce RPC failure',
       staleBalance: false,
@@ -1612,8 +1639,11 @@ describe('worker-owned token state at review and initial held POST', () => {
               throw new Error('synthetic private provider error');
             }
           : undefined;
+      const pendingPredecessor = scenario.startsWith('queued');
+      const candidateNonce = pendingPredecessor ? 1 : 0;
       const rpc = rpcFixture({
         staleBalance,
+        pendingPredecessor,
         ...(onLatest ? { onLatest } : {}),
       });
       wallet.captureFreshEvmRead = jest.fn(() =>
@@ -1622,12 +1652,12 @@ describe('worker-owned token state at review and initial held POST', () => {
       const tokenContext = {
         ...context,
         operation: 'erc20' as const,
-        walletNonce: { nonce: 0, source: 'automatic' as const },
+        walletNonce: { nonce: candidateNonce, source: 'automatic' as const },
       };
       const signed = await signer.signTransaction({
         type: 2,
         chainId: 123,
-        nonce: 0,
+        nonce: candidateNonce,
         to: token,
         value: 0,
         data: encodeErc20Transfer(receiver, '60'),
@@ -1635,6 +1665,43 @@ describe('worker-owned token state at review and initial held POST', () => {
         maxFeePerGas: 3,
         maxPriorityFeePerGas: 1,
       });
+      if (pendingPredecessor) {
+        const predecessorRaw = await signer.signTransaction({
+          type: 2,
+          chainId: 123,
+          nonce: 0,
+          to: token,
+          value: 0,
+          data: encodeErc20Transfer(
+            receiver,
+            scenario === 'queued overcommit' ? '41' : '40'
+          ),
+          gasLimit: 42000,
+          maxFeePerGas: 3,
+          maxPriorityFeePerGas: 1,
+        });
+        const predecessor = Transaction.from(predecessorRaw);
+        const session = { keyring: sdkKeyring, assertCurrent: () => undefined };
+        await journal.append(session, {
+          context: {
+            ...tokenContext,
+            walletNonce: { nonce: 0, source: 'automatic' },
+          },
+          rawTransaction: predecessorRaw,
+          hash: predecessor.hash!,
+          from: signer.address,
+          chainId: '123',
+          nonce: 0,
+          type: predecessor.type,
+        });
+        await journal.updatePhase(
+          session,
+          '123',
+          signer.address,
+          predecessor.hash!,
+          'submitted'
+        );
+      }
       const boundary = captureEvmSubmission(
         tokenContext,
         () => undefined,
@@ -1680,7 +1747,7 @@ describe('worker-owned token state at review and initial held POST', () => {
         );
         expect(retained?.hash).toBe(Transaction.from(signed).hash);
         expect(retained?.phase).toBe('signed');
-        expect(retained?.nonce).toBe(0);
+        expect(retained?.nonce).toBe(candidateNonce);
       } else {
         await expect(submit).resolves.toBe(Transaction.from(signed).hash);
         expect(broadcast).toHaveBeenCalledTimes(1);
@@ -1690,15 +1757,17 @@ describe('worker-owned token state at review and initial held POST', () => {
         ([method, args]) =>
           method === 'eth_call' && Boolean((args[0] as { from?: string }).from)
       );
-      expect(call?.[1][0]).toMatchObject({
-        from: signer.address,
-        to: token,
-        gas: '0xa410',
-        nonce: '0x0',
-        type: '0x2',
-        maxFeePerGas: '0x3',
-        maxPriorityFeePerGas: '0x1',
-      });
+      if (fault === 'none')
+        expect(call?.[1][0]).toMatchObject({
+          from: signer.address,
+          to: token,
+          gas: '0xa410',
+          nonce: pendingPredecessor ? '0x1' : '0x0',
+          type: '0x2',
+          maxFeePerGas: '0x3',
+          maxPriorityFeePerGas: '0x1',
+        });
+      else expect(call).toBeUndefined();
       expect(rpc.verifyConfiguredChainId).toHaveBeenCalledWith(true);
     }
   );

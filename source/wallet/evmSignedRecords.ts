@@ -4,9 +4,12 @@ import { sha256 } from 'ethers/crypto';
 import { Transaction } from 'ethers/transaction';
 import { concat, getBytes } from 'ethers/utils';
 
+import { decodeErc20Transfer } from '../shared/erc20.ts';
+import { snapshotEvmTransferAsset } from '../shared/evmAssetState.ts';
 import { EvmAutoNonceAcceptance } from '../shared/evmAutoNonce.ts';
 import { isEvmProtectedEmptySelfCall } from '../shared/evmCancellationPayer.ts';
 import { assertJsonTextBudget } from '../shared/jsonTextBudget.ts';
+import { decodeRetainedNftTransfer } from '../shared/nftTransfer.ts';
 
 import type { EvmAutoNonceSnapshot } from '../shared/evmAutoNonce.ts';
 import type { EvmTransactionObservation } from '../shared/evmTransactionObservation.ts';
@@ -1168,8 +1171,8 @@ export class EvmSignedRecords {
     const budgets = new Map<
       string,
       Readonly<{
-        callTarget: string | null;
         maximumCost: bigint;
+        transaction: Transaction;
       }>
     >();
     const readBudget = async (hash: string) => {
@@ -1190,7 +1193,7 @@ export class EvmSignedRecords {
         throw new Error('EVM_AUTO_NONCE_UNSUPPORTED_PREDECESSOR');
       guard(session);
       const budget = Object.freeze({
-        callTarget: tx.to?.toLowerCase() ?? null,
+        transaction: tx,
         maximumCost: tx.value + tx.gasLimit * feePerGas,
       });
       budgets.set(hash, budget);
@@ -1205,8 +1208,38 @@ export class EvmSignedRecords {
       ),
       readMaximumCost: async (hash: string) =>
         (await readBudget(hash)).maximumCost,
-      touchesContract: async (hash: string, contract: string) =>
-        (await readBudget(hash)).callTarget === contract.toLowerCase(),
+      readAssetDebit: async (hash, input) => {
+        const asset = snapshotEvmTransferAsset(input);
+        const tx = (await readBudget(hash)).transaction;
+        if (tx.to?.toLowerCase() !== asset.contractAddress.toLowerCase())
+          return BigInt(0);
+        const entry = byHash.get(hash)!;
+        if (asset.standard === 'ERC20') {
+          // Other calls can affect token state, but are not known transfer debits.
+          try {
+            return BigInt(decodeErc20Transfer(tx.data).amountUnits);
+          } catch {
+            if (entry.operation === 'erc20') return invalid();
+            return BigInt(0);
+          }
+        }
+        const transfer = decodeRetainedNftTransfer(
+          {
+            ...entry,
+            operation: asset.standard === 'ERC721' ? 'erc721' : 'erc1155',
+            rawTransaction: tx.serialized,
+          },
+          tx
+        );
+        if (
+          !transfer &&
+          entry.operation ===
+            (asset.standard === 'ERC721' ? 'erc721' : 'erc1155')
+        )
+          return invalid();
+        if (!transfer || transfer.tokenId !== asset.tokenId) return BigInt(0);
+        return BigInt(transfer.amountUnits);
+      },
     });
   }
 

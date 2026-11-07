@@ -80,7 +80,7 @@ export interface NativeTransferJournalHandle {
   saveSigned(rawTransaction:string,intent?:Erc20TransferIntent):Promise<TransferJournalEntry>;
   transition(hash:string,phase:Exclude<TransferJournalEntry['phase'],'signed'>):Promise<TransferJournalEntry>;
 }
-export type NativeAutomaticNonceDispatch = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
+export type NativeTransferDispatchValidation = (planner: NativeAutomaticNoncePlanner, assertCurrent: () => void) => Promise<void>;
 export interface NativeTransferRuntime {
   evmSubmissionFailure?(error: unknown): Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>;
   replay(assertCurrent: () => void, transport: Pick<EvmReplaySession, 'observe' | 'dispatch'>,
@@ -105,7 +105,7 @@ export interface NativeTransferRuntime {
     intent: NativeAssetTransferIntent | undefined,
     approved: PreparedEvmTransaction,
     replacement?: NativeReplacementApproval,
-    verifyAutomaticNonce?: NativeAutomaticNonceDispatch
+    verifyDispatch?: NativeTransferDispatchValidation
   ): Promise<void>;
   sign(
     transaction: PreparedEvmTransaction,
@@ -126,10 +126,11 @@ type Source = {
   lock(): void;
 };
 const nativeCapacityRefusals = new WeakSet<object>();
+const nativeSavedAssetFailures = new WeakMap<object, NativeTransferError>();
 export const SIGNED_STORAGE_FULL_MESSAGE = 'This transaction was not submitted because Pali could not save it within its local transaction storage limit. Check Activity.';
 export const SIGNED_STORAGE_FULL_PREVIOUS_MESSAGE = 'This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.';
-export const ASSET_STATE_WAIT_MESSAGE = 'Network conditions changed while checking this transfer. Check Activity, then try again.';
-export const ASSET_STATE_SAVED_MESSAGE = 'Your signed transaction is saved and was not submitted. The network is still updating; check Activity before retrying.';
+export const ASSET_STATE_WAIT_MESSAGE = 'The account state changed while checking this transfer. Review the transfer and try again.';
+export const ASSET_STATE_SAVED_MESSAGE = 'Your signed transaction is saved and was not submitted. Review it in Activity before retrying.';
 
 export class NativeTransferError extends Error {
   readonly code:
@@ -487,6 +488,12 @@ export class NativeTransfers {
             message: 'Your previous transfer could not be safely saved to local activity. No new transfer was broadcast. Close and reopen Pali, then try again.' });
           throw new NativeTransferError('FAILED');
         }
+        const savedAssetFailure = error && typeof error === 'object' ? nativeSavedAssetFailures.get(error) : undefined;
+        if (savedAssetFailure) {
+          nativeSavedAssetFailures.delete(error as object);
+          this.publish({ phase: 'unknown', review: null, message: ASSET_STATE_SAVED_MESSAGE });
+          throw savedAssetFailure;
+        }
         if (
           error instanceof NativeTransferRpcError &&
           ['INSUFFICIENT_BALANCE', 'INSUFFICIENT_TOKEN_BALANCE'].includes(
@@ -794,7 +801,7 @@ export class NativeTransfers {
         throw new NativeTransferError('FAILED');
       this.publish({ intent });
       const quote = await rpc.prepareToken(address, intent, signal, undefined, nonceOverride,
-        nonceOverride === undefined ? journal.planAutomaticNonce : undefined);
+        journal.planAutomaticNonce);
       assertCurrent();
       await this.checkDraftNonce(journal, quote.transaction.nonce, nonceOverride !== undefined);
       assertCurrent();
@@ -840,7 +847,7 @@ export class NativeTransfers {
       guard();
       const selection = Object.freeze({ network, owner: address, saved: inventory.collectible });
       const quote = await withNftInventorySignal(signal, inventory.signal, (owned) =>
-        rpc.prepareNft(selection, request, owned, guard, nonceOverride, nonceOverride === undefined ? journal.planAutomaticNonce : undefined))
+        rpc.prepareNft(selection, request, owned, guard, nonceOverride, journal.planAutomaticNonce))
         .catch((error: unknown) => { guard(); throw error; });
       guard();
       await this.checkDraftNonce(journal, quote.envelope.nonce, nonceOverride !== undefined);
@@ -889,7 +896,6 @@ export class NativeTransfers {
       const collectible = approved.collectible;
       const intent = collectible?.quote.intent ?? approved.public.intent;
       let freshCollectible: EvmNftPreparedQuote | undefined;
-      let freshTokenQuote: NativeTransferQuote | undefined;
       const guard = () => {
         assertCurrent();
         if (!startedSubmission) {
@@ -902,7 +908,8 @@ export class NativeTransfers {
       const journal = await runtime.journal(guard);
       guard();
       const automatic = !approved.replacement && approved.public.nonceOverride === undefined;
-      const planner = automatic ? journal.planAutomaticNonce : undefined;
+      const validatesAsset = !approved.replacement && (!!approved.public.intent || !!collectible);
+      const planner = automatic || validatesAsset ? journal.planAutomaticNonce : undefined;
       this.publish({
         phase: 'signing',
         review: approved.public,
@@ -930,7 +937,6 @@ export class NativeTransfers {
             totalUnits: freshCollectible.totalUnits, maximumFeeUnits: freshCollectible.maximumFeeUnits };
         } else {
           latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride, planner);
-          if (automatic && approved.public.intent) freshTokenQuote = latest;
         }
         guard();
         if (replacement?.mode !== 'cancel') {
@@ -981,16 +987,17 @@ export class NativeTransfers {
         review: approved.public,
         message: null,
       });
-      let automaticVerified = false;
-      const assertAutomaticAdmission = automatic ? () => {
+      let dispatchVerified = false;
+      const validateDispatch = automatic || validatesAsset;
+      const assertDispatchAdmission = validateDispatch ? () => {
         guard();
-        if (!automaticVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        if (!dispatchVerified) throw new NativeTransferRpcError('REVIEW_REQUIRED');
       } : undefined;
-      const verifyAutomaticNonce: NativeAutomaticNonceDispatch | undefined = automatic
+      const verifyDispatch: NativeTransferDispatchValidation | undefined = validateDispatch
         ? async (heldPlanner, assertAdmission) => {
           const check = () => { guard(); assertAdmission(); };
           const verify = (owned: AbortSignal) =>
-            rpc.verifyAutomaticForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible, freshTokenQuote);
+            rpc.verifyForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible, approved.public.intent, approved.public.nonceOverride);
           if (collectible) {
             if (!freshCollectible) throw new NativeTransferError('EXPIRED');
             await withNftInventorySignal(signal, collectible.inventorySignal, verify);
@@ -998,7 +1005,7 @@ export class NativeTransfers {
             await verify(signal);
           }
           check();
-          automaticVerified = true;
+          dispatchVerified = true;
         }
         : undefined;
       try {
@@ -1012,12 +1019,12 @@ export class NativeTransfers {
               return rpc.broadcast(approvedBytes, transactionHash, signal, {
                 mode: 'collectible', approval: freshCollectible, assertCurrent: guard,
                 inventorySignal: collectible.inventorySignal, onDispatch: () => { guard(); startedSubmission = true; },
-                assertAutomaticAdmission, admit,
+                assertDispatchAdmission: assertDispatchAdmission!, admit,
               }).catch((error: unknown) => { if (!startedSubmission) guard(); throw error; });
             }
             const atDispatch: typeof admit = (send, preflight) => admit(() => {
               guard();
-              assertAutomaticAdmission?.();
+              assertDispatchAdmission?.();
               startedSubmission = true;
               return send();
             }, preflight);
@@ -1031,14 +1038,14 @@ export class NativeTransfers {
               mode: 'new-send',
               nonceOverride: approved.public.nonceOverride,
               intent: approved.public.intent,
-              assertAutomaticAdmission,
+              assertDispatchAdmission,
               admit: atDispatch,
             });
           },
           intent,
           approved.transaction!,
           approved.replacement,
-          verifyAutomaticNonce
+          verifyDispatch
         );
       } catch (error) {
         // Durable uncertainty must reach the captured authority even if the
@@ -1068,8 +1075,23 @@ export class NativeTransfers {
           const saved = await recovery.load(transactionHash);
           assertCurrent();
           if (saved?.hash === transactionHash && saved.rawTransaction === rawTransaction &&
-              (!collectible || saved.collectible))
+              (!collectible || saved.collectible)) {
             this.publish({ hash: transactionHash });
+            if (validatesAsset && error instanceof NativeTransferRpcError) {
+              switch (error.code) {
+                case 'INSUFFICIENT_BALANCE':
+                case 'INSUFFICIENT_TOKEN_BALANCE':
+                case 'INSUFFICIENT_NFT_BALANCE':
+                case 'TOKEN_CHANGED':
+                case 'TOKEN_TRANSFER_REJECTED':
+                case 'NFT_TRANSFER_REJECTED':
+                  nativeSavedAssetFailures.set(error, new NativeTransferError(error.code));
+                  break;
+                case 'REVIEW_REQUIRED':
+                  nativeSavedAssetFailures.set(error, new NativeTransferError('EXPIRED'));
+              }
+            }
+          }
           throw error;
         }
         this.publish({

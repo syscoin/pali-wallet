@@ -46,6 +46,10 @@ function fixture() {
   let expectedEstimateState: 'latest' | 'pending' | undefined;
   let nonce = '0x0';
   let minedNonce = '0x0';
+  let tokenChanged = false;
+  let oldBlockReorganized = false;
+  const tokenReadsAfterChange: string[] = [];
+  const postChangeReads: string[] = [];
   let baseFee = '0x1';
   let dropped = false;
   let final = false;
@@ -57,6 +61,8 @@ function fixture() {
   let signGate: Promise<void> | null = null;
   let beforeCommit: (() => Promise<void>) | undefined;
   let beforeBroadcastChainResponse: (() => Promise<void>) | undefined;
+  let postJournalTokenRead: (() => Promise<void>) | undefined;
+  let postJournalNonceRead: (() => Promise<void>) | undefined;
   let failWrite = false;
   const broadcasts: string[] = [];
   const rpcMethods: string[] = [];
@@ -143,6 +149,9 @@ function fixture() {
     fetch: async (_url, init) => {
       const body = JSON.parse(String(init.body));
       rpcMethods.push(body.method);
+      if (Object.keys(records).length && body.method === 'eth_call' && String(body.params[0].data).startsWith('0x70a08231') && postJournalTokenRead) { const hook = postJournalTokenRead; postJournalTokenRead = undefined; await hook(); }
+      if (Object.keys(records).length && body.method === 'eth_getTransactionCount' && postJournalNonceRead) { const hook = postJournalNonceRead; postJournalNonceRead = undefined; await hook(); }
+      if (tokenChanged && (body.method === 'eth_getTransactionCount' || body.method === 'eth_getBlockByNumber' || body.method === 'eth_chainId')) postChangeReads.push(body.method + ':' + (body.method === 'eth_getTransactionCount' ? body.params[1] : body.method === 'eth_getBlockByNumber' ? body.params[0] : ''));
       if (observationUnavailable && body.method === 'eth_getTransactionReceipt')
         throw Error('Observation unavailable');
       let result: unknown;
@@ -153,23 +162,25 @@ function fixture() {
       }
       else if (body.method === 'eth_getCode')
         result = payerIsEoa && String(body.params[0]).toLowerCase() === wallet.address.toLowerCase() ? '0x' : '0x6000';
-      else if (body.method === 'eth_call')
-        result =
-          '0x' +
-          (body.params[0].data === '0x313ce567'
-            ? 2n
-            : body.params[0].data.startsWith('0x70a08231')
-            ? 10000n
-            : 1n)
-            .toString(16)
-            .padStart(64, '0');
+      else if (body.method === 'eth_call') {
+        const selector = String(body.params[0].data).slice(0, 10);
+        if (tokenChanged && (selector === '0x70a08231' || selector === '0xa9059cbb'))
+          tokenReadsAfterChange.push(`${selector}:${String(body.params[1])}`);
+        result = '0x' + (selector === '0x313ce567' ? 2n
+          : selector === '0x70a08231'
+          ? (tokenChanged && body.params[1] === '0x21' ? 0n : 10000n)
+          : selector === '0xa9059cbb' && tokenChanged && body.params[1] === '0x21' ? 0n
+          : 1n).toString(16).padStart(64, '0');
+      }
       else if (body.method === 'eth_getBalance')
         result = body.params[1] === 'latest' ? canonicalBalance ?? availableBalance : availableBalance;
       else if (body.method === 'eth_getTransactionCount')
         result =
           body.params[1] !== 'pending' ? (final ? '0x1' : minedNonce) : nonce;
       else if (body.method === 'eth_getBlockByNumber')
-        result = { number: body.params[0] === 'latest' ? '0x20' : body.params[0], hash: '0x' + '2'.repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
+        result = { number: body.params[0] === 'latest' ? (tokenChanged ? '0x21' : '0x20') : body.params[0],
+          hash: '0x' + ((body.params[0] === '0x21' || (body.params[0] === 'latest' && tokenChanged) ||
+            (body.params[0] === '0x20' && oldBlockReorganized)) ? '3' : '2').repeat(64), baseFeePerGas: baseFee, gasLimit: '0x1c9c380' };
       else if (body.method === 'eth_gasPrice') result = '0x2';
       else if (body.method === 'eth_feeHistory')
         result = { oldestBlock: '0x1', baseFeePerGas: ['0x1', baseFee] };
@@ -221,6 +232,12 @@ function fixture() {
     runtime,
     source,
     signatures: () => signatures,
+    tokenReadsAfterChange,
+    holdPostJournalTokenRead(hook: () => Promise<void>) { postJournalTokenRead = hook; },
+    holdPostJournalNonceRead(hook: () => Promise<void>) { postJournalNonceRead = hook; },
+    postChangeReads,
+    changeTokenAtNextBlock() { tokenChanged = true; },
+    reorganizeQuotedBlock() { oldBlockReorganized = true; },
     nextNonce() {
       nonce = '0x1';
     },
@@ -418,6 +435,25 @@ test('ordinary coin and token sends preserve a deliberate override below the ext
   }
 });
 
+for (const manual of [false, true]) {
+  test(`ERC20 ${manual ? 'manual' : 'automatic'} final admission rechecks balance after journal persistence`, async () => {
+    const f = fixture();
+    try {
+      await f.transfers.view.prepareToken(token.contractAddress, to, '1.23', manual ? '0' : undefined);
+      const approved = f.transfers.getSnapshot().review!;
+      let held = false;
+      f.holdWrite(async () => { if (!held) { held = true; f.changeTokenAtNextBlock(); } });
+      await assert.rejects(f.transfers.confirm(approved.id), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
+      assert.equal(f.signatures(), 1);
+      assert.equal(f.broadcasts.length, 0);
+      assert(f.tokenReadsAfterChange.includes('0x70a08231:0x21'));
+      const saved = await (await f.runtime.journal(() => undefined)).load();
+      assert(saved?.rawTransaction);
+      assert.equal(f.transfers.getSnapshot().hash, saved.hash);
+    } finally { f.close(); }
+  });
+}
+
 test('manual nonce rejects malformed inputs and accepts zero only while it is available', async () => {
   const f = fixture();
   try {
@@ -507,40 +543,19 @@ test('lagging pending balance reserves accepted predecessor value and fee until 
   }
 });
 
-test('a same-token predecessor blocks review until its nonce is canonical', async () => {
+test('same-token sends queue while reserving existing outgoing amounts', async () => {
   const f = fixture();
   try {
     await f.transfers.prepareToken(token.contractAddress, to, '1');
     await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
-    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 1);
-
-    // A pending count does not advance the canonical block used for token reads.
-    f.nextNonce();
-    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 1);
-
-    // Any predecessor may affect a different asset indirectly, including
-    // through a contract fallback; a native successor remains available.
-    await assert.rejects(f.transfers.prepareToken(otherToken.contractAddress, to, '2'), { code: 'ASSET_STATE_WAIT' });
-    assert.match(f.transfers.getSnapshot().message ?? '', /Network conditions changed while checking this transfer/);
-    await f.transfers.prepare(to, '0.001');
-    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
-    assert.equal(f.signatures(), 1);
-    assert.equal(f.broadcasts.length, 1);
-
-    f.consumeNonce();
     await f.transfers.prepareToken(token.contractAddress, to, '2');
     assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
+    await f.transfers.confirm(f.transfers.getSnapshot().review!.id);
+    assert.deepEqual(f.broadcasts.map((raw) => Transaction.from(raw).nonce), [0, 1]);
+    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '98'), { code: 'INSUFFICIENT_TOKEN_BALANCE' });
     await f.transfers.prepareToken(otherToken.contractAddress, to, '2');
-    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
-  } finally {
-    f.close();
-  }
+    assert.equal(f.transfers.getSnapshot().review?.nonce, '2');
+  } finally { f.close(); }
 });
 
 test('asset state changes after signing retain recovery guidance without broadcast', async () => {
@@ -549,14 +564,14 @@ test('asset state changes after signing retain recovery guidance without broadca
     await f.transfers.prepareToken(token.contractAddress, to, '1');
     const approved = f.transfers.getSnapshot().review!;
     f.holdWrite(async () => f.nextNonce());
-    await assert.rejects(f.transfers.confirm(approved.id), { code: 'ASSET_STATE_WAIT' });
+    await assert.rejects(f.transfers.confirm(approved.id), { code: 'EXPIRED' });
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 0);
     const saved = await (await f.runtime.journal(() => undefined)).load();
     const snapshot = f.transfers.getSnapshot();
     assert.equal(saved?.hash, snapshot.hash);
     assert.equal(snapshot.phase, 'unknown');
-    assert.match(snapshot.message ?? '', /signed transaction is saved and was not submitted.*check Activity/);
+    assert.match(snapshot.message ?? '', /signed transaction is saved/);
   } finally { f.close(); }
 });
 

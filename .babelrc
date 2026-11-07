@@ -38,8 +38,9 @@
     [
       "@babel/plugin-transform-runtime",
       {
-        "helpers": false,
-        "regenerator": true
+        "helpers": true,
+        "regenerator": true,
+        "version": "7.29.7"
       }
     ],
     "@babel/plugin-syntax-dynamic-import"
