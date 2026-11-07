@@ -1209,7 +1209,7 @@ describe('send forms across wallet navigation', () => {
           `${expected} SYS`
         );
         expect(
-          screen.getByText('send.total (send.amountAndFee)').textContent
+          screen.getByText('send.total (send.amountAndNetworkFee)').textContent
         ).toContain(
           isMax ? '90,071,992.54740993 SYS' : '90,071,992.54740994 SYS'
         );
