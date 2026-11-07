@@ -441,6 +441,7 @@ export const RetainedTransactionReplay = ({ hash }: { hash: string }) => {
       {displayed && (
         <ConfirmationModal
           show
+          describeDialog={!cancellation}
           title={t(
             cancellation ? 'header.cancelTx' : 'transactions.replay.title'
           )}

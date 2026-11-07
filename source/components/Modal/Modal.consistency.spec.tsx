@@ -95,6 +95,7 @@ it('associates ordinary confirmation description with the dialog without alterin
       show
       title="Resend transaction"
       description={description}
+      describeDialog
       buttonText="Resend"
       onClose={jest.fn()}
       onClick={jest.fn()}
@@ -108,6 +109,22 @@ it('associates ordinary confirmation description with the dialog without alterin
   expect(
     within(dialog).getByRole('button', { name: 'Resend' }).closest('footer')
   ).toBeTruthy();
+});
+
+it('preserves the default confirmation description without associating it to the dialog', () => {
+  render(
+    <ConfirmationModal
+      show
+      title="Remove account"
+      description="Remove this account?"
+      buttonText="Remove"
+      onClose={jest.fn()}
+      onClick={jest.fn()}
+    />
+  );
+  const dialog = screen.getByRole('dialog', { name: 'Remove account' });
+  expect(dialog).not.toHaveAttribute('aria-describedby');
+  expect(within(dialog).getByText('Remove this account?')).toBeVisible();
 });
 
 it('prevents Cancel and Escape from dismissing a busy confirmation', async () => {

@@ -49,6 +49,7 @@ interface IWarningModal extends IDefaultModal {
 interface IConfirmationModal extends Omit<IDefaultModal, 'title'> {
   actionsInBody?: boolean;
   allowCloseWhileLoading?: boolean;
+  describeDialog?: boolean;
   onClick: () => void;
   title: ReactNode;
 }
@@ -149,6 +150,7 @@ export const ConfirmationModal = ({
   buttonText,
   children,
   description = '',
+  describeDialog = false,
   onClose,
   onClick,
   show,
@@ -213,9 +215,13 @@ export const ConfirmationModal = ({
             </div>
           ) : (
             <>
-              <DialogDescription className="[overflow-wrap:anywhere]">
-                {description}
-              </DialogDescription>
+              {describeDialog ? (
+                <DialogDescription className="[overflow-wrap:anywhere]">
+                  {description}
+                </DialogDescription>
+              ) : (
+                <p className="[overflow-wrap:anywhere]">{description}</p>
+              )}
               {children}
             </>
           )}
