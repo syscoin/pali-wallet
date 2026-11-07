@@ -13,7 +13,11 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 }));
 jest.mock('state/store', () => ({
   __esModule: true,
-  default: { getState: () => mockState, dispatch: jest.fn() },
+  default: {
+    getState: () => mockState,
+    dispatch: jest.fn(),
+    subscribe: jest.fn(() => () => undefined),
+  },
 }));
 
 import {
@@ -35,7 +39,9 @@ import {
   EvmSignedRecords,
   retainedEvmAssetPreflightConflict,
 } from '../../../wallet/evmSignedRecords';
+import * as signedRecordModule from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
+import store from 'state/store';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
 import { blacklistService } from 'utils/security/blacklistService';
@@ -1969,3 +1975,111 @@ describe('worker-owned token state at review and initial held POST', () => {
     ).toBeNull();
   });
 });
+
+it('resolves saved-chain retirement from configured routes while preserving the active submission context', async () => {
+  const original = signedRecordModule.createEvmSignedRecordLifecycle;
+  let options: Parameters<typeof original>[2] | undefined;
+  jest
+    .spyOn(signedRecordModule, 'createEvmSignedRecordLifecycle')
+    .mockImplementation((journal, session, captured) => {
+      options = captured;
+      return original(journal, session, captured);
+    });
+  const configured = {
+    ...context.network,
+    chainId: 456,
+    url: 'https://configured-other.invalid',
+  };
+  mockState.vaultGlobal.networks = {
+    ethereum: { 123: { ...context.network }, 456: configured },
+  };
+  const run = jest.fn(async (work) => work({ send: async () => '0x1c8' }));
+  wallet.captureFreshEvmRead = jest.fn((_scope, network) => ({
+    keyring,
+    network,
+    run,
+  }));
+  wallet.captureEvmSignedSubmission(keyring, context);
+  expect(wallet.captureFreshEvmRead).not.toHaveBeenCalled();
+  const aggregate = new AbortController();
+  const guard = jest.fn();
+  const resolve = options!.retirementReadForChain!;
+  expect(resolve('999999', aggregate.signal, guard)).toBeNull();
+  expect(wallet.captureFreshEvmRead).not.toHaveBeenCalled();
+  const read = resolve('456', aggregate.signal, guard)!;
+  expect(wallet.captureFreshEvmRead).toHaveBeenCalledWith(
+    getWalletNavigationScope(),
+    configured
+  );
+  await expect(read('eth_chainId', [])).resolves.toBe('0x1c8');
+  expect(run).toHaveBeenCalledWith(expect.any(Function), aggregate.signal);
+  expect(mockState.vault.activeNetwork).toEqual(context.network);
+  expect(keyring.ethereumTransaction.web3Provider).toBe(provider);
+  const count = run.mock.calls.length;
+  wallet.networkRequestGeneration++;
+  await expect(read('eth_chainId', [])).rejects.toThrow();
+  expect(run).toHaveBeenCalledTimes(count);
+});
+
+it.each(['configured route', 'active context', 'aggregate signal'])(
+  'aborts an owned cross-chain retirement read when %s changes and removes its subscription',
+  async (change) => {
+    const configured = {
+      ...context.network,
+      chainId: 456,
+      url: 'https://configured-other.invalid',
+    };
+    mockState.vaultGlobal.networks = {
+      ethereum: { 123: { ...context.network }, 456: configured },
+    };
+    const providerLifetime = new AbortController();
+    Object.assign(provider, { signal: providerLifetime.signal });
+    keyring.ethereumTransaction.getGasOverrides = () => ({});
+    const listeners = new Set<() => void>();
+    const unsubscribe = jest.fn();
+    (store.subscribe as jest.Mock).mockImplementation((listener) => {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+        unsubscribe();
+      };
+    });
+    let heldSignal: AbortSignal | undefined;
+    wallet.withReceiptReadProvider = jest.fn((signal, network, work) => {
+      expect(network).toEqual(configured);
+      heldSignal = signal;
+      return work({
+        send: () =>
+          new Promise((_resolve, reject) => {
+            signal.addEventListener('abort', () => reject(signal.reason), {
+              once: true,
+            });
+          }),
+      });
+    });
+    const read = wallet.captureFreshEvmRead(
+      getWalletNavigationScope(),
+      configured
+    );
+    const aggregate = new AbortController();
+    const pending = read.run(
+      (transport) => transport.send('eth_chainId', []),
+      aggregate.signal
+    );
+    expect(heldSignal?.aborted).toBe(false);
+    if (change === 'configured route')
+      mockState.vaultGlobal.networks.ethereum[456] = {
+        ...configured,
+        url: 'https://changed.invalid',
+      };
+    else if (change === 'active context') wallet.walletSessionGeneration++;
+    else aggregate.abort(new Error('aggregate expired'));
+    for (const listener of listeners) listener();
+    await expect(pending).rejects.toThrow();
+    expect(heldSignal?.aborted).toBe(true);
+    expect(listeners.size).toBe(0);
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+    expect(mockState.vault.activeNetwork).toEqual(context.network);
+    expect(keyring.ethereumTransaction.web3Provider).toBe(provider);
+  }
+);

@@ -94,7 +94,10 @@ async function signed(nonce: number, wallet = signer, network = chainId) {
     },
   };
 }
-function finality(nonce: number): {
+function finality(
+  nonce: number,
+  network = chainId
+): {
   read: EvmSignedRetirementRead;
   calls: [string, readonly unknown[]][];
 } {
@@ -103,7 +106,7 @@ function finality(nonce: number): {
     calls,
     async read(method, params) {
       calls.push([method, params]);
-      if (method === 'eth_chainId') return `0x${BigInt(chainId).toString(16)}`;
+      if (method === 'eth_chainId') return `0x${BigInt(network).toString(16)}`;
       if (method === 'eth_getBlockByNumber')
         return { number: '0x20', hash: finalHash };
       return `0x${nonce.toString(16)}`;
@@ -437,9 +440,13 @@ test('an authenticated root cannot retain entries below its nonce floor', async 
   await assert.rejects(f.records.validate(f.session()), /CORRUPT/);
 });
 
-async function fillToCapacity(f: ReturnType<typeof fixture>) {
-  const first = await signed(0),
-    second = await signed(1);
+async function fillToCapacity(
+  f: ReturnType<typeof fixture>,
+  wallet = signer,
+  network = chainId
+) {
+  const first = await signed(0, wallet, network),
+    second = await signed(1, wallet, network);
   const maximum = Object.fromEntries(
     Array.from({ length: 1023 }, (_, i) => [
       `k${String(i).padStart(4, '0')}`,
@@ -476,7 +483,7 @@ test('capacity retires finalized bytes and retries the exact signed envelope bef
     session.assertCurrent,
     () =>
       createEvmSignedRecordLifecycle(f.records, session, {
-        retirementRead: rpc.read,
+        retirementReadForChain: () => rpc.read,
       })
   );
   let posts = 0;
@@ -539,7 +546,7 @@ test('unavailable finality retains genuine capacity refusal and normal sends hav
     session.assertCurrent,
     () =>
       createEvmSignedRecordLifecycle(f.records, session, {
-        retirementRead: read,
+        retirementReadForChain: () => read,
       })
   );
   const before = f.value();
@@ -570,7 +577,7 @@ test('unavailable finality retains genuine capacity refusal and normal sends hav
   assert.equal(f.value(), before);
   const healthy = fixture();
   await createEvmSignedRecordLifecycle(healthy.records, healthy.session(), {
-    retirementRead: read,
+    retirementReadForChain: () => read,
   }).persistSigned(next);
   assert.equal(reads, 1);
 });
@@ -697,4 +704,307 @@ test('all replacement variants at a finalized nonce retire together', async () =
     2
   );
   assert.equal(await f.records.validate(f.session()), 0);
+});
+
+test('a send frees finalized records belonging to another unfunded account on the same chain', async () => {
+  const f = fixture();
+  await fillToCapacity(f);
+  const next = await signed(0, otherSigner),
+    rpc = finality(2),
+    session = f.session();
+  const resolved: string[] = [];
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    retirementReadForChain: (network) => {
+      resolved.push(network);
+      return rpc.read;
+    },
+  });
+  await lifecycle.persistSigned(next);
+  assert.deepEqual(resolved, [chainId]);
+  assert.equal(rpc.calls.length, 4);
+  assert.equal(rpc.calls[2]![1][0], signer.address.toLowerCase());
+  assert.equal(
+    rpc.calls.some(([method]) => method === 'eth_getBalance'),
+    false
+  );
+  assert.deepEqual(
+    await f.records.listSender(session, chainId, signer.address),
+    []
+  );
+  assert.equal(
+    (
+      await f.records.readExact(
+        session,
+        chainId,
+        otherSigner.address,
+        next.hash
+      )
+    )?.rawTransaction,
+    next.rawTransaction
+  );
+});
+
+test('another configured chain can free profile capacity without switching the active send', async () => {
+  const f = fixture();
+  await fillToCapacity(f, signer, '57');
+  const next = await signed(0, otherSigner),
+    rpc = finality(2, '57'),
+    session = f.session();
+  const resolved: string[] = [];
+  const lifecycle = createEvmSignedRecordLifecycle(f.records, session, {
+    retirementReadForChain: (network) => {
+      resolved.push(network);
+      return network === '57' ? rpc.read : null;
+    },
+  });
+  await lifecycle.persistSigned(next);
+  assert.deepEqual(resolved, ['57']);
+  assert.equal(await f.records.validate(session), 1);
+  assert.equal(
+    (
+      await f.records.readExact(
+        session,
+        chainId,
+        otherSigner.address,
+        next.hash
+      )
+    )?.rawTransaction,
+    next.rawTransaction
+  );
+});
+
+test('cleanup preserves unknown routes and retires all available sender groups using one resolver per chain', async () => {
+  const f = fixture(),
+    session = f.session();
+  const unknown = await signed(0, signer, '57');
+  const first = await signed(0),
+    second = await signed(0, otherSigner);
+  for (const input of [unknown, first, second])
+    await f.records.append(session, input);
+  const rpc = finality(1),
+    resolved: string[] = [];
+  const removed = await f.records.retireAvailableFinalized(
+    session,
+    scope,
+    (network) => {
+      resolved.push(network);
+      return network === chainId ? rpc.read : null;
+    }
+  );
+  assert.equal(removed, 2);
+  assert.deepEqual(resolved, [chainId, '57']);
+  assert.equal(rpc.calls.length, 8);
+  assert.equal(
+    (await f.records.readExact(session, '57', signer.address, unknown.hash))
+      ?.rawTransaction,
+    unknown.rawTransaction
+  );
+});
+
+test('capacity cleanup uses one total deadline across scopes and aborts the owned transport signal', async () => {
+  const f = fixture(),
+    session = f.session();
+  const first = await signed(0),
+    second = await signed(0, otherSigner);
+  await f.records.append(session, first);
+  await f.records.append(session, second);
+  const descriptor = Object.getOwnPropertyDescriptor(performance, 'now');
+  let clock = 0,
+    count = 0;
+  let signal: AbortSignal | undefined;
+  Object.defineProperty(performance, 'now', {
+    configurable: true,
+    value: () => clock,
+  });
+  try {
+    const rpc = finality(1);
+    const removed = await f.records.retireAvailableFinalized(
+      session,
+      scope,
+      (_network, ownedSignal) => {
+        signal = ownedSignal;
+        return async (method, params) => {
+          count++;
+          if (count === 4) clock = 11_000;
+          if (count === 5) clock = 12_001;
+          return rpc.read(method, params);
+        };
+      }
+    );
+    assert.equal(removed, 1);
+    assert.equal(count, 5);
+    assert.equal(signal?.aborted, true);
+    assert.equal(
+      (
+        await f.records.readExact(
+          session,
+          chainId,
+          otherSigner.address,
+          second.hash
+        )
+      )?.rawTransaction,
+      second.rawTransaction
+    );
+  } finally {
+    if (descriptor) Object.defineProperty(performance, 'now', descriptor);
+    else delete (performance as unknown as Record<string, unknown>).now;
+  }
+});
+
+test('the 64-read limit continues past earlier unconsumed scopes on the next attempt', async () => {
+  const f = fixture(),
+    session = f.session();
+  const inputs = [];
+  for (let i = 50; i < 68; i++) {
+    const wallet = new Wallet(`0x${i.toString(16).padStart(64, '0')}`);
+    const input = await signed(0, wallet);
+    inputs.push(input);
+    await f.records.append(session, input);
+  }
+  const last = inputs.at(-1)!;
+  const rpc = finality(0);
+  let resolutions = 0,
+    calls = 0;
+  const resolver = () => {
+    resolutions++;
+    return async (
+      method: Parameters<EvmSignedRetirementRead>[0],
+      params: readonly unknown[]
+    ) => {
+      calls++;
+      if (
+        method === 'eth_getTransactionCount' &&
+        params[0] === last.from.toLowerCase()
+      )
+        return '0x1';
+      return rpc.read(method, params);
+    };
+  };
+  assert.equal(
+    await f.records.retireAvailableFinalized(session, scope, resolver),
+    0
+  );
+  assert.equal(calls, 64);
+  assert.equal(resolutions, 1);
+  calls = 0;
+  assert.equal(
+    await f.records.retireAvailableFinalized(session, scope, resolver),
+    1
+  );
+  assert.equal(calls, 64);
+  assert.equal(resolutions, 2);
+  assert.equal(
+    await f.records.readExact(session, chainId, last.from, last.hash),
+    null
+  );
+});
+
+test('one persistence retry follows cleanup of multiple scopes when the first removal cannot free enough', async () => {
+  const f = fixture(),
+    session = f.session();
+  await f.records.append(session, await signed(0));
+  await fillToCapacity(f, otherSigner);
+  const newSigner = new Wallet(`0x${'33'.repeat(32)}`);
+  const next = await signed(0, newSigner),
+    metadata = { note: 'x'.repeat(8192) };
+  const firstOnly = fixture();
+  firstOnly.replace(f.value());
+  assert.equal(
+    await firstOnly.records.retireFinalized(
+      firstOnly.session(),
+      scope,
+      finality(2).read
+    ),
+    1
+  );
+  await assert.rejects(
+    firstOnly.records.append(firstOnly.session(), next, metadata),
+    /CAPACITY/
+  );
+
+  const rpc = finality(2);
+  const original = f.records.append.bind(f.records);
+  let appends = 0;
+  f.records.append = async (...args) => {
+    appends++;
+    return original(...args);
+  };
+  await createEvmSignedRecordLifecycle(f.records, session, {
+    metadata,
+    retirementReadForChain: () => rpc.read,
+  }).persistSigned(next);
+  assert.equal(appends, 2);
+  assert.equal(rpc.calls.length, 8);
+  assert.equal(await f.records.validate(session), 1);
+  assert.equal(
+    (await f.records.readExact(session, chainId, newSigner.address, next.hash))
+      ?.rawTransaction,
+    next.rawTransaction
+  );
+});
+
+test('a stalled preferred endpoint yields the next attempt to another healthy scope', async (t) => {
+  const f = fixture(),
+    session = f.session();
+  const preferred = await signed(0, signer, '57'),
+    healthy = await signed(0, otherSigner);
+  await f.records.append(session, preferred);
+  await f.records.append(session, healthy);
+  const rpc = finality(1);
+  let reachedStall: () => void = () => undefined;
+  let started = new Promise<void>((resolve) => {
+    reachedStall = resolve;
+  });
+  const resolver = (
+    network: string,
+    signal: AbortSignal
+  ): EvmSignedRetirementRead => {
+    if (network !== '57') return rpc.read;
+    return () =>
+      new Promise((_, reject) => {
+        signal.addEventListener('abort', () => reject(new Error('aborted')), {
+          once: true,
+        });
+        reachedStall();
+      });
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const first = f.records.retireAvailableFinalized(
+      session,
+      preferred,
+      resolver
+    );
+    await started;
+    t.mock.timers.tick(12_000);
+    assert.equal(await first, 0);
+    started = new Promise<void>((resolve) => {
+      reachedStall = resolve;
+    });
+    const second = f.records.retireAvailableFinalized(
+      session,
+      preferred,
+      resolver
+    );
+    await started;
+    t.mock.timers.tick(12_000);
+    assert.equal(await second, 1);
+    assert.equal(
+      await f.records.readExact(
+        session,
+        chainId,
+        otherSigner.address,
+        healthy.hash
+      ),
+      null
+    );
+    assert.equal(
+      (await f.records.readExact(session, '57', signer.address, preferred.hash))
+        ?.rawTransaction,
+      preferred.rawTransaction
+    );
+    assert.equal(rpc.calls.length, 4);
+  } finally {
+    t.mock.timers.reset();
+  }
 });

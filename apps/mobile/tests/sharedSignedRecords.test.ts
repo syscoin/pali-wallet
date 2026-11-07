@@ -329,7 +329,7 @@ test('near-limit append reserves space for every phase and the largest supported
   let blockedBroadcasts=0;
   const session=f.session();
   const fullBoundary=captureEvmSubmission(third.context,session.assertCurrent,
-    () => createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null }));
   const unsigned=Transaction.from(third.rawTransaction).unsignedSerialized;
   let capacityError:unknown;
   try {
@@ -359,7 +359,7 @@ test('near-limit append reserves space for every phase and the largest supported
   // isolated store, with a matching in-memory acknowledgement.
   const healthy=fixture(), healthySession=healthy.session();
   const healthyBoundary=captureEvmSubmission(third.context,healthySession.assertCurrent,
-    () => createEvmSignedRecordLifecycle(healthy.store, healthySession, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(healthy.store, healthySession, { retirementReadForChain: null }));
   let healthyBroadcasts=0, healthyAdmissions=0;
   const result=await submitSignedEvmTransaction(third.rawTransaction,({admit}) => {
     healthyBroadcasts++;
@@ -376,7 +376,7 @@ test('near-limit append reserves space for every phase and the largest supported
   // fresh local dispatched-stage evidence and must not retain the refusal.
   const reuse=fixture(), reuseSession=reuse.session();
   const reuseBoundary=captureEvmSubmission(third.context,reuseSession.assertCurrent,
-    () => createEvmSignedRecordLifecycle(reuse.store, reuseSession, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(reuse.store, reuseSession, { retirementReadForChain: null }));
   let reusedError:unknown, dispatched=0;
   try {
     await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>{dispatched++;throw capacityError;}),reuseBoundary,undefined,unsigned);
@@ -389,13 +389,13 @@ test('near-limit append reserves space for every phase and the largest supported
   // label a second same-envelope invocation whose persistence succeeded.
   let stale:unknown;
   const oldSession=f.session(), oldBoundary=captureEvmSubmission(third.context,oldSession.assertCurrent,
-    () => createEvmSignedRecordLifecycle(f.store, oldSession, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(f.store, oldSession, { retirementReadForChain: null }));
   try { await submitSignedEvmTransaction(third.rawTransaction,({admit})=>admit(async()=>third.hash),oldBoundary,undefined,unsigned); }
   catch(error) { stale=error; }
   assert(stale instanceof Error);assert.equal(evmSubmissionFailure(stale).transactionNotBroadcast,true);
   const next=fixture(), nextSession=next.session();
   const nextBoundary=captureEvmSubmission(third.context,nextSession.assertCurrent,
-    () => createEvmSignedRecordLifecycle(next.store, nextSession, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(next.store, nextSession, { retirementReadForChain: null }));
   let nextError:unknown, nextBroadcasts=0;
   try { await submitSignedEvmTransaction(third.rawTransaction,()=>{nextBroadcasts++;throw stale;},nextBoundary,undefined,unsigned); }
   catch(error) { nextError=error; }
@@ -408,7 +408,7 @@ test('near-limit append reserves space for every phase and the largest supported
   const revokedSession=f.session(), realAppend=f.store.append.bind(f.store);
   f.store.append=async (...args)=>{try{return await realAppend(...args);}catch(error){f.revoke();throw error;}};
   const revokedBoundary=captureEvmSubmission(third.context,revokedSession.assertCurrent,
-    () => createEvmSignedRecordLifecycle(f.store, revokedSession, { retirementRead: null }));
+    () => createEvmSignedRecordLifecycle(f.store, revokedSession, { retirementReadForChain: null }));
   let revokedError:unknown, revokedBroadcasts=0;
   try {
     await submitSignedEvmTransaction(third.rawTransaction,({admit})=>{revokedBroadcasts++;return admit(async()=>third.hash);},revokedBoundary,undefined,unsigned);
@@ -452,7 +452,7 @@ test('automatic nonce advances only after an exact wire ACK and keeps that nonce
     ...scope, readPending, assertCurrent,
     snapshot: await f.store.captureAutoNonceSnapshot(session, first.chainId, first.from),
   });
-  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null, automaticNonceEndpoint: endpoint });
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: endpoint });
   await lifecycle.persistSigned(first);
   assert.deepEqual(await plan(), { kind: 'unresolved', nonce: 0 });
   let ack!: (hash: string) => void, dispatching!: () => void;
@@ -468,7 +468,7 @@ test('automatic nonce advances only after an exact wire ACK and keeps that nonce
   assert.equal(await submitted, first.hash);
   assert.deepEqual(await plan(), { kind: 'ready', nonce: 1, additionalNativeCost: 126123n });
 
-  const next = createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null,
+  const next = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null,
     automaticNonceEndpoint: endpoint,
     async preflight(record, assertDispatchCurrent, snapshot) {
       assert.deepEqual(snapshot.retained.map(({ hash }) => hash), [first.hash]);
@@ -488,7 +488,7 @@ test('after reorg, a previously accepted phase needs new pending evidence, inclu
   const f = fixture(), session = f.session();
   const record = await signed();
   const endpoint = record.context.network.url;
-  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null, automaticNonceEndpoint: endpoint });
+  const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: endpoint });
   await lifecycle.persistSigned(record);
   await lifecycle.dispatchSigned(record, async () => record.hash, async () => undefined);
   await f.store.updatePhase(session, record.chainId, record.from, record.hash, 'confirmed');
@@ -520,7 +520,7 @@ test('concurrent automatic sends cannot persist and dispatch competing reviewed 
   const candidates = await Promise.all([signed(0, 2, '0x01'), signed(0, 2, '0x02')]);
   const wire: string[] = [];
   const settled = await Promise.allSettled(candidates.map(async (record) => {
-    const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null, automaticNonceEndpoint: record.context.network.url });
+    const lifecycle = createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null, automaticNonceEndpoint: record.context.network.url });
     await lifecycle.persistSigned(record);
     return lifecycle.dispatchSigned(record, async () => {
       wire.push(record.hash);
@@ -538,7 +538,7 @@ test('unreadable storage and exhausted revision are not local append capacity re
   const first=await signed(0), next=await signed(1);
   const assertUnbranded = async (f: ReturnType<typeof fixture>) => {
     const session=f.session(), before=f.value(), writes=f.writes();
-    const boundary=captureEvmSubmission(next.context,session.assertCurrent,()=>createEvmSignedRecordLifecycle(f.store, session, { retirementRead: null }));
+    const boundary=captureEvmSubmission(next.context,session.assertCurrent,()=>createEvmSignedRecordLifecycle(f.store, session, { retirementReadForChain: null }));
     let broadcasts=0, failure:unknown;
     try {
       await submitSignedEvmTransaction(next.rawTransaction,({admit})=>{broadcasts++;return admit(async()=>next.hash);},boundary,undefined,Transaction.from(next.rawTransaction).unsignedSerialized);

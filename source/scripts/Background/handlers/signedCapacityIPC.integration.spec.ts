@@ -183,7 +183,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
       full.session.assertCurrent,
       () =>
         createEvmSignedRecordLifecycle(full.store, full.session, {
-          retirementRead: null,
+          retirementReadForChain: null,
         })
     );
     const unsigned = Transaction.from(
@@ -248,7 +248,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
         full.session.assertCurrent,
         () =>
           createEvmSignedRecordLifecycle(full.store, full.session, {
-            retirementRead: null,
+            retirementReadForChain: null,
           })
       );
       try {
@@ -284,7 +284,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
         clean.session.assertCurrent,
         () =>
           createEvmSignedRecordLifecycle(clean.store, clean.session, {
-            retirementRead: null,
+            retirementReadForChain: null,
           })
       );
     let posted = 0;
@@ -320,7 +320,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
         reused.session.assertCurrent,
         () =>
           createEvmSignedRecordLifecycle(reused.store, reused.session, {
-            retirementRead: null,
+            retirementReadForChain: null,
           })
       );
     let reusedPost = 0;
@@ -358,7 +358,7 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
           createEvmSignedRecordLifecycle(
             beforeAdmit.store,
             beforeAdmit.session,
-            { retirementRead: null }
+            { retirementReadForChain: null }
           )
       );
     let beforeAdmitCalls = 0;
@@ -572,7 +572,7 @@ test('token review port forwards only the authenticated pre-POST capacity refusa
         target.session.assertCurrent,
         () =>
           createEvmSignedRecordLifecycle(target.store, target.session, {
-            retirementRead: null,
+            retirementReadForChain: null,
           })
       );
       return submitSignedEvmTransaction(

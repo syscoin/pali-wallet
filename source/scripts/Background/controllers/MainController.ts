@@ -82,7 +82,7 @@ import {
 import {
   retainedEvmAssetPreflightConflict,
   type EvmSignedRecords,
-  type EvmSignedRetirementRead,
+  type EvmSignedRetirementReadForChain,
 } from '../../../wallet/evmSignedRecords';
 import {
   assertImportedRecoveryAccount,
@@ -1444,22 +1444,35 @@ class MainController {
     assertCurrent();
     const records = this.getRetainedEvmRecords();
     const session = { keyring, assertCurrent };
-    let retirementRpc:
-      | ReturnType<MainController['captureFreshEvmRead']>
-      | undefined;
-    const retirementRead: EvmSignedRetirementRead = async (method, params) => {
+    const retirementReadForChain: EvmSignedRetirementReadForChain = (
+      chainId,
+      signal,
+      assertRetirementCurrent
+    ) => {
       assertCurrent();
-      retirementRpc ??= this.captureFreshEvmRead(navigation);
+      assertRetirementCurrent();
+      const network =
+        store.getState().vaultGlobal.networks?.ethereum?.[chainId];
       if (
-        retirementRpc.keyring !== keyring ||
-        retirementRpc.network.url !== context.network.url
+        !network?.url ||
+        String(network.chainId) !== chainId ||
+        network.kind !== 'ethereum'
       )
+        return null;
+      const read = this.captureFreshEvmRead(navigation, network);
+      if (read.keyring !== keyring)
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      const result = await retirementRpc.run((provider) =>
-        provider.send(method, [...params])
-      );
-      assertCurrent();
-      return result;
+      return async (method, params) => {
+        assertCurrent();
+        assertRetirementCurrent();
+        const result = await read.run(
+          (provider) => provider.send(method, [...params]),
+          signal
+        );
+        assertCurrent();
+        assertRetirementCurrent();
+        return result;
+      };
     };
     if (
       replacementProvider === null ||
@@ -1474,15 +1487,14 @@ class MainController {
       if (!reviewed) {
         if (assetOperation) throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
         return createEvmSignedRecordLifecycle(records, session, {
-          retirementRead,
+          retirementReadForChain,
         });
       }
       const read = this.captureFreshEvmRead(navigation);
       if (read.keyring !== keyring || read.network.url !== context.network.url)
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      retirementRpc = read;
       return createEvmSignedRecordLifecycle(records, session, {
-        retirementRead,
+        retirementReadForChain,
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
         preflight: async (record, assertDispatchCurrent, snapshot) => {
@@ -1562,7 +1574,7 @@ class MainController {
         });
       void replacement.catch(() => undefined);
       return createEvmSignedRecordLifecycle(records, retainedSession, {
-        retirementRead,
+        retirementReadForChain,
         replacement,
         preflight: async (record, assertDispatchCurrent) => {
           const signed = Transaction.from(record.rawTransaction);
@@ -1610,7 +1622,7 @@ class MainController {
     void replacement.catch(() => undefined);
     const send = replacementProvider.send.bind(replacementProvider);
     return createEvmSignedRecordLifecycle(records, session, {
-      retirementRead,
+      retirementReadForChain,
       replacement,
       preflight: async (record, assertDispatchCurrent) => {
         if (context.operation === 'speed-up') {
@@ -12451,10 +12463,15 @@ class MainController {
     discardNativeEvmFeeReview(this, id);
   }
 
-  private captureFreshEvmRead(expectedScope: IWalletNavigationScope) {
+  private captureFreshEvmRead(
+    expectedScope: IWalletNavigationScope,
+    configuredNetwork?: INetwork
+  ) {
     this.assertAssetMutationContext(expectedScope);
     const scope = { ...expectedScope };
-    const network = { ...store.getState().vault.activeNetwork };
+    const network = {
+      ...(configuredNetwork ?? store.getState().vault.activeNetwork),
+    };
     const keyring = this.getActiveKeyring();
     const session = this.walletSessionGeneration;
     const generation = this.walletStateGeneration;
@@ -12465,7 +12482,16 @@ class MainController {
     const assertCurrent = () => {
       this.assertCurrentWalletSession(session, keyring);
       this.assertAssetMutationContext(scope);
+      const currentNetwork = configuredNetwork
+        ? store.getState().vaultGlobal.networks?.ethereum?.[network.chainId]
+        : undefined;
       if (
+        (configuredNetwork &&
+          (!currentNetwork ||
+            currentNetwork.chainId !== network.chainId ||
+            currentNetwork.url !== network.url ||
+            currentNetwork.kind !== network.kind ||
+            currentNetwork.slip44 !== network.slip44)) ||
         this.isResettingWallet ||
         generation !== this.walletStateGeneration ||
         this.ethereumTransaction !== sdk ||

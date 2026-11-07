@@ -1,7 +1,7 @@
 import type { EvmObservationRequest, EvmTransactionObservation } from '../../../../source/shared/evmTransactionObservation.ts';
 import type { NativeNetworkRegistration } from './networkContext.ts';
 import { sameRecoverySnapshot } from '../storage/recoverySnapshot.ts';
-import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod } from '../../../../source/wallet/evmSignedRecords.ts';
+import { EvmSignedRecords, createEvmSignedRecordLifecycle, type EvmVerifiedReplacementBinding, type EvmSignedRetirementReadMethod, type EvmSignedRetirementReadForChain } from '../../../../source/wallet/evmSignedRecords.ts';
 import { UTXO_SIGNED_RECORD_KEY } from '../../../../source/wallet/utxoSignedBundle.ts';
 import { EvmSignedReplay, observeRetainedEvmTransaction } from '../../../../source/wallet/evmSignedReplay.ts';
 import { assertNativeRecordDomains } from './recoveryInventory.ts';
@@ -79,6 +79,45 @@ export type KeyringRuntimeDependencies = Readonly<{
   utxoFetch?: typeof globalThis.fetch;
   observeActivity?: (network: NativeNetworkRegistration, expected: EvmObservationRequest, signal: AbortSignal, guard: () => void) => Promise<EvmTransactionObservation>;
 }>;
+
+/** Internal native read adapter. Registry snapshots never come from retained transaction metadata. */
+export function createNativeRetirementReadForChain(
+  registrations: readonly NativeNetworkRegistration[],
+  read: NonNullable<KeyringRuntimeDependencies['readEvmRetirement']>,
+  contextSignal: AbortSignal,
+  assertOwner: () => void
+): EvmSignedRetirementReadForChain {
+  const networks = new Map(registrations.map((entry) => {
+    const network = snapshotNativeNetwork(entry);
+    return [network.chainId, network] as const;
+  }));
+  return (chainId, signal, assertRetirementCurrent) => {
+    const check = () => {
+      checkGuard(assertOwner); checkGuard(assertRetirementCurrent);
+      if (contextSignal.aborted || signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+    };
+    check();
+    const network = networks.get(chainId);
+    if (!network) return null;
+    return async (method, params) => {
+      check();
+      const abort = new AbortController();
+      const cancel = () => abort.abort();
+      contextSignal.addEventListener('abort', cancel, { once: true });
+      signal.addEventListener('abort', cancel, { once: true });
+      try {
+        check();
+        const result = await read(network, method, params, abort.signal, check);
+        check();
+        return result;
+      } finally {
+        contextSignal.removeEventListener('abort', cancel);
+        signal.removeEventListener('abort', cancel);
+        abort.abort();
+      }
+    };
+  };
+}
 
 /** Internal host capabilities consumed by context-bound controllers, never public DTOs. */
 export interface KeyringRuntime extends CustodyRuntime {
@@ -408,16 +447,16 @@ export function createKeyringRuntimeFactory(
               (requiresAssetValidation && !verifyDispatch))
             throw new NativeTransferError('EXPIRED');
           const session = { keyring, assertCurrent: check };
-          const network = snapshotNativeNetwork(getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks));
+          const capturedCatalogue = catalogueSnapshot!;
           const readRetirement = dependencies.readEvmRetirement;
-          const signal = (contextReadLifetime ??= new AbortController()).signal;
+          const contextSignal = (contextReadLifetime ??= new AbortController()).signal;
           return createEvmSignedRecordLifecycle(signedRecords, session, {
-            retirementRead: readRetirement === null ? null : async (method, params) => {
-              check();
-              const result = await readRetirement(network, method, params, signal, check);
-              check();
-              return result;
-            },
+            retirementReadForChain: readRetirement === null ? null : createNativeRetirementReadForChain(
+              capturedCatalogue.networks, readRetirement, contextSignal, () => {
+                check();
+                if (catalogueSnapshot !== capturedCatalogue) throw new KeyringRuntimeError('CANCELLED');
+              }
+            ),
             metadata, replacement,
             automaticNonceEndpoint: requiresReplacement ? undefined : context.network.url,
             preflight: verifyDispatch ? (_record, assertCurrent, snapshot) => verifyDispatch(

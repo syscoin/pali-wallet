@@ -219,6 +219,11 @@ export type EvmSignedRetirementRead = (
   method: EvmSignedRetirementReadMethod,
   params: readonly unknown[]
 ) => Promise<unknown>;
+export type EvmSignedRetirementReadForChain = (
+  chainId: string,
+  signal: AbortSignal,
+  assertCurrent: () => void
+) => EvmSignedRetirementRead | null;
 type NonceFloor = Readonly<{ chainId: string; from: string; nonce: number }>;
 const ROOT_PLAINTEXT_LIMIT = 64 * 1024;
 const FINALITY_TIMEOUT_MS = 12_000;
@@ -582,6 +587,8 @@ export class EvmSignedRecords {
   private readonly now: () => number;
   private readonly onUnavailable: () => void;
   private unavailable = false;
+  // Scheduling hint only. Every later pass authenticates its candidate scopes.
+  private retirementCursor?: Readonly<{ profileId: string; scope: string }>;
   get requiresReopen(): boolean {
     return this.unavailable;
   }
@@ -1404,6 +1411,115 @@ export class EvmSignedRecords {
       throw error;
     }
   }
+  /** Capacity belongs to the whole profile, so any configured chain can
+   * release its finalized records without selecting or funding that account. */
+  async retireAvailableFinalized(
+    session: EvmSignedRecordSession,
+    preferred: Readonly<{ chainId: string; from: string }>,
+    resolveRead: EvmSignedRetirementReadForChain
+  ): Promise<number> {
+    const preferredKey = floorKey({
+      ...preferred,
+      from: getAddress(preferred.from).toLowerCase(),
+    });
+    const candidates = await this.exclusive(async () => {
+      const id = await profile(session);
+      const { bundle } = await this.load(session, id);
+      const unique = new Map<
+        string,
+        Readonly<{ chainId: string; from: string }>
+      >();
+      for (const entry of bundle?.entries ?? []) {
+        const key = floorKey(entry);
+        if (!unique.has(key))
+          unique.set(key, { chainId: entry.chainId, from: entry.from });
+      }
+      const current = unique.get(preferredKey);
+      unique.delete(preferredKey);
+      // Prefer the current scope on the first pass, then continue around the
+      // same ring so an unavailable current endpoint cannot starve the rest.
+      const scopes = [...(current ? [current] : []), ...unique.values()];
+      const cursor =
+        this.retirementCursor?.profileId === id
+          ? this.retirementCursor.scope
+          : undefined;
+      const start =
+        cursor === undefined
+          ? 0
+          : scopes.findIndex((scope) => floorKey(scope) === cursor) + 1;
+      return {
+        id,
+        scopes: [...scopes.slice(start), ...scopes.slice(0, start)],
+      };
+    });
+    guard(session);
+    if (!candidates.scopes.length) return 0;
+    const controller = new AbortController();
+    const deadline = performance.now() + FINALITY_TIMEOUT_MS;
+    const expired = new Error('EVM_SIGNED_RETIREMENT_BUDGET_EXHAUSTED');
+    const assertCurrent = () => {
+      guard(session);
+      if (controller.signal.aborted || performance.now() >= deadline)
+        throw expired;
+    };
+    const ownedSession = { keyring: session.keyring, assertCurrent };
+    const readers = new Map<string, EvmSignedRetirementRead | null>();
+    let remaining = 64;
+    let removed = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = async () => {
+      try {
+        for (const scope of candidates.scopes) {
+          assertCurrent();
+          if (!remaining) break;
+          this.retirementCursor = {
+            profileId: candidates.id,
+            scope: floorKey(scope),
+          };
+          if (!readers.has(scope.chainId))
+            readers.set(
+              scope.chainId,
+              resolveRead(scope.chainId, controller.signal, assertCurrent)
+            );
+          assertCurrent();
+          const read = readers.get(scope.chainId);
+          if (!read) continue;
+          removed += await this.retireFinalized(
+            ownedSession,
+            scope,
+            async (method, params) => {
+              assertCurrent();
+              if (!remaining) throw expired;
+              remaining--;
+              const value = await read(method, params);
+              assertCurrent();
+              return value;
+            }
+          );
+        }
+      } catch (error) {
+        guard(session);
+        if (error !== expired) throw error;
+      }
+      return removed;
+    };
+    try {
+      const result = await Promise.race([
+        work(),
+        new Promise<number>((resolve) => {
+          timer = setTimeout(() => {
+            controller.abort(expired);
+            resolve(removed);
+          }, FINALITY_TIMEOUT_MS);
+        }),
+      ]);
+      guard(session);
+      return result;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+      controller.abort(expired);
+    }
+  }
   private autoNonceSnapshot(
     session: EvmSignedRecordSession,
     owner: string,
@@ -1959,17 +2075,17 @@ export function createEvmSignedRecordLifecycle(
       | Promise<EvmVerifiedReplacementBinding>;
     // Opt in only when the host can recheck the original token approval.
     retainAssetPreflightFailure?: boolean;
-    retirementRead: EvmSignedRetirementRead | null;
+    retirementReadForChain: EvmSignedRetirementReadForChain | null;
   }>
 ) {
   guard(session);
   if (
     !options ||
-    (options.retirementRead !== null &&
-      typeof options.retirementRead !== 'function')
+    (options.retirementReadForChain !== null &&
+      typeof options.retirementReadForChain !== 'function')
   )
     throw new Error('EVM_SIGNED_RECORD_RETIREMENT_CONTEXT_REQUIRED');
-  const retirementRead = options.retirementRead;
+  const retirementReadForChain = options.retirementReadForChain;
   // Starting another lifecycle invalidates any unconsumed earlier refusal.
   // Concurrent sends may fall back to generic guidance, never stale guidance.
   currentPersistToken = undefined;
@@ -2004,14 +2120,14 @@ export function createEvmSignedRecordLifecycle(
         )
           throw error;
         if (
-          retirementRead &&
-          (await records.retireFinalized(
+          retirementReadForChain &&
+          (await records.retireAvailableFinalized(
             session,
             {
               chainId: String(signed.context.network.chainId),
               from: signed.context.account.address,
             },
-            retirementRead
+            retirementReadForChain
           )) > 0
         ) {
           try {

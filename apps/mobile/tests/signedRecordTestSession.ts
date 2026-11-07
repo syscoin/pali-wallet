@@ -30,7 +30,7 @@ export function submitFixtureEvmTransaction(records: EvmSignedRecords): NativeTr
       operation: replacement?.mode ?? (intent ? 'erc20' : 'send') as 'erc20' | 'send',
       ...(replacement ? { originalHash: replacement.original.hash } : {}),
     };
-    const boundary = captureEvmSubmission(context, guard, () => createEvmSignedRecordLifecycle(records, session, { retirementRead: null,
+    const boundary = captureEvmSubmission(context, guard, () => createEvmSignedRecordLifecycle(records, session, { retirementReadForChain: null,
       metadata: intent && { intent },
       replacement: replacement?.binding,
       automaticNonceEndpoint: replacement ? undefined : endpoint,
