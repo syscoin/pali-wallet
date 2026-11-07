@@ -11,6 +11,10 @@ import ru from 'assets/locales/ru.json';
 import zh from 'assets/locales/zh.json';
 
 import { handleTransactionError, isBlacklistError } from './errorHandling';
+import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+} from './evmTransactionContext';
 import { sanitizeErrorMessage } from './syscoinErrorSanitizer';
 
 jest.mock('utils/index', () => ({ truncate: (text: string) => text }));
@@ -49,6 +53,34 @@ describe.each(Object.keys(resources))(
         i18n.t('send.savedNonceConflict')
       );
       expect(i18n.exists('send.savedNonceConflict')).toBe(true);
+    });
+
+    it('localizes asset review failures from typed and message-only IPC', () => {
+      for (const error of [
+        { code: EVM_ASSET_REVIEW_REQUIRED, transactionNotBroadcast: true },
+        { message: EVM_ASSET_REVIEW_MESSAGE },
+        EVM_ASSET_REVIEW_MESSAGE,
+      ]) {
+        const alert = { error: jest.fn() };
+        expect(handleTransactionError(error, alert, i18n.t)).toBe(true);
+        expect(alert.error).toHaveBeenCalledWith(
+          i18n.t('send.maxBalanceReviewRequired')
+        );
+      }
+      expect(i18n.exists('send.maxBalanceReviewRequired')).toBe(true);
+      const unknown = { error: jest.fn() };
+      handleTransactionError(
+        {
+          code: EVM_ASSET_REVIEW_REQUIRED,
+          message: EVM_ASSET_REVIEW_MESSAGE,
+          transactionNotBroadcast: false,
+        },
+        unknown,
+        i18n.t
+      );
+      expect(unknown.error).not.toHaveBeenCalledWith(
+        i18n.t('send.maxBalanceReviewRequired')
+      );
     });
 
     it('presents typed hardware cancellation as a localized neutral notice', () => {

@@ -1,5 +1,6 @@
 import { EvmAutoNonceAcceptance } from '../../../shared/evmAutoNonce';
 
+import { inspectWorkerAssetState } from './evmAssetState';
 import {
   assertNoObservedLegacyPending,
   planExtensionEvmNonce,
@@ -24,11 +25,13 @@ function fixture(latest: string, pending: string) {
   const provider = {
     signal: abort.signal,
     verifyConfiguredChainId: jest.fn(async () => undefined),
-    send: jest.fn(async (method: string, [, tag]: unknown[]) => {
-      const value = replies.get(`${method}:${String(tag)}`);
-      if (value === undefined) throw new Error(`Unexpected ${method}`);
-      return value;
-    }),
+    send: jest.fn(
+      async (method: string, [, tag]: unknown[]): Promise<unknown> => {
+        const value = replies.get(`${method}:${String(tag)}`);
+        if (value === undefined) throw new Error(`Unexpected ${method}`);
+        return value;
+      }
+    ),
   };
   const input = {
     acceptance,
@@ -101,6 +104,148 @@ it('requires fresh review when the exact approved automatic nonce moved', async 
     message: expect.stringContaining('Review this transfer again'),
     transactionNotBroadcast: true,
   });
+});
+
+async function assetFixture() {
+  const f = fixture('0x0', '0x0');
+  const token = '0x' + '33'.repeat(20);
+  const blockHash = '0x' + 'ab'.repeat(32);
+  const original = f.provider.send.getMockImplementation()!;
+  f.provider.send.mockImplementation(
+    async (method: string, params: unknown[]) => {
+      if (method === 'eth_getBlockByNumber')
+        return { number: '0x1', hash: blockHash };
+      if (method === 'eth_getCode') return '0x6000';
+      if (method === 'eth_getTransactionCount' && params[1] === '0x1')
+        return '0x0';
+      if (method === 'eth_call') {
+        const call = params[0] as { from?: string };
+        return `0x${(call.from ? '1' : '64').padStart(64, '0')}`;
+      }
+      return original(method, params);
+    }
+  );
+  const asset = {
+    type: 'ERC20' as const,
+    transaction: {
+      networkUrl: endpoint,
+      tokenAddress: token,
+      receiver: '0x' + '22'.repeat(20),
+      tokenAmountUnits: '1',
+      gasLimit: '42000',
+      isLegacy: false as const,
+      maxFeePerGas: '3',
+      maxPriorityFeePerGas: '1',
+    },
+  };
+  const basis = await inspectWorkerAssetState(
+    f.provider as any,
+    asset,
+    Number(chainId),
+    from,
+    f.input.assertCurrent
+  );
+  return { ...f, basis, token };
+}
+
+it('awaits legacy work and enforces final asset checks before returning', async () => {
+  const ordinary = fixture('0x0', '0x0');
+  await expect(planExtensionEvmNonce(ordinary.input)).resolves.toMatchObject({
+    nonce: 0,
+  });
+  expect(ordinary.provider.verifyConfiguredChainId).toHaveBeenCalledTimes(2);
+  const asset = await assetFixture();
+  let release!: () => void;
+  let entered!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let returned = false;
+  const beforeAssetFinal = jest.fn(async (nonce: number) => {
+    expect(nonce).toBe(0);
+    entered();
+    await held;
+  });
+  const operation = planExtensionEvmNonce({
+    ...asset.input,
+    protectedAssetContract: asset.token,
+    assetBasis: asset.basis,
+    beforeAssetFinal,
+  }).then((result) => {
+    returned = true;
+    return result;
+  });
+  await started;
+  expect(returned).toBe(false);
+  expect(asset.provider.verifyConfiguredChainId).toHaveBeenCalledTimes(1);
+  release();
+  await expect(operation).resolves.toMatchObject({ nonce: 0 });
+  expect(beforeAssetFinal).toHaveBeenCalledTimes(1);
+  expect(asset.provider.verifyConfiguredChainId).toHaveBeenCalledTimes(2);
+  expect(asset.provider.verifyConfiguredChainId).toHaveBeenNthCalledWith(
+    2,
+    true
+  );
+});
+
+it('rejects forged, copied, swapped and reused asset bases', async () => {
+  const f = await assetFixture();
+  const valid = {
+    ...f.input,
+    protectedAssetContract: f.token,
+    assetBasis: f.basis,
+    beforeAssetFinal: async () => {},
+  };
+  const otherProvider = fixture('0x0', '0x0').provider;
+  for (const changed of [
+    { assetBasis: { ...f.basis } },
+    { provider: otherProvider },
+    { scope: { ...f.input.scope, from: '0x' + '22'.repeat(20) } },
+    { scope: { ...f.input.scope, chainId: '1' } },
+    { scope: { ...f.input.scope, endpoint: 'https://other.invalid' } },
+    { protectedAssetContract: '0x' + '44'.repeat(20) },
+    { assertCurrent: () => undefined },
+  ])
+    await expect(
+      planExtensionEvmNonce({ ...valid, ...changed })
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  await expect(planExtensionEvmNonce(valid)).resolves.toMatchObject({
+    nonce: 0,
+  });
+  await expect(planExtensionEvmNonce(valid)).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+});
+
+it('does not return a plan after a legacy callback abort or final chain failure', async () => {
+  const aborted = await assetFixture();
+  const input = {
+    ...aborted.input,
+    protectedAssetContract: aborted.token,
+    assetBasis: aborted.basis,
+    beforeAssetFinal: async () => {
+      aborted.abort.abort(new Error('cancelled'));
+    },
+  };
+  await expect(planExtensionEvmNonce(input)).rejects.toThrow('cancelled');
+  await expect(planExtensionEvmNonce(input)).rejects.toMatchObject({
+    transactionNotBroadcast: true,
+  });
+  const changed = await assetFixture();
+  changed.provider.verifyConfiguredChainId.mockRejectedValueOnce(
+    new Error('chain changed')
+  );
+  await expect(
+    planExtensionEvmNonce({
+      ...changed.input,
+      protectedAssetContract: changed.token,
+      assetBasis: changed.basis,
+      beforeAssetFinal: async () => {},
+    })
+  ).rejects.toMatchObject({ transactionNotBroadcast: true });
 });
 
 describe('legacy pending observation at the automatic candidate', () => {

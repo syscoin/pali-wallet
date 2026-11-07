@@ -7,6 +7,7 @@ import { EvmTransferReadRpc, type EvmNftPreparedQuote } from '../src/custody/evm
 import { snapshotNftQuoteEnvelope } from '../src/custody/evmFeeContracts.ts';
 import { createNativeNetwork } from '../src/custody/networkContext.ts';
 import { NativeTransferRpc, NativeTransferRpcError } from '../src/custody/transferRpc.ts';
+import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
 
 const wallet = new Wallet('0x' + '01'.repeat(32));
 const owner = wallet.address;
@@ -103,7 +104,8 @@ function fixture(options: {
           break;
         }
         case 'eth_getTransactionCount':
-          assert.deepEqual(call.params, [owner, 'pending']);
+          assert.equal(call.params[0], owner);
+          assert.ok(['latest', 'pending', block.number].includes(String(call.params[1])));
           reply = { result: '0x7' };
           break;
         case 'eth_getBalance':
@@ -492,3 +494,95 @@ test('abort at final NFT transport admission prevents POST and a lost POST ackno
     assert.deepEqual(f.calls.filter(c => c.method === 'eth_sendRawTransaction').map(c => c.params), [[signed.raw]]);
   }
 });
+
+
+test('NFT automatic nonce binds sampled ownership block during quote and held dispatch', async () => {
+  let advanced = false;
+  const f = fixture({ rewrite: (call, reply) =>
+    advanced && call.method === 'eth_getTransactionCount' && call.params[1] !== block.number
+      ? { result: '0x8' } : reply,
+  });
+  const acceptance = new EvmAutoNonceAcceptance();
+  const planner = (input: Parameters<EvmAutoNonceAcceptance['plan']>[0]) => acceptance.plan(input);
+  const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => planner({
+    ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
+    snapshot: { owner: 'fixture', retained: [], readMaximumCost: async () => 0n },
+  });
+  const quote = await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic);
+  assert.equal(quote.envelope.nonce, '7');
+  const tags = f.calls.filter((call) => call.method === 'eth_getTransactionCount').map((call) => call.params[1]);
+  assert.deepEqual(new Set(tags), new Set(['latest', 'pending', block.number]));
+  await f.rpc.verifyNftForDispatch(quote.intent, quote.envelope, signal(), current, false, undefined, automatic);
+  advanced = true;
+  await assert.rejects(f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic),
+    { code: 'REVIEW_REQUIRED', reason: 'asset-state' });
+  await assert.rejects(f.rpc.verifyNftForDispatch(quote.intent, quote.envelope, signal(), current, false, undefined, automatic),
+    { code: 'REVIEW_REQUIRED', reason: 'asset-state' });
+  assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
+});
+
+
+for (const phase of ['quote', 'dispatch'] as const) test(`NFT late same-sender block advance rejects ${phase}`, async () => {
+    let advanced = false;
+    let pauseEstimate = false;
+    let release!: () => void;
+    let entered!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const atEstimate = new Promise<void>((resolve) => { entered = resolve; });
+    const f = fixture({ rewrite: async (call, reply) => {
+      if (pauseEstimate && call.method === 'eth_estimateGas') {
+        entered();
+        await gate;
+      }
+      return advanced && call.method === 'eth_getTransactionCount' && call.params[1] === 'latest'
+        ? { result: '0x8' } : reply;
+    } });
+    const acceptance = new EvmAutoNonceAcceptance();
+    const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => acceptance.plan({
+      ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
+      snapshot: { owner: 'fixture', retained: [], readMaximumCost: async () => 0n },
+    });
+    const initial = phase === 'dispatch'
+      ? await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic)
+      : undefined;
+    f.calls.length = 0;
+    pauseEstimate = true;
+    const operation = phase === 'quote'
+      ? f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic)
+      : f.rpc.verifyNftForDispatch(initial!.intent, initial!.envelope, signal(), current, false, undefined, automatic);
+    await atEstimate;
+    assert.ok(f.calls.some((call) => call.method === 'eth_getTransactionCount' && call.params[1] === 'latest'));
+    assert.ok(f.calls.some((call) => call.method === 'eth_getTransactionCount' && call.params[1] === block.number));
+    advanced = true;
+    release();
+    await assert.rejects(operation, { code: 'REVIEW_REQUIRED', reason: 'asset-state' });
+    assert.equal(f.calls.filter((call) => call.method === 'eth_getTransactionCount' && call.params[1] === 'latest').length, 2);
+    assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
+});
+
+for (const phase of ['quote', 'dispatch'] as const) {
+  test(`NFT ${phase} rejects a chain switch during the final nonce read`, async () => {
+    let latestReads = 0;
+    let switchAtLatest = phase === 'quote' ? 2 : Number.POSITIVE_INFINITY;
+    let switched = false;
+    const f = fixture({ rewrite: (call, reply) => {
+      if (call.method === 'eth_getTransactionCount' && call.params[1] === 'latest' && ++latestReads === switchAtLatest)
+        switched = true;
+      return switched && call.method === 'eth_chainId' ? { result: '0x1' } : reply;
+    } });
+    const acceptance = new EvmAutoNonceAcceptance();
+    const automatic = (input: Omit<Parameters<EvmAutoNonceAcceptance['plan']>[0], 'chainId' | 'from' | 'endpoint' | 'snapshot'>) => acceptance.plan({
+      ...input, chainId: network.chainId, from: owner, endpoint: network.rpcUrl,
+      snapshot: { owner: 'fixture', retained: [], readMaximumCost: async () => 0n },
+    });
+    const quote = phase === 'dispatch'
+      ? await f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic)
+      : undefined;
+    if (quote) switchAtLatest = latestReads + 2;
+    const operation = quote
+      ? f.rpc.verifyNftForDispatch(quote.intent, quote.envelope, signal(), current, false, undefined, automatic)
+      : f.rpc.prepareNft(selection, request, signal(), current, undefined, automatic);
+    await assert.rejects(operation, { code: 'PROFILE_CHANGED' });
+    assert.equal(f.calls.some((call) => call.method === 'eth_sendRawTransaction'), false);
+  });
+}

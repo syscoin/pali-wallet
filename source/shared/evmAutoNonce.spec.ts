@@ -170,8 +170,9 @@ function acceptanceFixture(
     readPending,
     assertCurrent: jest.fn(),
   };
-  const select = (overrides: Partial<typeof input> = {}) =>
-    acceptance.plan({ ...input, ...overrides });
+  const select = (
+    overrides: Partial<Parameters<EvmAutoNonceAcceptance['plan']>[0]> = {}
+  ) => acceptance.plan({ ...input, ...overrides });
   return {
     acceptance,
     snapshot,
@@ -299,35 +300,59 @@ it('bounds missing-ACK queries and never jumps over a gap', async () => {
   expect(gap.readPending).not.toHaveBeenCalled();
 });
 
-it('waits for a caught-up RPC before reviewing another call to the same asset', async () => {
-  const predecessor = record(0);
-  const fixture = acceptanceFixture([predecessor]);
-  fixture.acceptance.track(
-    fixture.snapshot.owner,
-    scope.endpoint,
-    predecessor
-  )(predecessor.hash);
-  const asset = '0x' + 'ef'.repeat(20);
-  const touchesContract = jest.fn().mockResolvedValue(true);
-  const snapshot = { ...fixture.snapshot, touchesContract };
-  const read = {
-    snapshot,
-    protectedAssetContract: asset,
-  };
-  expect(await fixture.select(read)).toEqual({
+it('blocks protected assets for remote pending progress without a journal record', async () => {
+  const fixture = acceptanceFixture([]);
+  const protectedAssetContract = '0x' + 'ef'.repeat(20);
+  expect(
+    await fixture.select({ protectedAssetContract, latest: 0, pending: 1 })
+  ).toEqual({
     kind: 'unresolved',
     nonce: 0,
     reason: 'asset-state',
   });
-  expect(touchesContract).toHaveBeenCalledWith(predecessor.hash, asset);
-  touchesContract.mockClear();
-  expect(await fixture.select({ ...read, pending: 1 })).toEqual({
+  expect(
+    await fixture.select({ protectedAssetContract, latest: 1, pending: 1 })
+  ).toEqual({
     kind: 'ready',
     nonce: 1,
     maximumPredecessorCost: BigInt(0),
   });
-  expect(touchesContract).not.toHaveBeenCalled();
+  expect(await fixture.select({ latest: 0, pending: 1 })).toEqual({
+    kind: 'ready',
+    nonce: 1,
+    maximumPredecessorCost: BigInt(0),
+  });
 });
+
+it.each(['acknowledged', 'observed-pending'] as const)(
+  'blocks a protected asset behind a %s predecessor when pending count lags',
+  async (source) => {
+    const predecessor = record(0, 'submitted');
+    const fixture = acceptanceFixture([predecessor]);
+    if (source === 'acknowledged') {
+      fixture.acceptance.track(
+        fixture.snapshot.owner,
+        scope.endpoint,
+        predecessor
+      )(predecessor.hash);
+    } else {
+      fixture.readPending.mockResolvedValue(pendingResponse(predecessor));
+    }
+    expect(
+      await fixture.select({ protectedAssetContract: '0x' + 'ef'.repeat(20) })
+    ).toEqual({
+      kind: 'unresolved',
+      nonce: 0,
+      reason: 'asset-state',
+    });
+    expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
+    expect(await fixture.select()).toEqual({
+      kind: 'ready',
+      nonce: 1,
+      maximumPredecessorCost: BigInt(10),
+    });
+  }
+);
 
 it('rechecks acknowledgement freshness after asynchronous budget reads', async () => {
   const predecessor = record(0);
@@ -342,4 +367,122 @@ it('rechecks acknowledgement freshness after asynchronous budget reads', async (
     return BigInt(10);
   });
   expect(await fixture.select()).toEqual({ kind: 'unresolved', nonce: 0 });
+});
+
+it.each([
+  'signed',
+  'attempted',
+  'submitted',
+  'confirmed',
+  'reverted',
+  'nonce-consumed',
+] as const)(
+  'blocks a protected asset while RPC reports a %s predecessor below pending floor',
+  async (phase) => {
+    const fixture = acceptanceFixture([record(0, phase)]);
+    const protectedAssetContract = '0x' + 'ef'.repeat(20);
+    expect(
+      await fixture.select({ protectedAssetContract, latest: 0, pending: 1 })
+    ).toEqual({
+      kind: 'unresolved',
+      nonce: 0,
+      reason: 'asset-state',
+    });
+    expect(
+      await fixture.select({ protectedAssetContract, latest: 1, pending: 1 })
+    ).toEqual({
+      kind: 'ready',
+      nonce: 1,
+      maximumPredecessorCost: BigInt(0),
+    });
+  }
+);
+
+it('does not skip an unresolved retained predecessor or let a higher gap block the current nonce', async () => {
+  const protectedAssetContract = '0x' + 'ef'.repeat(20);
+  const pending = acceptanceFixture([record(0)]);
+  expect(await pending.select({ protectedAssetContract })).toEqual({
+    kind: 'unresolved',
+    nonce: 0,
+  });
+  const future = acceptanceFixture([record(2)]);
+  expect(await future.select({ protectedAssetContract })).toEqual({
+    kind: 'ready',
+    nonce: 0,
+    maximumPredecessorCost: BigInt(0),
+  });
+});
+
+it.each(['below-pending', 'stale-pending'] as const)(
+  'ordinary dapp calls use the original direct-target rule with %s',
+  async (position) => {
+    const first = record(0, 'submitted');
+    const fixture = acceptanceFixture([first]);
+    const touchesContract = jest.fn().mockResolvedValue(false);
+    const snapshot = { ...fixture.snapshot, touchesContract };
+    const input = {
+      protectedAssetContract: '0x' + 'ef'.repeat(20),
+      protectedAssetPolicy: 'direct' as const,
+      snapshot,
+      latest: 0,
+      pending: position === 'below-pending' ? 1 : 0,
+    };
+    if (position === 'stale-pending')
+      fixture.acceptance.track(
+        snapshot.owner,
+        scope.endpoint,
+        first
+      )(first.hash);
+    expect(await fixture.select(input)).toEqual({
+      kind: 'ready',
+      nonce: 1,
+      maximumPredecessorCost: BigInt(position === 'below-pending' ? 0 : 10),
+    });
+    touchesContract.mockResolvedValue(true);
+    if (position === 'below-pending') {
+      expect(await fixture.select(input)).toEqual({
+        kind: 'ready',
+        nonce: 1,
+        maximumPredecessorCost: BigInt(0),
+      });
+      expect(touchesContract).not.toHaveBeenCalled();
+    } else {
+      expect(await fixture.select(input)).toEqual({
+        kind: 'unresolved',
+        nonce: 0,
+        reason: 'asset-state',
+      });
+    }
+  }
+);
+
+it('rejects an asset snapshot nonce that differs from the fresh latest nonce', async () => {
+  const fixture = acceptanceFixture([]);
+  const input = {
+    protectedAssetContract: '0x' + 'ef'.repeat(20),
+    assetStateNonce: 0,
+  };
+  expect(await fixture.select({ ...input, latest: 1, pending: 1 })).toEqual({
+    kind: 'unresolved',
+    nonce: 1,
+    reason: 'asset-state',
+  });
+  expect(await fixture.select({ ...input, latest: 0, pending: 0 })).toEqual({
+    kind: 'ready',
+    nonce: 0,
+    maximumPredecessorCost: BigInt(0),
+  });
+  expect(await fixture.select({ latest: 1, pending: 1 })).toEqual({
+    kind: 'ready',
+    nonce: 1,
+    maximumPredecessorCost: BigInt(0),
+  });
+  const invalidBasis = { ...input, assetStateNonce: -1 };
+  await expect(fixture.select(invalidBasis)).rejects.toThrow(
+    'Invalid EVM asset state nonce'
+  );
+  const noContract = { latest: 0, assetStateNonce: 0 };
+  await expect(fixture.select(noContract)).rejects.toThrow(
+    'Invalid EVM asset state nonce'
+  );
 });

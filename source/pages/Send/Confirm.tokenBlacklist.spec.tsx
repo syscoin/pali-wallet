@@ -1,5 +1,11 @@
 /** @jest-environment jsdom */
 import { EvmAutoNonceAcceptance } from '../../shared/evmAutoNonce';
+import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
+} from '../../utils/evmTransactionContext';
+import { EvmSignedRecordNonceConflict } from '../../wallet/evmSignedRecords';
+
 import '@testing-library/jest-dom';
 import {
   act,
@@ -145,6 +151,7 @@ function connectReview() {
 const mockSdkSend = jest.fn();
 const syntheticRecipient = '0x2222222222222222222222222222222222222222';
 const mockTokenReplies: any[] = [];
+const mockTokenRpcFailures: string[] = [];
 
 let mockTransportOutcome: 'success' | 'pre-broadcast' | 'ambiguous' = 'success';
 const mockMessages: any[] = [];
@@ -327,6 +334,7 @@ beforeEach(() => {
   mockTransportOutcome = 'success';
   mockMessages.length = 0;
   mockTokenReplies.length = 0;
+  mockTokenRpcFailures.length = 0;
   mockTokenSender = APP_URL;
   mockTokenTab = undefined;
   mockState.vault.activeAccount.type = 'HDAccount';
@@ -408,18 +416,79 @@ beforeEach(() => {
     read({
       signal,
       verifyConfiguredChainId: async () => undefined,
-      send: async (method: string) => {
-        if (method === 'eth_getTransactionCount') return '0x7';
-        if (method === 'eth_getTransactionByHash')
-          return {
-            hash: retainedHash,
-            from: mockState.vault.accounts.HDAccount[0].address,
-            nonce: '0x7',
-            blockHash: null,
-            blockNumber: null,
-            transactionIndex: null,
-          };
-        throw new Error(`Unexpected token read ${method}`);
+      send: async (method: string, params: unknown[]) => {
+        try {
+          const account = mockState.vault.accounts.HDAccount[0].address;
+          const contract = `0x${'33'.repeat(20)}`;
+          const blockTag = '0x10';
+          if (method === 'eth_getBlockByNumber') {
+            expect(params).toEqual([
+              expect.stringMatching(/^(latest|0x10)$/),
+              false,
+            ]);
+            return { number: blockTag, hash: `0x${'ab'.repeat(32)}` };
+          }
+          if (method === 'eth_getCode') {
+            expect(params).toEqual([contract, blockTag]);
+            return '0x6000';
+          }
+          if (method === 'eth_call') {
+            expect(params[1]).toBe(blockTag);
+            const tx = params[0] as {
+              data: string;
+              from?: string;
+              gas?: string;
+              nonce?: string;
+              to: string;
+            };
+            expect(tx.to).toBe(contract);
+            if (tx.from) {
+              expect(tx).toMatchObject({
+                from: account,
+                gas: '0xa410',
+                nonce: '0x7',
+                type: '0x2',
+                maxFeePerGas: '0xb2d05e00',
+                maxPriorityFeePerGas: '0x0',
+              });
+              if (tx.data.startsWith('0xa9059cbb'))
+                return `0x${'0'.repeat(63)}1`;
+              expect(
+                tx.data.startsWith('0x23b872dd') ||
+                  tx.data.startsWith('0xf242432a')
+              ).toBe(true);
+              return '0x';
+            }
+            if (tx.data.startsWith('0x6352211e'))
+              return `0x${account.slice(2).toLowerCase().padStart(64, '0')}`;
+            expect(
+              tx.data.startsWith('0x70a08231') ||
+                tx.data.startsWith('0x00fdd58e')
+            ).toBe(true);
+            // 10^20 fixture units, encoded as an ABI uint256 word.
+            return `0x${'56bc75e2d63100000'.padStart(64, '0')}`;
+          }
+          if (method === 'eth_getTransactionCount') return '0x7';
+          if (method === 'eth_getTransactionByHash')
+            return {
+              hash: retainedHash,
+              from: mockState.vault.accounts.HDAccount[0].address,
+              nonce: '0x7',
+              blockHash: null,
+              blockNumber: null,
+              transactionIndex: null,
+            };
+          throw new Error(`Unexpected token read ${method}`);
+        } catch (error) {
+          // The worker intentionally sanitizes provider errors. Preserve fixture
+          // assertion failures here so they remain visible to the test.
+          mockTokenRpcFailures.push(
+            `${method}: ${
+              error instanceof Error ? error.message : String(error)
+            }`
+          );
+          throw error;
+        }
       },
     })
   );
@@ -465,6 +534,7 @@ beforeEach(() => {
   delete mockLocation.state.tx.cachedGasData;
 });
 afterEach(() => {
+  expect(mockTokenRpcFailures).toEqual([]);
   expect((blacklistService as any).axiosInstance.get).not.toHaveBeenCalled();
   jest.restoreAllMocks();
   expect(
@@ -620,6 +690,52 @@ it.each([
     );
   }
 );
+
+it('shows saved-transaction Activity guidance through the real token port after a held refusal', async () => {
+  mockSdkSend.mockRejectedValueOnce(
+    new EvmSignedRecordNonceConflict({ hash: retainedHash, operation: 'erc20' })
+  );
+  await readyToken(false);
+  fireEvent.click(confirmToken());
+  await waitFor(() =>
+    expect(mockAlertError).toHaveBeenCalledWith('send.savedNonceConflict')
+  );
+  expect(mockTokenReplies).toMatchObject([
+    { type: 'reviewed' },
+    {
+      type: 'failure',
+      error: {
+        code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+        transactionNotBroadcast: true,
+      },
+    },
+  ]);
+  expect(JSON.stringify(mockTokenReplies)).not.toContain(retainedHash);
+  expect(mockSdkSend).toHaveBeenCalledTimes(1);
+});
+
+it('keeps amount-review guidance for a pre-sign asset refusal without a saved record', async () => {
+  jest.spyOn(mockWallet, 'inspectOrdinaryEvmNonce').mockRejectedValueOnce(
+    Object.assign(new Error(EVM_ASSET_REVIEW_MESSAGE), {
+      code: EVM_ASSET_REVIEW_REQUIRED,
+      transactionNotBroadcast: true,
+    })
+  );
+  await readyToken(false);
+  fireEvent.click(confirmToken());
+  await waitFor(() =>
+    expect(mockAlertError).toHaveBeenCalledWith('send.maxBalanceReviewRequired')
+  );
+  expect(mockAlertError).not.toHaveBeenCalledWith('send.savedNonceConflict');
+  expect(mockTokenReplies.at(-1)).toMatchObject({
+    type: 'failure',
+    error: {
+      code: EVM_ASSET_REVIEW_REQUIRED,
+      transactionNotBroadcast: true,
+    },
+  });
+  expect(mockSdkSend).not.toHaveBeenCalled();
+});
 
 it('shows localized wait guidance before signing a second transfer of the same asset', async () => {
   mockRetainedAssetTransfer = true;

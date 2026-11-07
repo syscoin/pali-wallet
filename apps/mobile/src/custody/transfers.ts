@@ -873,6 +873,7 @@ export class NativeTransfers {
       const collectible = approved.collectible;
       const intent = collectible?.quote.intent ?? approved.public.intent;
       let freshCollectible: EvmNftPreparedQuote | undefined;
+      let freshTokenQuote: NativeTransferQuote | undefined;
       const guard = () => {
         assertCurrent();
         if (!startedSubmission) {
@@ -911,7 +912,10 @@ export class NativeTransfers {
             .catch((error: unknown) => { guard(); throw error; });
           latest = { transaction: freshCollectible.envelope, balanceUnits: freshCollectible.balanceUnits,
             totalUnits: freshCollectible.totalUnits, maximumFeeUnits: freshCollectible.maximumFeeUnits };
-        } else latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride, planner);
+        } else {
+          latest = await rpc.requote(approved.transaction!, signal, approved.public.intent, approved.public.nonceOverride, planner);
+          if (automatic && approved.public.intent) freshTokenQuote = latest;
+        }
         guard();
         if (replacement?.mode !== 'cancel') {
           const refreshed = captureEvmFeeApproval(latest.transaction, context.registrationHash,
@@ -970,7 +974,7 @@ export class NativeTransfers {
         ? async (heldPlanner, assertAdmission) => {
           const check = () => { guard(); assertAdmission(); };
           const verify = (owned: AbortSignal) =>
-            rpc.verifyAutomaticForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible);
+            rpc.verifyAutomaticForDispatch(approved.transaction!, owned, check, heldPlanner, freshCollectible, freshTokenQuote);
           if (collectible) {
             if (!freshCollectible) throw new NativeTransferError('EXPIRED');
             await withNftInventorySignal(signal, collectible.inventorySignal, verify);

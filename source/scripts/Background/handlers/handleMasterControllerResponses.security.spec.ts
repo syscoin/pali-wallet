@@ -940,3 +940,30 @@ it.each(['EVM_LEGACY_PENDING', 'EVM_LEGACY_VERIFICATION_UNAVAILABLE'])(
     ).not.toHaveProperty('code');
   }
 );
+
+it('keeps the asset-review code only for definite local no-broadcast failures', () => {
+  const code = 'EVM_ASSET_REVIEW_REQUIRED';
+  const failure = Object.assign(
+    new Error(
+      'Balance changed or could not be verified. Review the amount and try again.'
+    ),
+    {
+      code,
+      transactionNotBroadcast: true,
+    }
+  );
+  expect(controllerErrorResponse(failure).error).toEqual(
+    expect.objectContaining({ code, transactionNotBroadcast: true })
+  );
+  expect(
+    controllerErrorResponse(
+      Object.assign(new Error('guard'), {
+        code,
+        transactionNotBroadcast: false,
+      })
+    ).error
+  ).not.toHaveProperty('code');
+  expect(
+    controllerErrorResponse(failure, { hash: '0x' + 'ab'.repeat(32) }).error
+  ).not.toHaveProperty('code');
+});

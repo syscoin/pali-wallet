@@ -77,6 +77,7 @@ async function withController(
     reopen(): Promise<NativeTransfers>;
     confirmOnChain(raw: string): void;
     setPendingNonce(nonce: string): void;
+    setCanonicalNonce(nonce: string): void;
     setExpectedEstimateNonce(nonce: string, tag: 'latest' | 'pending'): void;
     invalidateCancellationObservation(mode: ObservationFault, readNumber: 1 | 2): void;
     holdOriginalObservation(hash: string): Readonly<{
@@ -140,6 +141,7 @@ async function withController(
   let hasHolding = true;
   let confirmed: Transaction | undefined;
   let pendingNonce: string | undefined;
+  let canonicalNonce: string | undefined;
     let expectedEstimateNonce: string | undefined;
     let expectedEstimateTag: 'latest' | 'pending' = 'pending';
   let invalidObservation: Readonly<{ mode: ObservationFault; readNumber: 1 | 2 }> | undefined;
@@ -230,7 +232,7 @@ async function withController(
         }
         case 'eth_getTransactionCount':
           assert.equal(call.params[0], owner);
-          const minedNonce = confirmed ? '0x' + (confirmed.nonce + 1).toString(16) : '0x0';
+          const minedNonce = confirmed ? '0x' + (confirmed.nonce + 1).toString(16) : canonicalNonce ?? '0x0';
           result = call.params[1] === 'pending' ? pendingNonce ?? minedNonce : minedNonce;
           break;
         case 'eth_getBalance':
@@ -351,6 +353,7 @@ async function withController(
         return transfers;
       },
       setPendingNonce(nonce) { pendingNonce = nonce; },
+      setCanonicalNonce(nonce) { canonicalNonce = nonce; },
       setExpectedEstimateNonce(nonce, tag) { expectedEstimateNonce = nonce; expectedEstimateTag = tag; },
       confirmOnChain(raw) { confirmed = Transaction.from(raw); confirmationsRead = 0; },
       invalidateCancellationObservation(mode, readNumber) { invalidObservation = { mode, readNumber }; },
@@ -431,13 +434,28 @@ test('collectible review preserves an explicit override below the external pendi
   });
 });
 
-test('a collectible can follow an acknowledged native send while pending RPC lags', async () => {
+test('a collectible waits for an earlier native send to become canonical', async () => {
   const asset = collectibleFixture('ERC-721');
-  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setExpectedEstimateNonce, acknowledgeCommit }) => {
+  await withController(asset, 'success', async ({ transfers, calls, posted, retained, setPendingNonce, setCanonicalNonce, setExpectedEstimateNonce, acknowledgeCommit }) => {
     acknowledgeCommit();
     await transfers.prepare(recipient, '0.000000000000000001');
     await transfers.confirm(transfers.getSnapshot().review!.id);
     assert.equal(posted.length, 1);
+
+    // An acknowledged earlier nonce must block even when the endpoint's
+    // pending count has not yet caught up.
+    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'EXPIRED' });
+    assert.match(transfers.getSnapshot().message ?? '', /network is still updating/);
+    assert.equal(posted.length, 1);
+
+    // Pending progress alone is not canonical asset state.
+    setPendingNonce('0x1');
+    await assert.rejects(transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units), { code: 'EXPIRED' });
+    assert.match(transfers.getSnapshot().message ?? '', /network is still updating/);
+    assert.equal(posted.length, 1);
+
+    // The fixture advances both the sampled-block and latest account count.
+    setCanonicalNonce('0x1');
     setExpectedEstimateNonce('0x1', 'pending');
     await transfers.prepareCollectible(asset.collectible, recipient, asset.tokenId, asset.units);
     const approved = transfers.getSnapshot().review!;

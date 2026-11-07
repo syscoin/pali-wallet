@@ -1,5 +1,7 @@
 // Utility functions for handling transaction errors with specific messaging
 import {
+  EVM_ASSET_REVIEW_MESSAGE,
+  EVM_ASSET_REVIEW_REQUIRED,
   isSavedEvmNonceConflict,
   legacyEvmNonceErrorKey,
   WALLET_NETWORK_CATCHING_UP_MESSAGE,
@@ -181,6 +183,16 @@ export const handleTransactionError = (
   basicTxValues?: any,
   sanitizeErrorMessage?: (errorInput: any) => string
 ): boolean => {
+  const message = typeof error === 'string' ? error : error?.message;
+  if (
+    error?.transactionNotBroadcast !== false &&
+    ((error?.code === EVM_ASSET_REVIEW_REQUIRED &&
+      error?.transactionNotBroadcast === true) ||
+      message === EVM_ASSET_REVIEW_MESSAGE)
+  ) {
+    alert.error(t('send.maxBalanceReviewRequired'));
+    return true;
+  }
   const legacyNonceKey = legacyEvmNonceErrorKey(error);
   if (legacyNonceKey) {
     alert.error(t(legacyNonceKey));

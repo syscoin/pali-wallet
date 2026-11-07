@@ -7,6 +7,11 @@ import {
   WALLET_NETWORK_CATCHING_UP_MESSAGE,
 } from 'utils/evmTransactionContext';
 
+import {
+  assertWorkerAssetBasis,
+  claimWorkerAssetBasis,
+  type WorkerAssetBasis,
+} from './evmAssetState';
 import type {
   EvmAutoNonceAcceptance,
   EvmAutoNonceSnapshot,
@@ -171,11 +176,18 @@ export async function planExtensionEvmNonce({
   reviewed,
   minimumBalance,
   protectedAssetContract,
+  protectedAssetPolicy,
+  assetBasis,
+  beforeAssetFinal,
 }: Readonly<{
   acceptance: EvmAutoNonceAcceptance;
   assertCurrent(): void;
+  assetBasis?: WorkerAssetBasis;
+  // Legacy observation runs before the mandatory final basis check.
+  beforeAssetFinal?: (nonce: number) => Promise<void>;
   minimumBalance?: bigint;
   protectedAssetContract?: string;
+  protectedAssetPolicy?: 'all' | 'direct';
   provider: NonceProvider;
   reviewed?: ExtensionReviewedNonce;
   scope: NonceScope;
@@ -196,7 +208,27 @@ export async function planExtensionEvmNonce({
     await provider.verifyConfiguredChainId();
     check();
   };
-  await verifyChain();
+  let assetStateNonce: number | undefined;
+  if (assetBasis) {
+    if (
+      !protectedAssetContract ||
+      !beforeAssetFinal ||
+      reviewed?.source === 'manual'
+    )
+      throw unavailable();
+    assetStateNonce = claimWorkerAssetBasis(
+      provider,
+      scope.from,
+      scope.chainId,
+      scope.endpoint,
+      protectedAssetContract,
+      assertCurrent,
+      assetBasis
+    );
+  } else {
+    if (beforeAssetFinal) throw unavailable();
+    await verifyChain();
+  }
   const [rawLatest, rawPending] = await Promise.all([
     read('eth_getTransactionCount', [scope.from, 'latest']),
     read('eth_getTransactionCount', [scope.from, 'pending']),
@@ -224,7 +256,22 @@ export async function planExtensionEvmNonce({
           }
         );
     }
-    await verifyChain();
+    if (assetBasis) {
+      await beforeAssetFinal!(nonce);
+      check();
+      if (nonce !== assetBasis.nonce) throw unavailable();
+      // The planner owns the mandatory post-legacy canonical, nonce and
+      // fresh-chain checks; no callback can suppress them.
+      await assertWorkerAssetBasis(
+        provider,
+        scope.from,
+        assetBasis,
+        assertCurrent
+      );
+      check();
+    } else {
+      await verifyChain();
+    }
     return Object.freeze({ nonce, state, maximumPredecessorCost });
   };
 
@@ -244,6 +291,8 @@ export async function planExtensionEvmNonce({
     latest,
     pending,
     protectedAssetContract,
+    protectedAssetPolicy,
+    assetStateNonce,
     snapshot,
     readPending: (hash) => read('eth_getTransactionByHash', [hash]),
     assertCurrent: check,

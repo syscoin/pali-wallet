@@ -70,6 +70,20 @@ export class EvmSignedRecordNonceConflict extends Error {
   }
 }
 
+// Unforgeable local provenance: only a failed held admission can mint this
+// marker. It carries no RPC body or signed bytes across the SDK boundary.
+const heldAssetPreflightFailures = new WeakMap<
+  object,
+  Pick<EvmSignedRecordSummary, 'hash' | 'operation'>
+>();
+export function retainedEvmAssetPreflightConflict(
+  error: unknown
+): EvmSignedRecordNonceConflict | null {
+  if (!error || typeof error !== 'object') return null;
+  const record = heldAssetPreflightFailures.get(error);
+  return record ? new EvmSignedRecordNonceConflict(record) : null;
+}
+
 const MAX_PHASE_BYTES = Math.max(...SIGNED_PHASES.map((phase) => phase.length));
 const MAX_REVISION_DIGITS = String(Number.MAX_SAFE_INTEGER).length;
 
@@ -1612,6 +1626,8 @@ export function createEvmSignedRecordLifecycle(
     replacement?:
       | EvmVerifiedReplacementBinding
       | Promise<EvmVerifiedReplacementBinding>;
+    // Opt in only when the host can recheck the original token approval.
+    retainAssetPreflightFailure?: boolean;
   }>
 ) {
   guard(session);
@@ -1640,87 +1656,117 @@ export function createEvmSignedRecordLifecycle(
         if (expires !== undefined && performance.now() >= expires)
           throw expired();
       };
-      const admitted = await records.withReplayAdmission(
-        session,
-        {
-          chainId: record.chainId,
-          from: record.from,
-          nonce: record.nonce,
-          hash: record.hash,
-          operation: record.context.operation,
-          originalHash: record.context.originalHash?.toLowerCase(),
-        },
-        () => {
-          assertAdmission();
-          const recordAcknowledgement = trackAcknowledgement?.();
-          let response: Promise<T>;
-          try {
-            response = initiate();
-          } catch (error) {
-            recordAcknowledgement?.(undefined);
-            throw error;
-          }
-          if (recordAcknowledgement) {
-            response = response.then(
-              (value) => {
-                try {
-                  guard(session);
-                  recordAcknowledgement(
-                    value && typeof value === 'object' && 'hash' in value
-                      ? value.hash
-                      : value
-                  );
-                } catch {
-                  // The acknowledged send may have outlived its wallet scope.
-                  recordAcknowledgement(undefined);
-                }
-                return value;
-              },
-              (error: unknown) => {
-                recordAcknowledgement(undefined);
-                throw error;
-              }
-            );
-          }
-          void response.catch(() => undefined);
-          return response;
-        },
-        undefined,
-        {
-          assertCurrent: assertAdmission,
-          async run(owner, autoNonceSnapshot) {
-            const endpoint = options?.automaticNonceEndpoint;
-            if (endpoint) {
-              if (endpoint !== record.context.network.url)
-                throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
-              trackAcknowledgement = () =>
-                records.autoNonceAcceptance.track(owner, endpoint, record);
-            }
-            const timeout = 12_000;
-            expires = performance.now() + timeout;
-            let timer: ReturnType<typeof setTimeout> | undefined;
-            try {
-              await Promise.race([
-                (async () => {
-                  await preflight();
-                  assertAdmission();
-                  await options?.preflight?.(
-                    record,
-                    assertAdmission,
-                    autoNonceSnapshot()
-                  );
-                  assertAdmission();
-                })(),
-                new Promise<never>((_resolve, reject) => {
-                  timer = setTimeout(() => reject(expired()), timeout);
-                }),
-              ]);
-            } finally {
-              clearTimeout(timer);
-            }
+      let retainedAuthenticated = false;
+      let wireStarted = false;
+      let admitted: Readonly<{ result: Promise<T> }> | null;
+      try {
+        admitted = await records.withReplayAdmission(
+          session,
+          {
+            chainId: record.chainId,
+            from: record.from,
+            nonce: record.nonce,
+            hash: record.hash,
+            operation: record.context.operation,
+            originalHash: record.context.originalHash?.toLowerCase(),
           },
+          () => {
+            assertAdmission();
+            const recordAcknowledgement = trackAcknowledgement?.();
+            let response: Promise<T>;
+            try {
+              // Once initiation begins, even a synchronous failure may be an
+              // ambiguous POST; never classify it as a held preflight refusal.
+              wireStarted = true;
+              response = initiate();
+            } catch (error) {
+              recordAcknowledgement?.(undefined);
+              throw error;
+            }
+            if (recordAcknowledgement) {
+              response = response.then(
+                (value) => {
+                  try {
+                    guard(session);
+                    recordAcknowledgement(
+                      value && typeof value === 'object' && 'hash' in value
+                        ? value.hash
+                        : value
+                    );
+                  } catch {
+                    // The acknowledged send may have outlived its wallet scope.
+                    recordAcknowledgement(undefined);
+                  }
+                  return value;
+                },
+                (error: unknown) => {
+                  recordAcknowledgement(undefined);
+                  throw error;
+                }
+              );
+            }
+            void response.catch(() => undefined);
+            return response;
+          },
+          undefined,
+          {
+            assertCurrent: assertAdmission,
+            async run(owner, autoNonceSnapshot) {
+              // withReplayAdmission has authenticated the exact retained record.
+              retainedAuthenticated = true;
+              const endpoint = options?.automaticNonceEndpoint;
+              if (endpoint) {
+                if (endpoint !== record.context.network.url)
+                  throw new Error('EVM_SIGNED_RECORD_CONTEXT_CHANGED');
+                trackAcknowledgement = () =>
+                  records.autoNonceAcceptance.track(owner, endpoint, record);
+              }
+              const timeout = 12_000;
+              expires = performance.now() + timeout;
+              let timer: ReturnType<typeof setTimeout> | undefined;
+              try {
+                await Promise.race([
+                  (async () => {
+                    await preflight();
+                    assertAdmission();
+                    await options?.preflight?.(
+                      record,
+                      assertAdmission,
+                      autoNonceSnapshot()
+                    );
+                    assertAdmission();
+                  })(),
+                  new Promise<never>((_resolve, reject) => {
+                    timer = setTimeout(() => reject(expired()), timeout);
+                  }),
+                ]);
+              } finally {
+                clearTimeout(timer);
+              }
+            },
+          }
+        );
+      } catch (error) {
+        const operation = record.context.operation;
+        if (
+          options?.retainAssetPreflightFailure &&
+          retainedAuthenticated &&
+          !wireStarted &&
+          (operation === 'erc20' ||
+            operation === 'erc721' ||
+            operation === 'erc1155')
+        ) {
+          // Wallet/session invalidation has precedence over recovery guidance.
+          guard(session);
+          const marker = new Error('EVM_SIGNED_ASSET_PREFLIGHT_FAILED');
+          heldAssetPreflightFailures.set(marker, {
+            hash: record.hash,
+            operation,
+          });
+          throw marker;
         }
-      );
+        throw error;
+      }
       if (!admitted) throw new Error('EVM_SIGNED_RECORD_ORIGINAL_CHANGED');
       return admitted.result;
     },

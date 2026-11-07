@@ -193,23 +193,33 @@ export class EvmAutoNonceAcceptance {
     latest,
     pending,
     protectedAssetContract,
+    protectedAssetPolicy = 'all',
+    assetStateNonce,
     snapshot,
     readPending,
     assertCurrent,
   }: Readonly<{
     assertCurrent(): void;
+    assetStateNonce?: number;
     chainId: string;
     endpoint: string;
     from: string;
     latest: number;
     pending: number;
     protectedAssetContract?: string;
+    protectedAssetPolicy?: 'all' | 'direct';
     readPending(hash: string): Promise<unknown>;
     snapshot: EvmAutoNonceSnapshot;
   }>): Promise<EvmAutoNoncePlan> {
     assertCurrent();
     if (!validNonce(latest) || !validNonce(pending))
       throw new Error('Invalid EVM nonce counts');
+    if (assetStateNonce !== undefined) {
+      if (!protectedAssetContract || !validNonce(assetStateNonce))
+        throw new Error('Invalid EVM asset state nonce');
+      if (assetStateNonce !== latest)
+        return { kind: 'unresolved', nonce: latest, reason: 'asset-state' };
+    }
     const sender = from.toLowerCase();
     const floor = Math.max(latest, pending);
     const { owner, retained } = snapshot;
@@ -221,6 +231,15 @@ export class EvmAutoNonceAcceptance {
       )
         this.acknowledgements.delete(key);
     }
+    // Any pending predecessor can call an asset indirectly (including through
+    // a contract fallback). Canonical asset reads cannot account for it yet.
+    if (
+      protectedAssetContract &&
+      protectedAssetPolicy === 'all' &&
+      pending > latest
+    )
+      return { kind: 'unresolved', nonce: latest, reason: 'asset-state' };
+    let costReads = 0;
     const variants = new Map<number, RetainedNonce[]>();
     for (const entry of retained) {
       if (!sameSender(entry, chainId, sender)) continue;
@@ -239,7 +258,6 @@ export class EvmAutoNonceAcceptance {
       ticket: Acknowledgement;
     }> = [];
     let reads = 0;
-    let costReads = 0;
     let maximumPredecessorCost = BigInt(0);
     for (let nonce = floor; variants.has(nonce); nonce++) {
       if (nonce - floor >= MAX_AHEAD_OF_RPC)
@@ -271,6 +289,10 @@ export class EvmAutoNonceAcceptance {
         }
       }
       if (!proof) break;
+      // A locally acknowledged/observed predecessor can exist even when the
+      // endpoint's pending count is stale. It can affect any protected asset.
+      if (protectedAssetContract && protectedAssetPolicy === 'all')
+        return { kind: 'unresolved', nonce, reason: 'asset-state' };
       if (nonce === Number.MAX_SAFE_INTEGER)
         throw new Error('EVM nonce exceeds safe range');
       accepted.push(proof);
@@ -286,6 +308,7 @@ export class EvmAutoNonceAcceptance {
         assertCurrent();
         if (
           protectedAssetContract &&
+          protectedAssetPolicy === 'direct' &&
           (!snapshot.touchesContract ||
             (await snapshot.touchesContract(
               entry.hash,

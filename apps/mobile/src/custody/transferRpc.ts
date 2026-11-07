@@ -169,6 +169,9 @@ export class NativeTransferRpc {
   private readonly fetcher: FetchLike;
   private readonly timeoutMs: number;
   private readonly receiptRpc: EvmTransferReadRpc;
+  // Basis is private to this RPC instance and attached only to its immutable
+  // automatically planned token quote, never to caller-provided data.
+  private readonly tokenAssetBasis = new WeakMap<NativeTransferQuote, Readonly<{ number: string; hash: string; nonce: number }>>();
   private readonly registration: NativeNetworkRegistration;
   private readonly activityReceipts: ActivityReceiptReader;
   private sequence = 0;
@@ -383,9 +386,17 @@ export class NativeTransferRpc {
   }
   prepareToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
     approved?: NativeTransferQuote['transaction'], nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner): Promise<NativeTransferQuote> {
-    return this.quoteToken(from, input, signal, (intent, local) => this.receiptRpc.prepare({
+    let assetNonce: number | undefined;
+    const planner: NativeAutomaticNoncePlanner | undefined = automaticNonce && (async (input) => {
+      const observedAssetNonce = input.assetStateNonce;
+      const planned = await automaticNonce(input);
+      if (planned.kind === 'ready') assetNonce = observedAssetNonce;
+      return planned;
+    });
+    return this.quoteToken(from, input, signal, (intent, local, assetBlock) => this.receiptRpc.prepare({
       from, to: intent.token.contractAddress, value: '0', data: encodeErc20Transfer(intent.recipient, intent.amountUnits),
-    }, local, () => undefined, approved, nonceOverride, automaticNonce));
+    }, local, () => undefined, approved, nonceOverride, planner, planner ? assetBlock.number : undefined),
+    planner ? () => assetNonce : undefined);
   }
   prepareNft(selection: NftTransferSelection, request: NftTransferRequest, signal: AbortSignal,
     assertCurrent: () => void, nonceOverride?: number, automaticNonce?: NativeAutomaticNoncePlanner): Promise<EvmNftPreparedQuote> {
@@ -396,7 +407,7 @@ export class NativeTransferRpc {
     return this.receiptRpc.requoteNft(selection, approval, signal, assertCurrent, automaticNonce).catch((error) => this.mapReadError(error));
   }
   async verifyAutomaticForDispatch(envelope: EvmUnsignedTransfer, signal: AbortSignal, assertCurrent: () => void,
-    automaticNonce: NativeAutomaticNoncePlanner, collectible?: EvmNftPreparedQuote): Promise<void> {
+    automaticNonce: NativeAutomaticNoncePlanner, collectible?: EvmNftPreparedQuote, tokenQuote?: NativeTransferQuote): Promise<void> {
     try {
       if (collectible) {
         this.receiptRpc.assertNftApproval(collectible, true);
@@ -404,6 +415,14 @@ export class NativeTransferRpc {
           throw new NativeTransferRpcError('REVIEW_REQUIRED');
         await this.receiptRpc.verifyNftForDispatch(collectible.intent, envelope, signal, assertCurrent, false, undefined, automaticNonce);
         this.receiptRpc.assertNftApproval(collectible, true);
+      } else if (envelope.data !== '0x') {
+        const basis = tokenQuote && this.tokenAssetBasis.get(tokenQuote);
+        const transaction = tokenQuote?.transaction;
+        if (!basis || !transaction || !tokenQuote?.intent ||
+            transaction.from !== envelope.from ||
+            unsignedTransferBytes(transaction) !== unsignedTransferBytes(envelope))
+          throw new NativeTransferRpcError('REVIEW_REQUIRED');
+        await this.receiptRpc.verifyAutomaticForDispatch(envelope, signal, assertCurrent, automaticNonce, basis);
       } else {
         await this.receiptRpc.verifyAutomaticForDispatch(envelope, signal, assertCurrent, automaticNonce);
       }
@@ -417,7 +436,8 @@ export class NativeTransferRpc {
     }
   }
   private quoteToken(from: string, input: Erc20TransferIntent, signal: AbortSignal,
-    readQuote: (intent: Erc20TransferIntent, signal: AbortSignal) => Promise<NativeTransferQuote>): Promise<NativeTransferQuote> {
+    readQuote: (intent: Erc20TransferIntent, signal: AbortSignal, assetBlock: Readonly<{ number: string; hash: string }>) => Promise<NativeTransferQuote>,
+    assetNonce?: () => number | undefined): Promise<NativeTransferQuote> {
     const sender = normalizePublicAddress(from, this.context.networkId);
     const intent = snapshotErc20TransferIntent(input);
     if (intent.chainId !== this.context.chainId) return Promise.reject(new NativeTransferRpcError('INVALID_RESPONSE'));
@@ -433,14 +453,14 @@ export class NativeTransferRpc {
     };
     return this.operation(signal, async (local) => {
       await this.checkChain(local);
-      const observed = block(await this.call('eth_getBlockByNumber', ['latest', false], local));
+      const observed = Object.freeze(block(await this.call('eth_getBlockByNumber', ['latest', false], local)));
       const code = await this.call('eth_getCode', [intent.token.contractAddress, observed.number], local);
       if (typeof code !== 'string' || code.length > 65538 || !/^0x(?:[0-9a-fA-F]{2})+$/.test(code)) return invalid();
       const [rawDecimals, rawTokens, simulation, quote] = await Promise.all([
         this.call('eth_call', [{ to: intent.token.contractAddress, data: '0x313ce567' }, observed.number], local),
         this.call('eth_call', [{ to: intent.token.contractAddress, data: `0x70a08231${sender.slice(2).toLowerCase().padStart(64, '0')}` }, observed.number], local),
         this.call('eth_call', [call, observed.number], local),
-        readQuote(intent, local),
+        readQuote(intent, local, observed),
       ]);
       if (simulation !== '0x' && word(simulation) !== 1n) throw new NativeTransferRpcError('TOKEN_TRANSFER_REJECTED');
       let decimals: number;
@@ -451,8 +471,17 @@ export class NativeTransferRpc {
       this.checkedQuote(quote);
       const finalBlock = block(await this.call('eth_getBlockByNumber', [observed.number, false], local));
       if (finalBlock.number !== observed.number || finalBlock.hash !== observed.hash) return invalid();
+      let nonce: number | undefined;
+      if (assetNonce) {
+        nonce = assetNonce();
+        if (!Number.isSafeInteger(nonce) || nonce! < 0) return invalid();
+        const latest = parseRpcQuantity(await this.call('eth_getTransactionCount', [sender, 'latest'], local));
+        if (latest !== BigInt(nonce!)) throw new EvmAutomaticNonceUnresolved(nonce!, 'asset-state');
+      }
       await this.checkChain(local);
-      return Object.freeze({ ...quote, tokenBalanceUnits, intent });
+      const result = Object.freeze({ ...quote, tokenBalanceUnits, intent });
+      if (nonce !== undefined) this.tokenAssetBasis.set(result, Object.freeze({ ...observed, nonce }));
+      return result;
     }).catch((error) => this.mapReadError(error));
   }
   broadcast(

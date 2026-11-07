@@ -22,6 +22,12 @@ const token = Object.freeze({
   symbol: 'FIX',
   decimals: 2,
 });
+const otherToken = Object.freeze({
+  ...token,
+  contractAddress: '0x4444444444444444444444444444444444444444',
+  name: 'Other public fixture token',
+  symbol: 'OTHER',
+});
 function fixture() {
   let state: CustodySnapshot = {
     phase: 'ready',
@@ -84,6 +90,7 @@ function fixture() {
     submit: submitFixtureEvmTransaction(signedRecords),
     async token(contractAddress: string, guard: () => void) {
       guard();
+      if (contractAddress === otherToken.contractAddress) return otherToken;
       assert.equal(contractAddress, token.contractAddress);
       return token;
     },
@@ -463,7 +470,7 @@ test('lagging pending balance reserves accepted predecessor value and fee until 
   }
 });
 
-test('a same-token predecessor with lagging state blocks the review until pending catches up', async () => {
+test('a same-token predecessor blocks review until its nonce is canonical', async () => {
   const f = fixture();
   try {
     await f.transfers.prepareToken(token.contractAddress, to, '1');
@@ -473,8 +480,26 @@ test('a same-token predecessor with lagging state blocks the review until pendin
     assert.equal(f.signatures(), 1);
     assert.equal(f.broadcasts.length, 1);
 
+    // A pending count does not advance the canonical block used for token reads.
     f.nextNonce();
+    await assert.rejects(f.transfers.prepareToken(token.contractAddress, to, '2'), { code: 'EXPIRED' });
+    assert.match(f.transfers.getSnapshot().message ?? '', /network is still updating/);
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+
+    // Any predecessor may affect a different asset indirectly, including
+    // through a contract fallback; a native successor remains available.
+    await assert.rejects(f.transfers.prepareToken(otherToken.contractAddress, to, '2'), { code: 'EXPIRED' });
+    assert.match(f.transfers.getSnapshot().message ?? '', /network is still updating/);
+    await f.transfers.prepare(to, '0.001');
+    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
+    assert.equal(f.signatures(), 1);
+    assert.equal(f.broadcasts.length, 1);
+
+    f.consumeNonce();
     await f.transfers.prepareToken(token.contractAddress, to, '2');
+    assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
+    await f.transfers.prepareToken(otherToken.contractAddress, to, '2');
     assert.equal(f.transfers.getSnapshot().review?.nonce, '1');
   } finally {
     f.close();

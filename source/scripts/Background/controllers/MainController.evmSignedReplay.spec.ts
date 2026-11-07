@@ -24,14 +24,22 @@ import {
 } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { submitSignedHardwareEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { webcrypto } from 'crypto';
+import { Interface } from 'ethers/abi';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
 
+import { getController } from '..';
+import { encodeErc20Transfer } from '../../../shared/erc20';
 import { EvmAutoNonceAcceptance } from '../../../shared/evmAutoNonce';
-import { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
+import {
+  EvmSignedRecords,
+  retainedEvmAssetPreflightConflict,
+} from '../../../wallet/evmSignedRecords';
 import { walletPersistenceGate } from 'state/paliStorage';
 import { KeyringAccountType } from 'types/network';
 import { getWalletNavigationScope } from 'utils/navigationState';
+import { blacklistService } from 'utils/security/blacklistService';
+import { chromeStorage } from 'utils/storageAPI';
 
 import MainController from './MainController';
 
@@ -1120,6 +1128,109 @@ describe('dapp automatic nonce recommendation', () => {
 });
 
 it.each([
+  ['send', 'direct'],
+  ['erc20', 'all'],
+  ['erc721', 'all'],
+  ['erc1155', 'all'],
+] as const)(
+  'uses the trusted %s submission operation for the held predecessor policy',
+  async (operation, policy) => {
+    const sdkKeyring = Object.assign(
+      Object.create(SoftwareKeyring.prototype),
+      keyring,
+      {
+        sessionPassword: { isCleared: () => false },
+        sessionMnemonic: { isCleared: () => false },
+        privateRecordSessionRevision: 0,
+        getDecryptedMnemonic: () => 'Public journal nonce test fixture',
+      }
+    );
+    wallet.getActiveKeyring.mockReturnValue(sdkKeyring);
+    let saved: string | undefined;
+    const journal = new EvmSignedRecords({
+      async read() {
+        return saved;
+      },
+      async compareAndSet(_id, expected, next, assertCurrent) {
+        assertCurrent();
+        if (saved !== expected) return false;
+        saved = next;
+        return true;
+      },
+    });
+    wallet.getRetainedEvmRecords.mockReturnValue(journal);
+    wallet.captureFreshEvmRead = jest.fn(() => ({
+      keyring: sdkKeyring,
+      network: context.network,
+      assertCurrent: () => undefined,
+    }));
+    const inspect = jest
+      .spyOn(wallet, 'inspectOrdinaryEvmNonce')
+      .mockResolvedValue({ nonce: 0 });
+    const abi = new Interface([
+      'function transferFrom(address,address,uint256)',
+      'function safeTransferFrom(address,address,uint256,uint256,bytes)',
+    ]);
+    const data =
+      operation === 'erc20'
+        ? encodeErc20Transfer(receiver, '1')
+        : operation === 'erc721'
+        ? abi.encodeFunctionData('transferFrom', [signer.address, receiver, 1])
+        : operation === 'erc1155'
+        ? abi.encodeFunctionData('safeTransferFrom', [
+            signer.address,
+            receiver,
+            1,
+            1,
+            '0x',
+          ])
+        : '0x1234';
+    const signed = await signer.signTransaction({
+      type: 2,
+      chainId: 123,
+      nonce: 0,
+      to: receiver,
+      value: 0,
+      data,
+      gasLimit: 42000,
+      maxFeePerGas: 3,
+      maxPriorityFeePerGas: 1,
+    });
+    const approved = {
+      ...context,
+      operation,
+      walletNonce: { nonce: 0, source: 'automatic' as const },
+    };
+    const boundary = captureEvmSubmission(
+      approved,
+      () => undefined,
+      () => wallet.captureEvmSignedSubmission(sdkKeyring, approved)
+    );
+    const broadcast = jest.fn(
+      async (bytes: string) => Transaction.from(bytes).hash
+    );
+    await expect(
+      submitSignedEvmTransaction(
+        signed,
+        ({ rawTransaction, admit }) => admit(() => broadcast(rawTransaction)),
+        boundary,
+        undefined,
+        Transaction.from(signed).unsignedSerialized
+      )
+    ).resolves.toBe(Transaction.from(signed).hash);
+    expect(broadcast).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(
+      expect.anything(),
+      signer.address,
+      expect.objectContaining({
+        protectedAssetContract: receiver,
+        protectedAssetPolicy: policy,
+      })
+    );
+  }
+);
+
+it.each([
   'unchanged',
   'pending count',
   'legacy pending',
@@ -1321,5 +1432,466 @@ describe('legacy pending guard in the shared nonce inspector', () => {
         ([method]) => method === 'eth_getTransactionByHash'
       )
     ).toHaveLength(0);
+  });
+});
+
+describe('worker-owned token state at review and initial held POST', () => {
+  const token = '0x' + '3'.repeat(40);
+  const blockHash = '0x' + 'a'.repeat(64);
+  const word = (n: bigint) => `0x${n.toString(16).padStart(64, '0')}`;
+  function rpcFixture(
+    options: {
+      advanceAfterBlock?: boolean;
+      onLatest?: () => void;
+      staleBalance?: boolean;
+    } = {}
+  ) {
+    const controller = new AbortController();
+    let latestReads = 0;
+    const rpc = {
+      signal: controller.signal,
+      verifyConfiguredChainId: jest.fn(async () => undefined),
+      send: jest.fn(async (method: string, params: unknown[]) => {
+        if (method === 'eth_getBlockByNumber')
+          return { number: '0x10', hash: blockHash };
+        if (method === 'eth_getCode') return '0x6000';
+        if (method === 'eth_getTransactionCount') {
+          if (params[1] === 'latest') {
+            options.onLatest?.();
+            latestReads++;
+            return options.advanceAfterBlock && latestReads > 1 ? '0x1' : '0x0';
+          }
+          return '0x0';
+        }
+        if (method === 'eth_call') {
+          const tx = params[0] as { from?: string };
+          return tx.from
+            ? word(BigInt(1))
+            : word(options.staleBalance ? BigInt(1) : BigInt(100));
+        }
+        if (method === 'eth_getBalance') return '0xde0b6b3a7640000';
+        if (method === 'eth_getTransactionByHash') return null;
+        throw Error('Unexpected fixture RPC ' + method);
+      }),
+    };
+    return rpc;
+  }
+  function configuredRead(
+    rpc: ReturnType<typeof rpcFixture>,
+    sdkKeyring: unknown
+  ) {
+    return {
+      keyring: sdkKeyring,
+      network: context.network,
+      assertCurrent: () => undefined,
+      run: (work: (fresh: typeof rpc) => unknown) => work(rpc),
+    };
+  }
+  function tokenPayload() {
+    return {
+      type: 'ERC20' as const,
+      transaction: {
+        networkUrl: context.network.url,
+        receiver,
+        tokenAddress: token,
+        tokenAmountUnits: '60',
+        gasLimit: '42000',
+        isLegacy: false as const,
+        maxFeePerGas: '3',
+        maxPriorityFeePerGas: '1',
+      },
+    };
+  }
+  it('validates the captured exact token request and rejects stale holdings before review', async () => {
+    mockState.vault.accountTransactions.HDAccount[0].ethereum[123] = [];
+    const good = rpcFixture();
+    records.captureAutoNonceSnapshot = jest.fn(async () => ({
+      owner: 'unit',
+      retained: [],
+      readMaximumCost: async () => BigInt(0),
+    }));
+    records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
+    const read = configuredRead(good, keyring);
+    const result = await wallet.inspectOrdinaryEvmNonce(read, signer.address, {
+      protectedAssetContract: token,
+      asset: tokenPayload(),
+    });
+    expect(result.nonce).toBe(0);
+    const call = good.send.mock.calls.find(
+      ([method, args]) =>
+        method === 'eth_call' && Boolean((args[0] as { from?: string }).from)
+    );
+    expect(call?.[1][0]).toMatchObject({
+      from: signer.address,
+      to: token,
+      gas: '0xa410',
+      nonce: '0x0',
+      type: '0x2',
+      maxFeePerGas: '0x3',
+      maxPriorityFeePerGas: '0x1',
+    });
+    expect(good.verifyConfiguredChainId).toHaveBeenCalledTimes(2);
+    expect(good.verifyConfiguredChainId).toHaveBeenNthCalledWith(1, true);
+    expect(good.verifyConfiguredChainId).toHaveBeenNthCalledWith(2, true);
+    expect(
+      good.verifyConfiguredChainId.mock.invocationCallOrder[1]
+    ).toBeGreaterThan(Math.max(...good.send.mock.invocationCallOrder));
+    const bad = rpcFixture({ staleBalance: true });
+    await expect(
+      wallet.inspectOrdinaryEvmNonce(
+        configuredRead(bad, keyring),
+        signer.address,
+        { protectedAssetContract: token, asset: tokenPayload() }
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  });
+  it('rejects a same-sender nonce advancement after asset simulation and before review', async () => {
+    const rpc = rpcFixture({ advanceAfterBlock: true });
+    records.captureAutoNonceSnapshot = jest.fn(async () => ({
+      owner: 'unit',
+      retained: [],
+      readMaximumCost: async () => BigInt(0),
+    }));
+    records.autoNonceAcceptance = new EvmAutoNonceAcceptance();
+    await expect(
+      wallet.inspectOrdinaryEvmNonce(
+        configuredRead(rpc, keyring),
+        signer.address,
+        { protectedAssetContract: token, asset: tokenPayload() }
+      )
+    ).rejects.toMatchObject({ transactionNotBroadcast: true });
+  });
+  it.each([
+    { scenario: 'healthy', staleBalance: false, fault: 'none' },
+    { scenario: 'stale holdings', staleBalance: true, fault: 'saved' },
+    {
+      scenario: 'plain nonce RPC failure',
+      staleBalance: false,
+      fault: 'saved',
+    },
+    {
+      scenario: 'wallet session revoked',
+      staleBalance: false,
+      fault: 'revoked',
+    },
+  ] as const)(
+    'actual signed-token journal admission: $scenario',
+    async ({ scenario, staleBalance, fault }) => {
+      const sdkKeyring = Object.assign(
+        Object.create(SoftwareKeyring.prototype),
+        keyring,
+        {
+          sessionPassword: { isCleared: () => false },
+          sessionMnemonic: { isCleared: () => false },
+          privateRecordSessionRevision: 0,
+          getDecryptedMnemonic: () => 'Public journal nonce test fixture',
+        }
+      );
+      wallet.getActiveKeyring.mockReturnValue(sdkKeyring);
+      let saved: string | undefined;
+      const journal = new EvmSignedRecords({
+        async read() {
+          return saved;
+        },
+        async compareAndSet(_id, expected, next, assertCurrent) {
+          assertCurrent();
+          if (saved !== expected) return false;
+          saved = next;
+          return true;
+        },
+      });
+      wallet.getRetainedEvmRecords.mockReturnValue(journal);
+      const onLatest =
+        scenario === 'plain nonce RPC failure'
+          ? () => {
+              throw new Error('synthetic private provider error');
+            }
+          : scenario === 'wallet session revoked'
+          ? () => {
+              wallet.walletSessionGeneration++;
+              throw new Error('synthetic private provider error');
+            }
+          : undefined;
+      const rpc = rpcFixture({
+        staleBalance,
+        ...(onLatest ? { onLatest } : {}),
+      });
+      wallet.captureFreshEvmRead = jest.fn(() =>
+        configuredRead(rpc, sdkKeyring)
+      );
+      const tokenContext = {
+        ...context,
+        operation: 'erc20' as const,
+        walletNonce: { nonce: 0, source: 'automatic' as const },
+      };
+      const signed = await signer.signTransaction({
+        type: 2,
+        chainId: 123,
+        nonce: 0,
+        to: token,
+        value: 0,
+        data: encodeErc20Transfer(receiver, '60'),
+        gasLimit: 42000,
+        maxFeePerGas: 3,
+        maxPriorityFeePerGas: 1,
+      });
+      const boundary = captureEvmSubmission(
+        tokenContext,
+        () => undefined,
+        () => wallet.captureEvmSignedSubmission(sdkKeyring, tokenContext)
+      );
+      const broadcast = jest.fn(
+        async (bytes: string) => Transaction.from(bytes).hash
+      );
+      const submit = submitSignedEvmTransaction(
+        signed,
+        ({ rawTransaction, admit }) => admit(() => broadcast(rawTransaction)),
+        boundary,
+        undefined,
+        Transaction.from(signed).unsignedSerialized
+      );
+      if (fault !== 'none') {
+        const failure = await submit.then(
+          () => {
+            throw new Error('unexpected POST');
+          },
+          (
+            error: Error & { code?: string; transactionNotBroadcast?: boolean }
+          ) => error
+        );
+        expect(failure).toMatchObject({ transactionNotBroadcast: true });
+        if (fault === 'saved') {
+          expect(retainedEvmAssetPreflightConflict(failure)).toMatchObject({
+            code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+            message: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+          });
+          expect(failure.message).not.toContain(
+            'synthetic private provider error'
+          );
+        } else {
+          expect(retainedEvmAssetPreflightConflict(failure)).toBeNull();
+        }
+        expect(broadcast).not.toHaveBeenCalled();
+        const retained = await journal.readExact(
+          { keyring: sdkKeyring, assertCurrent: () => undefined },
+          '123',
+          signer.address,
+          Transaction.from(signed).hash!
+        );
+        expect(retained?.hash).toBe(Transaction.from(signed).hash);
+        expect(retained?.phase).toBe('signed');
+        expect(retained?.nonce).toBe(0);
+      } else {
+        await expect(submit).resolves.toBe(Transaction.from(signed).hash);
+        expect(broadcast).toHaveBeenCalledTimes(1);
+      }
+      expect(saved).toBeDefined();
+      const call = rpc.send.mock.calls.find(
+        ([method, args]) =>
+          method === 'eth_call' && Boolean((args[0] as { from?: string }).from)
+      );
+      expect(call?.[1][0]).toMatchObject({
+        from: signer.address,
+        to: token,
+        gas: '0xa410',
+        nonce: '0x0',
+        type: '0x2',
+        maxFeePerGas: '0x3',
+        maxPriorityFeePerGas: '0x1',
+      });
+      expect(rpc.verifyConfiguredChainId).toHaveBeenCalledWith(true);
+    }
+  );
+
+  it.each(['sdk preflight failure', 'timeout', 'wire uncertain'] as const)(
+    'classifies an authenticated token record at %s',
+    async (scenario) => {
+      const sdkKeyring = Object.assign(
+        Object.create(SoftwareKeyring.prototype),
+        keyring,
+        {
+          sessionPassword: { isCleared: () => false },
+          sessionMnemonic: { isCleared: () => false },
+          privateRecordSessionRevision: 0,
+          getDecryptedMnemonic: () => 'Public journal nonce test fixture',
+        }
+      );
+      wallet.getActiveKeyring.mockReturnValue(sdkKeyring);
+      let saved: string | undefined;
+      const journal = new EvmSignedRecords({
+        async read() {
+          return saved;
+        },
+        async compareAndSet(_id, expected, next, assertCurrent) {
+          assertCurrent();
+          if (saved !== expected) return false;
+          saved = next;
+          return true;
+        },
+      });
+      wallet.getRetainedEvmRecords.mockReturnValue(journal);
+      const rpc = rpcFixture();
+      wallet.captureFreshEvmRead = jest.fn(() =>
+        configuredRead(rpc, sdkKeyring)
+      );
+      const tokenContext = {
+        ...context,
+        operation: 'erc20' as const,
+        walletNonce: { nonce: 0, source: 'automatic' as const },
+      };
+      const signed = await signer.signTransaction({
+        type: 2,
+        chainId: 123,
+        nonce: 0,
+        to: token,
+        value: 0,
+        data: encodeErc20Transfer(receiver, '60'),
+        gasLimit: 42000,
+        maxFeePerGas: 3,
+        maxPriorityFeePerGas: 1,
+      });
+      const boundary = captureEvmSubmission(
+        tokenContext,
+        () => undefined,
+        () => wallet.captureEvmSignedSubmission(sdkKeyring, tokenContext)
+      );
+      const entered = deferred();
+      const held = deferred();
+      const broadcast = jest.fn(
+        async (bytes: string) => Transaction.from(bytes).hash
+      );
+      if (scenario === 'timeout') jest.useFakeTimers();
+      try {
+        const submit = submitSignedEvmTransaction(
+          signed,
+          ({ rawTransaction, admit }) =>
+            admit(
+              () => {
+                if (scenario === 'wire uncertain') {
+                  void broadcast(rawTransaction);
+                  throw new Error('synthetic uncertain wire');
+                }
+                return broadcast(rawTransaction);
+              },
+              async () => {
+                if (scenario === 'sdk preflight failure')
+                  throw Object.freeze(new Error('synthetic private SDK error'));
+                if (scenario === 'timeout') {
+                  entered.resolve();
+                  await held.promise;
+                }
+              }
+            ),
+          boundary,
+          undefined,
+          Transaction.from(signed).unsignedSerialized
+        );
+        const failurePromise = submit.then(
+          () => {
+            throw new Error('unexpected success');
+          },
+          (error) => error
+        );
+        if (scenario === 'timeout') {
+          await entered.promise;
+          await jest.advanceTimersByTimeAsync(12001);
+        }
+        const failure = await failurePromise;
+        const conflict = retainedEvmAssetPreflightConflict(failure);
+        if (scenario === 'wire uncertain') {
+          expect(conflict).toBeNull();
+          expect(evmSubmissionFailure(failure).transactionNotBroadcast).toBe(
+            false
+          );
+          expect(broadcast).toHaveBeenCalledTimes(1);
+        } else {
+          expect(conflict?.code).toBe('EVM_SIGNED_RECORD_NONCE_CONFLICT');
+          expect(evmSubmissionFailure(failure).transactionNotBroadcast).toBe(
+            true
+          );
+          expect(failure.message).not.toContain('synthetic private SDK error');
+          expect(broadcast).not.toHaveBeenCalled();
+          if (scenario === 'sdk preflight failure') {
+            // Exercise the actual token controller catch with the authentic
+            // SDK-propagated marker; an expired port authority must win.
+            wallet.assertWalletReadyForSigning = jest.fn();
+            wallet.getWalletSetupStatus = jest.fn(() => null);
+            wallet.inspectOrdinaryEvmNonce = jest.fn(async () => ({
+              nonce: 0,
+            }));
+            jest
+              .spyOn(blacklistService, 'checkAddress')
+              .mockResolvedValue({ isBlacklisted: false } as any);
+            const abort = new AbortController();
+            const authority = {
+              nonce: 0,
+              signal: abort.signal,
+              assertCurrent: () => {
+                if (abort.signal.aborted)
+                  throw new Error('synthetic approval expired');
+              },
+            };
+            const send = jest.fn(async () => {
+              abort.abort();
+              throw failure;
+            });
+            (getController as jest.Mock).mockReturnValue({
+              wallet: {
+                ethereumTransaction: { sendSignedErc20Transaction: send },
+              },
+            });
+            await expect(
+              wallet.sendAndSaveTokenTransaction(tokenPayload(), authority)
+            ).rejects.toThrow('synthetic approval expired');
+            expect(send).toHaveBeenCalledTimes(1);
+            const active = new AbortController();
+            const activeAuthority = {
+              nonce: 0,
+              signal: active.signal,
+              assertCurrent: () => {},
+            };
+            send.mockImplementationOnce(async () => {
+              throw failure;
+            });
+            // The node test's default chrome.storage mock never calls back.
+            // Keep real navigation cleanup, with an empty saved state.
+            const navigationRead = jest
+              .spyOn(chromeStorage, 'getItem')
+              .mockResolvedValueOnce(null);
+            await expect(
+              wallet.sendAndSaveTokenTransaction(
+                tokenPayload(),
+                activeAuthority
+              )
+            ).rejects.toMatchObject({
+              code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT',
+              transactionNotBroadcast: true,
+            });
+            expect(navigationRead).toHaveBeenCalledWith(
+              'pali_navigation_state'
+            );
+          }
+        }
+        const retained = await journal.readExact(
+          { keyring: sdkKeyring, assertCurrent: () => undefined },
+          '123',
+          signer.address,
+          Transaction.from(signed).hash!
+        );
+        expect(retained?.phase).toBe('signed');
+      } finally {
+        held.resolve();
+        await Promise.resolve();
+        if (scenario === 'timeout') jest.useRealTimers();
+      }
+    }
+  );
+
+  it('does not trust an unbranded marker-like SDK error', () => {
+    expect(
+      retainedEvmAssetPreflightConflict(
+        new Error('EVM_SIGNED_ASSET_PREFLIGHT_FAILED')
+      )
+    ).toBeNull();
   });
 });

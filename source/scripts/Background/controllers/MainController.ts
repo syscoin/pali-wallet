@@ -81,6 +81,10 @@ import {
   EVM_SIGNED_RECORD_PREFIX,
 } from '../../../wallet/evmSignedRecords';
 import {
+  retainedEvmAssetPreflightConflict,
+  type EvmSignedRecords,
+} from '../../../wallet/evmSignedRecords';
+import {
   assertImportedRecoveryAccount,
   importAccountWithRecovery,
   type ImportedRecoveryEntry,
@@ -365,6 +369,11 @@ import { IBalancesManager } from './balances/types';
 import { createBrowserKeyringHost } from './browserKeyringHost';
 import ChainListService from './chainlist';
 import {
+  inspectWorkerAssetState,
+  signedWorkerAsset,
+  type WorkerAsset,
+} from './evmAssetState';
+import {
   assertNoObservedLegacyPending,
   planExtensionEvmNonce,
   reviewedExtensionNonce,
@@ -426,7 +435,6 @@ import {
 import { createUtxoActivityParticipantProjection } from './transactions/utxoActivityParticipants';
 import { clearFetchBackendAccountCache } from './utils/fetchBackendAccountWrapper';
 import type { EvmAutoNonceSnapshot } from '../../../shared/evmAutoNonce';
-import type { EvmSignedRecords } from '../../../wallet/evmSignedRecords';
 import type { EvmSignedReplay } from '../../../wallet/evmSignedReplay';
 import type {
   EvmReplacementFeeApproval,
@@ -1448,6 +1456,10 @@ class MainController {
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
       return createEvmSignedRecordLifecycle(records, session, {
         automaticNonceEndpoint: context.network.url,
+        retainAssetPreflightFailure:
+          context.operation === 'erc20' ||
+          context.operation === 'erc721' ||
+          context.operation === 'erc1155',
         preflight: async (record, assertDispatchCurrent, snapshot) => {
           const signed = Transaction.from(record.rawTransaction);
           const feePerGas = signed.maxFeePerGas ?? signed.gasPrice;
@@ -1466,6 +1478,28 @@ class MainController {
             assertCurrent: assertDispatchCurrent,
             protectedAssetContract:
               signed.data !== '0x' ? signed.to ?? undefined : undefined,
+            // Dapp calls retain the existing direct-target policy. Wallet
+            // asset sends must fence all pending predecessors.
+            protectedAssetPolicy:
+              context.operation === 'send' ? 'direct' : 'all',
+            ...(context.operation === 'erc20' ||
+            context.operation === 'erc721' ||
+            context.operation === 'erc1155'
+              ? {
+                  asset: signedWorkerAsset(
+                    {
+                      chainId: record.chainId,
+                      from: record.from,
+                      hash: record.hash,
+                      nonce: record.nonce,
+                      operation: record.context.operation,
+                      rawTransaction: record.rawTransaction,
+                      networkUrl: record.context.network.url,
+                    },
+                    signed
+                  ),
+                }
+              : {}),
           });
         },
       });
@@ -9386,9 +9420,11 @@ class MainController {
     from: string,
     options: Readonly<{
       assertCurrent?: () => void;
+      asset?: WorkerAsset;
       currentSignedHash?: string;
       minimumBalance?: bigint;
       protectedAssetContract?: string;
+      protectedAssetPolicy?: 'all' | 'direct';
       reviewed?: ExtensionReviewedNonce;
       signal?: AbortSignal;
       snapshot?: EvmAutoNonceSnapshot;
@@ -9411,15 +9447,25 @@ class MainController {
     assertCurrent();
     return read.run(async (provider) => {
       const scope = { chainId, endpoint: read.network.url, from };
-      const plan = await planExtensionEvmNonce({
-        ...options,
-        provider,
-        scope,
-        snapshot,
-        acceptance: records.autoNonceAcceptance,
-        assertCurrent,
-      });
-      if (options.reviewed?.source !== 'manual') {
+      if (
+        options.asset &&
+        (options.reviewed?.source === 'manual' ||
+          options.protectedAssetContract?.toLowerCase() !==
+            options.asset.transaction.tokenAddress.toLowerCase() ||
+          options.asset.transaction.networkUrl !== read.network.url)
+      )
+        throw walletTokenReviewError();
+      const basis = options.asset
+        ? await inspectWorkerAssetState(
+            provider,
+            options.asset,
+            Number(chainId),
+            from,
+            assertCurrent
+          )
+        : undefined;
+      const verifyLegacy = async (nonce: number) => {
+        if (options.reviewed?.source === 'manual') return;
         assertCurrent();
         const { accounts, accountTransactions } = store.getState().vault;
         const hashes = Object.entries(accounts).flatMap(([type, members]) =>
@@ -9432,8 +9478,7 @@ class MainController {
                 )
                   .filter(
                     (tx: any) =>
-                      getEoaNonceFromHistoryTransaction(tx, from) ===
-                        plan.nonce &&
+                      getEoaNonceFromHistoryTransaction(tx, from) === nonce &&
                       typeof tx.hash === 'string' &&
                       /^0x[0-9a-fA-F]{64}$/.test(tx.hash) &&
                       tx.hash.toLowerCase() !==
@@ -9446,11 +9491,28 @@ class MainController {
         await assertNoObservedLegacyPending({
           provider,
           scope,
-          nonce: plan.nonce,
+          nonce: nonce,
           hashes,
           assertCurrent,
         });
-      }
+      };
+      const plan = await planExtensionEvmNonce({
+        ...options,
+        ...(basis
+          ? {
+              assetBasis: basis,
+              // The planner performs the final basis and fresh-chain check
+              // after this legacy observation, before returning.
+              beforeAssetFinal: verifyLegacy,
+            }
+          : {}),
+        provider,
+        scope,
+        snapshot,
+        acceptance: records.autoNonceAcceptance,
+        assertCurrent,
+      });
+      if (!basis) await verifyLegacy(plan.nonce);
       return plan;
     }, options.signal);
   }
@@ -9629,6 +9691,7 @@ class MainController {
     const { nonce } = await this.inspectOrdinaryEvmNonce(read, from, {
       assertCurrent,
       protectedAssetContract: tokenAddress,
+      asset: payload,
       signal,
     });
     assertCurrent();
@@ -9744,6 +9807,7 @@ class MainController {
         minimumBalance: maximumFee,
         assertCurrent: authority.assertCurrent,
         protectedAssetContract: params.tokenAddress,
+        asset: approval,
         signal: authority.signal,
       });
       authority.assertCurrent();
@@ -9792,6 +9856,16 @@ class MainController {
         );
         return txResponse;
       }
+      // Only a private held-admission marker can imply a saved record. Check
+      // the original port authority again so abort/expiry wins over guidance.
+      let reportedError = error;
+      const retained = retainedEvmAssetPreflightConflict(error);
+      if (retained) {
+        authority.assertCurrent();
+        if (!isCurrentSubmission())
+          throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+        reportedError = retained;
+      }
       // A failed attempt must not erase the public screen that requested it.
       try {
         if (isCurrentSubmission()) await clearTransactionNavigationState();
@@ -9804,7 +9878,7 @@ class MainController {
           e
         );
       }
-      throw error;
+      throw reportedError;
     }
   }
 

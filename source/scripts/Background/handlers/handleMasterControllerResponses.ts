@@ -3,6 +3,7 @@ import { EVM_SIGNED_RECORD_NONCE_CONFLICT } from '../../../wallet/evmSignedRecor
 import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
+  EVM_ASSET_REVIEW_REQUIRED,
   EVM_LEGACY_PENDING,
   EVM_LEGACY_VERIFICATION_UNAVAILABLE,
 } from 'utils/evmTransactionContext';
@@ -134,6 +135,11 @@ export const controllerErrorResponse = (
     error?.code === 'UTXO_NETWORK_HAS_SENTRY_KEYS'
   )
     submission.code = error.code;
+  if (
+    error?.code === EVM_ASSET_REVIEW_REQUIRED &&
+    submission.transactionNotBroadcast === true
+  )
+    submission.code = EVM_ASSET_REVIEW_REQUIRED;
   if (
     (error?.code === EVM_LEGACY_PENDING ||
       error?.code === EVM_LEGACY_VERIFICATION_UNAVAILABLE) &&

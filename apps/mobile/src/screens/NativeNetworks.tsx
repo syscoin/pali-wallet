@@ -306,7 +306,7 @@ export function NativeNetworks<Id extends string>({ controller, onBack }: {
           <IdlePressable accessibilityRole="checkbox" accessibilityLabel="This is a test network"
             accessibilityState={{ checked: form.testnet, disabled: busy }} aria-checked={form.testnet} disabled={busy}
             onPress={() => setForm((value) => value && { ...value, testnet: !value.testnet })} style={s.network}>
-            <Text>{form.testnet ? '✓ ' : ''}This is a test network</Text>
+            <Text style={{ flex: 1 }}>{form.testnet ? '✓ ' : ''}This is a test network</Text>
           </IdlePressable></>}
           {!!error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{error}</Text>}
           {!form.utxo && <Text style={s.help}>RPC changes apply to pending status checks and retries you approve.</Text>}
