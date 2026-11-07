@@ -501,6 +501,10 @@ test('storage limit distinguishes a failed replacement from its earlier saved tr
   await page.goto('/?speed-up-transfer&storage-full');
   await page.getByRole('button', { name: 'Submit Speed Up' }).click();
   await expect(page.getByText('Check earlier transaction', { exact: true })).toBeVisible();
-  await expect(page.getByRole('alert')).toHaveText('This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.');
+  const alert = page.getByRole('alert');
+  await expect(alert).toHaveCount(1);
+  await expect(alert.getByText('Keep this transaction', { exact: true })).toBeVisible();
+  await expect(alert.getByText('This new transaction was not submitted because Pali could not save it within its local transaction storage limit. Check the earlier transaction in Activity.', { exact: true })).toBeVisible();
+  await expect(alert).toHaveAttribute('aria-live', 'polite');
   expect(await page.evaluate(() => window.__nativeSendFixture.confirmations())).toEqual([]);
 });
