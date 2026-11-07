@@ -342,6 +342,9 @@ export function NativeSend({
     } catch (cause) {
       if (lifetime.current.alive && captured === lifetime.current.epoch) {
         const current = controller.getSnapshot();
+        if (cause instanceof Error && cause.message === 'EXPIRED' &&
+          current.phase === 'unknown' && current.hash &&
+          current.message === ASSET_STATE_SAVED_MESSAGE) return;
         const asset = reviewedCollectible || (draftCollectible && !current.hash)
           ? 'collectible'
           : token || current.intent ? 'token' : 'coin';
