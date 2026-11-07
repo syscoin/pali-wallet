@@ -29,7 +29,7 @@ export const WALLET_NETWORK_CATCHING_UP_MESSAGE =
 export const EVM_SIGNED_STORAGE_FULL = 'EVM_SIGNED_STORAGE_FULL';
 export const EVM_ASSET_REVIEW_REQUIRED = 'EVM_ASSET_REVIEW_REQUIRED';
 export const EVM_ASSET_REVIEW_MESSAGE =
-  'Balance changed or could not be verified. Review the amount and try again.';
+  'Balance changed or could not be verified. Review the transfer and try again.';
 
 export const EVM_LEGACY_PENDING = 'EVM_LEGACY_PENDING';
 export const EVM_LEGACY_VERIFICATION_UNAVAILABLE =

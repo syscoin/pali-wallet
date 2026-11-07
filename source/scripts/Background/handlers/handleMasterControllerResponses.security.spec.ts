@@ -945,7 +945,7 @@ it('keeps the asset-review code only for definite local no-broadcast failures', 
   const code = 'EVM_ASSET_REVIEW_REQUIRED';
   const failure = Object.assign(
     new Error(
-      'Balance changed or could not be verified. Review the amount and try again.'
+      'Balance changed or could not be verified. Review the transfer and try again.'
     ),
     {
       code,
