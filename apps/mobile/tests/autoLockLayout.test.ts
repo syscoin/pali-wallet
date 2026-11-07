@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { URL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import * as idlePolicy from '../../../source/shared/idleLockPolicy.ts';
@@ -51,11 +52,16 @@ test('custody and watch auto-lock protect both safe areas around keyboard avoida
       assert.deepEqual(Array.from(tree.props.edges), ['top', 'bottom']);
       assert.equal(tree.props.style, screenStyle);
       const keyboard = tree.children[0];
+      assert.ok(keyboard);
       assert.equal(keyboard.type, 'KeyboardAvoidingView');
       assert.equal(keyboard.props.behavior, platform === 'ios' ? 'padding' : undefined);
       assert.equal(keyboard.props.style.flex, 1);
-      assert.equal(keyboard.children[0].type, 'Screen');
-      assert.equal(keyboard.children[0].children[0].props.subtitle, mode === 'custody' ? 'Native wallet' : 'Watch accounts');
+      const screen = keyboard.children[0];
+      assert.ok(screen);
+      assert.equal(screen.type, 'Screen');
+      const header = screen.children[0];
+      assert.ok(header);
+      assert.equal(header.props.subtitle, mode === 'custody' ? 'Native wallet' : 'Watch accounts');
     }
   }
 });
