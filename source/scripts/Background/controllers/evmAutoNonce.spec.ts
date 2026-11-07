@@ -65,7 +65,7 @@ it('advances across an exact acknowledged predecessor only if its cost and this 
   await expect(planExtensionEvmNonce(approved)).resolves.toMatchObject({
     nonce: 1,
     state: 'pending',
-    maximumPredecessorCost: BigInt(5),
+    additionalNativeCost: BigInt(5),
   });
 });
 
@@ -507,3 +507,25 @@ describe('legacy pending observation at the automatic candidate', () => {
     expect(provider.send).not.toHaveBeenCalled();
   });
 });
+
+it.each(['automatic', 'manual'] as const)(
+  'reserves a future nonce before admitting an %s native gap fill',
+  async (source) => {
+    const { input, replies } = fixture('0x0', '0x0');
+    input.snapshot.retained.push({ ...retained, nonce: 1 });
+    const request = {
+      ...input,
+      minimumBalance: BigInt(3),
+      reviewed: reviewedExtensionNonce(0, source),
+    };
+    await expect(planExtensionEvmNonce(request)).rejects.toMatchObject({
+      message: 'Insufficient balance for pending transfers.',
+      transactionNotBroadcast: true,
+    });
+    replies.set('eth_getBalance:pending', '0x8');
+    await expect(planExtensionEvmNonce(request)).resolves.toMatchObject({
+      nonce: 0,
+      additionalNativeCost: BigInt(5),
+    });
+  }
+);

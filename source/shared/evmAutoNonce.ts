@@ -38,16 +38,14 @@ export async function assertEvmAssetReservations(
     balanceUnits < BigInt(0)
   )
     throw new EvmAssetStateError('INVALID_INPUT');
-  const reserved = new Map<number, bigint>();
-  let total = BigInt(asset.amountUnits);
+  const requested = BigInt(asset.amountUnits);
+  // A nonce is one mutually exclusive group, even when the candidate is
+  // already persisted or competes with a retained replacement.
+  const reserved = new Map<number, bigint>([[candidateNonce, requested]]);
+  let total = requested;
   if (total > balanceUnits) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
   for (const entry of snapshot.retained) {
-    if (
-      entry.from.toLowerCase() !== from ||
-      entry.nonce < basisNonce ||
-      entry.nonce >= candidateNonce
-    )
-      continue;
+    if (entry.from.toLowerCase() !== from || entry.nonce < basisNonce) continue;
     assertCurrent();
     const debit = await snapshot.readAssetDebit(entry.hash, asset);
     assertCurrent();
@@ -64,6 +62,36 @@ export async function assertEvmAssetReservations(
   assertCurrent();
 }
 
+/** Local commitments beyond the chosen balance basis remain payable even across nonce gaps. */
+async function additionalNativeCost(
+  snapshot: EvmAutoNonceSnapshot,
+  chainId: string,
+  from: string,
+  minimumNonce: number,
+  assertCurrent: () => void
+): Promise<bigint> {
+  assertCurrent();
+  const reserved = new Map<number, bigint>();
+  let total = BigInt(0);
+  for (const entry of snapshot.retained) {
+    if (!sameSender(entry, chainId, from) || entry.nonce < minimumNonce)
+      continue;
+    if (!validNonce(entry.nonce)) throw new Error('Invalid retained EVM nonce');
+    assertCurrent();
+    const cost = await snapshot.readMaximumCost(entry.hash);
+    assertCurrent();
+    if (typeof cost !== 'bigint' || cost < BigInt(0))
+      throw new Error('Invalid retained EVM cost');
+    const previous = reserved.get(entry.nonce) ?? BigInt(0);
+    if (cost > previous) {
+      total += cost - previous;
+      reserved.set(entry.nonce, cost);
+    }
+  }
+  assertCurrent();
+  return total;
+}
+
 /** The host supplies fresh evidence from the same captured RPC endpoint. A
  * persisted `submitted` phase alone does not prove acknowledgement or sighting. */
 type AcceptedNonce = NonceIdentity &
@@ -74,7 +102,7 @@ type Selection =
   | Readonly<{ kind: 'unresolved'; nonce: number }>;
 
 export type EvmAutoNoncePlan =
-  | Readonly<{ kind: 'ready'; maximumPredecessorCost: bigint; nonce: number }>
+  | Readonly<{ additionalNativeCost: bigint; kind: 'ready'; nonce: number }>
   | Readonly<{ kind: 'unresolved'; nonce: number; reason?: 'asset-state' }>;
 
 const canStillBePending = ({ phase }: RetainedNonce) =>
@@ -303,13 +331,20 @@ export class EvmAutoNonceAcceptance {
           },
           assertCurrent
         );
+      const nativeCost = await additionalNativeCost(
+        snapshot,
+        chainId,
+        sender,
+        nonceOverride < pending ? latest : floor,
+        assertCurrent
+      );
+      assertCurrent();
       return {
         kind: 'ready',
         nonce: nonceOverride,
-        maximumPredecessorCost: BigInt(0),
+        additionalNativeCost: nativeCost,
       };
     }
-    let costReads = 0;
     const variants = new Map<number, RetainedNonce[]>();
     for (const entry of retained) {
       if (!sameSender(entry, chainId, sender)) continue;
@@ -328,7 +363,6 @@ export class EvmAutoNonceAcceptance {
       ticket: Acknowledgement;
     }> = [];
     let reads = 0;
-    let maximumPredecessorCost = BigInt(0);
     for (let nonce = floor; variants.has(nonce); nonce++) {
       if (nonce - floor >= MAX_AHEAD_OF_RPC)
         return { kind: 'unresolved', nonce };
@@ -362,19 +396,6 @@ export class EvmAutoNonceAcceptance {
       if (nonce === Number.MAX_SAFE_INTEGER)
         throw new Error('EVM nonce exceeds safe range');
       accepted.push(proof);
-
-      // Reserve the costliest saved alternative, since a replacement can win
-      // even when this endpoint has only acknowledged the previous variant.
-      let maximumAtNonce = BigInt(0);
-      for (const entry of siblings) {
-        if (costReads++ >= MAX_ADDITIONAL_READS)
-          return { kind: 'unresolved', nonce };
-        assertCurrent();
-        const cost = await snapshot.readMaximumCost(entry.hash);
-        assertCurrent();
-        if (cost > maximumAtNonce) maximumAtNonce = cost;
-      }
-      maximumPredecessorCost += maximumAtNonce;
     }
 
     assertCurrent();
@@ -399,6 +420,16 @@ export class EvmAutoNonceAcceptance {
         },
         assertCurrent
       );
+    const nativeCost =
+      selection.kind === 'ready'
+        ? await additionalNativeCost(
+            snapshot,
+            chainId,
+            sender,
+            floor,
+            assertCurrent
+          )
+        : BigInt(0);
     for (const { key, nonce, ticket } of usedAcknowledgements) {
       if (
         this.acknowledgements.get(key) !== ticket ||
@@ -407,8 +438,9 @@ export class EvmAutoNonceAcceptance {
       )
         return { kind: 'unresolved', nonce };
     }
+    assertCurrent();
     return selection.kind === 'ready'
-      ? { ...selection, maximumPredecessorCost }
+      ? { ...selection, additionalNativeCost: nativeCost }
       : selection;
   }
 }

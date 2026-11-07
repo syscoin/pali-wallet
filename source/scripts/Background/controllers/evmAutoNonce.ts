@@ -231,17 +231,17 @@ export async function planExtensionEvmNonce({
   const finish = async (
     nonce: number,
     state: 'latest' | 'pending',
-    maximumPredecessorCost: bigint
+    additionalNativeCost: bigint
   ) => {
     if (
       minimumBalance !== undefined &&
-      (maximumPredecessorCost > BigInt(0) || state === 'latest')
+      (additionalNativeCost > BigInt(0) || state === 'latest')
     ) {
       const balance = parseEvmFeeQuantity(
         await read('eth_getBalance', [scope.from, state]),
         'available balance'
       );
-      if (balance < minimumBalance + maximumPredecessorCost)
+      if (balance < minimumBalance + additionalNativeCost)
         throw Object.assign(
           new Error('Insufficient balance for pending transfers.'),
           {
@@ -266,7 +266,7 @@ export async function planExtensionEvmNonce({
     } else {
       await verifyChain();
     }
-    return Object.freeze({ nonce, state, maximumPredecessorCost });
+    return Object.freeze({ nonce, state, additionalNativeCost });
   };
 
   const plan = await acceptance
@@ -290,6 +290,6 @@ export async function planExtensionEvmNonce({
   return finish(
     plan.nonce,
     pending < latest || plan.nonce < pending ? 'latest' : 'pending',
-    plan.maximumPredecessorCost
+    plan.additionalNativeCost
   );
 }

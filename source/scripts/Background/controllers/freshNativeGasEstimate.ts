@@ -155,8 +155,8 @@ export async function recheckReviewedNativeEvmTransfer(
   provider: CustomJsonRpcProvider,
   assertCurrent: () => void,
   noncePlan: Readonly<{
+    additionalNativeCost: bigint;
     state: 'latest' | 'pending';
-    maximumPredecessorCost: bigint;
   }>
 ) {
   const check = () => {
@@ -175,13 +175,13 @@ export async function recheckReviewedNativeEvmTransfer(
   if (nonce === undefined) throw new Error('Missing reviewed native nonce');
   await provider.verifyConfiguredChainId();
   const tx = review.transaction;
-  const { state, maximumPredecessorCost } = noncePlan;
+  const { state, additionalNativeCost } = noncePlan;
   const [header, rawBalance] = await Promise.all([
     read('eth_getBlockByNumber', ['latest', false]),
     read('eth_getBalance', [tx.from, state]),
   ]);
   const balance =
-    parseEvmFeeQuantity(rawBalance, 'native balance') - maximumPredecessorCost;
+    parseEvmFeeQuantity(rawBalance, 'native balance') - additionalNativeCost;
   if (balance < BigInt(0)) throw new EvmFeeBalanceError();
   const observation = {
     balance,

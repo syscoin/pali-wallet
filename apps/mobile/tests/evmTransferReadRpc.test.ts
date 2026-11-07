@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { Transaction } from 'ethers/transaction';
 import { Wallet } from 'ethers/wallet';
+import { EvmAutoNonceAcceptance } from '../../../source/shared/evmAutoNonce.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
 import { createNativeNetwork, getNativeNetwork, NATIVE_NETWORKS, type NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import type { EvmUnsignedTransfer } from '../src/custody/evmFeeContracts.ts';
@@ -125,4 +126,30 @@ for (const legacy of [false, true]) test(`approved native requote uses raw gas w
  await assert.rejects(f.rpc.prepare(input, signal(), () => undefined, quote.transaction), {
   code: 'REVIEW_REQUIRED',
  });
+});
+
+
+for (const mode of ['automatic', 'manual'] as const) test(`${mode} native gap fill reserves future signed commitments before dispatch`, async () => {
+ const acceptance = new EvmAutoNonceAcceptance();
+ let balance = 410099;
+ const f = fixture(custom, call => {
+  if (call.method === 'eth_getTransactionCount') return '0x0';
+  if (call.method === 'eth_getBalance') return '0x' + balance.toString(16);
+  return undefined;
+ });
+ const planner: Parameters<EvmTransferReadRpc['verifyForDispatch']>[3] = input => acceptance.plan({
+  ...input, chainId: custom.chainId, endpoint: custom.rpcUrl, from,
+  snapshot: {
+   owner: 'test-wallet',
+   retained: [{ chainId: custom.chainId, from, hash, nonce: 1, phase: 'signed' }],
+   readMaximumCost: async () => 200000n,
+   readAssetDebit: async () => 0n,
+  },
+ });
+ const validate = () => f.rpc.verifyForDispatch(transaction(custom), signal(), () => undefined, planner,
+  undefined, mode === 'manual' ? 0 : undefined);
+ await assert.rejects(validate(), { code: 'INSUFFICIENT_BALANCE' });
+ balance = 410100;
+ await validate();
+ assert.equal(f.calls.some(call => call.method === 'eth_sendRawTransaction'), false);
 });

@@ -219,14 +219,14 @@ it('uses a fulfilled exact ACK with stale RPC counts and reserves the maximum au
   expect(await fixture.select()).toEqual({
     kind: 'ready',
     nonce: 1,
-    maximumPredecessorCost: BigInt(30),
+    additionalNativeCost: BigInt(30),
   });
   expect(fixture.readPending).not.toHaveBeenCalled();
   fixture.snapshot.readMaximumCost.mockClear();
   expect(await fixture.select({ pending: 1 })).toEqual({
     kind: 'ready',
     nonce: 1,
-    maximumPredecessorCost: BigInt(0),
+    additionalNativeCost: BigInt(0),
   });
   expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
 });
@@ -268,7 +268,7 @@ it('requires exact pending observation after acknowledgement expiry or owner/rou
   expect(await fixture.select()).toEqual({
     kind: 'ready',
     nonce: 1,
-    maximumPredecessorCost: BigInt(10),
+    additionalNativeCost: BigInt(10),
   });
 });
 
@@ -301,7 +301,7 @@ it('bounds missing-ACK queries and never jumps over a gap', async () => {
   expect(await gap.select()).toEqual({
     kind: 'ready',
     nonce: 0,
-    maximumPredecessorCost: BigInt(0),
+    additionalNativeCost: BigInt(10),
   });
   expect(gap.readPending).not.toHaveBeenCalled();
 });
@@ -343,7 +343,7 @@ it('allows an asset send behind external pending transactions', async () => {
   ).toEqual({
     kind: 'ready',
     nonce: 1,
-    maximumPredecessorCost: BigInt(0),
+    additionalNativeCost: BigInt(0),
   });
 });
 it.each(['acknowledged', 'observed-pending'] as const)(
@@ -362,7 +362,7 @@ it.each(['acknowledged', 'observed-pending'] as const)(
     expect(await fixture.select({ assetState: assetState() })).toEqual({
       kind: 'ready',
       nonce: 1,
-      maximumPredecessorCost: BigInt(10),
+      additionalNativeCost: BigInt(10),
     });
     await expect(
       fixture.select({ assetState: assetState('80') })
@@ -515,3 +515,250 @@ it('uses a captured balance while debit reads are pending', async () => {
     fixture.select({ pending: 1, assetState: state })
   ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
 });
+
+it('reserves a future nonce while filling an earlier gap', async () => {
+  const future = record(1, 'submitted');
+  const fixture = acceptanceFixture([future]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(7));
+  await expect(
+    fixture.select({ assetState: assetState('6', BigInt(10)) })
+  ).rejects.toMatchObject({
+    code: 'INSUFFICIENT_ASSET',
+  });
+  expect(
+    await fixture.select({ assetState: assetState('3', BigInt(10)) })
+  ).toMatchObject({ kind: 'ready', nonce: 0 });
+  expect(fixture.snapshot.readAssetDebit).toHaveBeenCalledWith(
+    future.hash,
+    expect.objectContaining({ standard: 'ERC20', amountUnits: '3' })
+  );
+  expect(fixture.readPending).not.toHaveBeenCalled();
+});
+it('reserves acknowledged and future groups even below the RPC pending count', async () => {
+  const first = record(0, 'submitted'),
+    future = record(3);
+  const fixture = acceptanceFixture([first, future]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(4));
+  await expect(
+    fixture.select({ pending: 2, assetState: assetState('3', BigInt(10)) })
+  ).rejects.toMatchObject({
+    code: 'INSUFFICIENT_ASSET',
+  });
+  expect(
+    await fixture.select({
+      pending: 2,
+      assetState: assetState('2', BigInt(10)),
+    })
+  ).toMatchObject({ kind: 'ready', nonce: 2 });
+});
+it('counts a persisted candidate once and takes the maximum candidate-nonce alternative', async () => {
+  const candidate = record(2),
+    alternative = { ...candidate, hash: record(8).hash },
+    future = record(4);
+  const fixture = acceptanceFixture([candidate, alternative, future]);
+  fixture.snapshot.readAssetDebit.mockImplementation(async (hash: string) =>
+    hash === candidate.hash
+      ? BigInt(6)
+      : hash === alternative.hash
+      ? BigInt(7)
+      : BigInt(3)
+  );
+  await expect(
+    assertEvmAssetReservations(
+      assetState('6', BigInt(10)),
+      2,
+      fixture.snapshot,
+      () => undefined
+    )
+  ).resolves.toBeUndefined();
+  await expect(
+    assertEvmAssetReservations(
+      assetState('8', BigInt(10)),
+      2,
+      fixture.snapshot,
+      () => undefined
+    )
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+});
+it('applies the same full reservation horizon to manual nonce selection', async () => {
+  const fixture = acceptanceFixture([record(4)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(7));
+  await expect(
+    fixture.select({
+      nonceOverride: 2,
+      assetState: assetState('6', BigInt(10)),
+    })
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+  expect(
+    await fixture.select({
+      nonceOverride: 2,
+      assetState: assetState('3', BigInt(10)),
+    })
+  ).toMatchObject({ kind: 'ready', nonce: 2 });
+});
+it('prevents promising the same ERC721 in an independent future nonce group', async () => {
+  const fixture = acceptanceFixture([record(3)]);
+  const selected = {
+    ...assetState('1', BigInt(1)),
+    asset: {
+      standard: 'ERC721' as const,
+      contractAddress: '0x' + 'ef'.repeat(20),
+      amountUnits: '1',
+      tokenId: '7',
+    },
+  };
+  fixture.snapshot.readAssetDebit.mockImplementation(
+    async (_hash: string, asset) =>
+      asset.tokenId === '7' ? BigInt(1) : BigInt(0)
+  );
+  await expect(fixture.select({ assetState: selected })).rejects.toMatchObject({
+    code: 'INSUFFICIENT_ASSET',
+  });
+  expect(
+    await fixture.select({
+      assetState: { ...selected, asset: { ...selected.asset, tokenId: '8' } },
+    })
+  ).toMatchObject({ kind: 'ready', nonce: 0 });
+});
+it('does not double-count the same ERC721 candidate persisted at its selected nonce', async () => {
+  const fixture = acceptanceFixture([record(0)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(1));
+  const selected = {
+    ...assetState('1', BigInt(1)),
+    asset: {
+      standard: 'ERC721' as const,
+      contractAddress: '0x' + 'ef'.repeat(20),
+      amountUnits: '1',
+      tokenId: '7',
+    },
+  };
+  await expect(
+    assertEvmAssetReservations(selected, 0, fixture.snapshot, () => undefined)
+  ).resolves.toBeUndefined();
+});
+it('keeps cancellation currentness checks when a future reservation read finishes', async () => {
+  const fixture = acceptanceFixture([record(5)]);
+  let current = true;
+  fixture.snapshot.readAssetDebit.mockImplementation(async () => {
+    current = false;
+    return BigInt(7);
+  });
+  await expect(
+    fixture.select({
+      assetState: assetState('3', BigInt(10)),
+      assertCurrent() {
+        if (!current) throw new Error('future read cancelled');
+      },
+    })
+  ).rejects.toThrow('future read cancelled');
+});
+it('stops decoding additional future records once the known reservation exceeds the balance', async () => {
+  const fixture = acceptanceFixture([record(2), record(3), record(4)]);
+  fixture.snapshot.readAssetDebit.mockResolvedValue(BigInt(7));
+  await expect(
+    fixture.select({ assetState: assetState('6', BigInt(10)) })
+  ).rejects.toMatchObject({ code: 'INSUFFICIENT_ASSET' });
+  expect(fixture.snapshot.readAssetDebit).toHaveBeenCalledTimes(1);
+});
+
+it.each([false, true])(
+  'budgets a future native commitment while filling a gap, manual=%s',
+  async (manual) => {
+    const fixture = acceptanceFixture([record(1)]);
+    fixture.snapshot.readMaximumCost.mockResolvedValue(BigInt(7));
+    const result = await fixture.select(manual ? { nonceOverride: 0 } : {});
+    expect(result).toMatchObject({
+      kind: 'ready',
+      nonce: 0,
+      additionalNativeCost: BigInt(7),
+    });
+    if (result.kind === 'ready')
+      expect(BigInt(10) - result.additionalNativeCost < BigInt(6)).toBe(true);
+  }
+);
+it('does not subtract a native pending prefix already represented by the RPC balance', async () => {
+  const first = record(0, 'submitted'),
+    future = record(3);
+  const fixture = acceptanceFixture([first, future]);
+  fixture.snapshot.readMaximumCost.mockImplementation(async (hash: string) =>
+    hash === first.hash ? BigInt(7) : BigInt(2)
+  );
+  expect(await fixture.select({ pending: 1 })).toMatchObject({
+    kind: 'ready',
+    nonce: 1,
+    additionalNativeCost: BigInt(2),
+  });
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(1);
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledWith(future.hash);
+});
+it('manual replacement below RPC pending reserves native costs from the latest balance basis', async () => {
+  const first = record(0),
+    future = record(3);
+  const fixture = acceptanceFixture([first, future]);
+  fixture.snapshot.readMaximumCost.mockImplementation(async (hash: string) =>
+    hash === first.hash ? BigInt(7) : BigInt(2)
+  );
+  expect(await fixture.select({ pending: 2, nonceOverride: 1 })).toMatchObject({
+    kind: 'ready',
+    nonce: 1,
+    additionalNativeCost: BigInt(9),
+  });
+});
+it('native replacement alternatives reserve the maximum cost once', async () => {
+  const first = record(2),
+    sibling = { ...first, hash: record(9).hash };
+  const fixture = acceptanceFixture([first, sibling, record(4)]);
+  fixture.snapshot.readMaximumCost.mockImplementation(async (hash: string) =>
+    hash === first.hash
+      ? BigInt(7)
+      : hash === sibling.hash
+      ? BigInt(5)
+      : BigInt(2)
+  );
+  expect(await fixture.select()).toMatchObject({
+    kind: 'ready',
+    nonce: 0,
+    additionalNativeCost: BigInt(9),
+  });
+});
+it('native reservation rejects invalid costs and retains cancellation after a future read', async () => {
+  const fixture = acceptanceFixture([record(2)]);
+  fixture.snapshot.readMaximumCost.mockResolvedValue(BigInt(-1));
+  await expect(fixture.select()).rejects.toThrow('Invalid retained EVM cost');
+  let current = true;
+  fixture.snapshot.readMaximumCost.mockImplementation(async () => {
+    current = false;
+    return BigInt(7);
+  });
+  await expect(
+    fixture.select({
+      assertCurrent() {
+        if (!current) throw new Error('cancelled native budget');
+      },
+    })
+  ).rejects.toThrow('cancelled native budget');
+});
+it('native reserve work remains local and includes more than sixteen queued future commitments', async () => {
+  const fixture = acceptanceFixture(
+    Array.from({ length: 20 }, (_, index) => record(index + 2))
+  );
+  fixture.snapshot.readMaximumCost.mockResolvedValue(BigInt(1));
+  expect(await fixture.select()).toMatchObject({
+    kind: 'ready',
+    nonce: 0,
+    additionalNativeCost: BigInt(20),
+  });
+  expect(fixture.readPending).not.toHaveBeenCalled();
+  expect(fixture.snapshot.readMaximumCost).toHaveBeenCalledTimes(20);
+});
+
+it.each([1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+  'rejects an invalid future nonce %s before reserving its cost',
+  async (nonce) => {
+    const fixture = acceptanceFixture([{ ...record(2), nonce }]);
+    await expect(fixture.select()).rejects.toThrow(
+      'Invalid retained EVM nonce'
+    );
+    expect(fixture.snapshot.readMaximumCost).not.toHaveBeenCalled();
+  }
+);

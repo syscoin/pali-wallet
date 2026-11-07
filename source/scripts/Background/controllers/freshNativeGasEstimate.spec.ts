@@ -24,7 +24,7 @@ const approved = {
 };
 const noncePlan = {
   state: 'pending' as const,
-  maximumPredecessorCost: BigInt(0),
+  additionalNativeCost: BigInt(0),
 };
 const maximum = (
   BigInt(approved.maxFeePerGas) * BigInt(approved.gasLimit)

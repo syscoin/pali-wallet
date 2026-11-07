@@ -38,7 +38,7 @@ export type NativeAutomaticNoncePlanner = (
 type SendNonceSample = Readonly<{
   nonce: bigint;
   count: bigint;
-  maximumPredecessorCost: bigint;
+  additionalNativeCost: bigint;
   state: 'latest' | 'pending';
 }>;
 export type EvmReceiptObservation = Readonly<
@@ -431,7 +431,7 @@ export class EvmTransferReadRpc {
       quantity(await read('eth_getTransactionCount', [from, tag]));
     if (nonceOverride === undefined && !automaticNonce) {
       const count = await readCount('pending');
-      return { count, nonce: count, state: 'pending', maximumPredecessorCost: 0n };
+      return { count, nonce: count, state: 'pending', additionalNativeCost: 0n };
     }
     const [count, pending] = await Promise.all([readCount('latest'), readCount('pending')]);
     if (automaticNonce) {
@@ -448,14 +448,14 @@ export class EvmTransferReadRpc {
       if (plan.kind === 'unresolved') throw new EvmAutomaticNonceUnresolved(plan.nonce, plan.reason);
       return {
         count, nonce: BigInt(plan.nonce), state: pending < count || (nonceOverride !== undefined && BigInt(nonceOverride) < pending) ? 'latest' : 'pending',
-        maximumPredecessorCost: plan.maximumPredecessorCost,
+        additionalNativeCost: plan.additionalNativeCost,
       };
     }
     if (pending < count) return rejectRead('REVIEW_REQUIRED');
     // An external transaction at the overridden nonce can already affect
     // pending balance and execution state, though only one of the two can mine.
     const nonce = BigInt(nonceOverride!);
-    return { count, nonce, state: nonce < pending ? 'latest' : 'pending', maximumPredecessorCost: 0n };
+    return { count, nonce, state: nonce < pending ? 'latest' : 'pending', additionalNativeCost: 0n };
   }
 
   /** Revalidate the selected nonce, spend budget and exact asset call under held admission. */
@@ -473,7 +473,7 @@ export class EvmTransferReadRpc {
       if (sample.nonce !== BigInt(envelope.nonce)) return rejectRead('REVIEW_REQUIRED');
       const fee = envelope.type === 0 ? envelope.gasPrice : envelope.maxFeePerGas;
       const cost = getEvmTransferCost(BigInt(envelope.value), BigInt(envelope.gasLimit), BigInt(fee));
-      if (cost.total > this.availableAfterPredecessors(rawBalance, sample.maximumPredecessorCost))
+      if (cost.total > this.availableAfterPredecessors(rawBalance, sample.additionalNativeCost))
         return rejectRead('INSUFFICIENT_BALANCE');
       if (assetState) {
         await simulateEvmAssetTransfer(read, assetState, envelope, nonceOverride === undefined ? 'automatic' : 'manual');
@@ -481,7 +481,7 @@ export class EvmTransferReadRpc {
           const estimatedGas = quantity(await read('eth_estimateGas', [evmEstimateRequest(envelope), sample.state]));
           const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
           try {
-            assertEvmFeeEstimateApproved(approval, { balance: this.availableAfterPredecessors(rawBalance, sample.maximumPredecessorCost),
+            assertEvmFeeEstimateApproved(approval, { balance: this.availableAfterPredecessors(rawBalance, sample.additionalNativeCost),
               estimatedGas, sampledBlockGasLimit: sampled.gasLimit,
               ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }) }, this.monotonicMilliseconds());
           } catch (error) { return rejectRead(error instanceof EvmFeeBalanceError ? 'INSUFFICIENT_BALANCE' : 'REVIEW_REQUIRED'); }
@@ -502,9 +502,9 @@ export class EvmTransferReadRpc {
       sample.state === 'latest' ? balanceAt('latest') : pending);
   }
 
-  private availableAfterPredecessors(rawBalance: unknown, maximumPredecessorCost: bigint): bigint {
+  private availableAfterPredecessors(rawBalance: unknown, additionalNativeCost: bigint): bigint {
     const balance = quantity(rawBalance);
-    return balance > maximumPredecessorCost ? balance - maximumPredecessorCost : 0n;
+    return balance > additionalNativeCost ? balance - additionalNativeCost : 0n;
   }
 
   /** Check the exact collectible envelope while the journal owns wire admission. */
@@ -521,7 +521,7 @@ export class EvmTransferReadRpc {
       if (assetState.balanceUnits < BigInt(intent.amountUnits)) throw new EvmAssetStateError('INSUFFICIENT_ASSET');
       const nonceState = replay
         ? read('eth_getTransactionCount', [intent.from, 'latest']).then((value) => ({
-          count: quantity(value), nonce: BigInt(envelope.nonce), state: 'pending' as const, maximumPredecessorCost: 0n,
+          count: quantity(value), nonce: BigInt(envelope.nonce), state: 'pending' as const, additionalNativeCost: 0n,
         }))
         : this.sampleSendNonce(read, intent.from, nonceOverride, automaticNonce, assetState);
       const state = manual || automaticNonce ? nonceState.then((sample) => sample.state) : Promise.resolve('pending');
@@ -541,7 +541,7 @@ export class EvmTransferReadRpc {
       const approval = captureEvmFeeApproval(envelope, this.network.registrationHash, this.feeQuoteExpiry());
       try {
         assertEvmFeeEstimateApproved(approval, {
-          balance: this.availableAfterPredecessors(rawBalance, sample.maximumPredecessorCost),
+          balance: this.availableAfterPredecessors(rawBalance, sample.additionalNativeCost),
           estimatedGas: quantity(rawEstimate), sampledBlockGasLimit: sampled.gasLimit,
           ...(sampled.baseFee === null ? {} : { baseFeePerGas: sampled.baseFee }),
         }, now);
@@ -560,13 +560,13 @@ export class EvmTransferReadRpc {
     if (manual && (!Number.isSafeInteger(nonceOverride) || nonceOverride < 0))
       return rejectRead('INVALID_INPUT');
     const nonceState = this.sampleSendNonce(read, request.from, nonceOverride, automaticNonce, assetState);
-    const [{ count: observed, nonce, state, maximumPredecessorCost }, rawBalance, fees] = await Promise.all([
+    const [{ count: observed, nonce, state, additionalNativeCost }, rawBalance, fees] = await Promise.all([
       nonceState,
       this.readSendBalance(read, request.from, nonceState, manual),
       this.feeData(read, sampled, signal),
     ]);
     read.assertCurrent();
-    const balance = this.availableAfterPredecessors(rawBalance, maximumPredecessorCost);
+    const balance = this.availableAfterPredecessors(rawBalance, additionalNativeCost);
     if (observed > BigInt(Number.MAX_SAFE_INTEGER) || sampled.gasLimit < 21000n) return rejectRead('INVALID_RESPONSE');
     if (manual && !matchesSendNonce(observed, nonce, true))
       return rejectRead('NONCE_UNAVAILABLE');
