@@ -53,6 +53,12 @@ for (const viewport of [{ width: 320, height: 640 }, { width: 393, height: 852 }
         expect(textBounds).not.toBeNull();
         expect(textBounds!.width).toBeLessThanOrEqual(bounds!.width);
         expect(textBounds!.height).toBeLessThanOrEqual(bounds!.height);
+        const horizontalInset = await button.evaluate(element => {
+          const style = getComputedStyle(element);
+          return parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+        });
+        expect(Math.abs(textBounds!.x - bounds!.x - horizontalInset)).toBeLessThanOrEqual(1);
+        expect(Math.abs(textBounds!.width - bounds!.width + 2 * horizontalInset)).toBeLessThanOrEqual(1);
         expect(textBounds!.y).toBeGreaterThanOrEqual(bounds!.y);
         expect(textBounds!.y + textBounds!.height).toBeLessThanOrEqual(bounds!.y + bounds!.height);
         expect(await label.evaluate(element => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1);

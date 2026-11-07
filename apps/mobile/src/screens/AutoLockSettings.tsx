@@ -52,6 +52,6 @@ export function AutoLockSettings({ mode, save, onBack }: { mode: IdleMode; save:
 
 const presetStyles = StyleSheet.create({
   group: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  button: { flexBasis: '45%', flexGrow: 1, borderWidth: 1 },
+  button: { flexBasis: '45%', flexGrow: 1, borderWidth: 1, flexDirection: 'column', alignItems: 'stretch' },
   selected: { borderColor: colors.pink },
 });
