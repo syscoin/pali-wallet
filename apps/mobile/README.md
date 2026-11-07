@@ -1,51 +1,60 @@
 # Pali Mobile
 
-A React Native / Expo SDK 58 mobile app in the extension repository. The reviewed development implementation supports wallet creation/restoration, password unlock and matching-phrase password recovery, seed backup, HD and imported EVM accounts, EVM coin and ERC20 transfers, software UTXO coin transfers, and public-address/UTXO-account watching. Watch-only accounts and the interactive design preview remain separate from custody. **Full extension feature equivalence remains incomplete. Implemented code, offline native qualification, live-network execution and physical-device release qualification are separate milestones. This is not a shipping self-custody wallet.**
+Pali Mobile is a React Native / Expo SDK 58 application in the extension repository. Full extension feature equivalence and release qualification remain in progress. Use disposable test wallets while those gates are open.
 
-The implementation starts from extension source `4470e54e8777cca2a4fe7c712409f60eeb4fa401`. The handoff's reference checkout at `88cc9c9a8959b5dccc7ff43f136d60203782918a` adds documentation changes. The supplied screen deck and video are product references, not evidence of native security or working transaction support.
+This implementation summary is reconciled against master `2738be3b2d8043e4b76e825ed0145d1a8a33fc9a`. The [design review](design/README.md), supplied screen deck and demo video guide the product. The [parity matrix](design/PARITY_MATRIX.md) preserves the feature inventory and acceptance criteria. Its historical implementation ledger has its own recorded source basis.
 
-The [capability ledger](design/PARITY_MATRIX.md#current-implementation-ledger) records the implemented scope and remaining gates. This description covers development source at `8018c89be3aac79d45fba4443fcfb20b526fa5bf`. Open PRs are tracked separately. The [shared-core audit](docs/shared-core-audit.md) records actual host boundaries. Historical test results below remain tied to their tested revisions; they do not qualify this composed source.
+## Implemented application flows
 
-## Full-wallet design target
+Native custody and public watch accounts use **Wallet / Activity / Tools / Settings**. Only the active public tab stays mounted. Authentication, backup and transaction approvals use dedicated screens. The separate design explorer uses inert sample data.
 
-The full extension-equivalent mobile product is now specified in the [design review](design/README.md). Choose **Review full wallet design** on the welcome screen for the interactive catalogue. Its simulated screens do not change operational wallet capabilities. Tools → Private notes exposes the saved-note list, capacity, and encrypted backup and restore. These flows use the shared file format and the native protected store. Pool operations and device qualification remain separate.
+| Area                      | Current development implementation                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Wallet and accounts       | Create a 12-word wallet or restore a matching 12/24-word phrase, password unlock, backup challenge, HD account creation, selection, rename and eligible removal. Import EVM private keys, UTXO WIF keys and BIP84 account private keys. Supported private-key formats can be revealed after fresh password confirmation.                                              |
+| View-only accounts        | Watch public EVM addresses and supported UTXO addresses, extended public keys or descriptors. UTXO account discovery and history use the extension's shared SDK and Blockbook reader.                                                                                                                                                                                 |
+| Networks                  | Select shared built-in registrations and add, edit or remove eligible custom EVM and UTXO registrations. UTXO custody requires a network and signing rule supported by the shared software engine. Endpoint identity and retained-transfer checks protect registration changes.                                                                                       |
+| EVM assets and transfers  | Native coin, ERC20 and supported ERC721/ERC1155 transfers, exact amounts, manual token/collectible import, explicit explorer-backed discovery, ownership checks and local list removal. Automatic nonce selection and an advanced override share the extension's policy. Saved pending transactions expose eligible Cancel and Speed Up actions and exact-byte retry. |
+| UTXO assets and transfers | Native-coin sends for supported software accounts and registrations, including maximum amount. Syscoin UTXO exposes exact SYSX holdings and allocation sends with separate native funding and change. Saved transfers support reviewed retry through their original verified route.                                                                                   |
+| Activity                  | Shared EVM explorer, filtering and normalization for custody and watch accounts. Seeded and watch UTXO accounts use shared indexed history and bounded transaction details. The view combines public observations with retained local submissions.                                                                                                                    |
+| Security and recovery     | Foreground idle lock, lifecycle lock, authentication throttling, seed/key reveal, matching-phrase password recovery, and authenticated removal of the wallet from this device. Recovery preserves supported account records, imported-key recovery copies, private notes and signed records.                                                                          |
+| Private notes             | List locally saved notes, inspect details, reveal an individual note after fresh authentication, adjust the shared capacity policy, and export or restore the encrypted whole-note bundle through native file adapters. Pool status and spending remain separate work.                                                                                                |
+| Tools and preferences     | Account/network management, local trusted-site lookup, read-only guardian recovery status, Display currency, Help & about, and an explicit external testnet-faucet link where available.                                                                                                                                                                              |
 
-### ERC20 portfolio
+### Asset observations and history
 
-The native Wallet screen supports entering an ERC20 contract on the selected registered EVM network, reviewing its untrusted name/symbol, full contract, precision and balance, and confirming a local list entry. In Import token, choose **Find holdings** to look up the selected address at the registered network explorer when its API is configured. The bounded lookup offers up to 20 suggestions and supports explicit retry. A suggestion supplies only the contract for the same RPC review and explicit add flow. Manual entry remains available. Token details provide exact balances, a selected-token refresh, the existing network-bound Receive flow, and removal from the local list. Removal does not move tokens. Token details also open an ERC20 transfer review on the selected registered EVM network with the complete contract and recipient, exact token amount and a separate maximum network fee. Collectibles supports explorer suggestions, direct ERC-721/ERC-1155 ownership checks and saving verified entries. Token pricing, collectible transfers and Syscoin assets remain separate work.
+Imported metadata, explorer suggestions, balances and NFT ownership are untrusted observations. Suggestions feed the same RPC review and explicit save flow as manual entry. Transfer review binds the complete recipient, contract or asset identifier, raw amount, account, network, nonce and maximum fee. The shared final checks run again before dispatch.
 
-Token descriptors persist in one wallet-bound document, scoped to the typed account identity, address and chain. Changing a registration's RPC or display name does not discard that list. Public metadata can outlive account removal; reimport does not promise restoration under a different typed identity. The document permits at most 256 entries within its 64 KiB limit and refuses an oversized addition. Unknown or corrupt storage is not presented as an empty list. Balances begin unknown after restart and never supply spend authority. Refresh uses two workers and a 15-second deadline; unattempted entries stay unknown and details can refresh independently.
+Known queued asset debits are reserved once per nonce group. Exact-call simulation checks the reviewed transfer against the selected state. Token-specific fees, rebasing and other contract rules can affect the received amount even after successful execution.
 
-Codec/RPC, controller, real SQLite and actual React Native component browser tests cover this flow. Browser component tests are not physical-device, native-networking or release qualification; W02 remains partially implemented.
+Ordinary Activity rows use indexed facts without per-row RPC enrichment. Retained unconfirmed EVM submissions use the shared observer, and opening a detail can request additional facts. A canonical receipt supplies the confirmation or revert observation; later observations can reflect a reorganization. EVM internal transfers, full collectible enumeration and complete historical indexing remain open scope.
 
-ERC20 sends use the same shared retained-signed-record policy as native-coin sends. The
-reviewed intent is saved alongside the signed bytes before broadcast, retained
-across restart and compared before an exact-byte retry. Token precision cannot
-silently change during review. Token balance and native-currency gas funding are checked
-separately, including the original approved fee limit. Preflight accepts an
-explicit true return or an empty return from a non-reverting transfer simulation;
-false or malformed returns are rejected. A successful canonical receipt reports
-transaction execution, not the behavior of an arbitrary token contract: fees,
-rebasing and other token rules may change the received amount. Native testnet and
-physical-device send qualification remain required before release.
+UTXO Activity requests at most 20 rows per page and keeps a 100-row navigation window. EVM recent-history storage keeps up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences within 60 KiB. Byte limits can reduce those counts. Older history remains available through a configured explorer.
 
-### Account-wide UTXO watch activity
+### Signed transaction recovery
 
-Opening Activity for the active Bitcoin or Syscoin watch account loads indexed history through the same shared Blockbook account reader used by the extension. Saved public extended keys and descriptors query the whole account; address records query only that address. The authority keeps the canonical identifier private and exposes public transaction rows. No signing or scanner is added. Pending rows and nullable block observations remain visible.
+The extension and mobile use the same retained signed-record policy. Exact signed bytes and reviewed intent are saved before broadcast. Replay, replacement and ordinary new sends have distinct admission checks, with ownership scoped to the wallet profile, chain and sender across account aliases.
 
-Pages contain at most20 rows. The list keeps a window of at most100 rows, with older/newer navigation that can request pages beyond five. Fresh same-transaction observations replace retained status, including a return to pending; other retained rows are not proof of complete indexing. Network or storage failure preserves the previous list as stale. Backgrounding, focus loss, lock, account/network changes and leaving Activity abort its requests. Entering an active current Activity view loads again without an extra consent step.
+The EVM journal has limits of 4,096 records and 16 MiB. At a genuine capacity refusal, bounded maintenance checks available configured routes and retires eligible finalized nonce groups atomically with an encrypted nonce floor. It then retries saving the same signed bytes once. Pending or unverified recovery records remain retained, and insufficient reclaimable space refuses the new submission. Account removal and public-history pruning preserve recovery records.
 
-Native account change, whole-transaction fee and transfer intent use the existing shared exact-amount helpers. Unknown ownership or missing data stays unavailable. SPT quantities present in account-history rows use the shared exact-decimal helper and formatter, with explicit account scope and only shared direction. Unavailable quantities never substitute native funding, which remains separately labelled. Full bridge/detail hydration remains unimplemented. Source/browser tests do not qualify deployed services, native HTTP, physical privacy or complete feature equivalence. See [the implementation contract](docs/utxo-watch-activity.md).
+### Recovery and device storage
 
-### Public EVM watch activity
+Native custody starts after cryptographic checks and protected-storage initialization. The shared software keyring, SQLCipher and native cryptographic primitives preserve complete SDK account maps. Ordinary unlock restores those maps. Add account uses the same SDK allocation as the extension, including reuse of an available HD account slot.
 
-EVM watch accounts use the same Activity model, explorer/receipt readers, exact amounts, filtering and details as custody accounts. The public authority checks the selected account, network and saved-record identity around every read; locking or leaving the foreground cancels pending work. The watch path has no keyring, signed records or replay capability. Its bounded candidate/view cache is memory-only for the current public session.
+The account document has a 4 MiB budget. Public watch records separately allow 20 accounts within 32 KiB. The local asset registry has a 256-entry, 64 KiB budget. Missing, corrupt or ambiguous storage fails closed and offers the applicable recovery or retry flow.
 
-Discovery depends on the selected shared network definition providing an explorer API. A missing API is reported as unavailable discovery, not empty complete history. Direct transactions and ERC20 receipt events are covered; internal transfers, NFT interpretation and provider/native-device qualification remain separate.
+**Forgot password?** verifies the matching phrase, reviews preservation and uses the shared recovery coordinator to rewrap supported saved data. Imported keys require their retained encrypted recovery copy or an independent backup. A phrase alone cannot recreate missing independently imported keys or missing private notes on a lost device. A commit interrupted by cancellation can leave the new password durable, so the UI retains recovery guidance for an uncertain result.
+
+Settings → Auto-lock stores a device-local preference for custody and watch sessions. The default is five minutes, with Off or 5–120 whole minutes available. Increasing the custody timeout or choosing Off requires fresh password authentication. Background/inactive transitions and Android focus loss still lock the session. Asynchronous work does not extend the deadline. Repair of a permanently malformed idle-lock preference remains open scope.
+
+## Remaining implementation and qualification
+
+Operational dapp sessions and approvals, native Ledger/Trezor transport, smart-account operations, privacy-pool operations and Sentry remain outstanding. Biometric/passkey enrollment and login, system watch-notification enrollment/delivery, localization and several advanced transaction tools also remain open. Shared primitives and native test fixtures for these areas have their own implementation and qualification status.
+
+The [shared-core audit](docs/shared-core-audit.md), [security requirements](SECURITY.md) and [native qualification contract](qualification/README.md) describe the host boundaries and release gates. Track live-network, physical-device and full user-journey acceptance separately from source implementation.
 
 ## Run
 
-Use Node 26 and install from this directory. The mobile package has its own lockfile; it does not replace the extension's package manager or dependency graph.
+Use Node **26.12.1**, as pinned in the repository's `.nvmrc`. The mobile package owns its npm lockfile; the extension uses the root Yarn dependency graph.
 
 ```sh
 cd apps/mobile
@@ -53,58 +62,33 @@ npm ci
 npm run web
 ```
 
-`web` opens the design-validation surface. Native secure storage and device behavior cannot be qualified in a browser. For a local native development build, install the appropriate platform toolchain first:
+`web` opens the design-validation surface. Recovery-phrase intake and the native keyring belong to the native application. Install the appropriate platform toolchain before running a native development build.
 
 ```sh
-npm run ios       # macOS, full Xcode and iOS build dependencies required
-npm run android   # Android SDK, Java and an emulator/device required
+npm run ios       # macOS, full Xcode and iOS build dependencies
+npm run android   # Android SDK, Java and an emulator or device
 ```
 
-Native onboarding offers wallet creation, phrase restoration, and watch-only accounts directly. No build flag or user setting enables custody. Every custody session must pass the native cryptographic and storage checks before creation or authentication. Use only test wallets until native binary and physical-device qualification is complete. The web build never accepts recovery phrases or loads the native keyring.
+Native onboarding offers wallet creation, phrase restoration and watch-only accounts directly. Custody requires the native runtime checks. The package scripts disable Expo CLI telemetry. Over-the-air application updates are disabled in app configuration.
 
-The commands disable Expo CLI telemetry. Over-the-air updates are disabled in app configuration. These settings do not replace review of release builds or third-party dependency behavior.
+## Shared code and dependencies
 
-## Foreground auto-lock
+Metro resolves selected platform-independent modules directly from `source/`. Both hosts reuse SDK derivation/signing and shared network identity, exact amounts, fee review, asset checks, nonce planning, signed recovery, history and note-backup code. Native adapters provide rendering, protected storage, HTTP, file access and lifecycle handling.
 
-The development candidate adds Settings → Auto-lock for native wallets and watch accounts, with separate device-local values. The default is five minutes; choose Off or 5–120 whole minutes. Off never disables background/inactive or Android focus-loss locking. Increasing a native timeout or selecting Off requires fresh password authentication. Reads, asynchronous completions and background work do not extend the deadline.
+`src/core/` exposes bounded public account/network data and narrow authority interfaces. Keep secret-bearing extension state behind the appropriate host boundary. Browser runtime messaging, Redux singletons and hardware transports require their own host adapters.
 
-The setting uses dedicated protected storage, outside wallet records. Failed reads retain saved bytes and offer Retry; no native memory fallback or destructive reset is provided. A permanently malformed preference record has no qualified repair flow yet. See [idle-lock behavior and qualification limits](docs/idle-lock.md).
+The [mobile lockfile](package-lock.json) pins the official npm releases below with integrity hashes.
 
-## Current behavior
+| Dependency                   | Version |
+| ---------------------------- | ------- |
+| `@sidhujag/sysweb3-keyring`  | 2.1.6   |
+| `@sidhujag/sysweb3-network`  | 2.0.0   |
+| `syscoinjs-lib`              | 2.0.0   |
+| `syscointx-js`               | 2.0.0   |
+| `react-native-quick-crypto`  | 1.1.9   |
+| `react-native-nitro-modules` | 0.37.2  |
 
-Native and watch sessions share operational **Wallet / Activity / Tools / Settings** tabs using their existing controllers. Wallet retains each account's supported balance, receive and send flows; Activity is available for native EVM accounts on their selected saved registration and for public EVM and account-wide UTXO watch history on the shared defaults. Tools opens account management and, for native accounts, network selection. Settings opens native Security & backups, lock/hide and development-build information. Only the active public tab is mounted. Authentication, seed/key presentation and approvals use dedicated screens without tabs; stale navigation cannot restore a previous account or session. The separate design explorer continues to use inert sample data.
-
-HD and imported EVM accounts have Activity for direct native-coin transactions and ERC20 events. Explorer URL construction, account filtering and transaction normalization reuse shared extension modules; native adapters own bounded fetches, storage and rendering. The list combines all retained local signed records with a bounded public cache and configured explorer discovery. Ordinary lists render shared mapped indexed facts directly without per-row RPC reads. Retained unconfirmed submissions use the common signed-record observer; opening a detail can request additional RPC facts without discarding indexed data if enrichment fails. Incoming and unknown tokens remain untrusted, zero-value token activity is hidden by default, and copying a history address requires reviewing its full value. A custom registration without an available explorer still has local retained history. Internal EVM transfers, UTXO replacement identification and full SPT operation/detail hydration remain unimplemented.
-
-Activity retains up to 48 local terminal summaries, 24 indexed candidates and 20 list preferences in one wallet-bound document capped at 60 KiB. Byte limits may retain fewer records; pruning is disclosed. This is recent cached history, not a complete account index, and does not include internal ETH transfers. Older history needs the configured explorer. Signed recovery records are retained independently by the common extension/native policy. New transactions, account removal and public history pruning do not discard predecessor bytes; bounded storage refuses new admission when full. History never supplies spend authority or changes the selected network's signing capability.
-
-`npm run test:activity-ui` builds and exercises the actual Activity component in an isolated browser fixture on loopback port 4181. It does not qualify native network transport or physical-device behavior.
-
-- Watch-only mode accepts public EVM addresses on the built-in shared registrations. It holds no signing key and stores public configuration through the platform protected-storage adapter. The current watch record limit is 20 accounts within 32 KiB; this is separate from native custody's account-map budget. Read failures never create an empty account list.
-- Public UTXO watching accepts a supported address, public extended key, or descriptor on the extension’s defaults: Bitcoin, Syscoin Mainnet, and Syscoin Testnet. The existing extension public-input validator and SDK derivation normalize the identifier, and SyscoinJS performs the Blockbook account query. Account balance therefore uses the backend's existing receive/change discovery rather than a new mobile scanner. Receive shows the initial projected address; Activity uses the same account-wide backend history. Software HD and WIF accounts on the shared defaults have a separate custody and coin-send flow. UTXO asset transfers remain separate work.
-- The interactive preview demonstrates layouts with inert sample data and has no transaction authority.
-- Native custody uses the pinned shared software keyring, SQLCipher and native cryptographic primitives. A new 12-word wallet or an existing 12/24-word phrase can create the wallet. One canonical private document preserves the complete SDK account maps and imported-key recovery copies. Ordinary unlock restores those records; it does not rederive/reimport every account. Add account calls the same SDK allocation used by the extension, including reuse of a deleted HD gap. There is no separate native 20-account/4095-index policy or Restore-deleted-account flow. The account document is bounded to 4 MiB; IDs must satisfy the existing safe-integer contract. Account lists are virtualized. Native signing currently exposes HD and imported EVM accounts and software HD/WIF UTXO accounts on supported defaults.
-- Custody begins only after crypto checks and private storage initialization. Initial pair, authenticated root and full account records commit together. Missing keys, corrupt/unknown records and ambiguous writes fail closed; reopening never silently resets a wallet.
-- Native-coin and ERC20 sends use the selected verified EVM registration, including custom RPC registrations. Reviews bind exact amounts, account, chain, endpoint, nonce, recipient and fees. Confirmation uses the current unlocked SDK session without retaining another password. Lock, background, context changes and expiry revoke it. The common extension/native signed-record policy persists reviewed intent and exact signed bytes before dispatch, scopes pending state to wallet profile/chain/sender across typed aliases, and retains every predecessor. Explicit replay uses the shared review/coordinator and resends the original bytes. Canonical receipts confirm/revert; later observations may revise status after a reorg. This is implemented source behavior, not live-network qualification.
-- Account removal preserves signed records and public history. Removing the last account for a sender with unresolved transactions is refused; retaining another typed alias does not create independent nonce ownership. New admission refuses a full signed-record store rather than evicting recoverable bytes. Activity can open cancellation review for an eligible saved pending EVM transfer. Speed-up initiation and the broader multiple-pending-send experience remain open.
-- Security & backups can reveal a selected HD/imported EVM private key after fresh authentication. Matching-phrase password recovery rewraps complete supported SDK records and preserves their metadata, imported recovery copies, recognized note ciphertext and signed records. An imported key is recoverable only while its seed-profile-encrypted copy or a separate backup exists; a phrase cannot recreate a missing independent key. Security & backups also offers fresh-password removal of the wallet from this device, with a separate confirmation.
-- Remaining parity work includes biometric unlock, dapp sessions and approvals, native hardware transport, collectible and Syscoin asset transfers, smart-account operations, Sentry, and privacy-pool operations. Language settings and other advanced Tools capabilities also remain open.
-- Watch-only remains an account type in the intended combined account selector, and an independent onboarding option. Optional native transaction alerts still need delivery, enrollment and privacy controls; balance polling alone is not a notification service.
-- RPC services can observe queried addresses and network metadata. A public address is not a secret, but the association between addresses, devices and users can be private. See [SECURITY.md](SECURITY.md).
-
-## Matching-phrase password recovery
-
-The native development flow starts at **Forgot password?** on the locked screen. It reads a sanitized inventory through the original storage owner, verifies the matching 12/24-word phrase, reviews preservation, and atomically changes the device password through the shared SDK-backed recovery coordinator. It drains the old owner and any prepared recovery before installing a fresh locked wallet; unlocking is always explicit. Cancellation during commit can leave the new password durable, so uncertain outcomes retain that guidance rather than claiming rollback. No phrase/password draft or proof is stored, copied or shared by the UI.
-
-Complete supported SDK account records are rewrapped under the new password. Imported-key recovery copies, tokens, transaction records and recognized existing private-note ciphertext are preserved; notes are authenticated during recovery. A phrase without the retained imported-key copy or note data cannot recreate those independent secrets on a lost device. Unknown/corrupt records refuse recovery. Browser/Node checks do not qualify native privacy, keyboards, process interruption or device behavior.
-
-## Shared code and boundaries
-
-The mobile app lives alongside the extension rather than importing its browser runtime. Metro can resolve narrowly selected, platform-independent modules from `source/`; those are direct source dependencies, not forked copies. Pure validation and review behavior can be shared this way before extracting a separate package.
-
-`src/core/` defines public account/network data, exact amount handling, operation context and a narrow authority interface. Do not expose extension keyring state wholesale: some extension account models include secret-bearing fields. Do not replace this interface with arbitrary controller-method invocation, a Chrome API shim, or a general WebView bridge.
-
-The extension's controller, Redux singleton, Chrome storage, runtime messaging, alarms, approval windows and hardware transports are not native implementations. They must be adapted deliberately. See [SECURITY.md](SECURITY.md) for the release gates.
+QuickCrypto uses its native scheduler. Crypto, Buffer and stream adapters support the native dependency graph; unsupported Node transports fail closed. The lockfile also pins the reviewed tooling overrides, including `glob` 14.0.3 and `minimatch` 11.0.4.
 
 ## Verification
 
@@ -113,23 +97,15 @@ npm run lint
 npm run typecheck
 npm test
 npm run build:web
-npx playwright install chromium  # once, for browser checks
+npx playwright install chromium
 npm run test:ui
+npm run test:activity-ui
 ```
 
-These checks cover the code that can run locally. A successful web export is not an iOS/Android build or a security qualification. Record native device tests and exact build revisions separately.
+The mobile foundation workflow covers host behavior, browser component tests and JavaScript exports. `mobile-native-qualification.yml` builds isolated Android and iOS Simulator applications with native bridge and cryptographic checks. Android covers custody and process restart. The iOS Simulator contract expects protected-storage refusal and records `custodyQualified: false`; successful physical-iPhone custody and persistence remain release gates.
 
-The existing mobile workflow runs host tests, browser tests and JavaScript exports. `mobile-native-qualification.yml` separately builds isolated iOS simulator and Android emulator applications and exercises the real bridge and production KDF. Android also checks durable wallet identity across process restart. The iOS Simulator job expects strict protected-storage refusal and produces separate limited evidence with `custodyQualified: false`; it does not qualify wallet persistence. A signed physical-iPhone build must pass custody, cold-restart and privacy checks before iOS release. See [native qualification](qualification/README.md). The public fixtures use a CI-specific entry point and application identifier. Neither workflow publishes an application.
+At source `b64f434440a754bd3644246e0a471220499a2fed`, all 15 PR checks passed before [the integration into master](https://github.com/syscoin/pali-wallet/pull/1326). The [dedicated public-pool Release run](https://github.com/syscoin/pali-wallet/actions/runs/42389728107) passed on Android and iOS Simulator with exact-head, lockfile and artifact evidence. Its fixture covers 1,025 leaves, bounded synchronization and Merkle paths.
 
-Product quality includes safe-area layout, keyboard avoidance, accessible touch targets and labels, text scaling, reduced motion, predictable back navigation, and honest loading/error states. Sample balances, mock receipts and preview acknowledgments must never appear as live account facts.
+The same integration received bounded extension and Android QA. Extension checks used synthetic local Anvil transactions. Android functional checks used normal crypto/storage/transport with a debug signer and five QA application-identity overrides. Pixel inspection used a separate capture-enabled test variant, followed by reinstalling the protected build for functional checks. Physical iPhone, live Android transfers, complete UTXO/hardware coverage and full-inventory UI passes remain unqualified by that bounded run.
 
-The mobile lockfile overrides `glob` to 14.0.3 and `minimatch` to 11.0.4 for the upstream cancellation/amplification advisories. These affect build tooling; keep the overrides under review when upgrading Expo.
-
-## Shared SDK dependencies
-
-The [mobile lockfile](package-lock.json) is the source of truth for installed SDK versions. At the revision above it pins the [local Keyring 2.1.5 review build](vendor/README.md), Network 2.0.0, SyscoinJS 1.0.280 and the transitive builder syscointx-js 1.0.128. All four are integrity-pinned.
-
-Native startup uses QuickCrypto's own scheduler without adding `process.browser`
-or a synthetic Node version. Crypto, Buffer and stream adapters remain required
-by the native SDK graph. Unsupported Node transports still fail closed; delaying
-proof initialization does not make those transports available on mobile.
+Record each subsequent test's exact source, built artifact and scope. Native release acceptance includes safe-area and keyboard behavior, accessibility, privacy, interruption/restart, supported devices and live service behavior.
