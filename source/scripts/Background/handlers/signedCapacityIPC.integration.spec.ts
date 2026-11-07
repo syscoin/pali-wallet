@@ -4,7 +4,7 @@ import {
   evmSubmissionFailure,
   submitSignedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
-import { Wallet, Transaction } from 'ethers';
+import { Wallet, Transaction, Interface } from 'ethers';
 import { createHash, webcrypto } from 'node:crypto';
 
 import {
@@ -14,6 +14,7 @@ import {
   type EvmSignedRecordSession,
 } from '../../../wallet/evmSignedRecords';
 
+import { watchWalletTokenReview } from './approvalSubmission';
 import {
   controllerErrorResponse,
   handleMasterControllerResponses,
@@ -415,5 +416,233 @@ test('real capacity failure crosses trusted extension IPC; forged and reused err
     logging.mockRestore();
     if (prior) Object.defineProperty(globalThis, 'crypto', prior);
     else delete (globalThis as any).crypto;
+  }
+});
+
+// Private test-only draft: real worker review protocol and SDK lifecycle;
+// capture/submit are fixture adapters, not MainController token integration.
+test('token review port forwards only the authenticated pre-POST capacity refusal', async () => {
+  const prior = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  Object.defineProperty(globalThis, 'crypto', {
+    value: webcrypto,
+    configurable: true,
+  });
+  Object.assign(chrome.runtime, {
+    id: 'pali-extension',
+    getURL: (p = '') => `chrome-extension://pali-extension/${p}`,
+  });
+  try {
+    const tokenAddress = `0x${'22'.repeat(20)}`;
+    const data = new Interface([
+      'function transfer(address,uint256)',
+    ]).encodeFunctionData('transfer', [wallet.address, 1]);
+    const rawTransaction = await wallet.signTransaction({
+      type: 2,
+      chainId: 7654321,
+      nonce: 2,
+      to: tokenAddress,
+      data,
+      value: 0,
+      gasLimit: 100000,
+      maxFeePerGas: 3,
+      maxPriorityFeePerGas: 1,
+    });
+    const tx = Transaction.from(rawTransaction);
+    const context = {
+      account: { type: 'HDAccount' as const, id: 0, address: wallet.address },
+      network: {
+        kind: 'ethereum' as const,
+        chainId: 7654321,
+        slip44: 60,
+        url: 'https://offline.invalid',
+      },
+      operation: 'erc20' as const,
+    };
+    const payload = { type: 'ERC20', transaction: {} };
+    async function invokePort(submit: () => Promise<{ hash: string }>) {
+      let onMessage: ((value: unknown) => void) | undefined;
+      let onDisconnect: (() => void) | undefined;
+      let failureResolve!: (value: any) => void;
+      let readyResolve!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        readyResolve = resolve;
+      });
+      const failure = new Promise<any>((resolve) => {
+        failureResolve = resolve;
+      });
+      const port = {
+        sender: {
+          id: 'pali-extension',
+          url: 'chrome-extension://pali-extension/app.html',
+        },
+        onMessage: {
+          addListener: (fn: (value: unknown) => void) => {
+            onMessage = fn;
+          },
+        },
+        onDisconnect: {
+          addListener: (fn: () => void) => {
+            onDisconnect = fn;
+          },
+        },
+        postMessage: (message: any) => {
+          if (message.type === 'reviewed') readyResolve();
+          else if (message.type === 'failure' || message.type === 'submitted')
+            failureResolve(message);
+        },
+        disconnect: () => onDisconnect?.(),
+      };
+      watchWalletTokenReview(
+        port as any,
+        async () => ({
+          payload: payload as any,
+          nonce: 2,
+          assertCurrent: () => {},
+        }),
+        async (_payload, approval) => {
+          approval.assertCurrent();
+          return submit();
+        },
+        controllerErrorResponse
+      );
+      try {
+        expect(onMessage).toBeDefined();
+        onMessage!({ type: 'fixture' });
+        let readyTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([
+            ready,
+            new Promise<never>((_, reject) => {
+              readyTimer = setTimeout(
+                () => reject(Error('Synthetic review timed out')),
+                5000
+              );
+            }),
+          ]);
+        } finally {
+          clearTimeout(readyTimer);
+        }
+        onMessage!('submit');
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(Error('Synthetic port timed out')),
+            5000
+          );
+        });
+        let result: any;
+        try {
+          result = await Promise.race([failure, timeout]);
+        } finally {
+          clearTimeout(timer);
+        }
+        return result;
+      } finally {
+        onDisconnect?.();
+      }
+    }
+    const full = fixture();
+    const retained = await fill(full);
+    const before = digest(full.get()),
+      writes = full.writes();
+    let posted = 0,
+      captured: unknown;
+    const attempt = async (
+      target: ReturnType<typeof fixture>,
+      afterAdmit: () => Promise<string>
+    ) => {
+      const boundary = captureEvmSubmission(
+        context,
+        target.session.assertCurrent,
+        () => createEvmSignedRecordLifecycle(target.store, target.session)
+      );
+      return submitSignedEvmTransaction(
+        rawTransaction,
+        ({ admit }) => admit(afterAdmit),
+        boundary,
+        undefined,
+        tx.unsignedSerialized
+      );
+    };
+    const acknowledged = (value: unknown): { hash: string } => {
+      if (typeof value !== 'string' || !/^0x[0-9a-f]{64}$/i.test(value))
+        throw new Error('Synthetic SDK acknowledgement invalid');
+      return { hash: value };
+    };
+    const refusal = await invokePort(async () => {
+      try {
+        return acknowledged(
+          await attempt(full, async () => {
+            posted++;
+            return tx.hash!;
+          })
+        );
+      } catch (error) {
+        captured = error;
+        throw error;
+      }
+    });
+    expect(refusal).toEqual({
+      type: 'failure',
+      success: false,
+      error: {
+        message: 'EVM_SIGNED_STORAGE_FULL',
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      },
+    });
+    expect(posted).toBe(0);
+    expect(full.writes()).toBe(writes);
+    expect(digest(full.get())).toBe(before);
+    for (const previous of [retained.first, retained.second])
+      expect(
+        (
+          await full.store.readExact(
+            full.session,
+            previous.chainId,
+            previous.from,
+            previous.hash
+          )
+        )?.rawTransaction === previous.rawTransaction
+      ).toBe(true);
+    const forged = await invokePort(async () => {
+      throw Object.assign(new Error('synthetic'), {
+        code: 'EVM_SIGNED_STORAGE_FULL',
+        transactionNotBroadcast: true,
+      });
+    });
+    expect(forged.error).not.toHaveProperty('code', 'EVM_SIGNED_STORAGE_FULL');
+    const healthySuccess = fixture();
+    const healthyReply = await invokePort(async () =>
+      acknowledged(
+        await attempt(healthySuccess, async () => {
+          posted++;
+          return tx.hash!;
+        })
+      )
+    );
+    expect(healthyReply.type).toBe('submitted');
+    expect(healthyReply.hash === tx.hash).toBe(true);
+    const healthy = fixture();
+    const postDispatch = await invokePort(async () =>
+      acknowledged(
+        await attempt(healthy, async () => {
+          posted++;
+          throw captured;
+        })
+      )
+    );
+    expect(posted).toBe(2);
+    expect(postDispatch.error).not.toHaveProperty(
+      'code',
+      'EVM_SIGNED_STORAGE_FULL'
+    );
+    expect(postDispatch.error).not.toHaveProperty(
+      'transactionNotBroadcast',
+      true
+    );
+  } finally {
+    if (prior) Object.defineProperty(globalThis, 'crypto', prior);
+    else Reflect.deleteProperty(globalThis, 'crypto');
   }
 });

@@ -192,6 +192,26 @@ export const SendConfirm = () => {
     if (!submission.isActive()) tokenReviewPort.current?.close();
   }, [location, state]);
 
+  // Bind this local, non-broadcast failure to the reviewed transaction and
+  // active wallet context. A later quote refresh alone does not dismiss it.
+  const capacityNoticeScope = JSON.stringify([
+    location.pathname,
+    activeAccountMeta.type,
+    activeAccountMeta.id,
+    activeAccount?.address,
+    activeNetwork?.chainId,
+    activeNetwork?.url,
+    state?.walletScope,
+    state?.tx?.sender,
+    state?.tx?.receivingAddress,
+    state?.tx?.amount,
+    state?.tx?.nonce,
+    state?.tx?.transactionType,
+    state?.tx?.token?.contractAddress,
+    state?.tx?.token?.tokenId,
+    state?.tx?.tokenAmountUnits,
+  ]);
+  const [capacityNotice, setCapacityNotice] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
   const [isPqSigning, setIsPqSigning] = useState(false);
@@ -1133,6 +1153,21 @@ export const SendConfirm = () => {
   }, [navigate, alert, t, getLegacyGasPrice]);
 
   const handleTokenSendError = (error: any, label: string) => {
+    if (
+      isOrdinaryTokenSend &&
+      !activeAccount?.isLedgerWallet &&
+      !activeAccount?.isTrezorWallet &&
+      (activeAccountMeta.type === KeyringAccountType.HDAccount ||
+        activeAccountMeta.type === KeyringAccountType.Imported) &&
+      !location.pathname.startsWith('/external') &&
+      state?.external !== true &&
+      error?.code === EVM_SIGNED_STORAGE_FULL &&
+      error?.transactionNotBroadcast === true
+    ) {
+      if (submission.isActive()) setCapacityNotice(capacityNoticeScope);
+      setLoading(false);
+      return true;
+    }
     const handled = handleTransactionError(
       error,
       alert,
@@ -1602,8 +1637,14 @@ export const SendConfirm = () => {
               retireNativeFeeApproval();
               if (
                 error?.transactionNotBroadcast === true &&
-                error?.code !== EVM_SIGNED_STORAGE_FULL
-              )
+                error?.code === EVM_SIGNED_STORAGE_FULL
+              ) {
+                if (submission.isActive())
+                  setCapacityNotice(capacityNoticeScope);
+                setLoading(false);
+                return;
+              }
+              if (error?.transactionNotBroadcast === true)
                 setFeeCalculationError(
                   isSavedEvmNonceConflict(error)
                     ? t('send.savedNonceConflict')
@@ -1802,6 +1843,7 @@ export const SendConfirm = () => {
       (!isBitcoinBased && renderedFeeSelection !== feeSelectionRef.current)
     )
       return;
+    setCapacityNotice(null);
     return submission
       .run(() => performConfirm(renderedFeeSelection))
       .catch((error) => {
@@ -2882,6 +2924,20 @@ export const SendConfirm = () => {
             </div>
           )}
 
+          {capacityNotice === capacityNoticeScope && submission.isActive() && (
+            <div className="w-full max-w-md mx-auto mt-4 p-3 rounded-lg border border-warning-error bg-warning-error bg-opacity-10">
+              <p role="alert" className="text-warning-error text-sm">
+                {t('send.signedStorageFull')}
+              </p>
+              <button
+                type="button"
+                className="mt-2 text-white text-sm underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+                onClick={() => setCapacityNotice(null)}
+              >
+                {t('buttons.close')}
+              </button>
+            </div>
+          )}
           <DeviceWaitingBanner account={activeAccount} show={loading} />
           <PqSigningOverlay
             expectedSeconds={90}
