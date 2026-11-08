@@ -288,6 +288,7 @@ describe('sendCalls reservation submission boundary', () => {
     expect(persisted[host][id].txHashes).toEqual([hash]);
     expect(await reserve()).toBe(false);
     const provider = {
+      getBlock: async () => ({ hash: `0x${'33'.repeat(32)}` }),
       getTransactionReceipt: async () => ({
         status: 1,
         blockHash: `0x${'33'.repeat(32)}`,
@@ -430,6 +431,7 @@ describe('sendCalls reservation submission boundary', () => {
       [identity.userOpHash, payer, `0x${'00'.repeat(20)}`, 0, true, 1, 1]
     );
     const provider = {
+      getBlock: async () => ({ hash: `0x${'33'.repeat(32)}` }),
       getTransactionReceipt: async () => ({
         status: 1,
         blockHash: `0x${'33'.repeat(32)}`,
@@ -443,6 +445,7 @@ describe('sendCalls reservation submission boundary', () => {
       200
     );
     const reverted = {
+      getBlock: async () => ({ hash: `0x${'33'.repeat(32)}` }),
       getTransactionReceipt: async () => ({
         status: 0,
         blockHash: `0x${'33'.repeat(32)}`,
@@ -473,6 +476,7 @@ describe('sendCalls reservation submission boundary', () => {
       txHashes: [hash],
     });
     const provider = {
+      getBlock: async () => ({ hash: `0x${'33'.repeat(32)}` }),
       getTransactionReceipt: async () => ({
         status: 1,
         blockHash: `0x${'33'.repeat(32)}`,

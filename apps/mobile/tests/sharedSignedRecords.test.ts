@@ -854,8 +854,8 @@ test('stopped EOA batch receipts reconcile after both authenticated stores reope
   );
   assert.equal(
     blockReads,
-    0,
-    'an active sequence cannot resolve from its receipts'
+    1,
+    'an active sequence stays pending while its returned prefix receipt is canonical-checked'
   );
   const attempt = { transaction, failed: false };
   const reopened = new EvmSignedRecords(f.port);
@@ -987,6 +987,7 @@ test('stopped EOA batch receipts reconcile after both authenticated stores reope
       id
     );
     assert.equal(result.status, 100);
+    assert.equal(result.receipts, undefined);
   }
   for (const blockResult of [null, 'invalid', new Error('unavailable')]) {
     const result = await resumed.resolveCallsStatus(
@@ -1006,6 +1007,7 @@ test('stopped EOA batch receipts reconcile after both authenticated stores reope
       id
     );
     assert.equal(result.status, 100);
+    assert.equal(result.receipts, undefined);
   }
   const result = await resumed.resolveCallsStatus(
     {

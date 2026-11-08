@@ -845,7 +845,7 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       );
     }
 
-    const receipts = await Promise.all(
+    const observedReceipts = await Promise.all(
       descriptor.txHashes.map(async (hash) => {
         checkQuery();
         const receipt = await provider
@@ -858,6 +858,33 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
           if (descriptor.stoppedTransactionHash) return null;
           throw error;
         }
+      })
+    );
+    checkQuery();
+    // Receipt presence alone cannot establish that its block is still canonical.
+    // Share each height lookup only within this query so later queries observe reorgs.
+    const blockHashes = new Map<string, Promise<string | null>>();
+    const receipts = await Promise.all(
+      observedReceipts.map(async (receipt) => {
+        if (!receipt) return null;
+        let blockHash = blockHashes.get(receipt.blockNumber);
+        if (!blockHash) {
+          blockHash = (async () => {
+            checkQuery();
+            try {
+              const value = await provider.getBlockHash(receipt.blockNumber);
+              checkQuery();
+              return readEvmRpcHash(value);
+            } catch {
+              checkQuery();
+              return null;
+            }
+          })();
+          blockHashes.set(receipt.blockNumber, blockHash);
+        }
+        const canonicalHash = await blockHash;
+        checkQuery();
+        return canonicalHash === receipt.blockHash ? receipt : null;
       })
     );
     checkQuery();
@@ -878,17 +905,6 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       descriptor.txHashes.includes(descriptor.stoppedTransactionHash);
     let canonicalStopped = stopped && receipts.every(Boolean);
     if (canonicalStopped) {
-      for (const receipt of receipts) {
-        try {
-          const blockHash = await provider.getBlockHash(receipt!.blockNumber);
-          checkQuery();
-          if (readEvmRpcHash(blockHash) !== receipt!.blockHash)
-            canonicalStopped = false;
-        } catch {
-          checkQuery();
-          canonicalStopped = false;
-        }
-      }
       const current = await getStoredSendCallsBundle(host, id);
       checkQuery();
       canonicalStopped =
