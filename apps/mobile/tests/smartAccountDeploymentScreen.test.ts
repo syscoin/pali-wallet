@@ -6,6 +6,7 @@ import { URL as NodeURL } from 'node:url';
 import { runInNewContext } from 'node:vm';
 import ts from 'typescript';
 import { formatBaseUnits } from '../src/core/amounts.ts';
+import { guardianDelayLabel } from '../src/screens/guardianPolicyLabels.ts';
 import {
   getNativeNetwork,
   getNativeSendContext,
@@ -98,6 +99,7 @@ function fixture() {
     '../core/amounts': { formatBaseUnits },
     '../../../../source/shared/erc20': { formatTokenUnits },
     '../custody/networkContext': { getNativeSendContext },
+    './guardianPolicyLabels': { guardianDelayLabel },
   };
   runInNewContext(code, {
     module,
