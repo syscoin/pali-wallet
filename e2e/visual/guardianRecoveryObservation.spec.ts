@@ -250,11 +250,14 @@ test('guardian recovery observes external requests without a local intent and fa
         const dialog = page.getByRole('dialog').filter({
           hasText: en.settings.smartAccountGuardianRecoveryDisableConfirmTitle,
         });
-        await expect(dialog).toBeVisible();
-        await expect(dialog).toContainText(fixture.base.smartAccountAddress);
+        await expect(
+          page.getByRole('alert').filter({
+            hasText: en.settings.smartAccountGuardianRecoveryDisableFailed,
+          })
+        ).toBeVisible();
+        await expect(dialog).toHaveCount(0);
+        expect(fixture.audit.deniedWrites).toEqual([]);
         await capture(page);
-        await page.keyboard.press('Escape');
-        await expect(dialog).toBeHidden();
         fixture.state.failStorage = false;
         await page
           .getByRole('button', {
@@ -265,6 +268,23 @@ test('guardian recovery observes external requests without a local intent and fa
         await expect(panel).toContainText(
           en.settings.smartAccountGuardianExternalPending
         );
+        await reachable(page, disable);
+        for (let index = 0; index < 32; index++) {
+          await page.keyboard.press('Tab');
+          if (
+            await disable.evaluate(
+              (element) => element === document.activeElement
+            )
+          )
+            break;
+        }
+        await expect(disable).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toContainText(fixture.base.smartAccountAddress);
+        await capture(page);
+        await page.keyboard.press('Escape');
+        await expect(dialog).toBeHidden();
         expect(fixture.audit.deniedWrites).toEqual([]);
       }
     );
