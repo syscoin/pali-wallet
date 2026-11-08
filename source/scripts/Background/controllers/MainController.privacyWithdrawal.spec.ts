@@ -202,7 +202,7 @@ function setup() {
       }
     ),
   });
-  Object.defineProperty(wallet, 'ethereumTransaction', {
+  Object.defineProperty(keyring, 'ethereumTransaction', {
     configurable: true,
     value: { web3Provider: provider },
   });
@@ -291,7 +291,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'service change'] as const)(
       run.events.push('sign');
       return { hash: HASH, nonce: 7 };
     });
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(run.keyring, 'ethereumTransaction', {
       configurable: true,
       value: {
         web3Provider: run.provider,
@@ -409,7 +409,7 @@ it.each(['healthy', 'snapshot', 'expiry', 'expiry after broadcast'] as const)(
       get: () => provider,
     });
     const sign = jest.spyOn(localSigner, 'signTransaction');
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(run.keyring, 'ethereumTransaction', {
       configurable: true,
       value: sdk,
     });
@@ -895,6 +895,10 @@ it.each([
   keyring.getDecryptedMnemonic = () => testRoot;
   keyring.isUnlocked = () => true;
   const run = setup();
+  Object.defineProperty(keyring, 'ethereumTransaction', {
+    configurable: true,
+    value: run.wallet.ethereumTransaction,
+  });
   run.wallet.getActiveKeyring = () => keyring;
   run.wallet.getWalletSetupStatus = () => false;
   const records: Record<string, any> = {};
@@ -1052,6 +1056,10 @@ it.each([
     keyring.getDecryptedMnemonic = () => 'synthetic restore host race wallet';
     keyring.isUnlocked = () => true;
     const run = setup();
+    Object.defineProperty(keyring, 'ethereumTransaction', {
+      configurable: true,
+      value: run.wallet.ethereumTransaction,
+    });
     run.wallet.getActiveKeyring = () => keyring;
     run.wallet.getWalletSetupStatus = () => undefined;
     run.wallet.privacyDepositContexts = new WeakMap();
@@ -1100,7 +1108,7 @@ it.each([
       }
       return { hash: HASH, nonce: 7 };
     });
-    Object.defineProperty(run.wallet, 'ethereumTransaction', {
+    Object.defineProperty(keyring, 'ethereumTransaction', {
       configurable: true,
       value: { web3Provider: run.provider, sendFormattedTransaction: signer },
     });
