@@ -18,6 +18,7 @@ import {
   createNativePrivacyPoolSync,
   type OwnedPrivacyPullTransport,
 } from '../src/privacy/nativePrivacyPoolSync.ts';
+import { NATIVE_PRIVACY_SNAPSHOT_BYTES } from '../src/privacy/nativePrivacySnapshotBudget.ts';
 
 const poolId = 'eth-0.1';
 const pool = getPrivacyPool(poolId);
@@ -58,8 +59,10 @@ function snapshot(count = 24): PrivacySnapshot {
   };
 }
 type Handle = ReturnType<OwnedPrivacyPullTransport['prepareSnapshot']>;
-function json(value: unknown, status = 200): Handle {
-  const body = new TextEncoder().encode(JSON.stringify(value));
+function json(value: unknown, status = 200, paddingBytes = 0): Handle {
+  const body = new TextEncoder().encode(
+    JSON.stringify(value) + ' '.repeat(paddingBytes)
+  );
   let offset = 0;
   return {
     async start(check) {
@@ -513,7 +516,11 @@ test('requires exact EOF and enforces retained byte count, 64 KiB pulls and aggr
     [4, new Uint8Array(3), 'privacy_data_invalid'],
     [4, new Uint8Array(5), 'privacy_data_invalid'],
     [64 * 1024 + 1, new Uint8Array(64 * 1024 + 1), 'privacy_data_invalid'],
-    [2 * 1024 * 1024 + 1, new Uint8Array(4), 'privacy_data_too_large'],
+    [
+      NATIVE_PRIVACY_SNAPSHOT_BYTES + 1,
+      new Uint8Array(4),
+      'privacy_data_too_large',
+    ],
   ] as const) {
     let pulls = 0,
       releases = 0;
@@ -534,16 +541,39 @@ test('requires exact EOF and enforces retained byte count, 64 KiB pulls and aggr
     );
     assert.equal((await sync.refresh()).errorCode, errorCode);
     assert.equal(releases, 1);
-    if (size > 2 * 1024 * 1024) assert.equal(pulls, 0);
+    if (size > NATIVE_PRIVACY_SNAPSHOT_BYTES) assert.equal(pulls, 0);
     await sync.dispose();
   }
+  const data = snapshot();
   const padded = create(
-    fixture(snapshot(), {
-      alterBlock: () => ({ ...block, padding: 'a'.repeat(1024 * 1024) }),
+    fixture(data, {
+      index: () => json(data, 200, 6 * 1024 * 1024),
+      alterBlock: () => ({
+        ...block,
+        padding: 'a'.repeat(4 * 1024 * 1024 - 1024),
+      }),
     }).transport
   ).sync;
   assert.equal((await padded.refresh()).errorCode, 'privacy_data_too_large');
   await padded.dispose();
+});
+
+test('keeps block responses within their independent shared four MiB limit', async () => {
+  for (const [paddingBytes, expectedPhase] of [
+    [3 * 1024 * 1024, 'ready'],
+    [4 * 1024 * 1024, 'error'],
+  ] as const) {
+    const { sync } = create(
+      fixture(snapshot(), {
+        alterBlock: () => ({ ...block, padding: 'a'.repeat(paddingBytes) }),
+      }).transport
+    );
+    const status = await sync.refresh();
+    assert.equal(status.phase, expectedPhase);
+    if (expectedPhase === 'error')
+      assert.equal(status.errorCode, 'privacy_data_too_large');
+    await sync.dispose();
+  }
 });
 
 test('owner replacement releases a held native pull and rejects its late bytes', async () => {

@@ -122,7 +122,7 @@ internal class PaliPublicSnapshotAnchor private constructor(
 
 /** Internal transport only. The shared engine still parses and verifies every result. */
 internal object PaliPublicSnapshotDownloader {
-  private const val SNAPSHOT_BYTES = 2 * 1024 * 1024
+  private const val SNAPSHOT_BYTES = 16 * 1024 * 1024
   private const val PROGRESS_BYTES = 4 * 1024
   private const val ANCHOR_BLOCK_BYTES = 4 * 1024 * 1024
   private const val ANCHOR_SCALAR_BYTES = 64 * 1024

@@ -1,5 +1,11 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { URL as NodeURL } from 'node:url';
+import {
+  NATIVE_PRIVACY_RUN_BYTES,
+  NATIVE_PRIVACY_SNAPSHOT_BYTES,
+} from '../src/privacy/nativePrivacySnapshotBudget.ts';
 import {
   createPublicSnapshotTransport,
   type PublicSnapshotModule,
@@ -7,6 +13,43 @@ import {
 
 const origin = 'https://snapshot.example';
 const current = () => undefined;
+
+test('both native snapshot ceilings match the shared bounded budget', async () => {
+  const ios = await readFile(
+    new NodeURL(
+      '../modules/pali-wallet-storage/ios/PaliPublicSnapshotDownload.swift',
+      import.meta.url
+    ),
+    'utf8'
+  );
+  const android = await readFile(
+    new NodeURL(
+      '../modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliPublicSnapshotDownload.kt',
+      import.meta.url
+    ),
+    'utf8'
+  );
+  const iosMaximum = ios.match(
+    /return try reserve\(endpoint, timeout: 25, snapshotLimit: (\d+) \* 1024 \* 1024, completion: completion\)/
+  );
+  const androidMaximum = android.match(
+    /private const val SNAPSHOT_BYTES = (\d+) \* 1024 \* 1024/
+  );
+  assert.ok(iosMaximum);
+  assert.ok(androidMaximum);
+  assert.equal(
+    Number(iosMaximum[1]) * 1024 * 1024,
+    NATIVE_PRIVACY_SNAPSHOT_BYTES
+  );
+  assert.equal(
+    Number(androidMaximum[1]) * 1024 * 1024,
+    NATIVE_PRIVACY_SNAPSHOT_BYTES
+  );
+  assert.equal(
+    NATIVE_PRIVACY_RUN_BYTES,
+    NATIVE_PRIVACY_SNAPSHOT_BYTES + 4 * 1024 * 1024
+  );
+});
 
 function fixture(overrides: Partial<PublicSnapshotModule> = {}) {
   const calls: unknown[][] = [];
