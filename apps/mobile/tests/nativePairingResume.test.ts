@@ -37,13 +37,15 @@ const code = ts.transpileModule(
   }
 ).outputText;
 
-function harness(ready = false, smartAccount = false) {
+function harness(ready = false, smartAccount = false, withPairing = true) {
   let now = 1000,
     cursor = 0,
     selectionCalls = 0;
   let hardwareBack: (() => boolean) | undefined;
   let exits = 0;
-  let incoming: NativePairingEntry | null = smartAccount
+  let shellTab = 'wallet';
+  let guardianReads = 0;
+  let incoming: NativePairingEntry | null = smartAccount || !withPairing
     ? null
     : {
         id: 'pairing-1',
@@ -201,6 +203,7 @@ function harness(ready = false, smartAccount = false) {
     openSmartAccountDeployment() {
       throw new Error('Route mocked in parent navigation test');
     },
+    readGuardianRecovery: async (_signal: AbortSignal, check: () => void) => { check(); guardianReads++; return { status: 'no-compatible-policy' }; },
     balanceReader: {},
     transfers: {},
     tokens: {},
@@ -277,6 +280,7 @@ function harness(ready = false, smartAccount = false) {
     },
     '../core/utxoNetworks': utxoNetworks,
     '../custody/networkContext': networks,
+    '../../../../source/shared/evmNetworks': { EVM_NETWORK_DEFINITIONS: networks.NATIVE_NETWORKS.map(network => ({ id: network.id, name: network.name })) },
     '../platform/security': {
       custodyIdle: { begin() {}, stop() {} },
       securityPreferences: { getSnapshot: () => ({ status: 'ready' }) },
@@ -292,7 +296,7 @@ function harness(ready = false, smartAccount = false) {
     './useNativeNoteBackup': { useNativeNoteBackup: () => noteRestore },
     './useRealShell': {
       useRealShell: () => ({
-        tab: 'wallet',
+        tab: shellTab,
         immersive: false,
         navigation: {},
         restoreRoot() {},
@@ -312,6 +316,7 @@ function harness(ready = false, smartAccount = false) {
       NativeTransactionReviewScreen: 'NativeTransactionReviewScreen',
     },
     './NativeSend': { NativeSend: 'NativeSend' },
+    './RealTools': { RealTools: 'RealTools' },
   });
   const module = {
     exports: {} as { NativeWalletScreen(props: object): Element },
@@ -350,6 +355,8 @@ function harness(ready = false, smartAccount = false) {
   };
   return {
     render,
+    showTools() { shellTab = 'tools'; },
+    guardianReads: () => guardianReads,
     hardwareBack() {
       assert(hardwareBack);
       return hardwareBack();
@@ -407,8 +414,8 @@ function find(
     : node.children.flatMap((child) => find(child, predicate) ?? []).at(0);
 }
 
-async function mounted(ready = false, smartAccount = false) {
-  const f = harness(ready, smartAccount);
+async function mounted(ready = false, smartAccount = false, withPairing = true) {
+  const f = harness(ready, smartAccount, withPairing);
   f.render();
   await settle();
   f.render();
@@ -573,4 +580,38 @@ test('Smart native, ERC20 and NFT sends use the owned operation route', async ()
     assert(find(f.render(), node => node.type === 'NativePortfolio'));
     assert.equal(f.exits(), 0);
   } finally { f.dispose(); }
+});
+
+
+test('controlled Smart accounts expose the existing guardian-status tool through the actual wallet Tools branch', async () => {
+  const f = await mounted(true, true);
+  f.showTools();
+  const tools = find(f.render(), (node) => node.type === 'RealTools');
+  assert.ok(tools?.props.guardianRecovery);
+  assert.equal(tools.props.guardianRecovery.address, '0x' + '11'.repeat(20));
+  await tools.props.guardianRecovery.read(new AbortController().signal, () => undefined);
+  assert.equal(f.guardianReads(), 1);
+  f.ready();
+  await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
+  assert.equal(f.guardianReads(), 1);
+  f.dispose();
+});
+
+test('ordinary controlled EOAs do not gain a guardian-status entry', async () => {
+  const f = await mounted(true, false, false);
+  f.showTools();
+  const tools = find(f.render(), (node) => node.type === 'RealTools');
+  assert.ok(tools); assert.equal(tools.props.guardianRecovery, undefined);
+  assert.equal(f.guardianReads(), 0); f.dispose();
+});
+
+test('a closed or backgrounded controlled Smart tool cannot use its captured read capability', async () => {
+  for (const retire of ['background', 'dispose'] as const) {
+    const f = await mounted(true, true); f.showTools();
+    const tools = find(f.render(), (node) => node.type === 'RealTools')!;
+    if (retire === 'background') f.background(); else f.dispose();
+    await assert.rejects(tools.props.guardianRecovery.read(new AbortController().signal, () => undefined), /CANCELLED/);
+    assert.equal(f.guardianReads(), 0);
+    f.dispose();
+  }
 });

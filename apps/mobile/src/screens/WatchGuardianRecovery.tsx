@@ -61,7 +61,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, lifetime, o
 
   return <SafeAreaView edges={['top']} style={styles.container}><Screen>
     <Header title="Guardian recovery" subtitle={networkLabel} onBack={onBack} />
-    <Text style={styles.body}>Check the on-chain recovery status for this watch address.</Text>
+    <Text style={styles.body}>Check the on-chain recovery status for this account.</Text>
     <Card style={styles.card}><Text selectable style={styles.address}>{address}</Text></Card>
     {message && <Card style={styles.card}>
       <Text accessibilityLiveRegion="polite" style={styles.status}>{message}</Text>

@@ -226,6 +226,43 @@ export function createNativeWalletControllers() {
     }
     return { selected, assertCurrent, observeFailure };
   };
+  const readGuardianRecovery = async (signal: AbortSignal, assertOwner: () => void) => {
+    const { assertCurrent, observeFailure } = noteRoute(assertOwner);
+    const snapshot = authority.getSnapshot();
+    const catalogue = authority.getCatalogue();
+    const account = catalogue?.accounts.find(entry => entry.id === catalogue.active.accountId);
+    const network = catalogue?.networks.find(entry => entry.id === snapshot.account?.network);
+    if (
+      !network || !account || account.type !== 'SmartAccount' ||
+      account.smartAccount?.chainId !== Number(network.chainId) ||
+      catalogue?.active.networkId !== network.id ||
+      account.address.toLowerCase() !== snapshot.account?.address.toLowerCase()
+    ) throw new CustodyOperationError('NOT_READY');
+    const owner = new AbortController();
+    const abort = () => owner.abort();
+    const check = () => {
+      assertActive();
+      assertCurrent();
+      if (signal.aborted || owner.signal.aborted || authority.getCatalogue() !== catalogue)
+        throw new CustodyOperationError('CANCELLED');
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    const unsubscribe = authority.subscribe(() => {
+      try { check(); } catch { abort(); }
+    });
+    try {
+      check();
+      const result = await observeFailure(() =>
+        new EvmTransferReadRpc(network, { fetch: walletFetch })
+          .readGuardianRecoveryStatus(account.address, owner.signal, check));
+      check();
+      return result;
+    } finally {
+      signal.removeEventListener('abort', abort);
+      unsubscribe();
+      owner.abort();
+    }
+  };
   const resetActivity = async (assertOwner: () => void): Promise<void> => {
     const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
     await observeFailure(() => selected.resetActivity(assertCurrent, () => {
@@ -319,6 +356,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, readGuardianRecovery, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }
