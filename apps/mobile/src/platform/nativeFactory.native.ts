@@ -35,6 +35,7 @@ import { NativeWalletRemoval } from '../custody/walletRemoval.ts';
 import { readRecoveryInventory as readStoredRecoveryInventory, type RecoveryInventory } from '../custody/recoveryInventory.ts';
 import type { OpenWalletStorage } from '../storage/types.ts';
 import type { NativeNoteBackupRuntime, NativeNoteCapacityRuntime, NativeNoteInventory } from '../custody/noteBackupRuntime.ts';
+import type { NativeNoteImportRuntime } from '../custody/noteImport.ts';
 import type { NativeUtxoSend } from '../custody/utxoSend.ts';
 
 async function openStorage(expectedInstallationId?: string) {
@@ -60,6 +61,19 @@ function factory(onStorageOpened?: (storage: OpenWalletStorage) => void, assertA
       const { createNativeLedgerTransport } = await import('../hardware/ledgerTransport.native');
       owner.assertCurrent();
       return createNativeLedgerTransport(owner, {});
+    },
+    async openPrivacyPool(network, poolId, lifetime, assertCurrent) {
+      const [{ createNativePrivacyPoolSync }, { createNativePublicSnapshotTransport },
+        { createNativePublicMerkleExecutor }, { nativePrivacyServiceSettings }] = await Promise.all([
+        import('../privacy/nativePrivacyPoolSync.ts'), import('../privacy/publicSnapshotNative.native.ts'),
+        import('../crypto/native'), import('./privacyServiceSettings.native.ts'),
+      ]);
+      assertCurrent();
+      const service = await nativePrivacyServiceSettings.capture();
+      assertCurrent();
+      return createNativePrivacyPoolSync({ network, poolId, lifetime,
+        service: { origin: service.origin, assertCurrent() { service.assertCurrent(); assertCurrent(); } },
+        transport: createNativePublicSnapshotTransport(), executeMerkleBatch: createNativePublicMerkleExecutor() });
     },
     prepareSmartAccount(network, accountIndex, managementAddress, signal, guard) {
       return new EvmTransferReadRpc(network, { fetch: walletFetch }).prepareSmartAccount(accountIndex, managementAddress, signal, guard);
@@ -275,6 +289,15 @@ export function createNativeWalletControllers() {
       },
     });
   };
+  const openNoteImport = async (assertOwner: () => void): Promise<NativeNoteImportRuntime> => {
+    const { selected, assertCurrent, observeFailure } = noteRoute(assertOwner);
+    if (!selected.openNoteImport) throw new CustodyOperationError('NOT_READY');
+    const importer = await observeFailure(() => selected.openNoteImport!(assertCurrent));
+    return Object.freeze({
+      importNote: (note) => observeFailure(() => importer.importNote(note)),
+      dispose: importer.dispose,
+    });
+  };
   // Bound to the exact durable vault without handing its fingerprint to a view.
   const captureNoteFileOwner = async (assertOwner: () => void) => {
     const storage = ownedStorage;
@@ -296,6 +319,6 @@ export function createNativeWalletControllers() {
       if (await readPair() !== expected) throw new CustodyOperationError('CANCELLED');
     };
   };
-  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
+  return { authority, authentication: deviceUnlock.prompt, ledger, ledgerConnection, connections: connections.view, disposeConnections, backup, keyExport, imports, accounts, activity, utxoActivity, balanceReader, resetActivity, readRecoveryInventory, openSmartAccountDeployment, openSmartAccountSend, openUtxoSend, openNoteBackup, openNoteCapacity, readNoteInventory, openNoteImport, captureNoteFileOwner, removal, transfers: transfers.view, tokens: tokens.view,
     disposeTokens: () => tokens.dispose(), disposeTransfers: () => transfers.dispose() };
 }

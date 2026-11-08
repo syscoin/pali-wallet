@@ -1,5 +1,5 @@
 import { identifyClassicNote } from '../../../../source/utils/privacy/note.ts';
-import type { IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
+import type { IPrivacyNoteReader, IPrivateVaultCapacity, IPrivateVaultController } from '../../../../source/utils/privacy/privateVaultTypes.ts';
 import { AsyncMutex } from '../../../../source/utils/asyncMutex.ts';
 import {
   createNoteBackupService,
@@ -52,6 +52,18 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
     capture = session;
     try { return action(); } finally { capture = undefined; }
   };
+  const ownedSession = (session: IPrivateVaultSession, assertCurrent: () => void): IPrivateVaultSession => Object.freeze({
+    ...session,
+    assertCurrent() {
+      session.assertCurrent();
+      const result: unknown = assertCurrent();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('privacy_vault_session_changed');
+      }
+      session.assertCurrent();
+    },
+  });
   const withStorage = async <T>(action: () => Promise<T>): Promise<T> => {
     try { return await action(); }
     catch (error) {
@@ -65,16 +77,15 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       throw new Error('privacy_vault_session_changed');
     return scope;
   };
-  const vault = createPrivateVaultController({
+  const mutex = new AsyncMutex();
+  const createVault = (readNote: IPrivacyNoteReader) => createPrivateVaultController({
     captureSession,
     authenticate: ports.authenticate,
-    // The native inventory only reads the local manifest. Waiting satisfies
-    // getNotes without asserting a pool observation, and is never projected.
-    readNote: async () => ({ phase: 'waiting' }),
+    readNote,
   }, {
     identify: identifyClassicNote,
     generate: () => { throw new Error('privacy_vault_unavailable'); },
-    mutex: new AsyncMutex(),
+    mutex,
     now: Date.now,
     deadlineNow: monotonicNow,
     randomId,
@@ -104,6 +115,8 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
       }),
     },
   });
+  // Inventory and encrypted backups read local records without network work.
+  const vault = createVault(async () => ({ phase: 'waiting' }));
   const service = createNoteBackupService({
     captureSession,
     crypto,
@@ -122,6 +135,12 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
   return {
     invalidate() { resumeInventory?.(); invalidate?.(); },
     dispose() { resumeInventory?.(); service.dispose(); },
+    importNote(session: IPrivateVaultSession, note: string, readNote: IPrivacyNoteReader, assertCurrent: () => void) {
+      const selected = ownedSession(session, assertCurrent);
+      selected.assertCurrent();
+      const importer = createVault(readNote);
+      return ports.run(() => withSession(selected, () => importer.importNote(note)));
+    },
     async readInventory(session: IPrivateVaultSession): Promise<NativeNoteInventory> {
       session.assertCurrent();
       const { notes } = await withSession(session, vault.getNotes);
@@ -145,19 +164,7 @@ export function createNativeNoteBackupRuntime(ports: NativeNoteBackupPorts) {
         async revealNote(note, password, assertCurrent) {
           const id = selections.get(note);
           if (!id || typeof assertCurrent !== 'function') throw new Error('privacy_note_missing');
-          const selected = Object.freeze<IPrivateVaultSession>({
-            ...session,
-            assertCurrent() {
-              session.assertCurrent();
-              const result: unknown = assertCurrent();
-              if (result !== undefined) {
-                if (result && (typeof result === 'object' || typeof result === 'function'))
-                  void Promise.resolve(result).catch(() => undefined);
-                throw new Error('privacy_vault_session_changed');
-              }
-              session.assertCurrent();
-            },
-          });
+          const selected = ownedSession(session, assertCurrent);
           const secret = await ports.run(() => withSession(selected, () => vault.revealNote(id, password)));
           selected.assertCurrent();
           return secret;
