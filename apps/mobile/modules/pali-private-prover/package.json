@@ -1,0 +1,7 @@
+{
+  "name": "pali-private-prover",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Isolated bundled private proof worker host",
+  "license": "MIT"
+}

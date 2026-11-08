@@ -42,7 +42,11 @@ it('does not trust corrupted cached bytes or persist a bad download', async () =
   };
   const fetcher = jest.fn(async () => new Response(new Uint8Array([2])));
   await expect(
-    loadPrivacyProvingKey({ cache, fetcher: fetcher as any })
+    loadPrivacyProvingKey({
+      policy: 'extension-public',
+      cache,
+      fetcher: fetcher as any,
+    })
   ).rejects.toThrow('privacy_proof_artifact_invalid');
   expect(fetcher).toHaveBeenCalledWith(
     PRIVACY_PROVING_KEY_URL,
@@ -62,6 +66,7 @@ it('cancels an oversized response before reading it', async () => {
   );
   await expect(
     loadPrivacyProvingKey({
+      policy: 'extension-public',
       cache: { get: async () => undefined, put: jest.fn() },
       fetcher: (async () => response) as any,
     })
@@ -74,8 +79,41 @@ it('does not access storage or network for an already-cancelled job', async () =
   const cache = { get: jest.fn(), put: jest.fn() },
     fetcher = jest.fn();
   await expect(
-    loadPrivacyProvingKey({ cache, fetcher, signal: abort.signal })
+    loadPrivacyProvingKey({
+      policy: 'extension-public',
+      cache,
+      fetcher,
+      signal: abort.signal,
+    })
   ).rejects.toThrow('privacy_proof_cancelled');
   expect(cache.get).not.toHaveBeenCalled();
   expect(fetcher).not.toHaveBeenCalled();
+});
+it('uses only the local bundled key and ignores IndexedDB on the native policy', async () => {
+  const oldSelf = Object.getOwnPropertyDescriptor(globalThis, 'self');
+  Object.defineProperty(globalThis, 'self', {
+    configurable: true,
+    value: { location: { href: 'pali-private-prover://job/proof-main.js' } },
+  });
+  const cache = { get: jest.fn(), put: jest.fn() };
+  const fetcher = jest.fn(async () => new Response(new Uint8Array([2])));
+  try {
+    await expect(
+      loadPrivacyProvingKey({
+        policy: 'bundled',
+        cache,
+        fetcher: fetcher as any,
+      })
+    ).rejects.toThrow('privacy_proof_artifact_invalid');
+    expect(fetcher).toHaveBeenCalledWith(
+      'pali-private-prover://job/assets/privacy-prover/tornadoProvingKey.bin',
+      expect.any(Object)
+    );
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(cache.get).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+  } finally {
+    if (oldSelf) Object.defineProperty(globalThis, 'self', oldSelf);
+    else Reflect.deleteProperty(globalThis, 'self');
+  }
 });

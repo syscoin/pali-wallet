@@ -12,6 +12,28 @@ refusal. It does not qualify custody. The Android job retains the full custody
 and cold-restart checks below. Both jobs also require the native HTTP companion
 described below before any protected-storage admission.
 
+## Limited native private proof scenario
+
+The native workflow accepts an explicit `private_proof` dispatch input. It uses
+a dedicated Release fixture configuration and the existing owned simulator or
+emulator lifecycle. The workflow downloads the fixed public proving key,
+checks its byte count and SHA-256, and runs the existing isolated proof packager.
+The key receipt and generated asset manifest accompany the platform artifacts.
+
+Each launch receives a fresh 128-bit `proofToken`. The app runs the fixed public
+synthetic vector, requests cancellation at proving progress, awaits the rejected
+proof promise and owned disposal, then proves the vector again. Both completed
+proofs verify against the pinned key and reject all six public-input mutations.
+The proof-only report deadline is 400 seconds.
+
+The checker accepts one atomic `pali-native-private-proof-<token>.json` report
+with exact source, lockfile, SDK and launch token, plus a validated session
+identifier and ordered-case fields. Existing,
+malformed, extra and mismatched reports fail the run. The resulting platform
+artifact is labelled limited with `custodyQualified: false` and keeps
+`nativeNetworkObservation: unmeasured`. Device memory, offline traffic observation
+and stalled-content-process qualification remain separate activation gates.
+
 ## Public pool snapshot producer loopback
 
 The native workflow also runs a standalone Swift loopback with the selected
@@ -25,7 +47,7 @@ device memory qualification are separate gates.
 
 ## Offline native HTTP companion
 
-The native CI workflow always sets `PALI_NATIVE_HTTP_QUALIFICATION=1`. This gate
+The default native CI workflow sets `PALI_NATIVE_HTTP_QUALIFICATION=1`. This gate
 adds a loopback-only cleartext exception to the isolated fixture configuration;
 the production app configuration, TLS validation and safety plugin are unchanged.
 It is incompatible with physical qualification. The companion requires an

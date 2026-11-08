@@ -1,0 +1,8 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["PaliPrivateProverModule"],
+    "podspecPath": "PaliPrivateProver.podspec"
+  },
+  "android": { "modules": ["org.syscoin.pali.prover.PaliPrivateProverModule"] }
+}

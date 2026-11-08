@@ -1,6 +1,7 @@
 import {
   loadPrivacyProvingKey,
   loadPrivacyWitnessAssets,
+  type PrivacyArtifactPolicy,
 } from 'utils/privacy/proverArtifacts';
 import {
   encodePrivacyProof,
@@ -23,11 +24,12 @@ self.onmessage = async (
   event: MessageEvent<{
     id: string;
     input: IPrivacyProofInput;
+    policy: PrivacyArtifactPolicy;
     ports: MessagePort[];
   }>
 ) => {
   self.onmessage = null;
-  const { id, input, ports } = event.data;
+  const { id, input, ports, policy } = event.data;
   let witness: bigint[] | undefined,
     witnessBytes: ArrayBuffer | undefined,
     engine: any;
@@ -35,13 +37,18 @@ self.onmessage = async (
     self.postMessage({ id, type: 'progress', progress: value });
   let prepared: ReturnType<typeof validatePrivacyProofInput> | undefined;
   try {
-    if (!Array.isArray(ports) || ports.length !== 2) throw new Error();
+    if (
+      !Array.isArray(ports) ||
+      ports.length !== 2 ||
+      (policy !== 'extension-public' && policy !== 'bundled')
+    )
+      throw new Error();
     prepared = validatePrivacyProofInput(input);
     const expected = privacyPublicSignals(input);
     progress({ stage: 'artifacts' });
     const [{ metadata, wasmCode }, provingKey] = await Promise.all([
       loadPrivacyWitnessAssets(),
-      loadPrivacyProvingKey({ onProgress: progress }),
+      loadPrivacyProvingKey({ policy, onProgress: progress }),
     ]);
     progress({ stage: 'witness' });
     const circuit = createCircuit(metadata);

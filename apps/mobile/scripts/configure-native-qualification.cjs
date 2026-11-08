@@ -30,6 +30,19 @@ const productionEntry = fs.readFileSync(path.join(root, 'index.ts'));
 const physicalScenario = process.env.PALI_PHYSICAL_QUALIFICATION;
 const httpEnabled = process.env.PALI_NATIVE_HTTP_QUALIFICATION === '1';
 const publicPoolEnabled = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1';
+const privateProofEnabled = process.env.PALI_NATIVE_PRIVATE_PROOF_QUALIFICATION === '1';
+let privateProof;
+if (privateProofEnabled) {
+  if (httpEnabled || publicPoolEnabled || physicalScenario !== undefined ||
+      !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
+      app.expo.extra?.paliPrivateProofQualification !== undefined ||
+      app.expo.extra?.paliPublicPoolQualification !== undefined || app.expo.extra?.paliHttpQualification !== undefined)
+    throw Error('Private proof qualification requires a dedicated isolated build');
+  privateProof = { version: 1, sourceRevision: process.env.GITHUB_SHA,
+    lockfileSha256: crypto.createHash('sha256').update(fs.readFileSync(path.join(root, 'package-lock.json'))).digest('hex') };
+}
+if (!privateProofEnabled && app.expo.extra?.paliPrivateProofQualification !== undefined)
+  throw Error('Private proof qualification requires a dedicated isolated build');
 let publicPool;
 if (publicPoolEnabled) {
   if (httpEnabled || physicalScenario !== undefined || !/^[0-9a-f]{40}$/.test(process.env.GITHUB_SHA || '') ||
@@ -87,6 +100,7 @@ const receipt = {
   ...(physical ? { physical } : {}),
   ...(http ? { http } : {}),
   ...(publicPool ? { publicPool } : {}),
+  ...(privateProof ? { privateProof } : {}),
 };
 pkg.main = receipt.qualificationEntry;
 app.expo.extra = {
@@ -108,6 +122,7 @@ if (publicPool) {
   app.expo.extra = { ...app.expo.extra, paliPublicPoolQualification: publicPool };
   app.expo.plugins = [...(app.expo.plugins || []), './qualification/withHttpFixture.cjs'];
 }
+if (privateProof) app.expo.extra = { ...app.expo.extra, paliPrivateProofQualification: privateProof };
 if (physical) {
   app.expo.name =
     physicalScenario === 'import'
