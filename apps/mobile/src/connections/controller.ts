@@ -9,6 +9,7 @@ import { getPersonalSignReview } from '../../../../source/utils/personalSignRevi
 import { reviewDappMessageAdvisories, reviewDappAddressAdvisories } from '../../../../source/shared/dappMessageAdvisories.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
 import { getBlacklistTargetsForEvmCall } from '../../../../source/shared/evmCallBlacklist.ts';
+import { getEffectiveApprovalData } from '../../../../source/shared/approval.ts';
 import type { IBlacklistCheckResult } from '../../../../source/types/security.ts';
 import { getTypedOrderReview } from '../../../../source/utils/typedOrderReview.ts';
 import { createDappSessions } from '../../../../source/wallet/dappSessions.ts';
@@ -78,6 +79,7 @@ type PendingSigning = {
   review: PrivateSigningReview;
   prepared?: Awaited<ReturnType<NativeConnectionHost['prepareTransaction']>>;
   broadcastHash?: string;
+  requestExpiresAt: number;
   sourceRevision: number;
   timer: ReturnType<typeof setTimeout>;
   busy: boolean;
@@ -168,6 +170,8 @@ export class NativeConnectionsController {
         this.perform(() => this.activateRequestAccount(id, revision), {
           owner: this.requests.get(id),
         }),
+      editApprovalAmount: (id, revision, amount) =>
+        this.perform(() => this.editApprovalAmount(id, revision, amount), { owner: this.requests.get(id) }),
       cancel: () => this.cancel(),
     });
     this.unsubscribe = options.source.subscribe(() => {
@@ -1072,6 +1076,7 @@ export class NativeConnectionsController {
     const message: PendingSigning = {
       id,
       wire,
+      requestExpiresAt: expiresAt,
       connection,
       session: connection.session,
       request,
@@ -1106,6 +1111,7 @@ export class NativeConnectionsController {
           symbol: context.network.currency,
           decimals: 18,
           broadcastHash: null,
+          approval: null,
         } : {
           kind: 'message' as const,
           method: request.method,
@@ -1203,6 +1209,7 @@ export class NativeConnectionsController {
       targets: getBlacklistTargetsForEvmCall({
         data: prepared.transaction.data,
         to: prepared.transaction.to ?? undefined,
+        tokenStandard: prepared.approval?.standardVerified ? prepared.approval.tokenStandard : undefined,
       }).map(({ address, type, method }) => ({ address, field: method ?? type })),
       checkAddress: this.options.checkAddress,
       assertCurrent: approval.assertCurrent,
@@ -1218,7 +1225,7 @@ export class NativeConnectionsController {
     approval.assertCurrent();
     if (prepared.expiresAtMonotonicMilliseconds <= Math.floor(performance.now()))
       throw new Error('Transaction fee review expired');
-    const expiresAt = Math.min(message.review.expiresAt,
+    const expiresAt = Math.min(message.requestExpiresAt,
       Date.now() + Math.max(0, prepared.expiresAtMonotonicMilliseconds - Math.floor(performance.now())));
     message.prepared = prepared;
     message.review = Object.freeze({
@@ -1226,12 +1233,48 @@ export class NativeConnectionsController {
       transaction: prepared.transaction,
       maximumFeeUnits: prepared.maximumFeeUnits,
       maximumTotalUnits: prepared.maximumTotalUnits,
+      approval: prepared.approval,
       expiresAt,
       advisories: Object.freeze(advisories.addresses),
       requiresWarningAcknowledgement: Boolean(advisories.warning),
     });
     clearTimeout(message.timer);
     message.timer = setTimeout(() => { void this.retireRequest(message); }, Math.max(0, expiresAt - Date.now()));
+  }
+  private async editApprovalAmount(id: string, revision: number, amount: string) {
+    const message = this.requests.get(id);
+    if (!message || revision !== this.revision || this.requests.values().next().value !== message ||
+        message.request.method !== 'eth_sendTransaction' || message.review.kind !== 'transaction' ||
+        message.dispatched || message.broadcastHash) return failure('REQUEST_EXPIRED');
+    if (message.busy || this.action) return failure('BUSY');
+    const summary = message.prepared?.approval;
+    if (!summary?.canEditAmount || !summary.token || summary.amountUnits === undefined || message.review.error)
+      return failure('UNSUPPORTED_REQUEST');
+    const effective = getEffectiveApprovalData({
+      tokenStandard: summary.tokenStandard,
+      approvalType: summary.approvalType, customAmount: amount,
+      data: message.request.transaction.data, decimals: summary.token.decimals,
+      decodedTx: { method: summary.method, inputs: [summary.authority, summary.amountUnits], names: ['spender', 'amount'], types: ['address', 'uint256'] },
+      isCustom: true,
+    });
+    if (!effective) return failure('UNSUPPORTED_REQUEST');
+    message.approval?.assertCurrent();
+    message.prepared = undefined;
+    message.busy = true;
+    message.request = { ...message.request, transaction: { ...message.request.transaction, data: effective.data } };
+    this.publish();
+    try {
+      await this.prepareTransactionReview(message);
+      message.busy = false;
+      this.publish();
+    } catch (error) {
+      if (this.requestConnectionCurrent(message)) {
+        message.busy = false;
+        message.review = Object.freeze({ ...message.review, error: 'TRANSACTION_UNAVAILABLE' });
+        this.publish();
+      } else await this.retireRequest(message);
+      throw error;
+    }
   }
   private async approveRequest(
     id: string,

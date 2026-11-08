@@ -314,7 +314,12 @@ it.each(
       names: ['spender', 'amount'],
       types: ['address', 'uint256'],
     };
-    mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'erc20-amount',
+      tokenStandard: 'ERC-20',
+      standardVerified: true,
+    };
     mockLocation.state = {
       tx: mockQuery.tx,
       decodedTx: mockQuery.decodedTx,
@@ -768,6 +773,7 @@ it.each([false, true])(
       isApproval: true,
       approvalType: 'erc20-amount',
       tokenStandard: 'ERC-20',
+      standardVerified: true,
     };
     const tokenInfo = {
       name: 'Synthetic',
@@ -907,7 +913,12 @@ it.each([0, 6, 18])(
       names: ['spender', 'amount'],
       types: ['address', 'uint256'],
     };
-    mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'erc20-amount',
+      tokenStandard: 'ERC-20',
+      standardVerified: true,
+    };
     const invoke = mockEmitter.getMockImplementation()!;
     mockEmitter.mockImplementation(async (path, args) =>
       path[1] === 'getERC20TokenInfo'
@@ -969,6 +980,7 @@ it('does not classify an ERC721 maximum token ID as an unlimited ERC20 allowance
     isApproval: true,
     approvalType: 'erc721-single',
     tokenStandard: 'ERC-721',
+    standardVerified: true,
   };
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) =>
@@ -1013,7 +1025,12 @@ it('binds EOA quotes to custom and restored proposed approvals and ignores super
     names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
-  mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc20-amount',
+    tokenStandard: 'ERC-20',
+    standardVerified: true,
+  };
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) =>
     path[1] === 'getERC20TokenInfo'
@@ -1166,7 +1183,12 @@ it('keeps malformed edited allowances out of review, estimation and submission',
     names: ['spender', 'amount'],
     types: ['address', 'uint256'],
   };
-  mockQuery.txMetadata = { isApproval: true, approvalType: 'erc20-amount' };
+  mockQuery.txMetadata = {
+    isApproval: true,
+    approvalType: 'erc20-amount',
+    tokenStandard: 'ERC-20',
+    standardVerified: true,
+  };
   const invoke = mockEmitter.getMockImplementation()!;
   mockEmitter.mockImplementation(async (path, args) =>
     path[1] === 'getERC20TokenInfo'

@@ -191,8 +191,9 @@ export const EthProvider = (
       isDeployment,
       isBurn,
       decodedMethod: decodedTx.method,
-      approvalType: (decodedTx as any).approvalType,
-      tokenStandard: (decodedTx as any).tokenStandard,
+      approvalType: decodedTx.approvalType,
+      tokenStandard: decodedTx.tokenStandard,
+      standardVerified: decodedTx.standardVerified,
     };
 
     // Use coordinator if context is provided, otherwise direct popup

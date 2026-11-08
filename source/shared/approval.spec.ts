@@ -10,6 +10,8 @@ import {
   getErc20ApprovalHeadingKey,
   getEffectiveApprovalData,
   parseApprovalAmount,
+  decodeApprovalData,
+  summarizeApproval,
 } from './approval';
 
 const SPENDER = '0x1111111111111111111111111111111111111111';
@@ -74,17 +76,26 @@ describe('approval editing', () => {
     ).toBe(false);
   });
   it('allows custom absolute limits only for plain approve', () => {
-    expect(canEditApprovalAmount('erc20-amount', 'approve')).toBe(true);
-    expect(canEditApprovalAmount('erc20-amount', 'increaseAllowance')).toBe(
+    expect(canEditApprovalAmount('erc20-amount', 'approve', 'ERC-20')).toBe(
+      true
+    );
+    expect(canEditApprovalAmount('erc20-amount', 'approve', 'Unknown')).toBe(
       false
     );
-    expect(canEditApprovalAmount('erc20-amount', 'decreaseAllowance')).toBe(
+    expect(canEditApprovalAmount('erc20-amount', 'approve', undefined)).toBe(
       false
     );
+    expect(
+      canEditApprovalAmount('erc20-amount', 'increaseAllowance', 'ERC-20')
+    ).toBe(false);
+    expect(
+      canEditApprovalAmount('erc20-amount', 'decreaseAllowance', 'ERC-20')
+    ).toBe(false);
   });
 
   it('encodes a human-readable custom approve amount without changing methods', () => {
     const encoded = encodeCustomApprovalData({
+      tokenStandard: 'ERC-20',
       abi: ERC20_ABI,
       approvalType: 'erc20-amount',
       decimals: 6,
@@ -104,6 +115,7 @@ describe('approval editing', () => {
     (method) => {
       expect(
         encodeCustomApprovalData({
+          tokenStandard: 'ERC-20',
           abi: ERC20_ABI,
           approvalType: 'erc20-amount',
           decimals: 6,
@@ -118,6 +130,96 @@ describe('approval editing', () => {
   it('formats raw token units for display', () => {
     expect(formatApprovalTokenAmount('1500000', 6)).toBe('1.5');
     expect(formatApprovalTokenAmount('1', 0)).toBe('1');
+  });
+  it('keeps full uint8 token precision including zero approval', () => {
+    const one = `0.${'0'.repeat(254)}1`;
+    expect(formatApprovalTokenAmount('1', 255)).toBe(one);
+    expect(parseApprovalAmount(one, 255)).toBe(BigInt(1));
+    expect(parseApprovalAmount('0', 255)).toBe(BigInt(0));
+    expect(parseApprovalAmount('1', 255)).toBeNull();
+    expect(parseApprovalAmount('00.1000000', 6)).toBe(BigInt(100000));
+  });
+
+  it('keeps suspected approvals visible without inventing a verified standard', () => {
+    const data = new Interface(ERC20_ABI).encodeFunctionData('approve', [
+      SPENDER,
+      7,
+    ]);
+    expect(decodeApprovalData(data)).toMatchObject({
+      isApproval: true,
+      approvalType: 'erc20-amount',
+      tokenStandard: 'Unknown',
+      standardVerified: false,
+      decodedData: { spender: SPENDER, amount: '7' },
+    });
+    expect(summarizeApproval(data, SPENDER)).toMatchObject({
+      authority: SPENDER,
+      amountUnits: '7',
+      canEditAmount: false,
+      standardVerified: false,
+    });
+    expect(decodeApprovalData('0x095ea7b3')).toEqual({ isApproval: false });
+    expect(
+      encodeCustomApprovalData({
+        abi: ERC20_ABI,
+        approvalType: 'erc20-amount',
+        decimals: 6,
+        humanAmount: '1',
+        method: 'approve',
+        spender: SPENDER,
+        tokenStandard: 'Unknown',
+      })
+    ).toBeNull();
+  });
+
+  it('separates NFT token identifiers from allowances and operator permissions', () => {
+    const data = new Interface(ERC20_ABI).encodeFunctionData('approve', [
+      ZERO,
+      7,
+    ]);
+    expect(
+      summarizeApproval(data, SPENDER, { standard: 'ERC-721' })
+    ).toMatchObject({
+      approvalType: 'erc721-single',
+      authority: ZERO,
+      tokenId: '7',
+      isRevocation: true,
+      canEditAmount: false,
+      isUnlimited: false,
+    });
+    const operator = new Interface([
+      'function setApprovalForAll(address operator,bool approved)',
+    ]).encodeFunctionData('setApprovalForAll', [SPENDER, false]);
+    expect(
+      summarizeApproval(operator, SPENDER, { standard: 'ERC-1155' })
+    ).toMatchObject({
+      approvalType: 'nft-all',
+      approved: false,
+      isRevocation: true,
+      canEditAmount: false,
+    });
+  });
+
+  it('marks an unlimited allowance only with matching verified ERC20 metadata', () => {
+    const data = new Interface(ERC20_ABI).encodeFunctionData('approve', [
+      SPENDER,
+      (BigInt(1) << BigInt(256)) - BigInt(1),
+    ]);
+    expect(summarizeApproval(data, SPENDER)).toMatchObject({
+      isUnlimited: false,
+      canEditAmount: false,
+    });
+    expect(
+      summarizeApproval(data, SPENDER, {
+        standard: 'ERC-20',
+        token: {
+          contractAddress: SPENDER,
+          decimals: 6,
+          name: 'Token',
+          symbol: 'TOK',
+        },
+      })
+    ).toMatchObject({ isUnlimited: true, canEditAmount: true });
   });
 
   it('shows the custom amount instead of the requested unlimited amount', () => {
@@ -164,6 +266,7 @@ describe('approval editing', () => {
 
   it('derives the review amount from the exact custom calldata while preserving authority', () => {
     const review = getEffectiveApprovalData({
+      tokenStandard: 'ERC-20',
       approvalType: 'erc20-amount',
       customAmount: '1.5',
       data: originalData,
@@ -206,6 +309,7 @@ describe('approval editing', () => {
     ['1.5', 'send.grantAccess'],
   ])('labels edited approve %s from the encoded bytes', (customAmount, key) => {
     const effective = getEffectiveApprovalData({
+      tokenStandard: 'ERC-20',
       approvalType: 'erc20-amount',
       customAmount,
       data: originalData,
@@ -224,6 +328,7 @@ describe('approval editing', () => {
 
   it('preserves original default and non-approval data without requiring token metadata', () => {
     const review = getEffectiveApprovalData({
+      tokenStandard: 'ERC-20',
       data: originalData,
       decodedTx,
       isCustom: false,
@@ -231,8 +336,12 @@ describe('approval editing', () => {
     expect(review).toEqual({ data: originalData, decodedTx });
     expect(review!.decodedTx).toBe(decodedTx);
     expect(
-      getEffectiveApprovalData({ data: '0x1234', decodedTx, isCustom: false })
-        ?.data
+      getEffectiveApprovalData({
+        tokenStandard: 'ERC-20',
+        data: '0x1234',
+        decodedTx,
+        isCustom: false,
+      })?.data
     ).toBe('0x1234');
   });
 
@@ -246,6 +355,7 @@ describe('approval editing', () => {
     (input) => {
       expect(
         getEffectiveApprovalData({
+          tokenStandard: 'ERC-20',
           approvalType: 'erc20-amount',
           customAmount: input.customAmount,
           data: originalData,

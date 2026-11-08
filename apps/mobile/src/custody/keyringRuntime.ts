@@ -1,4 +1,5 @@
 import { prepareNativeConnectionTransaction } from '../connections/transactionRuntime.ts';
+import { readNativeApprovalMetadata } from '../connections/approvalMetadata.ts';
 import { EvmTransferReadRpc } from './evmTransferReadRpc.ts';
 import { walletFetch } from '../platform/http.ts';
 import { normalizeDappTransaction } from '../../../../source/shared/dappTransaction.ts';
@@ -1270,6 +1271,9 @@ export function createKeyringRuntimeFactory(
                   network.chainId, selected.address, network.rpcUrl);
                 return prepareNativeConnectionTransaction({ ...normalized, from: selected.address }, {
                   network, rpc, signal: approval.signal, planner, assertCurrent: check,
+                  readApprovalMetadata: (contract, assertCurrent) => readNativeApprovalMetadata({
+                    network, owner: selected.address, contract, signal: approval.signal, assertCurrent, fetch,
+                  }),
                   sign(transaction, assertSigningCurrent) {
                     return run(async (ownerGeneration) => {
                       const guard = () => { current(ownerGeneration); check(); checkGuard(assertSigningCurrent); };
