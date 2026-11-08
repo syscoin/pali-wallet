@@ -2186,7 +2186,7 @@ export function createKeyringRuntimeFactory(
                   action: null,
                   terminal: 'executed',
                   transactionHash: null,
-                  canAbandon: false,
+                  canAbandon: true,
                 };
               check();
               if (pending)
