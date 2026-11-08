@@ -165,14 +165,14 @@ test('unknown submission checks status without offering another send', async ({
   ).toHaveLength(1);
 });
 
-test('closing an opening deposit rejects late UI publication', async ({
+test('closing an opening deposit waits for the late controller to drain', async ({
   page,
 }) => {
-  await page.goto('/?private-deposit&hold-open');
+  await page.goto('/?private-deposit&hold-open&hold-close');
   await page.getByRole('button', { name: 'Close', exact: true }).click();
+  await expect(page.getByText('Closing deposit…')).toBeVisible();
+  await expect(page.getByText('Private notes', { exact: true })).toHaveCount(0);
   await page.evaluate(() => window.__privateDepositFixture.releaseOpen());
-  await expect(page.getByText('Private notes', { exact: true })).toBeVisible();
-  await expect(page.getByRole('radio')).toHaveCount(0);
   await expect
     .poll(() =>
       page.evaluate(
@@ -183,6 +183,79 @@ test('closing an opening deposit rejects late UI publication', async ({
       )
     )
     .toBe(1);
+  await expect(page.getByText('Private notes', { exact: true })).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.__privateDepositFixture.events())
+  ).not.toContain('back');
+  await page.evaluate(() => window.__privateDepositFixture.releaseClose());
+  await expect(page.getByText('Private notes', { exact: true })).toBeVisible();
+  await expect(page.getByRole('radio')).toHaveCount(0);
+  const events = await page.evaluate(() =>
+    window.__privateDepositFixture.events()
+  );
+  expect(events.indexOf('closed')).toBeLessThan(events.indexOf('back'));
+});
+
+test('backup waits for the current deposit disposal before navigating', async ({
+  page,
+}) => {
+  await page.goto('/?private-deposit&hold-close');
+  await page
+    .getByRole('button', { name: 'Review deposit', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'Back up private notes', exact: true })
+    .click();
+  await expect(page.getByText('Closing deposit…')).toBeVisible();
+  await expect(
+    page.getByText('Encrypted note backup', { exact: true })
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.__privateDepositFixture.events())
+  ).not.toContain('backup');
+  await page.evaluate(() => window.__privateDepositFixture.releaseClose());
+  await expect(
+    page.getByText('Encrypted note backup', { exact: true })
+  ).toBeVisible();
+  const events = await page.evaluate(() =>
+    window.__privateDepositFixture.events()
+  );
+  expect(events.indexOf('closed')).toBeLessThan(events.indexOf('backup'));
+  expect(events.filter((event) => event === 'close')).toHaveLength(1);
+});
+
+test('Activity navigation waits for the current deposit disposal', async ({
+  page,
+}) => {
+  await page.goto('/?private-deposit&hold-close');
+  await page
+    .getByRole('button', { name: 'Review deposit', exact: true })
+    .click();
+  await page.getByRole('checkbox').click();
+  await page
+    .getByRole('button', { name: 'Confirm deposit', exact: true })
+    .click();
+  await page
+    .getByRole('button', { name: 'View in Activity', exact: true })
+    .click();
+  await expect(page.getByText('Closing deposit…')).toBeVisible();
+  await expect(page.getByText('Saved Activity', { exact: true })).toHaveCount(
+    0
+  );
+  expect(
+    (await page.evaluate(() => window.__privateDepositFixture.events())).some(
+      (event) => event.startsWith('activity:')
+    )
+  ).toBe(false);
+  await page.evaluate(() => window.__privateDepositFixture.releaseClose());
+  await expect(page.getByText('Saved Activity', { exact: true })).toBeVisible();
+  const events = await page.evaluate(() =>
+    window.__privateDepositFixture.events()
+  );
+  expect(events.indexOf('closed')).toBeLessThan(
+    events.findIndex((event) => event.startsWith('activity:'))
+  );
+  expect(events.filter((event) => event === 'close')).toHaveLength(1);
 });
 
 test('preparation failures keep provider details hidden and Close reachable', async ({
