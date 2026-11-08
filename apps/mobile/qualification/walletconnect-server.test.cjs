@@ -498,6 +498,7 @@ test('actual entrypoint captures a runtime preparation throw as a redacted init 
     qualifyNativeWalletConnect() { assert.fail('runtime preparation must finish first'); },
     require(name) {
       if (name === './walletconnect-native.ts') return { WalletConnectQualificationError };
+      if (name === '@react-native-community/netinfo') return { configure() {} };
       assert.equal(name, '../src/platform/walletConnectRuntime.native');
       return { async prepareWalletConnectRuntime() { throw Object.assign(Error('PRIVATE_PAIRING_KEY'), { code: 'NATIVE_CONNECTION_UNAVAILABLE' }); } };
     },
@@ -506,4 +507,92 @@ test('actual entrypoint captures a runtime preparation throw as a redacted init 
   assert.equal(result.substage, 'init');
   assert.equal(result.errorCode, 'NATIVE_CONNECTION_UNAVAILABLE');
   assert(!JSON.stringify(result).includes('PRIVATE'));
+});
+
+test('actual entry configures real NetInfo before runtime and SDK without a probe or connectivity override', async () => {
+  const nativeState = { type: 'wifi', isConnected: true, details: {} };
+  let nativeListener, nativeConfiguration, fetchCalls = 0;
+  const steps = [], states = [], modules = new Map();
+  const root = path.join(path.dirname(require.resolve('@react-native-community/netinfo/package.json')), 'src');
+  const native = {
+    configure(configuration) { nativeConfiguration = configuration; steps.push('configure'); },
+    async getCurrentState() { return { ...nativeState }; },
+    eventEmitter: {
+      addListener(_event, listener) {
+        nativeListener = listener;
+        return { remove() {} };
+      },
+    },
+  };
+  const forbidden = () => { fetchCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); };
+  function load(filename) {
+    if (filename === path.join(root, 'internal/nativeInterface.ts')) return { __esModule: true, default: native };
+    if (modules.has(filename)) return modules.get(filename).exports;
+    const module = { exports: {} };
+    modules.set(filename, module);
+    const compiled = ts.transpileModule(fs.readFileSync(filename, 'utf8'), {
+      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+    }).outputText;
+    vm.runInNewContext(compiled, { module, exports: module.exports, setTimeout, clearTimeout, AbortController, fetch: forbidden,
+      require(name) {
+        if (name === 'react-native') return { Platform: { OS: 'ios' } };
+        if (name === 'react') return require('react');
+        assert(name.startsWith('.'));
+        return load(path.resolve(path.dirname(filename), `${name}.ts`));
+      },
+    });
+    return module.exports;
+  }
+  const NetInfo = load(path.join(root, 'index.ts'));
+  const source = fs.readFileSync(path.join(__dirname, 'index.tsx'), 'utf8');
+  const parsed = ts.createSourceFile('index.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let target;
+  function find(node) {
+    if (ts.isTryStatement(node) && node.catchClause?.block.getText(parsed).includes('walletConnectDiagnostic =')) target = node;
+    ts.forEachChild(node, find);
+  }
+  find(parsed);
+  assert(target);
+  const compiled = ts.transpileModule(`exports.run = async () => { let connectionEvidence; let walletConnectDiagnostic; ${target.getText(parsed)} return connectionEvidence; };`, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  const module = { exports: {} };
+  let unsubscribe;
+  vm.runInNewContext(compiled, { module, exports: module.exports,
+    nativeCrypto: {}, NativeWebSocket: class {}, launch: {}, build: {}, candidateIdentity: 'candidate',
+    walletFetch() {}, phase: 'create', scenario: 'import', Platform: { OS: 'ios' }, Constants: { sessionId: 'session' },
+    withWalletConnectQualificationScope: async (_options, operation) => operation(),
+    require(name) {
+      if (name === '@react-native-community/netinfo') return NetInfo;
+      if (name === '../src/platform/walletConnectRuntime.native') return {
+        async prepareWalletConnectRuntime() {
+          steps.push('runtime');
+          assert.equal((await NetInfo.fetch()).isConnected, true);
+          unsubscribe = NetInfo.addEventListener(state => states.push(state.isConnected));
+        },
+      };
+      assert.equal(name, './walletconnect-native.ts');
+      return { async qualifyNativeWalletConnect() {
+        steps.push('sdk');
+        nativeListener({ type: 'none', isConnected: false, details: {} });
+        assert.equal((await NetInfo.fetch()).isConnected, false);
+        nativeListener(nativeState);
+        assert.equal((await NetInfo.fetch()).isConnected, true);
+        return 'qualified';
+      } };
+    },
+  });
+  try {
+    assert.equal(await module.exports.run(), 'qualified');
+    assert.deepEqual(steps, ['configure', 'runtime', 'sdk']);
+    assert.deepEqual(Object.keys(nativeConfiguration), ['reachabilityShouldRun']);
+    assert.equal(nativeConfiguration.reachabilityShouldRun(), false);
+    assert.deepEqual(states, [true, false, true]);
+    assert.equal(fetchCalls, 0);
+    await NetInfo.fetch();
+    assert.equal(nativeConfiguration.reachabilityShouldRun(), false);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    unsubscribe?.();
+  }
 });

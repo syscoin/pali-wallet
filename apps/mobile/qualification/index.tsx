@@ -420,6 +420,11 @@ function QualificationApp() {
                   crypto: nativeCrypto, WebSocket: NativeWebSocket, launch,
                   onForbidden() { networkCalls++; throw Error('QUALIFICATION_NETWORK_FORBIDDEN'); },
                 }, async () => {
+                  const NetInfo = await import('@react-native-community/netinfo');
+                  // Keep native connectivity and events, but suppress the default
+                  // internet probe for this loopback-only qualification process.
+                  // Restoring defaults would start another probe under the fence.
+                  NetInfo.configure({ reachabilityShouldRun: () => false });
                   const { prepareWalletConnectRuntime } = await import('../src/platform/walletConnectRuntime.native');
                   await prepareWalletConnectRuntime();
                   const { qualifyNativeWalletConnect } = await import('./walletconnect-native.ts');
