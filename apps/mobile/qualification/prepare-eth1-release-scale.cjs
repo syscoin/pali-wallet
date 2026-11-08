@@ -7,7 +7,7 @@ const { join, resolve } = require('node:path');
 const { isDeepStrictEqual } = require('node:util');
 const { ETH1_SCALE, readEth1ScaleSnapshot, readEth1ScaleTranscript, referencePaths } = require('./eth1-scale-input.cjs');
 
-const BASE = '297418fc80cef5327ef2a85059d0186fc7863e79';
+const BASE = 'e853b032464bd149ac8e0ede22ad2bc33a2220b1';
 const APP = 'com.paliwallet.qualification.eth1scale';
 const STAMP = 'qualification/eth1-release-scale-input.json';
 const sha256 = (value) => createHash('sha256').update(value).digest('hex');
@@ -26,9 +26,8 @@ function buildOverlay(root, transcript) {
     changed.set(name, substitutions.reduce((text, [from, to]) =>
       replaceOnce(text, from, to), file.toString('utf8')));
   };
-  patch('src/privacy/nativePrivacyPoolSync.ts', 'ef7e80e31a63af8e43d7593838ddaf7e9539518d7347f926780a486fb765ff5e', [
-    ['const MAX_RESPONSE_BYTES = 2 * 1024 * 1024;', 'const MAX_RESPONSE_BYTES = 16 * 1024 * 1024;'],
-    ['const MAX_RUN_BYTES = 4 * 1024 * 1024;', `const MAX_RUN_BYTES = ${ETH1_SCALE.bytes} + 4 * 1024 * 1024;`],
+  patch('src/privacy/nativePrivacySnapshotBudget.ts', '8ad2a7133c55e5a834c078ec589f30898b4470183d0fc4eb6a0cc1e1138292f8', []);
+  patch('src/privacy/nativePrivacyPoolSync.ts', 'e7718de13ca99a6b920168727ca10ddd57d17ad25f3d6370fac6119329d37ee7', [
     ["  if (!rpcUrl.startsWith('https:')) throw unavailable();",
       "  if (poolId !== 'eth-1' || !/^http:\\/\\/127\\.0\\.0\\.1:[0-9]{1,5}$/.test(serviceOrigin) ||\n" +
       "      new URL(rpcUrl).protocol !== 'https:' || new URL(rpcUrl).hostname !== '127.0.0.1') throw unavailable();\n" +
@@ -36,16 +35,15 @@ function buildOverlay(root, transcript) {
     ['      now: Date.now,',
       `      now: () => ${transcript.blockTimestampMs + 1000} + Math.floor(performance.now() - replayStart),`],
   ]);
-  patch('modules/pali-wallet-storage/ios/PaliPublicSnapshotDownload.swift', 'c3e4b9add18e53c0d20b543d3f8c938d80dc5c0e9a77c821bc1554248e91cc38', [
-    ['    return try reserve(endpoint, timeout: 25, snapshotLimit: 2 * 1024 * 1024, completion: completion)',
+  patch('modules/pali-wallet-storage/ios/PaliPublicSnapshotDownload.swift', '640aff03e9dbe71f8b66845e570f8654e398ea27db1fe3266915f353f8fd6a57', [
+    ['    return try reserve(endpoint, timeout: 25, snapshotLimit: 16 * 1024 * 1024, completion: completion)',
       '    guard pool == "eth-1", endpoint.scheme == "http", endpoint.host == "127.0.0.1" else { throw PaliPublicSnapshotDownloadError.invalid }\n' +
       '    return try reserve(endpoint, timeout: 25, snapshotLimit: 16 * 1024 * 1024, completion: completion)'],
     ['    let body = try anchor.body(for: read, id: id)',
       '    guard anchor.endpoint.scheme == "https", anchor.endpoint.host == "127.0.0.1" else { throw PaliPublicSnapshotDownloadError.invalid }\n' +
       '    let body = try anchor.body(for: read, id: id)'],
   ]);
-  patch('modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliPublicSnapshotDownload.kt', '0ed9e326dafdaeb1c70a04788fbb54e790397ef7b25e4a5642cc81a2b62b56f9', [
-    ['  private const val SNAPSHOT_BYTES = 2 * 1024 * 1024', '  private const val SNAPSHOT_BYTES = 16 * 1024 * 1024'],
+  patch('modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliPublicSnapshotDownload.kt', '3ac73f3bb40f4296ac39408038f4fe8125e759b801674f30f81d5c4d3841924c', [
     ['    if (pool !in setOf("eth-0.1", "eth-1", "eth-10", "eth-100")) return null', '    if (pool != "eth-1") return null'],
     ['    val origin = serviceOrigin.toHttpUrlOrNull() ?: return null',
       '    val origin = serviceOrigin.toHttpUrlOrNull() ?: return null\n    if (origin.scheme != "http" || origin.host != "127.0.0.1") return null'],
@@ -89,7 +87,7 @@ function buildOverlay(root, transcript) {
       '  const results = anchorPasses.flat();'],
     ['results[offset % results.length]', 'results[offset]'],
   ]);
-  patch('scripts/configure-native-qualification.cjs', '23d4cef2fffb78994909f8d10af431c769cfc6933f7512a1466c7d682c6a6ec1', [
+  patch('scripts/configure-native-qualification.cjs', '3e60af598e7cfe04be5d8800838ae5309edc1d313e6f7e1f7f84262a3a6e7bd8', [
     ["const publicPoolEnabled = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1';",
       "const publicPoolEnabled = process.env.PALI_NATIVE_PUBLIC_POOL_QUALIFICATION === '1';\n" +
       "if (!publicPoolEnabled) throw Error('ETH1_SCALE_REQUIRES_ISOLATED_PUBLIC_POOL_BUILD');"],

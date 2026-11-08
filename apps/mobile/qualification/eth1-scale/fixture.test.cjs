@@ -67,7 +67,7 @@ test('the independent bottom-up reference agrees with the existing small smoke r
   assert.deepEqual(proof.pathDigests, PUBLIC_POOL_PATH_DIGESTS);
 });
 
-test('the source-pinned projection keeps the scale budget and clock inside the detached loopback adapter', (t) => {
+test('the source-pinned projection retains production budgets and isolates the historical clock', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'pali-eth1-scale-source-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   // The scale builder projects BASE even when the active checkout has moved on.
@@ -78,7 +78,8 @@ test('the source-pinned projection keeps the scale budget and clock inside the d
   execFileSync('tar', ['-xf', '-', '-C', root], { input: archive });
   const project = () => buildOverlay(root, { blockTimestampMs: exampleTime });
   const projected = project();
-  assert.equal(projected.size, 11);
+  assert.equal(BASE, 'e853b032464bd149ac8e0ede22ad2bc33a2220b1');
+  assert.equal(projected.size, 12);
   for (const [name, source] of projected) {
     if (name.endsWith('.cjs')) assert.doesNotThrow(() => new Script(source, { filename: name }));
     const path = join(root, 'apps/mobile', name);
@@ -87,14 +88,26 @@ test('the source-pinned projection keeps the scale budget and clock inside the d
     assert.throws(project, { message: 'ETH1_SCALE_SOURCE_MISMATCH' }, name);
     writeFileSync(path, pinned);
   }
+  const budgetName = 'src/privacy/nativePrivacySnapshotBudget.ts';
+  const budget = projected.get(budgetName);
+  assert.equal(budget, readFileSync(join(root, 'apps/mobile', budgetName), 'utf8'));
+  assert.match(budget, /NATIVE_PRIVACY_SNAPSHOT_BYTES = 16 \* 1024 \* 1024/);
+  assert.match(budget, /NATIVE_PRIVACY_SNAPSHOT_BYTES \+ 4 \* 1024 \* 1024/);
   const sync = projected.get('src/privacy/nativePrivacyPoolSync.ts');
-  assert.match(sync, /MAX_RESPONSE_BYTES = 16 \* 1024 \* 1024/);
-  assert.match(sync, /MAX_RUN_BYTES = 13113982 \+ 4 \* 1024 \* 1024/);
+  assert.match(sync, /NATIVE_PRIVACY_RUN_BYTES - active\.bytes/);
+  assert.match(sync, /NATIVE_PRIVACY_SNAPSHOT_BYTES,/);
+  assert.doesNotMatch(sync, /const MAX_(RESPONSE|RUN)_BYTES/);
   assert.match(sync, /MAX_PULL_BYTES = 64 \* 1024/);
   assert.match(sync, /RUN_TIMEOUT_MS = 45_000/);
   assert.match(sync, /BATCH_LEAVES = 128/);
   assert.match(sync, /new URL\(rpcUrl\)\.hostname !== '127\.0\.0\.1'/);
   assert.ok(sync.includes(`now: () => ${exampleTime + 1000} + Math.floor(performance.now() - replayStart)`));
+  const swiftTransport = projected.get('modules/pali-wallet-storage/ios/PaliPublicSnapshotDownload.swift');
+  assert.match(swiftTransport, /snapshotLimit: 16 \* 1024 \* 1024/);
+  assert.match(swiftTransport, /guard pool == "eth-1", endpoint\.scheme == "http", endpoint\.host == "127\.0\.0\.1"/);
+  const androidTransport = projected.get('modules/pali-wallet-storage/android/src/main/java/org/syscoin/pali/storage/PaliPublicSnapshotDownload.kt');
+  assert.match(androidTransport, /SNAPSHOT_BYTES = 16 \* 1024 \* 1024/);
+  assert.match(androidTransport, /origin\.scheme != "http" \|\| origin\.host != "127\.0\.0\.1"/);
   const configure = projected.get('scripts/configure-native-qualification.cjs');
   assert.ok(configure.includes(`identifier: '${APP}'`));
   assert.match(configure, /if \(!publicPoolEnabled\) throw Error\('ETH1_SCALE_REQUIRES_ISOLATED_PUBLIC_POOL_BUILD'\)/);
