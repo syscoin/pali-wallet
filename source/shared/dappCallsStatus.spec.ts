@@ -128,31 +128,70 @@ describe('shared smart-account batch outcome', () => {
   });
 });
 
-
 describe('shared calls receipt normalization', () => {
   const hash = `0x${'11'.repeat(32)}`;
-  const raw = { transactionHash: hash, status: '0x1', blockHash: `0x${'22'.repeat(32)}`,
-    blockNumber: '0x20000000000001', gasUsed: '0x20000000000003', logs: [] };
+  const raw = {
+    transactionHash: hash,
+    status: '0x1',
+    blockHash: `0x${'22'.repeat(32)}`,
+    blockNumber: '0x20000000000001',
+    gasUsed: '0x20000000000003',
+    logs: [],
+  };
   it('preserves raw quantities beyond Number precision', () => {
-    expect(normalizeDappCallsReceipt(raw, hash)).toEqual({ hash, status: 1, blockHash: raw.blockHash, blockNumber: raw.blockNumber, gasUsed: raw.gasUsed, logs: [] });
+    expect(normalizeDappCallsReceipt(raw, hash)).toEqual({
+      hash,
+      status: 1,
+      blockHash: raw.blockHash,
+      blockNumber: raw.blockNumber,
+      gasUsed: raw.gasUsed,
+      logs: [],
+    });
   });
   it('accepts the ethers receipt shape through the same exact validators', () => {
-    expect(normalizeDappCallsReceipt({ ...raw, hash, transactionHash: undefined, status: 1,
-      blockNumber: 12, gasUsed: BigInt(21000) }, hash)).toMatchObject({ blockNumber: '0xc', gasUsed: '0x5208' });
+    expect(
+      normalizeDappCallsReceipt(
+        {
+          ...raw,
+          hash,
+          transactionHash: undefined,
+          status: 1,
+          blockNumber: 12,
+          gasUsed: BigInt(21000),
+        },
+        hash
+      )
+    ).toMatchObject({ blockNumber: '0xc', gasUsed: '0x5208' });
   });
   it.each([
-    { transactionHash: `0x${'33'.repeat(32)}` }, { status: '0x2' }, { blockNumber: Number.MAX_SAFE_INTEGER + 1 },
-    { gasUsed: '-1' }, { blockHash: '0x1234' }, { logs: [{ address: sender, topics: ['0x1'], data: '0x' }] },
+    { transactionHash: `0x${'33'.repeat(32)}` },
+    { status: '0x2' },
+    { blockNumber: Number.MAX_SAFE_INTEGER + 1 },
+    { gasUsed: '-1' },
+    { blockHash: '0x1234' },
+    { logs: [{ address: sender, topics: ['0x1'], data: '0x' }] },
   ])('rejects malformed or unbound receipts', (changes) => {
-    expect(() => normalizeDappCallsReceipt({ ...raw, ...changes }, hash)).toThrow();
+    expect(() =>
+      normalizeDappCallsReceipt({ ...raw, ...changes }, hash)
+    ).toThrow();
   });
 });
 
-
 it('canonicalizes byte-padded BigNumber quantities while raw RPC quantities remain strict', () => {
   const hash = `0x${'11'.repeat(32)}`;
-  const receipt = { hash, status: 1, blockHash: `0x${'22'.repeat(32)}`, logs: [],
-    blockNumber: { toHexString: () => '0x00' }, gasUsed: { toHexString: () => '0x05208' } };
-  expect(normalizeDappCallsReceipt(receipt, hash)).toMatchObject({ blockNumber: '0x0', gasUsed: '0x5208' });
-  expect(() => normalizeDappCallsReceipt({ ...receipt, gasUsed: '0x05208' }, hash)).toThrow();
+  const receipt = {
+    hash,
+    status: 1,
+    blockHash: `0x${'22'.repeat(32)}`,
+    logs: [],
+    blockNumber: { toHexString: () => '0x00' },
+    gasUsed: { toHexString: () => '0x05208' },
+  };
+  expect(normalizeDappCallsReceipt(receipt, hash)).toMatchObject({
+    blockNumber: '0x0',
+    gasUsed: '0x5208',
+  });
+  expect(() =>
+    normalizeDappCallsReceipt({ ...receipt, gasUsed: '0x05208' }, hash)
+  ).toThrow();
 });
