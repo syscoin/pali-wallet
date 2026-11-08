@@ -1005,3 +1005,27 @@ test.each(['waiting', 'verified'] as const)(
     ).resolves.toEqual({ result: 'sent' });
   }
 );
+
+test('targeted note status reads only the selected protected note and refuses stale sessions', async () => {
+  const f = fixture();
+  const vault = core.createPrivateVaultController(f.host, f.dependencies);
+  await vault.importNote(NOTE);
+  const second = await vault.importNote(SECOND_NOTE);
+  const session = f.host.captureSession();
+  jest.mocked(f.host.readNote).mockClear();
+  await expect(vault.readNoteStatus(second.id, session)).resolves.toEqual({
+    phase: 'verified',
+  });
+  expect(f.host.readNote).toHaveBeenCalledTimes(1);
+  expect(f.host.readNote).toHaveBeenCalledWith(
+    identifyClassicNote(SECOND_NOTE)
+  );
+  await expect(
+    vault.readNoteStatus('00000000-0000-4000-8000-000000009999', session)
+  ).rejects.toThrow('privacy_note_missing');
+  f.cycleSession();
+  await expect(vault.readNoteStatus(second.id, session)).rejects.toThrow(
+    'privacy_vault_session_changed'
+  );
+  expect(f.host.readNote).toHaveBeenCalledTimes(1);
+});

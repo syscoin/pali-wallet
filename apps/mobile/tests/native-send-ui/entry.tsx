@@ -5,6 +5,7 @@ import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
 import { NativeSentryFixture } from './nativeSentryFixture';
 import { NativeSmartCurrencyFixture } from './nativeSmartCurrencyFixture';
 import { NativeNoteImportFixture } from './nativeNoteImportFixture';
+import { NativePrivateDepositFixture, NativeNoteStatusFixture } from './nativePrivateDepositFixture';
 import { NativeSmartDappFixture } from './nativeSmartDappFixture';
 import { UTXO_NETWORKS } from '../../src/core/utxoNetworks.ts';
 import './fixturePlatform';
@@ -399,6 +400,10 @@ function Fixture() {
         <NativeSmartDappFixture />
       ) : new URLSearchParams(window.location.search).has('note-import') ? (
         <NativeNoteImportFixture />
+      ) : new URLSearchParams(window.location.search).has('private-deposit') ? (
+        <NativePrivateDepositFixture />
+      ) : new URLSearchParams(window.location.search).has('note-status') ? (
+        <NativeNoteStatusFixture />
       ) : new URLSearchParams(window.location.search).has('smart-currency') ? (
         <NativeSmartCurrencyFixture />
       ) : new URLSearchParams(window.location.search).has('smart-deployment') ? (

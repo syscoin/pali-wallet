@@ -1,7 +1,8 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, BackHandler, Platform, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { NativeNoteInventory as NoteInventory } from '../custody/noteBackupRuntime';
+import type { IPrivateNoteStatus } from '../../../../source/utils/privacy/privateVaultTypes';
+import type { NativeNoteInventory as NoteInventory, NativeSavedNote } from '../custody/noteBackupRuntime';
 import { Button, Card, colors, Header, Notice, Row, Screen, styles, Text } from '../ui';
 import { NativeNoteReveal } from './NativeNoteReveal';
 
@@ -22,6 +23,10 @@ const recordedDate = (createdAt: number) => new Date(createdAt).toLocaleDateStri
 export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   const life = useRef<Owner>({ live: false });
   const [state, setState] = useState<State>(LOADING);
+  const selectedNote = useRef<NativeSavedNote | undefined>(undefined);
+  const [inspection, setInspection] = useState<{
+    note: NativeSavedNote; phase: 'checking' | 'failed' | 'ready'; status?: IPrivateNoteStatus;
+  } | null>(null);
 
   const load = useCallback(async () => {
     const owner = life.current;
@@ -65,7 +70,13 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
     setState((current) => current === view && current.phase === 'ready' ? { ...current, ...changes } : current);
   }, [view]);
   const back = useCallback(() => {
-    if (view.phase === 'ready' && view.selected !== null) { updateReady({ selected: null }); return; }
+    if (view.phase === 'ready' && view.selected !== null) {
+      life.current.request = undefined;
+      selectedNote.current = undefined;
+      setInspection(null);
+      updateReady({ selected: null });
+      return;
+    }
     life.current.live = false;
     onBack();
   }, [onBack, updateReady, view]);
@@ -77,7 +88,34 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
   }, [back, revealing]);
 
   const notes = view.phase === 'ready' ? view.inventory.notes : [];
+  const inventory = view.phase === 'ready' ? view.inventory : undefined;
   const note = view.phase === 'ready' && view.selected !== null ? notes[view.selected] : undefined;
+  useLayoutEffect(() => { selectedNote.current = note; }, [note]);
+  const checked = inspection?.note === note ? inspection : null;
+  const checkNote = async () => {
+    const owner = life.current;
+    if (!owner.live || owner.request || view.phase !== 'ready' || !note || !view.inventory.checkNote || AppState.currentState !== 'active') return;
+    const request = {};
+    owner.request = request;
+    const assertCurrent = () => {
+      if (!owner.live || owner.request !== request || selectedNote.current !== note || AppState.currentState !== 'active') throw new Error('CANCELLED');
+    };
+    setInspection({ note, phase: 'checking' });
+    try {
+      const status = await view.inventory.checkNote(note, assertCurrent);
+      assertCurrent();
+      setInspection({ note, phase: 'ready', status });
+    } catch {
+      if (owner.live && owner.request === request && selectedNote.current === note) setInspection({ note, phase: 'failed' });
+    } finally {
+      if (owner.request === request) owner.request = undefined;
+    }
+  };
+  const statusTitle = checked?.status?.phase === 'verified' ? 'Verified in pool history'
+    : checked?.status?.phase === 'spent' ? 'Already spent'
+    : checked?.status?.phase === 'not-found' ? 'Not found in pool history'
+    : checked?.status?.phase === 'waiting' ? 'Pool verification pending'
+    : 'Status not checked';
   const page = view.phase === 'ready' ? view.page : 0;
   const start = page * PAGE_SIZE;
   const rows = notes.slice(start, start + PAGE_SIZE);
@@ -97,13 +135,18 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
       {note ? <>
         <Card>
           <Row title={`${note.amount} ETH pool`} subtitle={`Recorded ${recordedDate(note.createdAt)}`} />
-          <Row title="Status not checked" subtitle="Pali hasn’t checked this note against its Ethereum pool." last />
+          <Row title={statusTitle} subtitle={checked?.status?.blockNumber === undefined
+            ? checked?.status ? undefined : 'Pali hasn’t checked this note against its Ethereum pool.'
+            : `Observed at block ${checked.status.blockNumber}`} last />
         </Card>
         {note.reconciliation === 'restored-note' && <Notice title="Restored note needs review"
           body="This note came from a backup and still needs to be checked against the pool." tone="amber" />}
         {note.reconciliation === 'withdrawal-history' && <Notice title="Saved withdrawal history"
           body="This note has a saved withdrawal record that needs review. Its outcome hasn’t been checked here." tone="amber" />}
-        <Button title="Back up this note" variant="secondary" onPress={() => updateReady({ revealing: true })} />
+        {inventory?.checkNote && <Button title={checked?.phase === 'checking' ? 'Checking pool…' : checked?.status ? 'Check status again' : 'Check pool status'}
+          variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => { void checkNote(); }} />}
+        {checked?.phase === 'failed' && <Text accessibilityRole="alert" style={s.error}>Could not check this note. Try again.</Text>}
+        <Button title="Back up this note" variant="secondary" disabled={checked?.phase === 'checking'} onPress={() => updateReady({ revealing: true })} />
       </> : <>
         {view.phase === 'loading' && <Text accessibilityLiveRegion="polite" style={styles.muted}>Loading saved notes…</Text>}
         {view.phase === 'error' && <>
@@ -115,16 +158,16 @@ export function NativeNoteInventory({ readInventory, onBack, onLock }: Props) {
         </>}
         {view.phase === 'retired' && <Text style={styles.muted}>Open Saved notes again to continue.</Text>}
         {view.phase === 'ready' && notes.length === 0 && <Notice title="No saved notes"
-          body="Notes you restore from an encrypted backup appear here." />}
+          body="Private notes you create or import appear here." />}
         {view.phase === 'ready' && rows.length > 0 && <>
-          <Text style={styles.muted}>These notes are saved on this device. Pool status hasn’t been checked.</Text>
+          <Text style={styles.muted}>{inventory?.checkNote ? 'Open a note to check its pool status or make a backup.' : 'These notes are saved on this device.'}</Text>
           {notes.length > PAGE_SIZE && <Text accessibilityLiveRegion="polite" style={styles.muted}>
             Notes {start + 1}–{start + rows.length} of {notes.length}
           </Text>}
           <Card>
             {rows.map((row, index) => <Row key={start + index} title={`${row.amount} ETH pool`}
               subtitle={`Note ${start + index + 1} · ${recordedDate(row.createdAt)}`}
-              onPress={() => updateReady({ selected: start + index })} last={index === rows.length - 1} />)}
+              onPress={() => { setInspection(null); updateReady({ selected: start + index }); }} last={index === rows.length - 1} />)}
           </Card>
           {(page > 0 || next) && <View style={s.pages}>
             <View style={s.page}><Button title="Previous" variant="secondary" disabled={page === 0} onPress={() => updateReady({ page: page - 1 })} /></View>

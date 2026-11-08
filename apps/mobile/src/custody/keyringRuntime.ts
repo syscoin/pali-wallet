@@ -1,3 +1,8 @@
+import { openOwnedPrivatePool } from './ownedPrivatePool.ts';
+import { NativePrivateDeposit } from './privateDeposit.ts';
+import { createPrivacyTransactionsController } from '../../../../source/wallet/privacyTransactions.ts';
+import { capturePrivateDepositAttempt, privateDepositUnsignedBytes } from '../../../../source/utils/privacy/depositMetadata.ts';
+import type { IPrivacyDepositSession } from '../../../../source/utils/privacy/transactionTypes.ts';
 import { authorizePrivateDepositReplay } from '../../../../source/wallet/privateDepositReplay.ts';
 import { Contract } from '../../../../source/utils/ethersV6Compat.ts';
 import { hexlify } from 'ethers/utils';
@@ -146,6 +151,14 @@ type IndexedKeyring = InstanceType<SoftwareSdk['HostKeyring']> & {
   deriveEvmHdRuntimeAccount?: (request: { index: number }, options: { assertCurrent(): void }) => Promise<IKeyringAccountState>;
 };
 
+class NativePrivateSubmissionError extends Error {
+  readonly failure: Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>;
+  constructor(failure: Readonly<{ transactionNotBroadcast: boolean; signedTransactionHash?: string }>) {
+    super('privacy_deposit_submission_failed');
+    this.failure = Object.freeze({ ...failure });
+  }
+}
+
 export class KeyringRuntimeError extends CustodyRuntimeError {
   constructor(code: KeyringRuntimeError['code']) {
     super(code);
@@ -254,6 +267,7 @@ export interface KeyringRuntime extends CustodyRuntime {
   openNoteCapacity?(assertCurrent: () => void): Promise<NativeNoteCapacityRuntime>;
   readNoteInventory?(assertCurrent: () => void): Promise<NativeNoteInventory>;
   openNoteImport?(assertCurrent: () => void): Promise<NativeNoteImportRuntime>;
+  openPrivateDeposit?(signal: AbortSignal, assertCurrent: () => void): Promise<NativePrivateDeposit>;
   /** Internal removal authorization. The protected snapshot never reaches a screen. */
   authorizeWalletRemoval?(password: string, assertCurrent: () => void, beforeSnapshot: (assertCurrent: () => void) => Promise<void>): Promise<Readonly<{
     snapshot: RecoveryStorageSnapshot;
@@ -657,6 +671,7 @@ export function createKeyringRuntimeFactory(
             ) : undefined,
           });
         }
+        const enteredPrivateSubmissions = new WeakSet<object>();
         function prepareOwnedEvmTransaction(input: unknown, selected: NativeCatalogueAccount,
           selectedContext: NativeCatalogueAccount, signal: AbortSignal, check: () => void, metadata: Readonly<Record<string, unknown>> | undefined, funding: EvmFeeFunding) {
           check();
@@ -701,6 +716,7 @@ export function createKeyringRuntimeFactory(
               };
               const boundary = sdk.captureEvmSubmission(context, guard, () =>
                 capturePayerSubmission(context, selectedContext, guard, metadata, undefined, verifyDispatch));
+              if (metadata) enteredPrivateSubmissions.add(metadata);
               const work = sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, ({ rawTransaction, admit }) =>
                 sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast),
               boundary, undefined, serializePreparedEvmTransaction(transaction));
@@ -919,16 +935,19 @@ export function createKeyringRuntimeFactory(
           current(generation);
           if (active || reserved || pendingSubmissions.size) throw new KeyringRuntimeError('BUSY');
         };
+        const finalizePrivateDomain = async () => {
+          if (privateDomainStorageFault === 'unreported') {
+            privateDomainStorageFault = 'reopen';
+            try { await lock(); } catch { /* The owner remains quarantined. */ }
+          }
+        };
         const runPrivateDomain = async <T>(operation: (captured: number) => Promise<T>): Promise<T> => {
           assertPrivateDomainAvailable();
           const captured = generation;
           let resolve!: (result: Promise<T>) => void, reject!: (error: unknown) => void;
           const task = new Promise<T>((accept, refuse) => { resolve = accept; reject = refuse; }).finally(async () => {
-            if (privateDomainStorageFault === 'unreported') {
-              // Let the service classify an ambiguous receipt before revoking its session.
-              privateDomainStorageFault = 'reopen';
-              try { await lock(); } catch { /* The owner remains quarantined. */ }
-            }
+            // Let the service classify an ambiguous receipt before revoking its session.
+            await finalizePrivateDomain();
             if (active === task) active = null;
           });
           // Install admission before callbacks, while allowing the shared codec
@@ -940,8 +959,8 @@ export function createKeyringRuntimeFactory(
         const privateDomainWalletSession = (captured: number): IPrivateVaultSession => {
           const ring = keyring, identity = verifiedIdentity;
           const assertCurrent = () => {
-            current(captured);
-            if (!identity?.root || keyring !== ring || !ring.isUnlocked() ||
+            current(generation);
+            if (!identity?.root || verifiedIdentity !== identity || keyring !== ring || !ring.isUnlocked() ||
                 authenticatedPair !== identity.pairFingerprint ||
                 verifiedIdentity?.walletBindingId !== identity.walletBindingId ||
                 verifiedIdentity.root?.profileId !== identity.root.profileId)
@@ -953,7 +972,7 @@ export function createKeyringRuntimeFactory(
         const privateDomainSession = (captured: number, assertOwner: () => void): IPrivateVaultSession => {
           const wallet = privateDomainWalletSession(captured), revision = catalogueSnapshot?.revision;
           const assertCurrent = () => {
-            wallet.assertCurrent(); checkGuard(assertOwner); wallet.assertCurrent();
+            current(captured); wallet.assertCurrent(); checkGuard(assertOwner); current(captured); wallet.assertCurrent();
             if (catalogueSnapshot?.revision !== revision || revision === undefined)
               throw new KeyringRuntimeError('CANCELLED');
           };
@@ -1118,7 +1137,209 @@ export function createKeyringRuntimeFactory(
         const openNoteCapacity: NonNullable<KeyringRuntime['openNoteCapacity']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => notes.bindCapacity(session));
         const readNoteInventory: NonNullable<KeyringRuntime['readNoteInventory']> = (assertOwner) =>
-          openNotes(assertOwner, (notes, session) => notes.readInventory(session));
+          openNotes(assertOwner, (notes, session) => {
+            const network = catalogueSnapshot?.networks.find(item => item.id === catalogueSnapshot!.active.networkId);
+            const openPool = dependencies.openPrivacyPool;
+            return notes.readInventory(session, network?.chainId === '1' && openPool ? async (id, poolId, guard) => {
+              const lifetime = new AbortController();
+              const pool = await openOwnedPrivatePool(poolId,
+                (selected, signal) => openPool(network, selected, signal, guard), lifetime.signal, guard);
+              try { await pool.refresh(); guard(); return await notes.readNoteStatus(session, id, pool.readNote); }
+              finally { lifetime.abort(); await pool.dispose(); }
+            } : null);
+          });
+        const openPrivateDeposit: NonNullable<KeyringRuntime['openPrivateDeposit']> = (
+          signal,
+          assertOwner
+        ) =>
+          openNotes(assertOwner, (notes, session) => {
+            if (signal.aborted) throw new KeyringRuntimeError('CANCELLED');
+            const captured = generation,
+              selected = selectedAccount(),
+              snapshot = catalogueSnapshot;
+            const network = getNativeNetwork(snapshot!.active.networkId, snapshot!.networks);
+            const account = state.accounts[selected.type][selected.index];
+            const openPool = dependencies.openPrivacyPool;
+            if (
+              !openPool ||
+              network.chainId !== '1' ||
+              (selected.type !== 'HDAccount' && selected.type !== 'Imported') ||
+              !account?.xprv
+            )
+              throw new Error('privacy_deposit_unsupported_account');
+            const lifetime = new AbortController();
+            const abort = () => lifetime.abort();
+            const check = () => {
+              current(captured);
+              checkGuard(assertOwner);
+              session.assertCurrent();
+              if (
+                signal.aborted ||
+                lifetime.signal.aborted ||
+                catalogueSnapshot !== snapshot ||
+                selectedAccount() !== selected ||
+                state.accounts[selected.type][selected.index] !== account
+              )
+                throw new KeyringRuntimeError('CANCELLED');
+            };
+            const acknowledgementSession = privateDomainWalletSession(captured);
+            let pool: Awaited<ReturnType<typeof openOwnedPrivatePool>> | undefined;
+            let vault: ReturnType<NoteRuntime['openDeposit']> | undefined;
+            const ensurePool = async (poolId: PrivacyPoolId) => {
+              check();
+              if (pool && pool.poolId !== poolId) {
+                await pool.dispose();
+                pool = undefined;
+                vault = undefined;
+              }
+              pool ??= await openOwnedPrivatePool(
+                poolId,
+                (id, owner) => openPool(network, id, owner, check),
+                lifetime.signal,
+                check
+              );
+              check();
+              vault ??= notes.openDeposit(
+                { ...session, assertCurrent: check },
+                acknowledgementSession,
+                pool.readNote
+              );
+              return vault;
+            };
+            type Prepared = Awaited<ReturnType<typeof prepareOwnedEvmTransaction>>;
+            const prepared = new WeakMap<
+              IPrivacyDepositSession['context'],
+              { quote: Prepared; metadata: Record<string, unknown> }
+            >();
+            const transactions = createPrivacyTransactionsController({
+              captureContext: () => ({
+                assertCurrent: check,
+                context: {
+                  account: {
+                    id: selected.index,
+                    type: sdk.KeyringAccountType[selected.type],
+                    address: selected.address,
+                  },
+                  chainId: 1,
+                  rpcUrl: network.rpcUrl,
+                  slip44: 60,
+                  sessionGeneration: captured,
+                },
+              }),
+              prepareNote: async (poolId, noteId) =>
+                (await ensurePool(poolId)).prepareNote(poolId, noteId),
+              withCommitment: (noteId, _owner, use) => {
+                check();
+                if (!vault) throw new Error('privacy_vault_unavailable');
+                return vault.withCommitment(noteId, use);
+              },
+              prepareFees: async (transaction, owner) => {
+                check();
+                const metadata: Record<string, unknown> = {};
+                const quote = await prepareOwnedEvmTransaction(
+                  transaction,
+                  selected,
+                  selected,
+                  lifetime.signal,
+                  check,
+                  metadata,
+                  NATIVE_EVM_FEE_FUNDING
+                );
+                check();
+                prepared.set(owner.context, { quote, metadata });
+                const tx = quote.transaction;
+                return {
+                  gasLimit: tx.gasLimit,
+                  nonce: tx.nonce!,
+                  ...(tx.type === 0
+                    ? { gasPrice: tx.gasPrice! }
+                    : { maxFeePerGas: tx.maxFeePerGas!, maxPriorityFeePerGas: tx.maxPriorityFeePerGas! }),
+                };
+              },
+              beforeSubmission: async (attempt) => {
+                check();
+                const saved = prepared.get(attempt.context);
+                if (!saved || !vault || !pool) throw new Error('privacy_deposit_context_changed');
+                const canonical = capturePrivateDepositAttempt(attempt);
+                if (
+                  privateDepositUnsignedBytes(canonical) !==
+                  serializePreparedEvmTransaction(saved.quote.transaction)
+                )
+                  throw new Error('privacy_deposit_context_changed');
+                saved.metadata.privateDeposit = canonical;
+                Object.freeze(saved.metadata);
+                let fence!: () => void;
+                await vault.reserve(attempt, (guard) => {
+                  fence = guard;
+                });
+                return () => {
+                  check();
+                  fence();
+                };
+              },
+              sendTransaction: async (_transaction, owner, onBroadcast, assertBeforeSign) => {
+                const saved = prepared.get(owner.context);
+                if (!saved) throw new Error('privacy_deposit_context_changed');
+                try {
+                  assertBeforeSign();
+                  const hash = await saved.quote.submit(assertBeforeSign, () => undefined);
+                  await onBroadcast({ hash });
+                  return { hash };
+                } catch (error) {
+                  const failure = sdk.evmSubmissionFailure(error);
+                  throw new NativePrivateSubmissionError({
+                    transactionNotBroadcast:
+                      !enteredPrivateSubmissions.has(saved.metadata) ||
+                      failure?.transactionNotBroadcast === true,
+                    ...(failure?.signedTransactionHash
+                      ? { signedTransactionHash: failure.signedTransactionHash }
+                      : {}),
+                  });
+                }
+              },
+              classifySubmissionFailure: (error) =>
+                error instanceof NativePrivateSubmissionError
+                  ? error.failure
+                  : { transactionNotBroadcast: false },
+              recordBroadcast: async (attempt, hash) => {
+                if (!vault) throw new Error('privacy_vault_unavailable');
+                try {
+                  await vault.recordBroadcast(attempt, hash);
+                } finally {
+                  await finalizePrivateDomain();
+                }
+              },
+              recordNotBroadcast: async (attempt) => {
+                if (!vault) throw new Error('privacy_vault_unavailable');
+                try {
+                  await vault.recordNotBroadcast(attempt);
+                } finally {
+                  await finalizePrivateDomain();
+                }
+              },
+            });
+            const model = new NativePrivateDeposit(
+              {
+                assertCurrent: check,
+                transactions,
+                async readStatus(noteId) {
+                  check();
+                  if (!pool || !vault) throw new Error('privacy_vault_unavailable');
+                  await pool.refresh();
+                  check();
+                  return vault.readStatus(noteId);
+                },
+                async close() {
+                  lifetime.abort();
+                  signal.removeEventListener('abort', abort);
+                  await pool?.dispose();
+                },
+              },
+              signal
+            );
+            signal.addEventListener('abort', abort, { once: true });
+            return model;
+          });
         const openNoteImport: NonNullable<KeyringRuntime['openNoteImport']> = (assertOwner) =>
           openNotes(assertOwner, (notes, session) => {
             const openPool = dependencies.openPrivacyPool;
@@ -3368,7 +3589,7 @@ export function createKeyringRuntimeFactory(
             return task;
           },
           ...(storage.notes && storage.recovery ? { openNoteBackup, openNoteCapacity, readNoteInventory,
-            ...(dependencies.openPrivacyPool ? { openNoteImport } : {}) } : {}),
+            ...(dependencies.openPrivacyPool ? { openNoteImport, openPrivateDeposit } : {}) } : {}),
           ...(storage.sentryKeys && typeof dependencies.deriveSentryPublicKey === 'function'
             ? { getSentryKeyNetwork, openSentryKeyManagement } : {}),
           ...(storage.removal && storage.recovery ? { authorizeWalletRemoval } : {}),
@@ -3795,46 +4016,149 @@ export function createKeyringRuntimeFactory(
             },
             replay(assertCurrent, transport, options) {
               if (active || reserved || closed || !canSign()) throw new KeyringRuntimeError('NOT_READY');
-              const captured = generation, selected = selectedAccount();
-              const network = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-              const context: EvmSubmissionContext = { account: { id: selected.index, type: selected.type, address: selected.address },
-                network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl }, operation: 'send' };
+              const captured = generation,
+                selected = selectedAccount();
+              const network = getNativeNetwork(
+                catalogueSnapshot!.active.networkId,
+                catalogueSnapshot!.networks
+              );
+              const context: EvmSubmissionContext = {
+                account: { id: selected.index, type: selected.type, address: selected.address },
+                network: {
+                  kind: 'ethereum',
+                  chainId: Number(network.chainId),
+                  slip44: 60,
+                  url: network.rpcUrl,
+                },
+                operation: 'send',
+              };
               const check = () => {
-                current(captured); checkGuard(assertCurrent);
+                current(captured);
+                checkGuard(assertCurrent);
                 const live = selectedAccount();
-                const currentNetwork = getNativeNetwork(catalogueSnapshot!.active.networkId, catalogueSnapshot!.networks);
-                if (live !== selected || currentNetwork.chainId !== network.chainId || currentNetwork.rpcUrl !== network.rpcUrl)
+                const currentNetwork = getNativeNetwork(
+                  catalogueSnapshot!.active.networkId,
+                  catalogueSnapshot!.networks
+                );
+                if (
+                  live !== selected ||
+                  currentNetwork.chainId !== network.chainId ||
+                  currentNetwork.rpcUrl !== network.rpcUrl
+                )
                   throw new KeyringRuntimeError('CANCELLED');
               };
-              const replay = new EvmSignedReplay(signedRecords, () => ({
-                context, recordSession: { keyring, assertCurrent: check }, assertCurrent: check, ...transport,
-                authorizeReplay: (entry) => authorizePrivateDepositReplay(entry, check, async (attempt) => {
-                  // Prepare initializes the existing note runtime. Confirmation reuses it
-                  // inside this owned replay operation, without public note admission.
-                  if (!noteBackups) await openNotes(check, () => undefined);
-                  check();
-                  const lease = await noteBackups!.authorizeDepositReplay(privateDomainWalletSession(captured), attempt);
-                  check();
-                  return Object.freeze({
-                    assertCurrent: lease.assertCurrent,
-                    withAdmission: lease.withAdmission,
-                    async onAcknowledged(hash: string) {
-                      try { await lease.onAcknowledged(hash); }
-                      finally {
-                        if (privateDomainStorageFault === 'unreported') {
-                          privateDomainStorageFault = 'reopen';
-                          try { await lock(); } catch { /* The owner remains quarantined. */ }
-                        }
+              type PrivateReplayOwner = {
+                lifetime: AbortController;
+                pool?: Awaited<ReturnType<typeof openOwnedPrivatePool>>;
+              };
+              let privateOwner: PrivateReplayOwner | undefined;
+              let reviewedId: string | undefined;
+              const closePrivatePool = async (owner: PrivateReplayOwner | undefined) => {
+                try {
+                  owner?.lifetime.abort();
+                  await owner?.pool?.dispose();
+                } finally { await finalizePrivateDomain(); }
+              };
+              const replay = new EvmSignedReplay(
+                signedRecords,
+                () => ({
+                  context,
+                  recordSession: { keyring, assertCurrent: check },
+                  assertCurrent: check,
+                  ...transport,
+                  authorizeReplay: (entry) =>
+                    authorizePrivateDepositReplay(entry, check, async (attempt) => {
+                      const owner = privateOwner;
+                      if (!owner) throw new KeyringRuntimeError('CANCELLED');
+                      const checkPool = () => {
+                        check();
+                        if (privateOwner !== owner || owner.lifetime.signal.aborted)
+                          throw new KeyringRuntimeError('CANCELLED');
+                      };
+                      if (!noteBackups) await openNotes(checkPool, () => undefined);
+                      checkPool();
+                      const openPool = dependencies.openPrivacyPool;
+                      if (!openPool) throw new KeyringRuntimeError('NOT_READY');
+                      if (owner.pool && owner.pool.poolId !== attempt.poolId)
+                        throw new KeyringRuntimeError('CANCELLED');
+                      owner.pool ??= await openOwnedPrivatePool(
+                        attempt.poolId,
+                        (id, signal) => openPool(network, id, signal, checkPool),
+                        owner.lifetime.signal,
+                        checkPool
+                      );
+                      checkPool();
+                      let lease: Awaited<ReturnType<NoteRuntime['authorizeDepositReplay']>>;
+                      try {
+                        lease = await noteBackups!.authorizeDepositReplay(
+                          privateDomainWalletSession(captured),
+                          attempt,
+                          owner.pool.readNote
+                        );
+                      } catch (error) {
+                        try { await closePrivatePool(owner); } catch { /* Preserve the authorization failure. */ }
+                        throw error;
                       }
-                    },
-                  });
+                      checkPool();
+                      return Object.freeze({
+                        assertCurrent: lease.assertCurrent,
+                        withAdmission: lease.withAdmission,
+                        async onAcknowledged(hash: string) {
+                          try {
+                            await lease.onAcknowledged(hash);
+                          } finally {
+                            await closePrivatePool(owner);
+                          }
+                        },
+                      });
+                    }),
                 }),
-              }), options.now, options.randomBytes);
-              return { prepare: replay.prepare.bind(replay), cancel: replay.cancel.bind(replay), list: replay.list.bind(replay), confirm(id) {
-                const work = replay.confirm(id);
-                const pending = work.finally(() => pendingSubmissions.delete(pending));
-                pendingSubmissions.add(pending); return pending;
-              } };
+                options.now,
+                options.randomBytes
+              );
+              return {
+                async prepare(hash) {
+                  replay.cancel();
+                  reviewedId = undefined;
+                  const previous = privateOwner;
+                  const owner = { lifetime: new AbortController() };
+                  privateOwner = owner;
+                  await closePrivatePool(previous);
+                  if (privateOwner !== owner) throw new KeyringRuntimeError('CANCELLED');
+                  try {
+                    const prepared = await replay.prepare(hash);
+                    if (prepared.status === 'review') reviewedId = prepared.review.id;
+                    return prepared;
+                  } catch (error) {
+                    if (privateOwner === owner) privateOwner = undefined;
+                    await closePrivatePool(owner);
+                    throw error;
+                  }
+                },
+                cancel(id) {
+                  const cancelled = replay.cancel(id);
+                  if (cancelled) {
+                    reviewedId = undefined;
+                    const owner = privateOwner;
+                    privateOwner = undefined;
+                    void closePrivatePool(owner).catch(() => undefined);
+                  }
+                  return cancelled;
+                },
+                list: replay.list.bind(replay),
+                confirm(id) {
+                  if (id !== reviewedId) return replay.confirm(id);
+                  reviewedId = undefined;
+                  const owner = privateOwner;
+                  const work = replay.confirm(id);
+                  const pending = work.finally(async () => {
+                    pendingSubmissions.delete(pending);
+                    await closePrivatePool(owner);
+                  });
+                  pendingSubmissions.add(pending);
+                  return pending;
+                },
+              };
             },
             async token(contractAddress, assertCurrent) {
               const contract = normalizeErc20Address(contractAddress);

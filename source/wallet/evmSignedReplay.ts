@@ -301,11 +301,12 @@ export class EvmSignedReplay {
     this.now = now;
     this.randomBytes = randomBytes;
   }
-  cancel(id?: string): void {
-    if (id !== undefined && this.ownerId !== id) return;
+  cancel(id?: string): boolean {
+    if (id !== undefined && this.ownerId !== id) return false;
     this.generation++;
     this.pending = null;
     this.ownerId = null;
+    return true;
   }
   private time(): number {
     const value = this.now();
