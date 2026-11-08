@@ -10,13 +10,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { AbiCoder, Interface } from 'ethers/abi';
-import { Transaction } from 'ethers/transaction';
+import { Transaction, recoverAddress } from 'ethers/transaction';
 import { inspectEvmSignedBundle } from '../../../source/wallet/evmSignedRecords.ts';
 import type { NativeNetworkRegistration } from '../src/custody/networkContext.ts';
 import { getCreate2Address } from 'ethers/address';
 import { keccak256 } from 'ethers/crypto';
 import { concat, getBytes, hexlify } from 'ethers/utils';
 import { NativeCustodyAuthority } from '../src/custody/authority.ts';
+import { loadNativeKeyringSdk } from '../src/custody/keyringSdk.ts';
 import { createKeyringRuntimeFactory, type KeyringRuntime } from '../src/custody/keyringRuntime.ts';
 import { SqliteWalletStorage } from '../src/storage/sqlite.ts';
 import { EvmTransferReadRpc } from '../src/custody/evmTransferReadRpc.ts';
@@ -27,7 +28,7 @@ import { digest, INSTALLATION, nodeConnection, type SqlHook } from './storageHel
 import { createGuardianRecoveryFixture } from './native-watch-ui/guardianRecoveryFixture.ts';
 import { GUARDIAN_FIXTURE_RUNTIME } from './guardianRecoveryRuntime.ts';
 import { importedKeyIdentity } from '../src/custody/importedAccounts.ts';
-import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface, paliGuardianRecoveryModuleInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -40,13 +41,14 @@ process.env.NODE_ENV = 'production';
 delete process.env.SYSWEB3_PBKDF2_ENC_ITERS;
 delete process.env.SYSWEB3_PBKDF2_AUTH_ITERS;
 
-async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
+async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}, recordSignatures = false) {
   const directory = await mkdtemp(path.join(tmpdir(), 'pali-smart-account-test-'));
   const file = path.join(directory, 'wallet.sqlite');
   let initialized = false, substituteAddress = false, hold: (() => Promise<void>) | undefined;
   let runtime!: KeyringRuntime;
   let storage!: SqliteWalletStorage;
   const calls: string[] = [];
+  const signatures: { address: string; digest: string; signature: string; intentPersisted: boolean }[] = [];
   const submitted: string[] = [];
   let deployed = false;
   let deployedCode = '0x01';
@@ -65,6 +67,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   let afterBroadcast: (() => void) | undefined;
   let guardian: ReturnType<typeof createGuardianRecoveryFixture> | undefined;
   let externalOwner = false;
+  let recoveredOwner: string | undefined;
   const openStorage = async () => {
     storage = await SqliteWalletStorage.open(nodeConnection(file, hooks).connection, digest, INSTALLATION, !initialized);
     initialized = true;
@@ -154,7 +157,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
             result = paliSmartAccountInterface.encodeFunctionResult('activeValidator', [getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa')]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('owners')!.selector)) {
             const ownerAddress = runtime.catalogue.getSnapshot()!.accounts.find(account => account.id === 'hd:60:0')!.address;
-            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[externalOwner ? '0x' + '66'.repeat(20) : ownerAddress]]);
+            result = paliEcdsaValidatorInterface.encodeFunctionResult('owners', [[recoveredOwner ?? (externalOwner ? '0x' + '66'.repeat(20) : ownerAddress)]]);
           } else if (to === getConfiguredAuthenticatorAddress(Number(network.chainId), 'ecdsa').toLowerCase() && data.startsWith(paliEcdsaValidatorInterface.getFunction('threshold')!.selector)) {
             result = paliEcdsaValidatorInterface.encodeFunctionResult('threshold', [1]);
           } else if (to === getPaliEntryPointAddress(Number(network.chainId)).toLowerCase() && data.startsWith(paliEntryPointInterface.getFunction('getNonce')!.selector)) {
@@ -191,6 +194,22 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
         return new Response(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }), { headers: { 'content-type': 'application/json' } });
   };
   const factory = createKeyringRuntimeFactory({
+    ...(recordSignatures ? { loadSdk: async () => {
+      const sdk = await loadNativeKeyringSdk();
+      const Base = sdk.HostKeyring;
+      return { ...sdk, HostKeyring: class extends Base {
+        constructor(...args: ConstructorParameters<typeof Base>) {
+          super(...args);
+          const original = this.ethereumTransaction.ethSign.bind(this.ethereumTransaction);
+          this.ethereumTransaction.ethSign = async (...input: Parameters<typeof original>) => {
+            const saved = await storage.keyringStorage.get(WALLET_CATALOGUE_KEY) as { guardianRecoveryIntents?: unknown[] };
+            const signature = await original(...input);
+            signatures.push({ address: input[0][0]!, digest: input[0][1]!, signature, intentPersisted: !!saved.guardianRecoveryIntents?.length });
+            return signature;
+          };
+        }
+      } };
+    } } : {}),
     checkSmartAccountAddress: async () => ({ isBlacklisted: blockedRecipient, severity: 'high' }),
     ensureCryptoReady: async () => undefined, readEvmRetirement: null, openStorage,
     connectionFetch: (_url, init) => backend(getNativeNetwork(runtime.catalogue.getSnapshot()?.active.networkId ?? 'ethereum'), init),
@@ -208,7 +227,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
   await runtime.backup.confirm(await runtime.backup.fingerprint());
   await owner.refreshAuthenticatedMetadata();
   return {
-    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted,
+    get owner() { return owner; }, get runtime() { return runtime; }, get storage() { return storage; }, calls, submitted, signatures,
     guardianStatus(mode: Parameters<ReturnType<typeof createGuardianRecoveryFixture>['select']>[0] = 'healthy') {
       const address = runtime.catalogue.getSnapshot()!.accounts.find(account => account.type === 'SmartAccount')!.address;
       guardian = createGuardianRecoveryFixture(address);
@@ -217,6 +236,7 @@ async function fixture(hooks: { before?: SqlHook; after?: SqlHook } = {}) {
       return guardian;
     },
     externalOwner() { externalOwner = true; },
+    recoveredOwner(address: string) { recoveredOwner = address; },
     gasSponsored() { payerBalance = '0x0'; gasCredit = 10n ** 20n; },
     loseGasCredit() { gasCredit = 0n; },
     wrongChain() { wrongChain = true; },
@@ -1482,4 +1502,144 @@ test('guardian removal inspection rechecks the policy after a held retained-reco
     assert.equal(f.submitted.length, 0);
     assert.equal(f.owner.getSnapshot().phase, 'ready');
   } finally { release(); await f.close(); }
+});
+
+for (const delayedMetadata of [false, true]) test(`native guardian recovery persists before proof signing and resumes through canonical execution (${delayedMetadata})`, async () => {
+  const f = await fixture({}, true);
+  let recovery: Awaited<ReturnType<KeyringRuntime['openGuardianRecovery']>> | undefined;
+  try {
+    const privateKey = '0x' + '02'.repeat(32);
+    await f.owner.importAccount({ privateKey, label: 'Replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
+      PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+    await f.change({ kind: 'create-smart', label: 'Recoverable account', password: PASSWORD });
+    const accounts = f.owner.getCatalogue()!.accounts;
+    const guardian = accounts.find(account => account.id === 'hd:60:0')!;
+    const replacement = accounts.find(account => account.type === 'Imported')!;
+    const status = f.guardianStatus('installed'); status.configure(guardian.address, 600);
+    f.externalOwner();
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    assert(intent); assert.equal(f.submitted.length, 0);
+    assert.equal(((await f.inspectRecovery()).record as { guardianRecoveryIntents: unknown[] }).guardianRecoveryIntents.length, 1);
+    await recovery.prepare(); assert.equal(recovery.getSnapshot().phase, 'authorize');
+    f.onBroadcast(() => {
+      const transaction = Transaction.from(f.submitted.at(-1)!);
+      const call = paliGuardianRecoveryModuleInterface.parseTransaction({ data: transaction.data });
+      if (call?.name === 'scheduleRecovery') status.recover(intent.operation, 'pending');
+      if (call?.name === 'executeRecovery') { status.recover(intent.operation, 'executed'); f.recoveredOwner(delayedMetadata ? '0x' + '77'.repeat(20) : replacement.address); }
+    });
+    await recovery.review(); assert.equal(recovery.getSnapshot().phase, 'review', JSON.stringify(recovery.getSnapshot()));
+    assert.equal(f.signatures.length, 2);
+    assert(f.signatures.every(proof => proof.intentPersisted && proof.digest === intent.operation.hash));
+    assert.equal(recoverAddress(intent.operation.hash, f.signatures[0]!.signature).toLowerCase(), replacement.address.toLowerCase());
+    assert.equal(recoverAddress(intent.operation.hash, f.signatures[1]!.signature).toLowerCase(), guardian.address.toLowerCase());
+    await recovery.confirm(recovery.getSnapshot().feeReview!.id);
+    const schedule = paliGuardianRecoveryModuleInterface.decodeFunctionData('scheduleRecovery', Transaction.from(f.submitted[0]).data);
+    assert.equal(recoverAddress(intent.operation.hash, schedule[4][0].signature).toLowerCase(), guardian.address.toLowerCase());
+    assert.equal(recovery.getSnapshot().phase, 'waiting', JSON.stringify(recovery.getSnapshot()));
+    assert.equal(f.submitted.length, 1);
+    recovery.dispose(); recovery = undefined;
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    recovery = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    await recovery.prepare(); assert.equal(recovery.getSnapshot().phase, 'waiting');
+    status.recover(intent.operation, 'ready');
+    await recovery.refresh(); assert.equal(recovery.getSnapshot().phase, 'ready', JSON.stringify(recovery.getSnapshot()));
+    await recovery.review(); assert.equal(recovery.getSnapshot().phase, 'review', JSON.stringify(recovery.getSnapshot()));
+    await recovery.confirm(recovery.getSnapshot().feeReview!.id);
+    assert.equal(recovery.getSnapshot().phase, 'complete', JSON.stringify(recovery.getSnapshot()));
+    if (delayedMetadata) {
+      assert.equal(recovery.getSnapshot().metadataRefresh, 'failed');
+      assert(f.runtime.getGuardianRecoveryIntent());
+      assert.equal(f.owner.getSnapshot().phase, 'ready');
+      f.recoveredOwner(replacement.address);
+      await recovery.retryMetadata();
+      assert.equal(f.submitted.length, 2);
+    }
+    assert.equal(recovery.getSnapshot().metadataRefresh, 'complete', JSON.stringify(recovery.getSnapshot()));
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.submitted.length, 2);
+    const final = savedSmartAccount((await f.inspectRecovery()).record);
+    assert.equal(final.smartAccount.auth.data.toLowerCase(), intent.target.auth.data.toLowerCase());
+  } finally { recovery?.dispose(); await f.close(); }
+});
+
+
+async function startNativeRecovery() {
+  const f = await fixture({}, true);
+  const privateKey = '0x' + '03'.repeat(32);
+  await f.owner.importAccount({ privateKey, label: 'Recovery replacement', expectedAddress: importedKeyIdentity(privateKey, 0).address },
+    PASSWORD, f.owner.getSnapshot().revision, f.owner.getCatalogue()!.revision);
+  await f.change({ kind: 'create-smart', label: 'Recovery target', password: PASSWORD });
+  const guardian = f.owner.getCatalogue()!.accounts.find(account => account.id === 'hd:60:0')!;
+  const replacement = f.owner.getCatalogue()!.accounts.find(account => account.type === 'Imported')!;
+  const policy = f.guardianStatus('installed'); policy.configure(guardian.address, 600);
+  const controller = await f.runtime.openGuardianRecovery({ kind: 'start', guardianId: guardian.id, replacementId: replacement.id }, new AbortController().signal, () => undefined);
+  return { f, guardian, replacement, policy, controller };
+}
+
+test('clearing a canceled pre-sign recovery preserves both keys and only removes local tracking', async () => {
+  const { f, controller, guardian, replacement } = await startNativeRecovery();
+  try {
+    await controller.prepare();
+    assert.equal(controller.getSnapshot().canAbandon, true);
+    const phases: string[] = [];
+    controller.subscribe(() => phases.push(controller.getSnapshot().phase));
+    await controller.abandon();
+    assert.equal(controller.getSnapshot().phase, 'cleared');
+    assert(!phases.includes('complete'));
+    assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    const accounts = f.owner.getCatalogue()!.accounts;
+    assert(accounts.some(account => account.id === guardian.id));
+    assert(accounts.some(account => account.id === replacement.id));
+  } finally { controller.dispose(); await f.close(); }
+});
+
+test('an uncertain scheduled recovery survives restart without signing a second transaction', async () => {
+  const { f, controller } = await startNativeRecovery();
+  let resumed: typeof controller | undefined;
+  try {
+    f.holdReceipts();
+    f.onBroadcast(() => { throw new Error('Connection lost after delivery'); });
+    await controller.review();
+    await controller.confirm(controller.getSnapshot().feeReview!.id);
+    assert.equal(controller.getSnapshot().phase, 'unknown');
+    const hash = controller.getSnapshot().transactionHash;
+    assert(hash); assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 2);
+    controller.dispose(); await f.reopen(); await f.owner.unlock(PASSWORD);
+    resumed = await f.runtime.openGuardianRecovery({ kind: 'resume' }, new AbortController().signal, () => undefined);
+    await resumed.prepare(); await resumed.review();
+    assert.equal(resumed.getSnapshot().phase, 'waiting');
+    assert.equal(resumed.getSnapshot().transactionHash, hash);
+    assert.equal(resumed.getSnapshot().canAbandon, false);
+    assert.equal(f.submitted.length, 1); assert.equal(f.signatures.length, 2);
+  } finally { resumed?.dispose(); controller.dispose(); await f.close(); }
+});
+
+test('locking during new recovery observation cannot persist an intent or sign', async () => {
+  const f = await fixture({}, true);
+  let held: ReturnType<typeof f.guardianStatus> | undefined;
+  try {
+    await f.change({ kind: 'create-smart', label: 'Held recovery', password: PASSWORD });
+    held = f.guardianStatus('hold');
+    const pending = f.runtime.openGuardianRecovery({ kind: 'start', guardianId: 'hd:60:0', replacementId: 'hd:60:0' }, new AbortController().signal, () => undefined);
+    const rejected = assert.rejects(pending);
+    for (let i = 0; !held.methods().length && i < 200; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    assert(held.methods().length); f.owner.lock(); held.release(); await rejected;
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+    await f.owner.unlock(PASSWORD); assert.equal(f.runtime.getGuardianRecoveryIntent(), null);
+  } finally { held?.release(); await f.close(); }
+});
+
+
+test('a different active recovery prevents signing the saved intent until status changes', async () => {
+  const { f, controller, policy } = await startNativeRecovery();
+  try {
+    const intent = f.runtime.getGuardianRecoveryIntent()!;
+    policy.recover({ ...intent.operation, salt: '0x' + '88'.repeat(32) }, 'pending');
+    await controller.prepare(); await controller.review();
+    assert.equal(controller.getSnapshot().phase, 'waiting');
+    assert.equal(controller.getSnapshot().action, null);
+    assert.equal(f.signatures.length, 0); assert.equal(f.submitted.length, 0);
+  } finally { controller.dispose(); await f.close(); }
 });

@@ -7,6 +7,7 @@ import {
   paliGuardianRecoveryModuleInterface as guardian,
   paliSmartAccountInterface as smartAccount,
 } from '../../../../source/utils/smartAccount/contracts.ts';
+import { getSmartAccountGuardianRecoveryHash, type SmartAccountGuardianRecoveryOperation } from '../../../../source/utils/smartAccount/recovery.ts';
 import { getGuardianRecoveryOperationId } from '../../../../source/utils/smartAccount/guardianStatus.ts';
 
 type Mode = 'healthy' | 'unsupported' | 'unsupported-revert' | 'unavailable' |
@@ -19,10 +20,11 @@ const word = (value: bigint) => `0x${value.toString(16).padStart(64, '0')}`;
 
 export function createGuardianRecoveryFixture(account = GUARDIAN_FIXTURE_ACCOUNT, now = Date.now) {
   const activeSlot = keccak256(AbiCoder.defaultAbiCoder().encode(['address', 'uint256'], [account, 3]));
-  const operation = getGuardianRecoveryOperationId({
+  let operation = getGuardianRecoveryOperationId({
     account, policyEpoch: '1', salt: word(1n), mode: word(0n), executionCalldata: '0x',
   });
   let mode: Mode = 'healthy';
+  let recoveryPhase: 'pending' | 'ready' | 'executed' | null = null;
   let code = '';
   const held = new Set<() => void>();
   const release = () => { for (const resume of held) resume(); held.clear(); };
@@ -31,6 +33,7 @@ export function createGuardianRecoveryFixture(account = GUARDIAN_FIXTURE_ACCOUNT
   let timestamp = 0;
   let guardianAddress = getAddress(`0x${'55'.repeat(20)}`), delay = 600, epoch = 1;
   return {
+    recover(intent: SmartAccountGuardianRecoveryOperation, phase: 'pending' | 'ready' | 'executed') { operation = getGuardianRecoveryOperationId(intent); recoveryPhase = phase; mode = 'healthy'; },
     configure(address: string, delaySeconds: number) { guardianAddress = getAddress(address); delay = delaySeconds; epoch++; },
     select(next: Mode, runtime: string) {
       release();
@@ -67,6 +70,13 @@ export function createGuardianRecoveryFixture(account = GUARDIAN_FIXTURE_ACCOUNT
           return { number: '0x20', gasLimit: '0x1c9c380', baseFeePerGas: '0x1', timestamp: `0x${timestamp.toString(16)}`,
             hash: ['reorg', 'eoa-reorg'].includes(currentMode) && params[0] !== 'latest' ? `0x${'44'.repeat(32)}` : BLOCK_HASH };
         }
+        if (method === 'eth_call' && getAddress(params[0].to) === MODULE) {
+          const call = guardian.parseTransaction({ data: params[0].data });
+          if (call?.name === 'getRecoveryScheduleHash') return guardian.encodeFunctionResult('getRecoveryScheduleHash', [getSmartAccountGuardianRecoveryHash({
+            account: call.args[0], chainId: 1, policyEpoch: String(epoch), recoveryModule: MODULE, salt: call.args[1], mode: call.args[2], executionCalldata: call.args[3],
+          })]);
+          if (call?.name === 'policyEpoch' && params.at(-1) === 'latest') return guardian.encodeFunctionResult('policyEpoch', [epoch]);
+        }
         if (params.at(-1) !== '0x20') throw new Error('Unanchored fixture request');
         if (method === 'eth_getCode') {
           const target = getAddress(params[0]);
@@ -74,9 +84,14 @@ export function createGuardianRecoveryFixture(account = GUARDIAN_FIXTURE_ACCOUNT
           if (target === account && (currentMode === 'eoa' || currentMode === 'eoa-reorg')) return '0x';
           if (target === account && currentMode === 'empty-contract') return '0x6000';
         }
-        if (method === 'eth_getStorageAt' && getAddress(params[0]) === MODULE)
-          return currentMode.startsWith('unsupported') || currentMode === 'no-policy' || currentMode === 'installed' ? word(0n)
-            : params[1] === activeSlot ? operation : word(BigInt(timestamp - 100));
+        if (method === 'eth_getStorageAt' && getAddress(params[0]) === MODULE) {
+          if (currentMode.startsWith('unsupported') || currentMode === 'no-policy' || currentMode === 'installed') return word(0n);
+          if (params[1] === activeSlot) return recoveryPhase === 'executed' ? word(0n) : operation;
+          const operationSlot = keccak256(AbiCoder.defaultAbiCoder().encode(['bytes32', 'uint256'], [operation, 4]));
+          if (recoveryPhase && params[1] !== operationSlot) return word(0n);
+          return word(BigInt(recoveryPhase === 'ready' || recoveryPhase === 'executed' ? timestamp - delay : timestamp - 100) |
+            (recoveryPhase === 'executed' ? 1n << 48n : 0n));
+        }
         if (method === 'eth_call') {
           const { to, data } = params[0];
           if (getAddress(to) === account) {

@@ -4,11 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { NativeGuardianRecoveryStatus } from '../custody/evmTransferReadRpc';
 import { Button, Card, colors, Header, Screen, Text } from '../ui';
 import { NativeGuardianPolicy, type NativeGuardianPolicyTool } from './NativeGuardianPolicy';
+import { NativeGuardianRecovery, type NativeGuardianRecoveryTool } from './NativeGuardianRecovery';
 
 export type WatchGuardianRecoveryTool = {
   scope: string;
   address: string;
   manage?: NativeGuardianPolicyTool;
+  recovery?: NativeGuardianRecoveryTool;
   read(signal: AbortSignal, assertCurrent: () => void): Promise<NativeGuardianRecoveryStatus>;
 };
 
@@ -24,10 +26,10 @@ const OPERATION_LABELS = {
   unknown: 'Recovery status unavailable',
 } as const;
 
-export function WatchGuardianRecovery({ address, networkLabel, read, manage, lifetime, onBack }:
-  Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; onBack(): void }) {
+export function WatchGuardianRecovery({ address, networkLabel, read, manage, recovery, initialRecovery, lifetime, onBack }:
+  Omit<WatchGuardianRecoveryTool, 'scope'> & { networkLabel: string; lifetime: AbortSignal; initialRecovery?: boolean; onBack(): void }) {
   const [state, setState] = useState<State>({ status: 'idle' });
-  const [editing, setEditing] = useState<'set' | 'remove' | null>(null);
+  const [editing, setEditing] = useState<'set' | 'remove' | 'recover' | null>(initialRecovery && recovery?.hasIntent ? 'recover' : null);
   const owner = useRef<AbortController | null>(null);
   const cancel = () => { owner.current?.abort(); owner.current = null; };
   useLayoutEffect(() => {
@@ -62,7 +64,11 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, lif
       : operation ? OPERATION_LABELS[operation.status] : 'No recovery scheduled'
     : null;
 
-  if (editing && manage && observation) {
+  if (editing === 'recover' && recovery) {
+    return <NativeGuardianRecovery address={address} networkLabel={networkLabel} observation={observation ?? null}
+      recovery={recovery} lifetime={lifetime} onBack={onBack} />;
+  }
+  if (editing && editing !== 'recover' && manage && observation) {
     return <NativeGuardianPolicy key={editing} action={editing} address={address} networkLabel={networkLabel}
       observation={observation} manage={manage} lifetime={lifetime} onBack={onBack} />;
   }
@@ -88,6 +94,7 @@ export function WatchGuardianRecovery({ address, networkLabel, read, manage, lif
     </Card>}
     {manage && observation && <Button title={observation.exists ? 'Update guardian' : 'Set guardian'} onPress={() => setEditing('set')} />}
     {manage && observation?.exists && <Button title="Remove guardian" variant="quiet" onPress={() => setEditing('remove')} />}
+    {recovery && (recovery.hasIntent || observation?.exists) && <Button title={recovery.hasIntent ? 'Resume recovery' : 'Recover account'} onPress={() => setEditing('recover')} />}
     <Button title={state.status === 'idle' ? 'Check status' : 'Check again'} onPress={() => { void check(); }} disabled={state.status === 'loading'} />
   </Screen></SafeAreaView>;
 }

@@ -130,6 +130,11 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const [readGuardianRecovery, setReadGuardianRecovery] = useState<Controllers['readGuardianRecovery'] | null>(null);
   const [openGuardianPolicy, setOpenGuardianPolicy] = useState<Controllers['openGuardianPolicy'] | null>(null);
   const [inspectGuardianRemoval, setInspectGuardianRemoval] = useState<Controllers['inspectGuardianRemoval'] | null>(null);
+  const [guardianRecoveryController, setGuardianRecoveryController] = useState<Controllers['guardianRecovery'] | null>(null);
+  const [recoveryActivity, setRecoveryActivity] = useState<{
+    local: Controllers; epoch: number; context: string; targetId: string; payerId: string; chainId: number; hash: string;
+  } | null>(null);
+  const [resumeGuardianScope, setResumeGuardianScope] = useState<string | null>(null);
   const [ledgerView, setLedgerView] = useState<NativeLedgerImportView | null>(null);
   const [ledgerConnection, setLedgerConnection] = useState<NativeLedgerConnectionView | null>(null);
   const [accountView, setAccountView] = useState<Controllers['accounts'] | null>(null);
@@ -201,6 +206,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     rootOrigin.current = null;
     importRequest.current.active = false; setImportActiveToken(null); setImportScope(null);
     controllers.current?.authentication?.cancel();
+    setRecoveryActivity(null); setResumeGuardianScope(null);
     controllers.current?.keyExport.cancel(); controllers.current?.backup.cancel(); controllers.current?.authority.lock();
     Keyboard.dismiss(); clearSecrets(); setSendDraft(null); if (!recoveryRef.current && !retainRemoval) setStage('choose'); setError('');
   }, [clearSecrets, lockNoteRestore]);
@@ -238,6 +244,18 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           throw new Error('CANCELLED');
       }),
     } : undefined,
+    recovery: guardianRecoveryController ? {
+      chainId: Number(getNativeNetwork(snapshot.account.network, catalogue?.networks).chainId),
+      currency: getNativeNetwork(snapshot.account.network, catalogue?.networks).symbol,
+      accounts: (catalogue?.accounts ?? []).filter(account => account.slip44 === 60 && (account.type === 'HDAccount' || account.type === 'Imported')),
+      hasIntent: guardianRecoveryController.hasIntent(),
+      onActivity: (payerId: string, chainId: number, hash: string) => openRecoveryActivity(payerId, chainId, hash),
+      open: (draft: Parameters<Controllers['guardianRecovery']['open']>[0], signal: AbortSignal, assertView: () => void) => guardianRecoveryController.open(draft, signal, () => {
+        assertView();
+        if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
+          throw new Error('CANCELLED');
+      }),
+    } : undefined,
     read: (signal: AbortSignal, assertView: () => void) => readGuardianRecovery(signal, () => {
       assertView();
       if (!mounted.current || epoch.current !== guardianEpoch || AppState.currentState !== 'active' || readyContext()?.context !== guardianContext)
@@ -263,6 +281,44 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   const shellIdentity = stage === 'choose' && snapshot.phase === 'ready' && snapshot.account && catalogue
     ? `${catalogue.active.accountId}:${snapshot.account.network}` : null;
   const shell = useRealShell(shellIdentity, currentShellScope, exit);
+  const openRecoveryActivity = async (payerId: string, chainId: number, hash: string) => {
+    const local = controllers.current;
+    const before = local?.authority.getCatalogue();
+    const capturedEpoch = epoch.current;
+    if (!local || !before || !guardianContext || readyContext()?.context !== guardianContext ||
+        AppState.currentState !== 'active' || !/^0x[0-9a-f]{64}$/i.test(hash) ||
+        Number(getNativeNetwork(before.active.networkId, before.networks).chainId) !== chainId ||
+        !before.accounts.some(account => account.id === payerId && (account.type === 'HDAccount' || account.type === 'Imported'))) throw Error('CANCELLED');
+    const targetId = before.active.accountId;
+    await local.accounts.execute({ kind: 'select', id: payerId }, local.authority.getSnapshot().revision, before.revision);
+    const after = local.authority.getCatalogue();
+    const context = readyContext();
+    if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active' ||
+        !after || !context || after.active.accountId !== payerId || Number(getNativeNetwork(after.active.networkId, after.networks).chainId) !== chainId)
+      throw Error('CANCELLED');
+    setRecoveryActivity({ local, epoch: capturedEpoch, context: context.context, targetId, payerId, chainId, hash });
+    shell.restoreRoot('activity', context.identity);
+  };
+  const returnToRecovery = async () => {
+    const saved = recoveryActivity;
+    if (!saved || !mounted.current || controllers.current !== saved.local || epoch.current !== saved.epoch ||
+        AppState.currentState !== 'active' || readyContext()?.context !== saved.context) return;
+    const before = saved.local.authority.getCatalogue();
+    if (!before || !before.accounts.some(account => account.id === saved.targetId && account.type === 'SmartAccount' &&
+        account.smartAccount?.chainId === saved.chainId)) return;
+    setRecoveryActivity(null);
+    await saved.local.accounts.execute({ kind: 'select', id: saved.targetId }, saved.local.authority.getSnapshot().revision, before.revision);
+    const context = readyContext();
+    const after = saved.local.authority.getCatalogue();
+    if (!mounted.current || controllers.current !== saved.local || epoch.current !== saved.epoch || AppState.currentState !== 'active' ||
+        !context || !after || after.active.accountId !== saved.targetId || Number(getNativeNetwork(after.active.networkId, after.networks).chainId) !== saved.chainId) return;
+    setResumeGuardianScope(`${saved.epoch}:${context.context}`);
+    shell.restoreRoot('tools', context.identity);
+  };
+  useEffect(() => {
+    if (recoveryActivity && (controllers.current !== recoveryActivity.local || epoch.current !== recoveryActivity.epoch ||
+        readyContext()?.context !== recoveryActivity.context)) setRecoveryActivity(null);
+  }, [recoveryActivity, snapshot.revision, readyContext]);
   const openStage = (next: Stage, sendTarget?: SendTarget) => {
     const local = controllers.current;
     const owner = local?.authority.getSnapshot();
@@ -369,7 +425,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       setStage((current) => current === 'send' ? 'choose' : current);
     }
     setCanRemoveWallet(false); setDeviceUnlockStatus(null);
-    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
+    setPublicSource(null); setBalanceReader(null); setReadGuardianRecovery(null); setOpenGuardianPolicy(null); setInspectGuardianRemoval(null); setGuardianRecoveryController(null); setRecoveryActivity(null); setResumeGuardianScope(null); setAccountView(null); setLedgerView(null); setLedgerConnection(null); setConnectionView(null); setConnectionSnapshot(null); setSigningReview(null); setNetworkView(null);
     setOpenNoteCapacity(null); setReadNoteInventory(null); setSaveIdle(null); setCatalogue(null); setTransferView(null); setOpenUtxoSend(null); setOpenSmartDeployment(null); setOpenSmartSend(null); setTokenView(null); setKeyExportView(null); setActivityView(null); setUtxoActivityView(null);
     bridge.current?.onNativeCatalogue(null);
   }, [cancelNoteRestore]);
@@ -401,6 +457,17 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         });
       }
       setSnapshot(state); setPublicSource(publicView); setBalanceReader(local.balanceReader); setConnectionView(local.connections); setTransferView(local.transfers); setOpenUtxoSend(() => local.openUtxoSend); setOpenSmartDeployment(() => local.openSmartAccountDeployment); setOpenSmartSend(() => local.openSmartAccountSend); setTokenView(local.tokens); setActivityView(local.activity); setUtxoActivityView(local.utxoActivity); setKeyExportView(local.keyExport); setNetworkView(networks);
+      setGuardianRecoveryController({
+        hasIntent: () => local.guardianRecovery.hasIntent(),
+        open: (draft, signal, assertView) => {
+          const capturedEpoch = epoch.current;
+          return local.guardianRecovery.open(draft, signal, () => {
+            assertView();
+            if (!mounted.current || controllers.current !== local || epoch.current !== capturedEpoch || AppState.currentState !== 'active')
+              throw new Error('CANCELLED');
+          });
+        },
+      });
       setOpenGuardianPolicy(() => local.canManageGuardianPolicy() ? (draft: Parameters<Controllers['openGuardianPolicy']>[0], signal: AbortSignal, assertView: () => void) => {
         const capturedEpoch = epoch.current;
         return local.openGuardianPolicy(draft, signal, () => {
@@ -939,6 +1006,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
           onBack={() => shell.finishLeave('wallet')} navigation={shell.navigation} />
       : activityView && !utxo
       ? <NativeActivityScreen controller={activityView} accountLabel={accountLabel}
+          initialHash={recoveryActivity && recoveryActivity.context === guardianContext ? recoveryActivity.hash : undefined}
           onReplay={canSign ? (hash) => openStage('send', { kind: 'saved', hash }) : undefined}
           onCancelPending={canSign ? (hash) => openStage('send', { kind: 'cancel', hash }) : undefined}
           onCancelSaved={canSign ? (hash) => openStage('send', { kind: 'cancel-saved', hash }) : undefined}
@@ -947,6 +1015,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
       : <UnavailableActivity accountLabel={accountLabel} watchOnly={false} onBack={() => shell.select('wallet')} />;
     else if (shell.tab === 'tools') content = <RealTools accountLabel={accountLabel} guardianRecovery={guardianRecovery}
       onGuardianClose={closeGuardian}
+      initialGuardianScope={resumeGuardianScope} onGuardianOpened={() => setResumeGuardianScope(null)}
       connections={connectionView ?? undefined}
       incomingPairing={incomingPairing} onPairingHandled={onPairingHandled}
       initialScan={scanIntentExpiresAt !== null} onScanStarted={scanStarted} onScanFinished={scanFinished}
@@ -972,7 +1041,10 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
         },
       } : undefined}
       onLock={revoke} onBack={() => shell.select('wallet')} />;
-    return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>{content}</RealAppShell>;
+    return <RealAppShell tab={shell.tab} onTab={shell.select} immersive={shell.immersive}>
+      {recoveryActivity && recoveryActivity.context === guardianContext && <Button title="Return to recovery" variant="secondary" onPress={() => void returnToRecovery().catch(() => undefined)} />}
+      {content}
+    </RealAppShell>;
   }
   else body = <Notice title="Wallet unavailable" body="Close and reopen Pali to try again." tone="amber" />;
 

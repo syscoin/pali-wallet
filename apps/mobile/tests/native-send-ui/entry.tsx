@@ -1,3 +1,4 @@
+import { NativeGuardianRecoveryFixture } from './nativeGuardianRecoveryFixture';
 import { NativeGuardianPolicyFixture } from './nativeGuardianPolicyFixture';
 import { NativeEoaBatchFixture } from './nativeEoaBatchFixture';
 import { NativeSmartBatchFixture } from './nativeSmartBatchFixture';
@@ -383,7 +384,9 @@ function Fixture() {
   );
   return (
     <SafeAreaProvider>
-      {new URLSearchParams(window.location.search).has('guardian-policy') ? (
+      {new URLSearchParams(window.location.search).has('guardian-recovery') ? (
+        <NativeGuardianRecoveryFixture />
+      ) : new URLSearchParams(window.location.search).has('guardian-policy') ? (
         <NativeGuardianPolicyFixture />
       ) : new URLSearchParams(window.location.search).has('eoa-batch') ? (
         <NativeEoaBatchFixture />
