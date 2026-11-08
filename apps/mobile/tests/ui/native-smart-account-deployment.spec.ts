@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type Locator, type Page } from '@playwright/test';
 
 test.use({ baseURL: 'http://127.0.0.1:4179' });
 
@@ -48,6 +48,28 @@ async function expectContained(page: Page) {
   expect(overflow).toEqual([]);
 }
 
+async function expectFullyInViewport(locator: Locator) {
+  await expect(async () => {
+    const before = await locator.boundingBox();
+    const viewport = await locator.evaluate(async () => {
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      });
+      return { width: window.innerWidth, height: window.innerHeight };
+    });
+    const after = await locator.boundingBox();
+    expect(before).not.toBeNull();
+    expect(after).not.toBeNull();
+    expect(Math.abs(after!.x - before!.x)).toBeLessThanOrEqual(0.5);
+    expect(Math.abs(after!.y - before!.y)).toBeLessThanOrEqual(0.5);
+    expect(after!.x).toBeGreaterThanOrEqual(-1);
+    expect(after!.y).toBeGreaterThanOrEqual(-1);
+    expect(after!.x + after!.width).toBeLessThanOrEqual(viewport.width + 1);
+    expect(after!.y + after!.height).toBeLessThanOrEqual(viewport.height + 1);
+  }).toPass({ timeout: 5000 });
+  await expect(locator).toBeInViewport({ ratio: 0.999 });
+}
+
 for (const width of [390, 320]) {
   for (const scenario of cases) {
     test(`${scenario.phase} stays contained and usable at ${width}px`, async ({
@@ -71,7 +93,7 @@ for (const width of [390, 320]) {
           exact: true,
         });
         await action.scrollIntoViewIfNeeded();
-        await expect(action).toBeVisible();
+        await expectFullyInViewport(action);
         await expect(action).toBeEnabled();
         expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       } else {
@@ -86,7 +108,12 @@ for (const width of [390, 320]) {
       }
       const close = page.getByRole('button', { name: 'Close', exact: true });
       await close.scrollIntoViewIfNeeded();
-      await expect(close).toBeVisible();
+      await expectFullyInViewport(close);
+      if ('action' in scenario) {
+        await expectFullyInViewport(
+          page.getByRole('button', { name: scenario.action, exact: true })
+        );
+      }
       expect((await close.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       await expectContained(page);
       await page.screenshot({
@@ -95,6 +122,7 @@ for (const width of [390, 320]) {
           .outputPath(`deployment-${scenario.phase}-${width}-actions.png`),
       });
       await page.getByRole('heading').scrollIntoViewIfNeeded();
+      await expectFullyInViewport(page.getByRole('heading'));
       await page.screenshot({
         path: test
           .info()
@@ -177,13 +205,22 @@ test('long authorization details remain complete and actions stay reachable on a
     exact: true,
   });
   await authorize.scrollIntoViewIfNeeded();
-  await expect(authorize).toBeVisible();
+  const close = page.getByRole('button', { name: 'Close', exact: true });
+  await close.scrollIntoViewIfNeeded();
+  await expectFullyInViewport(close);
+  await expectFullyInViewport(authorize);
   await page.screenshot({
     path: test.info().outputPath('deployment-details-bottom-320.png'),
   });
   await page
     .getByRole('button', { name: 'Hide authorization details', exact: true })
     .scrollIntoViewIfNeeded();
+  await expectFullyInViewport(
+    page.getByRole('button', {
+      name: 'Hide authorization details',
+      exact: true,
+    })
+  );
   await page.screenshot({
     path: test.info().outputPath('deployment-details-top-320.png'),
   });
@@ -199,12 +236,18 @@ test('long authorization details remain complete and actions stay reachable on a
   ).toBeEnabled();
   await expectContained(page);
   await page.getByRole('heading').scrollIntoViewIfNeeded();
+  await expectFullyInViewport(page.getByRole('heading'));
   await page.screenshot({
     path: test.info().outputPath('deployment-long-funding-320.png'),
   });
   await page
     .getByRole('button', { name: 'Confirm funding', exact: true })
     .scrollIntoViewIfNeeded();
+  await close.scrollIntoViewIfNeeded();
+  await expectFullyInViewport(close);
+  await expectFullyInViewport(
+    page.getByRole('button', { name: 'Confirm funding', exact: true })
+  );
   await page.screenshot({
     path: test.info().outputPath('deployment-long-funding-320-actions.png'),
   });
