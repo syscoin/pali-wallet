@@ -200,6 +200,8 @@ for (const interruption of ['cancel', 'cancel-during-retirement', 'lock', 'expir
     let nextRuntime: KeyringRuntime | undefined, nextStorage: OpenWalletStorage | undefined;
     const connect = (owner: NativeCustodyAuthority, runtime: () => KeyringRuntime) => new NativeConnectionsController({
       source: owner, openHost: () => runtime().openConnectionHost(), preparePlatform: async () => undefined,
+      checkSite: async () => ({ isBlacklisted: false }),
+      checkAddress: async () => ({ isBlacklisted: false, severity: 'low' }),
       projectId: 'public-removal-fixture',
       metadata: { name: 'Pali', description: '', url: 'https://paliwallet.com', icons: [] },
       openTransport: async () => {
