@@ -192,8 +192,8 @@ export function NativeGuardianPolicy({
           </View>
           <Text style={s.body}>
             This policy uses one guardian. A recovery request becomes ready
-            after {guardianDelayLabel(delay)} and expires after{' '}
-            {guardianDelayLabel(delay * 2)}.
+            after {guardianDelayLabel(delay)} and can be finalized for{' '}
+            {guardianDelayLabel(delay * 2)} once ready.
           </Text>
           {pendingId && (
             <Card style={s.card}>

@@ -197,7 +197,7 @@ export function NativeSmartAccountOperationContent({
               Recovery delay · {guardianDelayLabel(guardian.delaySeconds)}
             </Text>
             <Text style={s.label}>
-              Recovery request expires after ·{' '}
+              Finalization window once ready ·{' '}
               {guardianDelayLabel(guardian.delaySeconds * 2)}
             </Text>
           </Card>
