@@ -45,6 +45,7 @@ import type { NativeConnectionHost } from './host.ts';
 import type { NativeConnectionRepository } from './storage.ts';
 import {
   openWalletConnectTransport,
+  isWalletConnectCleanupFailure,
   type WalletConnectTransport,
   type WalletConnectTransportEvent,
   type WalletConnectProposal,
@@ -625,6 +626,13 @@ export class NativeConnectionsController {
         for (const event of events) this.onEvent(event);
         guard();
       } catch (error) {
+        if (isWalletConnectCleanupFailure(error)) {
+          this.transportRetirement = this.transportRetirement.then(() => {
+            throw error;
+          });
+          void this.transportRetirement.catch(() => undefined);
+          this.unavailable();
+        }
         if (this.transportOwner === owner) {
           this.transportOwner = undefined;
           this.transport = undefined;

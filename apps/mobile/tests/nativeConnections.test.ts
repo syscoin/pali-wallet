@@ -11,6 +11,7 @@ import type {
   WalletConnectProposal,
   WalletConnectVerification,
 } from '../src/connections/walletConnect.ts';
+import { openWalletConnectTransport } from '../src/connections/walletConnect.ts';
 import type { CustodySnapshot } from '../src/custody/types.ts';
 import type { KeyringStoragePort } from '../src/storage/types.ts';
 import type { INetwork, KeyringAccountType } from '../../../source/types/network.ts';
@@ -49,6 +50,7 @@ function fixture(
     restoring?: boolean;
     openFailures?: number;
     inventoryFailures?: number;
+    loadSdk?: Parameters<typeof openWalletConnectTransport>[0]['loadSdk'];
   } = {}
 ) {
   const { secondAccount = false, smart = false, smartMessages = false } = options;
@@ -417,13 +419,15 @@ function fixture(
       url: 'https://paliwallet.com',
       icons: [],
     },
-    openTransport: async (options) => {
+    openTransport: async (input) => {
       opened++;
-      transportEvents.push(options.onEvent);
+      transportEvents.push(input.onEvent);
       await openWait;
       if (openFailures-- > 0)
         throw new Error('Transport temporarily unavailable');
-      event = options.onEvent;
+      if (options.loadSdk)
+        return openWalletConnectTransport({ ...input, loadSdk: options.loadSdk });
+      event = input.onEvent;
       return {
         pair: async (uri, guard, onPairing) => {
           guard();
@@ -752,6 +756,67 @@ test('failed transport cleanup prevents a replacement client from opening', asyn
   assert.equal(f.opened(), 1);
   assert.equal(f.view.getSnapshot().status, 'unavailable');
   await assert.rejects(f.controller.dispose(), { message: 'Cleanup failed' });
+});
+
+test('failed SDK initialization cleanup blocks Retry and lock-unlock admission', async () => {
+  let releaseCleanup!: () => void, signalCleanup!: () => void;
+  const cleanup = new Promise<void>((resolve) => {
+    releaseCleanup = resolve;
+  });
+  const cleanupStarted = new Promise<void>((resolve) => {
+    signalCleanup = resolve;
+  });
+  let initializations = 0;
+  const f = fixture({
+    restoring: true,
+    loadSdk: async () => ({
+      requestExpirySeconds: { min: 60, max: 300 },
+      createCore: ({ storage }) => ({
+        storage,
+        pairing: {
+          pairings: { getAll: () => [] },
+          disconnect: async () => undefined,
+        },
+        async dispose() {
+          signalCleanup();
+          await cleanup;
+          throw new Error('private SDK cleanup failure');
+        },
+      }),
+      async initialize() {
+        initializations++;
+        throw new Error('private SDK initialization failure');
+      },
+      parseUri() {
+        throw new Error('Unexpected pairing');
+      },
+    }),
+  });
+  try {
+    await cleanupStarted;
+    const retry = assert.rejects(f.view.retry(), {
+      message: 'CONNECTION_UNAVAILABLE',
+    });
+    await settle();
+    assert.equal(initializations, 1);
+    releaseCleanup();
+    await retry;
+    await assert.rejects(f.view.retry(), { message: 'CONNECTION_UNAVAILABLE' });
+    f.lock();
+    f.unlock();
+    await settle();
+    await assert.rejects(f.view.retry(), { message: 'CONNECTION_UNAVAILABLE' });
+    assert.equal(initializations, 1);
+    assert.equal(f.opened(), 1);
+    assert.equal(f.view.getSnapshot().status, 'unavailable');
+    assert.equal((await f.repository).bindings().length, 1);
+    await assert.rejects(f.controller.dispose(), {
+      message: 'CONNECTION_UNAVAILABLE',
+    });
+  } finally {
+    releaseCleanup();
+    await f.controller.dispose().catch(() => undefined);
+  }
 });
 
 test('locking cancels disclosure while retaining durable grants and transport lifetime', async () => {

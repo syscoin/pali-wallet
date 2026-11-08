@@ -177,6 +177,13 @@ export class WalletConnectTransportError extends Error {
     this.name = 'WalletConnectTransportError';
   }
 }
+// Retain the original cleanup cause privately; caller-supplied fields cannot brand it.
+const cleanupFailures = new WeakMap<object, unknown>();
+export function isWalletConnectCleanupFailure(error: unknown): boolean {
+  return (
+    typeof error === 'object' && error !== null && cleanupFailures.has(error)
+  );
+}
 const fail = (): never => {
   throw new WalletConnectTransportError();
 };
@@ -467,7 +474,11 @@ export async function openWalletConnectTransport(options: {
       await repository.transport.getKeys();
       repository.assertHealthy();
     });
-    if (failures.length) fail();
+    if (failures.length) {
+      const error = new WalletConnectTransportError();
+      cleanupFailures.set(error, failures[0]);
+      throw error;
+    }
   };
   const close = () => {
     if (closePromise) return closePromise;
@@ -1011,11 +1022,7 @@ export async function openWalletConnectTransport(options: {
       close,
     });
   } catch {
-    try {
-      await close();
-    } catch {
-      /* Preserve the sanitized initialization failure. */
-    }
+    await close();
     return fail();
   }
 }
