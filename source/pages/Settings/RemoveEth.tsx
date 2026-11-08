@@ -34,12 +34,8 @@ const RemoveEthView = () => {
           const dapps = await controllerEmitter(['dapp', 'getAll']);
           for (const dapp of Object.values(dapps) as { host: string }[]) {
             await controllerEmitter(
-              ['dapp', 'disconnect'],
-              [
-                dapp.host,
-                true,
-                { propagateErrors: true, allowAlreadyDisconnected: true },
-              ]
+              ['dapp', 'revoke'],
+              [dapp.host, { allowAlreadyDisconnected: true }]
             );
           }
           await controllerEmitter(['wallet', 'removeWindowEthProperty']);

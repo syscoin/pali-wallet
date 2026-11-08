@@ -36,6 +36,7 @@ import * as syscoinjs from 'syscoinjs-lib';
 import { utils as syscoinTransactionTypes } from 'syscointx-js';
 
 import { getController, notificationManager } from '..';
+import { readStoredDappPermissions } from '../../../shared/dappTypes';
 import {
   encodeErc20Transfer,
   formatErc20Balance,
@@ -4828,7 +4829,17 @@ class MainController {
       persistenceMutex: walletPersistenceMutex,
       readPresence: readWalletPresence,
       rehydrate: (state: any) =>
-        rehydrateStore(store, state, state.vaultGlobal?.activeSlip44, false),
+        rehydrateStore(
+          store,
+          {
+            ...state,
+            ...(state.dapp
+              ? { dapp: readStoredDappPermissions(state.dapp) }
+              : {}),
+          },
+          state.vaultGlobal?.activeSlip44,
+          false
+        ),
       storage: chromeStorage,
     };
   }
@@ -5798,7 +5809,9 @@ class MainController {
     // the resulting dapp state in the same durable network-switch commit,
     // avoiding one full main-state write per disconnected site.
     await Promise.all(
-      incompatibleHosts.map((host) => controller.dapp.disconnect(host, false))
+      incompatibleHosts.map((host) =>
+        controller.dapp.retireForTransaction(host)
+      )
     );
     return incompatibleHosts.length > 0;
   }

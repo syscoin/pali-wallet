@@ -10,6 +10,7 @@ import { dispatchBackgroundEvent } from 'utils/browser';
 import { ChangeAccount } from './ChangeAccount';
 
 let mockState: any;
+let mockPermissionWrites: Promise<unknown> = Promise.resolve();
 let mockQuery: any;
 const mockEmitter = jest.fn();
 let mockConfirm: () => Promise<void>;
@@ -72,11 +73,31 @@ jest.mock('state/store', () => ({
   },
   saveMainState: jest.fn(async () => true),
   persistMainStateStrict: jest.fn(async () => undefined),
-  persistDappPermissionGrant: jest.fn(async (grant, previous, isCurrent) => {
-    if (!isCurrent() || mockState.dapp.dapps[grant.host] !== previous)
-      throw new Error('Permission grant context changed');
-    mockDispatch({ type: 'dapp/addDApp', payload: grant });
-  }),
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) => {
+      const result = mockPermissionWrites.then(operation, operation);
+      mockPermissionWrites = result.then(
+        () => undefined,
+        () => undefined
+      );
+      return result;
+    },
+    read: () => ({
+      dapps: mockState.dapp.dapps,
+      pendingOrigins: mockState.dapp.pendingOrigins ?? [],
+    }),
+    write: async () => undefined,
+    publish: (frame: unknown) => {
+      mockState = {
+        ...mockState,
+        dapp: dappReducer(mockState.dapp, {
+          type: 'dapp/rehydrate',
+          payload: frame,
+        }),
+      };
+    },
+  },
 }));
 jest.mock('scripts/Background/notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
@@ -97,6 +118,7 @@ const makeAccount = (id: number) => ({
   balances: { ethereum: 1 },
 });
 beforeEach(() => {
+  mockPermissionWrites = Promise.resolve();
   jest.clearAllMocks();
   mockBeforeGrant = undefined;
   mockState = {
@@ -126,7 +148,10 @@ beforeEach(() => {
   (chrome.runtime as any).id = 'pali';
   (chrome as any).tabs = { query: jest.fn((_q, cb) => cb([])) };
   (chrome as any).scripting = { executeScript: jest.fn(async () => []) };
-  const controller = DAppController(() => true);
+  const controller = DAppController(
+    () => true,
+    () => 0
+  );
   mockEmitter.mockImplementation(async (path, args) => {
     if (path[0] === 'dapp') {
       mockBeforeGrant?.();

@@ -1,17 +1,5 @@
-import { KeyringAccountType, INetworkType } from 'types/network';
-
-export interface IDApp {
-  accountId: number;
-  accountType: KeyringAccountType;
-  chain: INetworkType;
-  chainId: number;
-  date: number;
-  host: string;
-  logo?: string;
-  // EVM grants remain network-compatible. UTXO grants require an approved
-  // vault and stable reference, not a reusable numeric account slot.
-  utxoAccount?: { slip44: number; xpub: string };
-}
+import type { DappGrant } from '../../shared/dappTypes';
+export type { DappGrant as IDApp } from '../../shared/dappTypes';
 
 export interface IDAppState {
   /**
@@ -19,6 +7,7 @@ export interface IDAppState {
    * account information.
    */
   dapps: {
-    [host: string]: IDApp;
+    [host: string]: DappGrant;
   };
+  pendingOrigins?: readonly string[];
 }

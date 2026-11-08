@@ -21,7 +21,26 @@ jest.mock('state/store', () => ({
     getState: () => mockStore.getState(),
     dispatch: (action: any) => mockStore.dispatch(action),
   },
-  persistMainStateStrict: () => mockPersistMainStateStrict(),
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) =>
+      jest
+        .requireActual('utils/asyncMutex')
+        .walletPersistenceMutex.runExclusive(operation),
+    read: () => ({
+      dapps: mockStore.getState().dapp.dapps,
+      pendingOrigins: mockStore.getState().dapp.pendingOrigins ?? [],
+    }),
+    write: () => mockPersistMainStateStrict(),
+    publish: (frame: any) =>
+      mockStore.dispatch({
+        type: 'dapp/rehydrate',
+        payload: {
+          dapps: { ...frame.dapps },
+          pendingOrigins: [...frame.pendingOrigins],
+        },
+      }),
+  },
 }));
 jest.mock('scripts/Background', () => ({
   getController: () => mockController,
@@ -145,7 +164,10 @@ beforeEach(() => {
   });
   mockController = {
     wallet,
-    dapp: DAppController(() => wallet.isUnlocked()),
+    dapp: DAppController(
+      () => wallet.isUnlocked(),
+      () => 0
+    ),
   };
 });
 afterEach(() => {

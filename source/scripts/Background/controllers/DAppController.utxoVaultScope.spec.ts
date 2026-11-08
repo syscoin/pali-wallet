@@ -346,7 +346,7 @@ it('refuses a replaced account reference even in the same UTXO slot and vault', 
   });
 });
 
-it('does not let session synchronization authorize another UTXO reference', async () => {
+it('does not let an unreviewed account change authorize another UTXO reference', async () => {
   const previous = dapp.get(HOST);
   const vault = store.getState().vault;
   store.dispatch(
@@ -366,7 +366,13 @@ it('does not let session synchronization authorize another UTXO reference', asyn
       },
     })
   );
-  dapp.syncAccountSession(HOST, 1, TYPE);
+  await expect(
+    dapp.changeAccount(HOST, 1, TYPE, {
+      address: previous!.utxoAccount!.xpub,
+      xpub: previous!.utxoAccount!.xpub,
+      network: vault.activeNetwork,
+    })
+  ).rejects.toThrow('Account context changed');
   expect(dapp.get(HOST)).toBe(previous);
   await expect(providerRead()).resolves.toMatchObject({
     accounts: [ADDRESSES[0]],
@@ -425,7 +431,7 @@ it('rejects a foreign selection context without publishing its forged binding', 
 });
 
 it('revokes the scoped grant durably and keeps it revoked after restoration', async () => {
-  await dapp.disconnect(HOST, true, { propagateErrors: true });
+  await dapp.revoke(HOST, { allowAlreadyDisconnected: false });
   expect(mockDisk.state.dapp.dapps[HOST]).toBeUndefined();
   store.dispatch(rehydrateDapps(mockClone(mockDisk.state.dapp)));
   installControllers();

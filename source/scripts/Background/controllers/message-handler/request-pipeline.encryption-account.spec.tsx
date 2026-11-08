@@ -38,6 +38,7 @@ const { encrypt, getEncryptionPublicKey } = sdkRequire(
 );
 
 let mockState: any;
+let mockPermissionWrites: Promise<unknown> = Promise.resolve();
 let mockQuery: any;
 let mockController: any;
 let mockPopupResolve: (value: any) => void;
@@ -60,21 +61,30 @@ jest.mock('state/store', () => ({
   saveMainState: jest.fn(async () => true),
   // Match staged publication for this mocked store; real storage failures are
   // exercised by the account-change persistence integration suite.
-  persistDappPermissionGrant: async (grant, previous, isCurrent) => {
-    const assertCurrent = () => {
-      if (!isCurrent() || mockState.dapp.dapps[grant.host] !== previous)
-        throw new Error('Permission grant context changed');
-    };
-    assertCurrent();
-    await Promise.resolve();
-    assertCurrent();
-    mockState = {
-      ...mockState,
-      dapp: dappReducer(mockState.dapp, {
-        type: 'dapp/addDApp',
-        payload: grant,
-      }),
-    };
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) => {
+      const result = mockPermissionWrites.then(operation, operation);
+      mockPermissionWrites = result.then(
+        () => undefined,
+        () => undefined
+      );
+      return result;
+    },
+    read: () => ({
+      dapps: mockState.dapp.dapps,
+      pendingOrigins: mockState.dapp.pendingOrigins ?? [],
+    }),
+    write: async () => undefined,
+    publish: (frame: unknown) => {
+      mockState = {
+        ...mockState,
+        dapp: dappReducer(mockState.dapp, {
+          type: 'dapp/rehydrate',
+          payload: frame,
+        }),
+      };
+    },
   },
 }));
 jest.mock('react-redux', () => ({
@@ -185,6 +195,7 @@ const encryptedFor = (key = PRIVATE_KEY) =>
   ).toString('hex');
 
 beforeEach(() => {
+  mockPermissionWrites = Promise.resolve();
   // Node Buffer belongs to the host realm. TweetNaCl checks instanceof against
   // Uint8Array, so keep the JSDOM test's byte-array realm aligned with Buffer.
   global.Uint8Array = Object.getPrototypeOf(Buffer.prototype).constructor;
@@ -267,7 +278,13 @@ beforeEach(() => {
   // The real constructor binds public methods before message dispatch.
   wallet.getEncryptionPublicKeyForAccount =
     wallet.getEncryptionPublicKeyForAccount.bind(wallet);
-  mockController = { wallet, dapp: DAppController(() => true) };
+  mockController = {
+    wallet,
+    dapp: DAppController(
+      () => true,
+      () => 0
+    ),
+  };
   Object.assign(chrome.runtime, {
     id: 'synthetic-pali',
     getURL: (path: string) => `chrome-extension://synthetic-pali/${path}`,

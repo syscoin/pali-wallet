@@ -180,7 +180,7 @@ it.each([true, false])(
       );
       expect(
         mockEmitter.mock.calls.some(([methods]) =>
-          ['disconnect', 'removeWindowEthProperty'].includes(methods[1])
+          ['revoke', 'removeWindowEthProperty'].includes(methods[1])
         )
       ).toBe(false);
     } finally {

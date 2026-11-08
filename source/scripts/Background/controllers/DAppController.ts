@@ -1,53 +1,30 @@
-import { INetwork } from '@sidhujag/sysweb3-network';
-
-import { notificationManager } from '../notification-manager';
-import { addDApp, removeDApp, updateDAppAccount } from 'state/dapp';
-import { resolveDappAccount } from 'state/dapp/accountScope';
-import { IDApp } from 'state/dapp/types';
-import store, {
-  persistDappPermissionGrant,
-  persistMainStateStrict,
-  saveMainState,
-} from 'state/store';
-import { IOmittedVault } from 'state/vault/types';
 import {
-  IDAppAccountSelectionContext,
-  IDAppController,
-  IDAppDisconnectOptions,
-} from 'types/controllers';
-import { INetworkType, KeyringAccountType } from 'types/network';
+  createDappSessions,
+  type DappSessionEvent,
+} from '../../../wallet/dappSessions';
+import { notificationManager } from '../notification-manager';
+import store, { dappPermissionPort } from 'state/store';
+import type { IDAppController } from 'types/controllers';
 import { removeSensitiveDataFromVault, removeXprv } from 'utils/account';
 import { isAccountCompatibleWithNetwork } from 'utils/accountCompatibility';
 import { getDappOrigin, matchAttestedDappOrigin } from 'utils/dappOrigin';
 import { canPublishAccountAddress } from 'utils/smartAccount/addressIdentity';
 
 import { clearProviderCache } from './message-handler/provider-cache';
-import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
-interface IDappsSession {
-  [host: string]: {
-    activeAddress: string | null;
-    hasWindow: boolean;
-  };
-}
-
-const dispatchPropertyChange = async (
-  id: PaliEvents.addProperty | PaliEvents.removeProperty
-) => {
+const dispatchPropertyChange = async (id: string) => {
   if (!chrome.tabs || !chrome.runtime?.id) return;
   const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
     chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] }, (result) => {
       resolve(chrome.runtime.lastError ? [] : result || []);
     });
   });
-  // Provider availability is public and independent of account permission.
-  // Use the existing content-script receiver, not the account event channel.
   await Promise.allSettled(
     tabs
       .filter((tab) => tab.id !== undefined && getDappOrigin(tab.url || ''))
       .map((tab) =>
         chrome.tabs.sendMessage(
-          tab.id,
+          tab.id!,
           { id, data: { method: id, params: { type: id } } },
           { frameId: 0 }
         )
@@ -55,967 +32,97 @@ const dispatchPropertyChange = async (
   );
 };
 
-/**
- * Controls the dapp store
- *
- * DApps connections use the site host as id
- */
-const DAppController = (
-  isWalletUnlocked: () => boolean = () => false,
-  getWalletStateGeneration: () => number = () => 0
-): IDAppController => {
-  const _dapps: IDappsSession = {};
-  const pendingGrants = new Map<
-    string,
-    {
-      accountId: number;
-      accountType: KeyringAccountType;
-      isCurrent?: () => boolean;
-      previous?: IDApp;
-      restoredPrevious?: IDApp;
-      retiredPrevious?: IDApp;
-    }
-  >();
-  // Only origins whose real permission removal is pending may occupy this
-  // bounded retry state. Unconnected pages cannot populate it or force writes.
-  const pendingRevocations = new Map<string, { inFlight?: Promise<void> }>();
-  const MAX_PENDING_REVOCATIONS = 256;
-
-  const persistDappState = async (
-    operation: string,
-    strict = false,
-    onFailure?: () => void
-  ) => {
-    try {
-      if (strict) await persistMainStateStrict(onFailure);
-      else await saveMainState();
-    } catch (error) {
-      console.error(`[DAppController] Failed to persist ${operation}:`, error);
-      throw error;
-    }
-  };
-
-  // Message handler is registered in handleListeners - no need to register here
-  // This prevents duplicate listener registration which causes "message port closed" errors
-
-  const currentConnection = (host: string) => {
-    const { dapp, vault } = store.getState();
-    const connection = dapp.dapps[host];
-    // Keep raw foreign-vault grants manageable without resolving their slots
-    // against an unrelated account in the active vault.
-    return connection &&
-      connection.chain === vault?.activeNetwork?.kind &&
-      (connection.chain !== INetworkType.Syscoin ||
-        resolveDappAccount(connection, vault.accounts, vault.activeNetwork))
-      ? connection
-      : undefined;
-  };
-
-  const isConnected = (host: string) => Boolean(currentConnection(host));
-
-  const setup = (sender: chrome.runtime.MessageSender) => {
-    // Validate sender and sender.url to prevent TypeError
-    if (!sender || !sender.url) {
-      console.warn(
-        '[DAppController] setup called with invalid sender:',
-        sender
-      );
-      return;
-    }
-
-    try {
-      const host = matchAttestedDappOrigin(sender.url, sender.origin);
-      if (!host) return;
-      if (!isConnected(host)) {
-        delete _dapps[host];
-        return;
-      }
-
-      const { isBitcoinBased } = store.getState().vault;
-      const activeAccount = isBitcoinBased
-        ? getAccount(host)?.xpub
-        : getAccount(host)?.address;
-      _dapps[host] = {
-        activeAddress: activeAccount ? activeAccount : null,
-        hasWindow: false,
-      };
-    } catch (error) {
-      console.error(
-        '[DAppController] Error in setup with sender.url:',
-        sender.url,
-        error
-      );
-    }
-  };
-
-  const connect = async (
-    dapp: IDApp,
-    expectedContext: IDAppAccountSelectionContext
-  ) => {
-    if (!expectedContext)
-      throw new Error('Account selection context is required');
-    await grantAccountPermission(
-      dapp.host,
-      dapp.accountId,
-      dapp.accountType,
-      expectedContext,
-      dapp
-    );
-  };
-
-  const validateAccountSelection = (
-    accountId: number,
-    accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext
-  ) => {
-    const {
-      accounts,
-      activeNetwork: network,
-      isBitcoinBased,
-    } = store.getState().vault;
-    const account = accounts[accountType]?.[accountId];
-    if (
-      !account ||
-      !isAccountCompatibleWithNetwork(account, accountType, network) ||
-      !canPublishAccountAddress(account, accountType, network.chainId)
-    )
-      throw new Error('Account is not available on the active network');
-    if (expectedContext !== undefined) {
-      const sameAddress =
-        typeof expectedContext?.address === 'string' &&
-        (isBitcoinBased
-          ? account.address === expectedContext.address
-          : account.address.toLowerCase() ===
-            expectedContext.address.toLowerCase());
-      if (
-        !sameAddress ||
-        account.xpub !== expectedContext?.xpub ||
-        network.kind !== expectedContext?.network?.kind ||
-        network.chainId !== expectedContext?.network?.chainId ||
-        network.url !== expectedContext?.network?.url ||
-        network.slip44 !== expectedContext?.network?.slip44
-      )
-        throw new Error(
-          'Account context changed. Please select an account again.'
-        );
-    }
-    return { account, network, isBitcoinBased };
-  };
-
-  const grantAccountPermission = (
-    host: string,
-    accountId: number,
-    accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext,
-    connectionDetails?: IDApp,
-    stageReplacement?: (grant: IDApp) => void
-  ) => {
-    // Validate before touching the grant or session, including identities that
-    // changed while the approval message was travelling to the worker.
-    const { account, network, isBitcoinBased } = validateAccountSelection(
-      accountId,
-      accountType,
-      expectedContext
-    );
-    if (
-      connectionDetails &&
-      (connectionDetails.chain !== network.kind ||
-        connectionDetails.chainId !== network.chainId)
-    )
-      throw new Error('Connection network context changed');
-    if (pendingGrants.has(host))
-      throw new Error('A permission grant is already pending for this site');
-    const date = connectionDetails?.date ?? Date.now();
-    const state = store.getState();
-    const walletStateGeneration = getWalletStateGeneration();
-    const existingDapp = state.dapp.dapps[host];
-    const grant: IDApp = connectionDetails
-      ? { ...connectionDetails }
-      : existingDapp?.chain === network.kind
-      ? { ...existingDapp, accountId, accountType, date }
-      : {
-          host,
-          accountId,
-          accountType,
-          date,
-          chain: network.kind,
-          chainId: network.chainId,
-        };
-    const address = account.address;
-    const xpub = account.xpub;
-    const slip44 = network.slip44 ?? 57;
-    if (
-      isBitcoinBased &&
-      (!Number.isSafeInteger(slip44) ||
-        typeof xpub !== 'string' ||
-        xpub.length === 0)
-    )
-      throw new Error('Account reference is not available');
-    // Only the validated background selection can mint this binding. Explicit
-    // reapproval replaces any previous or caller-supplied namespace/reference.
-    if (isBitcoinBased) grant.utxoAccount = { slip44, xpub };
-    else delete grant.utxoAccount;
-    stageReplacement?.(grant);
-    const selectedNetwork = { ...network };
-    const attempt: NonNullable<ReturnType<typeof pendingGrants.get>> = {
-      accountId,
-      accountType,
-      previous: existingDapp,
-    };
-    pendingGrants.set(host, attempt);
-    const isCurrent = () => {
-      const { accounts, activeNetwork } = store.getState().vault;
-      const current = accounts[accountType]?.[accountId];
-      return (
-        getWalletStateGeneration() === walletStateGeneration &&
-        pendingGrants.get(host) === attempt &&
-        current?.address === address &&
-        current?.xpub === xpub &&
-        (!isBitcoinBased || (activeNetwork.slip44 ?? 57) === slip44) &&
-        isAccountCompatibleWithNetwork(current, accountType, activeNetwork) &&
-        canPublishAccountAddress(current, accountType, activeNetwork.chainId) &&
-        // Initial connection approval also promises its advertised network.
-        // An existing permission request admits the selected identity across
-        // compatible EVM networks and retains that established behavior.
-        (!connectionDetails ||
-          (activeNetwork.kind === selectedNetwork.kind &&
-            activeNetwork.chainId === selectedNetwork.chainId &&
-            activeNetwork.url === selectedNetwork.url &&
-            activeNetwork.slip44 === selectedNetwork.slip44))
-      );
-    };
-
-    attempt.isCurrent = isCurrent;
-    return persistDappPermissionGrant(
-      grant,
-      existingDapp,
-      isCurrent,
-      () => attempt.restoredPrevious,
-      () =>
-        existingDapp !== undefined &&
-        pendingGrants.get(host) === attempt &&
-        attempt.retiredPrevious === existingDapp
-    )
-      .finally(clearProviderCache)
-      .then(() => {
-        if (!isCurrent() || store.getState().dapp.dapps[host] !== grant)
-          throw new Error('Permission grant context changed');
-        if (!_dapps[host])
-          _dapps[host] = { activeAddress: '', hasWindow: false };
-
-        if (connectionDetails)
-          notificationManager.notifyDappConnection(host, true);
-
-        _dapps[host].activeAddress = isBitcoinBased
-          ? account.xpub
-          : account.address;
-
-        // For UTXO, also send xpubChanged for consumers that track xpub directly
-        if (isBitcoinBased) {
-          _dispatchPaliEvent(
-            host,
-            {
-              method: PaliSyscoinEvents.xpubChanged,
-              params: account.xpub,
-            },
-            PaliSyscoinEvents.xpubChanged
-          );
-        }
-
-        // Always dispatch accountsChanged with the address for consistency across network types
-        _dispatchPaliEvent(
-          host,
-          {
-            method: PaliEvents.accountsChanged,
-            params: [account.address],
+/** Browser discovery and document attestation are transport responsibilities. */
+const resolveDelivery = async (origin: string, id: string) => {
+  if (!chrome.tabs || !chrome.scripting || !chrome.runtime?.id) return null;
+  const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
+    chrome.tabs.query({ url: `${origin}/*` }, (result) => {
+      resolve(chrome.runtime.lastError ? [] : result || []);
+    });
+  });
+  const targets = tabs.filter(
+    (tab, index) =>
+      getDappOrigin(tab.url || '') === origin &&
+      index === tabs.findIndex((other) => other.id === tab.id)
+  );
+  if (targets.length === 0) return null;
+  return async (prepare: () => DappSessionEvent, isCurrent: () => boolean) => {
+    if (!isCurrent()) return;
+    await Promise.allSettled(
+      targets.map(async (tab) => {
+        if (!isCurrent() || !tab.id) return;
+        const event = prepare();
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'ISOLATED',
+          func: (eventJson, approvedOrigin) => {
+            if (self.origin !== approvedOrigin) return;
+            window.dispatchEvent(
+              new CustomEvent('paliNotification', { detail: eventJson })
+            );
           },
-          PaliEvents.accountsChanged
-        );
-
-        return { account, network, isBitcoinBased, date };
-      })
-      .finally(() => {
-        if (pendingGrants.get(host) === attempt) pendingGrants.delete(host);
-      });
-  };
-
-  const requestPermissions = (
-    host: string,
-    accountId: number,
-    accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext
-  ) =>
-    grantAccountPermission(host, accountId, accountType, expectedContext).then(
-      ({ account, network, isBitcoinBased, date }) => {
-        const response: any = [
-          {
-            id: '1',
-            parentCapability: 'eth_accounts',
-            invoker: host,
-            caveats: [
-              { type: 'restrictReturnedAccounts', value: [account.address] },
-            ],
-            date,
-          },
-        ];
-        if (!isBitcoinBased)
-          response.push({
-            id: '2',
-            parentCapability: 'endowment:permitted-chains',
-            invoker: host,
-            caveats: [
-              {
-                type: 'restrictNetworkSwitching',
-                value: [`0x${network.chainId.toString(16)}`],
-              },
-            ],
-            date,
-          });
-        return response;
-      }
-    );
-
-  const changeAccount = async (
-    host: string,
-    accountId: number,
-    accountType: KeyringAccountType,
-    expectedContext?: IDAppAccountSelectionContext,
-    stageReplacement?: (grant: IDApp) => void
-  ) => {
-    if (!isConnected(host))
-      throw new Error('Unable to update account. DApp does not exist');
-    // The admitted permission change must survive without the approval view's
-    // optional wallet switch. Publish and notify only after its durable write.
-    await grantAccountPermission(
-      host,
-      accountId,
-      accountType,
-      expectedContext,
-      undefined,
-      stageReplacement
-    );
-  };
-
-  const syncAccountSession = (
-    host: string,
-    accountId: number,
-    accountType: KeyringAccountType
-  ) => {
-    const date = Date.now();
-    const { accounts, isBitcoinBased, activeNetwork } = store.getState().vault;
-    const account = accounts[accountType]?.[accountId];
-    if (!account || !isConnected(host)) return;
-    if (
-      isBitcoinBased &&
-      !resolveDappAccount(
-        { ...get(host), accountId, accountType },
-        accounts,
-        activeNetwork
-      )
-    )
-      return;
-
-    store.dispatch(updateDAppAccount({ host, accountId, date, accountType }));
-
-    if (!_dapps[host]) {
-      _dapps[host] = { activeAddress: '', hasWindow: false };
-    }
-
-    _dapps[host].activeAddress = isBitcoinBased
-      ? account.xpub
-      : account.address;
-  };
-
-  const dispatchDisconnectedAccounts = (host: string) => {
-    _dispatchPaliEvent(
-      host,
-      { method: PaliEvents.accountsChanged, params: [] },
-      PaliEvents.accountsChanged
-    ).catch((error) => {
-      console.warn(
-        '[DAppController] Failed to dispatch accountsChanged on disconnect:',
-        error
-      );
-    });
-    _dispatchPaliEvent(
-      host,
-      { method: PaliSyscoinEvents.xpubChanged, params: null },
-      PaliSyscoinEvents.xpubChanged
-    ).catch((error) => {
-      console.warn(
-        '[DAppController] Failed to dispatch xpubChanged on disconnect:',
-        error
-      );
-    });
-  };
-
-  const notifyDisconnected = (host: string) => {
-    notificationManager.notifyDappConnection(host, false);
-    dispatchDisconnectedAccounts(host);
-  };
-
-  const captureAccountSessionRetirement = (
-    accountId: number,
-    accountType: KeyringAccountType
-  ) => {
-    const generation = getWalletStateGeneration();
-    let retired = false;
-    const captured = Object.values(getAll()).filter(
-      (grant) =>
-        grant.accountId === accountId && grant.accountType === accountType
-    );
-    return {
-      grants: captured,
-      retire: () => {
-        if (retired || generation !== getWalletStateGeneration()) return;
-        retired = true;
-        for (const grant of captured) {
-          const host = grant.host;
-          if (getAll()[host]) continue;
-          const attempt = pendingGrants.get(host);
-          if (
-            attempt?.previous === grant &&
-            (attempt.accountId !== accountId ||
-              attempt.accountType !== accountType) &&
-            attempt.isCurrent?.()
-          ) {
-            // Only this pending attempt may replace the exact grant removed
-            // by the durable account commit. A later grant gets no token.
-            attempt.retiredPrevious = grant;
-          }
-          // The writer removed this exact grant and retires synchronously.
-          // setup() may have refreshed its session during the storage await;
-          // any newly approved grant above still protects its own session.
-          delete _dapps[host];
-          notifyDisconnected(host);
-        }
-      },
-    };
-  };
-
-  const disconnectDurably = (
-    host: string,
-    allowAlreadyDisconnected: boolean,
-    canceledGrant = false
-  ): Promise<void> => {
-    const pending = pendingRevocations.get(host);
-    if (pending?.inFlight) {
-      if (canceledGrant || _dapps[host] || getAll()[host]) {
-        // A newer or unpublished grant is not covered by the earlier write.
-        // Queue its removal after both that attempt and the staged grant write.
-        const revokeCurrentPermission = () =>
-          disconnectDurably(host, allowAlreadyDisconnected, canceledGrant);
-        return pending.inFlight.then(
-          revokeCurrentPermission,
-          revokeCurrentPermission
-        );
-      }
-      return pending.inFlight;
-    }
-    if (!pending && !canceledGrant && !_dapps[host] && !getAll()[host]) {
-      if (allowAlreadyDisconnected) {
-        // Another main-state save may have persisted a failed removal before
-        // the worker restarted and lost its retry map. Reconcile the caller's
-        // provider state without another storage write or connection toast.
-        dispatchDisconnectedAccounts(host);
-        return Promise.resolve();
-      }
-      return Promise.reject(new Error('DApp not connected'));
-    }
-    if (!pending && pendingRevocations.size >= MAX_PENDING_REVOCATIONS) {
-      return Promise.reject(
-        new Error('Too many pending revocations; retry an earlier revocation')
-      );
-    }
-    const entry = pending || {};
-    const previous = getAll()[host];
-    const session = _dapps[host];
-    const generation = getWalletStateGeneration();
-    const account = previous
-      ? store.getState().vault.accounts[previous.accountType]?.[
-          previous.accountId
-        ]
-      : undefined;
-    let restored = false;
-    const restorePermission = () => {
-      const current = previous
-        ? store.getState().vault.accounts[previous.accountType]?.[
-            previous.accountId
-          ]
-        : undefined;
-      if (
-        !previous ||
-        !account ||
-        pendingRevocations.get(host) !== entry ||
-        generation !== getWalletStateGeneration() ||
-        getAll()[host] ||
-        _dapps[host] ||
-        current?.address !== account.address ||
-        current?.xpub !== account.xpub
-      )
-        return;
-      const pendingApproval = pendingGrants.get(host);
-      if (pendingApproval && pendingApproval.previous === undefined)
-        pendingApproval.restoredPrevious = previous;
-      store.dispatch(addDApp(previous));
-      if (session) _dapps[host] = session;
-      restored = true;
-    };
-    pendingRevocations.set(host, entry);
-    // Install the shared promise before work begins so concurrent same-origin
-    // requests cannot write or emit the disconnect events more than once.
-    entry.inFlight = Promise.resolve()
-      .then(async () => {
-        await persistDappState('dapp disconnect', true, restorePermission);
-        // A newly approved connection must not receive stale disconnect UI.
-        if (!_dapps[host] && !getAll()[host]) notifyDisconnected(host);
-        pendingRevocations.delete(host);
-      })
-      .catch((error) => {
-        entry.inFlight = undefined;
-        if (restored && pendingRevocations.get(host) === entry)
-          pendingRevocations.delete(host);
-        throw error;
-      });
-    // Remove synchronously after installing the shared attempt, so another
-    // ordinary revoke joins it rather than mistaking this permission for new.
-    if (_dapps[host] || getAll()[host]) {
-      delete _dapps[host];
-      store.dispatch(removeDApp(host));
-    }
-    return entry.inFlight;
-  };
-
-  const disconnect = async (
-    host: string,
-    persist = true,
-    options: IDAppDisconnectOptions = {}
-  ) => {
-    const canceledGrant = pendingGrants.delete(host);
-    try {
-      if (persist && options.propagateErrors) {
-        await disconnectDurably(
-          host,
-          Boolean(options.allowAlreadyDisconnected),
-          canceledGrant
-        );
-        return;
-      }
-      const previousConnectedDapps = getAll();
-      const isInActiveSession = Boolean(_dapps[host]);
-
-      switch (isInActiveSession) {
-        case true:
-          delete _dapps[host];
-          store.dispatch(removeDApp(host));
-          if (persist) {
-            await persistDappState('dapp disconnect', options.propagateErrors);
-          }
-
-          notifyDisconnected(host);
-          break;
-        case false:
-          if (previousConnectedDapps[host]) {
-            store.dispatch(removeDApp(host));
-            if (persist) {
-              await persistDappState(
-                'dapp disconnect',
-                options.propagateErrors
-              );
-            }
-
-            notifyDisconnected(host);
-          } else if (!options.allowAlreadyDisconnected) {
-            throw new Error('DApp not connected');
-          }
-          break;
-      }
-    } catch (error) {
-      console.error('[DAppController] Error in disconnect:', error);
-      // Permission revocation needs the real result; keep legacy callers best-effort.
-      if (options.propagateErrors || error.message === 'DApp not connected') {
-        throw error;
-      }
-      // Otherwise, log and continue to prevent service worker crashes
-    }
-  };
-  //HandleStateChange purpose is to dispatch notifications that are meant to be globally
-  //broadcasted to all Dapps on browser being them connected or not
-  //The lockStateChanged and chainChanged events, that should be globally updated
-  //So that's why it is fetching all hosts
-  const handleStateChange = async (
-    id: PaliEvents,
-    data: { method: string; params: any }
-  ): Promise<void> =>
-    new Promise<void>((resolve, reject) => {
-      try {
-        const hosts = new Set(Object.keys(_dapps));
-        if (
-          id === PaliEvents.chainChanged ||
-          id === PaliEvents.isBitcoinBased ||
-          (id === PaliEvents.lockStateChanged &&
-            data?.params?.isUnlocked === false)
-        ) {
-          // A failed revoke may restore this session. Keep only its public
-          // network/locked state current while account access remains revoked.
-          for (const host of pendingRevocations.keys()) hosts.add(host);
-        }
-
-        // Validate input data - params can be null for some events like pali_accountsChanged on UTXO
-        if (!data || !data.method || data.params === undefined) {
-          console.warn(
-            '[DAppController] handleStateChange received invalid data:',
-            { id, data }
-          );
-          resolve();
-          return;
-        }
-
-        if (id === PaliEvents.addProperty || id === PaliEvents.removeProperty) {
-          dispatchPropertyChange(id).then(resolve, reject);
-          return;
-        }
-
-        for (const host of hosts) _dispatchPaliEvent(host, data, id);
-        resolve();
-      } catch (error) {
-        reject(`${error}`);
-      }
-    });
-
-  const handleBlockExplorerChange = async (
-    id: PaliSyscoinEvents,
-    data: { method: string; params: any }
-  ): Promise<void> =>
-    new Promise<void>((resolve) => {
-      const hosts = Object.keys(_dapps);
-      for (const host of hosts) {
-        _dispatchPaliEvent(host, data, id);
-      }
-      resolve();
-    });
-
-  const publicAccountEvent = (
-    host: string,
-    data: { method: string; params: any }
-  ) => {
-    if (
-      data.method !== PaliEvents.accountsChanged &&
-      data.method !== PaliSyscoinEvents.xpubChanged &&
-      data.method !== PaliEvents.lockStateChanged
-    ) {
-      return data;
-    }
-
-    // Re-read after the asynchronous tab lookup. A global account change must
-    // never disclose another site's account, nor a revoked/locked connection.
-    const { vault } = store.getState();
-    const connection = currentConnection(host);
-    const account = resolveDappAccount(
-      connection,
-      vault.accounts,
-      vault.activeNetwork
-    );
-    const isUnlocked =
-      isWalletUnlocked() &&
-      (data.method !== PaliEvents.lockStateChanged ||
-        data.params?.isUnlocked === true);
-    const mayDisclose =
-      isUnlocked &&
-      connection &&
-      isAccountCompatibleWithNetwork(
-        account,
-        connection.accountType,
-        vault.activeNetwork
-      );
-    const address = mayDisclose ? account.address : null;
-    const xpub =
-      mayDisclose && vault.isBitcoinBased ? account.xpub || null : null;
-
-    if (data.method === PaliEvents.lockStateChanged) {
-      return {
-        method: data.method,
-        params: { isUnlocked, accounts: address ? [address] : [], xpub },
-      };
-    }
-    return {
-      method: data.method,
-      params:
-        data.method === PaliEvents.accountsChanged
-          ? address
-            ? [address]
-            : []
-          : xpub,
-    };
-  };
-
-  const networkPublicationScope = () => {
-    const { vault, vaultGlobal } = store.getState();
-    const network = vault.activeNetwork;
-    return JSON.stringify([
-      getWalletStateGeneration(),
-      network.kind,
-      network.chainId,
-      network.slip44,
-      network.url,
-      network.apiUrl,
-      vaultGlobal?.activeSlip44,
-      vault.isBitcoinBased,
-    ]);
-  };
-  const networkPublications = new Map<string, Promise<void>>();
-
-  const _dispatchPaliEvent = async (
-    host: string,
-    data?: { method: string; params: any },
-    id = 'notification',
-    isCurrent: () => boolean = () => true
-  ) => {
-    // Don't dispatch notifications with undefined or invalid data
-    if (!data || !data.method || data.method === 'undefined') {
-      console.warn(
-        '[DAppController] Skipping paliNotification dispatch - invalid data:',
-        { id, data, host }
-      );
-      return;
-    }
-
-    // These fields describe one public network snapshot. Do not deliver an
-    // older member after a switch/reset while its tab lookup was pending.
-    const networkScope =
-      data.method === PaliEvents.chainChanged ||
-      data.method === PaliEvents.isBitcoinBased ||
-      data.method === PaliSyscoinEvents.blockExplorerChanged
-        ? networkPublicationScope()
-        : undefined;
-    const canDispatch = () =>
-      isCurrent() &&
-      (networkScope === undefined ||
-        networkScope === networkPublicationScope());
-    let publication: Promise<void> | undefined;
-    let finishPublication: (() => void) | undefined;
-
-    try {
-      // Check if chrome APIs are available (service worker might be terminating)
-      if (!chrome.tabs || !chrome.scripting || !chrome.runtime?.id) {
-        console.warn(
-          '[DAppController] Chrome APIs not available - service worker may be terminating'
-        );
-        return;
-      }
-
-      // Bare-host legacy permissions cannot identify the originally approved
-      // scheme. Keep them visible/removable in settings, but never grant access
-      // or send account events until the site reconnects with an origin key.
-      const origin = getDappOrigin(host);
-      if (!origin || origin !== host) return;
-      const queryPatterns = [`${origin}/*`];
-      // Query tabs for each pattern and combine results
-      const allTabs: chrome.tabs.Tab[] = [];
-
-      for (const pattern of queryPatterns) {
-        try {
-          const tabs = await new Promise<chrome.tabs.Tab[]>((resolve) => {
-            chrome.tabs.query({ url: pattern }, (result) => {
-              if (chrome.runtime.lastError) {
-                console.warn(
-                  `[DAppController] Warning querying tabs for ${pattern}:`,
-                  chrome.runtime.lastError.message
-                );
-                resolve([]);
-                return;
-              }
-              resolve(result || []);
-            });
-          });
-          allTabs.push(...tabs);
-        } catch (queryError) {
-          console.warn(
-            `[DAppController] Error querying tabs for ${pattern}:`,
-            queryError
-          );
-        }
-      }
-
-      // Remove duplicates (in case a tab matches multiple patterns)
-      const uniqueTabs = allTabs.filter(
-        (tab, index, self) =>
-          getDappOrigin(tab.url || '') === origin &&
-          index === self.findIndex((t) => t.id === tab.id)
-      );
-      if (!canDispatch()) return;
-
-      if (networkScope !== undefined && uniqueTabs.length > 0) {
-        const previous = networkPublications.get(host);
-        publication = new Promise<void>((resolve) => {
-          finishPublication = resolve;
+          args: [JSON.stringify({ id, data: event }), origin],
         });
-        networkPublications.set(host, publication);
-        // executeScript settles after execution. Keep each origin ordered even
-        // when Chrome has accepted an old script that cannot be withdrawn.
-        await previous;
-        if (!canDispatch()) return;
-      }
-
-      if (uniqueTabs.length > 0) {
-        // Use Promise.allSettled to handle individual tab failures gracefully
-        const injectionResults = await Promise.allSettled(
-          uniqueTabs.map(async (tab) => {
-            if (!canDispatch()) return;
-            if (!tab.id) {
-              return Promise.reject(new Error('Tab has no ID'));
-            }
-
-            try {
-              // Skip chrome:// URLs and other protected pages
-              if (
-                tab.url &&
-                (tab.url.startsWith('chrome://') ||
-                  tab.url.startsWith('chrome-extension://') ||
-                  tab.url.startsWith('edge://'))
-              ) {
-                return Promise.reject(new Error('Protected URL'));
-              }
-
-              return await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                world: 'ISOLATED',
-                func: (eventJson, approvedOrigin) => {
-                  // A sandboxed document's URL can match the approved origin
-                  // even when its actual origin is opaque.
-                  if (self.origin !== approvedOrigin) return;
-                  const event = new CustomEvent('paliNotification', {
-                    detail: eventJson,
-                  });
-                  window.dispatchEvent(event);
-                },
-                // Chrome's ANY argument conversion drops null object fields.
-                // Serialize before that boundary to preserve the event schema.
-                args: [
-                  JSON.stringify({ id, data: publicAccountEvent(host, data) }),
-                  origin,
-                ],
-              });
-            } catch (error) {
-              // Don't let individual tab failures crash the service worker
-              console.debug(
-                `[DAppController] Could not inject event into tab ${tab.id}:`,
-                error
-              );
-              return Promise.reject(error);
-            }
-          })
-        );
-
-        // Log summary of results
-        const successful = injectionResults.filter(
-          (r) => r.status === 'fulfilled'
-        ).length;
-        const failed = injectionResults.filter(
-          (r) => r.status === 'rejected'
-        ).length;
-
-        if (successful > 0) {
-          console.debug(
-            `[DAppController] Event dispatched to ${successful} tab(s) for ${host}`
-          );
-        }
-        if (failed > 0) {
-          console.debug(
-            `[DAppController] Failed to dispatch to ${failed} tab(s) for ${host} (this is normal for protected pages)`
-          );
-        }
-      } else {
-        console.debug(`[DAppController] No tabs found for host ${host}`);
-      }
-    } catch (error) {
-      // Catch any unexpected errors to prevent service worker crash
-      console.error(
-        '[DAppController] Unexpected error in _dispatchPaliEvent:',
-        error
-      );
-    } finally {
-      finishPublication?.();
-      if (publication && networkPublications.get(host) === publication) {
-        networkPublications.delete(host);
-      }
-    }
-  };
-
-  const resetSessions = async (previousOrigins: string[]) => {
-    const generation = getWalletStateGeneration();
-    const hosts = new Set([...previousOrigins, ...Object.keys(_dapps)]);
-    pendingGrants.clear();
-    for (const host of Object.keys(_dapps)) delete _dapps[host];
-    // Forget has already committed. Notify even when a worker restart lost
-    // the runtime session; never let delayed notices clear a newer grant.
-    await Promise.all(
-      Array.from(hosts, async (host) => {
-        for (const [method, params] of [
-          [PaliEvents.lockStateChanged, { isUnlocked: false }],
-          [PaliEvents.accountsChanged, []],
-          [PaliSyscoinEvents.xpubChanged, null],
-        ] as const) {
-          await _dispatchPaliEvent(
-            host,
-            { method, params },
-            method,
-            () => generation === getWalletStateGeneration() && !getAll()[host]
-          );
-        }
       })
     );
-  };
-
-  //* ----- Getters/Setters -----
-  const get = (host: string) => store.getState().dapp.dapps[host];
-
-  const getAll = () => store.getState().dapp.dapps;
-
-  const getAccount = (host: string) => {
-    const { accounts, activeNetwork } = store.getState().vault;
-    const account = resolveDappAccount(get(host), accounts, activeNetwork);
-    return account ? removeXprv(account) : null;
-  };
-
-  const getState = (): IOmittedVault =>
-    removeSensitiveDataFromVault(store.getState().vault);
-
-  const getNetwork = (): INetwork => {
-    const { activeNetwork } = store.getState().vault;
-
-    // Explorer API URLs may contain credentials; keep them internal.
-    const network = { ...activeNetwork };
-    delete network.apiUrl;
-    return network;
-  };
-
-  const hasWindow = (host: string) => _dapps[host].hasWindow;
-
-  const setHasWindow = (host: string, has: boolean) => {
-    _dapps[host].hasWindow = has;
-  };
-
-  return {
-    captureAccountSessionRetirement,
-    get,
-    getAll,
-    getAccount,
-    isConnected,
-    setup,
-    connect,
-    changeAccount,
-    syncAccountSession,
-    disconnect,
-    resetSessions,
-    requestPermissions,
-    hasWindow,
-    handleStateChange,
-    handleBlockExplorerChange,
-    getState,
-    getNetwork,
-    setHasWindow,
   };
 };
 
+/** The extension adapter supplies public state and browser transport to one shared owner. */
+const DAppController = (
+  isWalletUnlocked: () => boolean,
+  getWalletStateGeneration: () => number
+): IDAppController => {
+  if (
+    typeof isWalletUnlocked !== 'function' ||
+    typeof getWalletStateGeneration !== 'function'
+  )
+    throw new TypeError('Wallet authority callbacks are required');
+  const sessions = createDappSessions({
+    wallet() {
+      const { vault, vaultGlobal } = store.getState();
+      return {
+        generation: getWalletStateGeneration(),
+        unlocked: isWalletUnlocked(),
+        network: vault.activeNetwork,
+        isBitcoinBased: vault.isBitcoinBased,
+        activeSlip44: vaultGlobal?.activeSlip44,
+      };
+    },
+    account(id, type) {
+      const account = store.getState().vault.accounts[type]?.[id];
+      return account && removeXprv(account);
+    },
+    canPublishAccount: (account, type, network) =>
+      canPublishAccountAddress(account, type, network.chainId),
+    isAccountAvailable: (account, type, network) =>
+      isAccountCompatibleWithNetwork(account, type, network) &&
+      canPublishAccountAddress(account, type, network.chainId),
+    permissions: dappPermissionPort,
+    resolveDelivery,
+    providerAvailability: dispatchPropertyChange,
+    notifyConnection: (origin, connected) =>
+      notificationManager.notifyDappConnection(origin, connected),
+    clearProviderCache,
+    now: () => Date.now(),
+    reportError: (operation, error) =>
+      console.error(`[DAppController] ${operation}:`, error),
+  });
+  return {
+    ...sessions,
+    setup(sender) {
+      const origin =
+        sender && matchAttestedDappOrigin(sender.url, sender.origin);
+      if (origin) sessions.setup(origin);
+    },
+    hasWindow: sessions.hasApproval,
+    setHasWindow: sessions.setApprovalOpen,
+    getState: () => removeSensitiveDataFromVault(store.getState().vault),
+    getNetwork() {
+      const network = { ...store.getState().vault.activeNetwork };
+      delete network.apiUrl;
+      return network;
+    },
+  };
+};
 export default DAppController;

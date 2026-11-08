@@ -1,7 +1,7 @@
 let mockState: any;
 let mockGeneration = 0;
-const mockPersistGrant = jest.fn();
-const mockSave = jest.fn();
+const mockWrite = jest.fn();
+let mockPersistenceQueue: Promise<unknown> = Promise.resolve();
 const mockDispatch = jest.fn();
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -9,9 +9,23 @@ jest.mock('state/store', () => ({
     getState: () => mockState,
     dispatch: (action: any) => mockDispatch(action),
   },
-  persistDappPermissionGrant: (...args: any[]) => mockPersistGrant(...args),
-  persistMainStateStrict: (...args: any[]) => mockSave(...args),
-  saveMainState: (...args: any[]) => mockSave(...args),
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    exclusive: (operation: () => Promise<unknown>) => {
+      const result = mockPersistenceQueue.then(operation);
+      mockPersistenceQueue = result.catch(() => undefined);
+      return result;
+    },
+    read: () => ({
+      dapps: mockState.dapp.dapps,
+      pendingOrigins: mockState.dapp.pendingOrigins ?? [],
+    }),
+    write: (...args: any[]) => mockWrite(...args),
+    publish: (frame: any) => {
+      mockDispatch({ type: 'dapp/rehydrate', payload: frame });
+      mockState.dapp = frame;
+    },
+  },
 }));
 jest.mock('../notification-manager', () => ({
   notificationManager: { notifyDappConnection: jest.fn() },
@@ -26,6 +40,9 @@ import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 const HOST = 'https://reset-session.example';
 const ADDRESS = `0x${'11'.repeat(20)}`;
 const grant = {
+  host: HOST,
+  chainId: 1,
+  date: 1,
   accountId: 0,
   accountType: KeyringAccountType.HDAccount,
   chain: INetworkType.Ethereum,
@@ -43,10 +60,17 @@ const deferred = () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockGeneration = 0;
+  mockPersistenceQueue = Promise.resolve();
+  mockWrite.mockReset().mockResolvedValue(undefined);
   mockState = {
     dapp: { dapps: { [HOST]: grant } },
     vault: {
-      activeNetwork: { chainId: 1, kind: INetworkType.Ethereum, slip44: 60 },
+      activeNetwork: {
+        chainId: 1,
+        kind: INetworkType.Ethereum,
+        slip44: 60,
+        url: 'https://rpc.invalid',
+      },
       accounts: { HDAccount: { 0: { id: 0, address: ADDRESS } } },
       isBitcoinBased: false,
     },
@@ -92,10 +116,10 @@ it.each([
         data: { method: PaliSyscoinEvents.xpubChanged, params: null },
       },
     ]);
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockWrite).not.toHaveBeenCalled();
     expect(mockDispatch).not.toHaveBeenCalled();
     expect(dapp.getAll()).toEqual({});
-    expect(() => dapp.hasWindow(HOST)).toThrow();
+    expect(dapp.hasWindow(HOST)).toBe(false);
     (chrome.scripting.executeScript as jest.Mock).mockClear();
     await dapp.handleStateChange(PaliEvents.accountsChanged, {
       method: PaliEvents.accountsChanged,
@@ -128,7 +152,7 @@ it.each(['generation', 'new grant'])(
     reply([{ id: 7, url: `${HOST}/page` }]);
     await resetting;
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
-    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockWrite).not.toHaveBeenCalled();
   }
 );
 
@@ -165,7 +189,10 @@ it.each([false, true])(
       isUnlocked,
     };
     mockState.dapp.dapps = {};
-    await DAppController().resetSessions([HOST]);
+    await DAppController(
+      () => false,
+      () => 0
+    ).resetSessions([HOST]);
     for (const { data } of notices()) {
       if (data.method === PaliEvents.lockStateChanged)
         provider._handleUnlockStateChanged(data.params);
@@ -190,18 +217,19 @@ it('treats unavailable notification delivery as best effort after commit', async
     new Error('Tab closed')
   );
   mockState.dapp.dapps = {};
-  await expect(DAppController().resetSessions([HOST])).resolves.toBeUndefined();
-  expect(mockSave).not.toHaveBeenCalled();
+  await expect(
+    DAppController(
+      () => false,
+      () => 0
+    ).resetSessions([HOST])
+  ).resolves.toBeUndefined();
+  expect(mockWrite).not.toHaveBeenCalled();
   jest.restoreAllMocks();
 });
 
-it('invalidates a pending grant without writing or reviving its old runtime session', async () => {
+it('invalidates a pending grant and repairs its staged write without reviving the old session', async () => {
   const held = deferred();
-  mockPersistGrant.mockImplementation(async (_next, _previous, isCurrent) => {
-    await held.promise;
-    if (!isCurrent()) throw new Error('Permission grant context changed');
-    throw new Error('Unexpected grant admission');
-  });
+  mockWrite.mockImplementationOnce(() => held.promise);
   const dapp = DAppController(
     () => true,
     () => mockGeneration
@@ -209,16 +237,18 @@ it('invalidates a pending grant without writing or reviving its old runtime sess
   const pending = dapp.requestPermissions(
     HOST,
     0,
-    KeyringAccountType.HDAccount
+    KeyringAccountType.HDAccount,
+    { address: ADDRESS, network: { ...mockState.vault.activeNetwork } }
   );
   const rejected = expect(pending).rejects.toThrow(
     'Permission grant context changed'
   );
+  await new Promise(setImmediate);
   mockState.dapp.dapps = {};
   await dapp.resetSessions([HOST]);
   held.resolve();
   await rejected;
   expect(dapp.getAll()).toEqual({});
-  expect(mockDispatch).not.toHaveBeenCalled();
-  expect(mockSave).not.toHaveBeenCalled();
+  expect(mockWrite).toHaveBeenCalledTimes(2);
+  expect(mockWrite.mock.calls[1][0]).toEqual({ dapps: {}, pendingOrigins: [] });
 });

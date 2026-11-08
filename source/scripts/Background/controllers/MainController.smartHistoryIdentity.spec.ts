@@ -199,9 +199,13 @@ beforeEach(async () => {
   Object.defineProperty(wallet, 'ethereumTransaction', {
     value: { web3Provider: provider },
   });
-  jest
-    .mocked(getController)
-    .mockReturnValue({ wallet, dapp: DAppController(() => true) } as any);
+  jest.mocked(getController).mockReturnValue({
+    wallet,
+    dapp: DAppController(
+      () => true,
+      () => 0
+    ),
+  } as any);
   await persistCommittedWalletState(true);
 });
 

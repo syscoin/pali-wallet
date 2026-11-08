@@ -23,7 +23,7 @@ import { ISpamFilterState } from 'types/security';
 import { walletPersistenceMutex } from 'utils/asyncMutex';
 import { chromeStorage } from 'utils/storageAPI';
 
-import dapp, { addDApp, removeDApp } from './dapp';
+import dapp, { removeDApp, rehydrate as rehydrateDapp } from './dapp';
 import { IDApp, IDAppState } from './dapp/types';
 import {
   assertWalletPersistenceAllowed,
@@ -209,57 +209,36 @@ export async function persistMainStateStrict(
   });
 }
 
-/** Publish an approved grant only after its main-state snapshot is durable. */
-export function persistDappPermissionGrant(
-  grant: IDApp,
-  previous: IDApp | undefined,
-  isCurrent: () => boolean,
-  restoredPrevious: () => IDApp | undefined = () => undefined,
-  isPreviousRetired: () => boolean = () => false
-): Promise<void> {
-  return walletPersistenceMutex.runExclusive(async () => {
-    // Capture the effective predecessor once: a failed revoke can restore its
-    // exact grant, or durable account removal can retire the exact old grant.
-    const admittedPrevious =
-      previous === undefined
-        ? restoredPrevious()
-        : store.getState().dapp.dapps[grant.host] === undefined &&
-          isPreviousRetired()
-        ? undefined
-        : previous;
-    const assertCurrent = () => {
-      assertWalletPersistenceAllowed();
-      if (
-        !isCurrent() ||
-        store.getState().dapp.dapps[grant.host] !== admittedPrevious
-      )
-        throw new Error('Permission grant context changed');
-    };
-    assertCurrent();
-    const state = store.getState();
-    const mainState = {
-      ...getMainStateForStorage(state),
-      dapp: {
-        ...state.dapp,
-        dapps: { ...state.dapp.dapps, [grant.host]: grant },
-      },
-    };
-    await chromeStorage.setItem('state', mainState);
-    lastPersistedState = mainState;
-    try {
-      assertCurrent();
-    } catch (error) {
-      // A revoke or replacement during the write must also remove the staged
-      // grant from disk. Keep the cache tied to the snapshot actually written.
-      assertWalletPersistenceAllowed();
-      const currentState = getMainStateForStorage(store.getState());
-      await chromeStorage.setItem('state', currentState);
-      lastPersistedState = currentState;
-      throw error;
-    }
-    store.dispatch(addDApp(grant));
-  });
-}
+/** Mandatory host I/O for the shared permission transaction owner. */
+export const dappPermissionPort: import('../wallet/dappSessions').DappPermissionPort =
+  {
+    assertWritable: assertWalletPersistenceAllowed,
+    exclusive: (operation) => walletPersistenceMutex.runExclusive(operation),
+    read: () => ({
+      dapps: store.getState().dapp.dapps,
+      pendingOrigins: store.getState().dapp.pendingOrigins ?? [],
+    }),
+    async write(frame) {
+      const state = store.getState();
+      const mainState = {
+        ...getMainStateForStorage(state),
+        dapp: {
+          dapps: { ...frame.dapps },
+          pendingOrigins: [...frame.pendingOrigins],
+        },
+      };
+      await chromeStorage.setItem('state', mainState);
+      lastPersistedState = mainState;
+    },
+    publish: (frame) => {
+      store.dispatch(
+        rehydrateDapp({
+          dapps: { ...frame.dapps },
+          pendingOrigins: [...frame.pendingOrigins],
+        })
+      );
+    },
+  };
 
 /** Commit provider availability before new content scripts can observe it. */
 export async function persistHasEthProperty(enabled: boolean): Promise<void> {

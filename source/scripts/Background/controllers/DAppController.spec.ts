@@ -1,7 +1,7 @@
 const dispatchMock = jest.fn();
 const getStateMock = jest.fn();
 const saveMainStateMock = jest.fn();
-const persistMainStateStrictMock = jest.fn();
+const permissionWriteMock = jest.fn();
 
 jest.mock('state/store', () => ({
   __esModule: true,
@@ -9,19 +9,23 @@ jest.mock('state/store', () => ({
     dispatch: (...args: any[]) => dispatchMock(...args),
     getState: () => getStateMock(),
   },
-  saveMainState: (...args: any[]) => saveMainStateMock(...args),
-  persistMainStateStrict: async (onFailure?: () => void) => {
-    try {
-      await persistMainStateStrictMock();
-    } catch (error) {
-      onFailure?.();
-      throw error;
-    }
-  },
-  persistDappPermissionGrant: async (grant, previous, isCurrent) => {
-    if (!isCurrent() || getStateMock().dapp.dapps[grant.host] !== previous)
-      throw new Error('Permission grant context changed');
-    dispatchMock({ type: 'dapp/addDApp', payload: grant });
+  dappPermissionPort: {
+    assertWritable: () => undefined,
+    // The real-store suite covers serialized I/O. These unit fixtures hold
+    // individual writes to exercise the session owner's overlap guards.
+    exclusive: (operation: () => Promise<unknown>) => operation(),
+    read: () => ({
+      dapps: getStateMock().dapp.dapps,
+      pendingOrigins: getStateMock().dapp.pendingOrigins ?? [],
+    }),
+    write: (frame: unknown) => permissionWriteMock(frame),
+    publish: (frame: any) => {
+      getStateMock().dapp = {
+        dapps: { ...frame.dapps },
+        pendingOrigins: [...frame.pendingOrigins],
+      };
+      dispatchMock({ type: 'dapp/rehydrate', payload: getStateMock().dapp });
+    },
   },
 }));
 
@@ -45,7 +49,11 @@ import DAppController from './DAppController';
 import { clearProviderCache } from './message-handler/provider-cache';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
 
-// Legacy event/revocation fixtures use the same explicit approval contract as
+beforeEach(() => {
+  permissionWriteMock.mockReset().mockResolvedValue(undefined);
+});
+
+// Event/revocation fixtures use the same explicit approval contract as
 // current callers. Their disk-boundary behavior is covered in the real-store
 // connectionPersistence suite.
 const connect = (controller: ReturnType<typeof DAppController>, dapp: any) => {
@@ -67,7 +75,6 @@ describe('DAppController idempotent permission revocation', () => {
   const host = 'https://revoking.example';
   const options = {
     allowAlreadyDisconnected: true,
-    propagateErrors: true,
   };
   let state: any;
   let errorSpy: jest.SpyInstance;
@@ -82,7 +89,7 @@ describe('DAppController idempotent permission revocation', () => {
     };
     (chrome as any).scripting = { executeScript: jest.fn() };
     saveMainStateMock.mockResolvedValue(true);
-    persistMainStateStrictMock.mockResolvedValue(undefined);
+    permissionWriteMock.mockResolvedValue(undefined);
     state = {
       dapp: { dapps: {} },
       vault: {
@@ -100,12 +107,6 @@ describe('DAppController idempotent permission revocation', () => {
       },
     };
     getStateMock.mockImplementation(() => state);
-    dispatchMock.mockImplementation((action) => {
-      if (action.type === 'dapp/removeDApp')
-        delete state.dapp.dapps[action.payload];
-      if (action.type === 'dapp/addDApp')
-        state.dapp.dapps[action.payload.host] = action.payload;
-    });
   });
 
   afterEach(() => {
@@ -114,40 +115,79 @@ describe('DAppController idempotent permission revocation', () => {
   });
 
   it('makes sequential revocations from never-connected origins read-only no-ops', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     for (let i = 0; i < 100; i++) {
       await expect(
-        controller.disconnect(host, true, options)
+        controller.revoke(host, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
       ).resolves.toBeUndefined();
       await expect(
-        controller.disconnect(`https://untrusted-${i}.example`, true, options)
+        controller.revoke(`https://untrusted-${i}.example`, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
       ).resolves.toBeUndefined();
     }
     expect(dispatchMock).not.toHaveBeenCalled();
     expect(saveMainStateMock).not.toHaveBeenCalled();
-    expect(persistMainStateStrictMock).not.toHaveBeenCalled();
+    expect(permissionWriteMock).not.toHaveBeenCalled();
     expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
   });
 
-  it('preserves the legacy missing-connection rejection by default', async () => {
-    await expect(DAppController().disconnect(host)).rejects.toThrow(
-      'DApp not connected'
-    );
+  it('rejects an oversized canonical origin before creating a persisted marker', async () => {
+    const origin = `https://${'a'.repeat(2048)}.example`;
+    expect(new URL(origin).origin).toBe(origin);
+    await expect(
+      connect(
+        DAppController(
+          () => true,
+          () => 0
+        ),
+        {
+          host: origin,
+          accountId: 0,
+          accountType: KeyringAccountType.HDAccount,
+          date: Date.now(),
+        }
+      )
+    ).rejects.toThrow('complete requesting origin');
+    expect(permissionWriteMock).not.toHaveBeenCalled();
+    expect(dispatchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an explicitly required connection when it is missing', async () => {
+    await expect(
+      DAppController(
+        () => false,
+        () => 0
+      ).revoke(host, { allowAlreadyDisconnected: false })
+    ).rejects.toThrow('DApp not connected');
   });
 
   it('removes and persists a stored connection after worker restart', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-    await DAppController().disconnect(host, true, options);
-    expect(dispatchMock).toHaveBeenCalledWith({
-      type: 'dapp/removeDApp',
-      payload: host,
+    await DAppController(
+      () => false,
+      () => 0
+    ).revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
     });
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'dapp/rehydrate',
+      payload: { dapps: {}, pendingOrigins: [] },
+    });
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
     expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
   it('removes and persists an active connection', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     await connect(controller, {
       host,
       accountId: 0,
@@ -158,25 +198,32 @@ describe('DAppController idempotent permission revocation', () => {
     });
     dispatchMock.mockClear();
     saveMainStateMock.mockClear();
-    persistMainStateStrictMock.mockClear();
+    permissionWriteMock.mockClear();
 
-    await controller.disconnect(host, true, options);
-    expect(dispatchMock).toHaveBeenCalledWith({
-      type: 'dapp/removeDApp',
-      payload: host,
+    await controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
     });
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(dispatchMock).toHaveBeenCalledWith({
+      type: 'dapp/rehydrate',
+      payload: { dapps: {}, pendingOrigins: [] },
+    });
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
     expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
   it('propagates real persistence failures for permission revocation', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
     const failure = new Error('Storage unavailable');
-    persistMainStateStrictMock.mockRejectedValueOnce(failure);
-    await expect(DAppController().disconnect(host, true, options)).rejects.toBe(
-      failure
-    );
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    permissionWriteMock.mockRejectedValueOnce(failure);
+    await expect(
+      DAppController(
+        () => false,
+        () => 0
+      ).revoke(host, {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      })
+    ).rejects.toBe(failure);
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
     expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
@@ -193,12 +240,17 @@ describe('DAppController idempotent permission revocation', () => {
         accountType: 'HDAccount',
         chain: state.vault.activeNetwork.kind,
       };
-      const controller = DAppController();
-      const failure = new Error('Storage unavailable');
-      persistMainStateStrictMock.mockRejectedValueOnce(failure);
-      await expect(controller.disconnect(host, true, options)).rejects.toBe(
-        failure
+      const controller = DAppController(
+        () => false,
+        () => 0
       );
+      const failure = new Error('Storage unavailable');
+      permissionWriteMock.mockRejectedValueOnce(failure);
+      await expect(
+        controller.revoke(host, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
+      ).rejects.toBe(failure);
       expect(state.dapp.dapps[host]).toBeDefined();
       expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
       expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
@@ -211,7 +263,10 @@ describe('DAppController idempotent permission revocation', () => {
       });
       await saveMainStateMock();
       state = persisted;
-      const restarted = DAppController();
+      const restarted = DAppController(
+        () => false,
+        () => 0
+      );
       (chrome.tabs.query as jest.Mock).mockImplementation((_query, callback) =>
         callback([
           { id: 1, url: `${host}/one` },
@@ -222,11 +277,13 @@ describe('DAppController idempotent permission revocation', () => {
       (chrome.scripting.executeScript as jest.Mock).mockResolvedValue([]);
 
       await expect(
-        restarted.disconnect(host, true, options)
+        restarted.revoke(host, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
       ).resolves.toBeUndefined();
       await new Promise((resolve) => setImmediate(resolve));
 
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(permissionWriteMock).toHaveBeenCalledTimes(2);
       expect(saveMainStateMock).toHaveBeenCalledTimes(1);
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
       expect(
@@ -273,8 +330,13 @@ describe('DAppController idempotent permission revocation', () => {
       callbacks.push(callback);
     });
     (chrome.scripting.executeScript as jest.Mock).mockResolvedValue([]);
-    const controller = DAppController(() => true);
-    await controller.disconnect(host, true, options);
+    const controller = DAppController(
+      () => true,
+      () => 0
+    );
+    await controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
     expect(callbacks).toHaveLength(2);
 
     await connect(controller, {
@@ -302,7 +364,7 @@ describe('DAppController idempotent permission revocation', () => {
       { method: PaliSyscoinEvents.xpubChanged, params: null },
     ]);
     expect(state.dapp.dapps[host]).toBeDefined();
-    expect(persistMainStateStrictMock).not.toHaveBeenCalled();
+    expect(permissionWriteMock).toHaveBeenCalledTimes(2);
     expect(saveMainStateMock).not.toHaveBeenCalled();
     expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
     expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
@@ -311,19 +373,27 @@ describe('DAppController idempotent permission revocation', () => {
     );
   });
 
-  it('preserves legacy best-effort persistence behavior by default', async () => {
+  it('retires a connection within its caller-owned transaction without a separate write', () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-    saveMainStateMock.mockRejectedValueOnce(new Error('Storage unavailable'));
-    await expect(DAppController().disconnect(host)).resolves.toBeUndefined();
-    expect(saveMainStateMock).toHaveBeenCalledTimes(1);
-    expect(persistMainStateStrictMock).not.toHaveBeenCalled();
+    DAppController(
+      () => false,
+      () => 0
+    ).retireForTransaction(host);
+    expect(state.dapp.dapps[host]).toBeUndefined();
+    expect(saveMainStateMock).not.toHaveBeenCalled();
+    expect(permissionWriteMock).not.toHaveBeenCalled();
   });
 
-  it('does not mistake a legacy false result for a durable revocation', async () => {
+  it('uses the strict write when an unrelated save reports no change', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
     saveMainStateMock.mockResolvedValue(false);
-    await DAppController().disconnect(host, true, options);
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    await DAppController(
+      () => false,
+      () => 0
+    ).revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
     expect(saveMainStateMock).not.toHaveBeenCalled();
   });
 
@@ -336,7 +406,10 @@ describe('DAppController idempotent permission revocation', () => {
         accountType: 'HDAccount',
         chain: INetworkType.Ethereum,
       };
-      const controller = DAppController();
+      const controller = DAppController(
+        () => false,
+        () => 0
+      );
       if (active) {
         await connect(controller, {
           host,
@@ -347,6 +420,7 @@ describe('DAppController idempotent permission revocation', () => {
           date: Date.now(),
         });
       }
+      permissionWriteMock.mockClear();
       (notificationManager.notifyDappConnection as jest.Mock).mockClear();
       (chrome.tabs.query as jest.Mock).mockImplementation((_query, callback) =>
         callback([
@@ -356,27 +430,28 @@ describe('DAppController idempotent permission revocation', () => {
         ])
       );
       (chrome.scripting.executeScript as jest.Mock).mockResolvedValue([]);
-      dispatchMock.mockImplementation((action) => {
-        if (action.type === 'dapp/removeDApp') delete state.dapp.dapps[host];
-        if (action.type === 'dapp/addDApp')
-          state.dapp.dapps[action.payload.host] = action.payload;
-      });
       const failure = new Error('Storage unavailable');
-      persistMainStateStrictMock.mockRejectedValueOnce(failure);
+      permissionWriteMock.mockRejectedValueOnce(failure);
 
-      await expect(controller.disconnect(host, true, options)).rejects.toBe(
-        failure
-      );
+      await expect(
+        controller.revoke(host, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
+      ).rejects.toBe(failure);
       expect(state.dapp.dapps[host]).toBeDefined();
       expect(notificationManager.notifyDappConnection).not.toHaveBeenCalled();
       expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
-      await controller.disconnect('https://unrelated.example', true, options);
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+      await controller.revoke('https://unrelated.example', {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      });
+      expect(permissionWriteMock).toHaveBeenCalledTimes(1);
       await expect(
-        controller.disconnect(host, true, options)
+        controller.revoke(host, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
       ).resolves.toBeUndefined();
       await new Promise((resolve) => setImmediate(resolve));
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(permissionWriteMock).toHaveBeenCalledTimes(2);
       expect(saveMainStateMock).not.toHaveBeenCalled();
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
@@ -398,47 +473,63 @@ describe('DAppController idempotent permission revocation', () => {
           ([call]) => call.target.tabId === 3
         )
       ).toBe(false);
-      await controller.disconnect(host, true, options);
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      await controller.revoke(host, {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      });
+      expect(permissionWriteMock).toHaveBeenCalledTimes(2);
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
     }
   );
 
   it('coalesces concurrent same-origin revocations into one write and one notification', async () => {
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     let release!: () => void;
-    persistMainStateStrictMock.mockImplementationOnce(
+    permissionWriteMock.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           release = resolve;
         })
     );
-    const first = controller.disconnect(host, true, options);
-    const second = controller.disconnect(host, true, options);
+    const first = controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
+    const second = controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
     await Promise.resolve();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
     release();
     await Promise.all([first, second]);
     expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
-    await controller.disconnect(host, true, options);
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(1);
+    await controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
+    expect(permissionWriteMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([false, true])(
     'revokes a newly reconnected permission after the earlier write settles (failed=%s)',
     async (failed) => {
       state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-      const controller = DAppController();
+      const controller = DAppController(
+        () => false,
+        () => 0
+      );
       let finish!: () => void;
-      persistMainStateStrictMock.mockImplementationOnce(
+      permissionWriteMock.mockImplementationOnce(
         () =>
           new Promise<void>((resolve, reject) => {
             finish = () =>
               failed ? reject(new Error('first write failed')) : resolve();
           })
       );
-      const first = controller.disconnect(host, true, options);
+      const first = controller.revoke(host, {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      });
       const firstResult = first.catch(() => undefined);
       await Promise.resolve();
       expect(state.dapp.dapps[host]).toBeUndefined();
@@ -451,12 +542,14 @@ describe('DAppController idempotent permission revocation', () => {
         date: Date.now(),
       });
       (notificationManager.notifyDappConnection as jest.Mock).mockClear();
-      const second = controller.disconnect(host, true, options);
+      const second = controller.revoke(host, {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      });
       finish();
       await firstResult;
       await second;
       expect(state.dapp.dapps[host]).toBeUndefined();
-      expect(persistMainStateStrictMock).toHaveBeenCalledTimes(2);
+      expect(permissionWriteMock).toHaveBeenCalledTimes(4);
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledTimes(1);
       expect(notificationManager.notifyDappConnection).toHaveBeenCalledWith(
         host,
@@ -465,10 +558,112 @@ describe('DAppController idempotent permission revocation', () => {
     }
   );
 
+  it.each(['revoke', 'reset'])(
+    'does not stage a candidate after reentrant %s during marker publication',
+    async (change) => {
+      let generation = 0;
+      const controller = DAppController(
+        () => true,
+        () => generation
+      );
+      const nextOrigin = 'https://new-wallet.example';
+      let retirement: Promise<void> | undefined;
+      dispatchMock.mockImplementationOnce(() => {
+        if (change === 'revoke') {
+          retirement = controller.revoke(host, {
+            allowAlreadyDisconnected: true,
+          });
+        } else {
+          generation += 1;
+          state.dapp = { dapps: {}, pendingOrigins: [nextOrigin] };
+          retirement = controller.resetSessions([host]);
+        }
+      });
+      await expect(
+        connect(controller, {
+          host,
+          accountId: 0,
+          accountType: KeyringAccountType.HDAccount,
+          date: Date.now(),
+        })
+      ).rejects.toThrow('context changed');
+      await retirement;
+      expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(
+        permissionWriteMock.mock.calls.every(
+          ([frame]) => frame.dapps[host] === undefined
+        )
+      ).toBe(true);
+      expect(notificationManager.notifyDappConnection).not.toHaveBeenCalledWith(
+        host,
+        true
+      );
+      if (change === 'reset') {
+        expect(permissionWriteMock).not.toHaveBeenCalled();
+        expect(state.dapp.pendingOrigins).toEqual([nextOrigin]);
+      }
+    }
+  );
+
+  it.each(['revoke', 'reset'])(
+    'does not return stale approval after %s while committed marker cleanup waits',
+    async (change) => {
+      let generation = 0;
+      const controller = DAppController(
+        () => true,
+        () => generation
+      );
+      let finishCleanup!: () => void;
+      permissionWriteMock
+        .mockResolvedValueOnce(undefined)
+        .mockImplementationOnce(
+          () =>
+            new Promise<void>((resolve) => {
+              finishCleanup = resolve;
+            })
+        );
+      const granting = connect(controller, {
+        host,
+        accountId: 0,
+        accountType: KeyringAccountType.HDAccount,
+        date: Date.now(),
+      });
+      const rejected = expect(granting).rejects.toThrow('context changed');
+      await new Promise(setImmediate);
+      // The staged grant passed its guard and committed before cleanup awaited.
+      expect(state.dapp.dapps[host]).toBeDefined();
+      expect(permissionWriteMock).toHaveBeenCalledTimes(2);
+      const nextOrigin = 'https://new-wallet.example';
+      let revocation: Promise<void> | undefined;
+      if (change === 'revoke') {
+        revocation = controller.revoke(host, {
+          allowAlreadyDisconnected: false,
+        });
+      } else {
+        generation += 1;
+        state.dapp = { dapps: {}, pendingOrigins: [nextOrigin] };
+        await controller.resetSessions([host]);
+      }
+      finishCleanup();
+      await rejected;
+      await revocation;
+      expect(state.dapp.dapps[host]).toBeUndefined();
+      expect(notificationManager.notifyDappConnection).not.toHaveBeenCalledWith(
+        host,
+        true
+      );
+      if (change === 'reset')
+        expect(state.dapp.pendingOrigins).toEqual([nextOrigin]);
+    }
+  );
+
   it('restores failed-origin permissions without consuming pending retry capacity', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     const failure = new Error('Storage unavailable');
-    persistMainStateStrictMock.mockRejectedValue(failure);
+    permissionWriteMock.mockRejectedValue(failure);
     for (let i = 0; i < 256; i++) {
       const origin = `https://connected-${i}.example`;
       state.dapp.dapps[origin] = {
@@ -476,21 +671,29 @@ describe('DAppController idempotent permission revocation', () => {
         accountId: 0,
         accountType: 'HDAccount',
       };
-      await expect(controller.disconnect(origin, true, options)).rejects.toBe(
-        failure
-      );
+      await expect(
+        controller.revoke(origin, {
+          allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+        })
+      ).rejects.toBe(failure);
     }
     state.dapp.dapps[host] = { host, accountId: 0, accountType: 'HDAccount' };
-    await expect(controller.disconnect(host, true, options)).rejects.toBe(
-      failure
-    );
+    await expect(
+      controller.revoke(host, {
+        allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+      })
+    ).rejects.toBe(failure);
     expect(state.dapp.dapps[host]).toBeDefined();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(257);
-    persistMainStateStrictMock.mockResolvedValue(undefined);
-    await controller.disconnect('https://connected-0.example', true, options);
-    await controller.disconnect(host, true, options);
+    expect(permissionWriteMock).toHaveBeenCalledTimes(257);
+    permissionWriteMock.mockResolvedValue(undefined);
+    await controller.revoke('https://connected-0.example', {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
+    await controller.revoke(host, {
+      allowAlreadyDisconnected: options.allowAlreadyDisconnected,
+    });
     expect(state.dapp.dapps[host]).toBeUndefined();
-    expect(persistMainStateStrictMock).toHaveBeenCalledTimes(259);
+    expect(permissionWriteMock).toHaveBeenCalledTimes(259);
   });
 });
 
@@ -500,7 +703,7 @@ describe('DAppController account changes', () => {
     id: 1,
     xpub: 'connected-xpub',
   };
-  const host = 'connected.example';
+  const host = 'https://connected.example';
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -533,29 +736,37 @@ describe('DAppController account changes', () => {
         isBitcoinBased: false,
       },
     });
-    dispatchMock.mockImplementation((action) => {
-      if (action.type === 'dapp/addDApp')
-        getStateMock().dapp.dapps[action.payload.host] = action.payload;
-    });
   });
 
   it('clears cached provider accounts when the persisted connection changes', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
 
     await controller.changeAccount(
       host,
       account.id,
-      KeyringAccountType.HDAccount
+      KeyringAccountType.HDAccount,
+      {
+        address: account.address,
+        xpub: account.xpub,
+        network: getStateMock().vault.activeNetwork,
+      }
     );
 
     expect(dispatchMock).toHaveBeenCalledWith(
       expect.objectContaining({
         payload: expect.objectContaining({
-          accountId: account.id,
-          accountType: KeyringAccountType.HDAccount,
-          host,
+          dapps: expect.objectContaining({
+            [host]: expect.objectContaining({
+              accountId: account.id,
+              accountType: KeyringAccountType.HDAccount,
+              host,
+            }),
+          }),
         }),
-        type: 'dapp/addDApp',
+        type: 'dapp/rehydrate',
       })
     );
     expect(clearProviderCache).toHaveBeenCalledTimes(1);
@@ -566,11 +777,18 @@ describe('DAppController account changes', () => {
   });
 
   it('does not clear the cache when the requested account does not exist', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     const errorSpy = jest.spyOn(console, 'error').mockImplementation();
 
     await expect(
-      controller.changeAccount(host, 99, KeyringAccountType.HDAccount)
+      controller.changeAccount(host, 99, KeyringAccountType.HDAccount, {
+        address: account.address,
+        xpub: account.xpub,
+        network: getStateMock().vault.activeNetwork,
+      })
     ).rejects.toThrow('Account is not available');
 
     expect(dispatchMock).not.toHaveBeenCalled();
@@ -584,15 +802,25 @@ describe('legacy dapp permission isolation', () => {
   it('does not use hostname-only permissions for either web origin', async () => {
     getStateMock.mockReturnValue({
       dapp: { dapps: { 'legacy.example': { host: 'legacy.example' } } },
+      vault: {
+        activeNetwork: { kind: INetworkType.Ethereum },
+        accounts: {},
+        isBitcoinBased: false,
+      },
     });
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     expect(controller.isConnected('https://legacy.example')).toBe(false);
     expect(controller.isConnected('http://legacy.example')).toBe(false);
-    await controller.disconnect('legacy.example');
+    await controller.revoke('legacy.example', {
+      allowAlreadyDisconnected: false,
+    });
     expect(dispatchMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: 'dapp/removeDApp',
-        payload: 'legacy.example',
+        type: 'dapp/rehydrate',
+        payload: { dapps: {}, pendingOrigins: [] },
       })
     );
   });
@@ -607,10 +835,10 @@ describe('legacy dapp permission isolation', () => {
       query: jest.fn((_query, callback) => callback([])),
     };
     (chrome as any).scripting = { executeScript: jest.fn() };
-    const controller = DAppController();
-    dispatchMock.mockImplementation((action) => {
-      getStateMock().dapp.dapps[action.payload.host] = action.payload;
-    });
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     await connect(controller, {
       host: 'https://example.com',
       accountId: 0,
@@ -624,9 +852,6 @@ describe('legacy dapp permission isolation', () => {
 
   it('checks the receiving document origin before publishing account data', async () => {
     (chrome.runtime as any).id = 'test-extension';
-    dispatchMock.mockImplementation((action) => {
-      getStateMock().dapp.dapps[action.payload.host] = action.payload;
-    });
     getStateMock.mockReturnValue({
       vault: {
         accounts: { HDAccount: { 0: { address: '0x1234', xpub: 'xpub' } } },
@@ -641,7 +866,10 @@ describe('legacy dapp permission isolation', () => {
     (chrome as any).scripting = {
       executeScript: jest.fn().mockResolvedValue([]),
     };
-    const controller = DAppController(() => true);
+    const controller = DAppController(
+      () => true,
+      () => 0
+    );
     await connect(controller, {
       host: 'https://example.com',
       accountId: 0,
@@ -760,7 +988,10 @@ describe('per-site account notification disclosure', () => {
   });
 
   const controller = () => {
-    const instance = DAppController(() => unlocked);
+    const instance = DAppController(
+      () => unlocked,
+      () => 0
+    );
     instance.setup({ url: `${originA}/page`, origin: originA });
     instance.setup({ url: `${originB}/page`, origin: originB });
     return instance;
@@ -775,7 +1006,10 @@ describe('per-site account notification disclosure', () => {
       .map(([call]) => JSON.parse(call.args[0]).data);
 
   it('does not set up a connected site for an opaque document at its URL', async () => {
-    const instance = DAppController(() => unlocked);
+    const instance = DAppController(
+      () => unlocked,
+      () => 0
+    );
     instance.setup({ url: originA + '/sandboxed', origin: 'null' });
     await deliver(instance, PaliEvents.accountsChanged, [addressA]);
     expect(chrome.scripting.executeScript).not.toHaveBeenCalled();
@@ -940,10 +1174,6 @@ describe('Ethereum property toggle dispatch', () => {
       },
     };
     getStateMock.mockImplementation(() => state);
-    dispatchMock.mockImplementation((action) => {
-      if (action.type === 'dapp/removeDApp')
-        delete state.dapp.dapps[action.payload];
-    });
     saveMainStateMock.mockResolvedValue(undefined);
     (chrome.runtime as any).id = 'test-extension';
     (chrome as any).tabs = {
@@ -966,7 +1196,10 @@ describe('Ethereum property toggle dispatch', () => {
   });
 
   it('delivers normal remove, disconnect and re-enable to live top-frame tabs without reconnecting', async () => {
-    const controller = DAppController();
+    const controller = DAppController(
+      () => false,
+      () => 0
+    );
     controller.setup({ url: `${origin}/page`, origin: origin });
     await controller.handleStateChange(PaliEvents.removeProperty, {
       method: PaliEvents.removeProperty,
@@ -984,7 +1217,7 @@ describe('Ethereum property toggle dispatch', () => {
       { frameId: 0 }
     );
 
-    await controller.disconnect(origin);
+    await controller.revoke(origin, { allowAlreadyDisconnected: false });
     await new Promise(setImmediate);
     expect(controller.getAll()).toEqual({});
     (chrome.tabs.sendMessage as jest.Mock).mockClear();
@@ -1022,7 +1255,10 @@ describe('Ethereum property toggle dispatch', () => {
 
   it('broadcasts only the fixed public property notification, not attached account data', async () => {
     state.dapp.dapps = {};
-    await DAppController().handleStateChange(PaliEvents.addProperty, {
+    await DAppController(
+      () => false,
+      () => 0
+    ).handleStateChange(PaliEvents.addProperty, {
       method: PaliEvents.addProperty,
       params: { type: PaliEvents.addProperty, accounts: ['private-account'] },
     });
@@ -1038,7 +1274,10 @@ describe('Ethereum property toggle dispatch', () => {
 
   it('keeps account notifications scoped to connected sessions', async () => {
     state.dapp.dapps = {};
-    await DAppController().handleStateChange(PaliEvents.accountsChanged, {
+    await DAppController(
+      () => false,
+      () => 0
+    ).handleStateChange(PaliEvents.accountsChanged, {
       method: PaliEvents.accountsChanged,
       params: ['private-account'],
     });
@@ -1052,7 +1291,10 @@ describe('Ethereum property toggle dispatch', () => {
       new Error('Receiving end does not exist')
     );
     await expect(
-      DAppController().handleStateChange(PaliEvents.addProperty, {
+      DAppController(
+        () => false,
+        () => 0
+      ).handleStateChange(PaliEvents.addProperty, {
         method: PaliEvents.addProperty,
         params: { type: PaliEvents.addProperty },
       })

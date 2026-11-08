@@ -73,8 +73,8 @@ const ConnectedSites = () => {
     try {
       // The controller will dispatch removeDApp action internally
       await controllerEmitter(
-        ['dapp', 'disconnect'],
-        [host, true, { allowAlreadyDisconnected: true, propagateErrors: true }]
+        ['dapp', 'revoke'],
+        [host, { allowAlreadyDisconnected: true }]
       );
     } catch (error) {
       setDisconnectError(error?.message || t('send.failed'));

@@ -1,3 +1,4 @@
+import { readStoredDappPermissions } from '../shared/dappTypes';
 import { IMPORTED_RECOVERY_STORAGE_PREFIX } from '../wallet/importedAccountRecoveryFormat';
 import { chromeStorage } from 'utils/storageAPI';
 
@@ -83,7 +84,12 @@ export const loadState = async () => {
     if (serializedState === null) {
       return undefined;
     }
-    return serializedState;
+    return {
+      ...serializedState,
+      ...(serializedState.dapp
+        ? { dapp: readStoredDappPermissions(serializedState.dapp) }
+        : {}),
+    };
   } catch (e) {
     console.error('<!> Error getting state', e);
     return null;

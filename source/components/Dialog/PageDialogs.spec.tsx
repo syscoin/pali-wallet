@@ -225,12 +225,8 @@ it('names connection actions and retains the exact disconnect operation', async 
     within(dialog).getByRole('button', { name: 'Delete connected site' })
   );
   expect(mockEmitter).toHaveBeenCalledWith(
-    ['dapp', 'disconnect'],
-    [
-      'https://untrusted.example',
-      true,
-      { allowAlreadyDisconnected: true, propagateErrors: true },
-    ]
+    ['dapp', 'revoke'],
+    ['https://untrusted.example', { allowAlreadyDisconnected: true }]
   );
 });
 

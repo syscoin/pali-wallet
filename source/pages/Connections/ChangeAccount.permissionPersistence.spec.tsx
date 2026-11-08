@@ -207,7 +207,10 @@ beforeEach(async () => {
     currentAccountId: 1,
     currentAccountType: type,
   };
-  dapp = DAppController(() => true);
+  dapp = DAppController(
+    () => true,
+    () => 0
+  );
   wallet = Object.create(MainController.prototype);
   Object.assign(wallet, {
     walletSessionGeneration: 10,
@@ -275,7 +278,10 @@ const restoreDurableState = async () => {
   vaultCache.clearCache();
   store.dispatch(rehydrateDapp({ dapps: {} } as any));
   await rehydrateStore(store, undefined, undefined, false);
-  return DAppController(() => true);
+  return DAppController(
+    () => true,
+    () => 0
+  );
 };
 
 it('healthy unchanged approval saves the grant through real setAccount and survives real restoration', async () => {

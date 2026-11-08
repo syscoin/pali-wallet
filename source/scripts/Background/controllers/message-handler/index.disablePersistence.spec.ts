@@ -59,7 +59,10 @@ const revoke = () =>
 const restartFromStorage = async () => {
   const saved = await loadState();
   store.dispatch(rehydrate(saved.dapp));
-  const restored = DAppController(() => true);
+  const restored = DAppController(
+    () => true,
+    () => 0
+  );
   restored.setup(sender);
   return restored;
 };
@@ -67,7 +70,10 @@ const clearExistingPermission = async () => {
   store.dispatch(rehydrate({ dapps: {} }));
   await persistMainStateStrict();
   stateWrites = [];
-  controller = DAppController(() => true);
+  controller = DAppController(
+    () => true,
+    () => 0
+  );
   mockController.dapp = controller;
 };
 const approveConnection = () =>
@@ -174,7 +180,10 @@ beforeEach(async () => {
   store.dispatch(rehydrate({ dapps: { [HOST]: grant } }));
   await persistMainStateStrict();
   stateWrites = [];
-  controller = DAppController(() => true);
+  controller = DAppController(
+    () => true,
+    () => 0
+  );
   controller.setup(sender);
   mockController = {
     dapp: controller,
@@ -209,7 +218,10 @@ it('keeps the legacy missing-connection error rather than making it an idempoten
 });
 
 it('disables a stored permission before the first runtime session is established', async () => {
-  controller = DAppController(() => true);
+  controller = DAppController(
+    () => true,
+    () => 0
+  );
   mockController.dapp = controller;
   await expect(disable()).resolves.toBeUndefined();
   expect(controller.isConnected(HOST)).toBe(false);
@@ -220,7 +232,10 @@ it.each([false, true])(
   'reports legacy disable storage failure and preserves the retryable grant (session=%s)',
   async (hasSession) => {
     if (!hasSession) {
-      controller = DAppController(() => true);
+      controller = DAppController(
+        () => true,
+        () => 0
+      );
       mockController.dapp = controller;
     }
     failNextStateWrite = true;

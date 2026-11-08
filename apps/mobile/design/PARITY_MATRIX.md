@@ -10,6 +10,8 @@ Original design basis: November 2, 2026, extension source **`4470e54e8777cca2a4f
 
 “Implemented” below means present in development source with source/host-test evidence. This ledger includes the combined candidate through #1275 at `d27a816f92ac120647ab04aebfc8b28248c66a72`. The branch also shares fee-approval and ordinary UTXO-binding policy between both hosts, with that integration awaiting validation. It does not establish qualification on every native device or against live services.
 
+Connection grants, durable revocation, account binding and event projection now live in `source/wallet/dappSessions.ts`. The extension supplies browser transport and persistence ports. Mobile source tests exercise the same engine with platform-independent host ports. Operational mobile connection transport and approval screens remain in the D01/D03–D09 backlog.
+
 | Capability groups | Implemented scope at the source basis | Still missing or limited |
 | --- | --- | --- |
 | A01, A03, A04, A07 | Create/restore, password unlock, seed backup, HD create/select/rename/eligible removal, raw EVM-key import and fresh-password key reveal. Complete SDK records persist; Add uses the extension/SDK gap-reuse allocation. Software UTXO HD creation and raw WIF import with SegWit, legacy or Taproot addresses reuse the SDK on the shared defaults. WIF accounts support balance, receive, same-device password recovery and fresh-password reveal after backup confirmation. Reveal shows the canonical network and script type and verifies that the WIF derives the selected address. | Extended UTXO private-key import, UTXO HD key reveal, native hardware/smart-account operations and their exports. Imported-key recovery requires the retained encrypted copy or independent backup. |

@@ -739,7 +739,9 @@ export const utxoEvmSwitchMiddleware: Middleware = async (context, next) => {
     console.log(
       `[Pipeline] Network type switch detected for ${originalRequest.host}, disconnecting dapp`
     );
-    dapp.disconnect(originalRequest.host);
+    await dapp.revoke(originalRequest.host, {
+      allowAlreadyDisconnected: false,
+    });
 
     // The dapp is now disconnected. Let the pipeline continue so
     // connectionMiddleware can handle reconnection if needed
