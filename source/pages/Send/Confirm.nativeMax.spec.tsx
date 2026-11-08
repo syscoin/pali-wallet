@@ -598,6 +598,7 @@ it.each([false, true])(
     expect(sendCall[1][4]).toEqual({
       hardwareScope: mockScope,
       genericReviewId: 'rendered-fee-review',
+      submission: { kind: 'transaction' },
     });
     expect(tx).toEqual(reviewedDappFeeFixture(reviewCall![1][0]).transaction);
   }
@@ -671,6 +672,7 @@ it.each(
     expect(submissionCalls()[1][1][4]).toEqual({
       hardwareScope: mockScope,
       genericReviewId: replacement.id,
+      submission: { kind: 'transaction' },
     });
   }
 );
