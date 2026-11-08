@@ -727,3 +727,21 @@ for (const mixed of [false, true]) test(`actual explorer ${mixed ? 'mixed-case b
   assert.deepEqual(controller.getSnapshot().rows.map(row => row.hash).sort(), [first, second]);
   assert.equal(controller.getSnapshot().error, null);
 });
+
+test('Smart Activity inspects through the inner-operation observer and ignores outer indexed status', async () => {
+  const base = fixture();
+  const local: LocalActivityRecord = { ...base.local(1), smartAccount: { payer: OTHER, operationHash: hash(9), operationNonce: '0' }, inspectionOnly: true };
+  const f = fixture({ local, explorer: new FakeExplorer(({ feed }) => feed === 'txlist' ? [candidate(1)] : []),
+    async observeLocal() { return { status: 'mined', outcome: 'reverted', block: { hash: hash(999), number: '1000' } }; } });
+  await f.controller.refresh();
+  assert.equal(f.localReads.length, 0, 'archived terminal rows do not poll receipts on open');
+  f.controller.inspect(local.hash);
+  await until(() => f.controller.getSnapshot().rows.some(row => row.retainedObservation?.status === 'mined'));
+  const row = f.controller.getSnapshot().rows.find(row => row.hash === local.hash)!;
+  assert.equal(row.retainedObservation?.status === 'mined' && row.retainedObservation.outcome, 'reverted');
+  assert.equal(row.indexed, undefined);
+  assert.equal(row.display, undefined);
+  assert.equal(row.local?.amountUnits, '1');
+  assert.equal(f.receipts.calls.length, 0);
+  assert.equal(f.localReads.length, 1);
+});

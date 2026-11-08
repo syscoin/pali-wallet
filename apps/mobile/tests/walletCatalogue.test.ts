@@ -532,7 +532,7 @@ test('same-chain RPC/name edits preserve wire bytes, signer identity, tokens and
       assert.equal(originalHash, undefined);
       assert.equal(speedUpEligible, true);
       assert.ok(record.recipient);
-      await history.archiveTerminal({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
+      await history.recordObservation({ ...record, recipient: record.recipient, phase: 'confirmed' }, current);
     };
     const originalView = store.view(signer.address, 0, before);
     const previousRaw = await signer.signTransaction({ type: 2, chainId: 1, nonce: 0, to: '0x1111111111111111111111111111111111111111', value: 2n, gasLimit: 25200n, maxFeePerGas: 2n, maxPriorityFeePerGas: 1n });

@@ -566,6 +566,8 @@ export class NativeActivity {
       Number(this.scope?.network.chainId)
     );
     const observeRow = (row: ActivityRow, includeIndex = true): ActivityRow => {
+      // An indexer describes the outer payer transaction; this row represents its verified inner operation.
+      if (row.local?.smartAccount) includeIndex = false;
       const indexed = includeIndex ? this.indexed.get(row.hash) : undefined;
       const display = includeIndex ? this.displays.get(row.hash) : undefined;
       return {
@@ -595,6 +597,7 @@ export class NativeActivity {
         from:
           row.indexed?.from ??
           row.observation?.from ??
+          row.local?.smartAccount?.payer ??
           (row.local ? this.scope?.address : undefined),
         nonce: parseEvmInteger(
           row.indexed?.nonce ?? row.observation?.nonce ?? row.local?.nonce
@@ -677,8 +680,8 @@ export class NativeActivity {
       this.checking.set(hash, detail);
       const readDetail = async () => {
         guard();
-        const local = page?.records.get(hash);
-        if (local && !this.locals.has(hash)) {
+        const local = page?.records.get(hash) ?? this.locals.get(hash);
+        if (local && (local.smartAccount || !this.locals.has(hash))) {
           if (!runtime?.observeLocal) throw new ActivityError('UNAVAILABLE');
           // The signed record already supplies the envelope. Use one owned
           // observation for status, without fetching the same receipt again.
@@ -719,7 +722,7 @@ export class NativeActivity {
     if (page || this.snapshot.rows.some((row) => row.hash === hash)) {
       this.observations.delete(hash);
       this.unavailable.delete(hash);
-      if (page && !this.locals.has(hash)) this.retainedObservations.delete(hash);
+      if ((page && !this.locals.has(hash)) || this.locals.get(hash)?.smartAccount) this.retainedObservations.delete(hash);
       this.hydrate(hash, page);
       if (page) this.renderRows();
     }

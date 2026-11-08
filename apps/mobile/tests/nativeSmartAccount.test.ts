@@ -1,3 +1,4 @@
+import { getSmartAccountUserOpHash } from '../../../source/utils/smartAccount/userOperationHash.ts';
 import { getConfiguredAuthenticatorAddress } from '../../../source/utils/smartAccount/account.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -19,7 +20,7 @@ import { NativeRecoveryCoordinator } from '../src/custody/recovery.ts';
 import { inspectRecoveryCatalogue, WALLET_CATALOGUE_KEY } from '../src/custody/walletCatalogue.ts';
 import { NativePortfolioController } from '../src/portfolio/nativePortfolio.ts';
 import { digest, INSTALLATION, nodeConnection } from './storageHelpers.ts';
-import { getPaliEntryPointAddress, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
+import { getPaliEntryPointAddress, paliEntryPointInterface, paliEcdsaValidatorInterface, paliSmartAccountInterface, paliSmartAccountFactoryInterface } from '../../../source/utils/smartAccount/contracts.ts';
 import { getZkSysGasTankAddress, PALI_ACCOUNT_PROXY_CREATION_CODE, PALI_CANONICAL_FACTORY_ADDRESS, PALI_INFRASTRUCTURE_METADATA_BY_ID } from '../../../source/utils/smartAccount/deploymentMetadata.ts';
 import { getNativeNetwork } from '../src/custody/networkContext.ts';
 import { SMART_ACCOUNT_INFRASTRUCTURE_CODE_ADDRESSES } from '../../../source/utils/smartAccount/infrastructureObservation.ts';
@@ -43,6 +44,8 @@ async function fixture() {
   let deployed = false;
   let deployedCode = '0x01';
   let readReceipts = true;
+  let userOperationSuccess = true;
+  let nonceReset = false;
   let blockedRecipient = false;
   let smartBalance = '0x0';
   let payerBalance = '0x1000000000000000';
@@ -72,16 +75,28 @@ async function fixture() {
             }
           }
         }
-        else if (request.method === 'eth_getTransactionCount') result = `0x${submitted.length.toString(16)}`;
+        else if (request.method === 'eth_getTransactionCount') result = nonceReset ? '0x0' : `0x${submitted.length.toString(16)}`;
         else if (request.method === 'eth_getBalance') result = request.params[0].toLowerCase() === runtime.catalogue.getSnapshot()?.accounts.find(account => account.type === 'SmartAccount')?.address.toLowerCase() ? smartBalance : payerBalance;
         else if (request.method === 'eth_gasPrice') result = '0x2';
         else if (request.method === 'eth_maxPriorityFeePerGas') result = '0x1';
         else if (request.method === 'eth_estimateGas') result = '0x186a0';
         else if (request.method === 'eth_getTransactionReceipt') {
           const raw = submitted.find(raw => Transaction.from(raw).hash === request.params[0]);
-          const transaction = raw && Transaction.from(raw);
+          const transaction = raw ? Transaction.from(raw) : undefined;
+          let logs: unknown[] = [];
+          if (transaction?.to === getPaliEntryPointAddress(Number(network.chainId))) {
+            const [operations] = paliEntryPointInterface.decodeFunctionData('handleOps', transaction.data);
+            const op = operations[0];
+            const operation = { sender: op.sender, nonce: op.nonce.toString(), initCode: op.initCode, callData: op.callData,
+              accountGasLimits: op.accountGasLimits, preVerificationGas: op.preVerificationGas.toString(), gasFees: op.gasFees,
+              paymasterAndData: op.paymasterAndData, signature: op.signature };
+            const event = paliEntryPointInterface.encodeEventLog(paliEntryPointInterface.getEvent('UserOperationEvent')!,
+              [getSmartAccountUserOpHash(operation, Number(network.chainId)), op.sender, '0x' + '00'.repeat(20), op.nonce, userOperationSuccess, 100, 50]);
+            logs = [{ ...event, address: transaction.to, transactionHash: transaction.hash,
+              blockHash: '0x' + 'aa'.repeat(32), blockNumber: '0x10' }];
+          }
           result = transaction && readReceipts ? { transactionHash: transaction.hash, from: transaction.from, to: transaction.to, status: '0x1',
-            blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32) } : null;
+            blockNumber: '0x10', blockHash: '0x' + 'aa'.repeat(32), logs } : null;
         }
         else if (request.method === 'eth_getBlockByNumber') result = { number: '0x10', hash: '0x' + 'aa'.repeat(32), gasLimit: '0x1c9c380', baseFeePerGas: '0x1' };
         else if (request.method === 'eth_sendRawTransaction') {
@@ -155,6 +170,8 @@ async function fixture() {
     loseGasCredit() { gasCredit = 0n; },
     fundedSmart() { smartBalance = '0x1000000000000000'; },
     holdReceipts() { readReceipts = false; },
+    showReceipts(success = true) { readReceipts = true; userOperationSuccess = success; },
+    reorg() { readReceipts = false; nonceReset = true; },
     blockRecipient() { blockedRecipient = true; },
     undeployed() { deployed = false; },
     deployed(code = '0x01') { deployed = true; deployedCode = code; },
@@ -184,6 +201,13 @@ async function fixture() {
       await owner.unlock(password);
     },
     async reopen() { await owner.dispose(); owner = await open(); },
+    async removeCompletedJournalBytes() {
+      await owner.dispose();
+      const retired = nodeConnection(file);
+      try { await retired.connection.runAsync('DELETE FROM evm_signed_records'); }
+      finally { await retired.connection.closeAsync(); }
+      owner = await open(); await owner.unlock(PASSWORD);
+    },
     async close() { await owner.dispose(); await rm(directory, { recursive: true, force: true }); },
   };
 }
@@ -533,5 +557,70 @@ for (const loseCredit of [false, true]) test(`gas-tank deployment with zero paye
     await sending;
     assert.equal(operation.getSnapshot().phase, loseCredit ? 'failed' : 'complete', JSON.stringify(operation.getSnapshot()));
     assert.equal(f.submitted.length, loseCredit ? 0 : 1);
+  } finally { operation?.dispose(); await f.close(); }
+});
+
+
+for (const success of [true, false]) test(`Smart Activity survives reopen and displays the inner ${success ? 'success' : 'revert'}`, async () => {
+  const f = await fixture();
+  let operation: Awaited<ReturnType<KeyringRuntime['openSmartAccountSend']>> | undefined;
+  try {
+    const payer = f.owner.getSnapshot().account!.address;
+    await f.change({ kind: 'create-smart', label: 'Activity sender', password: PASSWORD });
+    f.fundedSmart(); f.deployed(); f.holdReceipts();
+    operation = await f.runtime.openSmartAccountSend('0x2222222222222222222222222222222222222222', '0.000000000000000009', () => undefined);
+    await operation.prepare();
+    const sending = operation.authorize(operation.getSnapshot().revision);
+    for (let i = 0; i < 300 && !operation.getSnapshot().payerReview; i++) await new Promise(resolve => setTimeout(resolve, 5));
+    operation.confirmPayer(operation.getSnapshot().payerReview!.id);
+    await sending;
+    assert.equal(operation.getSnapshot().phase, 'complete');
+    operation.dispose();
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    const loaded = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(loaded.locals.length, 1);
+    const row = loaded.locals[0]!;
+    assert.equal(row.hash, Transaction.from(f.submitted[0]!).hash);
+    assert.equal(row.amountUnits, '9');
+    assert.equal(row.recipient, '0x2222222222222222222222222222222222222222');
+    assert.equal(row.smartAccount?.payer?.toLowerCase(), payer.toLowerCase());
+    assert.equal(row.inspectionOnly, true);
+    assert.equal(row.speedUpEligible, undefined);
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    const payerBefore = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    await f.change({ kind: 'select', id: 'smart:60:0' });
+    f.showReceipts(success);
+    const observed = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
+    assert.equal(observed.status === 'mined' && observed.outcome, success ? 'confirmed' : 'reverted');
+    const archived = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(archived.locals[0]!.phase, success ? 'confirmed' : 'reverted');
+    const pendingPage = await f.runtime.activity!.loadSavedPending!(archived.scope, undefined, () => undefined);
+    assert.equal(pendingPage.records.length, 0);
+    // Observing the inner operation must not rewrite the outer payer's retained phase.
+    await f.change({ kind: 'select', id: 'hd:60:0' });
+    const payerView = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(payerView.locals[0]!.phase, payerBefore.locals[0]!.phase);
+    await f.change({ kind: 'select', id: 'smart:60:0' });
+    f.reorg();
+    const missing = await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
+    assert.equal(missing.status, 'missing');
+    const pending = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(pending.locals[0]!.phase, 'submitted');
+    assert.equal(pending.saved.archived[0]!.phase, 'submitted');
+    f.showReceipts(success);
+    await f.runtime.activity!.observeLocal!(row, () => undefined, new AbortController().signal);
+    await f.removeCompletedJournalBytes();
+    const retired = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(retired.locals.length, 0);
+    const archivedRow = retired.saved.archived[0]!;
+    assert.equal(archivedRow.smartAccount?.operationHash, row.smartAccount?.operationHash);
+    const checkedAgain = await f.runtime.activity!.observeLocal!(archivedRow, () => undefined, new AbortController().signal);
+    assert.equal(checkedAgain.status === 'mined' && checkedAgain.outcome, success ? 'confirmed' : 'reverted');
+    f.reorg();
+    assert.equal((await f.runtime.activity!.observeLocal!(archivedRow, () => undefined, new AbortController().signal)).status, 'missing');
+    await f.reopen(); await f.owner.unlock(PASSWORD);
+    const afterRestart = await f.runtime.activity!.load(() => undefined, new AbortController().signal);
+    assert.equal(afterRestart.saved.archived[0]!.phase, 'submitted');
+    assert.equal(afterRestart.saved.archived[0]!.smartAccount!.operationHash, row.smartAccount!.operationHash);
   } finally { operation?.dispose(); await f.close(); }
 });

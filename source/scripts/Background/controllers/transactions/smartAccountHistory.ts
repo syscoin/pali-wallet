@@ -1,3 +1,4 @@
+import { decodeSmartAccountUserOperationEvent } from '../../../../utils/smartAccount/userOperationEvent';
 import { CustomJsonRpcProvider } from '@sidhujag/sysweb3-keyring';
 
 import store from 'state/store';
@@ -272,9 +273,9 @@ export const fetchSmartAccountUserOpTransactions = async (
   const logBlockHashByTxHash = new Map<string, string>();
   for (const log of logs) {
     try {
-      const parsed = paliEntryPointInterface.parseLog(log);
+      const parsed = decodeSmartAccountUserOperationEvent(log);
       const key = log.transactionHash.toLowerCase();
-      const success = Boolean(parsed.args.success);
+      const success = parsed.success;
       successByTxHash.set(key, (successByTxHash.get(key) ?? true) && success);
       if (log.blockHash) {
         logBlockHashByTxHash.set(key, String(log.blockHash).toLowerCase());
