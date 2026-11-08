@@ -200,12 +200,19 @@ test('closing held policy preparation disposes the late operation without author
     .click();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await expect(
-    page.getByText('Guardian tool closed', { exact: true })
+    page.getByText('Closing guardian review…', { exact: true })
   ).toBeVisible();
+  await expect(
+    page.getByText('Guardian tool closed', { exact: true })
+  ).toHaveCount(0);
+  expect((await events(page)).map((event) => event.method)).toEqual(['open']);
   await page.evaluate(() => window.__guardianPolicyFixture.resolveOpening());
   await expect
     .poll(() => page.evaluate(() => window.__guardianPolicyFixture.disposed()))
     .toBeGreaterThan(0);
+  await expect(
+    page.getByText('Guardian tool closed', { exact: true })
+  ).toBeVisible();
   expect((await events(page)).map((event) => event.method)).toEqual(['open']);
 });
 
