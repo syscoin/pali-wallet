@@ -13,6 +13,7 @@ jest.mock('@sidhujag/sysweb3-keyring', () => ({
 
 import http from 'http';
 import https from 'https';
+import { smartAccountAddressFixture } from 'tests/fixtures/smartAccountAddress';
 
 import { loadSlip44State, walletPersistenceGate } from 'state/paliStorage';
 import store, {
@@ -34,7 +35,8 @@ import MainController from './MainController';
 import SmartAccountController from './smartAccount';
 
 const FAILURE = 'Synthetic custom module persistence refusal';
-const ACCOUNT = '0x1111111111111111111111111111111111111111';
+const { account: smartAccountFixture } = smartAccountAddressFixture();
+const ACCOUNT = smartAccountFixture.address;
 const MODULE = '0x2222222222222222222222222222222222222222';
 const RPC = 'https://module-persistence.synthetic.invalid';
 const record = {
@@ -95,12 +97,17 @@ beforeEach(async () => {
     label: 'Other account',
   };
   accounts.SmartAccount[0] = {
+    ...smartAccountFixture,
     id: 0,
     type: KeyringAccountType.SmartAccount,
     address: ACCOUNT,
     label: 'Synthetic smart account',
     isSmartAccount: true,
-    smartAccount: { chainId: 1, customModules: [] },
+    smartAccount: {
+      ...smartAccountFixture.smartAccount,
+      customModules: [],
+      isDeployed: undefined,
+    },
   };
   store.dispatch(
     restoreVaultSnapshot({
