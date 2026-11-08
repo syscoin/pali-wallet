@@ -1,8 +1,8 @@
-import { defaultAbiCoder } from 'utils/ethersV6Compat';
-import { id as hashText } from 'utils/ethersV6Compat';
-import { keccak256 } from 'utils/ethersV6Compat';
-import { BigNumber, getAddress } from 'utils/ethersV6Compat';
-import { isGuardianRecoveryPolicyChangedError } from 'utils/smartAccountErrors';
+import { defaultAbiCoder } from '../ethersV6Compat.ts';
+import { id as hashText } from '../ethersV6Compat.ts';
+import { keccak256 } from '../ethersV6Compat.ts';
+import { BigNumber, getAddress } from '../ethersV6Compat.ts';
+import { isGuardianRecoveryPolicyChangedError } from '../smartAccountErrors.ts';
 
 import {
   encodeERC7579Executions,
@@ -10,8 +10,8 @@ import {
   encodeRecoveryTargetExecution,
   encodeRotateValidatorModuleCall,
   encodeUninstallValidatorModuleCall,
-  PaliRecoveryTarget,
-} from './account';
+  type PaliRecoveryTarget,
+} from './account.ts';
 
 export {
   getGuardianRecoveryDelayOptions,
@@ -19,7 +19,7 @@ export {
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_DELAY_SECONDS,
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_EXPIRATION_SECONDS,
   SMART_ACCOUNT_GUARDIAN_DEFAULT_RECOVERY_THRESHOLD,
-} from './guardianPolicy';
+} from './guardianPolicy.ts';
 
 const PALI_GUARDIAN_RECOVERY_SCHEDULE_TYPEHASH = hashText(
   'PaliGuardianRecoverySchedule(uint256 chainId,address account,address module,uint256 policyEpoch,bytes32 salt,bytes32 mode,bytes32 executionCalldataHash)'

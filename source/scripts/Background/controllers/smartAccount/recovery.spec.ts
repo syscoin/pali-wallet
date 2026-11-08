@@ -34,6 +34,8 @@ jest.mock('utils/smartAccount', () => ({
 import { Contract, getAddress } from 'utils/ethersV6Compat';
 import {
   aggregateContractCalls,
+  buildSmartAccountGuardianRecoveryOperation,
+  encodeEcdsaValidatorInitData,
   ERC7579_MODE_SINGLE_DEFAULT,
   getConfiguredAuthenticatorAddress,
   getSmartAccountGuardianRecoveryHash,
@@ -96,6 +98,46 @@ describe('guardian recovery policy freshness', () => {
       .mockResolvedValue({ id: 1, type: 'HDAccount', address: GUARDIAN });
   });
 
+  it('builds recovery from the actual active validator when saved metadata is stale', async () => {
+    const active = '0x7777777777777777777777777777777777777777';
+    const validator = getConfiguredAuthenticatorAddress(57057, 'ecdsa');
+    const target = {
+      auth: {
+        module: 'ecdsa' as const,
+        validator,
+        data: encodeEcdsaValidatorInitData([GUARDIAN], 1),
+      },
+    };
+    (Contract as unknown as jest.Mock).mockImplementation(() => ({
+      policyEpoch,
+      activeValidator: jest.fn(async () => active),
+      isModuleInstalled: jest.fn(
+        async (_type, address) => address.toLowerCase() === active.toLowerCase()
+      ),
+    }));
+    const saved = {
+      account: { id: 0, address: ACCOUNT, type: 'SmartAccount' },
+      metadata: { chainId: 57057, auth: { validator: GUARDIAN } },
+    };
+    controller.getActiveSmartAccount = jest.fn(() => saved);
+    const operation = await controller.buildGuardianStartRecoveryOperation(
+      ACCOUNT,
+      target
+    );
+    expect(operation).toEqual(
+      buildSmartAccountGuardianRecoveryOperation({
+        account: ACCOUNT,
+        chainId: 57057,
+        policyEpoch: '7',
+        recoveryModule: MODULE,
+        salt: operation.salt,
+        target,
+        replaceExistingValidator: false,
+        revokeValidator: active,
+      })
+    );
+    expect(controller.getActiveSmartAccount).toHaveBeenCalled();
+  });
   it('checks imported epoch and independently recomputes the on-chain digest', async () => {
     const operation = JSON.parse(JSON.stringify(makeOperation()));
     await expect(
@@ -183,7 +225,13 @@ describe('guardian recovery policy freshness', () => {
       controller.prepareSmartAccountGuardianStartRecovery({
         account: ACCOUNT,
         guardian: GUARDIAN,
-        target: {},
+        target: {
+          auth: {
+            module: 'ecdsa',
+            validator: getConfiguredAuthenticatorAddress(57057, 'ecdsa'),
+            data: '0x',
+          },
+        },
       })
     ).rejects.toThrow(GuardianRecoveryPolicyChangedError);
     expect(sign).not.toHaveBeenCalled();
