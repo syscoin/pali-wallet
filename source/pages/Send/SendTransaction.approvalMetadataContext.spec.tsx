@@ -853,3 +853,39 @@ it('keeps unverified approval values raw and refuses allowance editing', async (
   );
   view.unmount();
 });
+
+it.each([true, false])(
+  'preserves the unverified operator flag %s in primary approval details',
+  async (approved) => {
+    const abi = new Interface(['function setApprovalForAll(address,bool)']);
+    mockQuery.tx.data = abi.encodeFunctionData('setApprovalForAll', [
+      SPENDER,
+      approved,
+    ]);
+    mockQuery.decodedTx = {
+      method: 'setApprovalForAll',
+      inputs: [SPENDER, approved],
+      names: ['operator', 'approved'],
+      types: ['address', 'bool'],
+    };
+    mockQuery.txMetadata = {
+      isApproval: true,
+      approvalType: 'nft-all',
+      tokenStandard: 'Unknown',
+      standardVerified: false,
+    };
+    const view = await prepare();
+    const details = JSON.parse(
+      screen.getByTestId('reviewed-approval').textContent!
+    );
+    expect(details.approved).toBe(approved);
+    expect(details.standardVerified).toBe(false);
+    expect(screen.getByText('send.approvalStandardUnverified')).toBeDefined();
+    expect(screen.queryByText('send.grantCollectionAccess')).toBeNull();
+    expect(screen.queryByText('send.revokeCollectionAccess')).toBeNull();
+    expect(screen.getByTestId('transaction-hex').textContent).toBe(
+      mockQuery.tx.data
+    );
+    view.unmount();
+  }
+);

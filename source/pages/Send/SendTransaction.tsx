@@ -1877,6 +1877,11 @@ export const SendTransaction = () => {
                   <div className="flex flex-col gap-2 items-center justify-center mt-4 w-full">
                     <ApprovalDetails
                       {...approvalDetails}
+                      approved={
+                        typeof decodedTxData?.inputs?.[1] === 'boolean'
+                          ? decodedTxData.inputs[1]
+                          : undefined
+                      }
                       formattedAmount={displayedApprovalAmount}
                       standardVerified={standardVerified}
                       isUnlimited={isUnlimitedApproval}
