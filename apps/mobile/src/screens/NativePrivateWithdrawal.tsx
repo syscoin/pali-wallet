@@ -33,7 +33,15 @@ type Owner = {
   returning?: boolean;
   abort: AbortController;
   controller?: WithdrawalView;
+  opening?: Promise<void>;
+  disposing?: Promise<void>;
 };
+function disposeOwner(owner: Owner): Promise<void> {
+  owner.disposing ??= Promise.resolve(owner.opening).then(async () => {
+    await owner.controller?.dispose();
+  });
+  return owner.disposing;
+}
 type Mode = 'direct' | 'relayed';
 const recipientValid = (value: string) => {
   try {
@@ -63,7 +71,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
     current.abort.abort();
     setOpened({ source: open, closing: true });
     Keyboard.dismiss();
-    void Promise.resolve(current.controller?.dispose())
+    void disposeOwner(current)
       .catch(() => undefined)
       .then(() => {
         if (owner.current === current && current.returning) onBack();
@@ -80,11 +88,10 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       )
         throw new Error('privacy_cancelled');
     };
-    void open(current.abort.signal, check).then(
+    current.opening = open(current.abort.signal, check).then(
       (controller) => {
         current.controller = controller;
         if (current.live) setOpened({ source: open, controller });
-        else void controller.dispose().catch(() => undefined);
       },
       () => {
         if (current.live) setOpened({ source: open, failed: true });
@@ -105,7 +112,7 @@ export function NativePrivateWithdrawal({ note, open, onBack }: Props) {
       current.live = false;
       current.returning = false;
       current.abort.abort();
-      void current.controller?.dispose().catch(() => undefined);
+      void disposeOwner(current).catch(() => undefined);
       change.remove();
       blur?.remove();
       hardware.remove();

@@ -86,6 +86,7 @@ export class NativePrivateWithdrawal {
   private busy = false;
   private disposed = false;
   private closing: Promise<void> | undefined;
+  private activeOperation: Promise<void> | undefined;
   private readonly host: Host;
   private readonly signal: AbortSignal;
 
@@ -151,6 +152,17 @@ export class NativePrivateWithdrawal {
     };
   };
 
+  private trackOperation(): () => void {
+    let settled!: () => void;
+    const operation = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
+    this.activeOperation = operation;
+    return () => {
+      if (this.activeOperation === operation) this.activeOperation = undefined;
+      settled();
+    };
+  }
   async prepare(request: Request): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
@@ -159,7 +171,9 @@ export class NativePrivateWithdrawal {
       return;
     }
     const previous = this.snapshot.review;
+    const capturedRequest = { ...request };
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({
       phase: 'preparing',
       review: null,
@@ -167,10 +181,11 @@ export class NativePrivateWithdrawal {
       error: null,
     });
     try {
+      this.check();
       if (previous) await this.withdrawals.discardWithdrawal(previous.intentId);
       this.check();
       const review = await this.withdrawals.prepareWithdrawal({
-        ...request,
+        ...capturedRequest,
         noteId: this.host.noteId,
       });
       this.check();
@@ -180,6 +195,7 @@ export class NativePrivateWithdrawal {
       this.publish({ phase: 'failed', progress: null });
     } finally {
       this.busy = false;
+      finish();
     }
   }
 
@@ -193,9 +209,11 @@ export class NativePrivateWithdrawal {
       return;
     this.check();
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ phase: 'submitting', error: null });
     let result: IPrivacyWithdrawalSubmission | undefined;
     try {
+      this.check();
       result = await this.withdrawals.submitWithdrawal(intentId);
       this.check();
       this.publish({ phase: result.phase, result });
@@ -220,6 +238,7 @@ export class NativePrivateWithdrawal {
       );
     } finally {
       this.busy = false;
+      finish();
     }
   }
 
@@ -227,8 +246,10 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ checking: true, error: null });
     try {
+      this.check();
       if (this.snapshot.review && !this.snapshot.result) {
         await this.withdrawals.discardWithdrawal(this.snapshot.review.intentId);
         this.check();
@@ -244,6 +265,7 @@ export class NativePrivateWithdrawal {
       this.reportFailure(error);
     } finally {
       this.busy = false;
+      finish();
       this.publish({ checking: false });
     }
   }
@@ -252,8 +274,10 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ checking: true, error: null });
     try {
+      this.check();
       const relayers = await this.withdrawals.getRelayers();
       this.check();
       this.publish({
@@ -269,6 +293,7 @@ export class NativePrivateWithdrawal {
       this.reportFailure(error);
     } finally {
       this.busy = false;
+      finish();
       this.publish({ checking: false });
     }
   }
@@ -277,8 +302,10 @@ export class NativePrivateWithdrawal {
     if (this.busy || this.disposed) return;
     this.check();
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ checking: true, error: null });
     try {
+      this.check();
       await this.host.reviewRestored(password);
       this.check();
       this.publish({ restored: false });
@@ -287,17 +314,39 @@ export class NativePrivateWithdrawal {
       this.publish({ error: 'restored' });
     } finally {
       this.busy = false;
+      finish();
       this.publish({ checking: false });
     }
   }
 
   dispose(): Promise<void> {
     if (this.closing) return this.closing;
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    this.closing = new Promise<void>((accept, fail) => {
+      resolve = accept;
+      reject = fail;
+    });
     this.disposed = true;
     this.signal.removeEventListener('abort', this.onAbort);
     this.listeners.clear();
-    this.withdrawals.close();
-    this.closing = this.host.close();
+    const invoke = (action: () => void | Promise<void>) => {
+      try {
+        return Promise.resolve(action());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+    const work = [
+      this.activeOperation ?? Promise.resolve(),
+      invoke(() => this.withdrawals.close()),
+      invoke(() => this.host.close()),
+    ];
+    void Promise.allSettled(work).then((results) => {
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') reject(failure.reason);
+      else resolve();
+    });
     return this.closing;
   }
 }

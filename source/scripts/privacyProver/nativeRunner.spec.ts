@@ -1,6 +1,7 @@
 import { webcrypto } from 'crypto';
 
 import { runProof } from '../../../apps/mobile/modules/pali-private-prover/runner';
+import { NativePrivateWithdrawal } from '../../../apps/mobile/src/custody/privateWithdrawal';
 import fixture from '../../utils/privacy/prover.fixture.json';
 import { encodePrivacyProof } from '../../utils/privacy/proverCore';
 
@@ -237,6 +238,72 @@ it.each(['malformed', 'handler'])(
     await expect(task).rejects.toThrow('privacy_proof_failed');
   }
 );
+
+it('drains cancelled model preparation through final native document disposal', async () => {
+  const host = setup();
+  const abort = new AbortController();
+  const close = jest.fn(async () => undefined);
+  const model = new NativePrivateWithdrawal(
+    {
+      assertCurrent() {},
+      canSign: true,
+      restored: false,
+      noteId: 'owned-note',
+      poolId: 'eth-1',
+      createWithdrawals() {
+        return {
+          close: () => abort.abort(),
+          cancelPreparation: () => abort.abort(),
+          async discardWithdrawal() {},
+          async prepareWithdrawal() {
+            await runProof(host.native, structuredClone(fixture.input), {
+              ...options(),
+              signal: abort.signal,
+            });
+            throw new Error('cancelled proof must not produce a review');
+          },
+          async submitWithdrawal() {
+            throw new Error('unexpected submission');
+          },
+          async getRelayers() {
+            return [];
+          },
+          async statusByNote() {
+            return { noteId: 'owned-note', phase: 'none' };
+          },
+        };
+      },
+      async readNoteStatus() {
+        return { phase: 'waiting' };
+      },
+      async reviewRestored() {},
+      close,
+    },
+    new AbortController().signal
+  );
+  const preparing = model.prepare({ recipient: 'recipient', mode: 'direct' });
+  expect(host.context.run).toHaveBeenCalledTimes(1);
+  let publications = 0;
+  model.subscribe(() => publications++);
+  const disposing = model.dispose();
+  let disposed = false;
+  void disposing.then(() => {
+    disposed = true;
+  });
+  expect(host.context.close).toHaveBeenCalledTimes(1);
+  expect(close).toHaveBeenCalledTimes(1);
+  await flush();
+  expect(host.context.dispose).toHaveBeenCalledTimes(1);
+  expect(disposed).toBe(false);
+  await expect(
+    runProof(host.native, structuredClone(fixture.input), options())
+  ).rejects.toThrow('privacy_proof_busy');
+  host.disposed.resolve();
+  await Promise.all([preparing, disposing]);
+  expect(disposed).toBe(true);
+  expect(publications).toBe(0);
+  expect(model.getSnapshot().review).toBeNull();
+});
 
 it('poisons subsequent admission when document retirement cannot be established', async () => {
   const host = setup();

@@ -44,6 +44,7 @@ export class NativePrivateDeposit {
   private busy = false;
   private disposed = false;
   private closing: Promise<void> | undefined;
+  private activeOperation: Promise<void> | undefined;
   private readonly host: Host;
   private readonly signal: AbortSignal;
   constructor(host: Host, signal: AbortSignal) {
@@ -84,20 +85,42 @@ export class NativePrivateDeposit {
       }
     }
   }
+  private trackOperation(): () => void {
+    let settled!: () => void;
+    const operation = new Promise<void>((resolve) => {
+      settled = resolve;
+    });
+    this.activeOperation = operation;
+    return () => {
+      if (this.activeOperation === operation) this.activeOperation = undefined;
+      settled();
+    };
+  }
   async prepare(
     request: Parameters<IPrivacyTransactionsController['prepareDeposit']>[0]
   ): Promise<void> {
     if (this.busy || this.disposed) return;
     this.check();
     const previous = this.snapshot;
+    const capturedRequest = { ...request };
     this.busy = true;
-    this.publish({ phase: 'preparing', review: null, result: null, status: null, error: null });
+    const finish = this.trackOperation();
+    this.publish({
+      phase: 'preparing',
+      review: null,
+      result: null,
+      status: null,
+      error: null,
+    });
     try {
+      this.check();
       if (previous.review && !previous.result) {
         await this.host.transactions.discardDeposit(previous.review.intentId);
         this.check();
       }
-      const review = await this.host.transactions.prepareDeposit({ ...request });
+      const review = await this.host.transactions.prepareDeposit(
+        capturedRequest
+      );
       this.check();
       this.publish({ phase: 'review', review });
     } catch (error) {
@@ -105,6 +128,7 @@ export class NativePrivateDeposit {
       this.publish({ phase: 'failed', error: failureCode(error) });
     } finally {
       this.busy = false;
+      finish();
     }
   }
   async confirm(intentId: string): Promise<void> {
@@ -118,9 +142,11 @@ export class NativePrivateDeposit {
     this.check();
     const review = this.snapshot.review;
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ phase: 'submitting', error: null });
     let result: IPrivacyDepositSubmission | undefined;
     try {
+      this.check();
       result = await this.host.transactions.submitDeposit(intentId);
       // The shared host already records a true ACK even if this screen retired.
       this.check();
@@ -142,6 +168,7 @@ export class NativePrivateDeposit {
       );
     } finally {
       this.busy = false;
+      finish();
     }
   }
   async refresh(): Promise<void> {
@@ -150,8 +177,10 @@ export class NativePrivateDeposit {
     const { review, result } = this.snapshot;
     if (!result) return this.prepare({ poolId: review.poolId, noteId: review.noteId });
     this.busy = true;
+    const finish = this.trackOperation();
     this.publish({ error: null, checking: true });
     try {
+      this.check();
       const status = await this.host.readStatus(review.noteId);
       this.check();
       this.publish({ status: Object.freeze({ ...status }) });
@@ -160,16 +189,38 @@ export class NativePrivateDeposit {
       this.publish({ error: failureCode(error) });
     } finally {
       this.busy = false;
+      finish();
       this.publish({ checking: false });
     }
   }
   dispose(): Promise<void> {
     if (this.closing) return this.closing;
+    let resolve!: () => void;
+    let reject!: (error: unknown) => void;
+    this.closing = new Promise<void>((accept, fail) => {
+      resolve = accept;
+      reject = fail;
+    });
     this.disposed = true;
     this.signal.removeEventListener('abort', this.onAbort);
     this.listeners.clear();
-    this.host.transactions.close();
-    this.closing = this.host.close();
+    const invoke = (action: () => void | Promise<void>) => {
+      try {
+        return Promise.resolve(action());
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+    const work = [
+      this.activeOperation ?? Promise.resolve(),
+      invoke(() => this.host.transactions.close()),
+      invoke(() => this.host.close()),
+    ];
+    void Promise.allSettled(work).then((results) => {
+      const failure = results.find((result) => result.status === 'rejected');
+      if (failure?.status === 'rejected') reject(failure.reason);
+      else resolve();
+    });
     return this.closing;
   }
 }
