@@ -89,7 +89,7 @@ function assertPostMappedSources(map, readExpected) {
     const source = map.sources[i];
     if (typeof source !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     if (source.startsWith('\0') || source.includes('/node_modules/')) continue;
-    const relative = source.startsWith('/qualification/') || source.startsWith('/src/') ? `apps/mobile${source}`
+    const relative = source.startsWith('/qualification/') || source.startsWith('/src/') || source.startsWith('/modules/') ? `apps/mobile${source}`
       : source.startsWith('/source/') ? source.slice(1) : null;
     if (!relative || relative.split('/').includes('..') || seen.has(relative) || typeof map.sourcesContent[i] !== 'string') throw Error('POST_SOURCE_MAP_INVALID');
     const expected = readExpected(relative);

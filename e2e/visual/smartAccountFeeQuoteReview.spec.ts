@@ -204,7 +204,25 @@ for (const width of [400, 320]) {
       releaseNonce = resolve;
     });
     const nonceReads: { params: unknown; phase: string }[] = [];
+    const entryPointDepositReads: unknown[] = [];
     const entryPoint = getPaliEntryPointAddress(VISUAL_FIXTURE_CHAIN_ID);
+    const entryPointDepositData = paliEntryPointInterface.encodeFunctionData(
+      'balanceOf',
+      [fixture.base.smartAccountAddress]
+    );
+    const isEntryPointDepositRead = (call: any) =>
+      call?.jsonrpc === '2.0' &&
+      call.method === 'eth_call' &&
+      Array.isArray(call.params) &&
+      call.params.length === 2 &&
+      call.params[1] === 'pending' &&
+      Object.keys(call.params[0] || {})
+        .sort()
+        .join(',') === 'data,to,value' &&
+      String(call.params[0].to).toLowerCase() === entryPoint.toLowerCase() &&
+      String(call.params[0].data).toLowerCase() ===
+        entryPointDepositData.toLowerCase() &&
+      call.params[0].value === '0x0';
     const isNonce = (call: any) => {
       if (
         call.method !== 'eth_call' ||
@@ -249,6 +267,9 @@ for (const width of [400, 320]) {
         const payload = route.request().postDataJSON();
         const calls = Array.isArray(payload) ? payload : [payload];
         const override = (call: any): string | undefined => {
+          // The real spendability check reads this account's empty deposit.
+          if (isEntryPointDepositRead(call))
+            return abi.encode(['uint256'], [0]);
           if (isNonce(call)) {
             const parsed = paliEntryPointInterface.parseTransaction({
               data: call.params[0].data,
@@ -308,6 +329,8 @@ for (const width of [400, 320]) {
                 call.params[0]?.to || call.params[0]
               ).toLowerCase()}`
             );
+            if (isEntryPointDepositRead(call))
+              entryPointDepositReads.push(call.params);
             replies.push({ jsonrpc: '2.0', id: call.id, result: value });
           } else {
             const read = await fixture.read(
@@ -496,6 +519,7 @@ for (const width of [400, 320]) {
           await expect(refresh).toBeFocused();
           await popup.keyboard.press('Enter');
           await expect(sign).toBeEnabled();
+          expect(entryPointDepositReads.length).toBeGreaterThan(0);
           await expect(refresh).toHaveCount(0);
           // Exact known ECDSA fixture:311000 gas units at3gwei maximum.
           await expect(maximumFee).toHaveText('0.000933 tsys');
@@ -596,6 +620,7 @@ for (const width of [400, 320]) {
             .digest('hex'),
           observations,
           observedReads,
+          entryPointDepositReads,
           refusedWrites,
           fixtureAudit: fixture.audit,
           syntheticRpcOnly: true,
