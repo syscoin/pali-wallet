@@ -366,7 +366,7 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
   }, [attach]);
   useLayoutEffect(() => {
     const local = controllers.current;
-    if (removalRef.current || (stage === 'remove-wallet' && snapshot.phase !== 'locked') || !local?.removal.requiresControllerReopen()) return;
+    if (removalRef.current || (stage === 'remove-wallet' && snapshot.phase !== 'locked') || !local?.removal?.requiresControllerReopen()) return;
     const token = screenToken.current;
     const generation = ++epoch.current;
     // Preparation stopped asynchronous producers before sealing the removal

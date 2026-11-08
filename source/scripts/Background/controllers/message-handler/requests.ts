@@ -1,8 +1,8 @@
 import { ethErrors } from 'helpers/errors';
 
+import { normalizeDappTransaction } from '../../../../shared/dappTransaction.ts';
 import { getController } from 'scripts/Background';
 import cleanErrorStack from 'utils/cleanErrorStack';
-import { normalizeDappTransaction } from 'utils/dappTransaction';
 import {
   getPersonalSignParams,
   isValidPersonalSignMessage,

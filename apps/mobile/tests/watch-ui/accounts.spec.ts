@@ -47,6 +47,7 @@ test('actual App switches HD to watch to HD; shared address never inherits autho
   await expect(page.getByLabel('Ethereum balance 2.5 ETH', { exact: true })).toBeVisible();
   expect((await fixture(page)).unlocks).toBe(1);
   await expect.poll(() => page.evaluate(() => window.__watchFixture.oldPhases()[0])).toBe('disposed');
+  expect(await page.evaluate(() => window.__watchFixture.events())).toContain('connections:dispose');
   await page.getByRole('button', { name: 'Accounts', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Select Account 1 (wallet)', exact: true })).toHaveCount(0);
   await expect(page.getByText(SECOND, { exact: true })).toHaveCount(0);
