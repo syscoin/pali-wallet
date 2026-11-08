@@ -94,7 +94,13 @@ function fixture(failure: Error) {
     coveredFeeUnits: '0',
     expiresAtMonotonicMilliseconds: Math.floor(performance.now()) + 90_000,
     async submit() {
-      bindGenericEvmFeeDispatch(wallet, id, context, async () => undefined);
+      bindGenericEvmFeeDispatch(
+        wallet,
+        id,
+        context,
+        async () => undefined,
+        null
+      );
       return wallet.sendAndSaveEthTransaction(
         transaction,
         false,
@@ -141,7 +147,12 @@ function fixture(failure: Error) {
         authorizeDapp,
         dappApprovalOwner: request,
         expectedContext: context,
-        ...(token === null ? {} : { genericReviewId: token }),
+        ...(token === null
+          ? {}
+          : {
+              genericReviewId: token,
+              submission: { kind: 'transaction' as const },
+            }),
       }),
   };
 }

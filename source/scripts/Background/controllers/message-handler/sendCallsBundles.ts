@@ -1,6 +1,10 @@
 import {
   createCallsBundleRegistry,
   assertCallsBundleStore,
+  captureEoaCallsSignedMetadata as captureSharedEoaCallsSignedMetadata,
+  bindEoaCallsSignedLifecycle as bindSharedEoaCallsSignedLifecycle,
+  recoverRetainedEoaCallsAttempt,
+  settleEoaCallsSignedSubmission as settleSharedEoaCallsSignedSubmission,
   type CallsBundleStore,
 } from '../../../../wallet/dappCallsBundles.ts';
 export type { EoaSendCallsReservation } from '../../../../wallet/dappCallsBundles.ts';
@@ -76,6 +80,43 @@ function ownedRegistry() {
 
 export const generateWalletBundleId = () =>
   ownedRegistry().registry.generateWalletBundleId();
+export const captureEoaCallsSignedMetadata = (
+  ...args: Parameters<typeof captureSharedEoaCallsSignedMetadata> extends [
+    unknown,
+    ...infer Rest
+  ]
+    ? Rest
+    : never
+) => captureSharedEoaCallsSignedMetadata(ownedRegistry().registry, ...args);
+export const recoverStoppedEoaCalls = (
+  records: Parameters<typeof recoverRetainedEoaCallsAttempt>[0],
+  session: Parameters<typeof recoverRetainedEoaCallsAttempt>[1],
+  host: string,
+  id: string,
+  assertStopped: () => void
+) =>
+  recoverRetainedEoaCallsAttempt(
+    records,
+    session,
+    ownedRegistry().registry,
+    host,
+    id,
+    assertStopped
+  );
+export const bindEoaCallsSignedLifecycle = (
+  lifecycle: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[0],
+  attempt: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[2]
+) =>
+  bindSharedEoaCallsSignedLifecycle(
+    lifecycle,
+    ownedRegistry().registry,
+    attempt
+  );
+export const settleEoaCallsSignedSubmission = <T>(
+  work: Promise<T>,
+  attempt: Parameters<typeof bindSharedEoaCallsSignedLifecycle>[2]
+) =>
+  settleSharedEoaCallsSignedSubmission(work, ownedRegistry().registry, attempt);
 export const getStoredSendCallsBundle = (
   ...args: Parameters<
     ReturnType<typeof createCallsBundleRegistry>['getStoredSendCallsBundle']

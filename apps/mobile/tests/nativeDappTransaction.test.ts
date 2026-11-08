@@ -49,7 +49,8 @@ function fixture(funding: EvmFeeFunding = NATIVE_EVM_FEE_FUNDING, nativeBalance 
       const rawTransaction = await wallet.signTransaction(Transaction.from(serializePreparedEvmTransaction(transaction)));
       return { rawTransaction, hash: keccak256(rawTransaction) };
     },
-    async submit(transaction, signed, assertCurrent, verifyDispatch, onBroadcast) {
+    async submit(transaction, signed, assertCurrent, verifyDispatch, onBroadcast, submission) {
+      assert.equal(submission.kind, 'transaction');
       await verifyDispatch(planner, assertCurrent);
       return sender.broadcastDapp(signed.rawTransaction, signed.hash, transaction, lifetime.signal,
         async (initiate, preflight) => { await preflight?.(); return initiate(); }, assertCurrent, onBroadcast);
@@ -71,7 +72,7 @@ for (const destination of [recipient, null]) test(`generic dapp ${destination ==
   assert.equal(review.transaction.type, 2);
   if (review.transaction.type === 2) assert.equal(review.transaction.accessList[0]!.storageKeys[0], `0x${'33'.repeat(32)}`);
   let admittedHash: string | undefined;
-  const hash = await review.submit(f.guard, (value) => { assert.equal(f.broadcasts, 0); admittedHash = value; });
+  const hash = await review.submit(f.guard, (value) => { assert.equal(f.broadcasts, 0); admittedHash = value; }, { kind: 'transaction' });
   assert.equal(hash, admittedHash);
   assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1);
   assert.deepEqual(f.nonceOverrides, [7, 7, 7]);
@@ -80,14 +81,20 @@ for (const destination of [recipient, null]) test(`generic dapp ${destination ==
     assert.equal(params[0].to ?? null, destination);
     assert.equal(params[0].accessList[0].storageKeys[0], `0x${'33'.repeat(32)}`);
   }
-  await assert.rejects(review.submit(f.guard, () => {}), /REVIEW_REQUIRED/);
+  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }), /REVIEW_REQUIRED/);
+});
+
+test('a missing submission context fails closed before signing', async () => {
+  const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
+  await assert.rejects(review.submit(f.guard, () => {}, undefined as never), /REVIEW_REQUIRED/);
+  assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
 });
 
 test('expired or revoked review cannot sign or broadcast', async () => {
   for (const action of ['expire', 'retire'] as const) {
     const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
     f[action]();
-    await assert.rejects(review.submit(f.guard, () => {}));
+    await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }));
     assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
   }
 });
@@ -95,14 +102,14 @@ test('expired or revoked review cannot sign or broadcast', async () => {
 test('fresh gas growth preserves the review envelope and requires a new review', async () => {
   const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
   f.increaseEstimate();
-  await assert.rejects(review.submit(f.guard, () => {}), /REVIEW_REQUIRED/);
+  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }), /REVIEW_REQUIRED/);
   assert.equal(f.signs, 0); assert.equal(f.broadcasts, 0);
 });
 
 test('revocation inside signing prevents the submission path', async () => {
   const f = fixture(), review = await f.prepare({ from: wallet.address, to: recipient });
   f.onSign(f.retire);
-  await assert.rejects(review.submit(f.guard, () => {}));
+  await assert.rejects(review.submit(f.guard, () => {}, { kind: 'transaction' }));
   assert.equal(f.signs, 1); assert.equal(f.broadcasts, 0);
 });
 
@@ -133,10 +140,10 @@ for (const lose of ['never', 'before-confirm', 'during-sign'] as const) test(`ve
   if (lose === 'before-confirm') credit = false;
   if (lose === 'during-sign') f.onSign(() => { credit = false; });
   if (lose === 'never') {
-    await review.submit(f.guard, () => undefined);
+    await review.submit(f.guard, () => undefined, { kind: 'transaction' });
     assert.equal(f.signs, 1); assert.equal(f.broadcasts, 1); assert.equal(checks, 3);
   } else {
-    await assert.rejects(review.submit(f.guard, () => undefined), { code: 'UNAVAILABLE' });
+    await assert.rejects(review.submit(f.guard, () => undefined, { kind: 'transaction' }), { code: 'UNAVAILABLE' });
     assert.equal(f.broadcasts, 0);
     assert.equal(f.signs, lose === 'during-sign' ? 1 : 0);
   }
@@ -152,7 +159,7 @@ test('fee funding cannot cover transferred native value or be forged', async () 
 test('null pending block uses canonical fee bounds while malformed pending data remains invalid', async () => {
   const f = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'null');
   const review = await f.prepare({ from: wallet.address, to: recipient, data: '0x1234' });
-  await review.submit(f.guard, () => undefined);
+  await review.submit(f.guard, () => undefined, { kind: 'transaction' });
   assert.equal(f.broadcasts, 1);
   const malformed = fixture(NATIVE_EVM_FEE_FUNDING, '0x100000000000000', 'malformed');
   await assert.rejects(malformed.prepare({ from: wallet.address, to: recipient }), { code: 'INVALID_RESPONSE' });

@@ -142,7 +142,7 @@ it('requires a consumed bound lease, exact ID, and exact approved unsigned hash'
   );
   f.consume();
   const dispatch = jest.fn(async () => undefined);
-  bindGenericEvmFeeDispatch(f.owner, f.token.id, context, dispatch);
+  bindGenericEvmFeeDispatch(f.owner, f.token.id, context, dispatch, null);
   expect(captureGenericEvmFeeDispatch(f.owner, f.submission)).toEqual(
     expect.objectContaining({ preflight: expect.any(Function) })
   );
@@ -160,12 +160,55 @@ it('requires a consumed bound lease, exact ID, and exact approved unsigned hash'
   ).toThrow('context changed');
 });
 
+it('captures calls association in the exact consumed dispatch lease and refuses omitted context', () => {
+  const f = fixture();
+  f.consume();
+  expect(() =>
+    bindGenericEvmFeeDispatch(
+      f.owner,
+      f.token.id,
+      context,
+      async () => undefined,
+      undefined as never
+    )
+  ).toThrow('unavailable');
+  const eoaCalls = {
+    origin: 'https://app.example',
+    bundleId: '0x01',
+    reservationId: 'reservation',
+    submissionId: 'submission',
+    failed: true,
+  };
+  bindGenericEvmFeeDispatch(
+    f.owner,
+    f.token.id,
+    context,
+    async () => undefined,
+    { eoaCalls }
+  );
+  eoaCalls.submissionId = 'changed';
+  expect(captureGenericEvmFeeDispatch(f.owner, f.submission)!.metadata).toEqual(
+    {
+      eoaCalls: {
+        ...eoaCalls,
+        submissionId: 'submission',
+      },
+    }
+  );
+});
+
 it('rechecks the held owner before and after final dispatch refresh', async () => {
   const f = fixture(),
     held = f.consume();
-  bindGenericEvmFeeDispatch(f.owner, f.token.id, context, async () => {
-    f.retire();
-  });
+  bindGenericEvmFeeDispatch(
+    f.owner,
+    f.token.id,
+    context,
+    async () => {
+      f.retire();
+    },
+    null
+  );
   const refresh = captureGenericEvmFeeDispatch(f.owner, f.submission)!;
   const rawTransaction = await wallet.signTransaction(
     Transaction.from(serializePreparedEvmTransaction(transaction))
@@ -224,7 +267,8 @@ it('records actual SDK entry independently of later review removal', () => {
     f.owner,
     f.token.id,
     context,
-    async () => undefined
+    async () => undefined,
+    null
   );
   markGenericEvmFeeSdkEntered(f.owner, f.token.id);
   held.close();

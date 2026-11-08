@@ -1593,6 +1593,7 @@ export const SendConfirm = () => {
                   {
                     hardwareScope: state.walletScope,
                     genericReviewId: approved.id,
+                    submission: { kind: 'transaction' },
                   },
                 ],
                 300000

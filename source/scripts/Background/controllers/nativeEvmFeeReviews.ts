@@ -18,6 +18,7 @@ import {
   capturePrivateWithdrawalAttempt,
   privateWithdrawalUnsignedBytes,
 } from '../../../utils/privacy/withdrawalMetadata';
+import { snapshotEoaCallsSignedAttempt } from '../../../wallet/dappCallsBundles';
 
 import type { ExtensionReviewedNonce } from './evmAutoNonce';
 import type { captureReviewedNativeEvmTransfer } from './freshNativeGasEstimate';
@@ -72,6 +73,9 @@ type PrivateNoteAttempt =
 type Entry =
   | { kind: 'native'; value: Pending }
   | {
+      callsMetadata?: Readonly<{
+        eoaCalls: import('../../../wallet/dappCallsBundles').EoaCallsSignedAttempt;
+      }>;
       dispatch?: DispatchCheck;
       kind: 'generic';
       phase: 'quoted' | 'consumed' | 'dispatch';
@@ -369,7 +373,7 @@ export function captureGenericEvmFeeDispatch(
       ? entry.privateNote.kind === 'deposit'
         ? Object.freeze({ privateDeposit: entry.privateNote.attempt })
         : Object.freeze({ privateWithdrawal: entry.privateNote.attempt })
-      : undefined,
+      : entry.callsMetadata,
   });
 }
 
@@ -378,7 +382,10 @@ export function bindGenericEvmFeeDispatch(
   owner: object,
   id: string,
   context: IEvmTransactionContext,
-  dispatch: DispatchCheck
+  dispatch: DispatchCheck,
+  callsMetadata: Readonly<{
+    eoaCalls: import('../../../wallet/dappCallsBundles').EoaCallsSignedAttempt;
+  }> | null
 ): void {
   const entry = pendingByOwner.get(owner)?.get(id);
   if (
@@ -386,6 +393,8 @@ export function bindGenericEvmFeeDispatch(
     entry.kind !== 'generic' ||
     entry.phase !== 'consumed' ||
     typeof dispatch !== 'function' ||
+    callsMetadata === undefined ||
+    (callsMetadata !== null && entry.value.authority.kind !== 'dapp') ||
     ((entry.value.authority.kind === 'private-deposit' ||
       entry.value.authority.kind === 'private-withdrawal') &&
       entry.privateNote === null)
@@ -398,6 +407,12 @@ export function bindGenericEvmFeeDispatch(
     Math.floor(performance.now())
   );
   entry.dispatch = dispatch;
+  entry.callsMetadata =
+    callsMetadata === null
+      ? undefined
+      : Object.freeze({
+          eoaCalls: snapshotEoaCallsSignedAttempt(callsMetadata.eoaCalls),
+        });
   entry.phase = 'dispatch';
 }
 

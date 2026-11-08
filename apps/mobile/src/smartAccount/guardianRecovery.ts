@@ -262,7 +262,7 @@ export class NativeGuardianRecoveryController {
         () => this.check(),
         (hash) => {
           this.publish({ transactionHash: hash, canAbandon: false });
-        }
+        }, { kind: 'transaction' }
       );
       this.check();
       this.publish({ transactionHash: hash, phase: 'waiting' });

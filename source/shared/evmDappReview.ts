@@ -4,6 +4,11 @@ import {
   type PreparedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 
+import {
+  snapshotEoaCallsSignedAttempt,
+  type EoaCallsSignedAttempt,
+} from '../wallet/dappCallsBundles.ts';
+
 import { normalizeDappTransaction } from './dappTransaction.ts';
 import type { EvmDappFeeComparison } from './evmDappFeePolicy.ts';
 import type {
@@ -21,6 +26,10 @@ export type EvmDappDispatchValidation<NonceContext> = (
   nonceContext: NonceContext,
   assertCurrent: () => void
 ) => Promise<void>;
+export type EvmDappSubmission = Readonly<
+  | { kind: 'transaction' }
+  | { attempt: EoaCallsSignedAttempt; kind: 'eoa-calls' }
+>;
 
 export type EvmDappReview<Result = string> = Readonly<{
   coveredFeeUnits: string;
@@ -30,7 +39,8 @@ export type EvmDappReview<Result = string> = Readonly<{
   maximumTotalUnits: string;
   submit(
     assertCurrent: () => void,
-    onBroadcast: (hash: string) => void
+    onBroadcast: (hash: string) => void,
+    submission: EvmDappSubmission
   ): Promise<Result>;
   transaction: PreparedEvmTransaction;
 }>;
@@ -51,7 +61,8 @@ export type EvmDappReviewPorts<NonceContext, Result> = Readonly<{
     transaction: PreparedEvmTransaction,
     assertCurrent: () => void,
     verifyDispatch: EvmDappDispatchValidation<NonceContext>,
-    onBroadcast: (hash: string) => void
+    onBroadcast: (hash: string) => void,
+    submission: EvmDappSubmission
   ): Promise<Result>;
   signal: AbortSignal;
 }>;
@@ -149,10 +160,22 @@ export async function prepareEvmDappReview<NonceContext, Result>(
     coveredFeeUnits: quote.coveredFeeUnits,
     maximumTotalUnits: quote.maximumTotalUnits,
     expiresAtMonotonicMilliseconds: quote.expiresAtMonotonicMilliseconds,
-    async submit(assertCurrent, onBroadcast) {
-      if (consumed || typeof onBroadcast !== 'function')
+    async submit(assertCurrent, onBroadcast, context) {
+      if (
+        consumed ||
+        typeof onBroadcast !== 'function' ||
+        !context ||
+        (context.kind !== 'transaction' && context.kind !== 'eoa-calls')
+      )
         throw new Error('REVIEW_REQUIRED');
       consumed = true;
+      const submission: EvmDappSubmission =
+        context.kind === 'transaction'
+          ? Object.freeze({ kind: 'transaction' })
+          : Object.freeze({
+              kind: 'eoa-calls',
+              attempt: snapshotEoaCallsSignedAttempt(context.attempt),
+            });
       const current = () => {
         assertSynchronousEvmFeeGuard(assertCurrent);
         check();
@@ -181,7 +204,13 @@ export async function prepareEvmDappReview<NonceContext, Result>(
       };
       await refresh(ports.nonceContext, current);
       current();
-      return ports.send(quote.transaction, current, refresh, onBroadcast);
+      return ports.send(
+        quote.transaction,
+        current,
+        refresh,
+        onBroadcast,
+        submission
+      );
     },
   });
 }

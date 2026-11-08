@@ -483,7 +483,7 @@ export function createNativeSmartOperation(
           onBroadcast(hash);
           acknowledged = Promise.resolve(options.onBroadcast?.({ hash }));
           void acknowledged.catch(() => undefined);
-        });
+        }, { kind: 'transaction' });
         await acknowledged;
         guard();
         return {

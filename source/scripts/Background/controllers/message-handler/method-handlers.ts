@@ -8,6 +8,7 @@ import {
   normalizeDappCapabilitiesRequest,
   projectDappCapabilities,
 } from '../../../../shared/dappCapabilities.ts';
+import { hasLiveEoaCallsSequence } from '../../handlers/approvalSubmission';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
@@ -254,6 +255,11 @@ export class WalletMethodHandler implements IMethodHandler {
             )
           );
         }
+        if (!hasLiveEoaCallsSequence(host, params[0]))
+          await wallet.recoverStoppedEoaCalls(host, params[0], () => {
+            if (hasLiveEoaCallsSequence(host, params[0]))
+              throw new Error('Calls sequence is still active');
+          });
         const callsStatus = await resolveCallsStatus(
           (bundleChainId: number) =>
             wallet?.getEvmProviderForChain(bundleChainId) ?? null,
@@ -535,6 +541,11 @@ export class WalletMethodHandler implements IMethodHandler {
             );
           }
 
+          if (!hasLiveEoaCallsSequence(host, params[0]))
+            await wallet.recoverStoppedEoaCalls(host, params[0], () => {
+              if (hasLiveEoaCallsSequence(host, params[0]))
+                throw new Error('Calls sequence is still active');
+            });
           return resolveCallsStatus(
             (bundleChainId: number) =>
               wallet?.getEvmProviderForChain(bundleChainId) ?? null,

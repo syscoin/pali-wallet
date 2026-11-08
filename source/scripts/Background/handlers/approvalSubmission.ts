@@ -65,6 +65,13 @@ type Watch = {
   utxo?: DappUtxoReview;
 };
 const watches = new Map<string, Set<Watch>>();
+export const hasLiveEoaCallsSequence = (host: string, id: string): boolean =>
+  [...watches.values()].some((entries) =>
+    [...entries].some(
+      (watch) =>
+        watch.evmSend?.batch?.host === host && watch.evmSend.batch.id === id
+    )
+  );
 
 /** Service-worker-local state for an already enrolled approval document. */
 export const watchApprovalSubmission = (
@@ -74,6 +81,13 @@ export const watchApprovalSubmission = (
   utxo?: DappUtxoReview,
   smart?: DappSmartAccountReview
 ): (() => void) => {
+  if (
+    evmSend?.batch &&
+    (!Number.isSafeInteger(evmSend.batch.callCount) ||
+      evmSend.batch.callCount < 1 ||
+      evmSend.batch.callCount > 50)
+  )
+    throw new Error('Calls approval requires its original call count');
   const watch: Watch = {
     attempts: new Set(),
     nonceGeneration: 0,

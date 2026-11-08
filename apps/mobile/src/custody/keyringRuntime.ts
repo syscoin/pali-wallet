@@ -1,4 +1,4 @@
-import { readRetainedEoaCall } from '../../../../source/wallet/dappCallsBundles.ts';
+import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, readRetainedEoaCall, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission } from '../../../../source/wallet/dappCallsBundles.ts';
 import { sentrySettingsStorageKey } from '../../../../source/shared/sentrySettings.ts';
 import { assertPaliWalletValidatorSwitchApplied, buildPaliWalletValidatorSwitch } from '../../../../source/utils/smartAccount/validatorSwitch.ts';
 import { NativePrivateWithdrawal } from './privateWithdrawal.ts';
@@ -815,22 +815,32 @@ export function createKeyringRuntimeFactory(
                 return Object.freeze({ rawTransaction: signed.rawTransaction, hash: signed.hash });
               });
             },
-            submit(transaction, signed, assertSubmittingCurrent, verifyDispatch, onBroadcast) {
+            async submit(transaction, signed, assertSubmittingCurrent, verifyDispatch, onBroadcast, submission) {
               if (active || reserved) return Promise.reject(new KeyringRuntimeError('BUSY'));
               const guard = () => { check(); checkGuard(assertSubmittingCurrent); };
+              guard();
+              const registry = submission.kind === 'eoa-calls' ? (await getConnectionRepository(generation)).calls : undefined;
+              const submissionMetadata = submission.kind === 'eoa-calls'
+                ? { ...metadata, ...await captureEoaCallsSignedMetadata(
+                    registry!, submission.attempt, transaction) }
+                : metadata;
               guard();
               const context: EvmSubmissionContext = {
                 account: { id: selected.index, type: signerType, address: selected.address },
                 network: { kind: 'ethereum', chainId: Number(network.chainId), slip44: 60, url: network.rpcUrl },
                 operation: 'send',
               };
-              const boundary = sdk.captureEvmSubmission(context, guard, () =>
-                capturePayerSubmission(context, selectedContext, guard, metadata, undefined, verifyDispatch));
+              const boundary = sdk.captureEvmSubmission(context, guard, () => {
+                const lifecycle = capturePayerSubmission(context, selectedContext, guard, submissionMetadata, undefined, verifyDispatch);
+                return submission.kind === 'eoa-calls'
+                  ? bindEoaCallsSignedLifecycle(lifecycle, registry!, submission.attempt) : lifecycle;
+              });
               if (metadata) enteredPrivateSubmissions.add(metadata);
               const work = sdk.submitSignedEvmTransaction<string>(signed.rawTransaction, ({ rawTransaction, admit }) =>
                 sender.broadcastDapp(rawTransaction, signed.hash, transaction, signal, admit, guard, onBroadcast),
               boundary, undefined, serializePreparedEvmTransaction(transaction));
-              const pending = work.finally(() => { pendingSubmissions.delete(pending); });
+              const tracked = submission.kind === 'eoa-calls' ? settleEoaCallsSignedSubmission(work, registry!, submission.attempt) : work;
+              const pending = tracked.finally(() => { pendingSubmissions.delete(pending); });
               pendingSubmissions.add(pending);
               return pending;
             },
@@ -1564,7 +1574,7 @@ export function createKeyringRuntimeFactory(
                             assertBeforeSign();
                             const hash = await saved.quote.submit(
                               assertBeforeSign,
-                              () => undefined
+                              () => undefined, { kind: 'transaction' }
                             );
                             await onBroadcast({ hash });
                             return { hash };
@@ -1793,7 +1803,7 @@ export function createKeyringRuntimeFactory(
                 if (!saved) throw new Error('privacy_deposit_context_changed');
                 try {
                   assertBeforeSign();
-                  const hash = await saved.quote.submit(assertBeforeSign, () => undefined);
+                  const hash = await saved.quote.submit(assertBeforeSign, () => undefined, { kind: 'transaction' });
                   await onBroadcast({ hash });
                   return { hash };
                 } catch (error) {
@@ -3235,7 +3245,7 @@ export function createKeyringRuntimeFactory(
                   check();
                   return Object.freeze({
                     ...prepared,
-                    async submit(assertCurrent, onBroadcast) {
+                    async submit(assertCurrent, onBroadcast, submission) {
                       check();
                       checkGuard(assertCurrent);
                       if ((await observe()).action !== action)
@@ -3243,7 +3253,7 @@ export function createKeyringRuntimeFactory(
                       await validate();
                       check();
                       checkGuard(assertCurrent);
-                      return prepared.submit(assertCurrent, onBroadcast);
+                      return prepared.submit(assertCurrent, onBroadcast, submission);
                     },
                   });
                 },
@@ -3682,6 +3692,17 @@ export function createKeyringRuntimeFactory(
               repository,
               walletBindingId,
               assertOwner,
+              async recoverStoppedEoaCalls(origin, id, assertStopped) {
+                const ring = keyring;
+                const check = () => {
+                  assertOwner(); checkGuard(assertStopped);
+                  if (keyring !== ring || !ring.isUnlocked()) throw new KeyringRuntimeError('CANCELLED');
+                };
+                check();
+                await recoverRetainedEoaCallsAttempt(signedRecords,
+                  signedRecords.captureSession({ keyring: ring, assertCurrent: check }),
+                  repository.calls, origin, id, check);
+              },
               async recordStoppedEoaCalls(input) {
                 assertOwner();
                 const ring = keyring;

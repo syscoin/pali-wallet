@@ -150,7 +150,9 @@ describe('shared generic per-call fee review', () => {
         ...fees,
       });
       expect(review.transaction.gasLimit).toBe('25202');
-      await expect(review.submit(f.check, jest.fn())).resolves.toBe(hash);
+      await expect(
+        review.submit(f.check, jest.fn(), { kind: 'transaction' })
+      ).resolves.toBe(hash);
       const estimates = f.requests.filter(
         ({ method }) => method === 'eth_estimateGas'
       );
@@ -188,13 +190,15 @@ describe('shared generic per-call fee review', () => {
       expect(f.sign).not.toHaveBeenCalled();
       expect(f.submit).not.toHaveBeenCalled();
       const onBroadcast = jest.fn();
-      await expect(review.submit(f.check, onBroadcast)).resolves.toBe(hash);
+      await expect(
+        review.submit(f.check, onBroadcast, { kind: 'transaction' })
+      ).resolves.toBe(hash);
       expect(onBroadcast).toHaveBeenCalledWith(hash);
       expect(f.sign).toHaveBeenCalledTimes(1);
       expect(f.prepare).toHaveBeenCalledTimes(3);
-      await expect(review.submit(f.check, onBroadcast)).rejects.toThrow(
-        'REVIEW_REQUIRED'
-      );
+      await expect(
+        review.submit(f.check, onBroadcast, { kind: 'transaction' })
+      ).rejects.toThrow('REVIEW_REQUIRED');
     }
   );
 
@@ -204,7 +208,9 @@ describe('shared generic per-call fee review', () => {
       const f = fixture();
       const review = await f.review();
       f[change]();
-      await expect(review.submit(f.check, jest.fn())).rejects.toThrow();
+      await expect(
+        review.submit(f.check, jest.fn(), { kind: 'transaction' })
+      ).rejects.toThrow();
       expect(f.sign).not.toHaveBeenCalled();
       expect(f.submit).not.toHaveBeenCalled();
     }
@@ -235,7 +241,7 @@ describe('shared generic per-call fee review', () => {
     const f = fixture();
     const review = await f.review({ from, data: '0x60006000' });
     expect(review.transaction.to).toBeNull();
-    await review.submit(f.check, jest.fn());
+    await review.submit(f.check, jest.fn(), { kind: 'transaction' });
     for (const request of f.requests.filter(
       ({ method }) => method === 'eth_estimateGas'
     )) {
@@ -248,7 +254,7 @@ describe('shared generic per-call fee review', () => {
     const f = fixture();
     const review = await f.review();
     await expect(
-      review.submit(async () => undefined, jest.fn())
+      review.submit(async () => undefined, jest.fn(), { kind: 'transaction' })
     ).rejects.toThrow('synchronous');
     expect(f.sign).not.toHaveBeenCalled();
   });
@@ -258,7 +264,7 @@ describe('shared generic per-call fee review', () => {
     f.pendingHeader('null');
     const review = await f.review();
     expect(review.maximumFeeUnits).toBe('75600');
-    await review.submit(f.check, jest.fn());
+    await review.submit(f.check, jest.fn(), { kind: 'transaction' });
     for (const request of f.requests.filter(
       ({ method }) => method === 'eth_estimateGas'
     ))

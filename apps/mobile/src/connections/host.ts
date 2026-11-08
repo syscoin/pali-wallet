@@ -48,6 +48,8 @@ export type NativeConnectionHost = Readonly<{
   sessionGeneration(): number;
   supportsAtomicCalls(accountId: string): boolean;
   supportsSmartAccountMessages(accountId: string): boolean;
+  /** Caller proves that the per-call consent sequence no longer exists. */
+  recoverStoppedEoaCalls(origin: string, id: string, assertStopped: () => void): Promise<void>;
   readCallsStatus(
     origin: string,
     id: string,

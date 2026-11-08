@@ -98,6 +98,7 @@ function fixture(
   let callsStatusError: Error | undefined;
   let callsStatusWait: Promise<void> = Promise.resolve();
   const callsStatusReads: { origin: string; id: string }[] = [];
+  const callsRecoveries: { origin: string; id: string }[] = [];
   const callsStatusChains: number[] = [];
   const callsStatusReceipts = new Map<number, ReadonlyMap<string, unknown>>();
   const handedOff: unknown[] = [];
@@ -217,6 +218,7 @@ function fixture(
       return options.smart ? '0x' + '33'.repeat(20) + '12'.repeat(65) : '0x' + '12'.repeat(65);
     },
     async recordStoppedEoaCalls() {},
+    async recoverStoppedEoaCalls(origin, id, assertStopped) { assertStopped(); callsRecoveries.push({ origin, id }); },
     async prepareTransaction(input, check) {
       check();
       await preparationWait;
@@ -266,7 +268,8 @@ function fixture(
         maximumTotalUnits: fee.maximumTotalUnits,
         expiresAtMonotonicMilliseconds: fee.expiresAtMonotonicMilliseconds,
         approval: transaction.to ? summarizeApproval(transaction.data, transaction.to, approvalMetadata) : null,
-        async submit(guard, onBroadcast) {
+        async submit(guard, onBroadcast, submission) {
+          assert.equal(submission.kind, options.batch ? 'eoa-calls' : 'transaction');
           guard();
           input.approval.assertCurrent();
           transactions.push(fee.transaction);
@@ -517,6 +520,7 @@ function fixture(
     },
     failCallsStatus(error: Error) { callsStatusError = error; },
     callsStatusReads,
+    callsRecoveries,
     callsStatusChains,
     setCallsStatusWait(value: Promise<void>) { callsStatusWait = value; },
     setCallsStatusReceipts(chainId: number, receipts: ReadonlyMap<string, unknown>) {
@@ -2805,6 +2809,26 @@ test('ordered Smart batch review uses two consents and returns a reserved bundle
     await approving;
     assert.equal(f.transactions.length, 1);
     assert.deepEqual(f.responses.at(-1), { id: 10, result: { result: { id: '0x1234', capabilities: {} } } });
+  } finally { await f.controller.dispose(); }
+});
+
+test('status recovery cannot retire a live per-call consent sequence', async () => {
+  const f = await connectedFixture({ batch: true });
+  try {
+    const review = await messageRequest(f, 'wallet_sendCalls', [{ version: '2.0.0', id: '0xa123',
+      calls: [{ to: ADDRESS }, { to: ADDRESS }], atomicRequired: false }]);
+    assert(review?.kind === 'transaction');
+    await f.view.approveRequest(review.id, review.revision, false);
+    const suffix = f.view.getSnapshot().signingReview;
+    assert(suffix?.kind === 'transaction' && suffix.batch?.index === 1);
+    f.setCallsStatusReceipts(1, new Map());
+    await messageRequest(f, 'wallet_getCallsStatus', ['0xa123'], 11);
+    assert.deepEqual(f.callsRecoveries, []);
+    assert.equal((f.responses.at(-1) as any).result.result.status, 100);
+    await f.view.rejectRequest(suffix.id);
+    await settle();
+    await messageRequest(f, 'wallet_getCallsStatus', ['0xa123'], 12);
+    assert.deepEqual(f.callsRecoveries, [{ origin: ORIGIN, id: '0xa123' }]);
   } finally { await f.controller.dispose(); }
 });
 
