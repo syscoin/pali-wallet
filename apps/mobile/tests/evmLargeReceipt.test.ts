@@ -5,7 +5,7 @@ import { getNativeNetwork, type EvmNetworkId } from '../src/custody/networkConte
 const hash='0x'+'1'.repeat(64),from='0x'+'2'.repeat(40),to='0x'+'3'.repeat(40),blockHash='0x'+'4'.repeat(64);
 const expected={hash,from,to,nonce:'7'};
 const receipt={transactionHash:hash,from,to,status:'0x1',blockNumber:'0x8',blockHash};
-const largeReceipt={...receipt,logs:[{address:to,topics:[hash],data:'0x'+'ab'.repeat(10000)}]};
+const largeReceipt={...receipt,logs:[{address:to,topics:[hash],data:'0x'+'ab'.repeat(1024*1024)}]};
 const json=(body:string)=>new Response(body,{headers:{'content-type':'application/json'}});
 type Call={method:string;params:unknown[]};
 type Stage='initial'|'repeated';

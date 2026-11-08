@@ -578,7 +578,11 @@ test('privacy pool preparation verifies local note imports and preserves a good 
               result = depositBroadcastAttempts === 0 ? '0x7' : '0x8';
               break;
             case 'eth_estimateGas': {
-              if (call.params.length !== 1) return undefined;
+              if (
+                call.params.length !== 2 ||
+                !['latest', 'pending'].includes(call.params[1])
+              )
+                return undefined;
               const transaction = call.params[0];
               if (
                 !owns(transaction?.from) ||
@@ -617,11 +621,12 @@ test('privacy pool preparation verifies local note imports and preserves a good 
                 call.params.length !== 2 ||
                 typeof call.params[1] !== 'boolean' ||
                 (call.params[0] !== 'latest' &&
+                  call.params[0] !== 'pending' &&
                   !/^0x(?:0|[1-9a-f][0-9a-f]*)$/i.test(call.params[0]))
               )
                 return undefined;
               const height =
-                call.params[0] === 'latest'
+                call.params[0] === 'latest' || call.params[0] === 'pending'
                   ? BLOCK_NUMBER
                   : Number(BigInt(call.params[0]));
               if (
