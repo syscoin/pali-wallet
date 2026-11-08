@@ -76,8 +76,21 @@ export function NativeSmartAccountOperationScreen({
   );
   const [details, setDetails] = useState(false);
   const network = getNativeSendContext(state.network);
-  const amount = (value: string) =>
-    `${formatBaseUnits(value, network.decimals)} ${network.symbol}`;
+  const amount = (units: string) => {
+    const value = formatBaseUnits(units, network.decimals);
+    return (
+      <View
+        style={s.amount}
+        accessible
+        accessibilityLabel={`${value} ${network.symbol}`}
+      >
+        <Text selectable style={[s.value, value.length > 18 && s.preciseValue]}>
+          {value}
+        </Text>
+        <Text style={s.unit}>{network.symbol}</Text>
+      </View>
+    );
+  };
   useEffect(() => {
     void controller.prepare();
     return () => controller.dispose();
@@ -119,7 +132,7 @@ export function NativeSmartAccountOperationScreen({
               {transfer.recipient}
             </Text>
             <Text style={s.label}>Amount</Text>
-            <Text style={s.value}>{amount(transfer.amountUnits)}</Text>
+            {amount(transfer.amountUnits)}
           </Card>
         )}
         {state.phase === 'authorize' && (
@@ -138,7 +151,7 @@ export function NativeSmartAccountOperationScreen({
             />
             <Card style={s.card}>
               <Text style={s.label}>Maximum account charge</Text>
-              <Text style={s.value}>{amount(state.maximumPrefundUnits!)}</Text>
+              {amount(state.maximumPrefundUnits!)}
               <Text style={s.label}>
                 Unused prefund stays with your account.
               </Text>
@@ -207,11 +220,11 @@ export function NativeSmartAccountOperationScreen({
                 {payer.transaction.from}
               </Text>
               <Text style={s.label}>Amount</Text>
-              <Text style={s.value}>{amount(payer.transaction.value)}</Text>
+              {amount(payer.transaction.value)}
               <Text style={s.label}>Maximum network fee</Text>
-              <Text style={s.value}>{amount(payer.maximumFeeUnits)}</Text>
+              {amount(payer.maximumFeeUnits)}
               <Text style={s.label}>Maximum total</Text>
-              <Text style={s.value}>{amount(payer.maximumTotalUnits)}</Text>
+              {amount(payer.maximumTotalUnits)}
             </Card>
             <Button
               title={
@@ -274,7 +287,20 @@ const s = StyleSheet.create({
   card: { padding: 20, gap: 10 },
   label: { color: colors.muted, fontSize: 13, lineHeight: 19 },
   address: { color: colors.text, fontSize: 13, lineHeight: 20 },
-  value: { color: colors.text, fontSize: 19, fontWeight: '600' },
+  amount: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'baseline',
+    gap: 6,
+  },
+  value: {
+    color: colors.text,
+    fontSize: 19,
+    fontWeight: '600',
+    maxWidth: '100%',
+  },
+  preciseValue: { fontSize: 16, lineHeight: 24 },
+  unit: { color: colors.muted, fontSize: 14, lineHeight: 20 },
   progress: {
     flexDirection: 'row',
     gap: 12,
