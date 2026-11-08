@@ -145,7 +145,7 @@ describe('transaction approval submission lifetime', () => {
       route: config.popupRoute!,
       data: request.startsWith('sys_sign')
         ? { ...utxoPsbt, approvedContext: utxoContext }
-        : { approvedContext, ...batch },
+        : { approvedContext, ...batch, ...(batch ? { calls: [{}, {}] } : {}) },
       signal,
     });
     await new Promise(setImmediate);

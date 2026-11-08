@@ -201,6 +201,7 @@ beforeEach(async () => {
   mockController = {
     wallet: {
       isUnlocked: () => true,
+      recoverStoppedEoaCalls: jest.fn(async (_host, _id, guard) => guard()),
       getEvmProviderForChain: (chain: number) => {
         expect(chain).toBe(1);
         return provider;

@@ -1,8 +1,14 @@
 import {
+  readEvmOwnData,
   serializePreparedEvmTransaction,
   snapshotPreparedEvmTransaction,
+  type PreparedEvmTransaction,
 } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
-import { assertSignedEvmTransactionMatches } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import {
+  assertSignedEvmTransactionMatches,
+  evmSubmissionFailure,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
+import { Transaction } from 'ethers/transaction';
 
 import { EthereumRpcErrorHandler } from '../helpers/errors/errorClassesHandlers.ts';
 import {
@@ -10,6 +16,7 @@ import {
   getSmartAccountCallsOutcome,
   normalizeDappCallsReceipt,
 } from '../shared/dappCallsStatus.ts';
+import { assertSynchronousEvmFeeGuard } from '../shared/evmFeeApproval.ts';
 import { readEvmRpcHash } from '../shared/evmTransactionObservation.ts';
 import cleanErrorStack from '../utils/cleanErrorStack.ts';
 import {
@@ -23,9 +30,163 @@ import type {
   EvmSignedRecords,
   EvmSignedRecordSession,
 } from './evmSignedRecords.ts';
+import type {
+  EvmSignedSubmission,
+  EvmSubmissionLifecycle,
+} from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 
 const MAX_BUNDLES_PER_HOST = 50;
 const BUNDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Authenticated alongside the SDK's exact canonical signed envelope. */
+export type EoaCallsSignedAttempt = Readonly<{
+  bundleId: string;
+  failed: boolean;
+  origin: string;
+  reservationId: string;
+  submissionId: string;
+}>;
+export function snapshotEoaCallsSignedAttempt(
+  input: unknown
+): EoaCallsSignedAttempt {
+  const value = readEvmOwnData(input, [
+    'origin',
+    'bundleId',
+    'reservationId',
+    'submissionId',
+    'failed',
+  ]);
+  for (const field of [
+    'origin',
+    'bundleId',
+    'reservationId',
+    'submissionId',
+  ] as const)
+    if (
+      typeof value[field] !== 'string' ||
+      !value[field] ||
+      value[field].length > 8192
+    )
+      throw new Error('Invalid signed calls association');
+  if (typeof value.failed !== 'boolean')
+    throw new Error('Invalid signed calls association');
+  return Object.freeze({ ...value }) as EoaCallsSignedAttempt;
+}
+
+/** Capture only the currently started reservation, before SDK persistence/wire admission. */
+export async function captureEoaCallsSignedMetadata(
+  registry: ReturnType<typeof createCallsBundleRegistry>,
+  input: EoaCallsSignedAttempt,
+  transaction: PreparedEvmTransaction
+): Promise<Readonly<{ eoaCalls: EoaCallsSignedAttempt }>> {
+  const attempt = snapshotEoaCallsSignedAttempt(input);
+  const bundle = await registry.getStartedEoaCallsAttempt(
+    attempt.origin,
+    attempt.bundleId
+  );
+  if (
+    !bundle ||
+    bundle.atomic ||
+    bundle.smartAccount ||
+    !bundle.submissionStarted ||
+    bundle.submissionCompleted ||
+    bundle.stoppedTransactionHash ||
+    bundle.reservationId !== attempt.reservationId ||
+    bundle.submissionId !== attempt.submissionId ||
+    String(bundle.chainId) !== transaction.chainId ||
+    bundle.sender !== transaction.from.toLowerCase()
+  )
+    throw new Error('Signed calls association changed');
+  return Object.freeze({ eoaCalls: attempt });
+}
+
+/** Both durable acknowledgements must precede the SDK's existing wire admission. */
+export function bindEoaCallsSignedLifecycle(
+  lifecycle: EvmSubmissionLifecycle,
+  registry: ReturnType<typeof createCallsBundleRegistry>,
+  input: EoaCallsSignedAttempt
+): EvmSubmissionLifecycle {
+  const attempt = snapshotEoaCallsSignedAttempt(input);
+  return Object.freeze({
+    ...lifecycle,
+    async persistSigned(record) {
+      await lifecycle.persistSigned(record);
+      lifecycle.assertCurrent();
+      const signed = Transaction.from(record.rawTransaction);
+      if (
+        !signed.hash ||
+        signed.hash !== record.hash ||
+        signed.from?.toLowerCase() !== record.from.toLowerCase() ||
+        signed.chainId.toString() !== record.chainId
+      )
+        throw new Error('Signed calls association changed');
+      const bundle = await registry.getStartedEoaCallsAttempt(
+        attempt.origin,
+        attempt.bundleId
+      );
+      lifecycle.assertCurrent();
+      if (
+        !bundle ||
+        bundle.sender !== record.from.toLowerCase() ||
+        String(bundle.chainId) !== record.chainId
+      )
+        throw new Error('Signed calls association changed');
+      await registry.recordSendCallsBundle(attempt.origin, attempt.bundleId, {
+        atomic: false,
+        smartAccount: false,
+        chainId: bundle.chainId,
+        reservationId: attempt.reservationId,
+        submissionId: attempt.submissionId,
+        txHashes: [record.hash],
+      });
+      lifecycle.assertCurrent();
+    },
+    async dispatchSigned<T>(
+      record: EvmSignedSubmission,
+      initiate: () => Promise<T>,
+      preflight: () => Promise<void>
+    ) {
+      let entered = false;
+      try {
+        return await lifecycle.dispatchSigned(
+          record,
+          () => {
+            entered = true;
+            return initiate();
+          },
+          preflight
+        );
+      } catch (error) {
+        if (!entered)
+          await registry.retractUnsentEoaCallsHash(attempt, record.hash);
+        throw error;
+      }
+    },
+  });
+}
+
+/** The SDK also owns final guards inside initiate; only its branded unsent evidence may retract. */
+export async function settleEoaCallsSignedSubmission<T>(
+  work: Promise<T>,
+  registry: ReturnType<typeof createCallsBundleRegistry>,
+  input: EoaCallsSignedAttempt
+): Promise<T> {
+  const attempt = snapshotEoaCallsSignedAttempt(input);
+  try {
+    return await work;
+  } catch (error) {
+    const failure = evmSubmissionFailure(error);
+    if (
+      failure?.transactionNotBroadcast === true &&
+      failure.signedTransactionHash
+    )
+      await registry.retractUnsentEoaCallsHash(
+        attempt,
+        failure.signedTransactionHash
+      );
+    throw error;
+  }
+}
 
 export interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
   createdAt: number;
@@ -167,6 +328,7 @@ export type CallsBundleStatus = Readonly<{
   version: '2.0.0';
 }>;
 export type EoaSendCallsReservation = Readonly<{
+  callCount: number;
   host: string;
   id: string;
   reservationId: string;
@@ -255,6 +417,58 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
       stoppedTransactionHash: bundle.stoppedTransactionHash,
       txHashes: bundle.txHashes,
     };
+  };
+
+  const getStartedEoaCallsAttempt = async (
+    host: string,
+    id: string
+  ): Promise<IStoredSendCallsBundle | null> => {
+    const bundle = (await readBundleStore())[host]?.[id];
+    if (
+      !bundle ||
+      bundle.atomic ||
+      bundle.smartAccount ||
+      !bundle.submissionStarted ||
+      bundle.submissionCompleted
+    )
+      return null;
+    return { ...bundle, txHashes: [...bundle.txHashes] };
+  };
+
+  // Only the SDK lifecycle's unentered initiate callback supplies this proof.
+  const retractUnsentEoaCallsHash = (
+    input: EoaCallsSignedAttempt,
+    hash: string
+  ): Promise<void> => {
+    const attempt = snapshotEoaCallsSignedAttempt(input);
+    if (!/^0x[\da-f]{64}$/.test(hash))
+      throw new Error('Invalid signed calls hash');
+    return withStoreLock(async () => {
+      const storeData = await readBundleStore(),
+        bundle = storeData[attempt.origin]?.[attempt.bundleId];
+      if (
+        !bundle ||
+        bundle.atomic ||
+        bundle.smartAccount ||
+        bundle.reservationId !== attempt.reservationId ||
+        bundle.submissionId !== attempt.submissionId
+      )
+        throw new Error('Signed calls association changed');
+      if (
+        !bundle.txHashes.includes(hash) &&
+        bundle.stoppedTransactionHash !== hash
+      )
+        return;
+      storeData[attempt.origin]![attempt.bundleId] = {
+        ...bundle,
+        txHashes: bundle.txHashes.filter((value) => value !== hash),
+        stoppedTransactionHash:
+          bundle.stoppedTransactionHash === hash
+            ? undefined
+            : bundle.stoppedTransactionHash,
+      };
+      await writeBundleStore(storeData);
+    });
   };
 
   const evictAndWrite = async (
@@ -734,6 +948,8 @@ export function createCallsBundleRegistry(ports: CallsBundlePorts) {
   return Object.freeze({
     generateWalletBundleId,
     getStoredSendCallsBundle,
+    getStartedEoaCallsAttempt,
+    retractUnsentEoaCallsHash,
     reserveSendCallsBundle,
     recordSendCallsBundle,
     releaseSendCallsBundleReservation,
@@ -784,4 +1000,94 @@ export async function readRetainedEoaCall(
     }
   }
   return undefined;
+}
+
+/** Restore a lost process's association; a live consent sequence must never enter here. */
+export async function recoverRetainedEoaCallsAttempt(
+  records: EvmSignedRecords,
+  session: EvmSignedRecordSession,
+  registry: ReturnType<typeof createCallsBundleRegistry>,
+  origin: string,
+  id: string,
+  assertStopped: () => void
+): Promise<void> {
+  if (typeof assertStopped !== 'function')
+    throw new Error('Stopped calls authority is required');
+  const check = () => {
+    assertSynchronousEvmFeeGuard(assertStopped);
+    assertSynchronousEvmFeeGuard(session.assertCurrent);
+  };
+  check();
+  const bundle = await registry.getStartedEoaCallsAttempt(origin, id);
+  check();
+  if (
+    !bundle ||
+    bundle.atomic ||
+    bundle.smartAccount ||
+    !bundle.sender ||
+    !bundle.submissionStarted ||
+    bundle.submissionCompleted ||
+    bundle.stoppedTransactionHash
+  )
+    return;
+  const entries = await records.listSender(
+    session,
+    String(bundle.chainId),
+    bundle.sender
+  );
+  check();
+  for (const entry of entries) {
+    // Signed phase is also possible after wire entry with no acknowledgement.
+    // Association alone proves no delivery; canonical receipts still gate status.
+    if (entry.operation !== 'send' || !entry.metadata?.eoaCalls) continue;
+    const attempt = snapshotEoaCallsSignedAttempt(entry.metadata.eoaCalls);
+    if (
+      attempt.origin !== origin ||
+      attempt.bundleId !== id ||
+      attempt.reservationId !== bundle.reservationId ||
+      attempt.submissionId !== bundle.submissionId
+    )
+      continue;
+    const retained = await records.readExact(
+      session,
+      entry.chainId,
+      entry.from,
+      entry.hash
+    );
+    check();
+    if (!retained) continue;
+    const signed = Transaction.from(retained.rawTransaction);
+    if (signed.type !== 0 && signed.type !== 2)
+      throw new Error('Invalid signed calls envelope');
+    const transaction = snapshotPreparedEvmTransaction({
+      from: entry.from,
+      to: signed.to,
+      chainId: signed.chainId.toString(),
+      nonce: String(signed.nonce),
+      value: signed.value.toString(),
+      data: signed.data,
+      gasLimit: signed.gasLimit.toString(),
+      ...(signed.type === 0
+        ? { type: 0, gasPrice: signed.gasPrice!.toString() }
+        : {
+            type: 2,
+            maxFeePerGas: signed.maxFeePerGas!.toString(),
+            maxPriorityFeePerGas: signed.maxPriorityFeePerGas!.toString(),
+            accessList: signed.accessList!,
+          }),
+    });
+    await registry.recordStoppedEoaAttempt(
+      origin,
+      id,
+      attempt.reservationId,
+      attempt.submissionId,
+      { transaction, hash: entry.hash, failed: attempt.failed },
+      async () => {
+        check();
+        return retained.rawTransaction;
+      }
+    );
+    check();
+    return;
+  }
 }

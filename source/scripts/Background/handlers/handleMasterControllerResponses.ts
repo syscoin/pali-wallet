@@ -5,7 +5,10 @@ import {
   EVM_SIGNED_RECORD_NONCE_CONFLICT,
   consumeSignedEvmCapacityRefusal,
 } from '../../../wallet/evmSignedRecords';
-import { captureStartedEoaSendCallsAttempt } from '../controllers/message-handler/sendCallsBundles';
+import {
+  captureStartedEoaSendCallsAttempt,
+  getStoredSendCallsBundle,
+} from '../controllers/message-handler/sendCallsBundles';
 import { IMasterController } from 'scripts/Background/controllers';
 import {
   EVM_ASSET_REVIEW_REQUIRED,
@@ -26,6 +29,7 @@ import {
 import { isTrustedExtensionPageSender } from './internalMessageAuthorization';
 import { requireMessageSignApproval } from './messageSignApproval';
 import { assertWalletControllerRoute } from './walletControllerRoutes';
+import type { EvmDappSubmission } from '../../../shared/evmDappReview';
 
 const AA21_PREFUND_REASON_HEX =
   '41413231206469646e2774207061792070726566756e64';
@@ -341,6 +345,7 @@ export const handleMasterControllerResponses = (
               sendsEvm || reviewsEvm || stopsEoaCalls
                 ? captureDappEvmSubmission(sender)
                 : undefined;
+            let submission: EvmDappSubmission = { kind: 'transaction' };
             if (sendsEvm && dappApproval?.batch) {
               batchAttempt = true;
               const release = await captureStartedEoaSendCallsAttempt(
@@ -349,6 +354,23 @@ export const handleMasterControllerResponses = (
                 params?.[4]?.sendCallsSubmissionId
               );
               if (!release) throw transactionApprovalExpired();
+              const batch = dappApproval.batch;
+              const descriptor = await getStoredSendCallsBundle(
+                batch.host,
+                batch.id
+              );
+              if (!descriptor || descriptor.txHashes.length >= batch.callCount)
+                throw transactionApprovalExpired();
+              submission = {
+                kind: 'eoa-calls',
+                attempt: {
+                  origin: batch.host,
+                  bundleId: batch.id,
+                  reservationId: batch.reservationId,
+                  submissionId: params[4].sendCallsSubmissionId,
+                  failed: descriptor.txHashes.length + 1 < batch.callCount,
+                },
+              };
               retiredBatch = {
                 isSoleRetiredAttempt: dappApproval.isSoleRetiredAttempt,
                 release,
@@ -437,6 +459,7 @@ export const handleMasterControllerResponses = (
                   assertCurrentContext: undefined,
                   assertBeforeSign: undefined,
                   genericDispatchId: undefined,
+                  submission,
                   authorizeDapp: dappApproval?.assertCurrent,
                   dappApprovalOwner: dappApproval?.owner,
                   dappNonceApproval: nonceClaim?.approval,

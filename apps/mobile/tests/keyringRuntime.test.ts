@@ -2428,6 +2428,7 @@ test('connection transactions use real SDK signing and durable shared submission
   const submitted: string[] = [];
   const reported: string[] = [];
   let loseResponse = false, pendingNonce = '0x0';
+  let assertBundleAdmission: ((hash: string) => Promise<void>) | undefined;
   let f!: Awaited<ReturnType<typeof readyAccounts>>;
   const fetch: NonNullable<KeyringRuntimeDependencies['connectionFetch']> = async (_url, init) => {
     const { id, method, params } = JSON.parse(String(init?.body));
@@ -2444,6 +2445,7 @@ test('connection transactions use real SDK signing and durable shared submission
       result = tx ? { hash: tx.hash, from: tx.from, nonce: `0x${tx.nonce.toString(16)}`, blockHash: null, blockNumber: null, transactionIndex: null } : null;
     } else if (method === 'eth_sendRawTransaction') {
       const raw = params[0] as string, hash = keccak256(raw);
+      await assertBundleAdmission?.(hash);
       assert.equal(reported.at(-1), hash, 'controller learns irreversible dispatch before POST');
       const identity = f.disk.fixtureIdentity()!;
       assert(identity.root);
@@ -2458,14 +2460,14 @@ test('connection transactions use real SDK signing and durable shared submission
   f = await readyAccounts(undefined, fetch);
   try {
     const host = await f.runtime.openConnectionHost();
-    const submit = async (transaction: object) => {
+    const submit = async (transaction: object, submission: import('../../../source/shared/evmDappReview.ts').EvmDappSubmission = { kind: 'transaction' }) => {
       const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
       const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
       try {
         const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined);
         assert(!('operation' in review));
-        const hash = await review.submit(() => undefined, value => { reported.push(value); });
-        await assert.rejects(review.submit(() => undefined, () => undefined), /REVIEW_REQUIRED/);
+        const hash = await review.submit(() => undefined, value => { reported.push(value); }, submission);
+        await assert.rejects(review.submit(() => undefined, () => undefined, { kind: 'transaction' }), /REVIEW_REQUIRED/);
         return hash;
       } finally { scope.approval.dispose(); }
     };
@@ -2479,18 +2481,30 @@ test('connection transactions use real SDK signing and durable shared submission
     const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined);
     assert(!('operation' in revoked));
     f.authority.lock();
-    await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch')));
+    await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch'), { kind: 'transaction' }));
     assert.equal(submitted.length, 2);
     scope.approval.dispose();
     await f.authority.unlock(PASSWORD);
+    const origin = 'https://app.example', bundleId = host.calls.generateWalletBundleId(), reservationId = 'reservation', submissionId = 'submission';
+    await host.calls.reserveSendCallsBundle(origin, bundleId, { atomic: false, smartAccount: false, chainId: 1 }, reservationId, ADDRESS);
+    await host.calls.recordSendCallsBundle(origin, bundleId, { atomic: false, smartAccount: false, chainId: 1,
+      reservationId, submissionId, submissionStarted: true, txHashes: [] });
+    assertBundleAdmission = async (hash) => {
+      const bundle = await host.calls.getStoredSendCallsBundle(origin, bundleId);
+      assert.deepEqual(bundle?.txHashes, [hash], 'the normal keyring path associates the canonical hash before POST');
+      assert.equal(bundle?.stoppedTransactionHash, undefined, 'wire admission does not retire live consent');
+    };
+    await submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' }, { kind: 'eoa-calls',
+      attempt: { origin, bundleId, reservationId, submissionId, failed: false } });
+    assertBundleAdmission = undefined;
     loseResponse = true; pendingNonce = '0x6';
     await assert.rejects(submit({ from: ADDRESS, to: `0x${'55'.repeat(20)}`, nonce: '0x4', data: '0x6000' }), error => {
       const failure = evmSubmissionFailure(error);
       assert.equal(failure?.transactionNotBroadcast, false);
-      assert.equal(failure?.signedTransactionHash, keccak256(submitted[2]!));
+      assert.equal(failure?.signedTransactionHash, keccak256(submitted[3]!));
       return true;
     });
-    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1, 4]);
+    assert.deepEqual(submitted.map(raw => Transaction.from(raw).nonce), [0, 1, 2, 4]);
   } finally { await f.authority.dispose().catch(() => undefined); f.disk.restoreNetwork(); }
 });
 

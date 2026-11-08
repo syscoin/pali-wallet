@@ -191,7 +191,10 @@ export function createNativeEoaCalls(
               dispatchHash = hash;
               input.onBroadcast(hash);
               publish({ phase: 'submitting' });
-            });
+            }, { kind: 'eoa-calls', attempt: {
+              origin: input.origin, bundleId: input.bundleId, reservationId: input.reservationId,
+              submissionId, failed: state.index !== input.calls.calls.length - 1,
+            } });
           } catch (cause) {
             if (dispatchHash) {
               await write({

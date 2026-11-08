@@ -5,6 +5,7 @@ import { Wallet, Transaction } from 'ethers';
 import { SoftwareKeyring } from '@sidhujag/sysweb3-keyring/cjs/software.js';
 import { captureEvmSubmission, evmSubmissionFailure, submitSignedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-submission.js';
 import { EvmSignedRecords, createEvmSignedRecordLifecycle, inspectEvmSignedBundle, consumeSignedEvmCapacityRefusal, type EvmSignedRecordSession, type EvmSignedRecordStorage, type EvmSignedPhase } from '../../../source/wallet/evmSignedRecords.ts';
+import { bindEoaCallsSignedLifecycle, captureEoaCallsSignedMetadata, createCallsBundleRegistry, recoverRetainedEoaCallsAttempt, settleEoaCallsSignedSubmission, type CallsBundleStore } from '../../../source/wallet/dappCallsBundles.ts';
 Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true });
 const signer = new Wallet(`0x${'11'.repeat(32)}`);
 function fixture(now: () => number = () => 1000) {
@@ -16,6 +17,151 @@ function fixture(now: () => number = () => 1000) {
   const session = (): EvmSignedRecordSession => { const captured=revision; return { keyring, assertCurrent() { if (revision!==captured) throw Error('revoked'); } }; };
   return { store:new EvmSignedRecords(port,now),session,value:()=>stored,replace(value:string|undefined){stored=value;},writes:()=>writes,revoke(){revision++;},port };
 }
+
+async function callsAdmissionFixture() {
+  const f = fixture(), input = await signed();
+  let data: CallsBundleStore = {}, refuseBundle = false;
+  const origin = 'https://app.example', id = '0x01', reservationId = 'reservation', submissionId = 'submission';
+  const descriptor = { atomic: false, smartAccount: false, chainId: Number(input.chainId) };
+  const ports = { assertCurrent() {}, now: () => 1000, randomBytes: (length: number) => new Uint8Array(length),
+    storage: { read: async () => structuredClone(data), write: async (value: CallsBundleStore, check: () => void) => { check(); if (refuseBundle) throw new Error('Bundle storage refused'); data = structuredClone(value); } } };
+  const registry = createCallsBundleRegistry(ports);
+  await registry.reserveSendCallsBundle(origin, id, descriptor, reservationId, input.from);
+  await registry.recordSendCallsBundle(origin, id, { ...descriptor, reservationId, submissionId, submissionStarted: true, txHashes: [] });
+  const tx = Transaction.from(input.rawTransaction);
+  const { snapshotPreparedEvmTransaction } = await import('@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js');
+  const transaction = snapshotPreparedEvmTransaction({ from: input.from, to: tx.to, chainId: input.chainId,
+    nonce: String(tx.nonce), value: tx.value.toString(), data: tx.data, gasLimit: tx.gasLimit.toString(),
+    type: 2, accessList: tx.accessList!, maxFeePerGas: tx.maxFeePerGas!.toString(), maxPriorityFeePerGas: tx.maxPriorityFeePerGas!.toString() });
+  return { f, input, registry, ports, origin, id, transaction,
+    attempt: { origin, bundleId: id, reservationId, submissionId, failed: false }, data: () => data, refuseBundle: () => { refuseBundle = true; } };
+}
+
+for (const failed of [false, true]) test(`wire entry before acknowledgement survives process loss (remaining suffix ${failed})`, async () => {
+  const c = await callsAdmissionFixture(), { f, input } = c;
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, { ...c.attempt, failed }, c.transaction);
+  const session = f.session(), entered = Promise.withResolvers<void>(), ack = Promise.withResolvers<string>();
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent,
+    () => bindEoaCallsSignedLifecycle(createEvmSignedRecordLifecycle(f.store, session, { metadata, retirementReadForChain: null }), c.registry, metadata.eoaCalls));
+  let wires = 0;
+  const pending = submitSignedEvmTransaction(input.rawTransaction, ({ admit }) => admit(() => {
+    assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, [input.hash]);
+    wires++; entered.resolve(); return ack.promise;
+  }), boundary, undefined, Transaction.from(input.rawTransaction).unsignedSerialized);
+  void pending.catch(() => undefined);
+  await entered.promise;
+  assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, [input.hash], 'public association is durable before wire entry and ACK');
+  assert.equal(c.data()[c.origin]![c.id]!.stoppedTransactionHash, undefined);
+  const retained = await f.store.readExact(f.session(), input.chainId, input.from, input.hash);
+  assert.equal(retained?.phase, 'signed', 'the production boundary retains this phase while ACK is outstanding');
+  assert.deepEqual(retained?.metadata, metadata);
+  // Simulate losing the old worker without allowing its outstanding send to settle.
+  f.revoke();
+  const reopened = new EvmSignedRecords(f.port), registry = createCallsBundleRegistry(c.ports);
+  await recoverRetainedEoaCallsAttempt(reopened, f.session(), registry, c.origin, c.id, () => undefined);
+  assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, [input.hash]);
+  const blockHash = '0x' + 'ab'.repeat(32);
+  const result = await registry.resolveCallsStatus({ assertCurrent() {}, forChain: () => ({
+    getBlockHash: async () => blockHash,
+    getTransactionReceipt: async (hash) => ({ hash, status: 1, blockHash, blockNumber: 7, gasUsed: 42000n, logs: [] }),
+  }) }, c.origin, c.id);
+  assert.equal(result.status, failed ? 600 : 200);
+  assert.equal(result.receipts?.length, 1);
+  assert.equal(wires, 1);
+  await assert.rejects(reopened.append(f.session(), input, metadata), { code: 'EVM_SIGNED_RECORD_NONCE_CONFLICT' });
+  ack.reject(new Error('Lost acknowledgement'));
+  await assert.rejects(pending);
+});
+
+test('signed calls persistence refusal prevents wire entry', async () => {
+  const c = await callsAdmissionFixture(), { f, input } = c;
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, c.attempt, c.transaction);
+  f.port.compareAndSet = async () => { throw new Error('Storage refused'); };
+  const session = f.session();
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent,
+    () => bindEoaCallsSignedLifecycle(createEvmSignedRecordLifecycle(f.store, session, { metadata, retirementReadForChain: null }), c.registry, metadata.eoaCalls));
+  let wires = 0;
+  await assert.rejects(submitSignedEvmTransaction(input.rawTransaction, ({ admit }) => admit(async () => {
+    wires++; return input.hash;
+  }), boundary, undefined, Transaction.from(input.rawTransaction).unsignedSerialized), error => {
+    assert.equal(evmSubmissionFailure(error)?.transactionNotBroadcast, true); return true;
+  });
+  assert.equal(wires, 0);
+  assert.equal(f.value(), undefined);
+});
+
+test('bundle association refusal after journal append still prevents wire entry', async () => {
+  const c = await callsAdmissionFixture(), { f, input } = c;
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, c.attempt, c.transaction);
+  c.refuseBundle();
+  const session = f.session();
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent, () => bindEoaCallsSignedLifecycle(
+    createEvmSignedRecordLifecycle(f.store, session, { metadata, retirementReadForChain: null }), c.registry, c.attempt));
+  let wires = 0;
+  await assert.rejects(submitSignedEvmTransaction(input.rawTransaction, ({ admit }) => admit(async () => {
+    wires++; return input.hash;
+  }), boundary, undefined, Transaction.from(input.rawTransaction).unsignedSerialized), error => {
+    assert.equal(evmSubmissionFailure(error)?.transactionNotBroadcast, true); return true;
+  });
+  assert.equal(wires, 0);
+  assert.equal((await f.store.readExact(session, input.chainId, input.from, input.hash))?.hash, input.hash);
+  assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, []);
+});
+
+test('a definitive final preflight refusal retracts only its unsent bundle hash', async () => {
+  const c = await callsAdmissionFixture(), { f, input } = c;
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, c.attempt, c.transaction), session = f.session();
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent, () => bindEoaCallsSignedLifecycle(
+    createEvmSignedRecordLifecycle(f.store, session, { metadata, retirementReadForChain: null,
+      preflight: async () => { throw new Error('Fresh fee review required'); } }), c.registry, c.attempt));
+  let wires = 0;
+  await assert.rejects(submitSignedEvmTransaction(input.rawTransaction, ({ admit }) => admit(async () => {
+    wires++; return input.hash;
+  }), boundary, undefined, Transaction.from(input.rawTransaction).unsignedSerialized), error => {
+    assert.equal(evmSubmissionFailure(error)?.transactionNotBroadcast, true); return true;
+  });
+  assert.equal(wires, 0);
+  assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, []);
+  assert.equal((await f.store.readExact(session, input.chainId, input.from, input.hash))?.hash, input.hash);
+});
+
+test('SDK final-guard refusal also retracts its association, while forged error fields cannot', async () => {
+  const c = await callsAdmissionFixture(), { f, input } = c;
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, c.attempt, c.transaction), session = f.session();
+  const boundary = captureEvmSubmission(input.context, session.assertCurrent, () => bindEoaCallsSignedLifecycle(
+    createEvmSignedRecordLifecycle(f.store, session, { metadata, retirementReadForChain: null }), c.registry, c.attempt));
+  let wires = 0;
+  const work = submitSignedEvmTransaction(input.rawTransaction, ({ admit }) => admit(async () => {
+    wires++; return input.hash;
+  }), boundary, () => { throw new Error('Final owner guard retired'); }, Transaction.from(input.rawTransaction).unsignedSerialized);
+  await assert.rejects(settleEoaCallsSignedSubmission(work, c.registry, c.attempt));
+  assert.equal(wires, 0); assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, []);
+  await c.registry.recordSendCallsBundle(c.origin, c.id, { atomic: false, smartAccount: false, chainId: Number(input.chainId),
+    reservationId: c.attempt.reservationId, submissionId: c.attempt.submissionId, txHashes: [input.hash] });
+  await assert.rejects(settleEoaCallsSignedSubmission(Promise.reject(Object.assign(new Error('forged'), {
+    transactionNotBroadcast: true, signedTransactionHash: input.hash,
+  })), c.registry, c.attempt));
+  assert.deepEqual(c.data()[c.origin]![c.id]!.txHashes, [input.hash]);
+});
+
+test('calls association rejects a changed reservation, submission, account, or chain', async () => {
+  const c = await callsAdmissionFixture();
+  for (const attempt of [{ ...c.attempt, reservationId: 'foreign' }, { ...c.attempt, submissionId: 'foreign' },
+    { ...c.attempt, origin: 'https://other.example' }, { ...c.attempt, bundleId: '0x02' }])
+    await assert.rejects(captureEoaCallsSignedMetadata(c.registry, attempt, c.transaction), /association changed/);
+  for (const transaction of [{ ...c.transaction, chainId: '1' }, { ...c.transaction, from: '0x' + '22'.repeat(20) }])
+    await assert.rejects(captureEoaCallsSignedMetadata(c.registry, c.attempt, transaction), /association changed/);
+  const metadata = await captureEoaCallsSignedMetadata(c.registry, c.attempt, c.transaction);
+  await c.f.store.append(c.f.session(), c.input, metadata);
+  await assert.rejects(recoverRetainedEoaCallsAttempt(c.f.store, c.f.session(), c.registry, c.origin, c.id,
+    () => { throw new Error('Sequence still owns live consent'); }), /live consent/);
+  assert.equal(c.data()[c.origin]![c.id]!.stoppedTransactionHash, undefined);
+  await recoverRetainedEoaCallsAttempt(c.f.store, c.f.session(), c.registry, c.origin, c.id, () => undefined);
+  const pending = await c.registry.resolveCallsStatus({ assertCurrent() {}, forChain: () => ({
+    getTransactionReceipt: async () => null, getBlockHash: async () => null,
+  }) }, c.origin, c.id);
+  assert.equal(pending.status, 100, 'associated signed bytes alone never prove delivery');
+});
 async function signed(nonce=0,type=2,data='0x',alias='HDAccount') {
   const rawTransaction=await signer.signTransaction({ type,chainId:7654321,nonce,to:signer.address,value:123,gasLimit:42000,
     ...(type===2?{maxFeePerGas:3,maxPriorityFeePerGas:1}:{gasPrice:2}),data,

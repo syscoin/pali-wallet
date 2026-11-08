@@ -1198,6 +1198,15 @@ export class NativeConnectionsController {
             -32602,
             'Expected a call bundle ID'
           );
+        const bundleId = request.params[0];
+        const hasLiveSequence = () => [...this.requests.values()].some((message) =>
+          message.session.binding.origin === request.session.binding.origin &&
+          message.request.method === 'wallet_sendCalls' && message.request.bundleId === bundleId);
+        if (!hasLiveSequence()) await this.host!.recoverStoppedEoaCalls(
+          request.session.binding.origin, request.params[0], () => {
+            statusGuard();
+            if (hasLiveSequence()) throw new Error('Calls sequence is still active');
+          });
         result = await this.host!.readCallsStatus(
           request.session.binding.origin,
           request.params[0],
@@ -2292,7 +2301,7 @@ export class NativeConnectionsController {
                   broadcastHash: hash,
                 });
               this.publish();
-            }
+            }, { kind: 'transaction' }
           );
         }
       } else {

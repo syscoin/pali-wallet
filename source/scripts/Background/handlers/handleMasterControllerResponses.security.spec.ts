@@ -653,12 +653,19 @@ describe('document-bound dapp nonce dispatch', () => {
     getSignal: () => new AbortController().signal,
     ...extra,
   });
-  beforeEach(() =>
+  beforeEach(() => {
     Object.assign(chrome.runtime, {
       id: 'pali-extension',
       getURL: (path = '') => `chrome-extension://pali-extension/${path}`,
-    })
-  );
+    });
+    jest.spyOn(sendCallsBundles, 'getStoredSendCallsBundle').mockResolvedValue({
+      atomic: false,
+      smartAccount: false,
+      chainId: 1,
+      txHashes: [],
+      submissionStarted: true,
+    });
+  });
   const invoke = (
     listener: any,
     methods: string[],
@@ -682,6 +689,7 @@ describe('document-bound dapp nonce dispatch', () => {
         host: 'test.invalid',
         id: 'bundle',
         reservationId: 'reservation',
+        callCount: 2,
       },
     });
     handleMasterControllerResponses({
@@ -905,7 +913,12 @@ describe('document-bound dapp nonce dispatch', () => {
       documentId,
       possible,
       evmReview({
-        batch: { host: 'test.invalid', id: 'id', reservationId: 'reservation' },
+        batch: {
+          host: 'test.invalid',
+          id: 'id',
+          reservationId: 'reservation',
+          callCount: 2,
+        },
       })
     );
     try {
@@ -963,7 +976,12 @@ describe('document-bound dapp nonce dispatch', () => {
       documentId,
       jest.fn(),
       evmReview({
-        batch: { host: 'test.invalid', id: 'id', reservationId: 'reservation' },
+        batch: {
+          host: 'test.invalid',
+          id: 'id',
+          reservationId: 'reservation',
+          callCount: 2,
+        },
       })
     );
     const options = {
@@ -1030,7 +1048,12 @@ describe('document-bound dapp nonce dispatch', () => {
       documentId,
       jest.fn(),
       evmReview({
-        batch: { host: 'test.invalid', id: 'id', reservationId: 'reservation' },
+        batch: {
+          host: 'test.invalid',
+          id: 'id',
+          reservationId: 'reservation',
+          callCount: 2,
+        },
       })
     );
     const options = {
@@ -1103,6 +1126,7 @@ describe('document-bound dapp nonce dispatch', () => {
             host: 'test.invalid',
             id: 'id',
             reservationId: 'reservation',
+            callCount: 2,
           },
         })
       );

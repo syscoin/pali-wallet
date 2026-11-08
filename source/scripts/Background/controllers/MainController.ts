@@ -429,6 +429,10 @@ import {
 import { clearProviderCache } from './message-handler/requests';
 import {
   recordSendCallsBundle,
+  bindEoaCallsSignedLifecycle,
+  settleEoaCallsSignedSubmission,
+  captureEoaCallsSignedMetadata,
+  recoverStoppedEoaCalls,
   recordStoppedEoaAttempt,
 } from './message-handler/sendCallsBundles';
 import { PaliEvents, PaliSyscoinEvents } from './message-handler/types';
@@ -1677,7 +1681,7 @@ class MainController {
       const read = this.captureFreshEvmRead(navigation);
       if (read.keyring !== keyring || read.network.url !== context.network.url)
         throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
-      return createEvmSignedRecordLifecycle(records, session, {
+      const lifecycle = createEvmSignedRecordLifecycle(records, session, {
         retirementReadForChain,
         automaticNonceEndpoint: context.network.url,
         retainAssetPreflightFailure: assetOperation,
@@ -1723,6 +1727,10 @@ class MainController {
             );
         },
       });
+      const metadata = feePreflight?.metadata;
+      return metadata && 'eoaCalls' in metadata
+        ? bindEoaCallsSignedLifecycle(lifecycle, metadata.eoaCalls)
+        : lifecycle;
     }
     const payer = context.account.address;
     const originalHash = context.originalHash?.toLowerCase();
@@ -8858,6 +8866,7 @@ class MainController {
       onBroadcast?: (response: IEvmTransactionResponse) => Promise<void>;
       persist?: boolean;
       skipRapidPolling?: boolean;
+      submission?: import('../../../shared/evmDappReview').EvmDappSubmission;
       transactionAccounts?: Array<{ id: number; type: KeyringAccountType }>;
     }
   ): Promise<IEvmTransactionResponse> {
@@ -9015,14 +9024,18 @@ class MainController {
           ) !== expected
         )
           throw new Error('Generic fee review transaction changed');
-        return await owned.review.submit(assertAuthority, (hash) => {
-          // The SDK response remains available to the existing saved-history path.
-          if (saveOptions.onBroadcast)
-            return saveOptions.onBroadcast({
-              hash,
-              nonce: owned!.walletNonce.nonce,
-            } as IEvmTransactionResponse);
-        });
+        return await owned.review.submit(
+          assertAuthority,
+          (hash) => {
+            // The SDK response remains available to the existing saved-history path.
+            if (saveOptions.onBroadcast)
+              return saveOptions.onBroadcast({
+                hash,
+                nonce: owned!.walletNonce.nonce,
+              } as IEvmTransactionResponse);
+          },
+          saveOptions.submission!
+        );
       } catch (error) {
         if (typeof error?.transactionNotBroadcast === 'boolean') throw error;
         throw Object.assign(
@@ -10133,16 +10146,31 @@ class MainController {
             approved
           )
         ),
-      send: async (transaction, assertCurrent, refresh, onBroadcast) => {
+      send: async (
+        transaction,
+        assertCurrent,
+        refresh,
+        onBroadcast,
+        submission
+      ) => {
+        assertCurrent();
+        const callsMetadata =
+          submission.kind === 'eoa-calls'
+            ? await captureEoaCallsSignedMetadata(
+                submission.attempt,
+                transaction
+              )
+            : null;
         assertCurrent();
         bindGenericEvmFeeDispatch(
           this,
           reviewId,
           expected,
           (record, guard, snapshot) =>
-            refresh({ kind: 'dispatch', snapshot, hash: record.hash }, guard)
+            refresh({ kind: 'dispatch', snapshot, hash: record.hash }, guard),
+          callsMetadata
         );
-        return this.sendAndSaveEthTransaction(
+        const work = this.sendAndSaveEthTransaction(
           transaction,
           transaction.type === 0,
           undefined,
@@ -10159,6 +10187,9 @@ class MainController {
             },
           }
         );
+        return submission.kind === 'eoa-calls'
+          ? settleEoaCallsSignedSubmission(work, submission.attempt)
+          : work;
       },
     });
     check();
@@ -10193,11 +10224,14 @@ class MainController {
             Math.floor(performance.now()),
             feeAuthority
           );
-          return await consumed.review.submit(assertCurrent, (hash) =>
-            onBroadcast({
-              hash,
-              nonce: walletNonce.nonce,
-            } as IEvmTransactionResponse)
+          return await consumed.review.submit(
+            assertCurrent,
+            (hash) =>
+              onBroadcast({
+                hash,
+                nonce: walletNonce.nonce,
+              } as IEvmTransactionResponse),
+            { kind: 'transaction' }
           );
         } catch (error) {
           const failure = evmSubmissionFailure(error);
@@ -10280,6 +10314,33 @@ class MainController {
       submissionId,
       attempt,
       () => readRetainedEoaCall(records, session, attempt)
+    );
+  }
+
+  /** Restore only a consent sequence which the background no longer owns. */
+  public async recoverStoppedEoaCalls(
+    host: string,
+    id: string,
+    assertStopped: () => void
+  ): Promise<void> {
+    const keyring = this.getActiveKeyring();
+    // Public status remains readable while locked; encrypted recovery waits for unlock.
+    if (!keyring.isUnlocked()) return;
+    const assertUnlocked = keyring.captureUnlockedSessionGuard();
+    const check = () => {
+      assertSynchronousEvmFeeGuard(assertStopped);
+      assertUnlocked();
+      if (this.getActiveKeyring() !== keyring)
+        throw new Error(EVM_TRANSACTION_CONTEXT_CHANGED);
+    };
+    check();
+    const records = this.getRetainedEvmRecords();
+    await recoverStoppedEoaCalls(
+      records,
+      records.captureSession({ keyring, assertCurrent: check }),
+      host,
+      id,
+      check
     );
   }
 

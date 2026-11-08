@@ -188,7 +188,12 @@ const openApprovalPopup = async (
     route === MethodRoute.SendCalls &&
     typeof bundleId === 'string' &&
     typeof reservationId === 'string'
-      ? { host, id: bundleId, reservationId }
+      ? {
+          host,
+          id: bundleId,
+          reservationId,
+          callCount: (data as { calls: readonly unknown[] }).calls.length,
+        }
       : undefined;
   const smartMethods: readonly DappSmartAccountMethod[] | undefined =
     route === MethodRoute.SmartAccount

@@ -121,7 +121,13 @@ async function fixture({ lifetime = 60_000 } = {}) {
         maximumTotalUnits: String(42000n + BigInt(request.value)),
         expiresAtMonotonicMilliseconds: deadline,
         approval: null,
-        async submit(guard, onBroadcast) {
+        async submit(guard, onBroadcast, submission) {
+          assert.equal(submission.kind, 'eoa-calls');
+          if (submission.kind !== 'eoa-calls') throw new Error('Missing calls association');
+          assert.equal(submission.attempt.origin, origin);
+          assert.equal(submission.attempt.bundleId, id);
+          assert.equal(submission.attempt.reservationId, reservationId);
+          assert.equal(submission.attempt.submissionId, saved[origin]![id]!.submissionId);
           guard();
           await signingWait;
           guard();
