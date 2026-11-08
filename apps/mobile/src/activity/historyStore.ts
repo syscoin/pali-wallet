@@ -91,6 +91,7 @@ export function validateArchivedActivity(
     Object.hasOwn(value, 'smartAccount')
       ? ['smartAccount']
       : []),
+    ...(value && typeof value === 'object' && Object.hasOwn(value, 'contractInteraction') ? ['contractInteraction'] : []),
     ...(value &&
     typeof value === 'object' &&
     Object.hasOwn(value, 'collectibleTransfer')
@@ -153,6 +154,14 @@ export function validateArchivedActivity(
       return invalid();
     data.smartAccount = Object.freeze(identity);
   }
+  if (
+    data.contractInteraction !== undefined &&
+    (data.contractInteraction !== true ||
+      !data.smartAccount ||
+      data.token !== undefined ||
+      data.collectibleTransfer !== undefined)
+  )
+    return invalid();
   if (data.collectibleTransfer !== undefined) {
     const intent = snapshotNftTransferIntent(data.collectibleTransfer);
     if (

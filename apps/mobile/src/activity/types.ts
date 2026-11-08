@@ -39,6 +39,7 @@ export type TerminalActivityRecord = Readonly<{
   maximumFeeUnits: string;
   smartAccount?: SmartAccountActivityIdentity;
   collectibleTransfer?: NftTransferIntent;
+  contractInteraction?: true;
   token?: Readonly<{
     contractAddress: string;
     decimals: number;

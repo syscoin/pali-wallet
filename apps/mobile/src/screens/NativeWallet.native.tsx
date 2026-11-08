@@ -1,4 +1,5 @@
 import { NativeSmartAccountSend } from './NativeSmartAccountSend';
+import { NativeSmartTransactionReviewScreen } from './NativeSmartTransactionReview';
 import { NativeSmartAccountOperationRoute } from './NativeSmartAccountOperation';
 import { findUtxoNetwork, supportsUtxoSoftwareCustody } from '../core/utxoNetworks';
 import { findWifAddressType, UTXO_IMPORT_LABELS, UTXO_IMPORT_TYPES, type UtxoImportAddressType } from '../core/utxoAddresses';
@@ -631,7 +632,9 @@ export function NativeWalletScreen({ onExit, accounts, initialAccountId, onSelec
     bridge.current?.onSelectWatch(selection);
   };
   if ((stage === 'choose' || stage === 'connections') && snapshot.phase === 'ready' && signingReview && connectionView)
-    return signingReview.kind === 'transaction'
+    return signingReview.kind === 'smart-transaction'
+      ? <NativeSmartTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
+      : signingReview.kind === 'transaction'
       ? <NativeTransactionReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />
       : <NativeMessageReviewScreen key={signingReview.id} review={signingReview} controller={connectionView} />;
   if (stage === 'connections' && snapshot.phase === 'ready' && connectionView)

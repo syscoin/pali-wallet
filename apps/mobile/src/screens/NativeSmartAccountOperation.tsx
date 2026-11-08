@@ -7,7 +7,11 @@ import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { formatBaseUnits } from '../core/amounts';
 import { getNativeSendContext } from '../custody/networkContext';
-import type { NativeSmartAccountOperation } from '../smartAccount/operation';
+import type {
+  NativeSmartAccountOperation,
+  NativeSmartAccountOperationSnapshot,
+} from '../smartAccount/operation';
+import { TransactionDetails } from './NativeTransactionReview';
 import { Button, Card, colors, Header, Notice, Screen, Text } from '../ui';
 
 export function NativeSmartAccountOperationRoute({
@@ -78,6 +82,36 @@ export function NativeSmartAccountOperationScreen({
     controller.getSnapshot,
     controller.getSnapshot
   );
+  useEffect(() => {
+    void controller.prepare();
+    return () => controller.dispose();
+  }, [controller]);
+  return (
+    <NativeSmartAccountOperationContent
+      state={state}
+      onBack={onBack}
+      authorize={() => void controller.authorize(state.revision)}
+      confirmPayer={(id) => controller.confirmPayer(id)}
+    />
+  );
+}
+
+/** Both wallet and dapp screens render the same two-stage operation review. */
+export function NativeSmartAccountOperationContent({
+  state,
+  onBack,
+  authorize,
+  confirmPayer,
+  before,
+  disabled = false,
+}: {
+  state: NativeSmartAccountOperationSnapshot;
+  onBack(): void;
+  authorize(): void;
+  confirmPayer(id: number): void;
+  before?: React.ReactNode;
+  disabled?: boolean;
+}) {
   const [details, setDetails] = useState(false);
   const network = getNativeSendContext(state.network);
   const amount = (units: string, token?: Erc20Metadata) => {
@@ -98,10 +132,6 @@ export function NativeSmartAccountOperationScreen({
       </View>
     );
   };
-  useEffect(() => {
-    void controller.prepare();
-    return () => controller.dispose();
-  }, [controller]);
   const payer = state.payerReview;
   const transfer = state.intent.kind !== 'deploy' ? state.intent : null;
   const waiting = ['preparing', 'preparing-fee', 'waiting'].includes(
@@ -114,7 +144,9 @@ export function NativeSmartAccountOperationScreen({
           title={
             state.phase === 'authorize'
               ? transfer
-                ? 'Review transfer'
+                ? transfer.kind === 'dapp-call'
+                  ? 'Review transaction'
+                  : 'Review transfer'
                 : 'Authorize deployment'
               : payer?.purpose === 'fund-account'
               ? 'Fund smart account'
@@ -124,6 +156,7 @@ export function NativeSmartAccountOperationScreen({
           }
           onBack={onBack}
         />
+        {before}
         <Card style={s.card}>
           <Text style={s.label}>{network.name}</Text>
           <Text selectable style={s.address}>
@@ -177,17 +210,33 @@ export function NativeSmartAccountOperationScreen({
             )}
           </Card>
         )}
+        {transfer?.kind === 'dapp-call' && (
+          <Card style={s.card}>
+            <Text style={s.label}>Transaction data</Text>
+            <TransactionDetails
+              transaction={{
+                to: transfer.recipient,
+                value: transfer.amountUnits,
+                data: transfer.data,
+              }}
+            />
+          </Card>
+        )}
         {state.phase === 'authorize' && (
           <>
             <Notice
               title={
                 transfer
-                  ? 'Authorize this transfer'
+                  ? transfer.kind === 'dapp-call'
+                    ? 'Authorize this transaction'
+                    : 'Authorize this transfer'
                   : 'Create this account on the network'
               }
               body={
                 transfer
-                  ? 'Authorize this smart account transfer. The following review confirms the paying account and submission fee.'
+                  ? transfer.kind === 'dapp-call'
+                    ? 'Authorize this smart account transaction. The following review confirms the paying account and submission fee.'
+                    : 'Authorize this smart account transfer. The following review confirms the paying account and submission fee.'
                   : 'Authorize the account’s deployment. This operation sends no assets. The following review confirms the wallet account and network fee used to submit it.'
               }
             />
@@ -233,8 +282,15 @@ export function NativeSmartAccountOperationScreen({
               )}
             </Card>
             <Button
-              title={transfer ? 'Authorize transfer' : 'Authorize deployment'}
-              onPress={() => void controller.authorize(state.revision)}
+              title={
+                transfer?.kind === 'dapp-call'
+                  ? 'Authorize transaction'
+                  : transfer
+                  ? 'Authorize transfer'
+                  : 'Authorize deployment'
+              }
+              disabled={disabled}
+              onPress={authorize}
             />
           </>
         )}
@@ -245,14 +301,18 @@ export function NativeSmartAccountOperationScreen({
                 payer.purpose === 'fund-account'
                   ? 'Fund the account charge'
                   : transfer
-                  ? 'Submit the authorized transfer'
+                  ? transfer.kind === 'dapp-call'
+                    ? 'Submit the authorized transaction'
+                    : 'Submit the authorized transfer'
                   : 'Submit the authorized deployment'
               }
               body={
                 payer.purpose === 'fund-account'
                   ? 'Move this amount to your smart account so it can cover its network charge.'
                   : transfer
-                  ? 'This transaction submits the transfer you authorized.'
+                  ? transfer.kind === 'dapp-call'
+                    ? 'This transaction submits the operation you authorized.'
+                    : 'This transaction submits the transfer you authorized.'
                   : 'This transaction submits your existing deployment authorization.'
               }
             />
@@ -281,10 +341,13 @@ export function NativeSmartAccountOperationScreen({
                 payer.purpose === 'fund-account'
                   ? 'Confirm funding'
                   : transfer
-                  ? 'Confirm transfer'
+                  ? transfer.kind === 'dapp-call'
+                    ? 'Confirm transaction'
+                    : 'Confirm transfer'
                   : 'Confirm deployment'
               }
-              onPress={() => controller.confirmPayer(payer.id)}
+              disabled={disabled}
+              onPress={() => confirmPayer(payer.id)}
             />
           </>
         )}
@@ -302,7 +365,13 @@ export function NativeSmartAccountOperationScreen({
         )}
         {state.phase === 'complete' && (
           <Notice
-            title={transfer ? 'Transfer submitted' : 'Smart account deployed'}
+            title={
+              transfer?.kind === 'dapp-call'
+                ? 'Transaction submitted'
+                : transfer
+                ? 'Transfer submitted'
+                : 'Smart account deployed'
+            }
             body={
               transfer
                 ? 'Follow this transaction in Activity.'

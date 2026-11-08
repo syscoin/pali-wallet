@@ -20,7 +20,7 @@ const reviewErrors = {
   DELIVERY_UNCERTAIN: 'The result could not be confirmed. Check Activity before trying again.',
 } as const;
 
-function TransactionDetails({ transaction }: { transaction: NonNullable<NativeTransactionReview['transaction']> }) {
+export function TransactionDetails({ transaction }: { transaction: object }) {
   const [page, setPage] = useState(0);
   const payload = useMemo(() => JSON.stringify(transaction, null, 2), [transaction]);
   const pageSize = 2048;

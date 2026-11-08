@@ -58,6 +58,7 @@ export function NativeTransactionReviewFixture() {
   }, []);
   const unavailable = () => { throw new Error('Outside transaction review fixture'); };
   const controller: NativeConnectionsView = {
+    async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
     async editApprovalAmount(...args) {
       calls.push({ method: 'editApprovalAmount', args });
       const current = review, summary = current?.approval;

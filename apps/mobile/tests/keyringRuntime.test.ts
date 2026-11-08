@@ -2455,6 +2455,7 @@ test('connection transactions use real SDK signing and durable shared submission
       const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
       try {
         const review = await host.prepareTransaction({ ...scope, transaction }, () => undefined);
+        assert(!('operation' in review));
         const hash = await review.submit(() => undefined, value => { reported.push(value); });
         await assert.rejects(review.submit(() => undefined, () => undefined), /REVIEW_REQUIRED/);
         return hash;
@@ -2468,6 +2469,7 @@ test('connection transactions use real SDK signing and durable shared submission
     const message = readDappMessageRequest('personal_sign', ['0x6162', ADDRESS], ADDRESS)!;
     const { request: _message, ...scope } = approveRuntimeMessage(f, host, message);
     const revoked = await host.prepareTransaction({ ...scope, transaction: { from: ADDRESS, to: `0x${'55'.repeat(20)}`, data: '0x6000' } }, () => undefined);
+    assert(!('operation' in revoked));
     f.authority.lock();
     await assert.rejects(revoked.submit(() => undefined, () => assert.fail('Revoked review cannot dispatch')));
     assert.equal(submitted.length, 2);

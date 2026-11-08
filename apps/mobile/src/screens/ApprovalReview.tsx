@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
 import { StyleSheet, View } from 'react-native';
 import {
   formatApprovalTokenAmount,
@@ -17,13 +16,13 @@ export function ApprovalReview({
   onEditingChange,
 }: {
   summary: ApprovalSummary;
-  transaction: PreparedEvmTransaction;
+  transaction: object;
   disabled: boolean;
   edit(value: string): Promise<void>;
   onEditingChange(editing: boolean): void;
 }) {
   const [editor, setEditor] = useState<{
-    transaction: PreparedEvmTransaction;
+    transaction: object;
     value: string;
     error?: string;
   } | null>(null);

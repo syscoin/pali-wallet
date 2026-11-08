@@ -2,6 +2,7 @@
 import { ethErrors } from 'helpers/errors';
 
 import { normalizeDappTransaction } from '../../shared/dappTransaction.ts';
+import { snapshotSmartAccountDappTransaction } from '../../shared/smartAccountDappTransaction.ts';
 import { getController } from 'scripts/Background';
 import { getUnrestrictedMethods } from 'scripts/Background/controllers/message-handler/method-registry';
 import { popupPromise } from 'scripts/Background/controllers/message-handler/popup-promise';
@@ -131,21 +132,10 @@ export const EthProvider = (
         'An explicit transaction nonce is not supported for this account'
       );
     if (
-      tx.accessList?.length &&
-      (activeAccount.isSmartAccount ||
-        accountMeta.type === KeyringAccountType.SmartAccount)
+      activeAccount.isSmartAccount ||
+      accountMeta.type === KeyringAccountType.SmartAccount
     )
-      throw ethErrors.provider.unsupportedMethod(
-        'Transaction access lists are not supported for smart accounts'
-      );
-    if (
-      (activeAccount.isSmartAccount ||
-        accountMeta.type === KeyringAccountType.SmartAccount) &&
-      (tx.type === '0x0' || tx.gasPrice !== undefined)
-    )
-      throw ethErrors.provider.unsupportedMethod(
-        'Smart accounts support EIP-1559 fee overrides, not legacy transaction fees.'
-      );
+      snapshotSmartAccountDappTransaction(tx);
     // Get current block to check EIP1559 compatibility
     const currentBlock = await web3Provider.getBlock('latest');
     assertCurrentContext();

@@ -117,6 +117,7 @@ function zeroOnly(row: ActivityRow) {
 }
 function amount(row: ActivityRow, symbol: string): string {
   if (row.local?.collectibleTransfer) return 'Collectible transfer';
+  if (row.local?.contractInteraction && row.local.amountUnits === '0') return 'Contract interaction';
   if (row.display) {
     if (row.display.amountUnavailable) return `? ${row.display.displaySymbol}`;
     if (row.display.hasUnknownDecimals) return `${row.display.displaySymbol} transfer`;

@@ -48,6 +48,7 @@ export function NativeMessageReviewFixture() {
     };
   }, []);
   const controller: NativeConnectionsView = {
+    async confirmSmartPayer() { throw new Error('No Smart payer review in this fixture'); },
     getSnapshot() { throw new Error('The review receives its public snapshot from its parent'); },
     subscribe() { throw new Error('The review receives its public snapshot from its parent'); },
     async pair() { throw new Error('Pairing is outside this fixture'); },

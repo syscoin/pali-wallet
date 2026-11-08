@@ -130,7 +130,10 @@ export function createNativeSmartOperation(
                     intent.amountUnits
                   ).data,
                 }
-              : { to: intent.recipient, data: '0x' }
+              : {
+                  to: intent.recipient,
+                  data: intent.kind === 'dapp-call' ? intent.data : '0x',
+                }
           ),
           ports.checkAddress,
           assertCurrent
@@ -166,7 +169,7 @@ export function createNativeSmartOperation(
           'This authenticator is not available for native transfers'
         );
       const prepare = (
-        executions: Array<{ target: string; data: string; value: string }>
+        executions: { target: string; data: string; value: string }[]
       ) =>
         prepareSmartAccountOperation({
           account: { ...account, smartAccount: metadata },
@@ -178,6 +181,20 @@ export function createNativeSmartOperation(
             metadata.isDeployed &&
             hasUsableSmartAccountAuthMetadata(metadata),
           executions,
+          ...(intent.kind === 'dapp-call'
+            ? {
+                // Match extension Smart submissions. EOA gas/gasLimit fields
+                // do not replace the shared UserOperation gas estimate.
+                feeOverrides: {
+                  ...(intent.maxFeePerGas === undefined
+                    ? {}
+                    : { maxFeePerGas: intent.maxFeePerGas }),
+                  ...(intent.maxPriorityFeePerGas === undefined
+                    ? {}
+                    : { maxPriorityFeePerGas: intent.maxPriorityFeePerGas }),
+                },
+              }
+            : {}),
           assertCurrent,
           async selectGasPayer(gasEstimate, maxFeePerGas) {
             const primary = getSmartAccountGasPayerCandidates(
@@ -255,7 +272,7 @@ export function createNativeSmartOperation(
           : [
               {
                 target: intent.recipient,
-                data: '0x',
+                data: intent.kind === 'dapp-call' ? intent.data : '0x',
                 value: intent.amountUnits,
               },
             ]

@@ -1,3 +1,4 @@
+import type { NativeSmartAccountOperationSnapshot } from '../smartAccount/operation.ts';
 import type { WalletConnectVerification } from './walletConnect.ts';
 import type { DappMessageMethod } from '../../../../source/shared/dappMessageRequest.ts';
 import type { PreparedEvmTransaction } from '@sidhujag/sysweb3-keyring/cjs/transactions/evm-envelope.js';
@@ -49,31 +50,47 @@ type NativeSigningReviewBase = Readonly<{
   requiresWarningAcknowledgement: boolean;
 }>;
 
-export type NativeMessageReview = NativeSigningReviewBase & Readonly<{
-  kind: 'message';
-  method: DappMessageMethod;
-  message: string | null;
-  typedData: string | null;
-  order: Readonly<{
-    protocol: '0x' | 'Seaport';
-    status: 'recognized' | 'unrecognized';
-    warnings: readonly ('send.nftOrderZeroPayment' | 'send.nftOrderNoReturn')[];
-  }> | null;
-}>;
+export type NativeMessageReview = NativeSigningReviewBase &
+  Readonly<{
+    kind: 'message';
+    method: DappMessageMethod;
+    message: string | null;
+    typedData: string | null;
+    order: Readonly<{
+      protocol: '0x' | 'Seaport';
+      status: 'recognized' | 'unrecognized';
+      warnings: readonly (
+        | 'send.nftOrderZeroPayment'
+        | 'send.nftOrderNoReturn'
+      )[];
+    }> | null;
+  }>;
 
-export type NativeTransactionReview = NativeSigningReviewBase & Readonly<{
-  kind: 'transaction';
-  method: 'eth_sendTransaction';
-  transaction: PreparedEvmTransaction | null;
-  maximumFeeUnits: string | null;
-  maximumTotalUnits: string | null;
-  symbol: string;
-  decimals: number;
-  broadcastHash: string | null;
-  approval: ApprovalSummary | null;
-}>;
+export type NativeTransactionReview = NativeSigningReviewBase &
+  Readonly<{
+    kind: 'transaction';
+    method: 'eth_sendTransaction';
+    transaction: PreparedEvmTransaction | null;
+    maximumFeeUnits: string | null;
+    maximumTotalUnits: string | null;
+    symbol: string;
+    decimals: number;
+    broadcastHash: string | null;
+    approval: ApprovalSummary | null;
+  }>;
 
-export type NativeSigningReview = NativeMessageReview | NativeTransactionReview;
+export type NativeSmartTransactionReview = NativeSigningReviewBase &
+  Readonly<{
+    kind: 'smart-transaction';
+    method: 'eth_sendTransaction';
+    operation: NativeSmartAccountOperationSnapshot;
+    approval: ApprovalSummary | null;
+  }>;
+
+export type NativeSigningReview =
+  | NativeMessageReview
+  | NativeTransactionReview
+  | NativeSmartTransactionReview;
 
 export type NativeConnectionsSnapshot = Readonly<{
   revision: number;
@@ -118,9 +135,18 @@ export type NativeConnectionsView = Readonly<{
     revision: number,
     acknowledgeWarning: boolean
   ): Promise<void>;
+  confirmSmartPayer(
+    id: string,
+    revision: number,
+    payerId: number
+  ): Promise<void>;
   rejectRequest(id: string): Promise<void>;
   activateRequestAccount(id: string, revision: number): Promise<void>;
-  editApprovalAmount(id: string, revision: number, amount: string): Promise<void>;
+  editApprovalAmount(
+    id: string,
+    revision: number,
+    amount: string
+  ): Promise<void>;
   retry(): Promise<void>;
   cancel(): void;
 }>;
