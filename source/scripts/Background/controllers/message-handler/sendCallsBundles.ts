@@ -28,8 +28,6 @@ import {
 const STORAGE_KEY = 'pali-sendcalls-bundles';
 const MAX_BUNDLES_PER_HOST = 50;
 const BUNDLE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-// Spec: ids MUST be unique strings up to 4096 bytes (8194 chars with 0x).
-const MAX_BUNDLE_ID_CHARS = 8194;
 
 interface IStoredSendCallsBundle extends ISendCallsBatchDescriptor {
   createdAt: number;
@@ -90,11 +88,6 @@ const writeBundleStore = (storeData: TBundleStore): Promise<void> =>
 
 const hasUnresolvedSubmission = (bundle: IStoredSendCallsBundle) =>
   bundle.submissionStarted && !bundle.submissionCompleted;
-
-export const isValidAppProvidedBundleId = (id: unknown): id is string =>
-  typeof id === 'string' &&
-  /^0x[0-9a-fA-F]+$/.test(id) &&
-  id.length <= MAX_BUNDLE_ID_CHARS;
 
 // Wallet-minted bundle ids are 32 random bytes: unguessable and carrying no
 // information, so a dapp cannot fabricate an id this wallet never issued nor

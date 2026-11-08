@@ -1,5 +1,9 @@
 import { ethErrors } from 'helpers/errors';
 
+import {
+  assertDappCallsAtomicSupport,
+  normalizeDappCallsRequest,
+} from '../../../../shared/dappCalls.ts';
 import { getController } from 'scripts/Background';
 import { EthProvider } from 'scripts/Provider/EthProvider';
 import { SysProvider } from 'scripts/Provider/SysProvider';
@@ -18,7 +22,6 @@ import { requestCancelledError } from './request-lifetime';
 import { requestCoordinator } from './request-pipeline';
 import {
   generateWalletBundleId,
-  isValidAppProvidedBundleId,
   releaseSendCallsBundleReservation,
   reserveSendCallsBundle,
   resolveCallsStatus,
@@ -135,7 +138,9 @@ export class WalletMethodHandler implements IMethodHandler {
       methodConfig.popupEventName
     ) {
       if (methodName === 'sendCalls') {
-        const sendCallsRequest = params?.[0] || {};
+        if (!params || params.length !== 1)
+          throw ethErrors.rpc.invalidParams('Expected one calls request');
+        const sendCallsRequest = normalizeDappCallsRequest(params[0]);
         const connection = dapp.get(host);
         if (
           !account?.address ||
@@ -153,47 +158,6 @@ export class WalletMethodHandler implements IMethodHandler {
             )
           );
 
-        // Atomicity is handled through atomicRequired below. No additional
-        // top-level or per-call capability is currently implemented.
-        const capabilitySets = [
-          sendCallsRequest.capabilities,
-          ...(Array.isArray(sendCallsRequest.calls)
-            ? sendCallsRequest.calls.map((call) => call?.capabilities)
-            : []),
-        ];
-        for (const capabilitySet of capabilitySets) {
-          if (capabilitySet === undefined) continue;
-          if (
-            !capabilitySet ||
-            typeof capabilitySet !== 'object' ||
-            Array.isArray(capabilitySet)
-          ) {
-            throw cleanErrorStack(
-              ethErrors.rpc.invalidParams('Invalid capabilities')
-            );
-          }
-          for (const capability of Object.values(capabilitySet) as any[]) {
-            if (
-              !capability ||
-              typeof capability !== 'object' ||
-              Array.isArray(capability) ||
-              (capability.optional !== undefined &&
-                typeof capability.optional !== 'boolean')
-            ) {
-              throw cleanErrorStack(
-                ethErrors.rpc.invalidParams('Invalid capability')
-              );
-            }
-            if (capability.optional !== true) {
-              throw cleanErrorStack(
-                ethErrors.rpc.custom({
-                  code: 5700,
-                  message: 'Unsupported non-optional capability',
-                })
-              );
-            }
-          }
-        }
         const approvedContext = {
           account: {
             address: account.address,
@@ -209,31 +173,10 @@ export class WalletMethodHandler implements IMethodHandler {
           account?.isSmartAccount &&
           account.smartAccount?.chainId === activeNetwork?.chainId;
 
-        if (
-          sendCallsRequest.atomicRequired === true &&
-          !smartAccountAtomicSupported
-        ) {
-          throw cleanErrorStack(
-            ethErrors.rpc.custom({
-              code: 5700,
-              message:
-                'Atomic wallet_sendCalls requires an active smart account on the selected chain.',
-            })
-          );
-        }
-
-        // EIP-5792: when the dapp supplies its own bundle id the wallet must
-        // respect it, return it, and reject duplicates (error 5720).
-        if (
-          sendCallsRequest.id !== undefined &&
-          !isValidAppProvidedBundleId(sendCallsRequest.id)
-        ) {
-          throw cleanErrorStack(
-            ethErrors.rpc.invalidParams(
-              'wallet_sendCalls id must be a 0x-prefixed hex string of at most 4096 bytes.'
-            )
-          );
-        }
+        assertDappCallsAtomicSupport(
+          sendCallsRequest,
+          Boolean(smartAccountAtomicSupported)
+        );
 
         // Reserve the bundle id atomically before opening the approval popup
         // so concurrent wallet_sendCalls requests reusing the same id are

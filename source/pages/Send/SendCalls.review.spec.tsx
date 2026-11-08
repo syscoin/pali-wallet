@@ -93,7 +93,6 @@ jest.mock(
   () => ({
     reserveSendCallsBundle: jest.fn(async () => true),
     generateWalletBundleId: () => '0x1234',
-    isValidAppProvidedBundleId: () => true,
     releaseSendCallsBundleReservation: jest.fn(async () => undefined),
   })
 );
@@ -468,7 +467,7 @@ it('retains ordinary Reject without starting a transaction or accepting the requ
 
 it('refuses unsupported required atomicity before opening approval', async () => {
   expect(await request([call()], HOST, true)).toMatchObject({
-    error: { code: 5700 },
+    error: { code: 5760 },
   });
   expect(mockPopup).not.toHaveBeenCalled();
 });
