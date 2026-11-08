@@ -441,7 +441,7 @@ export const SendConfirm = () => {
 
   // Manual retry function for fee calculation
   const retryFeeCalculation = () => {
-    if (isNativeSoftwareSend && customFee.isCustom) {
+    if (isOrdinaryNativeSend && customFee.isCustom) {
       refreshCustomNativeFeeApproval();
       return;
     }
@@ -1606,7 +1606,7 @@ export const SendConfirm = () => {
               'A current native transaction fee review is required'
             );
           } catch (error: any) {
-            if (isNativeSoftwareSend) {
+            if (isOrdinaryNativeSend) {
               retireNativeFeeApproval();
               if (
                 error?.transactionNotBroadcast === true &&
@@ -1617,7 +1617,10 @@ export const SendConfirm = () => {
                 setLoading(false);
                 return;
               }
-              if (error?.transactionNotBroadcast === true)
+              if (
+                error?.transactionNotBroadcast === true &&
+                submission.isActive()
+              )
                 setFeeCalculationError(
                   isSavedEvmNonceConflict(error)
                     ? t('send.savedNonceConflict')
@@ -2350,7 +2353,7 @@ export const SendConfirm = () => {
         customFee={customFee}
         setCustomFee={(next) => {
           setCustomFee(next);
-          if (isNativeSoftwareSend && customFee.isCustom && feeCalculationError)
+          if (isOrdinaryNativeSend && customFee.isCustom && feeCalculationError)
             refreshCustomNativeFeeApproval();
         }}
         setHaveError={() => {
