@@ -4,6 +4,11 @@ test.use({ baseURL: 'http://127.0.0.1:4179' });
 
 const cases = [
   {
+    phase: 'pending-predecessor',
+    heading: 'Deploy smart account',
+    message: 'Waiting for the network to include the earlier pending operation.',
+  },
+  {
     phase: 'authorize',
     heading: 'Authorize deployment',
     action: 'Authorize deployment',
