@@ -139,8 +139,8 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
       <Screen gap={16}>
         <Header title={title} onBack={step.phase === 'outcome' || step.phase === 'blocked' ? undefined : back} />
         {step.phase === 'password' && <>
-          <Text>Removing this wallet deletes its accounts, private notes, and saved transaction records from this device.</Text>
-          <Notice title="Check your backups" body="Your recovery phrase restores derived accounts. Imported accounts and private notes need their own backups." tone="amber" />
+          <Text>Removing this wallet deletes its accounts, Sentry keys, private notes, and saved transaction records from this device.</Text>
+          <Notice title="Check your backups" body="Your recovery phrase restores derived accounts. Imported accounts, Sentry keys, and private notes need their own backups." tone="amber" />
           <Text style={styles.muted}>Transfers already sent can still complete. Watch accounts and device settings stay saved.</Text>
           <NoteBackupPasswordField label="Confirm your wallet password" value={password} onChange={setPassword} busy={false} />
           {step.error && <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={s.error}>{step.error}</Text>}
@@ -154,7 +154,7 @@ export function NativeWalletRemovalScreen({ removal, isCurrent, confirm, onBack,
           <Button title="Cancel" variant="secondary" onPress={back} />
         </>}
         {step.phase === 'review' && <>
-          <Notice title="Remove the whole wallet?" body="All local wallet records, including imported keys, private notes, and saved pending transactions, will be removed." tone="amber" />
+          <Notice title="Remove the whole wallet?" body="All local wallet records, including imported keys, Sentry keys, private notes, and saved pending transactions, will be removed." tone="amber" />
           <Text style={styles.muted}>Confirm within 30 seconds.</Text>
           <View style={s.actions}>
             <Button title="Remove wallet" variant="danger" onPress={() => void remove()} />

@@ -11,6 +11,7 @@ on:
       - 'scripts/keyring-ledger-2.1.7.json'
       - 'source/shared/**'
       - 'source/wallet/**'
+      - 'source/utils/sentry/importBatch.ts'
       - 'source/constants/trustedApps.json'
       - 'source/types/network.ts'
       - 'source/types/security.ts'
