@@ -309,10 +309,7 @@ const EthSign: React.FC<ISign> = () => {
       authenticatorContexts: getSmartAccountLocalOwnerContexts({
         accounts,
         controllerEmitter,
-        personalSignValidator:
-          data.eventName === 'personal_sign'
-            ? smartAccount.auth?.validator ?? ''
-            : undefined,
+        messageSignValidator: smartAccount.auth?.validator ?? '',
       }),
       onAuthenticatorSigningResolved: (authenticator) => {
         if (authenticator === 'slh-dsa') {

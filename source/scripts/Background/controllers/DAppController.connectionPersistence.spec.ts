@@ -22,9 +22,9 @@ jest.mock('../notification-manager', () => ({
 import { smartAccountAddressFixture } from '../../../../tests/fixtures/smartAccountAddress';
 import { handleMasterControllerResponses } from '../handlers/handleMasterControllerResponses';
 import {
-  getPersonalSignGrantReplacement,
-  watchConnectedPersonalSignGrant,
-} from '../handlers/personalSignApproval';
+  getMessageSignGrantReplacement,
+  watchConnectedMessageSignGrant,
+} from '../handlers/messageSignApproval';
 import { notificationManager } from '../notification-manager';
 import { rehydrate } from 'state/dapp';
 import { walletPersistenceGate } from 'state/paliStorage';
@@ -46,7 +46,11 @@ import {
   putRuntimeSLHDSAState,
   saveEncryptedSLHDSAState,
 } from 'utils/slhDsa';
-import { getPaliErc7739PersonalSignHash } from 'utils/smartAccount/erc7739';
+import {
+  buildPaliErc7739TypedDataRequest,
+  getPaliErc7739PersonalSignHash,
+  type PaliErc7739TypedData,
+} from 'utils/smartAccount/erc7739';
 import {
   getSmartAccountLocalOwnerContexts,
   signSmartAccountActionHash,
@@ -191,7 +195,7 @@ it('publishes an existing account change only after its durable write', async ()
 
 it('continues a connected request through its exact durable account-selection successor only', async () => {
   await connect();
-  const scope = watchConnectedPersonalSignGrant({
+  const scope = watchConnectedMessageSignGrant({
     host,
     method: 'personal_sign',
     sender: { documentId: 'site-document', url: host, origin: host },
@@ -204,7 +208,7 @@ it('continues a connected request through its exact durable account-selection su
       1,
       type,
       context(1),
-      getPersonalSignGrantReplacement(scope.signal)
+      getMessageSignGrantReplacement(scope.signal)
     );
     const finish = await waitForWrite();
     expect(scope.signal.aborted).toBe(false);
@@ -384,6 +388,7 @@ describe('connected personal-sign approval authority', () => {
   const message = 'Read this message';
   const createPopup = jest.fn();
   const signPersonalMessage = jest.fn(async () => 'synthetic-signature');
+  const signTypedData = jest.fn(async () => 'synthetic-typed-signature');
   const signSmartAccountActionDigestInternal = jest.fn(
     async () => 'synthetic-owner-signature'
   );
@@ -402,7 +407,7 @@ describe('connected personal-sign approval authority', () => {
       MainController.prototype.signSLHDSAActionHash.bind(slhSigningHost),
     signSmartAccountActionDigestInternal,
     getWalletSessionGeneration: () => sessionGeneration,
-    ethereumTransaction: { signPersonalMessage },
+    ethereumTransaction: { signPersonalMessage, signTypedData },
   };
   const getURL = (path = '') => `chrome-extension://test-extension/${path}`;
   const sendMessage = jest.fn(async () => ({ documentActive: true }));
@@ -564,6 +569,182 @@ describe('connected personal-sign approval authority', () => {
     };
   };
 
+  const typedMethods = [
+    'eth_signTypedData',
+    'eth_signTypedData_v3',
+    'eth_signTypedData_v4',
+  ] as const;
+  const typedRequest = (method: (typeof typedMethods)[number]) =>
+    method === 'eth_signTypedData'
+      ? [{ name: 'text', type: 'string', value: 'Approved typed message' }]
+      : {
+          types: {
+            EIP712Domain: [],
+            Message: [{ name: 'text', type: 'string' }],
+          },
+          domain: {},
+          primaryType: 'Message',
+          message: { text: 'Approved typed message' },
+        };
+  const typedVersion = (method: (typeof typedMethods)[number]) =>
+    method === 'eth_signTypedData'
+      ? 'V1'
+      : method === 'eth_signTypedData_v3'
+      ? 'V3'
+      : 'V4';
+
+  it.each(
+    typedMethods.flatMap((method) =>
+      ['revoke', 'account', 'network', 'lock'].map(
+        (change) => [method, change] as const
+      )
+    )
+  )('does not release delayed %s signing after %s', async (method, change) => {
+    await connect();
+    const typedData = typedRequest(method);
+    const approval = await openApproval(undefined, method, [
+      address,
+      typedData,
+    ]);
+    let finishSigning!: (value: string) => void;
+    signTypedData.mockImplementationOnce(
+      () =>
+        new Promise<string>((resolve) => {
+          finishSigning = resolve;
+        })
+    );
+    const signing = approval.invoke(
+      ['wallet', 'ethereumTransaction', 'signTypedData'],
+      [address, typedData, typedVersion(method)]
+    );
+    await new Promise(setImmediate);
+    expect(signTypedData).toHaveBeenCalledTimes(1);
+    if (change === 'revoke') {
+      await controller.revoke(host, { allowAlreadyDisconnected: false });
+    } else if (change === 'account') {
+      sessionGeneration += 1;
+      store.dispatch(setActiveAccount({ id: 1, type }));
+    } else if (change === 'network') {
+      sessionGeneration += 1;
+      const vault = store.getState().vault;
+      store.dispatch(
+        restoreVaultSnapshot({
+          ...vault,
+          activeNetwork: {
+            ...vault.activeNetwork,
+            chainId: 2,
+            url: 'https://next-network.invalid',
+          },
+        })
+      );
+    } else {
+      // MainController.lock advances this authority before device teardown.
+      sessionGeneration += 1;
+    }
+    finishSigning('synthetic-typed-signature');
+    const response = await signing;
+    approval.reply(response);
+    await approval.outcome;
+    expect(response).toMatchObject({ success: false });
+    expect(response).not.toBe('synthetic-typed-signature');
+  });
+
+  it.each(typedMethods)(
+    'signs the exact live %s request through its SDK version',
+    async (method) => {
+      await connect();
+      const typedData = typedRequest(method);
+      const approval = await openApproval(undefined, method, [
+        address,
+        JSON.stringify(typedData),
+      ]);
+      const response = await approval.invoke(
+        ['wallet', 'ethereumTransaction', 'signTypedData'],
+        [address, typedData, typedVersion(method)]
+      );
+      approval.reply(response);
+      expect(response).toBe('synthetic-typed-signature');
+      expect(signTypedData).toHaveBeenCalledWith(
+        address,
+        typedData,
+        typedVersion(method)
+      );
+      await expect(approval.outcome).resolves.toEqual({
+        value: 'synthetic-typed-signature',
+      });
+    }
+  );
+
+  it.each(['payload', 'version', 'signer', 'method'])(
+    'rejects a changed typed-data %s before SDK invocation',
+    async (change) => {
+      await connect();
+      const typedData = typedRequest('eth_signTypedData_v4');
+      const approval = await openApproval(undefined, 'eth_signTypedData_v4', [
+        address,
+        typedData,
+      ]);
+      const args = [
+        change === 'signer' ? `0x${'22'.repeat(20)}` : address,
+        change === 'payload'
+          ? { ...typedData, message: { text: 'Different message' } }
+          : typedData,
+        change === 'version' ? 'V3' : 'V4',
+      ];
+      const response = await approval.invoke(
+        [
+          'wallet',
+          'ethereumTransaction',
+          change === 'method' ? 'signPersonalMessage' : 'signTypedData',
+        ],
+        args
+      );
+      approval.reply(response);
+      await approval.outcome;
+      expect(response).toMatchObject({ success: false });
+      expect(signTypedData).not.toHaveBeenCalled();
+      expect(signPersonalMessage).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each(['bound', 'unbound'] as const)(
+    'rejects raw digest calls from a %s message document',
+    async (binding) => {
+      await connect();
+      const approval = await openApproval(undefined, 'eth_signTypedData_v4', [
+        address,
+        typedRequest('eth_signTypedData_v4'),
+      ]);
+      const documentId =
+        binding === 'bound' ? undefined : 'not-enrolled-document';
+      for (const [methods, args] of [
+        [
+          ['wallet', 'signSmartAccountActionDigestInternal'],
+          [[address, `0x${'77'.repeat(32)}`], { id: 0, type }],
+        ],
+        [
+          ['wallet', 'signSLHDSAActionHash'],
+          [{ actionHash: `0x${'77'.repeat(32)}` }],
+        ],
+        [
+          ['wallet', 'ethereumTransaction', 'ethSign'],
+          [[address, `0x${'77'.repeat(32)}`]],
+        ],
+      ] as const) {
+        const response = await approval.invoke(
+          [...methods],
+          [...args],
+          documentId
+        );
+        expect(response).toMatchObject({ success: false });
+      }
+      expect(signSmartAccountActionDigestInternal).not.toHaveBeenCalled();
+      expect(signTypedData).not.toHaveBeenCalled();
+      approval.reply(null);
+      await approval.outcome;
+    }
+  );
+
   describe.each(['personal_sign', 'eth_sendTransaction'])(
     '%s account-switch consent',
     (method) => {
@@ -693,7 +874,7 @@ describe('connected personal-sign approval authority', () => {
     validator: string;
   };
 
-  const openSmartApproval = async (composite = false) => {
+  const openSmartApproval = async (composite = false, typed = false) => {
     const smartType = KeyringAccountType.SmartAccount;
     const { account: smart } = smartAccountAddressFixture(1, address);
     const smartAddress = smart.address;
@@ -755,25 +936,60 @@ describe('connected personal-sign approval authority', () => {
         network: { ...vault.activeNetwork },
       }
     );
-    const approval = await openApproval(undefined, 'personal_sign', [
-      message,
-      smartAddress,
-    ]);
+    const typedData = typedRequest(
+      'eth_signTypedData_v4'
+    ) as PaliErc7739TypedData;
+    const approval = typed
+      ? await openApproval(undefined, 'eth_signTypedData_v4', [
+          smartAddress,
+          typedData,
+        ])
+      : await openApproval(undefined, 'personal_sign', [message, smartAddress]);
     const runtime = getSmartAccountLocalOwnerContexts({
       accounts: store.getState().vault.accounts,
       controllerEmitter: (methods: string[], params?: unknown[]) =>
         approval.invoke(methods, params ?? []),
-      personalSignValidator: activeValidator,
+      messageSignValidator: activeValidator,
     }).ecdsa as {
       signActionHash: (params: SmartAccountEcdsaTestParams) => Promise<string>;
     };
-    const actionHash = getPaliErc7739PersonalSignHash({
-      accountAddress: smartAddress,
-      chainId: 1,
-      hash: hashMessage(message),
-    });
+    const actionHash = typed
+      ? buildPaliErc7739TypedDataRequest({
+          accountAddress: smartAddress,
+          chainId: 1,
+          typedData,
+        }).actionHash
+      : getPaliErc7739PersonalSignHash({
+          accountAddress: smartAddress,
+          chainId: 1,
+          hash: hashMessage(message),
+        });
     return { approval, runtime, args: { actionHash, owner, validator } };
   };
+
+  it.each([false, true])(
+    'derives the reviewed smart typed-data digest with composite=%s',
+    async (composite) => {
+      const { approval, runtime, args } = await openSmartApproval(
+        composite,
+        true
+      );
+      const result = await runtime.signActionHash({
+        ...args,
+        actionHash: `0x${'99'.repeat(32)}`,
+      });
+      expect(signSmartAccountActionDigestInternal).toHaveBeenCalledWith(
+        [address, args.actionHash],
+        { id: 0, type },
+        undefined,
+        expect.any(Function)
+      );
+      approval.reply(result);
+      await expect(approval.outcome).resolves.toEqual({
+        value: 'synthetic-owner-signature',
+      });
+    }
+  );
 
   it.each([true, false])(
     'admits a connected smart-account local ECDSA signer only while its grant is current, revoked=%s',
@@ -806,7 +1022,7 @@ describe('connected personal-sign approval authority', () => {
       switch (target) {
         case 'active validator':
           result = await approval.invoke(
-            ['wallet', 'signSmartAccountPersonalDigest'],
+            ['wallet', 'signSmartAccountMessageDigest'],
             [args.owner, `0x${'ab'.repeat(20)}`, args.validator]
           );
           break;
@@ -824,7 +1040,7 @@ describe('connected personal-sign approval authority', () => {
           break;
         default:
           result = await approval.invoke(
-            ['wallet', 'signSmartAccountPersonalDigest'],
+            ['wallet', 'signSmartAccountMessageDigest'],
             [args.owner, args.validator, args.validator],
             'different-document'
           );
@@ -1067,7 +1283,7 @@ describe('connected personal-sign approval authority', () => {
               throw new Error(String(response.error));
             return response;
           },
-          personalSignValidator: signingMetadata.auth.validator,
+          messageSignValidator: signingMetadata.auth.validator,
         }),
         smartAccount: signingMetadata,
       });
@@ -1275,7 +1491,7 @@ describe('connected personal-sign approval authority', () => {
       ]) {
         await expect(
           fixture.approval.invoke(
-            ['wallet', 'signSmartAccountPersonalDigest'],
+            ['wallet', 'signSmartAccountMessageDigest'],
             [key, fixture.activeValidator, child]
           )
         ).resolves.toMatchObject({ success: false });

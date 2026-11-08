@@ -819,7 +819,6 @@ export class EthMethodHandler implements IMethodHandler {
             route: methodConfig.popupRoute,
             eventName: methodConfig.popupEventName,
             data: params,
-            ...(method === 'personal_sign' && { connectedPersonalSign: true }),
           }),
         methodConfig.popupRoute! // Explicit route parameter
       );

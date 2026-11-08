@@ -1,5 +1,13 @@
-import { ethErrors } from 'helpers/errors';
-
+import {
+  isDappMessageMethod,
+  readDappMessageRequest,
+  matchesDappMessageRequest,
+  type DappMessageMethod,
+} from '../../../shared/dappMessageRequest';
+import {
+  createDappMessageApproval,
+  messageSignApprovalExpired,
+} from '../../../wallet/dappMessageApproval';
 import { isRequestDocumentLive } from '../controllers/message-handler/request-lifetime';
 import type { IDApp } from 'state/dapp/types';
 import store from 'state/store';
@@ -7,39 +15,32 @@ import { INetworkType, KeyringAccountType } from 'types/network';
 import { createDappApprovalLifetime } from 'utils/dappApprovalLifetime';
 import { matchAttestedDappOrigin } from 'utils/dappOrigin';
 import {
-  getPersonalSignParams,
-  isValidPersonalSignMessage,
-} from 'utils/personalSignReview';
-import {
   getPaliErc7739PersonalSignHash,
+  buildPaliErc7739TypedDataRequest,
+  type PaliErc7739TypedData,
   hashPersonalSignMessage,
 } from 'utils/smartAccount/erc7739';
 import { getInstalledValidatorModuleByAddress } from 'utils/smartAccount/modules';
 
 import type { IEnhancedRequestContext } from '../controllers/message-handler/types';
 
-export const personalSignApprovalExpired = () =>
-  ethErrors.provider.userRejectedRequest(
-    'This site approval is no longer current. Request it again.'
-  );
-
 const grantReplacements = new WeakMap<AbortSignal, (grant: IDApp) => void>();
 
-export const getPersonalSignGrantReplacement = (signal?: AbortSignal) =>
+export const getMessageSignGrantReplacement = (signal?: AbortSignal) =>
   signal && grantReplacements.get(signal);
 
 /** Keep the original grant across both existing queues, including reexecution. */
-export const watchConnectedPersonalSignGrant = ({
+export const watchConnectedMessageSignGrant = ({
   host,
   method,
   sender,
   signal,
 }: IEnhancedRequestContext['originalRequest']) => {
   if (
-    method !== 'personal_sign' ||
+    !isDappMessageMethod(method) ||
     !sender?.documentId ||
     matchAttestedDappOrigin(sender.url, sender.origin) !== host ||
-    getPersonalSignGrantReplacement(signal)
+    getMessageSignGrantReplacement(signal)
   )
     return;
   const state = store.getState();
@@ -63,7 +64,7 @@ export const watchConnectedPersonalSignGrant = ({
   }, signal);
   const unsubscribe = store.subscribe(lifetime.isCurrent);
   grantReplacements.set(lifetime.signal, (next) => {
-    if (!lifetime.isCurrent()) throw personalSignApprovalExpired();
+    if (!lifetime.isCurrent()) throw messageSignApprovalExpired();
     successor = next;
   });
   return {
@@ -76,8 +77,9 @@ export const watchConnectedPersonalSignGrant = ({
   };
 };
 
-export const capturePersonalSignApproval = ({
+export const captureMessageSignApproval = ({
   host,
+  method,
   params,
   sender,
   signal,
@@ -85,7 +87,8 @@ export const capturePersonalSignApproval = ({
 }: {
   getWalletSessionGeneration: () => number;
   host: string;
-  params: Parameters<typeof getPersonalSignParams>[0];
+  method: DappMessageMethod;
+  params: unknown;
   sender?: chrome.runtime.MessageSender;
   signal?: AbortSignal;
 }) => {
@@ -94,58 +97,45 @@ export const capturePersonalSignApproval = ({
     !sender.documentId ||
     matchAttestedDappOrigin(sender.url, sender.origin) !== host
   )
-    throw personalSignApprovalExpired();
+    throw messageSignApprovalExpired();
 
   const { dapp, vault } = store.getState();
   const grant = dapp.dapps[host];
   const { activeAccount, accounts, activeNetwork } = vault;
   const { id, type } = activeAccount;
-  const { address, xpub } = accounts[type]?.[id] ?? {};
-  const { chainId, url, slip44 } = activeNetwork;
+  const { address } = accounts[type]?.[id] ?? {};
+  const { chainId } = activeNetwork;
   if (
     grant?.chain !== INetworkType.Ethereum ||
     grant.accountId !== id ||
     grant.accountType !== type ||
     !address
   )
-    throw personalSignApprovalExpired();
+    throw messageSignApprovalExpired();
 
-  const generation = getWalletSessionGeneration();
-  const parsed = getPersonalSignParams(params);
-  const request =
-    parsed?.address.toLowerCase() === address.toLowerCase()
-      ? parsed
-      : undefined;
-  const signerChecks = new Map<
-    string,
-    (currentAccounts: typeof accounts) => boolean
-  >();
-  const lifetime = createDappApprovalLifetime(() => {
-    const state = store.getState();
-    const current = state.vault;
-    const account = current.accounts[type]?.[id];
-    const network = current.activeNetwork;
-    for (const isCurrent of signerChecks.values())
-      if (!isCurrent(current.accounts)) return false;
-    return (
-      state.dapp.dapps[host] === grant &&
-      current.activeAccount.id === id &&
-      current.activeAccount.type === type &&
-      account?.address === address &&
-      account.xpub === xpub &&
-      !current.isBitcoinBased &&
-      network.kind === INetworkType.Ethereum &&
-      network.chainId === chainId &&
-      network.url === url &&
-      network.slip44 === slip44 &&
-      getWalletSessionGeneration() === generation
-    );
-  }, signal);
-  // Observe removal before a failed durable revoke can restore the same grant.
-  const unsubscribe = store.subscribe(lifetime.isCurrent);
-  const assertCurrent = () => {
-    if (!lifetime.isCurrent()) throw personalSignApprovalExpired();
-  };
+  const request = readDappMessageRequest(method, params, address);
+  const lifetime = createDappMessageApproval({
+    signal,
+    subscribe: (changed) => store.subscribe(changed),
+    readScope: () => {
+      const state = store.getState();
+      const current = state.vault;
+      const selected = current.activeAccount;
+      const account = current.accounts[selected.type]?.[selected.id];
+      return {
+        grant: state.dapp.dapps[host],
+        account: {
+          ...selected,
+          address: account?.address,
+          xpub: account?.xpub,
+        },
+        isBitcoinBased: current.isBitcoinBased,
+        network: current.activeNetwork,
+        sessionGeneration: getWalletSessionGeneration(),
+      };
+    },
+  });
+  const assertCurrent = lifetime.assertCurrent;
   const assertLiveDocument = (live: boolean) => {
     if (!live) lifetime.retire();
     assertCurrent();
@@ -167,20 +157,22 @@ export const capturePersonalSignApproval = ({
       // A requesting iframe can disappear while the approver probe waits.
       if (recheckSite) assertLiveDocument(await isRequestDocumentLive(sender));
     },
-    matches(args: unknown) {
+    matches(args: unknown, signingMethod: string) {
       return (
         request !== undefined &&
-        Array.isArray(args) &&
-        args.length === 1 &&
-        args[0]?.[0] === request.address &&
-        args[0]?.[1] === request.message
+        signingMethod ===
+          (request.method === 'personal_sign'
+            ? 'signPersonalMessage'
+            : 'signTypedData') &&
+        matchesDappMessageRequest(request, args)
       );
     },
     bindSmartAccountSigner(args: unknown) {
       if (
         type !== KeyringAccountType.SmartAccount ||
         !request ||
-        !isValidPersonalSignMessage(request.message) ||
+        (request.method !== 'personal_sign' &&
+          request.method !== 'eth_signTypedData_v4') ||
         !Array.isArray(args) ||
         args.length !== 3
       )
@@ -222,11 +214,17 @@ export const capturePersonalSignApproval = ({
       if (!validator) return;
 
       const getDigest = () =>
-        getPaliErc7739PersonalSignHash({
-          accountAddress: address,
-          chainId,
-          hash: hashPersonalSignMessage(request.message),
-        });
+        request.method === 'personal_sign'
+          ? getPaliErc7739PersonalSignHash({
+              accountAddress: address,
+              chainId,
+              hash: hashPersonalSignMessage(request.message),
+            })
+          : buildPaliErc7739TypedDataRequest({
+              accountAddress: address,
+              chainId,
+              typedData: request.typedData as PaliErc7739TypedData,
+            }).actionHash;
       const hasMetadata = (next: typeof accounts) => {
         const account = next[type]?.[id];
         return account?.isSmartAccount && account.smartAccount === metadata;
@@ -235,7 +233,9 @@ export const capturePersonalSignApproval = ({
         const { keyId, parameterSet, pkRoot, pkSeed } = validator.config;
         if (selectedSigner !== keyId) return;
         const actionHash = getDigest();
-        signerChecks.set('slh-dsa', hasMetadata);
+        lifetime.bindSigner('slh-dsa', () =>
+          hasMetadata(store.getState().vault.accounts)
+        );
         return {
           method: 'signSLHDSAActionHash' as const,
           args: [
@@ -250,8 +250,12 @@ export const capturePersonalSignApproval = ({
         typeof owner?.address !== 'string' ||
         !Number.isSafeInteger(owner.id) ||
         owner.id < 0 ||
-        (owner.type !== KeyringAccountType.HDAccount &&
-          owner.type !== KeyringAccountType.Imported)
+        ![
+          KeyringAccountType.HDAccount,
+          KeyringAccountType.Imported,
+          KeyringAccountType.Ledger,
+          KeyringAccountType.Trezor,
+        ].includes(owner.type)
       )
         return;
       const { id: ownerId, type: ownerType } = owner;
@@ -268,7 +272,8 @@ export const capturePersonalSignApproval = ({
       const digest = getDigest();
       // A change to this hydrated validator or owner retires the whole
       // approval, including composite siblings already in flight.
-      signerChecks.set(`${ownerType}:${ownerId}`, (next) => {
+      lifetime.bindSigner(`${ownerType}:${ownerId}`, () => {
+        const next = store.getState().vault.accounts;
         const current = next[ownerType]?.[ownerId];
         return (
           hasMetadata(next) &&
@@ -286,22 +291,21 @@ export const capturePersonalSignApproval = ({
       };
     },
     dispose() {
-      unsubscribe();
       lifetime.dispose();
     },
   };
 };
 
-type PersonalSignApproval = ReturnType<typeof capturePersonalSignApproval>;
+type MessageSignApproval = ReturnType<typeof captureMessageSignApproval>;
 const approvals = new Map<
   string,
-  { approval: PersonalSignApproval; approverIsLive: () => Promise<boolean> }
+  { approval: MessageSignApproval; approverIsLive: () => Promise<boolean> }
 >();
 
 /** Only a Chrome-authenticated approval document can be bound by the popup. */
-export const bindPersonalSignApproval = (
+export const bindMessageSignApproval = (
   documentId: string,
-  approval: PersonalSignApproval,
+  approval: MessageSignApproval,
   approverIsLive: () => Promise<boolean>
 ) => {
   const binding = { approval, approverIsLive };
@@ -311,30 +315,64 @@ export const bindPersonalSignApproval = (
   };
 };
 
-export const requirePersonalSignApproval = (
+const isMessageApprovalDocument = (
+  sender: chrome.runtime.MessageSender
+): boolean => {
+  if (sender.documentId && approvals.has(sender.documentId)) return true;
+  try {
+    const url = new URL(sender.url || '');
+    if (
+      url.pathname === '/external/tx/ethSign' ||
+      url.searchParams.get('externalRoute') === 'tx/ethSign'
+    )
+      return true;
+    return (
+      url.pathname === '/external.html' &&
+      isDappMessageMethod(
+        JSON.parse(url.searchParams.get('data') || '{}').eventName
+      )
+    );
+  } catch {
+    return false;
+  }
+};
+
+export const requireMessageSignApproval = (
   sender: chrome.runtime.MessageSender,
   methods: unknown,
   args: unknown
 ) => {
   if (!Array.isArray(methods) || methods[0] !== 'wallet') return undefined;
+  const rawDigest =
+    (methods.length === 2 &&
+      ['signSmartAccountActionDigestInternal', 'signSLHDSAActionHash'].includes(
+        methods[1]
+      )) ||
+    (methods.length === 3 &&
+      methods[1] === 'ethereumTransaction' &&
+      methods[2] === 'ethSign');
+  // Transaction/module flows retain their own reviewed digest entry points.
+  // A message document must use its worker-derived message capability instead.
+  if (rawDigest && isMessageApprovalDocument(sender))
+    throw messageSignApprovalExpired();
   const smartAccount =
-    methods.length === 2 && methods[1] === 'signSmartAccountPersonalDigest';
+    methods.length === 2 && methods[1] === 'signSmartAccountMessageDigest';
   if (
     !smartAccount &&
     (methods.length !== 3 ||
       methods[1] !== 'ethereumTransaction' ||
-      methods[2] !== 'signPersonalMessage')
+      !['signPersonalMessage', 'signTypedData'].includes(methods[2]))
   )
     return undefined;
   const binding = sender.documentId && approvals.get(sender.documentId);
-  if (!binding) throw personalSignApprovalExpired();
+  if (!binding) throw messageSignApprovalExpired();
   const { approval, approverIsLive } = binding;
   approval.assertCurrent();
   const signer = smartAccount
     ? approval.bindSmartAccountSigner(args)
     : undefined;
-  if (smartAccount ? !signer : !approval.matches(args))
-    throw personalSignApprovalExpired();
+  if (smartAccount ? !signer : !approval.matches(args, methods[2]))
+    throw messageSignApprovalExpired();
   return {
     signer,
     assertCurrent: approval.assertCurrent,
@@ -342,3 +380,5 @@ export const requirePersonalSignApproval = (
       approval.checkDocument(approverIsLive, recheckSite),
   };
 };
+
+export { messageSignApprovalExpired } from '../../../wallet/dappMessageApproval';

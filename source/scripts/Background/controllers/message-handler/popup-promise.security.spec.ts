@@ -1,3 +1,6 @@
+// Broker-boundary fixtures use a neutral method. Message signing authority is
+// exercised separately through the shared approval gate.
+const POPUP_EVENT = 'test_approval';
 const createPopupMock = jest.fn();
 jest.mock('scripts/Background', () => ({
   getController: () => ({ createPopup: createPopupMock }),
@@ -108,11 +111,11 @@ describe('approval popup boundary', () => {
     signal?: AbortSignal,
     sender?: chrome.runtime.MessageSender,
     shouldBind = true,
-    route = MethodRoute.EthSign
+    route = MethodRoute.Connect
   ) => {
     const pending = popupPromise({
       host: 'https://site.test',
-      eventName: 'personal_sign',
+      eventName: POPUP_EVENT,
       route,
       data: { message: '#keep #all-hashes' },
       signal,
@@ -300,7 +303,7 @@ describe('approval popup boundary', () => {
       messageListener({
         source: source(`external/${route}`),
         data: {
-          eventName: 'personal_sign.https://site.test',
+          eventName: `${POPUP_EVENT}.https://site.test`,
           detail: JSON.stringify(result),
         },
       });
@@ -363,8 +366,8 @@ describe('approval popup boundary', () => {
     await expect(
       popupPromise({
         host: 'https://site.test',
-        eventName: 'personal_sign',
-        route: MethodRoute.EthSign,
+        eventName: POPUP_EVENT,
+        route: MethodRoute.Connect,
       })
     ).rejects.toMatchObject({ code: 4100 });
     expect(createPopupMock).toHaveBeenCalledTimes(1);
@@ -378,8 +381,8 @@ describe('approval popup boundary', () => {
     );
     const pending = popupPromise({
       host: 'https://site.test',
-      eventName: 'personal_sign',
-      route: MethodRoute.EthSign,
+      eventName: POPUP_EVENT,
+      route: MethodRoute.Connect,
     });
     const rejected = expect(pending).rejects.toMatchObject({ code: 4100 });
     await jest.advanceTimersByTimeAsync(2000);
@@ -388,13 +391,13 @@ describe('approval popup boundary', () => {
     log.mockRestore();
   });
 
-  it('preserves signing data and ignores approval messages from another view', async () => {
+  it('preserves approval payload and ignores approval messages from another view', async () => {
     const { pending } = await begin();
     const popupData = createPopupMock.mock.calls[0][1];
     expect(popupData.message).toBe('#keep #all-hashes');
     const response = {
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: JSON.stringify('signed'),
       },
     };
@@ -439,7 +442,7 @@ describe('approval popup boundary', () => {
     );
     messageListener({
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: JSON.stringify('signed'),
       },
       source: {
@@ -476,7 +479,7 @@ describe('approval popup boundary', () => {
       messageListener({
         source: browserSource,
         data: {
-          eventName: 'personal_sign.https://site.test',
+          eventName: `${POPUP_EVENT}.https://site.test`,
           detail: JSON.stringify('signed'),
         },
       });
@@ -487,25 +490,28 @@ describe('approval popup boundary', () => {
   it('ignores another client and wrong nonce even on the expected routed path', async () => {
     const { pending } = await begin();
     const response = {
-      eventName: 'personal_sign.https://site.test',
+      eventName: `${POPUP_EVENT}.https://site.test`,
       detail: JSON.stringify('signed'),
     };
     messageListener({
-      source: source('external/tx/ethSign', 'other-client'),
+      source: source('external/connect-wallet', 'other-client'),
       data: response,
     });
     messageListener({
-      source: source('external/tx/ethSign', 'approval-client', {
+      source: source('external/connect-wallet', 'approval-client', {
         approvalId: 'wrong',
       }),
       data: response,
     });
     messageListener({
-      source: source('external/connect-wallet'),
+      source: source('external/tx/ethSign'),
       data: response,
     });
     expect(self.removeEventListener).not.toHaveBeenCalled();
-    messageListener({ source: source('external/tx/ethSign'), data: response });
+    messageListener({
+      source: source('external/connect-wallet'),
+      data: response,
+    });
     await expect(pending).resolves.toBe('signed');
   });
 
@@ -565,8 +571,8 @@ describe('approval popup boundary', () => {
       status: 'ready',
     });
     messageListener({
-      source: source('external/tx/ethSign'),
-      data: { eventName: 'personal_sign.https://site.test', detail: 'null' },
+      source: source('external/connect-wallet'),
+      data: { eventName: `${POPUP_EVENT}.https://site.test`, detail: 'null' },
     });
     await expect(pending).resolves.toBeNull();
   });
@@ -585,9 +591,9 @@ describe('approval popup boundary', () => {
       status: 'unavailable',
     });
     messageListener({
-      source: source('external/tx/ethSign', 'reloaded-client'),
+      source: source('external/connect-wallet', 'reloaded-client'),
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: '"forged"',
       },
     });
@@ -610,7 +616,7 @@ describe('approval popup boundary', () => {
     });
     messageListener({
       source: source(),
-      data: { eventName: 'personal_sign.https://site.test', detail: 'null' },
+      data: { eventName: `${POPUP_EVENT}.https://site.test`, detail: 'null' },
     });
     await expect(pending).resolves.toBeNull();
   });
@@ -621,8 +627,8 @@ describe('approval popup boundary', () => {
     await expect(
       popupPromise({
         host: 'https://site.test',
-        eventName: 'personal_sign',
-        route: MethodRoute.EthSign,
+        eventName: POPUP_EVENT,
+        route: MethodRoute.Connect,
       })
     ).rejects.toBe(failure);
     expect(chrome.runtime.onMessage.removeListener).toHaveBeenCalledWith(
@@ -646,7 +652,7 @@ describe('approval popup boundary', () => {
     messageListener({
       source: source(),
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: '"too late"',
       },
     });
@@ -672,9 +678,9 @@ describe('approval popup boundary', () => {
       })
     );
     messageListener({
-      source: source('external/tx/ethSign'),
+      source: source('external/connect-wallet'),
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: '"signed"',
       },
     });
@@ -701,9 +707,9 @@ describe('approval popup boundary', () => {
       })
     );
     messageListener({
-      source: source('external/tx/ethSign'),
+      source: source('external/connect-wallet'),
       data: {
-        eventName: 'personal_sign.https://site.test',
+        eventName: `${POPUP_EVENT}.https://site.test`,
         detail: '"signed"',
       },
     });
