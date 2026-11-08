@@ -450,8 +450,10 @@ export const SendCalls = () => {
           },
         ]
       );
+      return true;
     } catch (error) {
       console.error('Failed to record definite sendCalls rejection', error);
+      return false;
     }
   };
   const recordCompletedSubmission = async (
@@ -763,6 +765,11 @@ export const SendCalls = () => {
               if (authenticator === 'slh-dsa') {
                 setIsPqSigning(true);
               }
+            },
+            onSubmissionNotBroadcast: async () => {
+              if (!(await markSubmissionNotBroadcast()))
+                throw new Error(t('send.sendError'));
+              smartSubmissionInvoked = false;
             },
             onBeforeSubmit: async ({ executionContextId }) => {
               if (

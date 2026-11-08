@@ -487,6 +487,9 @@ describe('signAndSubmitSmartAccountExecutions', () => {
         onBeforeSubmit: async () => {
           events.push('durable begin');
         },
+        onSubmissionNotBroadcast: async () => {
+          events.push('proven unsent');
+        },
       });
       if (expected === 2)
         await expect(submitting).resolves.toEqual({ hash: 'retried' });
@@ -497,10 +500,15 @@ describe('signAndSubmitSmartAccountExecutions', () => {
       expect(calls).toHaveLength(expected);
       for (const call of calls) expect(call.slice(2)).toEqual([300000, false]);
       expect(events).toEqual(
-        Array.from({ length: expected }, () => [
-          'durable begin',
-          'submit',
-        ]).flat()
+        expected === 2
+          ? [
+              'durable begin',
+              'submit',
+              'proven unsent',
+              'durable begin',
+              'submit',
+            ]
+          : ['durable begin', 'submit']
       );
     }
   );
