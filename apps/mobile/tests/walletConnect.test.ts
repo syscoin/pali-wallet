@@ -83,6 +83,7 @@ function fixture() {
       throw new Error('permission logic must not live in transport');
     },
     bindings: () => [],
+    reconcileSessions: async () => undefined,
     retireAccount: async () => {
       throw new Error(
         'Account retirement does not belong to the transport adapter'

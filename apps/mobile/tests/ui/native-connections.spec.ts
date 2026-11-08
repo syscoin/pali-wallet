@@ -64,6 +64,15 @@ test('shows pairing progress, cancellation and a recoverable context error', asy
   await page.screenshot({ path: test.info().outputPath('connection-error.png'), fullPage: true });
 });
 
+test('offers restoration retry without asking for another connection link', async ({ page }) => {
+  await page.goto('http://127.0.0.1:4179/?connections=1');
+  await page.evaluate(() => window.__nativeConnectionsFixture.unavailable());
+  await page.getByRole('button', { name: 'Try again', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Paste connection link' })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.__nativeConnectionsFixture.calls().filter((call) => call.method === 'retry')))
+    .toEqual([{ method: 'retry', args: [] }]);
+});
+
 declare global {
   interface Window { __completeConnectionClipboard(value: string): void }
 }

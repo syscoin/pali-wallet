@@ -34,8 +34,14 @@ export type NativeConnectionsView = Readonly<{
   getSnapshot(): NativeConnectionsSnapshot;
   subscribe(listener: () => void): () => void;
   pair(uri: string): Promise<void>;
-  approve(proposalId: number, accountId: string, networkId: string, revision: number): Promise<void>;
+  approve(
+    proposalId: number,
+    accountId: string,
+    networkId: string,
+    revision: number
+  ): Promise<void>;
   reject(proposalId: number): Promise<void>;
   disconnect(connectionId: string): Promise<void>;
+  retry(): Promise<void>;
   cancel(): void;
 }>;

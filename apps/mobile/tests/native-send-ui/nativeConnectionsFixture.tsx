@@ -35,6 +35,7 @@ const controller: NativeConnectionsView = {
   },
   async reject(id) { calls.push({ method: 'reject', args: [id] }); publish({ ...snapshot, proposals: [] }); },
   async disconnect(id) { calls.push({ method: 'disconnect', args: [id] }); publish({ ...snapshot, sessions: [] }); },
+  async retry() { calls.push({ method: 'retry', args: [] }); publish({ ...snapshot, status: 'ready', error: null }); },
   cancel() { calls.push({ method: 'cancel', args: [] }); publish({ ...snapshot, status: 'ready', proposals: [] }); },
 };
 
@@ -44,6 +45,7 @@ declare global {
       calls(): typeof calls;
       proposal(allowed?: boolean): void;
       fail(): void;
+      unavailable(): void;
     };
   }
 }
@@ -55,6 +57,7 @@ window.__nativeConnectionsFixture = {
     ] });
   },
   fail() { publish({ ...snapshot, error: 'CONTEXT_CHANGED' }); },
+  unavailable() { publish({ ...snapshot, status: 'unavailable', error: 'CONNECTION_UNAVAILABLE' }); },
 };
 
 export function NativeConnectionsFixture() {
